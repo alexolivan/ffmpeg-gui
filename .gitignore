@@ -9,6 +9,11 @@ venv/
 *.db
 *.sqlite3
 
+# IDEs
+.vscode/
+.idea/
+*.swp
+
 # FFmpeg Forge (Build artifacts)
 build/
 ffmpeg_bin/
