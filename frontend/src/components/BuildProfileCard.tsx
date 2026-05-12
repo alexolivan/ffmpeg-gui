@@ -1,0 +1,175 @@
+import React from 'react'
+
+interface BuildProfile {
+  id: number
+  name: string
+  ffmpeg_version: string
+  srt_version: string | null
+  build_options: Record<string, boolean>
+  sdk_paths: Record<string, string> | null
+  status: string
+  is_default: boolean
+  sources_cleaned: boolean
+  disk_usage_mb: number | null
+  build_log_summary: string | null
+  ffmpeg_version_output: string | null
+  created_at: string | null
+  built_at: string | null
+}
+
+interface BuildProfileCardProps {
+  build: BuildProfile
+  onCompile: (id: number) => void
+  onStop: (id: number) => void
+  onValidate: (id: number) => void
+  onCleanSources: (id: number) => void
+  onDelete: (id: number) => void
+  onSetDefault: (id: number) => void
+  onEdit: (build: BuildProfile) => void
+  onViewLogs: (id: number) => void
+}
+
+const STATUS_STYLES: Record<string, { dot: string; badge: string; label: string }> = {
+  pending:  { dot: 'bg-white/30',                    badge: 'bg-white/10 text-white/50',         label: 'PENDING' },
+  building: { dot: 'bg-brand-orange animate-pulse',  badge: 'bg-brand-orange/20 text-brand-orange', label: 'BUILDING' },
+  ready:    { dot: 'bg-brand-lime',                   badge: 'bg-brand-lime/20 text-brand-lime',     label: 'READY' },
+  failed:   { dot: 'bg-red-500',                      badge: 'bg-red-500/20 text-red-400',           label: 'FAILED' },
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('es-ES', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function formatOptions(options: Record<string, boolean>): string {
+  return Object.entries(options)
+    .filter(([, v]) => v)
+    .map(([k]) => {
+      const labels: Record<string, string> = { libsrt: 'SRT', vaapi: 'VAAPI', ndi: 'NDI', decklink: 'DECKLINK', nvenc: 'NVENC' }
+      return labels[k] || k.toUpperCase()
+    })
+    .join(' · ')
+}
+
+export default function BuildProfileCard({
+  build, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs,
+}: BuildProfileCardProps) {
+  const style = STATUS_STYLES[build.status] || STATUS_STYLES.pending
+
+  return (
+    <div className={`glass-card p-6 border transition-all duration-300 ${
+      build.is_default ? 'border-brand-lime/30' : 'border-white/5'
+    } hover:border-white/15`}>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          {build.is_default && (
+            <span className="text-brand-lime text-lg" title="Default Build">★</span>
+          )}
+          <div>
+            <h4 className="text-lg font-bold">{build.name}</h4>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-xs font-mono bg-white/5 px-2 py-0.5 rounded">
+                FFmpeg {build.ffmpeg_version}
+              </span>
+              {build.srt_version && (
+                <span className="text-xs font-mono bg-white/5 px-2 py-0.5 rounded">
+                  SRT {build.srt_version}
+                </span>
+              )}
+              {build.build_options && (
+                <span className="text-xs text-text-secondary">
+                  {formatOptions(build.build_options)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${style.dot}`}></span>
+          <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full ${style.badge}`}>
+            {style.label}
+          </span>
+        </div>
+      </div>
+
+      {/* Metadata Row */}
+      <div className="flex items-center gap-6 text-[11px] text-text-secondary mb-5 border-t border-white/5 pt-4">
+        <div>
+          <span className="uppercase tracking-widest text-[9px] block mb-0.5">Built</span>
+          <span className="text-white/70 font-mono">{formatDate(build.built_at)}</span>
+        </div>
+        <div>
+          <span className="uppercase tracking-widest text-[9px] block mb-0.5">Size</span>
+          <span className="text-white/70 font-mono">
+            {build.disk_usage_mb != null ? `${build.disk_usage_mb} MB` : '—'}
+          </span>
+        </div>
+        {build.sources_cleaned && (
+          <div className="text-brand-lime/60 text-[9px] uppercase tracking-widest">
+            ✓ Sources cleaned
+          </div>
+        )}
+        {build.build_log_summary && build.status === 'failed' && (
+          <div className="text-red-400 text-[10px] truncate max-w-xs" title={build.build_log_summary}>
+            ⚠ {build.build_log_summary}
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {build.status === 'building' ? (
+          <button
+            onClick={() => onStop(build.id)}
+            className="pill-button bg-red-500/20 text-red-400 text-xs animate-pulse"
+          >ABORT</button>
+        ) : (
+          <button
+            onClick={() => onCompile(build.id)}
+            className={`pill-button text-xs transition-all ${
+              build.status === 'failed' 
+                ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' 
+                : 'bg-brand-orange/20 text-brand-orange hover:bg-brand-orange/30'
+            }`}
+          >
+            {build.status === 'ready' ? 'RECOMPILE' : build.status === 'failed' ? 'RETRY BUILD' : 'COMPILE'}
+          </button>
+        )}
+
+        {build.status === 'ready' && (
+          <>
+            <button onClick={() => onValidate(build.id)}
+              className="pill-button bg-white/5 text-xs hover:bg-white/10">VALIDATE</button>
+            {!build.sources_cleaned && (
+              <button onClick={() => onCleanSources(build.id)}
+                className="pill-button bg-white/5 text-xs hover:bg-white/10">CLEAN SRC</button>
+            )}
+            {!build.is_default && (
+              <button onClick={() => onSetDefault(build.id)}
+                className="pill-button bg-brand-lime/10 text-brand-lime text-xs hover:bg-brand-lime/20">SET DEFAULT</button>
+            )}
+          </>
+        )}
+
+        {build.status === 'building' && (
+          <button onClick={() => onViewLogs(build.id)}
+            className="pill-button bg-white/5 text-xs hover:bg-white/10">VIEW LOGS</button>
+        )}
+
+        <button onClick={() => onEdit(build)}
+          className="pill-button bg-white/5 text-xs hover:bg-white/10 ml-auto">EDIT</button>
+
+        {build.status !== 'building' && (
+          <button onClick={() => onDelete(build.id)}
+            className="pill-button bg-white/5 text-xs hover:bg-red-500/10 hover:text-red-400">DELETE</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export type { BuildProfile }

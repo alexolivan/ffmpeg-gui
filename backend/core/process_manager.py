@@ -23,13 +23,21 @@ class ProcessManager:
 
     async def start_process(self, process_id: int):
         with self.db_session_factory() as session:
-            from database.models import MediaProcess
+            from database.models import MediaProcess, FfmpegBuild
             media_proc = session.query(MediaProcess).get(process_id)
             if not media_proc:
                 self.logger.error(f"Process {process_id} not found in DB")
                 return
 
-            cmd = self._build_ffmpeg_cmd(media_proc)
+            # Determine which FFmpeg binary to use
+            ffmpeg_bin = self.ffmpeg_path  # Default fallback
+            if media_proc.ffmpeg_build_id:
+                build = session.query(FfmpegBuild).get(media_proc.ffmpeg_build_id)
+                if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+                    ffmpeg_bin = build.ffmpeg_binary
+                    self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
+
+            cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
             self.logger.info(f"Starting FFMPEG for {media_proc.name}: {' '.join(cmd)}")
             
             try:
@@ -83,8 +91,8 @@ class ProcessManager:
         
         del self.processes[process_id]
 
-    def _build_ffmpeg_cmd(self, media_proc):
-        cmd = [self.ffmpeg_path, "-hide_banner", "-y"]
+    def _build_ffmpeg_cmd(self, media_proc, ffmpeg_bin):
+        cmd = [ffmpeg_bin, "-hide_banner", "-y"]
         
         # HW Acceleration (VAAPI as default for Linux)
         # cmd += ["-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128"]

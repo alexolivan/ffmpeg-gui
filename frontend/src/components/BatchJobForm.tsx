@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface BatchJobFormProps {
   onCancel: () => void;
@@ -8,10 +8,24 @@ interface BatchJobFormProps {
 const BatchJobForm: React.FC<BatchJobFormProps> = ({ onCancel, onSubmit }) => {
   const [config, setConfig] = useState({
     name: '',
+    ffmpeg_build_id: null as number | null,
     input: { type: 'file', path: '' },
     codec: { vcodec: 'libx264', acodec: 'aac', bitrate: '4000k' },
     output: { type: 'file', path: '' }
   });
+  const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/builds')
+      .then(r => r.json())
+      .then(builds => {
+        const ready = builds.filter((b: any) => b.status === 'ready');
+        setAvailableBuilds(ready);
+        const def = ready.find((b: any) => b.is_default);
+        if (def) setConfig(prev => ({ ...prev, ffmpeg_build_id: def.id }));
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -25,6 +39,25 @@ const BatchJobForm: React.FC<BatchJobFormProps> = ({ onCancel, onSubmit }) => {
           onChange={e => setConfig({...config, name: e.target.value})}
         />
       </div>
+
+      {/* FFmpeg Build Selector */}
+      {availableBuilds.length > 0 && (
+        <div className="space-y-2">
+          <label className="text-xs font-bold text-text-secondary uppercase">FFmpeg Build</label>
+          <select
+            className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-orange transition-all"
+            value={config.ffmpeg_build_id ?? ''}
+            onChange={e => setConfig({...config, ffmpeg_build_id: e.target.value ? Number(e.target.value) : null})}
+          >
+            <option value="">Use default build</option>
+            {availableBuilds.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name} — FFmpeg {b.ffmpeg_version}{b.is_default ? ' ★' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">

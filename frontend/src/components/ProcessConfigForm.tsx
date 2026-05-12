@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface ProcessConfigFormProps {
   onCancel: () => void;
@@ -8,11 +8,25 @@ interface ProcessConfigFormProps {
 const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit }) => {
   const [config, setConfig] = useState({
     name: '',
+    ffmpeg_build_id: null as number | null,
     input: { type: 'file', path: '', host: '', port: '', mode: 'listener', device: '' },
     codec: { vcodec: 'libx264', acodec: 'aac', bitrate: '4000k', hwaccel: 'none' },
     output: { type: 'udp', host: '127.0.0.1', port: '1234', path: '', url: '', mode: 'caller', latency: 200 },
     filters: { scale: '', deinterlace: false }
   });
+  const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/builds')
+      .then(r => r.json())
+      .then(builds => {
+        const ready = builds.filter((b: any) => b.status === 'ready');
+        setAvailableBuilds(ready);
+        const def = ready.find((b: any) => b.is_default);
+        if (def) setConfig(prev => ({ ...prev, ffmpeg_build_id: def.id }));
+      })
+      .catch(() => {});
+  }, []);
 
   const handleChange = (path: string, value: any) => {
     const keys = path.split('.');
@@ -38,6 +52,25 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           onChange={e => setConfig({...config, name: e.target.value})}
         />
       </div>
+
+      {/* FFmpeg Build Selector */}
+      {availableBuilds.length > 0 && (
+        <div className="glass-card p-6 border-brand-orange/10">
+          <label className="block text-sm text-text-secondary mb-3 uppercase font-bold tracking-wider">FFmpeg Build</label>
+          <select
+            className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 focus:border-brand-orange outline-none transition-all"
+            value={config.ffmpeg_build_id ?? ''}
+            onChange={e => setConfig({...config, ffmpeg_build_id: e.target.value ? Number(e.target.value) : null})}
+          >
+            <option value="">Use default build</option>
+            {availableBuilds.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name} — FFmpeg {b.ffmpeg_version}{b.is_default ? ' ★' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Input Configuration */}
