@@ -34,6 +34,10 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(true) // Initial check
   const [loginPass, setLoginPass] = useState('')
   const [isLoginError, setIsLoginError] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState('')
   const [buildDeps, setBuildDeps] = useState<any>({})
   const [checkStatus, setCheckStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [validationResult, setValidationResult] = useState<{ buildId: number; output: string } | null>(null)
@@ -567,16 +571,47 @@ function App() {
                   <span className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500 text-sm">🔒</span>
                   SECURITY & ACCESS
                 </h3>
-                <div className="max-w-md space-y-2">
-                  <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Access Password</label>
-                  <input 
-                    type="password" 
-                    placeholder="Leave empty for open access"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-red-500 outline-none transition-all"
-                    value={settings.gui_password || ''}
-                    onChange={e => handleUpdateSettings({...settings, gui_password: e.target.value})}
-                  />
-                  <p className="text-[10px] text-text-secondary italic mt-2">
+                <div className="max-w-md space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">New Password</label>
+                    <input 
+                      type="password" 
+                      placeholder="Leave empty to remove password"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-red-500 outline-none transition-all"
+                      value={newPassword}
+                      onChange={e => { setNewPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Confirm Password</label>
+                    <input 
+                      type="password" 
+                      placeholder="Confirm new password"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-red-500 outline-none transition-all"
+                      value={confirmPassword}
+                      onChange={e => { setConfirmPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
+                    />
+                  </div>
+                  
+                  {passwordError && <p className="text-[10px] text-red-500 font-bold">{passwordError}</p>}
+                  {passwordSuccess && <p className="text-[10px] text-brand-lime font-bold">{passwordSuccess}</p>}
+
+                  <button 
+                    onClick={() => {
+                      if (newPassword !== confirmPassword) {
+                        setPasswordError('Passwords do not match');
+                        return;
+                      }
+                      handleUpdateSettings({...settings, gui_password: newPassword});
+                      setPasswordSuccess('Password updated successfully');
+                      setNewPassword('');
+                      setConfirmPassword('');
+                    }}
+                    className="pill-button bg-red-500/20 text-red-400 text-xs py-2 w-full mt-2 hover:bg-red-500/30">
+                    UPDATE PASSWORD
+                  </button>
+
+                  <p className="text-[10px] text-text-secondary italic mt-4">
                     Protect your FFmpeg node from unauthorized command execution.
                   </p>
                 </div>
