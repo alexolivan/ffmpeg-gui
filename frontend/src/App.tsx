@@ -22,11 +22,22 @@ function App() {
   const [builds, setBuilds] = useState<BuildProfile[]>([])
   const [showBuildForm, setShowBuildForm] = useState(false)
   const [editingBuild, setEditingBuild] = useState<BuildProfile | null>(null)
-  const [terminalBuild, setTerminalBuild] = useState<{ id: number; name: string } | null>(null)
-  const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number } | null>(null)
+  const [terminalBuild, setTerminalBuild] = useState<{ id: number, name: string } | null>(null)
+  
+  // Settings & Auth
+  const [settings, setSettings] = useState({
+    node_name: 'FFMPEG-GUI Node',
+    logo_text: 'FF',
+    gui_password: '',
+    accent_color: '#FF6B00'
+  })
+  const [isAuthenticated, setIsAuthenticated] = useState(true) // Initial check
+  const [loginPass, setLoginPass] = useState('')
+  const [isLoginError, setIsLoginError] = useState(false)
   const [buildDeps, setBuildDeps] = useState<any>({})
   const [checkStatus, setCheckStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [validationResult, setValidationResult] = useState<{ buildId: number; output: string } | null>(null)
+  const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number } | null>(null)
 
   // ── Telemetry WebSocket ────────────────────────────────────────
   useEffect(() => {
@@ -52,9 +63,46 @@ function App() {
 
   // ── Load builds + deps when entering tools view ────────────────
   useEffect(() => {
-    if (activeView !== 'tools') return
     refreshBuilds()
     refreshDiskInfo()
+    fetchSettings()
+  }, [])
+
+  const fetchSettings = async () => {
+    const res = await fetch(`${API}/settings`)
+    const data = await res.json()
+    setSettings(data)
+    if (data.gui_password) {
+      setIsAuthenticated(false) // Trigger login if pass exists
+    }
+  }
+
+  const handleUpdateSettings = async (newSettings: any) => {
+    const res = await fetch(`${API}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSettings)
+    })
+    const data = await res.json()
+    setSettings(data)
+  }
+
+  const handleLogin = async () => {
+    const res = await fetch(`${API}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: loginPass })
+    })
+    if (res.ok) {
+      setIsAuthenticated(true)
+      setIsLoginError(false)
+    } else {
+      setIsLoginError(true)
+    }
+  }
+
+  useEffect(() => {
+    if (activeView !== 'tools') return
     fetchDeps()
   }, [activeView])
 
@@ -199,9 +247,46 @@ function App() {
   }
 
   // ── Render ─────────────────────────────────────────────────────
+  if (!isAuthenticated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-black text-white p-4">
+        <div className="glass-card w-full max-w-md p-10 border-brand-orange/30 animate-in zoom-in duration-500">
+          <div className="w-20 h-20 bg-brand-orange rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-brand-orange/20">
+            <span className="text-black font-black text-3xl">{settings.logo_text}</span>
+          </div>
+          <h1 className="text-2xl font-bold text-center mb-2 uppercase tracking-tighter">{settings.node_name}</h1>
+          <p className="text-text-secondary text-center text-sm mb-10">Access restricted. Enter node password.</p>
+          
+          <div className="space-y-6">
+            <input 
+              type="password" 
+              className={`w-full bg-white/5 border ${isLoginError ? 'border-red-500' : 'border-white/10'} rounded-2xl p-4 text-center text-2xl tracking-[0.5em] outline-none focus:border-brand-orange transition-all`}
+              value={loginPass}
+              onChange={e => setLoginPass(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              autoFocus
+            />
+            {isLoginError && <p className="text-red-500 text-center text-xs font-bold animate-shake">INVALID PASSWORD</p>}
+            <button 
+              onClick={handleLogin}
+              className="w-full py-4 bg-brand-orange text-black font-black rounded-2xl hover:scale-[1.02] transition-all uppercase tracking-widest"
+            >
+              Unlock Node
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-black text-white">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <Sidebar 
+        activeView={activeView} 
+        onViewChange={setActiveView} 
+        logoText={settings.logo_text}
+        accentColor={settings.accent_color}
+      />
 
       <main className="flex-1 overflow-y-auto p-8 lg:p-12">
         {/* ════ DASHBOARD ════ */}
@@ -440,32 +525,80 @@ function App() {
 
         /* ════ SETTINGS ════ */
         ) : activeView === 'settings' ? (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl">
             <header className="mb-12">
               <h1 className="text-4xl font-bold mb-2">SETTINGS</h1>
-              <p className="text-text-secondary">System configuration and node parameters</p>
+              <p className="text-text-secondary">Node identity, security and branding</p>
             </header>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="glass-card p-8">
-                <h3 className="text-xl font-bold mb-6 text-brand-lime">NODE INFO</h3>
-                <div className="space-y-4 text-sm">
-                  <div className="flex justify-between border-b border-white/5 pb-2">
-                    <span className="text-text-secondary">Node ID</span>
-                    <span className="font-mono">STANDALONE-01</span>
+
+            <div className="space-y-8">
+              {/* Identity Section */}
+              <div className="glass-card p-8 border-brand-lime/10">
+                <h3 className="text-xl font-bold mb-8 flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-brand-lime/10 flex items-center justify-center text-brand-lime text-sm">ID</span>
+                  NODE IDENTITY
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Station Name</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all"
+                      value={settings.node_name}
+                      onChange={e => handleUpdateSettings({...settings, node_name: e.target.value})}
+                    />
                   </div>
-                  <div className="flex justify-between border-b border-white/5 pb-2">
-                    <span className="text-text-secondary">OS</span>
-                    <span>Linux (Agnostic)</span>
-                  </div>
-                  <div className="flex justify-between border-b border-white/5 pb-2">
-                    <span className="text-text-secondary">Active Builds</span>
-                    <span className="font-mono">{builds.filter(b => b.status === 'ready').length}</span>
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Logo Abbreviation</label>
+                    <input 
+                      type="text" 
+                      maxLength={3}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all uppercase"
+                      value={settings.logo_text}
+                      onChange={e => handleUpdateSettings({...settings, logo_text: e.target.value.toUpperCase()})}
+                    />
                   </div>
                 </div>
               </div>
-              <div className="glass-card p-8 opacity-50">
-                <h3 className="text-xl font-bold mb-6 text-text-secondary uppercase">Network P2P</h3>
-                <p className="text-sm italic">Multi-node synchronization is currently disabled in standalone mode.</p>
+
+              {/* Security Section */}
+              <div className="glass-card p-8 border-red-500/10">
+                <h3 className="text-xl font-bold mb-8 flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500 text-sm">🔒</span>
+                  SECURITY & ACCESS
+                </h3>
+                <div className="max-w-md space-y-2">
+                  <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Access Password</label>
+                  <input 
+                    type="password" 
+                    placeholder="Leave empty for open access"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-red-500 outline-none transition-all"
+                    value={settings.gui_password || ''}
+                    onChange={e => handleUpdateSettings({...settings, gui_password: e.target.value})}
+                  />
+                  <p className="text-[10px] text-text-secondary italic mt-2">
+                    Protect your FFmpeg node from unauthorized command execution.
+                  </p>
+                </div>
+              </div>
+
+              {/* Node Stats (Read Only) */}
+              <div className="glass-card p-8 border-white/5">
+                <h3 className="text-xl font-bold mb-6 text-text-secondary uppercase text-sm tracking-widest">System Info</h3>
+                <div className="grid grid-cols-3 gap-8">
+                  <div>
+                    <div className="text-[10px] uppercase text-text-secondary mb-1">Architecture</div>
+                    <div className="font-mono text-sm">x86_64 Linux</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-text-secondary mb-1">Active Profiles</div>
+                    <div className="font-mono text-sm">{builds.filter(b => b.status === 'ready').length}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-text-secondary mb-1">Backend V.</div>
+                    <div className="font-mono text-sm text-brand-lime">v1.2.0-stable</div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

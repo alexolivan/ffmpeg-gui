@@ -93,3 +93,15 @@ class ProcessLog(Base):
 
 
 MediaProcess.logs = relationship("ProcessLog", order_by=ProcessLog.timestamp, back_populates="process")
+
+
+class SystemSettings(Base):
+    __tablename__ = 'system_settings'
+
+    id = Column(Integer, primary_key=True)
+    node_name = Column(String, default="FFMPEG-GUI Standalone")
+    gui_password = Column(String, nullable=True)  # Null means open access
+    logo_text = Column(String, default="FF")
+    accent_color = Column(String, default="#FF6B00")  # Default Brand Orange
+
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)

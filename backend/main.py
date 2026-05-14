@@ -63,6 +63,56 @@ class ProcessCreate(BaseModel):
     filter_config: Optional[dict] = None
     ffmpeg_build_id: Optional[int] = None
 
+class SettingsUpdate(BaseModel):
+    node_name: Optional[str] = None
+    gui_password: Optional[str] = None
+    logo_text: Optional[str] = None
+    accent_color: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    password: str
+
+
+# ── System Settings & Auth ────────────────────────────────────────
+
+@app.get("/settings")
+def get_settings(db: Session = Depends(get_db)):
+    from database.models import SystemSettings
+    settings = db.query(SystemSettings).first()
+    if not settings:
+        settings = SystemSettings()
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+@app.post("/settings")
+def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
+    from database.models import SystemSettings
+    settings = db.query(SystemSettings).first()
+    if not settings:
+        settings = SystemSettings()
+        db.add(settings)
+    
+    if settings_in.node_name is not None: settings.node_name = settings_in.node_name
+    if settings_in.gui_password is not None: settings.gui_password = settings_in.gui_password
+    if settings_in.logo_text is not None: settings.logo_text = settings_in.logo_text
+    if settings_in.accent_color is not None: settings.accent_color = settings_in.accent_color
+    
+    db.commit()
+    db.refresh(settings)
+    return settings
+
+@app.post("/login")
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    from database.models import SystemSettings
+    settings = db.query(SystemSettings).first()
+    if not settings or not settings.gui_password:
+        return {"authenticated": True}
+    if req.password == settings.gui_password:
+        return {"authenticated": True}
+    raise HTTPException(status_code=401, detail="Invalid password")
+
 
 # ── WebSocket Connection Manager ──────────────────────────────────
 
