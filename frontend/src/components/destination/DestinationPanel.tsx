@@ -11,6 +11,7 @@ export interface OutputConfig {
   container?: string;
   icecast_mount?: string;
   icecast_password?: string;
+  device?: string;
 }
 
 interface DestinationPanelProps {
@@ -25,6 +26,7 @@ const OUTPUT_TYPES = [
   { value: 'srt', label: 'SRT Stream', requiresVideo: false },
   { value: 'rtmp', label: 'RTMP / RTMPS Push', requiresVideo: true },
   { value: 'ndi', label: 'NDI Output', requiresVideo: true },
+  { value: 'decklink', label: 'Blackmagic Decklink Output', requiresVideo: true },
   { value: 'file', label: 'Local Recording', requiresVideo: false },
   { value: 'icecast', label: 'Icecast2 (Audio Stream)', requiresVideo: false },
   { value: 'rtp', label: 'RTP Stream', requiresVideo: false },
@@ -138,6 +140,15 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           placeholder="NDI Output Name (e.g. MY-ENCODER)"
           className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
           value={config.path || ''} onChange={e => update({ path: e.target.value })}
+        />
+      )}
+
+      {config.type === 'decklink' && (
+        <input
+          type="text"
+          placeholder="Device name (e.g. DeckLink Mini Monitor)"
+          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+          value={config.device || ''} onChange={e => update({ device: e.target.value })}
         />
       )}
 

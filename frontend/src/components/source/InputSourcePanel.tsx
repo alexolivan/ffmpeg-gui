@@ -30,6 +30,7 @@ const ALL_SOURCE_TYPES = [
   { value: 'rtp', label: 'RTP Stream' },
   { value: 'decklink', label: 'Blackmagic Decklink' },
   { value: 'alsa', label: 'ALSA Audio Device' },
+  { value: 'v4l2', label: 'Video4Linux2 (USB/Magewell)' },
 ];
 
 const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
@@ -162,6 +163,16 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         <input
           type="text"
           placeholder="ALSA device (e.g. hw:0,0)"
+          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+          value={config.device || ''}
+          onChange={e => update({ device: e.target.value })}
+        />
+      )}
+
+      {config.type === 'v4l2' && (
+        <input
+          type="text"
+          placeholder="V4L2 device (e.g. /dev/video0)"
           className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
           value={config.device || ''}
           onChange={e => update({ device: e.target.value })}

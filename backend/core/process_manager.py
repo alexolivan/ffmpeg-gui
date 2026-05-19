@@ -213,6 +213,9 @@ class ProcessManager:
         elif input_type == 'alsa':
             device = input_cfg.get('device', 'hw:0,0')
             cmd += ["-f", "alsa", "-i", device]
+        elif input_type == 'v4l2':
+            device = input_cfg.get('device', '/dev/video0')
+            cmd += ["-f", "v4l2", "-i", device]
 
     def _append_video_codec_params(self, cmd: list, vcodec: str, params: dict):
         """Append video codec-specific parameters to the command."""
@@ -346,6 +349,9 @@ class ProcessManager:
         elif output_type == 'ndi':
             name = output_cfg.get('path', 'FFMPEG-OUTPUT')
             cmd += ["-f", "libndi_newtek", "-ndi_name", name, "output.ndi"]
+        elif output_type == 'decklink':
+            device = output_cfg.get('device', 'DeckLink Mini Monitor')
+            cmd += ["-f", "decklink", device]
         elif output_type == 'rtp':
             host = output_cfg.get('host', '127.0.0.1')
             port = output_cfg.get('port', '5004')
