@@ -5,3 +5,4 @@ pydantic
 psutil
 aiofiles
 python-multipart
+Pillow

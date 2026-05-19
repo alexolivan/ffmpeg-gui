@@ -2,6 +2,16 @@
 
 echo "Starting FFMPEG-GUI Development Servers..."
 
+echo "--> Cleaning up any existing rogue processes on ports 8000 and 5173..."
+if command -v fuser >/dev/null 2>&1; then
+    fuser -k 8000/tcp 2>/dev/null
+    fuser -k 5173/tcp 2>/dev/null
+else
+    kill -9 $(lsof -t -i:8000) 2>/dev/null
+    kill -9 $(lsof -t -i:5173) 2>/dev/null
+fi
+sleep 1
+
 # 1. Start Backend
 echo "--> Starting Backend (FastAPI)..."
 source venv/bin/activate

@@ -28,6 +28,7 @@ function App() {
   const [settings, setSettings] = useState({
     node_name: 'FFMPEG-GUI Node',
     logo_text: 'FF',
+    logo_path: null as string | null,
     gui_password: '',
     accent_color: '#FF6B00'
   })
@@ -89,6 +90,28 @@ function App() {
     })
     const data = await res.json()
     setSettings(data)
+  }
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const res = await fetch(`${API}/settings/logo`, {
+        method: 'POST',
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSettings({ ...settings, logo_path: data.logo_path });
+      } else {
+        alert("Failed to upload logo");
+      }
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   const handleLogin = async () => {
@@ -289,6 +312,7 @@ function App() {
         activeView={activeView} 
         onViewChange={setActiveView} 
         logoText={settings.logo_text}
+        logoPath={settings.logo_path ? `${API}${settings.logo_path}` : undefined}
         accentColor={settings.accent_color}
       />
 
@@ -543,24 +567,44 @@ function App() {
                   NODE IDENTITY
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Station Name</label>
-                    <input 
-                      type="text" 
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all"
-                      value={settings.node_name}
-                      onChange={e => handleUpdateSettings({...settings, node_name: e.target.value})}
-                    />
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Station Name</label>
+                      <input 
+                        type="text" 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all"
+                        value={settings.node_name}
+                        onChange={e => handleUpdateSettings({...settings, node_name: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Logo Abbreviation</label>
+                      <input 
+                        type="text" 
+                        maxLength={3}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all uppercase"
+                        value={settings.logo_text}
+                        onChange={e => handleUpdateSettings({...settings, logo_text: e.target.value.toUpperCase()})}
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Logo Abbreviation</label>
-                    <input 
-                      type="text" 
-                      maxLength={3}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all uppercase"
-                      value={settings.logo_text}
-                      onChange={e => handleUpdateSettings({...settings, logo_text: e.target.value.toUpperCase()})}
-                    />
+
+                  <div className="space-y-2 flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-2xl p-4 hover:border-brand-lime transition-all relative group cursor-pointer">
+                    <label className="absolute inset-0 cursor-pointer flex flex-col items-center justify-center w-full h-full z-10">
+                      <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                    </label>
+                    {settings.logo_path ? (
+                      <div className="relative w-24 h-24 flex items-center justify-center">
+                        <img src={`${API}${settings.logo_path}`} alt="Custom Logo" className="max-w-full max-h-full object-contain" />
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-2 shadow-lg group-hover:scale-110 transition-transform">
+                        <span className="text-white font-black text-2xl uppercase">{settings.logo_text}</span>
+                      </div>
+                    )}
+                    <div className="text-[10px] uppercase font-bold text-text-secondary mt-2 text-center">
+                      {settings.logo_path ? 'Click to change logo' : 'Upload custom logo'}
+                    </div>
                   </div>
                 </div>
               </div>

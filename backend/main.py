@@ -1,5 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
+import uuid
+from PIL import Image
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -31,6 +35,10 @@ app.add_middleware(
 
 # Initialize DB
 init_db()
+
+UPLOAD_DIR = "data/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Initialize Managers
 process_manager = ProcessManager(db_session_factory=SessionLocal)
@@ -112,6 +120,40 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     if req.password == settings.gui_password:
         return {"authenticated": True}
     raise HTTPException(status_code=401, detail="Invalid password")
+
+@app.post("/settings/logo")
+async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    from database.models import SystemSettings
+    settings = db.query(SystemSettings).first()
+    if not settings:
+        settings = SystemSettings()
+        db.add(settings)
+    
+    try:
+        img = Image.open(file.file)
+        img = img.convert("RGBA")
+        img.thumbnail((256, 256), Image.Resampling.LANCZOS)
+        
+        filename = f"logo_{uuid.uuid4().hex[:8]}.png"
+        url_path = f"/uploads/{filename}"
+        disk_path = os.path.join(UPLOAD_DIR, filename)
+        img.save(disk_path, format="PNG")
+        
+        # Remove old logo if exists
+        if settings.logo_path and settings.logo_path.startswith("/uploads/"):
+            old_disk_path = os.path.join(UPLOAD_DIR, settings.logo_path.split("/")[-1])
+            if os.path.exists(old_disk_path):
+                try:
+                    os.remove(old_disk_path)
+                except Exception:
+                    pass
+                
+        settings.logo_path = url_path
+        db.commit()
+        db.refresh(settings)
+        return {"logo_path": url_path}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
 
 
 # ── WebSocket Connection Manager ──────────────────────────────────

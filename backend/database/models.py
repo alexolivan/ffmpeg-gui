@@ -102,6 +102,7 @@ class SystemSettings(Base):
     node_name = Column(String, default="FFMPEG-GUI Standalone")
     gui_password = Column(String, nullable=True)  # Null means open access
     logo_text = Column(String, default="FF")
+    logo_path = Column(String, nullable=True)     # Path to custom uploaded logo
     accent_color = Column(String, default="#FF6B00")  # Default Brand Orange
 
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
