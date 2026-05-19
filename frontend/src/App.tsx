@@ -397,11 +397,11 @@ function App() {
 
             {/* Add Service Modal */}
             {showAddModal && (
-              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-8 z-50">
-                <div className="glass-card w-full max-w-2xl p-12 relative">
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+                <div className="glass-card w-full max-w-3xl p-8 relative max-h-[90vh] flex flex-col">
                   <button onClick={() => setShowAddModal(false)}
-                    className="absolute top-8 right-8 text-text-secondary hover:text-white">✕</button>
-                  <h3 className="text-3xl font-bold mb-8">ADD NEW SERVICE</h3>
+                    className="absolute top-6 right-6 w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10">✕</button>
+                  <h3 className="text-2xl font-bold mb-4 flex-shrink-0">ADD NEW SERVICE</h3>
                   <ProcessConfigForm
                     onCancel={() => setShowAddModal(false)}
                     onSubmit={async (config) => {

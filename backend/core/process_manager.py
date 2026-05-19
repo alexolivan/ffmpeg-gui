@@ -92,56 +92,249 @@ class ProcessManager:
         del self.processes[process_id]
 
     def _build_ffmpeg_cmd(self, media_proc, ffmpeg_bin):
+        """Build the ffmpeg command line from the process configuration.
+        
+        Supports two input_config formats:
+        - Legacy (flat): { "type": "srt", "host": "...", "port": "..." }
+        - New (dual-input): { "has_video": true, "has_audio": true, 
+                              "use_secondary_input": false,
+                              "input1": {...}, "input2": {...} }
+        """
         cmd = [ffmpeg_bin, "-hide_banner", "-y"]
         
-        # HW Acceleration (VAAPI as default for Linux)
-        # cmd += ["-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128"]
-
-        # Input
         input_cfg = media_proc.input_config
+        codec_cfg = media_proc.codec_config
+        filter_cfg = media_proc.filter_config or {}
+
+        # ── Detect format and build inputs ──
+        is_new_format = 'input1' in input_cfg
+        
+        if is_new_format:
+            has_video = input_cfg.get('has_video', True)
+            has_audio = input_cfg.get('has_audio', True)
+            use_secondary = input_cfg.get('use_secondary_input', False)
+            
+            # Input 1
+            self._append_input(cmd, input_cfg['input1'])
+            
+            # Input 2 (if separate source enabled)
+            if use_secondary and 'input2' in input_cfg:
+                self._append_input(cmd, input_cfg['input2'])
+        else:
+            # Legacy format: single input
+            has_video = True
+            has_audio = True
+            use_secondary = False
+            self._append_input(cmd, input_cfg)
+
+        # ── Video processing ──
+        if not has_video:
+            cmd += ["-vn"]
+        else:
+            # Video filters
+            vf = []
+            if filter_cfg.get('scale'):
+                vf.append(f"scale={filter_cfg['scale']}")
+            if filter_cfg.get('deinterlace'):
+                vf.append("yadif")
+            if filter_cfg.get('framerate'):
+                vf.append(f"fps={filter_cfg['framerate']}")
+            if vf:
+                cmd += ["-vf", ",".join(vf)]
+
+            # Video codec
+            vcodec = codec_cfg.get('vcodec', 'libx264')
+            cmd += ["-c:v", vcodec]
+            
+            # Video codec parameters (new format)
+            video_params = codec_cfg.get('video_params', {})
+            if video_params:
+                self._append_video_codec_params(cmd, vcodec, video_params)
+            else:
+                # Legacy fallback: basic preset for x264
+                if vcodec == 'libx264':
+                    cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
+                # Legacy bitrate
+                if codec_cfg.get('bitrate'):
+                    cmd += ["-b:v", codec_cfg['bitrate']]
+
+        # ── Audio processing ──
+        if not has_audio:
+            cmd += ["-an"]
+        else:
+            acodec = codec_cfg.get('acodec', 'aac')
+            cmd += ["-c:a", acodec]
+            
+            # Audio codec parameters (new format)
+            audio_params = codec_cfg.get('audio_params', {})
+            if audio_params:
+                self._append_audio_codec_params(cmd, acodec, audio_params)
+
+        # ── Stream mapping for dual input ──
+        if is_new_format and use_secondary:
+            # Map video from input 0, audio from input 1 (or vice versa)
+            # Default: input1=video, input2=audio
+            if has_video:
+                cmd += ["-map", "0:v"]
+            if has_audio:
+                cmd += ["-map", "1:a"]
+
+        # ── Output ──
+        output_cfg = media_proc.output_config
+        self._append_output(cmd, output_cfg, codec_cfg)
+            
+        return cmd
+
+    def _append_input(self, cmd: list, input_cfg: dict):
+        """Append a single -i input to the command."""
         input_type = input_cfg.get('type')
         
         if input_type == 'file':
-            cmd += ["-i", input_cfg.get('path')]
+            cmd += ["-i", input_cfg.get('path', '')]
         elif input_type == 'srt':
             mode = input_cfg.get('mode', 'listener')
-            cmd += ["-i", f"srt://{input_cfg.get('host')}:{input_cfg.get('port')}?mode={mode}"]
+            latency = input_cfg.get('latency', 200)
+            host = input_cfg.get('host', '')
+            port = input_cfg.get('port', '9000')
+            cmd += ["-i", f"srt://{host}:{port}?mode={mode}&latency={latency}"]
         elif input_type == 'ndi':
-            cmd += ["-f", "libndi_newtek", "-find_sources", "1", "-i", input_cfg.get('name')]
+            name = input_cfg.get('name', '')
+            cmd += ["-f", "libndi_newtek", "-find_sources", "1", "-i", name]
         elif input_type == 'decklink':
-            cmd += ["-f", "decklink", "-i", input_cfg.get('device')]
+            cmd += ["-f", "decklink", "-i", input_cfg.get('device', '')]
         elif input_type == 'udp':
-            cmd += ["-i", f"udp://{input_cfg.get('host')}:{input_cfg.get('port')}?fifo_size=1000000"]
-        
-        # Processing / Filters
-        filter_cfg = media_proc.filter_config or {}
-        vf = []
-        if filter_cfg.get('scale'):
-            vf.append(f"scale={filter_cfg['scale']}")
-        if filter_cfg.get('deinterlace'):
-            vf.append("yadif")
-        
-        if vf:
-            cmd += ["-vf", ",".join(vf)]
+            host = input_cfg.get('host', '')
+            port = input_cfg.get('port', '1234')
+            cmd += ["-i", f"udp://{host}:{port}?fifo_size=1000000"]
+        elif input_type == 'rtp':
+            host = input_cfg.get('host', '')
+            port = input_cfg.get('port', '5004')
+            cmd += ["-i", f"rtp://{host}:{port}"]
+        elif input_type == 'alsa':
+            device = input_cfg.get('device', 'hw:0,0')
+            cmd += ["-f", "alsa", "-i", device]
 
-        # Codecs
-        codec_cfg = media_proc.codec_config
-        cmd += ["-c:v", codec_cfg.get('vcodec', 'libx264')]
-        if codec_cfg.get('vcodec') == 'libx264':
-            cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
+    def _append_video_codec_params(self, cmd: list, vcodec: str, params: dict):
+        """Append video codec-specific parameters to the command."""
+        rc_mode = params.get('rc_mode', '')
         
-        cmd += ["-c:a", codec_cfg.get('acodec', 'aac')]
+        if vcodec in ('libx264', 'libx265'):
+            # Rate control
+            if rc_mode == 'crf':
+                crf = params.get('crf', 23)
+                cmd += ["-crf", str(crf)]
+            elif rc_mode in ('cbr', 'vbr'):
+                bitrate = params.get('bitrate', '4000k')
+                cmd += ["-b:v", bitrate]
+                if params.get('maxrate'):
+                    cmd += ["-maxrate", params['maxrate']]
+                if params.get('bufsize'):
+                    cmd += ["-bufsize", params['bufsize']]
+            
+            # Preset & tune
+            if params.get('preset'):
+                cmd += ["-preset", params['preset']]
+            tune = params.get('tune', 'none')
+            if tune and tune != 'none':
+                cmd += ["-tune", tune]
+            if params.get('profile'):
+                cmd += ["-profile:v", params['profile']]
+            if params.get('g'):
+                cmd += ["-g", str(params['g'])]
+            if params.get('bf') is not None:
+                cmd += ["-bf", str(params['bf'])]
+                
+        elif vcodec == 'prores_ks':
+            if params.get('profile') is not None:
+                cmd += ["-profile:v", str(params['profile'])]
+            if params.get('vendor'):
+                cmd += ["-vendor", params['vendor']]
+                
+        elif vcodec == 'dnxhd':
+            profile = params.get('profile', 'dnxhr_hq')
+            if profile == 'dnxhd':
+                if params.get('bitrate'):
+                    cmd += ["-b:v", params['bitrate']]
+            else:
+                cmd += ["-profile:v", profile]
+                
+        elif vcodec in ('h264_vaapi', 'hevc_vaapi'):
+            # VAAPI HW encoding
+            cmd += ["-vaapi_device", "/dev/dri/renderD128"]
+            rc_mode_vaapi = params.get('rc_mode', 'CBR')
+            cmd += ["-rc_mode", rc_mode_vaapi]
+            if params.get('bitrate'):
+                cmd += ["-b:v", params['bitrate']]
+            if rc_mode_vaapi == 'CQP' and params.get('qp') is not None:
+                cmd += ["-qp", str(params['qp'])]
+            if params.get('profile'):
+                cmd += ["-profile:v", params['profile']]
+            if params.get('g'):
+                cmd += ["-g", str(params['g'])]
+                
+        elif vcodec in ('h264_qsv',):
+            if params.get('preset'):
+                cmd += ["-preset", params['preset']]
+            if params.get('bitrate'):
+                cmd += ["-b:v", params['bitrate']]
+            if params.get('global_quality') is not None:
+                cmd += ["-global_quality", str(params['global_quality'])]
+            if params.get('g'):
+                cmd += ["-g", str(params['g'])]
+                
+        elif vcodec in ('h264_nvenc', 'hevc_nvenc'):
+            if params.get('preset'):
+                cmd += ["-preset", params['preset']]
+            rc = params.get('rc', 'cbr')
+            cmd += ["-rc", rc]
+            if params.get('bitrate'):
+                cmd += ["-b:v", params['bitrate']]
+            if rc in ('constqp', 'vbr') and params.get('cq') is not None:
+                cmd += ["-cq", str(params['cq'])]
+            if params.get('profile'):
+                cmd += ["-profile:v", params['profile']]
+            if params.get('g'):
+                cmd += ["-g", str(params['g'])]
+            if params.get('bf') is not None:
+                cmd += ["-bf", str(params['bf'])]
+
+    def _append_audio_codec_params(self, cmd: list, acodec: str, params: dict):
+        """Append audio codec-specific parameters to the command."""
+        # Common: bitrate
+        if params.get('b:a'):
+            cmd += ["-b:a", params['b:a']]
         
-        # Output
-        output_cfg = media_proc.output_config
+        # Common: channels
+        if params.get('ac'):
+            cmd += ["-ac", str(params['ac'])]
+        
+        # Common: sample rate
+        if params.get('ar'):
+            cmd += ["-ar", str(params['ar'])]
+        
+        # Codec-specific
+        if acodec == 'aac' and params.get('profile:a'):
+            cmd += ["-profile:a", params['profile:a']]
+        elif acodec == 'libopus':
+            if params.get('application'):
+                cmd += ["-application", params['application']]
+            if params.get('vbr'):
+                cmd += ["-vbr", params['vbr']]
+
+    def _append_output(self, cmd: list, output_cfg: dict, codec_cfg: dict):
+        """Append output destination to the command."""
         output_type = output_cfg.get('type')
         
         if output_type == 'file':
-            cmd += [output_cfg.get('path')]
+            path = output_cfg.get('path', 'output.mp4')
+            container = output_cfg.get('container', '')
+            # If container hint doesn't match extension, let ffmpeg figure it out
+            cmd += [path]
         elif output_type == 'udp':
             host = output_cfg.get('host', '127.0.0.1')
             port = output_cfg.get('port', '1234')
-            cmd += ["-f", "mpegts", f"udp://{host}:{port}?pkt_size=1316&bitrate={codec_cfg.get('bitrate', '4000k')}"]
+            bitrate = codec_cfg.get('bitrate', codec_cfg.get('video_params', {}).get('bitrate', '4000k'))
+            cmd += ["-f", "mpegts", f"udp://{host}:{port}?pkt_size=1316&bitrate={bitrate}"]
         elif output_type == 'srt':
             host = output_cfg.get('host', '127.0.0.1')
             port = output_cfg.get('port', '1234')
@@ -149,9 +342,21 @@ class ProcessManager:
             latency = output_cfg.get('latency', 200)
             cmd += ["-f", "mpegts", f"srt://{host}:{port}?mode={mode}&latency={latency}"]
         elif output_type == 'rtmp':
-            cmd += ["-f", "flv", output_cfg.get('url')]
-            
-        return cmd
+            cmd += ["-f", "flv", output_cfg.get('url', '')]
+        elif output_type == 'ndi':
+            name = output_cfg.get('path', 'FFMPEG-OUTPUT')
+            cmd += ["-f", "libndi_newtek", "-ndi_name", name, "output.ndi"]
+        elif output_type == 'rtp':
+            host = output_cfg.get('host', '127.0.0.1')
+            port = output_cfg.get('port', '5004')
+            cmd += ["-f", "rtp", f"rtp://{host}:{port}"]
+        elif output_type == 'icecast':
+            host = output_cfg.get('host', 'localhost')
+            port = output_cfg.get('port', '8000')
+            mount = output_cfg.get('icecast_mount', '/live')
+            password = output_cfg.get('icecast_password', 'hackme')
+            cmd += ["-f", "ogg", "-content_type", "application/ogg",
+                    f"icecast://source:{password}@{host}:{port}{mount}"]
 
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process):
         import re
