@@ -216,6 +216,12 @@ class ProcessManager:
         elif input_type == 'v4l2':
             device = input_cfg.get('device', '/dev/video0')
             cmd += ["-f", "v4l2", "-i", device]
+        elif input_type == 'lavfi_video':
+            pattern = input_cfg.get('pattern', 'testsrc')
+            cmd += ["-f", "lavfi", "-i", pattern]
+        elif input_type == 'lavfi_audio':
+            pattern = input_cfg.get('pattern', 'sine')
+            cmd += ["-f", "lavfi", "-i", pattern]
 
     def _append_video_codec_params(self, cmd: list, vcodec: str, params: dict):
         """Append video codec-specific parameters to the command."""

@@ -11,6 +11,7 @@ export interface InputSourceConfig {
   device?: string;
   name?: string;
   latency?: number;
+  pattern?: string;
 }
 
 interface InputSourcePanelProps {
@@ -31,6 +32,8 @@ const ALL_SOURCE_TYPES = [
   { value: 'decklink', label: 'Blackmagic Decklink' },
   { value: 'alsa', label: 'ALSA Audio Device' },
   { value: 'v4l2', label: 'Video4Linux2 (USB/Magewell)' },
+  { value: 'lavfi_video', label: 'Internal Generator (Video)' },
+  { value: 'lavfi_audio', label: 'Internal Generator (Audio)' },
 ];
 
 const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
@@ -177,6 +180,32 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           value={config.device || ''}
           onChange={e => update({ device: e.target.value })}
         />
+      )}
+
+      {config.type === 'lavfi_video' && (
+        <select
+          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+          value={config.pattern || 'testsrc'}
+          onChange={e => update({ pattern: e.target.value })}
+        >
+          <option value="testsrc">Color Bars (testsrc)</option>
+          <option value="smptebars">SMPTE Bars</option>
+          <option value="color=c=black">Black Screen</option>
+          <option value="color=c=white">White Screen</option>
+        </select>
+      )}
+
+      {config.type === 'lavfi_audio' && (
+        <select
+          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+          value={config.pattern || 'sine'}
+          onChange={e => update({ pattern: e.target.value })}
+        >
+          <option value="sine">1kHz Sine Tone</option>
+          <option value="anoisesrc=c=pink">Pink Noise</option>
+          <option value="anoisesrc=c=white">White Noise</option>
+          <option value="anullsrc">Silence</option>
+        </select>
       )}
     </div>
   );
