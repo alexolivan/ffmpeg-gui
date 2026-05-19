@@ -12,13 +12,6 @@ Este documento detalla las tareas pendientes y objetivos futuros para el orquest
 - [ ] **Pre-compilación de Headers:** Automatizar la descarga de `nv-codec-headers` para evitar que el usuario tenga que buscarlos manualmente.
 - [ ] **Streaming de Logs mejorado:** Añadir botones de "Download Logs" y "Search" en el terminal de compilación.
 
-## 📺 Próximas Funcionalidades (Broadcast Testing)
-- [ ] **Soporte para `lavfi` Inputs:** 
-    - [ ] Generador de Carta de Ajuste (`testsrc`).
-    - [ ] Generador de Tono de 1Khz (`sine`).
-    - [ ] Ruido Rosa/Blanco (`anoisesrc`).
-    - [ ] Integración en el formulario de creación de procesos como un tipo de input "Internal Generator".
-
 ## 🛡️ Robustez y Seguridad
 - [ ] **Aislamiento por Contenedores:** Estudiar la posibilidad de compilar dentro de contenedores temporales para no "ensuciar" el sistema host con dependencias de desarrollo.
 - [ ] **Cache de Compilación:** Implementar `ccache` para acelerar recompilaciones del mismo perfil.
