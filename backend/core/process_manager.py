@@ -275,8 +275,10 @@ class ProcessManager:
                 cmd += ["-g", str(params['g'])]
             if params.get('bf') is not None:
                 cmd += ["-bf", str(params['bf'])]
-            if params.get('pix_fmt'):
-                cmd += ["-pix_fmt", params['pix_fmt']]
+            
+            # Prevent 4:4:4 crashes with baseline/main profiles by defaulting to yuv420p
+            pix_fmt = params.get('pix_fmt', 'yuv420p')
+            cmd += ["-pix_fmt", pix_fmt]
                 
         elif vcodec == 'prores_ks':
             if params.get('profile') is not None:

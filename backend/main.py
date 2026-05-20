@@ -603,6 +603,26 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
     db.refresh(db_proc)
     return db_proc
 
+@app.post("/processes/preview-cmd")
+def preview_command(proc_in: ProcessCreate, db: Session = Depends(get_db)):
+    db_proc = MediaProcess(
+        name=proc_in.name,
+        type=proc_in.type,
+        input_config=proc_in.input_config,
+        output_config=proc_in.output_config,
+        codec_config=proc_in.codec_config,
+        filter_config=proc_in.filter_config,
+        ffmpeg_build_id=proc_in.ffmpeg_build_id,
+    )
+    ffmpeg_bin = process_manager.ffmpeg_path
+    if db_proc.ffmpeg_build_id:
+        build = db.query(FfmpegBuild).get(db_proc.ffmpeg_build_id)
+        if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+            ffmpeg_bin = build.ffmpeg_binary
+            
+    cmd = process_manager._build_ffmpeg_cmd(db_proc, ffmpeg_bin)
+    return {"command": " ".join(cmd)}
+
 @app.put("/processes/{process_id}")
 def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depends(get_db)):
     db_proc = db.query(MediaProcess).get(process_id)

@@ -55,6 +55,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
   const [selectedBuildOptions, setSelectedBuildOptions] = useState<Record<string, boolean> | undefined>();
   const [activeSection, setActiveSection] = useState<string>('inputs');
+  const [previewCmd, setPreviewCmd] = useState<string | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
 
   const defaultVideoCodec = VIDEO_CODECS[0];
   const defaultAudioCodec = AUDIO_CODECS[0];
@@ -66,6 +68,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       const filterCfg = initialConfig.filter_config || {};
       const outputCfg = initialConfig.output_config || {};
 
+      const vCodecDef = VIDEO_CODECS.find(c => c.id === (codecCfg.vcodec || defaultVideoCodec.id)) || defaultVideoCodec;
+      const aCodecDef = AUDIO_CODECS.find(c => c.id === (codecCfg.acodec || defaultAudioCodec.id)) || defaultAudioCodec;
+
       return {
         name: initialConfig.name || '',
         ffmpeg_build_id: initialConfig.ffmpeg_build_id ?? null,
@@ -74,10 +79,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         use_secondary_input: !!inputCfg.use_secondary_input,
         input1: inputCfg.input1 || { type: 'srt', host: '', port: '9000', mode: 'listener' },
         input2: inputCfg.input2 || { type: 'file', path: '' },
-        video_codec_id: codecCfg.vcodec || defaultVideoCodec.id,
-        video_codec_params: codecCfg.video_params || getDefaultParams(defaultVideoCodec),
-        audio_codec_id: codecCfg.acodec || defaultAudioCodec.id,
-        audio_codec_params: codecCfg.audio_params || getDefaultParams(defaultAudioCodec),
+        video_codec_id: vCodecDef.id,
+        video_codec_params: { ...getDefaultParams(vCodecDef), ...(codecCfg.video_params || {}) },
+        audio_codec_id: aCodecDef.id,
+        audio_codec_params: { ...getDefaultParams(aCodecDef), ...(codecCfg.audio_params || {}) },
         filters: {
           scale: filterCfg.scale || '',
           deinterlace: !!filterCfg.deinterlace,
@@ -150,15 +155,16 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     // Transform to API-compatible structure
     const payload = {
       name: config.name,
+      type: 'service', // Or appropriate type
       ffmpeg_build_id: config.ffmpeg_build_id,
-      input: {
+      input_config: {
         has_video: config.has_video,
         has_audio: config.has_audio,
         use_secondary_input: config.use_secondary_input,
         input1: config.input1,
         ...(config.use_secondary_input ? { input2: config.input2 } : {}),
       },
-      codec: {
+      codec_config: {
         ...(config.has_video ? {
           vcodec: config.video_codec_id,
           video_params: config.video_codec_params,
@@ -168,13 +174,57 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           audio_params: config.audio_codec_params,
         } : {}),
       },
-      output: config.output,
-      filters: config.filters,
+      output_config: config.output,
+      filter_config: config.filters,
       auto_start: config.auto_start,
       watchdog_enabled: config.watchdog_enabled,
       watchdog_retries: config.watchdog_retries,
     };
     onSubmit(payload);
+  };
+
+  const handlePreview = async () => {
+    setIsPreviewing(true);
+    const payload = {
+      name: config.name || 'preview',
+      type: 'service',
+      ffmpeg_build_id: config.ffmpeg_build_id,
+      input_config: {
+        has_video: config.has_video,
+        has_audio: config.has_audio,
+        use_secondary_input: config.use_secondary_input,
+        input1: config.input1,
+        ...(config.use_secondary_input ? { input2: config.input2 } : {}),
+      },
+      codec_config: {
+        ...(config.has_video ? {
+          vcodec: config.video_codec_id,
+          video_params: config.video_codec_params,
+        } : {}),
+        ...(config.has_audio ? {
+          acodec: config.audio_codec_id,
+          audio_params: config.audio_codec_params,
+        } : {}),
+      },
+      output_config: config.output,
+      filter_config: config.filters,
+    };
+
+    try {
+      const res = await fetch('http://localhost:8000/processes/preview-cmd', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewCmd(data.command);
+      }
+    } catch (err) {
+      console.error('Failed to get preview command', err);
+    } finally {
+      setIsPreviewing(false);
+    }
   };
 
   // ── Section tabs ───────────────────────────────────────────────
@@ -507,6 +557,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           Cancel
         </button>
         <button
+          onClick={handlePreview}
+          disabled={isPreviewing}
+          className="flex-1 py-3 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl font-bold hover:bg-blue-500/30 transition-all uppercase tracking-widest text-sm"
+        >
+          {isPreviewing ? 'Wait...' : 'Preview CLI'}
+        </button>
+        <button
           onClick={handleSubmit}
           disabled={!config.name.trim()}
           className="flex-1 py-3 bg-brand-lime text-black rounded-xl font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-sm shadow-xl shadow-brand-lime/20 disabled:opacity-30 disabled:hover:scale-100"
@@ -514,6 +571,34 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           {initialConfig ? 'Save Changes' : 'Deploy Service'}
         </button>
       </div>
+
+      {/* ── Preview Modal ── */}
+      {previewCmd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-3xl shadow-2xl flex flex-col">
+            <h3 className="text-xl font-black text-white mb-4">FFmpeg Command Preview</h3>
+            <div className="bg-black border border-white/10 p-4 rounded-xl mb-6 overflow-x-auto custom-scrollbar font-mono text-sm text-brand-lime break-all">
+              {previewCmd}
+            </div>
+            <div className="flex justify-end gap-3 mt-auto">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(previewCmd);
+                }}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-bold transition-all"
+              >
+                Copy to Clipboard
+              </button>
+              <button
+                onClick={() => setPreviewCmd(null)}
+                className="px-4 py-2 bg-brand-orange text-black rounded-lg font-bold hover:bg-orange-400 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

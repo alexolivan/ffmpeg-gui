@@ -512,8 +512,8 @@ function App() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                           name: config.name, type: 'service',
-                          input_config: config.input, output_config: config.output,
-                          codec_config: config.codec, filter_config: config.filters,
+                          input_config: config.input_config, output_config: config.output_config,
+                          codec_config: config.codec_config, filter_config: config.filter_config,
                           ffmpeg_build_id: config.ffmpeg_build_id,
                           auto_start: config.auto_start,
                           watchdog_enabled: config.watchdog_enabled,
@@ -543,8 +543,8 @@ function App() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                           name: config.name,
-                          input_config: config.input, output_config: config.output,
-                          codec_config: config.codec, filter_config: config.filters,
+                          input_config: config.input_config, output_config: config.output_config,
+                          codec_config: config.codec_config, filter_config: config.filter_config,
                           ffmpeg_build_id: config.ffmpeg_build_id,
                           auto_start: config.auto_start,
                           watchdog_enabled: config.watchdog_enabled,

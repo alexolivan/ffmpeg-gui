@@ -77,6 +77,12 @@ const RATE_CONTROL_MODES: CodecParamOption[] = [
   { value: 'vbr', label: 'VBR (Variable Bitrate)' },
 ];
 
+const PIXEL_FORMATS: CodecParamOption[] = [
+  { value: 'yuv420p', label: 'YUV 4:2:0 (Standard)' },
+  { value: 'yuv422p', label: 'YUV 4:2:2' },
+  { value: 'yuv444p', label: 'YUV 4:4:4' },
+];
+
 export const VIDEO_CODECS: CodecDefinition[] = [
   {
     id: 'libx264',
@@ -136,6 +142,11 @@ export const VIDEO_CODECS: CodecDefinition[] = [
         default: 2, min: 0, max: 16, step: 1,
         hint: 'Number of B-frames. 0 for lowest latency.',
       },
+      {
+        key: 'pix_fmt', label: 'Pixel Format', type: 'select',
+        options: PIXEL_FORMATS, default: 'yuv420p',
+        hint: 'Use YUV 4:2:0 for maximum compatibility with Baseline/Main profiles.',
+      },
     ],
   },
   {
@@ -186,6 +197,11 @@ export const VIDEO_CODECS: CodecDefinition[] = [
       {
         key: 'g', label: 'Keyframe Interval (GOP)', type: 'number',
         default: 50, min: 1, max: 600, step: 1,
+      },
+      {
+        key: 'pix_fmt', label: 'Pixel Format', type: 'select',
+        options: PIXEL_FORMATS, default: 'yuv420p',
+        hint: 'Use YUV 4:2:0 for maximum compatibility.',
       },
     ],
   },
