@@ -206,6 +206,8 @@ async def telemetry_broadcast_loop():
                     "fps": p.fps,
                     "speed": p.speed,
                     "ffmpeg_build_id": p.ffmpeg_build_id,
+                    "input_config": p.input_config,
+                    "codec_config": p.codec_config,
                 } for p in processes
             ]
             await manager.broadcast({"type": "telemetry", "data": data})
