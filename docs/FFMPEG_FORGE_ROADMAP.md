@@ -11,6 +11,7 @@ Este documento detalla las tareas pendientes y objetivos futuros para el orquest
 - [ ] **Asistente de Carga de SDK (Upload Assist):** Implementar un botón en el GUI para subir archivos `.zip` o `.tar.gz` de los SDKs, que el servidor descomprima automáticamente en una ruta predefinida.
 - [ ] **Pre-compilación de Headers:** Automatizar la descarga de `nv-codec-headers` para evitar que el usuario tenga que buscarlos manualmente.
 - [ ] **Streaming de Logs mejorado:** Añadir botones de "Download Logs" y "Search" en el terminal de compilación.
+- [ ] **Vúmetro de Audio Broadcast (Audio Level VU-Meter):** Evaluar la viabilidad de integrar un vúmetro estéreo de doble barra (escala verde-rojo) en la pantalla de control para streams de audio o streams con audio activo, permitiendo monitorizar niveles en tiempo real sin requerir decodificación de video.
 
 ## 🛡️ Robustez y Seguridad
 - [ ] **Aislamiento por Contenedores:** Estudiar la posibilidad de compilar dentro de contenedores temporales para no "ensuciar" el sistema host con dependencias de desarrollo.
