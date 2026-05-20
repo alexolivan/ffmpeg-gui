@@ -202,7 +202,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       </div>
 
       {/* ── Scrollable content ── */}
-      <div className="flex-1 overflow-y-auto pr-1 space-y-4 min-h-0">
+      <div className="flex-1 overflow-y-auto pr-3 space-y-4 min-h-0 custom-scrollbar">
 
         {/* ═══ INPUTS SECTION ═══ */}
         {activeSection === 'inputs' && (
