@@ -44,9 +44,21 @@ function App() {
   const [validationResult, setValidationResult] = useState<{ buildId: number; output: string } | null>(null)
   const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number } | null>(null)
 
+  // Escape key listener to close selected process modal
+  useEffect(() => {
+    if (!selectedProcess) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedProcess(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedProcess]);
+
   // Lock body scroll when modals are active
   useEffect(() => {
-    const isModalOpen = showAddModal || showAddBatchModal || showBuildForm || terminalBuild !== null || validationResult !== null;
+    const isModalOpen = showAddModal || showAddBatchModal || showBuildForm || terminalBuild !== null || validationResult !== null || selectedProcess !== null;
     if (isModalOpen) {
       document.body.classList.add('overflow-hidden');
     } else {
@@ -55,7 +67,7 @@ function App() {
     return () => {
       document.body.classList.remove('overflow-hidden');
     };
-  }, [showAddModal, showAddBatchModal, showBuildForm, terminalBuild, validationResult]);
+  }, [showAddModal, showAddBatchModal, showBuildForm, terminalBuild, validationResult, selectedProcess]);
 
   // ── Telemetry WebSocket ────────────────────────────────────────
   useEffect(() => {
