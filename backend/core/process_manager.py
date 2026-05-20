@@ -128,10 +128,61 @@ class ProcessManager:
         input_cfg = media_proc.input_config
         codec_cfg = media_proc.codec_config
         filter_cfg = media_proc.filter_config or {}
+        advanced = filter_cfg.get('advanced', {})
 
-        # ── Detect format and build inputs ──
+        # ── Detect format and resolve primary input type ──
         is_new_format = 'input1' in input_cfg
-        
+        primary_input_type = (
+            input_cfg['input1'].get('type', '') if is_new_format
+            else input_cfg.get('type', '')
+        )
+
+        # ── Advanced pre-input flags ──
+        # These must appear BEFORE -i for ffmpeg to honor them.
+
+        # Threads (CPU core limit for the entire ffmpeg process)
+        threads = advanced.get('threads', 0)
+        if threads and int(threads) > 0:
+            cmd += ["-threads", str(int(threads))]
+
+        # Hardware acceleration
+        hwaccel = advanced.get('hwaccel', 'none')
+        if hwaccel and hwaccel != 'none':
+            cmd += ["-hwaccel", hwaccel]
+            # Output format defaults to match hwaccel (vaapi→vaapi, cuda→cuda)
+            hwaccel_out = advanced.get('hwaccel_output_format', hwaccel)
+            cmd += ["-hwaccel_output_format", hwaccel_out]
+
+        # Probe size (analysis buffer for input detection)
+        probesize = advanced.get('probesize', '')
+        if probesize:
+            cmd += ["-probesize", str(probesize)]
+
+        # Thread queue size (demuxer buffer depth)
+        tqs = advanced.get('thread_queue_size', 0)
+        if tqs and int(tqs) > 0:
+            cmd += ["-thread_queue_size", str(int(tqs))]
+
+        # Realtime flag (-re): throttles input read to native framerate.
+        # Essential for file/lavfi sources in live streaming to prevent
+        # runaway encoding at 16x+ speed. Network sources (srt, udp, etc.)
+        # are already rate-limited by the sender, so -re is unnecessary.
+        _SELF_PACED_INPUTS = {'file', 'lavfi_video', 'lavfi_audio'}
+        is_service = getattr(media_proc, 'type', 'service') == 'service'
+        realtime = advanced.get('realtime')
+        if realtime is None:
+            # Auto-enable for services with self-paced inputs
+            realtime = is_service and primary_input_type in _SELF_PACED_INPUTS
+        if realtime:
+            cmd += ["-re"]
+
+        # Stream loop (-stream_loop): only meaningful for file inputs in services.
+        # -1 = infinite loop (typical for 24/7 channel playout from file)
+        stream_loop = advanced.get('stream_loop')
+        if stream_loop is not None and primary_input_type == 'file' and is_service:
+            cmd += ["-stream_loop", str(int(stream_loop))]
+
+        # ── Build inputs ──
         if is_new_format:
             has_video = input_cfg.get('has_video', True)
             has_audio = input_cfg.get('has_audio', True)

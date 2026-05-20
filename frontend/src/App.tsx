@@ -847,6 +847,7 @@ function App() {
                           input_config: config.input, output_config: config.output,
                           codec_config: config.codec,
                           ffmpeg_build_id: config.ffmpeg_build_id,
+                          filter_config: config.threads ? { advanced: { threads: config.threads } } : undefined,
                         })
                       })
                       setShowAddBatchModal(false)
