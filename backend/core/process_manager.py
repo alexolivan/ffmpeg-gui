@@ -6,10 +6,12 @@ import os
 from datetime import datetime
 from typing import Dict, Optional
 import json
+import collections
 
 class ProcessManager:
     def __init__(self, db_session_factory):
         self.processes: Dict[int, asyncio.subprocess.Process] = {}
+        self.log_buffers: Dict[int, collections.deque] = {}
         self.db_session_factory = db_session_factory
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
@@ -41,6 +43,7 @@ class ProcessManager:
             self.logger.info(f"Starting FFMPEG for {media_proc.name}: {' '.join(cmd)}")
             
             try:
+                self.log_buffers[process_id] = collections.deque(maxlen=100)
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
@@ -373,14 +376,30 @@ class ProcessManager:
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process):
         import re
         # Regex for ffmpeg status line
-        # frame=  151 fps= 30 q=28.0 size=    1536kB time=00:00:05.03 bitrate=2501.1kbits/s speed=   1x
         status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s).*speed=\s*([\d.]+x)")
         
         while True:
             line = await proc.stderr.readline()
             if not line:
                 break
-            msg = line.decode().strip()
+            msg = line.decode('utf-8', errors='replace').strip()
+            if not msg:
+                continue
+            
+            # Check for error signature
+            lower_msg = msg.lower()
+            if any(kw in lower_msg for kw in ["error", "failed", "invalid", "could not", "cannot"]):
+                level = "ERROR"
+            else:
+                level = "INFO"
+            
+            # Append to in-memory deque
+            if process_id in self.log_buffers:
+                self.log_buffers[process_id].append({
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "level": level,
+                    "message": msg
+                })
             
             # Update real-time stats if it's a status line
             match = status_re.search(msg)
