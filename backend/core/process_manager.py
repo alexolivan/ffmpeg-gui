@@ -26,11 +26,14 @@ class ProcessManager:
 
     async def start_process(self, process_id: int, is_restart: bool = False):
         with self.db_session_factory() as session:
-            from database.models import MediaProcess, FfmpegBuild
+            from database.models import MediaProcess, FfmpegBuild, ProcessLog
             media_proc = session.query(MediaProcess).get(process_id)
             if not media_proc:
                 self.logger.error(f"Process {process_id} not found in DB")
                 return
+
+            # Clear old logs from DB to prevent mixing previous execution output
+            session.query(ProcessLog).filter(ProcessLog.process_id == process_id).delete()
 
             # Save configuration snapshot at launch
             media_proc.last_started_config = {

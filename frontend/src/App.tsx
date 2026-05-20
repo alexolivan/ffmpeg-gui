@@ -64,6 +64,15 @@ function App() {
     }
   };
 
+  const handleStartService = async (procId: number) => {
+    setLogs([]);
+    try {
+      await fetch(`${API}/processes/${procId}/start`, { method: 'POST' });
+    } catch (err) {
+      console.error("Error starting process:", err);
+    }
+  };
+
   const handleRestartService = async (procId: number, procName: string) => {
     const isConfirmed = window.confirm(
       `⚠️ live broadcast WARNING:\n\nAre you sure you want to restart "${procName}"? Any active live stream connections (SRT/UDP/RTP) will drop and experience a temporary signal loss during restart.`
@@ -71,6 +80,7 @@ function App() {
     if (!isConfirmed) return;
 
     try {
+      setLogs([]);
       // Graceful stop
       await fetch(`${API}/processes/${procId}/stop`, { method: 'POST' });
       // Start again
@@ -760,7 +770,7 @@ function App() {
                           </>
                         ) : (
                           <button 
-                            onClick={() => fetch(`${API}/processes/${currentProcess.id}/start`, { method: 'POST' })}
+                            onClick={() => handleStartService(currentProcess.id)}
                             className="pill-button bg-brand-lime hover:scale-[1.02] text-black text-xs font-black py-2 px-6"
                           >
                             START SERVICE
@@ -811,7 +821,7 @@ function App() {
                       <div className="flex gap-4">
                         <button onClick={() => setSelectedProcess(proc)} className="pill-button bg-white/10 text-xs">VIEW LOGS</button>
                         {proc.status !== 'running' && (
-                          <button onClick={() => fetch(`${API}/processes/${proc.id}/start`, { method: 'POST' })}
+                          <button onClick={() => handleStartService(proc.id)}
                             className="pill-button bg-brand-lime text-black text-xs">RESTART</button>
                         )}
                       </div>
