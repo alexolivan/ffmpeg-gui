@@ -541,9 +541,15 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
 
 @app.get("/processes/{process_id}/logs")
 def get_process_logs(process_id: int, db: Session = Depends(get_db)):
+    # Check if process is active and has a memory buffer
+    if process_id in process_manager.processes and process_id in process_manager.log_buffers:
+        # Return serialized memory buffer (already formatted with timestamp, level, message)
+        return list(process_manager.log_buffers[process_id])
+        
+    # Fall back to database query, sorting by id ascending for chronological order
     return db.query(ProcessLog).filter(
         ProcessLog.process_id == process_id
-    ).order_by(ProcessLog.timestamp.desc()).limit(100).all()
+    ).order_by(ProcessLog.id.asc()).limit(100).all()
 
 @app.post("/processes/{process_id}/start")
 async def start_process(process_id: int):
