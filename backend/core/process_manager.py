@@ -272,6 +272,8 @@ class ProcessManager:
                 cmd += ["-g", str(params['g'])]
             if params.get('bf') is not None:
                 cmd += ["-bf", str(params['bf'])]
+            if params.get('pix_fmt'):
+                cmd += ["-pix_fmt", params['pix_fmt']]
                 
         elif vcodec == 'prores_ks':
             if params.get('profile') is not None:
@@ -395,43 +397,56 @@ class ProcessManager:
         # Regex for ffmpeg status line
         status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s).*speed=\s*([\d.]+x)")
         
+        buffer = bytearray()
         while True:
-            line = await proc.stderr.readline()
-            if not line:
+            chunk = await proc.stderr.read(4096)
+            if not chunk:
+                if buffer:
+                    msg = buffer.decode('utf-8', errors='replace').strip()
+                    if msg:
+                        self._handle_log_msg(process_id, msg, status_re)
                 break
-            msg = line.decode('utf-8', errors='replace').strip()
-            if not msg:
-                continue
             
-            # Check for error signature
-            lower_msg = msg.lower()
-            if any(kw in lower_msg for kw in ["error", "failed", "invalid", "could not", "cannot"]):
-                level = "ERROR"
-            else:
-                level = "INFO"
-            
-            # Append to in-memory deque
-            if process_id in self.log_buffers:
-                self.log_buffers[process_id].append({
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                    "level": level,
-                    "message": msg
-                })
-            
-            # Update real-time stats if it's a status line
-            match = status_re.search(msg)
-            if match:
-                fps, bitrate, speed = match.groups()
-                with self.db_session_factory() as session:
-                    from database.models import MediaProcess
-                    media_proc = session.query(MediaProcess).get(process_id)
-                    if media_proc:
-                        media_proc.fps = fps
-                        media_proc.bitrate = bitrate
-                        media_proc.speed = speed
-                        session.commit()
-            
-            self.logger.debug(f"[{process_id}] {msg}")
+            for b in chunk:
+                char = bytes([b])
+                if char in (b'\r', b'\n'):
+                    if buffer:
+                        msg = buffer.decode('utf-8', errors='replace').strip()
+                        buffer.clear()
+                        if msg:
+                            self._handle_log_msg(process_id, msg, status_re)
+                else:
+                    buffer.extend(char)
+
+    def _handle_log_msg(self, process_id: int, msg: str, status_re):
+        lower_msg = msg.lower()
+        if any(kw in lower_msg for kw in ["error", "failed", "invalid", "could not", "cannot"]):
+            level = "ERROR"
+        else:
+            level = "INFO"
+        
+        # Append to in-memory deque
+        if process_id in self.log_buffers:
+            self.log_buffers[process_id].append({
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "level": level,
+                "message": msg
+            })
+        
+        # Update real-time stats if it's a status line
+        match = status_re.search(msg)
+        if match:
+            fps, bitrate, speed = match.groups()
+            with self.db_session_factory() as session:
+                from database.models import MediaProcess
+                media_proc = session.query(MediaProcess).get(process_id)
+                if media_proc:
+                    media_proc.fps = fps
+                    media_proc.bitrate = bitrate
+                    media_proc.speed = speed
+                    session.commit()
+        
+        self.logger.debug(f"[{process_id}] {msg}")
 
     async def _probe_url(self, url: str, ffprobe_bin: str) -> bool:
         cmd = [ffprobe_bin, "-t", "2", "-v", "quiet", url]
