@@ -11,7 +11,8 @@ const BatchJobForm: React.FC<BatchJobFormProps> = ({ onCancel, onSubmit }) => {
     ffmpeg_build_id: null as number | null,
     input: { type: 'file', path: '' },
     codec: { vcodec: 'libx264', acodec: 'aac', bitrate: '4000k' },
-    output: { type: 'file', path: '' }
+    output: { type: 'file', path: '' },
+    threads: 0
   });
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
 
@@ -100,6 +101,18 @@ const BatchJobForm: React.FC<BatchJobFormProps> = ({ onCancel, onSubmit }) => {
             placeholder="Bitrate (e.g. 5M)"
             value={config.codec.bitrate}
             onChange={e => setConfig({...config, codec: {...config.codec, bitrate: e.target.value}})}
+          />
+        </div>
+        <div className="mt-3">
+          <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
+            CPU Threads <code className="text-brand-orange">-threads</code>
+            <span className="text-white/20 ml-2 font-normal normal-case">(0 = auto, limit to prevent CPU hogging)</span>
+          </label>
+          <input
+            type="number" min="0" max="128" placeholder="0 = auto"
+            className="w-32 bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono focus:border-brand-orange"
+            value={config.threads || ''}
+            onChange={e => setConfig({...config, threads: parseInt(e.target.value) || 0})}
           />
         </div>
       </div>

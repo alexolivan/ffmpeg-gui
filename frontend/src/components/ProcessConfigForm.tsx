@@ -32,6 +32,15 @@ interface ProcessConfig {
     scale: string;
     deinterlace: boolean;
     framerate: string;
+    advanced: {
+      realtime: boolean | null;
+      stream_loop: number | null;
+      threads: number;
+      hwaccel: string;
+      hwaccel_output_format: string;
+      probesize: string;
+      thread_queue_size: number;
+    };
   };
 
   // Output
@@ -87,6 +96,15 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           scale: filterCfg.scale || '',
           deinterlace: !!filterCfg.deinterlace,
           framerate: filterCfg.framerate || '',
+          advanced: {
+            realtime: (filterCfg.advanced?.realtime !== undefined) ? filterCfg.advanced.realtime : null,
+            stream_loop: filterCfg.advanced?.stream_loop ?? null,
+            threads: filterCfg.advanced?.threads ?? 0,
+            hwaccel: filterCfg.advanced?.hwaccel ?? 'none',
+            hwaccel_output_format: filterCfg.advanced?.hwaccel_output_format ?? '',
+            probesize: filterCfg.advanced?.probesize ?? '',
+            thread_queue_size: filterCfg.advanced?.thread_queue_size ?? 0,
+          },
         },
         output: outputCfg || { type: 'udp', host: '239.0.0.1', port: '1234' },
         auto_start: !!initialConfig.auto_start,
@@ -106,7 +124,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       video_codec_params: getDefaultParams(defaultVideoCodec),
       audio_codec_id: defaultAudioCodec.id,
       audio_codec_params: getDefaultParams(defaultAudioCodec),
-      filters: { scale: '', deinterlace: false, framerate: '' },
+      filters: {
+        scale: '', deinterlace: false, framerate: '',
+        advanced: {
+          realtime: null, stream_loop: null, threads: 0,
+          hwaccel: 'none', hwaccel_output_format: '', probesize: '', thread_queue_size: 0,
+        },
+      },
       output: { type: 'udp', host: '239.0.0.1', port: '1234' },
       auto_start: false,
       watchdog_enabled: false,
@@ -175,7 +199,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         } : {}),
       },
       output_config: config.output,
-      filter_config: config.filters,
+      filter_config: {
+        scale: config.filters.scale,
+        deinterlace: config.filters.deinterlace,
+        framerate: config.filters.framerate,
+        advanced: config.filters.advanced,
+      },
       auto_start: config.auto_start,
       watchdog_enabled: config.watchdog_enabled,
       watchdog_retries: config.watchdog_retries,
@@ -207,7 +236,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         } : {}),
       },
       output_config: config.output,
-      filter_config: config.filters,
+      filter_config: {
+        scale: config.filters.scale,
+        deinterlace: config.filters.deinterlace,
+        framerate: config.filters.framerate,
+        advanced: config.filters.advanced,
+      },
     };
 
     try {
@@ -543,6 +577,150 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   )}
                 </div>
               )}
+            </div>
+
+            {/* ═══ ADVANCED FFMPEG FLAGS ═══ */}
+            <div className="glass-card p-4 !rounded-2xl space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-2 h-2 rounded-full bg-brand-orange" />
+                <h4 className="text-brand-orange font-bold text-xs uppercase tracking-wider">Advanced FFmpeg Flags</h4>
+                <span className="text-[10px] text-white/20 italic ml-auto">Speed control & resource limits</span>
+              </div>
+
+              {/* Realtime (-re) */}
+              <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium text-white">Realtime Playback <code className="text-[10px] text-brand-orange bg-white/5 px-1.5 py-0.5 rounded ml-1">-re</code></span>
+                  <span className="text-xs text-text-secondary">
+                    Throttle input read to native framerate. Essential for file/lavfi sources in live streaming.
+                    {config.filters.advanced.realtime === null && (
+                      <span className="text-brand-lime ml-1">(auto: {['file', 'lavfi_video', 'lavfi_audio'].includes(config.input1.type) ? 'ON' : 'OFF'})</span>
+                    )}
+                  </span>
+                </div>
+                <select
+                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none w-28 text-center"
+                  value={config.filters.advanced.realtime === null ? 'auto' : config.filters.advanced.realtime ? 'on' : 'off'}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setConfig({
+                      ...config,
+                      filters: { ...config.filters, advanced: {
+                        ...config.filters.advanced,
+                        realtime: val === 'auto' ? null : val === 'on',
+                      }},
+                    });
+                  }}
+                >
+                  <option value="auto">Auto</option>
+                  <option value="on">Always ON</option>
+                  <option value="off">Always OFF</option>
+                </select>
+              </div>
+
+              {/* Stream Loop — only for file inputs */}
+              {config.input1.type === 'file' && (
+                <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 animate-in fade-in duration-200">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium text-white">Input Loop <code className="text-[10px] text-brand-orange bg-white/5 px-1.5 py-0.5 rounded ml-1">-stream_loop</code></span>
+                    <span className="text-xs text-text-secondary">Repeat file input. -1 = infinite (24/7 playout). 0 = off.</span>
+                  </div>
+                  <input
+                    type="number" min="-1" max="9999"
+                    className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none w-24 text-center font-mono focus:border-brand-orange"
+                    value={config.filters.advanced.stream_loop ?? 0}
+                    onChange={e => setConfig({
+                      ...config,
+                      filters: { ...config.filters, advanced: {
+                        ...config.filters.advanced,
+                        stream_loop: e.target.value === '' ? null : parseInt(e.target.value),
+                      }},
+                    })}
+                  />
+                </div>
+              )}
+
+              {/* Threads + HW Accel row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
+                    Threads <code className="text-brand-orange">-threads</code>
+                  </label>
+                  <input
+                    type="number" min="0" max="128" placeholder="0 = auto"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono focus:border-brand-orange"
+                    value={config.filters.advanced.threads || ''}
+                    onChange={e => setConfig({
+                      ...config,
+                      filters: { ...config.filters, advanced: {
+                        ...config.filters.advanced,
+                        threads: parseInt(e.target.value) || 0,
+                      }},
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
+                    HW Acceleration <code className="text-brand-orange">-hwaccel</code>
+                  </label>
+                  <select
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none focus:border-brand-orange"
+                    value={config.filters.advanced.hwaccel}
+                    onChange={e => setConfig({
+                      ...config,
+                      filters: { ...config.filters, advanced: {
+                        ...config.filters.advanced,
+                        hwaccel: e.target.value,
+                        hwaccel_output_format: e.target.value === 'none' ? '' : e.target.value,
+                      }},
+                    })}
+                  >
+                    <option value="none">None (Software)</option>
+                    <option value="vaapi">VAAPI (Intel/AMD)</option>
+                    <option value="cuda">CUDA (NVIDIA)</option>
+                    <option value="qsv">Quick Sync (Intel)</option>
+                    <option value="auto">Auto-detect</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Probesize + Thread Queue Size row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
+                    Probe Size <code className="text-brand-orange">-probesize</code>
+                  </label>
+                  <input
+                    type="text" placeholder="e.g. 5M, 20M"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono focus:border-brand-orange"
+                    value={config.filters.advanced.probesize}
+                    onChange={e => setConfig({
+                      ...config,
+                      filters: { ...config.filters, advanced: {
+                        ...config.filters.advanced,
+                        probesize: e.target.value,
+                      }},
+                    })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
+                    Thread Queue <code className="text-brand-orange">-thread_queue_size</code>
+                  </label>
+                  <input
+                    type="number" min="0" max="65536" placeholder="0 = default"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono focus:border-brand-orange"
+                    value={config.filters.advanced.thread_queue_size || ''}
+                    onChange={e => setConfig({
+                      ...config,
+                      filters: { ...config.filters, advanced: {
+                        ...config.filters.advanced,
+                        thread_queue_size: parseInt(e.target.value) || 0,
+                      }},
+                    })}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}
