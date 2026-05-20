@@ -92,7 +92,7 @@ class ProcessLog(Base):
     process = relationship("MediaProcess", back_populates="logs")
 
 
-MediaProcess.logs = relationship("ProcessLog", order_by=ProcessLog.timestamp, back_populates="process")
+MediaProcess.logs = relationship("ProcessLog", order_by=ProcessLog.id, back_populates="process")
 
 
 class SystemSettings(Base):
