@@ -44,6 +44,19 @@ function App() {
   const [validationResult, setValidationResult] = useState<{ buildId: number; output: string } | null>(null)
   const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number } | null>(null)
 
+  // Lock body scroll when modals are active
+  useEffect(() => {
+    const isModalOpen = showAddModal || showAddBatchModal || showBuildForm || terminalBuild !== null || validationResult !== null;
+    if (isModalOpen) {
+      document.body.classList.add('overflow-hidden');
+    } else {
+      document.body.classList.remove('overflow-hidden');
+    }
+    return () => {
+      document.body.classList.remove('overflow-hidden');
+    };
+  }, [showAddModal, showAddBatchModal, showBuildForm, terminalBuild, validationResult]);
+
   // ── Telemetry WebSocket ────────────────────────────────────────
   useEffect(() => {
     const ws = new WebSocket('ws://localhost:8000/ws/telemetry')
@@ -398,7 +411,7 @@ function App() {
             {/* Add Service Modal */}
             {showAddModal && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-                <div className="glass-card w-full max-w-3xl p-8 relative max-h-[90vh] flex flex-col">
+                <div className="glass-card w-full max-w-3xl p-8 relative max-h-[90vh] flex flex-col overflow-hidden">
                   <button onClick={() => setShowAddModal(false)}
                     className="absolute top-6 right-6 w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10">✕</button>
                   <h3 className="text-2xl font-bold mb-4 flex-shrink-0">ADD NEW SERVICE</h3>
@@ -526,7 +539,7 @@ function App() {
             </div>
             {showAddBatchModal && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-8 z-50">
-                <div className="glass-card w-full max-w-2xl p-12 relative border-brand-orange/20">
+                <div className="glass-card w-full max-w-2xl p-12 relative border-brand-orange/20 overflow-y-auto max-h-[90vh]">
                   <button onClick={() => setShowAddBatchModal(false)}
                     className="absolute top-8 right-8 text-text-secondary hover:text-white">✕</button>
                   <h3 className="text-3xl font-bold mb-8 text-brand-orange">NEW BATCH JOB</h3>
