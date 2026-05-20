@@ -14,6 +14,26 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    import sqlite3
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(media_processes)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if "auto_start" not in columns:
+            cursor.execute("ALTER TABLE media_processes ADD COLUMN auto_start BOOLEAN DEFAULT 0")
+        if "watchdog_enabled" not in columns:
+            cursor.execute("ALTER TABLE media_processes ADD COLUMN watchdog_enabled BOOLEAN DEFAULT 0")
+        if "watchdog_retries" not in columns:
+            cursor.execute("ALTER TABLE media_processes ADD COLUMN watchdog_retries INTEGER DEFAULT 5")
+        if "last_started_config" not in columns:
+            cursor.execute("ALTER TABLE media_processes ADD COLUMN last_started_config JSON DEFAULT NULL")
+        conn.commit()
+    except Exception as e:
+        print(f"Database migration failed: {e}")
+    finally:
+        conn.close()
 
 def get_db():
     db = SessionLocal()

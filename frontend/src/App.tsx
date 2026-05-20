@@ -17,6 +17,7 @@ function App() {
   const [logs, setLogs] = useState<any[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [showAddBatchModal, setShowAddBatchModal] = useState(false)
+  const [editingProcess, setEditingProcess] = useState<any | null>(null)
 
   // ── Build Profiles state ──────────────────────────────────────
   const [builds, setBuilds] = useState<BuildProfile[]>([])
@@ -44,6 +45,41 @@ function App() {
   const [validationResult, setValidationResult] = useState<{ buildId: number; output: string } | null>(null)
   const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number } | null>(null)
 
+  // ── Service CRUD & Actions Handlers ────────────────────────────
+  const handleDeleteProcess = async (proc: any) => {
+    const isConfirmed = window.confirm(
+      `⚠️ WARNING: Are you sure you want to delete the service "${proc.name}"?\n\nIf it is currently running, it will be forcefully terminated, causing an immediate signal interruption for any connected clients.`
+    );
+    if (!isConfirmed) return;
+
+    try {
+      await fetch(`${API}/processes/${proc.id}`, {
+        method: 'DELETE',
+      });
+      if (selectedProcess && selectedProcess.id === proc.id) {
+        setSelectedProcess(null);
+      }
+    } catch (err) {
+      console.error("Error deleting process:", err);
+    }
+  };
+
+  const handleRestartService = async (procId: number, procName: string) => {
+    const isConfirmed = window.confirm(
+      `⚠️ live broadcast WARNING:\n\nAre you sure you want to restart "${procName}"? Any active live stream connections (SRT/UDP/RTP) will drop and experience a temporary signal loss during restart.`
+    );
+    if (!isConfirmed) return;
+
+    try {
+      // Graceful stop
+      await fetch(`${API}/processes/${procId}/stop`, { method: 'POST' });
+      // Start again
+      await fetch(`${API}/processes/${procId}/start`, { method: 'POST' });
+    } catch (err) {
+      console.error("Error restarting process:", err);
+    }
+  };
+
   // Escape key listener to close selected process modal
   useEffect(() => {
     if (!selectedProcess) return;
@@ -58,7 +94,7 @@ function App() {
 
   // Lock body scroll when modals are active
   useEffect(() => {
-    const isModalOpen = showAddModal || showAddBatchModal || showBuildForm || terminalBuild !== null || validationResult !== null || selectedProcess !== null;
+    const isModalOpen = showAddModal || showAddBatchModal || showBuildForm || terminalBuild !== null || validationResult !== null || selectedProcess !== null || editingProcess !== null;
     if (isModalOpen) {
       document.body.classList.add('overflow-hidden');
     } else {
@@ -67,7 +103,7 @@ function App() {
     return () => {
       document.body.classList.remove('overflow-hidden');
     };
-  }, [showAddModal, showAddBatchModal, showBuildForm, terminalBuild, validationResult, selectedProcess]);
+  }, [showAddModal, showAddBatchModal, showBuildForm, terminalBuild, validationResult, selectedProcess, editingProcess]);
 
   // ── Telemetry WebSocket ────────────────────────────────────────
   useEffect(() => {
@@ -370,8 +406,15 @@ function App() {
                     telemetry.filter(p => p.type === 'service' || !p.type).map(proc => (
                       <div key={proc.id} onClick={() => setSelectedProcess(proc)}
                         className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-colors">
-                        <div>
-                          <div className="font-bold">{proc.name}</div>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold">{proc.name}</span>
+                            {proc.pending_changes && (
+                              <span className="text-[10px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse" title="Requires reboot to apply new configuration">
+                                PENDING REBOOT
+                              </span>
+                            )}
+                          </div>
                           <div className="text-xs text-text-secondary">PID: {proc.pid || 'N/A'}</div>
                         </div>
                         <div className="flex gap-8">
@@ -384,8 +427,32 @@ function App() {
                             <div className="text-[10px] uppercase text-text-secondary">RAM</div>
                           </div>
                         </div>
-                        <div className={`pill-button text-xs ${proc.status === 'running' ? 'bg-brand-lime/20 text-brand-lime' : 'bg-red-500/20 text-red-400'}`}>
-                          {proc.status.toUpperCase()}
+                        <div className="flex items-center gap-4">
+                          <div className={`pill-button text-xs ${proc.status === 'running' ? 'bg-brand-lime/20 text-brand-lime' : 'bg-red-500/20 text-red-400'}`}>
+                            {proc.status.toUpperCase()}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingProcess(proc);
+                              }}
+                              className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                              title="Edit Service Settings"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteProcess(proc);
+                              }}
+                              className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center text-sm border border-red-500/20 text-red-400 transition-all hover:scale-105"
+                              title="Delete Service"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))
@@ -438,9 +505,43 @@ function App() {
                           input_config: config.input, output_config: config.output,
                           codec_config: config.codec, filter_config: config.filters,
                           ffmpeg_build_id: config.ffmpeg_build_id,
+                          auto_start: config.auto_start,
+                          watchdog_enabled: config.watchdog_enabled,
+                          watchdog_retries: config.watchdog_retries,
                         })
                       })
                       setShowAddModal(false)
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Edit Service Modal */}
+            {editingProcess && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+                <div className="glass-card w-full max-w-3xl p-8 relative max-h-[90vh] flex flex-col overflow-hidden">
+                  <button onClick={() => setEditingProcess(null)}
+                    className="absolute top-6 right-6 w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10">✕</button>
+                  <h3 className="text-2xl font-bold mb-4 flex-shrink-0">EDIT SERVICE: {editingProcess.name.toUpperCase()}</h3>
+                  <ProcessConfigForm
+                    initialConfig={editingProcess}
+                    onCancel={() => setEditingProcess(null)}
+                    onSubmit={async (config) => {
+                      await fetch(`${API}/processes/${editingProcess.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          name: config.name,
+                          input_config: config.input, output_config: config.output,
+                          codec_config: config.codec, filter_config: config.filters,
+                          ffmpeg_build_id: config.ffmpeg_build_id,
+                          auto_start: config.auto_start,
+                          watchdog_enabled: config.watchdog_enabled,
+                          watchdog_retries: config.watchdog_retries,
+                        })
+                      })
+                      setEditingProcess(null)
                     }}
                   />
                 </div>
@@ -481,6 +582,15 @@ function App() {
 
                     {/* Scrollable Body */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0 custom-scrollbar">
+                      {currentProcess.pending_changes && (
+                        <div className="bg-brand-orange/10 border border-brand-orange/30 text-brand-orange p-4 rounded-2xl flex items-center gap-3 animate-pulse">
+                          <span className="text-xl">⚠️</span>
+                          <div className="text-xs">
+                            <span className="font-bold block uppercase tracking-wider mb-0.5">Configuration Pending Reboot</span>
+                            This service has modified configurations that are not yet active in the running instance. Restart the service to apply these changes.
+                          </div>
+                        </div>
+                      )}
                       {showPreview ? (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                           {/* Col 1: System Telemetry Stats */}
@@ -629,19 +739,31 @@ function App() {
                         </button>
                       </div>
                       <div className="flex gap-3">
-                        {currentProcess.status !== 'running' ? (
+                        {currentProcess.status === 'running' ? (
+                          <>
+                            <button 
+                              onClick={() => handleRestartService(currentProcess.id, currentProcess.name)}
+                              className={`pill-button hover:scale-[1.02] text-black text-xs font-black py-2 px-6 transition-all ${
+                                currentProcess.pending_changes
+                                  ? 'bg-brand-orange shadow-xl shadow-brand-orange/20'
+                                  : 'bg-brand-lime shadow-xl shadow-brand-lime/20'
+                              }`}
+                            >
+                              RESTART SERVICE
+                            </button>
+                            <button 
+                              onClick={() => fetch(`${API}/processes/${currentProcess.id}/stop`, { method: 'POST' })}
+                              className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-2 px-6"
+                            >
+                              STOP SERVICE
+                            </button>
+                          </>
+                        ) : (
                           <button 
                             onClick={() => fetch(`${API}/processes/${currentProcess.id}/start`, { method: 'POST' })}
                             className="pill-button bg-brand-lime hover:scale-[1.02] text-black text-xs font-black py-2 px-6"
                           >
                             START SERVICE
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={() => fetch(`${API}/processes/${currentProcess.id}/stop`, { method: 'POST' })}
-                            className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-2 px-6"
-                          >
-                            STOP SERVICE
                           </button>
                         )}
                         <button 

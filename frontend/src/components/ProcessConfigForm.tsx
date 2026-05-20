@@ -36,16 +36,22 @@ interface ProcessConfig {
 
   // Output
   output: OutputConfig;
+
+  // Watchdog & Auto-start Settings
+  auto_start: boolean;
+  watchdog_enabled: boolean;
+  watchdog_retries: number;
 }
 
 interface ProcessConfigFormProps {
   onCancel: () => void;
   onSubmit: (config: any) => void;
+  initialConfig?: any;
 }
 
 // ── Component ────────────────────────────────────────────────────
 
-const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit }) => {
+const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit, initialConfig }) => {
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
   const [selectedBuildOptions, setSelectedBuildOptions] = useState<Record<string, boolean> | undefined>();
   const [activeSection, setActiveSection] = useState<string>('inputs');
@@ -53,21 +59,57 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   const defaultVideoCodec = VIDEO_CODECS[0];
   const defaultAudioCodec = AUDIO_CODECS[0];
 
-  const [config, setConfig] = useState<ProcessConfig>({
-    name: '',
-    ffmpeg_build_id: null,
-    has_video: true,
-    has_audio: true,
-    use_secondary_input: false,
-    input1: { type: 'srt', host: '', port: '9000', mode: 'listener' },
-    input2: { type: 'file', path: '' },
-    video_codec_id: defaultVideoCodec.id,
-    video_codec_params: getDefaultParams(defaultVideoCodec),
-    audio_codec_id: defaultAudioCodec.id,
-    audio_codec_params: getDefaultParams(defaultAudioCodec),
-    filters: { scale: '', deinterlace: false, framerate: '' },
-    output: { type: 'udp', host: '239.0.0.1', port: '1234' },
-  });
+  const getInitialState = (): ProcessConfig => {
+    if (initialConfig) {
+      const inputCfg = initialConfig.input_config || {};
+      const codecCfg = initialConfig.codec_config || {};
+      const filterCfg = initialConfig.filter_config || {};
+      const outputCfg = initialConfig.output_config || {};
+
+      return {
+        name: initialConfig.name || '',
+        ffmpeg_build_id: initialConfig.ffmpeg_build_id ?? null,
+        has_video: inputCfg.has_video !== false,
+        has_audio: inputCfg.has_audio !== false,
+        use_secondary_input: !!inputCfg.use_secondary_input,
+        input1: inputCfg.input1 || { type: 'srt', host: '', port: '9000', mode: 'listener' },
+        input2: inputCfg.input2 || { type: 'file', path: '' },
+        video_codec_id: codecCfg.vcodec || defaultVideoCodec.id,
+        video_codec_params: codecCfg.video_params || getDefaultParams(defaultVideoCodec),
+        audio_codec_id: codecCfg.acodec || defaultAudioCodec.id,
+        audio_codec_params: codecCfg.audio_params || getDefaultParams(defaultAudioCodec),
+        filters: {
+          scale: filterCfg.scale || '',
+          deinterlace: !!filterCfg.deinterlace,
+          framerate: filterCfg.framerate || '',
+        },
+        output: outputCfg || { type: 'udp', host: '239.0.0.1', port: '1234' },
+        auto_start: !!initialConfig.auto_start,
+        watchdog_enabled: !!initialConfig.watchdog_enabled,
+        watchdog_retries: initialConfig.watchdog_retries ?? 5,
+      };
+    }
+    return {
+      name: '',
+      ffmpeg_build_id: null,
+      has_video: true,
+      has_audio: true,
+      use_secondary_input: false,
+      input1: { type: 'srt', host: '', port: '9000', mode: 'listener' },
+      input2: { type: 'file', path: '' },
+      video_codec_id: defaultVideoCodec.id,
+      video_codec_params: getDefaultParams(defaultVideoCodec),
+      audio_codec_id: defaultAudioCodec.id,
+      audio_codec_params: getDefaultParams(defaultAudioCodec),
+      filters: { scale: '', deinterlace: false, framerate: '' },
+      output: { type: 'udp', host: '239.0.0.1', port: '1234' },
+      auto_start: false,
+      watchdog_enabled: false,
+      watchdog_retries: 5,
+    };
+  };
+
+  const [config, setConfig] = useState<ProcessConfig>(getInitialState);
 
   useEffect(() => {
     fetch('http://localhost:8000/builds')
@@ -75,14 +117,24 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       .then(builds => {
         const ready = builds.filter((b: any) => b.status === 'ready');
         setAvailableBuilds(ready);
+        
+        const currentBuildId = config.ffmpeg_build_id;
+        if (currentBuildId) {
+          const selected = ready.find((b: any) => b.id === currentBuildId);
+          if (selected) {
+            setSelectedBuildOptions(selected.build_options);
+            return;
+          }
+        }
+
         const def = ready.find((b: any) => b.is_default);
-        if (def) {
+        if (def && !initialConfig) {
           setConfig(prev => ({ ...prev, ffmpeg_build_id: def.id }));
           setSelectedBuildOptions(def.build_options);
         }
       })
       .catch(() => {});
-  }, []);
+  }, [config.ffmpeg_build_id, initialConfig]);
 
   const handleBuildChange = (buildId: number | null) => {
     setConfig(prev => ({ ...prev, ffmpeg_build_id: buildId }));
@@ -118,6 +170,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       },
       output: config.output,
       filters: config.filters,
+      auto_start: config.auto_start,
+      watchdog_enabled: config.watchdog_enabled,
+      watchdog_retries: config.watchdog_retries,
     };
     onSubmit(payload);
   };
@@ -128,6 +183,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     { id: 'encoding', label: 'Encoding', icon: '⚙️' },
     { id: 'filters', label: 'Filters', icon: '🎛️' },
     { id: 'output', label: 'Destination', icon: '📤' },
+    { id: 'system', label: 'System & Watchdog', icon: '🛡️' },
   ];
 
   return (
@@ -352,6 +408,94 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             </div>
           </div>
         )}
+        {/* ═══ SYSTEM & WATCHDOG SECTION ═══ */}
+        {activeSection === 'system' && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <div className="glass-card p-4 !rounded-2xl space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-2 h-2 rounded-full bg-brand-lime" />
+                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Process Lifecycle Settings</h4>
+              </div>
+
+              {/* Auto Start Toggle */}
+              <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium text-white">Auto-start on boot</span>
+                  <span className="text-xs text-text-secondary">Launch this service automatically when the application starts.</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.auto_start}
+                    onChange={e => setConfig({ ...config, auto_start: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+                </label>
+              </div>
+
+              {/* Watchdog Toggle */}
+              <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium text-white">Enable Watchdog</span>
+                  <span className="text-xs text-text-secondary">Monitor process health and auto-restart on unexpected crashes.</span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.watchdog_enabled}
+                    onChange={e => setConfig({ ...config, watchdog_enabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+                </label>
+              </div>
+
+              {/* Watchdog Retries */}
+              {config.watchdog_enabled && (
+                <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-3 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium text-white">Infinite Restart Attempts</span>
+                      <span className="text-xs text-text-secondary">Keep trying to restart the process indefinitely.</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={config.watchdog_retries === -1}
+                        onChange={e => setConfig({
+                          ...config,
+                          watchdog_retries: e.target.checked ? -1 : 5
+                        })}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+                    </label>
+                  </div>
+
+                  {config.watchdog_retries !== -1 && (
+                    <div className="flex items-center gap-3 pt-2 border-t border-white/5 animate-in fade-in duration-200">
+                      <label className="text-xs font-bold uppercase tracking-wider text-text-secondary block">
+                        Maximum consecutive retries:
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none w-24 focus:border-brand-lime"
+                        value={config.watchdog_retries}
+                        onChange={e => setConfig({
+                          ...config,
+                          watchdog_retries: Math.max(1, parseInt(e.target.value) || 1)
+                        })}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Sticky footer ── */}
@@ -367,7 +511,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           disabled={!config.name.trim()}
           className="flex-1 py-3 bg-brand-lime text-black rounded-xl font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-sm shadow-xl shadow-brand-lime/20 disabled:opacity-30 disabled:hover:scale-100"
         >
-          Deploy Service
+          {initialConfig ? 'Save Changes' : 'Deploy Service'}
         </button>
       </div>
     </div>

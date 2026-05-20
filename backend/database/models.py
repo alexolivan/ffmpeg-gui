@@ -68,6 +68,12 @@ class MediaProcess(Base):
     cpu_usage = Column(Integer, default=0)
     ram_usage = Column(Integer, default=0)
 
+    # Configuration toggles & snapshot
+    auto_start = Column(Boolean, default=False)
+    watchdog_enabled = Column(Boolean, default=False)
+    watchdog_retries = Column(Integer, default=5)
+    last_started_config = Column(JSON, nullable=True)
+
     # Real-time Stats
     bitrate = Column(String)  # e.g. "4500 kb/s"
     fps = Column(String)      # e.g. "25.0"
@@ -78,6 +84,23 @@ class MediaProcess(Base):
     ffmpeg_build = relationship("FfmpegBuild", back_populates="processes")
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    @property
+    def pending_changes(self) -> bool:
+        if self.status != 'running' or not self.last_started_config:
+            return False
+        current_cfg = {
+            "name": self.name,
+            "ffmpeg_build_id": self.ffmpeg_build_id,
+            "input_config": self.input_config,
+            "output_config": self.output_config,
+            "codec_config": self.codec_config,
+            "filter_config": self.filter_config,
+            "auto_start": self.auto_start,
+            "watchdog_enabled": self.watchdog_enabled,
+            "watchdog_retries": self.watchdog_retries,
+        }
+        return current_cfg != self.last_started_config
 
 
 class ProcessLog(Base):

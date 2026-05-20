@@ -34,3 +34,8 @@ Thumbs.db
 # FFmpeg Forge builds
 backend/ffmpeg_builds/
 backend/data/
+
+# Ignore non-documentation docs
+docs/superpowers/
+docs/*.png
+docs/*.md

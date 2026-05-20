@@ -70,6 +70,20 @@ class ProcessCreate(BaseModel):
     codec_config: dict
     filter_config: Optional[dict] = None
     ffmpeg_build_id: Optional[int] = None
+    auto_start: Optional[bool] = False
+    watchdog_enabled: Optional[bool] = False
+    watchdog_retries: Optional[int] = 5
+
+class ProcessUpdate(BaseModel):
+    name: Optional[str] = None
+    input_config: Optional[dict] = None
+    output_config: Optional[dict] = None
+    codec_config: Optional[dict] = None
+    filter_config: Optional[dict] = None
+    ffmpeg_build_id: Optional[int] = None
+    auto_start: Optional[bool] = None
+    watchdog_enabled: Optional[bool] = None
+    watchdog_retries: Optional[int] = None
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -207,15 +221,38 @@ async def telemetry_broadcast_loop():
                     "speed": p.speed,
                     "ffmpeg_build_id": p.ffmpeg_build_id,
                     "input_config": p.input_config,
+                    "output_config": p.output_config,
                     "codec_config": p.codec_config,
+                    "filter_config": p.filter_config,
+                    "auto_start": p.auto_start,
+                    "watchdog_enabled": p.watchdog_enabled,
+                    "watchdog_retries": p.watchdog_retries,
+                    "pending_changes": p.pending_changes,
                 } for p in processes
             ]
             await manager.broadcast({"type": "telemetry", "data": data})
         await asyncio.sleep(1)
 
+async def auto_start_services():
+    await asyncio.sleep(2)
+    logger.info("Watchdog / Auto-start: Initializing service startup checks...")
+    with SessionLocal() as db:
+        from database.models import MediaProcess
+        services = db.query(MediaProcess).filter(
+            MediaProcess.type == 'service',
+            MediaProcess.auto_start == True
+        ).all()
+        for service in services:
+            logger.info(f"Auto-starting service: {service.name} (ID: {service.id})")
+            try:
+                asyncio.create_task(process_manager.start_process(service.id))
+            except Exception as e:
+                logger.error(f"Failed to auto-start service {service.id}: {e}")
+
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(telemetry_broadcast_loop())
+    asyncio.create_task(auto_start_services())
 
 
 # ── Build WebSocket (per-build log streaming) ────────────────────
@@ -514,7 +551,29 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
 
 @app.get("/processes")
 def list_processes(db: Session = Depends(get_db)):
-    return db.query(MediaProcess).all()
+    processes = db.query(MediaProcess).all()
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "type": p.type,
+            "status": p.status,
+            "cpu": p.cpu_usage,
+            "ram": p.ram_usage,
+            "bitrate": p.bitrate,
+            "fps": p.fps,
+            "speed": p.speed,
+            "ffmpeg_build_id": p.ffmpeg_build_id,
+            "input_config": p.input_config,
+            "output_config": p.output_config,
+            "codec_config": p.codec_config,
+            "filter_config": p.filter_config,
+            "auto_start": p.auto_start,
+            "watchdog_enabled": p.watchdog_enabled,
+            "watchdog_retries": p.watchdog_retries,
+            "pending_changes": p.pending_changes,
+        } for p in processes
+    ]
 
 @app.post("/processes")
 def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
@@ -535,11 +594,49 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         codec_config=proc_in.codec_config,
         filter_config=proc_in.filter_config,
         ffmpeg_build_id=build_id,
+        auto_start=proc_in.auto_start,
+        watchdog_enabled=proc_in.watchdog_enabled,
+        watchdog_retries=proc_in.watchdog_retries,
     )
     db.add(db_proc)
     db.commit()
     db.refresh(db_proc)
     return db_proc
+
+@app.put("/processes/{process_id}")
+def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    if proc_in.name is not None: db_proc.name = proc_in.name
+    if proc_in.input_config is not None: db_proc.input_config = proc_in.input_config
+    if proc_in.output_config is not None: db_proc.output_config = proc_in.output_config
+    if proc_in.codec_config is not None: db_proc.codec_config = proc_in.codec_config
+    if proc_in.filter_config is not None: db_proc.filter_config = proc_in.filter_config
+    if proc_in.ffmpeg_build_id is not None: db_proc.ffmpeg_build_id = proc_in.ffmpeg_build_id
+    if proc_in.auto_start is not None: db_proc.auto_start = proc_in.auto_start
+    if proc_in.watchdog_enabled is not None: db_proc.watchdog_enabled = proc_in.watchdog_enabled
+    if proc_in.watchdog_retries is not None: db_proc.watchdog_retries = proc_in.watchdog_retries
+
+    db.commit()
+    db.refresh(db_proc)
+    return db_proc
+
+@app.delete("/processes/{process_id}")
+async def delete_process(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    try:
+        await process_manager.stop_process(process_id)
+    except Exception as e:
+        logger.warning(f"Error stopping process {process_id} before delete: {e}")
+
+    db.delete(db_proc)
+    db.commit()
+    return {"status": "deleted", "process_id": process_id}
 
 @app.get("/processes/{process_id}/logs")
 def get_process_logs(process_id: int, db: Session = Depends(get_db)):
