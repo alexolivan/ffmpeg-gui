@@ -455,7 +455,24 @@ class ProcessManager:
                     media_proc.pid = None
                     media_proc.last_stop = datetime.utcnow()
                     
-                    # Log the exit
+                    # Persist log buffer if there was an error exit
+                    if exit_code != 0 and process_id in self.log_buffers:
+                        log_entries = list(self.log_buffers[process_id])
+                        db_logs = []
+                        for entry in log_entries:
+                            # Parse stored ISO timestamp
+                            ts_str = entry["timestamp"].rstrip("Z")
+                            ts = datetime.fromisoformat(ts_str)
+                            db_logs.append(ProcessLog(
+                                process_id=process_id,
+                                timestamp=ts,
+                                level=entry["level"],
+                                message=entry["message"]
+                            ))
+                        if db_logs:
+                            session.add_all(db_logs)
+                    
+                    # Log the exit summary
                     log = ProcessLog(
                         process_id=process_id,
                         level='INFO' if exit_code == 0 else 'ERROR',
@@ -463,6 +480,10 @@ class ProcessManager:
                     )
                     session.add(log)
                     session.commit()
+            
+            # Clean up memory buffer
+            if process_id in self.log_buffers:
+                del self.log_buffers[process_id]
         
             if process_id in self.processes:
                 del self.processes[process_id]
