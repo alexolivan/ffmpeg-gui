@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 import uuid
+import shlex
 from PIL import Image
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -621,7 +622,7 @@ def preview_command(proc_in: ProcessCreate, db: Session = Depends(get_db)):
             ffmpeg_bin = build.ffmpeg_binary
             
     cmd = process_manager._build_ffmpeg_cmd(db_proc, ffmpeg_bin)
-    return {"command": " ".join(cmd)}
+    return {"command": shlex.join(cmd)}
 
 @app.put("/processes/{process_id}")
 def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depends(get_db)):

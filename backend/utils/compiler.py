@@ -1,6 +1,7 @@
 import os
 import subprocess
 import logging
+import shlex
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("FFMPEG-Compiler")
@@ -9,7 +10,7 @@ BUILD_DIR = os.path.abspath("./build")
 INSTALL_DIR = os.path.abspath("./ffmpeg_bin")
 
 def run_cmd(cmd, cwd=None):
-    logger.info(f"Running: {' '.join(cmd)}")
+    logger.info(f"Running: {shlex.join(cmd)}")
     subprocess.check_call(cmd, cwd=cwd)
 
 def setup_dirs():

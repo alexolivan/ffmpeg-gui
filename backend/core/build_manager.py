@@ -4,6 +4,7 @@ import subprocess
 import logging
 import shutil
 import datetime
+import shlex
 
 
 class BuildManager:
@@ -375,7 +376,7 @@ class BuildManager:
     async def _run_logged_cmd(self, cmd, log_callback, cwd=None, env=None,
                               ignore_errors=False):
         """Execute a command, streaming stdout lines to the log callback."""
-        await log_callback(f"▶ {' '.join(cmd)}\n")
+        await log_callback(f"▶ {shlex.join(cmd)}\n")
         self.current_process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,

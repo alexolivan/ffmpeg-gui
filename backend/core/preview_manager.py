@@ -1,6 +1,7 @@
 import asyncio
 import subprocess
 import logging
+import shlex
 
 class PreviewManager:
     def __init__(self):
@@ -31,7 +32,7 @@ class PreviewManager:
             "-"
         ]
 
-        self.logger.info(f"Starting preview stream: {' '.join(cmd)}")
+        self.logger.info(f"Starting preview stream: {shlex.join(cmd)}")
         
         proc = await asyncio.create_subprocess_exec(
             *cmd,

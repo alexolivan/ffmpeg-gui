@@ -3,6 +3,7 @@ import subprocess
 import psutil
 import logging
 import os
+import shlex
 from datetime import datetime
 from typing import Dict, Optional
 import json
@@ -59,7 +60,7 @@ class ProcessManager:
                     self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
 
             cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
-            self.logger.info(f"Starting FFMPEG for {media_proc.name}: {' '.join(cmd)}")
+            self.logger.info(f"Starting FFMPEG for {media_proc.name}: {shlex.join(cmd)}")
             
             try:
                 self.log_buffers[process_id] = collections.deque(maxlen=100)
