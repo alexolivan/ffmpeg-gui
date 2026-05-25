@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import ProcessConfigForm from './components/ProcessConfigForm'
 import BatchJobForm from './components/BatchJobForm'
@@ -15,6 +15,7 @@ function App() {
   const [telemetry, setTelemetry] = useState<any[]>([])
   const [selectedProcess, setSelectedProcess] = useState<any | null>(null)
   const [logs, setLogs] = useState<any[]>([])
+  const processLogsContainerRef = useRef<HTMLDivElement>(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showAddBatchModal, setShowAddBatchModal] = useState(false)
   const [editingProcess, setEditingProcess] = useState<any | null>(null)
@@ -136,6 +137,17 @@ function App() {
     const interval = setInterval(fetchLogs, 2000)
     return () => clearInterval(interval)
   }, [selectedProcess])
+
+  // ── Auto-scroll logs when running ──────────────────────────────
+  useEffect(() => {
+    if (processLogsContainerRef.current && selectedProcess) {
+      const currentProcess = telemetry.find(p => p.id === selectedProcess.id) || selectedProcess;
+      const isRunning = currentProcess?.status === 'running';
+      if (isRunning) {
+        processLogsContainerRef.current.scrollTop = processLogsContainerRef.current.scrollHeight;
+      }
+    }
+  }, [logs, selectedProcess, telemetry])
 
   // ── Load builds + deps when entering tools view ────────────────
   useEffect(() => {
@@ -713,7 +725,12 @@ function App() {
                           <span className="text-brand-lime font-bold uppercase tracking-wider text-[10px]">Process Logs</span>
                           <span className="text-text-secondary text-[10px] font-bold">{logs.length} lines buffered</span>
                         </div>
-                        <div className="h-44 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text">
+                        <div 
+                          ref={processLogsContainerRef}
+                          className={`h-44 space-y-1 custom-scrollbar pr-2 select-text ${
+                            currentProcess?.status === 'running' ? 'overflow-y-hidden' : 'overflow-y-auto'
+                          }`}
+                        >
                           {logs.length === 0 ? (
                             <div className="text-white/20 italic text-center py-10 select-none">No logs available for this process</div>
                           ) : (
