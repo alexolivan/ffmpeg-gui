@@ -12,6 +12,9 @@ export interface InputSourceConfig {
   name?: string;
   latency?: number;
   pattern?: string;
+  size?: string;
+  rate?: string;
+  frequency?: number;
 }
 
 interface InputSourcePanelProps {
@@ -63,7 +66,17 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       <select
         className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none transition-all"
         value={config.type}
-        onChange={e => update({ type: e.target.value, path: '', host: '', port: '', mode: 'listener', device: '', name: '' })}
+        onChange={e => {
+          const newType = e.target.value;
+          update({
+            type: newType,
+            path: '', host: '', port: '', mode: 'listener', device: '', name: '',
+            pattern: newType === 'lavfi_video' ? 'testsrc' : newType === 'lavfi_audio' ? 'sine' : '',
+            size: newType === 'lavfi_video' ? '1920x1080' : undefined,
+            rate: newType === 'lavfi_video' ? '25' : undefined,
+            frequency: newType === 'lavfi_audio' ? 1000 : undefined
+          });
+        }}
       >
         {types.map(t => (
           <option key={t.value} value={t.value}>{t.label}</option>
@@ -183,29 +196,79 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'lavfi_video' && (
-        <select
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-          value={config.pattern || 'testsrc'}
-          onChange={e => update({ pattern: e.target.value })}
-        >
-          <option value="testsrc">Color Bars (testsrc)</option>
-          <option value="smptebars">SMPTE Bars</option>
-          <option value="color=c=black">Black Screen</option>
-          <option value="color=c=white">White Screen</option>
-        </select>
+        <div className="space-y-3">
+          <select
+            className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+            value={config.pattern || 'testsrc'}
+            onChange={e => update({ pattern: e.target.value })}
+          >
+            <option value="testsrc">Color Bars (testsrc)</option>
+            <option value="smptebars">SMPTE Bars (smptebars)</option>
+            <option value="color=c=black">Black Screen</option>
+            <option value="color=c=white">White Screen</option>
+          </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Resolution (size)</label>
+              <select
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                value={config.size || '1920x1080'}
+                onChange={e => update({ size: e.target.value })}
+              >
+                <option value="1920x1080">1920x1080 (1080p)</option>
+                <option value="1280x720">1280x720 (720p)</option>
+                <option value="720x576">720x576 (PAL)</option>
+                <option value="720x480">720x480 (NTSC)</option>
+                <option value="640x360">640x360</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Framerate (rate)</label>
+              <select
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.rate || '25'}
+                onChange={e => update({ rate: e.target.value })}
+              >
+                <option value="60">60 fps</option>
+                <option value="59.94">59.94 fps</option>
+                <option value="50">50 fps</option>
+                <option value="30">30 fps</option>
+                <option value="29.97">29.97 fps</option>
+                <option value="25">25 fps</option>
+                <option value="24">24 fps</option>
+              </select>
+            </div>
+          </div>
+        </div>
       )}
 
       {config.type === 'lavfi_audio' && (
-        <select
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-          value={config.pattern || 'sine'}
-          onChange={e => update({ pattern: e.target.value })}
-        >
-          <option value="sine">1kHz Sine Tone</option>
-          <option value="anoisesrc=c=pink">Pink Noise</option>
-          <option value="anoisesrc=c=white">White Noise</option>
-          <option value="anullsrc">Silence</option>
-        </select>
+        <div className="space-y-3">
+          <select
+            className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+            value={config.pattern || 'sine'}
+            onChange={e => update({ pattern: e.target.value })}
+          >
+            <option value="sine">Sine Tone (sine)</option>
+            <option value="anoisesrc=c=pink">Pink Noise</option>
+            <option value="anoisesrc=c=white">White Noise</option>
+            <option value="anullsrc">Silence</option>
+          </select>
+          {(config.pattern === 'sine' || !config.pattern) && (
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Frequency (Hz)</label>
+              <input
+                type="number"
+                placeholder="1000"
+                min={20}
+                max={20000}
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.frequency || 1000}
+                onChange={e => update({ frequency: Number(e.target.value) })}
+              />
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
