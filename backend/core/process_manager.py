@@ -421,8 +421,7 @@ class ProcessManager:
         elif output_type == 'udp':
             host = output_cfg.get('host', '127.0.0.1')
             port = output_cfg.get('port', '1234')
-            bitrate = codec_cfg.get('bitrate', codec_cfg.get('video_params', {}).get('bitrate', '4000k'))
-            cmd += ["-f", "mpegts", f"udp://{host}:{port}?pkt_size=1316&bitrate={bitrate}"]
+            cmd += ["-f", "mpegts", f"udp://{host}:{port}"]
         elif output_type == 'srt':
             host = output_cfg.get('host', '127.0.0.1')
             port = output_cfg.get('port', '1234')
