@@ -5,6 +5,7 @@ interface BuildFormModalProps {
   editBuild: BuildProfile | null
   onClose: () => void
   onSubmit: (data: BuildFormData) => void
+  buildDeps: any
 }
 
 export interface BuildFormData {
@@ -17,7 +18,7 @@ export interface BuildFormData {
 
 const API_BASE = 'http://localhost:8000'
 
-export default function BuildFormModal({ editBuild, onClose, onSubmit }: BuildFormModalProps) {
+export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps }: BuildFormModalProps) {
   const [name, setName] = useState(editBuild?.name || '')
   const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || '')
   const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || '')
@@ -134,15 +135,22 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit }: BuildFo
                   <input type="checkbox" className="w-4 h-4 accent-brand-orange" checked={options.libsrt} onChange={e => setOptions({...options, libsrt: e.target.checked})} />
                 </div>
                 {options.libsrt && (
-                  <select
-                    className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none animate-in fade-in duration-300"
-                    value={srtVersion}
-                    onChange={e => setSrtVersion(e.target.value)}
-                  >
-                    {srtTags.map(tag => (
-                      <option key={tag} value={tag}>{tag}</option>
-                    ))}
-                  </select>
+                  <div className="space-y-2">
+                    <select
+                      className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none animate-in fade-in duration-300"
+                      value={srtVersion}
+                      onChange={e => setSrtVersion(e.target.value)}
+                    >
+                      {srtTags.map(tag => (
+                        <option key={tag} value={tag}>{tag}</option>
+                      ))}
+                    </select>
+                    {buildDeps?.dependencies?.libssl?.installed === false && (
+                      <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[9px] p-2 rounded-lg leading-snug font-bold">
+                        ⚠️ Falta libssl (OpenSSL). Habilita el paquete de desarrollo en el sistema para evitar fallos en la compilación de LibSRT.
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -152,7 +160,12 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit }: BuildFo
                   <span className="text-xs font-bold">VAAPI HW Accel</span>
                   <input type="checkbox" className="w-4 h-4 accent-brand-orange" checked={options.vaapi} onChange={e => setOptions({...options, vaapi: e.target.checked})} />
                 </div>
-                <p className="text-[9px] text-text-secondary leading-tight">Intel/AMD GPU encoding.</p>
+                <p className="text-[9px] text-text-secondary leading-tight mb-2">Intel/AMD GPU encoding.</p>
+                {options.vaapi && (buildDeps?.dependencies?.libva?.installed === false || buildDeps?.dependencies?.libdrm?.installed === false) && (
+                  <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[9px] p-2 rounded-lg leading-snug font-bold">
+                    ⚠️ Faltan dependencias de VAAPI (libva/libdrm). Instala las cabeceras de desarrollo para usar aceleración por GPU Intel/AMD.
+                  </div>
+                )}
               </div>
 
               {/* DeckLink */}

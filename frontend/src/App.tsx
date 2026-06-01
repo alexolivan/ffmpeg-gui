@@ -1255,6 +1255,7 @@ function App() {
                 editBuild={editingBuild}
                 onClose={() => { setShowBuildForm(false); setEditingBuild(null) }}
                 onSubmit={editingBuild ? handleUpdateBuild : handleCreateBuild}
+                buildDeps={buildDeps}
               />
             )}
 
