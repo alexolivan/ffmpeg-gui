@@ -74,6 +74,41 @@ function App() {
     }
   };
 
+  const handleStopService = async (procId: number) => {
+    try {
+      await fetch(`${API}/processes/${procId}/stop`, { method: 'POST' });
+    } catch (err) {
+      console.error("Error stopping process:", err);
+    }
+  };
+
+  const handleCloneProcess = async (proc: any) => {
+    try {
+      const res = await fetch(`${API}/processes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `${proc.name} (Copy)`,
+          type: 'service',
+          input_config: proc.input_config,
+          output_config: proc.output_config,
+          codec_config: proc.codec_config,
+          filter_config: proc.filter_config,
+          ffmpeg_build_id: proc.ffmpeg_build_id,
+          auto_start: proc.auto_start,
+          watchdog_enabled: proc.watchdog_enabled,
+          watchdog_retries: proc.watchdog_retries,
+        })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        alert(`Error cloning service: ${errData.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error("Error cloning process:", err);
+    }
+  };
+
   const handleRestartService = async (procId: number, procName: string) => {
     const isConfirmed = window.confirm(
       `⚠️ live broadcast WARNING:\n\nAre you sure you want to restart "${procName}"? Any active live stream connections (SRT/UDP/RTP) will drop and experience a temporary signal loss during restart.`
@@ -418,22 +453,33 @@ function App() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               <div className="glass-card p-8 col-span-1 lg:col-span-2">
-                <h3 className="text-xl font-semibold mb-6">Active Services</h3>
-                <div className="space-y-6">
-                  {telemetry.filter(p => p.type === 'service' || !p.type).length === 0 ? (
-                    <div className="text-text-secondary py-12 text-center border-2 border-dashed border-white/5 rounded-3xl">
-                      No processes currently running
+                <h3 className="text-xl font-black mb-6">ACTIVE SERVICES (RUNNING)</h3>
+                <div className="space-y-6 mb-12">
+                  {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length === 0 ? (
+                    <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
+                      No running services
                     </div>
                   ) : (
-                    telemetry.filter(p => p.type === 'service' || !p.type).map(proc => (
+                    telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').map(proc => (
                       <div key={proc.id} onClick={() => setSelectedProcess(proc)}
-                        className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/10 transition-colors">
+                        className="flex items-center justify-between p-4 bg-brand-lime/5 rounded-2xl border border-brand-lime/10 cursor-pointer hover:bg-brand-lime/10 transition-colors">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-bold">{proc.name}</span>
+                            <span className="w-2.5 h-2.5 rounded-full bg-brand-lime animate-pulse"></span>
+                            <span className="font-bold text-white">{proc.name}</span>
                             {proc.pending_changes && (
                               <span className="text-[10px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse" title="Requires reboot to apply new configuration">
                                 PENDING REBOOT
+                              </span>
+                            )}
+                            {proc.auto_start && (
+                              <span className="text-[9px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-bold" title="Auto-starts on system boot">
+                                ⚡ BOOT
+                              </span>
+                            )}
+                            {proc.watchdog_enabled && (
+                              <span className="text-[9px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded font-bold" title="Monitored by system watchdog">
+                                🛡️ WATCHDOG
                               </span>
                             )}
                           </div>
@@ -441,18 +487,15 @@ function App() {
                         </div>
                         <div className="flex gap-8">
                           <div className="text-center">
-                            <div className="text-brand-lime font-mono">{proc.cpu}%</div>
+                            <div className="text-brand-lime font-mono font-bold">{proc.cpu}%</div>
                             <div className="text-[10px] uppercase text-text-secondary">CPU</div>
                           </div>
                           <div className="text-center">
-                            <div className="text-brand-orange font-mono">{proc.ram}MB</div>
+                            <div className="text-brand-orange font-mono font-bold">{proc.ram}MB</div>
                             <div className="text-[10px] uppercase text-text-secondary">RAM</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
-                          <div className={`pill-button text-xs ${proc.status === 'running' ? 'bg-brand-lime/20 text-brand-lime' : 'bg-red-500/20 text-red-400'}`}>
-                            {proc.status.toUpperCase()}
-                          </div>
                           <div className="flex gap-2">
                             <button
                               onClick={(e) => {
@@ -466,18 +509,116 @@ function App() {
                             </button>
                             <button
                               onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCloneProcess(proc);
+                              }}
+                              className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                              title="Clone Service"
+                            >
+                              📋
+                            </button>
+                            <button
+                              onClick={(e) => {
                                 e.stopPropagation();
-                                handleDeleteProcess(proc);
+                                handleStopService(proc.id);
                               }}
                               className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center text-sm border border-red-500/20 text-red-400 transition-all hover:scale-105"
-                              title="Delete Service"
+                              title="Stop Service"
                             >
-                              🗑️
+                              ⏹️
                             </button>
                           </div>
                         </div>
                       </div>
                     ))
+                  )}
+                </div>
+
+                <h3 className="text-xl font-black mb-6 text-white/50">CONFIGURED SERVICES (INACTIVE)</h3>
+                <div className="space-y-6">
+                  {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length === 0 ? (
+                    <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
+                      No inactive services
+                    </div>
+                  ) : (
+                    telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').map(proc => {
+                      const inputCfg = proc.input_config || {};
+                      const isNewFormat = 'input1' in inputCfg;
+                      const inputType = isNewFormat 
+                        ? (inputCfg.input1?.type || 'N/A') 
+                        : (inputCfg.type || 'N/A');
+                      const outputCfg = proc.output_config || {};
+                      const outputType = outputCfg.type || 'N/A';
+
+                      return (
+                        <div key={proc.id} onClick={() => setSelectedProcess(proc)}
+                          className="flex items-center justify-between p-4 bg-white/2 opacity-75 hover:opacity-100 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-white/20"></span>
+                              <span className="font-bold text-white/80">{proc.name}</span>
+                              {proc.auto_start && (
+                                <span className="text-[9px] bg-blue-500/20 text-blue-400/80 px-2 py-0.5 rounded font-bold" title="Auto-starts on system boot">
+                                  ⚡ BOOT
+                                </span>
+                              )}
+                              {proc.watchdog_enabled && (
+                                <span className="text-[9px] bg-purple-500/20 text-purple-400/80 px-2 py-0.5 rounded font-bold" title="Monitored by system watchdog">
+                                  🛡️ WATCHDOG
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-text-secondary">
+                              {inputType.toUpperCase()} ➔ {outputType.toUpperCase()}
+                            </div>
+                          </div>
+                          <div className="flex gap-4 items-center">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStartService(proc.id);
+                                }}
+                                className="w-8 h-8 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center text-sm border border-brand-lime/20 text-brand-lime transition-all hover:scale-105"
+                                title="Start Service"
+                              >
+                                ▶️
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingProcess(proc);
+                                }}
+                                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                                title="Edit Service Settings"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCloneProcess(proc);
+                                }}
+                                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                                title="Clone Service"
+                              >
+                                📋
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteProcess(proc);
+                                }}
+                                className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center text-sm border border-red-500/20 text-red-400 transition-all hover:scale-105"
+                                title="Delete Service"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -562,6 +703,14 @@ function App() {
                           watchdog_enabled: config.watchdog_enabled,
                           watchdog_retries: config.watchdog_retries,
                         })
+                      })
+                      setEditingProcess(null)
+                    }}
+                    onSaveAs={async (config) => {
+                      await fetch(`${API}/processes`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
                       })
                       setEditingProcess(null)
                     }}
@@ -766,6 +915,24 @@ function App() {
                         </button>
                       </div>
                       <div className="flex gap-3">
+                        <button 
+                          onClick={() => {
+                            setEditingProcess(currentProcess);
+                            setSelectedProcess(null);
+                          }}
+                          className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-2 px-6 border border-blue-500/25"
+                        >
+                          EDIT CONFIG
+                        </button>
+                        <button 
+                          onClick={() => {
+                            handleCloneProcess(currentProcess);
+                            setSelectedProcess(null);
+                          }}
+                          className="pill-button bg-white/10 hover:bg-white/15 text-xs py-2 px-6"
+                        >
+                          CLONE SERVICE
+                        </button>
                         {currentProcess.status === 'running' ? (
                           <>
                             <button 
