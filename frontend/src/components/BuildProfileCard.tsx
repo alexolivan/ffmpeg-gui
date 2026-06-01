@@ -9,6 +9,7 @@ interface BuildProfile {
   status: string
   is_default: boolean
   sources_cleaned: boolean
+  auto_clean?: boolean
   disk_usage_mb: number | null
   build_log_summary: string | null
   ffmpeg_version_output: string | null
@@ -107,11 +108,15 @@ export default function BuildProfileCard({
             {build.disk_usage_mb != null ? `${build.disk_usage_mb} MB` : '—'}
           </span>
         </div>
-        {build.sources_cleaned && (
-          <div className="text-brand-lime/60 text-[9px] uppercase tracking-widest">
+        {build.sources_cleaned ? (
+          <div className="text-brand-lime/60 text-[9px] uppercase tracking-widest font-bold">
             ✓ Sources cleaned
           </div>
-        )}
+        ) : build.auto_clean ? (
+          <div className="text-brand-orange/60 text-[9px] uppercase tracking-widest font-bold">
+            ⚡ Auto-clean active
+          </div>
+        ) : null}
         {build.build_log_summary && build.status === 'failed' && (
           <div className="text-red-400 text-[10px] truncate max-w-xs" title={build.build_log_summary}>
             ⚠ {build.build_log_summary}
