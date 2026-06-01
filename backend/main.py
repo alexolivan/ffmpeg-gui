@@ -541,17 +541,30 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
 @app.post("/builds/{build_id}/stop")
 async def stop_build(build_id: int, db: Session = Depends(get_db)):
     """Stop a running compilation."""
-    if build_manager.active_build_id != build_id:
-        raise HTTPException(status_code=409, detail="This build is not currently compiling")
+    build = db.query(FfmpegBuild).get(build_id)
+    if not build:
+        raise HTTPException(status_code=404, detail="Build profile not found")
 
-    success = await build_manager.stop_build()
-    if success:
-        build = db.query(FfmpegBuild).get(build_id)
-        if build:
+    # Case A: Build is active in build manager memory
+    if build_manager.active_build_id == build_id:
+        success = await build_manager.stop_build()
+        if success:
             build.status = "failed"
             build.build_log_summary = "Build aborted by user"
             db.commit()
-    return {"status": "ok" if success else "error"}
+            return {"status": "ok"}
+        else:
+            return {"status": "error", "detail": "Failed to kill compile process"}
+
+    # Case B: Build is not active in memory, but database status is 'building' (stale state)
+    if build.status == "building":
+        build.status = "failed"
+        build.build_log_summary = "Build aborted by user (stale status reset)"
+        db.commit()
+        return {"status": "ok", "message": "Stale build state reset"}
+
+    # Case C: Build is neither active nor in building status in database
+    raise HTTPException(status_code=409, detail="This build is not currently compiling")
 
 @app.post("/builds/{build_id}/set-default")
 def set_default_build(build_id: int, db: Session = Depends(get_db)):
