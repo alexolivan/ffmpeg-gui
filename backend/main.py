@@ -495,6 +495,7 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                 sdk_paths=build.sdk_paths,
                 sources_cleaned=build.sources_cleaned,
                 log_callback=_log_callback,
+                auto_clean=build.auto_clean or False,
             )
             # Persist results to DB
             with SessionLocal() as session:
@@ -506,7 +507,7 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                     db_build.ffmpeg_version_output = result.get("version_output")
                     db_build.disk_usage_mb = result.get("disk_usage_mb")
                     db_build.built_at = datetime.datetime.utcnow()
-                    db_build.sources_cleaned = False  # Sources are fresh after build
+                    db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
                 else:
                     db_build.status = "failed"
                     db_build.build_log_summary = result.get("error", "Unknown error")

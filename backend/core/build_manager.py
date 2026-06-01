@@ -21,6 +21,7 @@ class BuildManager:
 
     def __init__(self, builds_root: str):
         self.builds_root = os.path.abspath(builds_root)
+        self.workspace_root = os.path.abspath(os.path.join(self.builds_root, ".."))
         self.is_building = False
         self.active_build_id = None
         self.logger = logging.getLogger("BuildManager")
@@ -176,7 +177,7 @@ class BuildManager:
     async def run_build(self, build_id: int, ffmpeg_version: str,
                         srt_version: str | None, options: dict,
                         sdk_paths: dict | None, sources_cleaned: bool,
-                        log_callback) -> dict:
+                        log_callback, auto_clean: bool = False) -> dict:
         """Execute the full build pipeline for a profile.
 
         Returns a dict with build results (binary paths, version output, etc.)
@@ -248,6 +249,33 @@ class BuildManager:
                 )
                 await log_callback("━━━ LIBSRT BUILD COMPLETE ━━━\n\n")
 
+            # ── 1.5 NVIDIA ffnvcodec headers (if enabled) ─────────
+            if options.get("nvenc"):
+                await log_callback("━━━ STAGE 1.5: NVIDIA NVENC HEADERS ━━━\n")
+                nv_src = os.path.join(src_path, "nv-codec-headers")
+                
+                if not os.path.exists(nv_src) or sources_cleaned:
+                    if os.path.exists(nv_src):
+                        shutil.rmtree(nv_src)
+                    await log_callback("Cloning ffnvcodec headers from GitHub...\n")
+                    await self._run_logged_cmd(
+                        ["git", "clone", "https://github.com/FFmpeg/nv-codec-headers.git", nv_src],
+                        log_callback,
+                    )
+                else:
+                    await log_callback("NVIDIA headers source exists, pulling updates...\n")
+                    await self._run_logged_cmd(
+                        ["git", "pull"], log_callback, cwd=nv_src
+                    )
+
+                await log_callback("Installing ffnvcodec headers to install prefix...\n")
+                await self._run_logged_cmd(
+                    ["make", f"PREFIX={install_path}", "install"],
+                    log_callback,
+                    cwd=nv_src,
+                )
+                await log_callback("━━━ NVIDIA HEADERS COMPLETE ━━━\n\n")
+
             # ── 2. FFmpeg ─────────────────────────────────────────
             await log_callback("━━━ STAGE 2: FFMPEG BUILD ━━━\n")
             ffmpeg_src = os.path.join(src_path, "ffmpeg")
@@ -299,29 +327,77 @@ class BuildManager:
             if options.get("vaapi"):
                 config_flags.append("--enable-vaapi")
 
-            # DeckLink SDK header path
-            if options.get("decklink") and sdk_paths.get("decklink"):
+            # DeckLink Integration (using the global versioned directory)
+            if options.get("decklink") and sdk_paths and sdk_paths.get("decklink"):
+                decklink_version = sdk_paths.get("decklink")
+                decklink_sdk_path = os.path.join(self.workspace_root, "data", "sdks", "decklink", decklink_version)
+                if not os.path.exists(decklink_sdk_path):
+                    raise FileNotFoundError(
+                        f"DeckLink SDK version '{decklink_version}' is not installed in the system. "
+                        "Please upload this version first."
+                    )
+                
+                decklink_include = os.path.join(decklink_sdk_path, "include")
                 config_flags.append("--enable-decklink")
-                config_flags.append(f"--extra-cflags=-I{sdk_paths['decklink']}")
+                config_flags.append(f"--extra-cflags=-I{decklink_include}")
             
             # NVIDIA NVENC
-            if options.get("nvenc") and sdk_paths.get("nvenc"):
+            if options.get("nvenc"):
                 config_flags.append("--enable-nvenc")
                 config_flags.append("--enable-ffnvcodec")
-                config_flags.append(f"--extra-cflags=-I{sdk_paths['nvenc']}")
 
-            # NDI (Experimental)
-            if options.get("ndi") and sdk_paths.get("ndi"):
+            # NDI Integration (using the global versioned directory + patch application)
+            if options.get("ndi") and sdk_paths and sdk_paths.get("ndi"):
+                ndi_version = sdk_paths.get("ndi")
+                ndi_sdk_path = os.path.join(self.workspace_root, "data", "sdks", "ndi", ndi_version)
+                if not os.path.exists(ndi_sdk_path):
+                    raise FileNotFoundError(
+                        f"NDI SDK version '{ndi_version}' is not installed in the system. "
+                        "Please upload this version first."
+                    )
+                
+                # Apply dynamic NDI patch
+                await log_callback("━━━ APPLYING NDI COMMUNITY PATCH ━━━\n")
+                custom_patch_url = sdk_paths.get("ndi_patch_url")
+                patch_url = custom_patch_url
+                if not patch_url:
+                    # Resolve pre-validated patch url based on ffmpeg version major
+                    if ffmpeg_version.startswith("6."):
+                        patch_url = "https://raw.githubusercontent.com/aur-archive/ffmpeg-ndi/master/ffmpeg-6.0-ndi.patch"
+                    elif ffmpeg_version.startswith("5."):
+                        patch_url = "https://raw.githubusercontent.com/aur-archive/ffmpeg-ndi/master/ffmpeg-5.0-ndi.patch"
+                    else:
+                        patch_url = "https://raw.githubusercontent.com/aur-archive/ffmpeg-ndi/master/ffmpeg-6.0-ndi.patch"
+                
+                await log_callback(f"NDI Patch URL: {patch_url}\n")
+                patch_file = os.path.join(src_path, "ndi.patch")
+                try:
+                    import urllib.request
+                    urllib.request.urlretrieve(patch_url, patch_file)
+                    await log_callback("Downloaded patch. Applying to FFmpeg codebase...\n")
+                    
+                    # Apply using git apply (quieter and robust)
+                    await self._run_logged_cmd(
+                        ["git", "apply", "--ignore-whitespace", "--whitespace=nowarn", patch_file],
+                        log_callback,
+                        cwd=ffmpeg_src,
+                        ignore_errors=True,
+                    )
+                except Exception as patch_exc:
+                    await log_callback(f"WARNING: Error downloading/applying patch: {patch_exc}\n")
+
                 config_flags.append("--enable-libndi_newtek")
-                config_flags.append(f"--extra-cflags=-I{sdk_paths['ndi']}/include")
-                config_flags.append(f"--extra-ldflags=-L{sdk_paths['ndi']}/lib/x86_64-linux-gnu")
+                config_flags.append(f"--extra-cflags=-I{ndi_sdk_path}/include")
+                config_flags.append(f"--extra-ldflags=-L{ndi_sdk_path}/lib/x86_64-linux-gnu")
+                # Add RPATH to ensure the compiled ffmpeg binary can load the dynamic libndi.so correctly
+                config_flags.append(f"--extra-ldflags=-Wl,-rpath,{ndi_sdk_path}/lib/x86_64-linux-gnu")
 
-            # PKG_CONFIG_PATH for locally-compiled libs (e.g. LibSRT)
+            # PKG_CONFIG_PATH for locally-compiled libs (e.g. LibSRT and ffnvcodec)
             env = os.environ.copy()
             install_lib_path = os.path.join(install_path, "lib")
             env["PKG_CONFIG_PATH"] = os.path.join(install_lib_path, "pkgconfig")
             
-            # Add RPATH so ffmpeg finds our local libs at runtime
+            # Add RPATH so ffmpeg finds our local libs (like libsrt) at runtime
             config_flags.append(f"--extra-ldflags=-Wl,-rpath,{install_lib_path}")
 
             await self._run_logged_cmd(
@@ -348,6 +424,13 @@ class BuildManager:
                     [ffmpeg_bin, "-version"]
                 )
                 await log_callback(f"\n{version_output}\n")
+
+            # ── 4. Auto-clean sources (if enabled) ────────────────
+            if auto_clean and os.path.exists(src_path):
+                await log_callback("\n━━━ AUTO-CLEAN ENABLED ━━━\n")
+                await log_callback("Cleaning temporary build sources to save space...\n")
+                self.clean_sources(build_id)
+                await log_callback("Sources cleaned successfully.\n")
 
             result = {
                 "success": True,
