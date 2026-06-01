@@ -371,7 +371,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                       ) : (
                         <div className="text-center">
                           <span className="text-[10px] font-bold text-white/70 block mb-0.5">Arrastra el archivo SDK oficial de DeckLink aquí</span>
-                          <span className="text-[8px] text-text-secondary block">Formatos: .zip, .tar.gz (>100MB se reducirá automáticamente a ~250KB)</span>
+                          <span className="text-[8px] text-text-secondary block">Formatos: .zip, .tar.gz (&gt;100MB se reducirá automáticamente a ~250KB)</span>
                         </div>
                       )}
                     </div>
