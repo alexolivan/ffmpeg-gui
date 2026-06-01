@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import type { BuildProfile } from './BuildProfileCard'
 
 interface BuildFormModalProps {
@@ -38,15 +38,12 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit }: BuildFo
 
   const [ffmpegTags, setFfmpegTags] = useState<string[]>([])
   const [srtTags, setSrtTags] = useState<string[]>([])
-  const [loadingTags, setLoadingTags] = useState(true)
-  const [tagError, setTagError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const isEditing = editBuild !== null
 
   useEffect(() => {
     const fetchTags = async () => {
-      setLoadingTags(true)
       try {
         const [ffRes, srtRes] = await Promise.all([
           fetch(`${API_BASE}/builds/tags/ffmpeg`),
@@ -62,9 +59,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit }: BuildFo
           if (srtData.tags?.length > 0 && !srtVersion) setSrtVersion(srtData.tags[0])
         }
       } catch (err) {
-        setTagError('Failed to load tags')
-      } finally {
-        setLoadingTags(false)
+        console.error('Failed to load tags:', err)
       }
     }
     fetchTags()

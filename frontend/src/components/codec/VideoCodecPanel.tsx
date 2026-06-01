@@ -1,5 +1,5 @@
 import React from 'react';
-import type { CodecDefinition, CodecParam } from './codecRegistry';
+import type { CodecParam } from './codecRegistry';
 import {
   getAvailableVideoCodecs,
   getDefaultParams,
