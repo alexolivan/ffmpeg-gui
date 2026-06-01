@@ -35,6 +35,7 @@ class FfmpegBuild(Base):
     status = Column(String, default='pending')
     is_default = Column(Boolean, default=False)
     sources_cleaned = Column(Boolean, default=False)
+    auto_clean = Column(Boolean, default=False)
 
     # Auto-generated metadata
     disk_usage_mb = Column(Integer, nullable=True)

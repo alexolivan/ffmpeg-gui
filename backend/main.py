@@ -14,6 +14,7 @@ from database.models import FfmpegBuild, MediaProcess, ProcessLog
 from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
+from core.sdk_manager import SdkManager
 import logging
 import asyncio
 import datetime
@@ -45,6 +46,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 process_manager = ProcessManager(db_session_factory=SessionLocal)
 preview_manager = PreviewManager()
 build_manager = BuildManager(builds_root="./ffmpeg_builds")
+sdk_manager = SdkManager(workspace_root=".")
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────
@@ -55,6 +57,7 @@ class BuildCreate(BaseModel):
     srt_version: Optional[str] = None
     build_options: dict
     sdk_paths: Optional[dict] = None
+    auto_clean: Optional[bool] = False
 
 class BuildUpdate(BaseModel):
     name: Optional[str] = None
@@ -62,6 +65,7 @@ class BuildUpdate(BaseModel):
     srt_version: Optional[str] = None
     build_options: Optional[dict] = None
     sdk_paths: Optional[dict] = None
+    auto_clean: Optional[bool] = None
 
 class ProcessCreate(BaseModel):
     name: str
@@ -317,6 +321,41 @@ def check_build_deps():
     return build_manager.check_dependencies()
 
 
+@app.get("/sdks/{sdk_type}")
+def get_sdks(sdk_type: str):
+    """List installed versions of the specified SDK type (decklink or ndi)."""
+    return sdk_manager.list_installed_sdks(sdk_type)
+
+@app.post("/sdks/upload")
+async def upload_sdk(sdk_type: str = File(...), file: UploadFile = File(...)):
+    """Upload and process a DeckLink or NDI SDK archive."""
+    # Ensure temporary upload directory exists
+    temp_dir = os.path.join(sdk_manager.workspace_root, "data", "temp_uploads")
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    # Save uploaded file temporarily
+    temp_file_path = os.path.join(temp_dir, f"upload_{uuid.uuid4().hex}_{file.filename}")
+    try:
+        with open(temp_file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        result = sdk_manager.process_sdk_upload(
+            file_path=temp_file_path,
+            original_filename=file.filename,
+            sdk_type=sdk_type
+        )
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error"))
+        return result
+    except Exception as e:
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except OSError:
+                pass
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/builds/{build_id}")
 def get_build(build_id: int, db: Session = Depends(get_db)):
     """Get details of a specific build profile."""
@@ -339,6 +378,7 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         srt_version=data.srt_version,
         build_options=data.build_options,
         sdk_paths=data.sdk_paths,
+        auto_clean=data.auto_clean or False,
         install_path="",  # Will be set after we have the ID
         status="pending",
     )
@@ -382,6 +422,8 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
         build.build_options = data.build_options
     if data.sdk_paths is not None:
         build.sdk_paths = data.sdk_paths
+    if data.auto_clean is not None:
+        build.auto_clean = data.auto_clean
 
     db.commit()
     db.refresh(build)
@@ -742,6 +784,7 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "status": build.status,
         "is_default": build.is_default,
         "sources_cleaned": build.sources_cleaned,
+        "auto_clean": build.auto_clean,
         "disk_usage_mb": build.disk_usage_mb,
         "build_log_summary": build.build_log_summary,
         "ffmpeg_version_output": build.ffmpeg_version_output,
