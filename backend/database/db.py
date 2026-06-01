@@ -29,6 +29,13 @@ def init_db():
             cursor.execute("ALTER TABLE media_processes ADD COLUMN watchdog_retries INTEGER DEFAULT 5")
         if "last_started_config" not in columns:
             cursor.execute("ALTER TABLE media_processes ADD COLUMN last_started_config JSON DEFAULT NULL")
+        
+        # Migración para la columna auto_clean en ffmpeg_builds
+        cursor.execute("PRAGMA table_info(ffmpeg_builds)")
+        build_columns = [col[1] for col in cursor.fetchall()]
+        if "auto_clean" not in build_columns:
+            cursor.execute("ALTER TABLE ffmpeg_builds ADD COLUMN auto_clean BOOLEAN DEFAULT 0")
+            
         conn.commit()
     except Exception as e:
         print(f"Database migration failed: {e}")
