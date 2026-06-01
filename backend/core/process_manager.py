@@ -258,6 +258,22 @@ class ProcessManager:
         output_cfg = media_proc.output_config
         self._append_output(cmd, output_cfg, codec_cfg)
             
+        # ── Secondary Preview Output ──
+        is_service = getattr(media_proc, 'type', 'service') == 'service'
+        if is_service and has_video:
+            import os
+            from database.db import BASE_DIR
+            previews_dir = os.path.join(BASE_DIR, "data", "previews")
+            os.makedirs(previews_dir, exist_ok=True)
+            preview_path = os.path.join(previews_dir, f"preview_{media_proc.id}.jpg")
+            cmd += [
+                "-map", "0:v",
+                "-c:v", "mjpeg",
+                "-vf", "fps=1,scale=480:-1",
+                "-update", "1",
+                "-y", preview_path
+            ]
+
         return cmd
 
     def _append_input(self, cmd: list, input_cfg: dict):

@@ -718,9 +718,10 @@ async def get_preview(process_id: int, db: Session = Depends(get_db)):
     if not media_proc:
         raise HTTPException(status_code=404, detail="Process not found")
 
+    is_running = media_proc.status == 'running'
     return StreamingResponse(
-        preview_manager.get_mjpeg_stream(media_proc.input_config),
-        media_type="multipart/x-mixed-replace; boundary=frame"
+        preview_manager.get_mjpeg_stream(media_proc.id, media_proc.input_config, is_running),
+        media_type="multipart/x-mixed-replace; boundary=ffmpeg"
     )
 
 
