@@ -12,9 +12,25 @@ else
 fi
 sleep 1
 
+# 0. Setup Environment if needed
+echo "--> Checking Backend Environment..."
+if [ ! -d "venv" ]; then
+    echo "Creating Python virtual environment..."
+    python3 -m venv venv
+fi
+source venv/bin/activate
+pip install -r backend/requirements.txt
+
+echo "--> Checking Frontend Environment..."
+if [ ! -d "frontend/node_modules" ]; then
+    echo "Installing frontend dependencies..."
+    cd frontend
+    npm install
+    cd ..
+fi
+
 # 1. Start Backend
 echo "--> Starting Backend (FastAPI)..."
-source venv/bin/activate
 cd backend
 uvicorn main:app --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!
