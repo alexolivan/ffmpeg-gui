@@ -39,3 +39,6 @@ backend/data/
 docs/superpowers/
 docs/*.png
 docs/*.md
+docs/issues.txt
+docs/todo.txt
+docs/sprint.txt

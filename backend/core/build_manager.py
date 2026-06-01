@@ -42,34 +42,76 @@ class BuildManager:
     def check_dependencies(self) -> dict:
         """Check that required system build tools are available."""
         self.logger.info("Starting dependency check...")
-        deps = ["cmake", "git", "make", "gcc", "pkg-config"]
+        
+        # Tools validated via shutil.which
+        core_deps = {
+            "cmake": {"type": "required", "description": "Sistema de generación de builds (CMake)"},
+            "git": {"type": "required", "description": "Control de versiones para descargar código fuente"},
+            "make": {"type": "required", "description": "Herramienta de automatización de compilación"},
+            "gcc": {"type": "required", "description": "Compilador de código C/C++"},
+            "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo"},
+        }
+        
         results = {}
-        for dep in deps:
-            results[dep] = shutil.which(dep) is not None
+        for name, info in core_deps.items():
+            results[name] = {
+                "installed": shutil.which(name) is not None,
+                "type": info["type"],
+                "description": info["description"]
+            }
 
-        results["yasm/nasm"] = (
+        # Check yasm/nasm assembler
+        yasm_nasm_installed = (
             shutil.which("yasm") is not None
             or shutil.which("nasm") is not None
         )
+        results["yasm/nasm"] = {
+            "installed": yasm_nasm_installed,
+            "type": "required",
+            "description": "Ensamblador para optimizaciones de rendimiento x86 (yasm o nasm)"
+        }
 
-        # Check for optional libraries using pkg-config if it exists
-        if results.get("pkg-config"):
-            lib_checks = {
-                "libva": "pkg-config --exists libva",
-                "libdrm": "pkg-config --exists libdrm",
-            }
-            for name, cmd in lib_checks.items():
+        # Libraries checked via pkg-config
+        libs = {
+            "libx264": {"pkg": "x264", "type": "required", "description": "Biblioteca para codificación H.264/AVC (libx264)"},
+            "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
+            "libssl": {"pkg": "openssl", "type": "optional", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
+            "libva": {"pkg": "libva", "type": "optional", "description": "Aceleración de decodificación/codificación VAAPI"},
+            "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"}
+        }
+
+        has_pkg_config = results.get("pkg-config", {}).get("installed", False)
+
+        for name, info in libs.items():
+            installed = False
+            if has_pkg_config:
                 try:
-                    subprocess.run(cmd.split(), capture_output=True, check=True)
-                    results[name] = True
-                except (subprocess.CalledProcessError, FileNotFoundError, Exception):
-                    results[name] = False
-        else:
-            results["libva"] = False
-            results["libdrm"] = False
+                    cmd = ["pkg-config", "--exists", info["pkg"]]
+                    subprocess.run(cmd, capture_output=True, check=True)
+                    installed = True
+                except Exception:
+                    installed = False
+            
+            results[name] = {
+                "installed": installed,
+                "type": info["type"],
+                "description": info["description"],
+                "pkg_config_name": info["pkg"]
+            }
 
-        self.logger.info(f"Check results: {results}")
-        return results
+        # Calculate all_required_met
+        all_required_met = all(
+            item["installed"]
+            for item in results.values()
+            if item["type"] == "required"
+        )
+
+        payload = {
+            "dependencies": results,
+            "all_required_met": all_required_met
+        }
+        self.logger.info(f"Check results payload: {payload}")
+        return payload
 
     # ── Tag discovery ─────────────────────────────────────────────
 
