@@ -257,6 +257,18 @@ async def auto_start_services():
 
 @app.on_event("startup")
 async def startup_event():
+    logger.info("Startup: Checking and cleaning up stale build profiles...")
+    try:
+        with SessionLocal() as db:
+            stale_builds = db.query(FfmpegBuild).filter(FfmpegBuild.status == "building").all()
+            for build in stale_builds:
+                build.status = "failed"
+                build.build_log_summary = "Build aborted (server restarted)"
+                logger.info(f"Cleaned up stale build profile ID {build.id} on startup.")
+            db.commit()
+    except Exception as e:
+        logger.error(f"Failed to clean up stale builds on startup: {e}")
+
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
 
