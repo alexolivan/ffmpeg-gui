@@ -340,6 +340,7 @@ class BuildManager:
                 decklink_include = os.path.join(decklink_sdk_path, "include")
                 config_flags.append("--enable-decklink")
                 config_flags.append(f"--extra-cflags=-I{decklink_include}")
+                config_flags.append(f"--extra-cxxflags=-I{decklink_include}")
             
             # NVIDIA NVENC
             if options.get("nvenc"):
