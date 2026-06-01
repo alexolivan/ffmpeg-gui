@@ -55,12 +55,13 @@ interface ProcessConfig {
 interface ProcessConfigFormProps {
   onCancel: () => void;
   onSubmit: (config: any) => void;
+  onSaveAs?: (config: any) => void;
   initialConfig?: any;
 }
 
 // ── Component ────────────────────────────────────────────────────
 
-const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit, initialConfig }) => {
+const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit, onSaveAs, initialConfig }) => {
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
   const [selectedBuildOptions, setSelectedBuildOptions] = useState<Record<string, boolean> | undefined>();
   const [activeSection, setActiveSection] = useState<string>('inputs');
@@ -210,6 +211,43 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       watchdog_retries: config.watchdog_retries,
     };
     onSubmit(payload);
+  };
+
+  const handleSaveAs = () => {
+    if (!onSaveAs) return;
+    const payload = {
+      name: `${config.name} (Copy)`,
+      type: 'service',
+      ffmpeg_build_id: config.ffmpeg_build_id,
+      input_config: {
+        has_video: config.has_video,
+        has_audio: config.has_audio,
+        use_secondary_input: config.use_secondary_input,
+        input1: config.input1,
+        ...(config.use_secondary_input ? { input2: config.input2 } : {}),
+      },
+      codec_config: {
+        ...(config.has_video ? {
+          vcodec: config.video_codec_id,
+          video_params: config.video_codec_params,
+        } : {}),
+        ...(config.has_audio ? {
+          acodec: config.audio_codec_id,
+          audio_params: config.audio_codec_params,
+        } : {}),
+      },
+      output_config: config.output,
+      filter_config: {
+        scale: config.filters.scale,
+        deinterlace: config.filters.deinterlace,
+        framerate: config.filters.framerate,
+        advanced: config.filters.advanced,
+      },
+      auto_start: config.auto_start,
+      watchdog_enabled: config.watchdog_enabled,
+      watchdog_retries: config.watchdog_retries,
+    };
+    onSaveAs(payload);
   };
 
   const handlePreview = async () => {
@@ -748,6 +786,15 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         >
           {initialConfig ? 'Save Changes' : 'Deploy Service'}
         </button>
+        {initialConfig && onSaveAs && (
+          <button
+            onClick={handleSaveAs}
+            disabled={!config.name.trim()}
+            className="flex-1 py-3 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-xl font-bold hover:bg-brand-orange/30 transition-all uppercase tracking-widest text-sm"
+          >
+            Save as New
+          </button>
+        )}
       </div>
 
       {/* ── Preview Modal ── */}
