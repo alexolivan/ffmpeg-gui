@@ -375,15 +375,45 @@ class BuildManager:
                 try:
                     import urllib.request
                     urllib.request.urlretrieve(patch_url, patch_file)
-                    await log_callback("Downloaded patch. Applying to FFmpeg codebase...\n")
+                    await log_callback("Downloaded patch. Checking application status...\n")
                     
-                    # Apply using git apply (quieter and robust)
-                    await self._run_logged_cmd(
-                        ["git", "apply", "--ignore-whitespace", "--whitespace=nowarn", patch_file],
-                        log_callback,
+                    # 1. Check if the patch can be applied cleanly (means not applied yet)
+                    proc_check = await asyncio.create_subprocess_exec(
+                        "git", "apply", "--check", "--ignore-whitespace", "--whitespace=nowarn", patch_file,
                         cwd=ffmpeg_src,
-                        ignore_errors=True,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
                     )
+                    await proc_check.communicate()
+                    
+                    if proc_check.returncode == 0:
+                        await log_callback("Applying NDI community patch to FFmpeg codebase...\n")
+                        await self._run_logged_cmd(
+                            ["git", "apply", "--ignore-whitespace", "--whitespace=nowarn", patch_file],
+                            log_callback,
+                            cwd=ffmpeg_src,
+                        )
+                    else:
+                        # 2. Check if the patch has already been applied (reverse apply check succeeds)
+                        proc_rev_check = await asyncio.create_subprocess_exec(
+                            "git", "apply", "--check", "--reverse", "--ignore-whitespace", "--whitespace=nowarn", patch_file,
+                            cwd=ffmpeg_src,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        await proc_rev_check.communicate()
+                        
+                        if proc_rev_check.returncode == 0:
+                            await log_callback("NDI community patch is already applied to the codebase. Skipping application.\n")
+                        else:
+                            # Fallback to apply with ignore_errors if state is mixed
+                            await log_callback("WARNING: Patch is not clean and doesn't seem fully applied. Attempting application anyway...\n")
+                            await self._run_logged_cmd(
+                                ["git", "apply", "--ignore-whitespace", "--whitespace=nowarn", patch_file],
+                                log_callback,
+                                cwd=ffmpeg_src,
+                                ignore_errors=True,
+                            )
                 except Exception as patch_exc:
                     await log_callback(f"WARNING: Error downloading/applying patch: {patch_exc}\n")
 
