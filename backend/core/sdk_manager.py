@@ -183,15 +183,26 @@ class SdkManager:
         lib_file = None
         # Walk to find all libndi.so candidates and filter by architecture compatibility
         import sys
+        import platform
         is_64bit_system = sys.maxsize > 2**32
-        candidates = []
+        host_mach = platform.machine().lower()
         
+        # Map python machine names to ELF e_machine values
+        expected_machine = None
+        if host_mach in ["x86_64", "amd64"]:
+            expected_machine = 0x3e
+        elif host_mach in ["aarch64", "arm64"]:
+            expected_machine = 0xb7
+        elif host_mach in ["i386", "i686", "x86"]:
+            expected_machine = 0x03
+            
+        candidates = []
         for dirpath, _, filenames in os.walk(temp_extract_dir):
             for f in filenames:
                 if f == "libndi.so" or f.startswith("libndi.so."):
                     candidates.append(os.path.join(dirpath, f))
 
-        # Filter candidates: prioritize exact target architecture compatibility (64-bit ELF on 64-bit host)
+        # Filter candidates: prioritize exact target CPU machine & bitness compatibility
         best_candidate = None
         for candidate in candidates:
             try:
@@ -199,18 +210,22 @@ class SdkManager:
                 real_candidate = os.path.realpath(candidate)
                 if os.path.exists(real_candidate) and os.path.isfile(real_candidate):
                     with open(real_candidate, "rb") as f:
-                        header = f.read(5)
-                        if len(header) == 5 and header[:4] == b"\x7fELF":
+                        header = f.read(20)
+                        if len(header) >= 20 and header[:4] == b"\x7fELF":
                             is_elf64 = header[4] == 2
+                            # Check bitness compatibility
                             if is_64bit_system == is_elf64:
-                                # Found matching architecture candidate!
-                                # If it has "libndi.so" in the same directory, this directory is our target source directory
-                                parent_dir = os.path.dirname(candidate)
-                                if os.path.exists(os.path.join(parent_dir, "libndi.so")):
-                                    best_candidate = os.path.join(parent_dir, "libndi.so")
-                                    break
-                                # If the candidate itself is in a directory, we can use it
-                                best_candidate = candidate
+                                # Check CPU architecture compatibility (e_machine byte at index 18)
+                                elf_machine = header[18]
+                                if expected_machine is None or elf_machine == expected_machine:
+                                    # Found matching architecture candidate!
+                                    # If it has "libndi.so" in the same directory, this directory is our target source directory
+                                    parent_dir = os.path.dirname(candidate)
+                                    if os.path.exists(os.path.join(parent_dir, "libndi.so")):
+                                        best_candidate = os.path.join(parent_dir, "libndi.so")
+                                        break
+                                    # If the candidate itself is in a directory, we can use it
+                                    best_candidate = candidate
             except Exception:
                 pass
 
