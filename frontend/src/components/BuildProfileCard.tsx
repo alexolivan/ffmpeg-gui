@@ -27,6 +27,7 @@ interface BuildProfileCardProps {
   onSetDefault: (id: number) => void
   onEdit: (build: BuildProfile) => void
   onViewLogs: (id: number) => void
+  onExport: (id: number) => void
 }
 
 const STATUS_STYLES: Record<string, { dot: string; badge: string; label: string }> = {
@@ -55,7 +56,7 @@ function formatOptions(options: Record<string, boolean>): string {
 }
 
 export default function BuildProfileCard({
-  build, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs,
+  build, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport,
 }: BuildProfileCardProps) {
   const style = STATUS_STYLES[build.status] || STATUS_STYLES.pending
 
@@ -163,6 +164,9 @@ export default function BuildProfileCard({
           <button onClick={() => onViewLogs(build.id)}
             className="pill-button bg-white/5 text-xs hover:bg-white/10">VIEW LOGS</button>
         )}
+
+        <button onClick={() => onExport(build.id)}
+          className="pill-button bg-white/5 text-xs hover:bg-white/10">EXPORT RECIPE</button>
 
         <button onClick={() => onEdit(build)}
           className="pill-button bg-white/5 text-xs hover:bg-white/10 ml-auto">EDIT</button>

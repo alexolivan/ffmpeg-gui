@@ -393,6 +393,85 @@ function App() {
     }
   }
 
+  // ── Import & Export Handlers ────────────────────────────────────
+  const importFileRef = useRef<HTMLInputElement | null>(null);
+  const importRecipeRef = useRef<HTMLInputElement | null>(null);
+
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const json = JSON.parse(evt.target?.result as string);
+        const response = await fetch(`${API}/processes/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(json)
+        });
+        
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.detail || 'Import failed');
+        }
+        
+        const newProc = await response.json();
+        alert(`Successfully imported process: ${newProc.name}`);
+        e.target.value = '';
+      } catch (err: any) {
+        alert(`Import Error: ${err.message || err}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImportRecipeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const json = JSON.parse(evt.target?.result as string);
+        const response = await fetch(`${API}/builds/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(json)
+        });
+        
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.detail || 'Recipe import failed');
+        }
+        
+        const newBuild = await response.json();
+        alert(`Successfully imported build recipe: ${newBuild.name}`);
+        e.target.value = '';
+        refreshBuilds();
+      } catch (err: any) {
+        alert(`Recipe Import Error: ${err.message || err}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExportRecipe = (id: number) => {
+    fetch(`${API}/builds/${id}/export`)
+      .then(r => {
+        if (!r.ok) throw new Error("Could not export recipe");
+        return r.json();
+      })
+      .then(data => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${data.recipe.name}_recipe.json`;
+        a.click();
+      })
+      .catch(err => alert(err.message));
+  };
+
   // ── Render ─────────────────────────────────────────────────────
   if (!isAuthenticated) {
     return (
@@ -647,8 +726,19 @@ function App() {
                     </div>
                   </div>
                 </div>
-                <button onClick={() => setShowAddModal(true)}
-                  className="pill-button bg-brand-lime text-black w-full mt-12 py-4">+ NEW SERVICE</button>
+                <div className="flex flex-col gap-3 mt-12">
+                  <button onClick={() => setShowAddModal(true)}
+                    className="pill-button bg-brand-lime text-black w-full py-4">+ NEW SERVICE</button>
+                  <button onClick={() => importFileRef.current?.click()}
+                    className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white w-full py-4">📥 IMPORT PROFILE</button>
+                  <input 
+                    type="file" 
+                    ref={importFileRef} 
+                    className="hidden" 
+                    accept=".json" 
+                    onChange={handleImportFileChange} 
+                  />
+                </div>
               </div>
             </div>
 
@@ -1194,6 +1284,17 @@ function App() {
                     </span>
                   </div>
                 )}
+                <button onClick={() => importRecipeRef.current?.click()}
+                  className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold hover:scale-105 transition-transform">
+                  📥 IMPORT RECIPE
+                </button>
+                <input 
+                  type="file" 
+                  ref={importRecipeRef} 
+                  className="hidden" 
+                  accept=".json" 
+                  onChange={handleImportRecipeChange} 
+                />
                 <button onClick={() => { setEditingBuild(null); setShowBuildForm(true) }}
                   className="pill-button bg-brand-orange text-black font-bold hover:scale-105 transition-transform">
                   + NEW BUILD PROFILE
@@ -1254,6 +1355,7 @@ function App() {
                       const b = builds.find(x => x.id === id)
                       if (b) setTerminalBuild({ id, name: b.name })
                     }}
+                    onExport={handleExportRecipe}
                   />
                 ))
               )}
