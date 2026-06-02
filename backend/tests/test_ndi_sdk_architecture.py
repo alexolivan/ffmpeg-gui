@@ -38,9 +38,22 @@ class TestNdiSdkArchitecture(unittest.TestCase):
         os.makedirs(self.lib64_dir, exist_ok=True)
         self.lib64_file = os.path.join(self.lib64_dir, "libndi.so.6.3.2")
         with open(self.lib64_file, "wb") as f:
-            # ELF magic with EI_CLASS = 2 (64-bit)
-            f.write(b"\x7fELF\x02" + b"\x00" * 60)
+            # ELF magic with EI_CLASS = 2 (64-bit), and e_machine = 0x3e (x86_64)
+            header = bytearray(b"\x7fELF\x02" + b"\x00" * 60)
+            header[18] = 0x3e
+            f.write(header)
         os.symlink("libndi.so.6.3.2", os.path.join(self.lib64_dir, "libndi.so"))
+
+        # 3. ARM aarch64 architecture library (64-bit ELF, e_machine = 0xb7)
+        self.libarm_dir = os.path.join(self.extract_dir, "lib", "aarch64-linux-gnu")
+        os.makedirs(self.libarm_dir, exist_ok=True)
+        self.libarm_file = os.path.join(self.libarm_dir, "libndi.so.6.3.2")
+        with open(self.libarm_file, "wb") as f:
+            # ELF magic with EI_CLASS = 2 (64-bit), and e_machine = 0xb7 (aarch64)
+            header = bytearray(b"\x7fELF\x02" + b"\x00" * 60)
+            header[18] = 0xb7
+            f.write(header)
+        os.symlink("libndi.so.6.3.2", os.path.join(self.libarm_dir, "libndi.so"))
 
     def tearDown(self):
         shutil.rmtree(self.temp_dir)
@@ -51,17 +64,19 @@ class TestNdiSdkArchitecture(unittest.TestCase):
         # Save original os.walk
         real_walk = os.walk
         
-        # Mock walk to always return i686-linux-gnu before x86_64-linux-gnu
+        # Mock walk to always return aarch64 before x86_64
         def mock_walk(top, topdown=True, onerror=None, followlinks=False):
             walk_results = list(real_walk(top, topdown, onerror, followlinks))
-            # Sort walk results so that i686-linux-gnu is visited first
+            # Sort walk results so that aarch64 is visited first, then i686, then x86_64
             def sort_key(item):
                 dirpath = item[0]
-                if "i686" in dirpath:
+                if "aarch64" in dirpath:
                     return 0
-                if "x86_64" in dirpath:
+                if "i686" in dirpath:
                     return 1
-                return 2
+                if "x86_64" in dirpath:
+                    return 2
+                return 3
             walk_results.sort(key=sort_key)
             return walk_results
 
@@ -76,8 +91,9 @@ class TestNdiSdkArchitecture(unittest.TestCase):
             
             self.assertTrue(os.path.exists(target_lib))
             with open(target_lib, "rb") as f:
-                content = f.read(5)
-                self.assertEqual(content[4], 2, "Should have copied the 64-bit version of the NDI library")
+                content = f.read(20)
+                self.assertEqual(content[4], 2, "Should have copied a 64-bit version of the NDI library")
+                self.assertEqual(content[18], 0x3e, "Should have copied the Intel/AMD x86_64 version of the NDI library")
 
 if __name__ == "__main__":
     unittest.main()
