@@ -750,6 +750,53 @@ async def stop_process(process_id: int):
     await process_manager.stop_process(process_id)
     return {"status": "stopping", "process_id": process_id}
 
+def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
+    if "profile" in payload and isinstance(payload["profile"], dict):
+        profile = payload["profile"]
+    else:
+        profile = payload
+        
+    input_cfg = profile.get("input_config", {})
+    
+    # Migration from flat input layout (v1) to nested input1 structure (v2)
+    if "type" in input_cfg and "input1" not in input_cfg:
+        old_type = input_cfg.get("type")
+        input1 = {"type": old_type}
+        for key in ["host", "port", "mode", "path", "url", "interface", "stream_key", "channel", "device"]:
+            if key in input_cfg:
+                input1[key] = input_cfg.pop(key)
+        
+        input_cfg["input1"] = input1
+        input_cfg["use_secondary_input"] = False
+        input_cfg["has_video"] = input_cfg.get("has_video", True)
+        input_cfg["has_audio"] = input_cfg.get("has_audio", True)
+        
+    profile["input_config"] = input_cfg
+    if "output_config" not in profile:
+        profile["output_config"] = {"type": "udp", "host": "239.0.0.1", "port": "1234"}
+    if "codec_config" not in profile:
+        profile["codec_config"] = {}
+    if "filter_config" not in profile:
+        profile["filter_config"] = {}
+        
+    # Gracefully resolve missing or invalid Build IDs
+    from database.models import FfmpegBuild
+    build_id = profile.get("ffmpeg_build_id")
+    if build_id:
+        build_exists = db.query(FfmpegBuild).filter(FfmpegBuild.id == build_id).first()
+        if not build_exists:
+            default_build = db.query(FfmpegBuild).filter(FfmpegBuild.is_default == True, FfmpegBuild.status == 'ready').first()
+            if default_build:
+                profile["ffmpeg_build_id"] = default_build.id
+            else:
+                any_build = db.query(FfmpegBuild).filter(FfmpegBuild.status == 'ready').first()
+                if any_build:
+                    profile["ffmpeg_build_id"] = any_build.id
+                else:
+                    profile["ffmpeg_build_id"] = None
+                    
+    return profile
+
 @app.get("/processes/{process_id}/export")
 def export_process(process_id: int, db: Session = Depends(get_db)):
     proc = db.query(MediaProcess).get(process_id)
@@ -757,29 +804,129 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Process not found")
 
     return {
-        "name": proc.name,
-        "input_config": proc.input_config,
-        "output_config": proc.output_config,
-        "codec_config": proc.codec_config,
-        "filter_config": proc.filter_config,
-        "ffmpeg_build_id": proc.ffmpeg_build_id,
+        "version": 2,
+        "exported_at": datetime.datetime.utcnow().isoformat(),
+        "profile": {
+            "name": proc.name,
+            "type": proc.type,
+            "input_config": proc.input_config,
+            "output_config": proc.output_config,
+            "codec_config": proc.codec_config,
+            "filter_config": proc.filter_config,
+            "ffmpeg_build_id": proc.ffmpeg_build_id,
+            "auto_start": proc.auto_start,
+            "watchdog_enabled": proc.watchdog_enabled,
+            "watchdog_retries": proc.watchdog_retries,
+        }
     }
 
 @app.post("/processes/import")
-def import_process(profile: dict, db: Session = Depends(get_db)):
+def import_process(payload: dict, db: Session = Depends(get_db)):
+    try:
+        profile = migrate_and_validate_profile(payload, db)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid configuration format: {str(e)}")
+        
     db_proc = MediaProcess(
         name=f"Imported: {profile.get('name', 'Untitled')}",
-        type='service',
+        type=profile.get('type', 'service'),
         input_config=profile.get('input_config', {}),
         output_config=profile.get('output_config', {}),
         codec_config=profile.get('codec_config', {}),
         filter_config=profile.get('filter_config', {}),
         ffmpeg_build_id=profile.get('ffmpeg_build_id'),
+        auto_start=profile.get('auto_start', False),
+        watchdog_enabled=profile.get('watchdog_enabled', False),
+        watchdog_retries=profile.get('watchdog_retries', 5),
     )
     db.add(db_proc)
     db.commit()
     db.refresh(db_proc)
     return db_proc
+
+@app.get("/builds/{build_id}/export")
+def export_build_recipe(build_id: int, db: Session = Depends(get_db)):
+    build = db.query(FfmpegBuild).get(build_id)
+    if not build:
+        raise HTTPException(status_code=404, detail="Build profile not found")
+    return {
+        "type": "ffmpeg_build_recipe",
+        "version": 1,
+        "recipe": {
+            "name": build.name,
+            "ffmpeg_version": build.ffmpeg_version,
+            "srt_version": build.srt_version,
+            "build_options": build.build_options,
+            "sdk_paths": build.sdk_paths,
+            "auto_clean": build.auto_clean,
+        }
+    }
+
+@app.post("/builds/import")
+def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
+    if payload.get("type") != "ffmpeg_build_recipe":
+        raise HTTPException(status_code=400, detail="Invalid file format. Not a compilation recipe.")
+    
+    recipe = payload.get("recipe", {})
+    if not recipe:
+        raise HTTPException(status_code=400, detail="Missing recipe payload.")
+        
+    build_options = recipe.get("build_options", {})
+    sdk_paths = recipe.get("sdk_paths", {}) or {}
+    
+    # 1. SDK Dependency checking
+    if build_options.get("enable_ndi"):
+        ndi_ver = sdk_paths.get("ndi")
+        if not ndi_ver:
+            raise HTTPException(status_code=400, detail="NDI enabled but no version specified in recipe")
+        installed_ndis = sdk_manager.list_installed_sdks("ndi")
+        installed_versions = [s["version"] for s in installed_ndis]
+        if ndi_ver not in installed_versions:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Missing required NDI SDK Version '{ndi_ver}'. Please install/upload it first, or edit the compilation options."
+            )
+            
+    if build_options.get("enable_decklink"):
+        dl_ver = sdk_paths.get("decklink")
+        if not dl_ver:
+            raise HTTPException(status_code=400, detail="DeckLink enabled but no version specified in recipe")
+        installed_dls = sdk_manager.list_installed_sdks("decklink")
+        installed_versions = [s["version"] for s in installed_dls]
+        if dl_ver not in installed_versions:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Missing required DeckLink SDK Version '{dl_ver}'. Please install/upload it first, or edit the compilation options."
+            )
+    
+    # 2. Check name duplication and rename
+    base_name = recipe.get("name", "Imported-Build")
+    name = base_name
+    counter = 1
+    while db.query(FfmpegBuild).filter(FfmpegBuild.name == name).first():
+        name = f"{base_name}-Imported-{counter}"
+        counter += 1
+        
+    db_build = FfmpegBuild(
+        name=name,
+        ffmpeg_version=recipe.get("ffmpeg_version", "6.0"),
+        srt_version=recipe.get("srt_version"),
+        build_options=build_options,
+        sdk_paths=sdk_paths,
+        auto_clean=recipe.get("auto_clean", False),
+        status="pending",
+        install_path="",
+    )
+    db.add(db_build)
+    db.commit()
+    db.refresh(db_build)
+    
+    db_build.install_path = build_manager.get_install_path(db_build.id)
+    db.commit()
+    db.refresh(db_build)
+    
+    return _serialize_build(db_build)
+
 
 @app.get("/processes/{process_id}/preview")
 async def get_preview(process_id: int, db: Session = Depends(get_db)):
