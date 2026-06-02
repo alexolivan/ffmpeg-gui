@@ -180,16 +180,53 @@ class SdkManager:
         src_include_dir = os.path.dirname(header_file)
         
         # Locate libndi.so
-        lib_file = self._find_file_recursively(temp_extract_dir, "libndi.so")
-        if not lib_file:
-            # Try searching for any libndi.so.* file
-            for dirpath, _, filenames in os.walk(temp_extract_dir):
-                for f in filenames:
-                    if f.startswith("libndi.so"):
-                        lib_file = os.path.join(dirpath, f)
+        lib_file = None
+        # Walk to find all libndi.so candidates and filter by architecture compatibility
+        import sys
+        is_64bit_system = sys.maxsize > 2**32
+        candidates = []
+        
+        for dirpath, _, filenames in os.walk(temp_extract_dir):
+            for f in filenames:
+                if f == "libndi.so" or f.startswith("libndi.so."):
+                    candidates.append(os.path.join(dirpath, f))
+
+        # Filter candidates: prioritize exact target architecture compatibility (64-bit ELF on 64-bit host)
+        best_candidate = None
+        for candidate in candidates:
+            try:
+                # Resolve target if it's a symlink
+                real_candidate = os.path.realpath(candidate)
+                if os.path.exists(real_candidate) and os.path.isfile(real_candidate):
+                    with open(real_candidate, "rb") as f:
+                        header = f.read(5)
+                        if len(header) == 5 and header[:4] == b"\x7fELF":
+                            is_elf64 = header[4] == 2
+                            if is_64bit_system == is_elf64:
+                                # Found matching architecture candidate!
+                                # If it has "libndi.so" in the same directory, this directory is our target source directory
+                                parent_dir = os.path.dirname(candidate)
+                                if os.path.exists(os.path.join(parent_dir, "libndi.so")):
+                                    best_candidate = os.path.join(parent_dir, "libndi.so")
+                                    break
+                                # If the candidate itself is in a directory, we can use it
+                                best_candidate = candidate
+            except Exception:
+                pass
+
+        if best_candidate:
+            lib_file = best_candidate
+        else:
+            # Fallback to the first found libndi.so if no architecture match was found
+            lib_file = self._find_file_recursively(temp_extract_dir, "libndi.so")
+            if not lib_file:
+                for dirpath, _, filenames in os.walk(temp_extract_dir):
+                    for f in filenames:
+                        if f.startswith("libndi.so"):
+                            lib_file = os.path.join(dirpath, f)
+                            break
+                    if lib_file:
                         break
-                if lib_file:
-                    break
 
         if not lib_file:
             return {"success": False, "error": "Could not find 'libndi.so' library in the uploaded archive"}
