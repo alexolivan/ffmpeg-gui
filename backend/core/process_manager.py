@@ -572,11 +572,17 @@ class ProcessManager:
         was_unexpected = False
         try:
             p = psutil.Process(proc.pid)
+            # Initialize cpu_percent to discard the first meaningless 0.0 value
+            p.cpu_percent(interval=None)
+            
             last_ffprobe_check = datetime.utcnow()
             last_activity_check = datetime.utcnow()
             
             while proc.returncode is None:
-                cpu = p.cpu_percent(interval=1.0)
+                # non-blocking call to compute CPU usage since last call
+                cpu_raw = p.cpu_percent(interval=None)
+                num_cores = psutil.cpu_count() or 1
+                cpu = cpu_raw / num_cores
                 mem = p.memory_info().rss / (1024 * 1024)  # MB
                 
                 with self.db_session_factory() as session:
