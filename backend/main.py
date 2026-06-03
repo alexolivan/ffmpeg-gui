@@ -175,6 +175,43 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
 
+@app.get("/system/capabilities")
+def get_system_capabilities():
+    """Detect host system hardware capabilities (VAAPI, NVENC, V4L2, ALSA, DeckLink)."""
+    import glob
+    import shutil
+
+    # VAAPI
+    vaapi_available = os.path.exists("/dev/dri") and len(
+        glob.glob("/dev/dri/renderD*") + glob.glob("/dev/dri/card*")
+    ) > 0
+    vaapi_details = "Render nodes detected in /dev/dri" if vaapi_available else "No render nodes found in /dev/dri"
+
+    # NVENC
+    nvenc_available = shutil.which("nvidia-smi") is not None or os.path.exists("/dev/nvidia0")
+    nvenc_details = "NVIDIA driver/card detected" if nvenc_available else "NVIDIA command/device not found"
+
+    # V4L2
+    v4l2_devices = glob.glob("/dev/video*")
+    v4l2_available = len(v4l2_devices) > 0
+    v4l2_details = f"Detected video nodes: {', '.join(v4l2_devices)}" if v4l2_available else "No video nodes found in /dev/video*"
+
+    # ALSA
+    alsa_available = os.path.exists("/proc/asound/cards") or os.path.exists("/dev/snd")
+    alsa_details = "ALSA sound card node(s) present" if alsa_available else "No ALSA interface found"
+
+    # DeckLink
+    decklink_available = os.path.exists("/dev/blackmagic") or os.path.exists("/dev/bm0")
+    decklink_details = "DeckLink kernel driver active" if decklink_available else "No DeckLink interface found (simulated)"
+
+    return {
+        "vaapi": {"available": vaapi_available, "details": vaapi_details},
+        "nvenc": {"available": nvenc_available, "details": nvenc_details},
+        "v4l2": {"available": v4l2_available, "details": v4l2_details},
+        "alsa": {"available": alsa_available, "details": alsa_details},
+        "decklink": {"available": decklink_available, "details": decklink_details}
+    }
+
 
 # ── WebSocket Connection Manager ──────────────────────────────────
 
