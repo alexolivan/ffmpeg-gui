@@ -16,6 +16,8 @@ from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
 from core.sdk_manager import SdkManager
+from utils.gpu_sensor import GPUSensor
+import psutil
 import logging
 import asyncio
 import datetime
@@ -248,6 +250,8 @@ async def websocket_telemetry(websocket: WebSocket):
         manager.disconnect(websocket)
 
 async def telemetry_broadcast_loop():
+    gpu_sensor = GPUSensor()
+    psutil.cpu_percent(interval=None)
     while True:
         with SessionLocal() as db:
             processes = db.query(MediaProcess).all()
@@ -273,7 +277,24 @@ async def telemetry_broadcast_loop():
                     "pending_changes": p.pending_changes,
                 } for p in processes
             ]
-            await manager.broadcast({"type": "telemetry", "data": data})
+            
+            # Gather global host system metrics
+            sys_cpu = psutil.cpu_percent(interval=None)
+            sys_ram = psutil.virtual_memory()
+            gpu_stats = gpu_sensor.get_stats()
+            
+            system_data = {
+                "cpu": sys_cpu,
+                "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
+                "ram_total": int(sys_ram.total / (1024 * 1024)), # MB
+                "gpu": gpu_stats
+            }
+            
+            await manager.broadcast({
+                "type": "telemetry",
+                "data": data,
+                "system": system_data
+            })
         await asyncio.sleep(1)
 
 async def auto_start_services():
