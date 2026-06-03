@@ -1024,6 +1024,13 @@ function App() {
                   className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold transition-all">
                   📥 IMPORT PROFILE
                 </button>
+                <input 
+                  type="file" 
+                  ref={importFileRef} 
+                  className="hidden" 
+                  accept=".json" 
+                  onChange={handleImportFileChange} 
+                />
                 <button onClick={() => setShowAddModal(true)}
                   className="pill-button bg-brand-lime text-black font-bold transition-all">
                   + NEW SERVICE
