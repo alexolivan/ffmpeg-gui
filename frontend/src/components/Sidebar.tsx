@@ -12,7 +12,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, logoText = 
   const items = [
     { id: 'dashboard', icon: '🏠', label: 'Dashboard' },
     { id: 'services', icon: '⚡', label: 'Services' },
-    { id: 'batch', icon: '📅', label: 'Batch Jobs' },
+    { id: 'batch', icon: '📅', label: 'Scheduled Tasks' },
     { id: 'settings', icon: '⚙️', label: 'Settings' },
     { id: 'tools', icon: '🛠️', label: 'Tools' },
   ];

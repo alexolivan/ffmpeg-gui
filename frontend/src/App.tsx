@@ -1,18 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import ProcessConfigForm from './components/ProcessConfigForm'
-import BatchJobForm from './components/BatchJobForm'
 import BuildProfileCard from './components/BuildProfileCard'
 import type { BuildProfile } from './components/BuildProfileCard'
 import BuildFormModal from './components/BuildFormModal'
 import type { BuildFormData } from './components/BuildFormModal'
 import BuildTerminal from './components/BuildTerminal'
+import { ScheduledTasks } from './components/ScheduledTasks'
 
 const API = 'http://localhost:8000'
 
 function App() {
   const [activeView, setActiveView] = useState('dashboard')
   const [telemetry, setTelemetry] = useState<any[]>([])
+  const [taskExecutions, setTaskExecutions] = useState<any[]>([])
   const [systemTelemetry, setSystemTelemetry] = useState<any>({
     cpu: 0,
     ram_used: 0,
@@ -23,7 +24,6 @@ function App() {
   const [logs, setLogs] = useState<any[]>([])
   const processLogsContainerRef = useRef<HTMLDivElement>(null)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [showAddBatchModal, setShowAddBatchModal] = useState(false)
   const [editingProcess, setEditingProcess] = useState<any | null>(null)
 
   // ── Build Profiles state ──────────────────────────────────────
@@ -165,7 +165,7 @@ function App() {
 
   // Lock body scroll when modals are active
   useEffect(() => {
-    const isModalOpen = showAddModal || showAddBatchModal || showBuildForm || terminalBuild !== null || validationResult !== null || selectedProcess !== null || editingProcess !== null;
+    const isModalOpen = showAddModal || showBuildForm || terminalBuild !== null || validationResult !== null || selectedProcess !== null || editingProcess !== null;
     if (isModalOpen) {
       document.body.classList.add('overflow-hidden');
     } else {
@@ -174,7 +174,7 @@ function App() {
     return () => {
       document.body.classList.remove('overflow-hidden');
     };
-  }, [showAddModal, showAddBatchModal, showBuildForm, terminalBuild, validationResult, selectedProcess, editingProcess]);
+  }, [showAddModal, showBuildForm, terminalBuild, validationResult, selectedProcess, editingProcess]);
 
   // ── Telemetry WebSocket ────────────────────────────────────────
   useEffect(() => {
@@ -183,6 +183,9 @@ function App() {
       const msg = JSON.parse(event.data)
       if (msg.type === 'telemetry') {
         setTelemetry(msg.data)
+        if (msg.task_executions) {
+          setTaskExecutions(msg.task_executions)
+        }
         if (msg.system) {
           setSystemTelemetry(msg.system)
         }
@@ -958,73 +961,9 @@ function App() {
             </div>
           </div>
 
-        /* ════ BATCH JOBS ════ */
+        /* ════ SCHEDULED TASKS ════ */
         ) : activeView === 'batch' ? (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <header className="flex justify-between items-center mb-12">
-              <div>
-                <h1 className="text-4xl font-bold mb-2">BATCH JOBS</h1>
-                <p className="text-text-secondary">One-time processing and transcoding tasks</p>
-              </div>
-            </header>
-            <div className="glass-card p-8">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-xl font-semibold">Active & Recent Jobs</h3>
-                <button onClick={() => setShowAddBatchModal(true)}
-                  className="pill-button bg-brand-lime text-black text-xs">+ NEW JOB</button>
-              </div>
-              <div className="space-y-4">
-                {telemetry.filter(p => p.type === 'batch').length === 0 ? (
-                  <div className="text-white/20 italic py-12 text-center border border-dashed border-white/5 rounded-2xl">No batch jobs found</div>
-                ) : (
-                  telemetry.filter(p => p.type === 'batch').map(proc => (
-                    <div key={proc.id} className="flex items-center justify-between p-6 bg-white/5 rounded-2xl border border-white/5 hover:bg-white/10 transition-colors">
-                      <div>
-                        <div className="font-bold text-lg">{proc.name}</div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`w-2 h-2 rounded-full ${proc.status === 'finished' ? 'bg-green-500' : proc.status === 'running' ? 'bg-brand-lime animate-pulse' : 'bg-red-500'}`}></span>
-                          <span className="text-xs text-text-secondary uppercase tracking-widest">{proc.status}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-4">
-                        <button onClick={() => setSelectedProcess(proc)} className="pill-button bg-white/10 text-xs">VIEW LOGS</button>
-                        {proc.status !== 'running' && (
-                          <button onClick={() => handleStartService(proc.id)}
-                            className="pill-button bg-brand-lime text-black text-xs">RESTART</button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-            {showAddBatchModal && (
-              <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-8 z-50">
-                <div className="glass-card w-full max-w-2xl p-12 relative border-brand-orange/20 overflow-y-auto max-h-[90vh]">
-                  <button onClick={() => setShowAddBatchModal(false)}
-                    className="absolute top-8 right-8 text-text-secondary hover:text-white">✕</button>
-                  <h3 className="text-3xl font-bold mb-8 text-brand-orange">NEW BATCH JOB</h3>
-                  <BatchJobForm
-                    onCancel={() => setShowAddBatchModal(false)}
-                    onSubmit={async (config) => {
-                      await fetch(`${API}/processes`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          name: config.name, type: 'batch',
-                          input_config: config.input, output_config: config.output,
-                          codec_config: config.codec,
-                          ffmpeg_build_id: config.ffmpeg_build_id,
-                          filter_config: config.threads ? { advanced: { threads: config.threads } } : undefined,
-                        })
-                      })
-                      setShowAddBatchModal(false)
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
+          <ScheduledTasks API={API} taskExecutions={taskExecutions} />
 
         /* ════ SETTINGS ════ */
         ) : activeView === 'settings' ? (
