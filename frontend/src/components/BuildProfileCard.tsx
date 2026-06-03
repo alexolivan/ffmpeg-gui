@@ -45,13 +45,23 @@ function formatDate(iso: string | null): string {
   })
 }
 
-function formatOptions(options: Record<string, boolean>): string {
+function formatOptions(options: Record<string, boolean>, sdkPaths: Record<string, string> | null): string {
   return Object.entries(options)
     .filter(([, v]) => v)
     .map(([k]) => {
-      const labels: Record<string, string> = { libsrt: 'SRT', vaapi: 'VAAPI', ndi: 'NDI', decklink: 'DECKLINK', nvenc: 'NVENC' }
+      if (k === 'libsrt') return ''; // Skip SRT since it's already shown as a separate badge
+      if (k === 'ndi') {
+        const ver = sdkPaths?.ndi;
+        return ver ? `NDI ${ver}` : 'NDI';
+      }
+      if (k === 'decklink') {
+        const ver = sdkPaths?.decklink;
+        return ver ? `DECKLINK ${ver}` : 'DECKLINK';
+      }
+      const labels: Record<string, string> = { vaapi: 'VAAPI', nvenc: 'NVENC' }
       return labels[k] || k.toUpperCase()
     })
+    .filter(Boolean)
     .join(' · ')
 }
 
@@ -83,7 +93,7 @@ export default function BuildProfileCard({
               )}
               {build.build_options && (
                 <span className="text-xs text-text-secondary">
-                  {formatOptions(build.build_options)}
+                  {formatOptions(build.build_options, build.sdk_paths)}
                 </span>
               )}
             </div>

@@ -322,7 +322,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         <div className="flex gap-3 items-center">
           {availableBuilds.length > 0 && (
             <select
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm outline-none focus:border-brand-orange transition-all"
+              className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm outline-none focus:border-brand-orange transition-all truncate"
               value={config.ffmpeg_build_id ?? ''}
               onChange={e => handleBuildChange(e.target.value ? Number(e.target.value) : null)}
             >
@@ -335,7 +335,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             </select>
           )}
           {/* Stream toggles */}
-          <div className="flex items-center gap-4 bg-white/5 rounded-xl px-4 py-2.5 border border-white/10">
+          <div className="flex items-center gap-4 bg-white/5 rounded-xl px-4 py-2.5 border border-white/10 flex-shrink-0">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox" checked={config.has_video}
