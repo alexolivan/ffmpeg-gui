@@ -1440,25 +1440,6 @@ function App() {
                   </p>
                 </div>
               </div>
-
-              {/* Node Stats (Read Only) */}
-              <div className="glass-card p-8 border-white/5">
-                <h3 className="text-xl font-bold mb-6 text-text-secondary uppercase text-sm tracking-widest">System Info</h3>
-                <div className="grid grid-cols-3 gap-8">
-                  <div>
-                    <div className="text-[10px] uppercase text-text-secondary mb-1">Architecture</div>
-                    <div className="font-mono text-sm">x86_64 Linux</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-text-secondary mb-1">Active Profiles</div>
-                    <div className="font-mono text-sm">{builds.filter(b => b.status === 'ready').length}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-text-secondary mb-1">Backend V.</div>
-                    <div className="font-mono text-sm text-brand-lime">v1.2.0-stable</div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 
