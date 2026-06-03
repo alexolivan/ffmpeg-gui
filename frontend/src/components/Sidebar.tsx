@@ -11,6 +11,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, logoText = 'FF', logoPath, accentColor = '#FF6B00' }) => {
   const items = [
     { id: 'dashboard', icon: '🏠', label: 'Dashboard' },
+    { id: 'services', icon: '⚡', label: 'Services' },
     { id: 'batch', icon: '📅', label: 'Batch Jobs' },
     { id: 'settings', icon: '⚙️', label: 'Settings' },
     { id: 'tools', icon: '🛠️', label: 'Tools' },
@@ -41,15 +42,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, logoText = 
             <span className="hidden lg:block font-medium">{item.label}</span>
           </div>
         ))}
-      </div>
-
-      <div className="mt-auto">
-        <div 
-          className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-2xl cursor-pointer hover:bg-white/10 transition-colors"
-          onClick={() => onViewChange('settings')}
-        >
-          ⚙️
-        </div>
       </div>
     </div>
   );
