@@ -130,3 +130,73 @@ class SystemSettings(Base):
     accent_color = Column(String, default="#FF6B00")  # Default Brand Orange
 
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class ScheduledTask(Base):
+    __tablename__ = 'scheduled_tasks'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+
+    input_config = Column(JSON, nullable=False)
+    output_config = Column(JSON, nullable=False)
+    codec_config = Column(JSON, nullable=False)
+    filter_config = Column(JSON, nullable=True)
+    ffmpeg_build_id = Column(Integer, ForeignKey('ffmpeg_builds.id'), nullable=True)
+
+    schedule_type = Column(String, nullable=False)  # 'manual', 'one_shot', 'recurring'
+    schedule_cron = Column(String, nullable=True)
+    schedule_datetime = Column(DateTime, nullable=True)
+    next_run = Column(DateTime, nullable=True)
+
+    duration_type = Column(String, default='input_dependent')  # 'timer', 'end_time', 'input_dependent'
+    duration_seconds = Column(Integer, nullable=True)
+    duration_end_time = Column(DateTime, nullable=True)
+
+    retry_policy = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    executions = relationship("TaskExecution", back_populates="task", cascade="all, delete-orphan")
+
+
+class TaskExecution(Base):
+    __tablename__ = 'task_executions'
+
+    id = Column(Integer, primary_key=True)
+    task_id = Column(Integer, ForeignKey('scheduled_tasks.id'), nullable=False)
+    
+    status = Column(String, default='pending')  # 'pending', 'running', 'finished', 'error', 'stopped', 'interrupted'
+    pid = Column(Integer, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    stopped_at = Column(DateTime, nullable=True)
+    
+    duration_limit_seconds = Column(Integer, nullable=True)
+    retry_count = Column(Integer, default=0)
+
+    cpu_usage = Column(Integer, default=0)
+    ram_usage = Column(Integer, default=0)
+    bitrate = Column(String, default="0 kb/s")
+    fps = Column(String, default="0")
+    speed = Column(String, default="0x")
+
+    exit_code = Column(Integer, nullable=True)
+    error_message = Column(String, nullable=True)
+
+    task = relationship("ScheduledTask", back_populates="executions")
+    logs = relationship("TaskExecutionLog", back_populates="execution", cascade="all, delete-orphan")
+
+
+class TaskExecutionLog(Base):
+    __tablename__ = 'task_execution_logs'
+
+    id = Column(Integer, primary_key=True)
+    execution_id = Column(Integer, ForeignKey('task_executions.id'), nullable=False)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    level = Column(String)  # 'INFO', 'WARNING', 'ERROR'
+    message = Column(String)
+
+    execution = relationship("TaskExecution", back_populates="logs")
+
