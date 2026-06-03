@@ -47,6 +47,23 @@ function App() {
   const [selectedLinuxDistro, setSelectedLinuxDistro] = useState<'debian' | 'fedora' | 'arch'>('debian')
   const [validationResult, setValidationResult] = useState<{ buildId: number; output: string } | null>(null)
   const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number } | null>(null)
+  const [capabilities, setCapabilities] = useState<any>({
+    vaapi: { available: false, details: 'Loading...' },
+    nvenc: { available: false, details: 'Loading...' },
+    v4l2: { available: false, details: 'Loading...' },
+    alsa: { available: false, details: 'Loading...' },
+    decklink: { available: false, details: 'Loading...' }
+  })
+
+  const fetchCapabilities = async () => {
+    try {
+      const res = await fetch(`${API}/system/capabilities`)
+      const data = await res.json()
+      setCapabilities(data)
+    } catch (err) {
+      console.error("Error fetching system capabilities:", err)
+    }
+  }
 
   // ── Service CRUD & Actions Handlers ────────────────────────────
   const handleDeleteProcess = async (proc: any) => {
@@ -191,6 +208,7 @@ function App() {
     refreshBuilds()
     refreshDiskInfo()
     fetchSettings()
+    fetchCapabilities()
   }, [])
 
   const fetchSettings = async () => {
@@ -532,212 +550,140 @@ function App() {
               </div>
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              <div className="glass-card p-8 col-span-1 lg:col-span-2">
-                <h3 className="text-xl font-black mb-6">ACTIVE SERVICES (RUNNING)</h3>
-                <div className="space-y-6 mb-12">
-                  {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length === 0 ? (
-                    <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
-                      No running services
-                    </div>
-                  ) : (
-                    telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').map(proc => (
-                      <div key={proc.id} onClick={() => setSelectedProcess(proc)}
-                        className="flex items-center justify-between p-4 bg-brand-lime/5 rounded-2xl border border-brand-lime/10 cursor-pointer hover:bg-brand-lime/10 transition-colors">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-brand-lime animate-pulse"></span>
-                            <span className="font-bold text-white">{proc.name}</span>
-                            {proc.pending_changes && (
-                              <span className="text-[10px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse" title="Requires reboot to apply new configuration">
-                                PENDING REBOOT
-                              </span>
-                            )}
-                            {proc.auto_start && (
-                              <span className="text-[9px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-bold" title="Auto-starts on system boot">
-                                ⚡ BOOT
-                              </span>
-                            )}
-                            {proc.watchdog_enabled && (
-                              <span className="text-[9px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded font-bold" title="Monitored by system watchdog">
-                                🛡️ WATCHDOG
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-text-secondary">PID: {proc.pid || 'N/A'}</div>
-                        </div>
-                        <div className="flex gap-8">
-                          <div className="text-center">
-                            <div className="text-brand-lime font-mono font-bold">{proc.cpu}%</div>
-                            <div className="text-[10px] uppercase text-text-secondary">CPU</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-brand-orange font-mono font-bold">{proc.ram}MB</div>
-                            <div className="text-[10px] uppercase text-text-secondary">RAM</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingProcess(proc);
-                              }}
-                              className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
-                              title="Edit Service Settings"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCloneProcess(proc);
-                              }}
-                              className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
-                              title="Clone Service"
-                            >
-                              📋
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStopService(proc.id);
-                              }}
-                              className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center text-sm border border-red-500/20 text-red-400 transition-all hover:scale-105"
-                              title="Stop Service"
-                            >
-                              ⏹️
-                            </button>
-                          </div>
-                        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
+              {/* Column 1: Process Management & load */}
+              <div className="space-y-8">
+                {/* Process Management & Load metrics */}
+                <div className="glass-card p-8 border-brand-lime/10">
+                  <h3 className="text-xl font-black mb-6">SYSTEM STATS</h3>
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                      <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Active Services</div>
+                      <div className="font-black text-2xl text-brand-lime">
+                        {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length}
                       </div>
-                    ))
-                  )}
-                </div>
-
-                <h3 className="text-xl font-black mb-6 text-white/50">CONFIGURED SERVICES (INACTIVE)</h3>
-                <div className="space-y-6">
-                  {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length === 0 ? (
-                    <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
-                      No inactive services
                     </div>
-                  ) : (
-                    telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').map(proc => {
-                      const inputCfg = proc.input_config || {};
-                      const isNewFormat = 'input1' in inputCfg;
-                      const inputType = isNewFormat 
-                        ? (inputCfg.input1?.type || 'N/A') 
-                        : (inputCfg.type || 'N/A');
-                      const outputCfg = proc.output_config || {};
-                      const outputType = outputCfg.type || 'N/A';
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                      <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Active Batch Jobs</div>
+                      <div className="font-black text-2xl text-brand-orange">
+                        {telemetry.filter(p => p.type === 'batch' && p.status === 'running').length}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mb-8">
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                      <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Inactive Services</div>
+                      <div className="font-black text-2xl text-white/50">
+                        {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length}
+                      </div>
+                    </div>
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center col-span-1">
+                      <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Reboots Pending</div>
+                      <div className="font-black text-2xl text-red-400">
+                        {telemetry.filter(p => p.pending_changes).length}
+                      </div>
+                    </div>
+                  </div>
 
-                      return (
-                        <div key={proc.id} onClick={() => setSelectedProcess(proc)}
-                          className="flex items-center justify-between p-4 bg-white/2 opacity-75 hover:opacity-100 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full bg-white/20"></span>
-                              <span className="font-bold text-white/80">{proc.name}</span>
-                              {proc.auto_start && (
-                                <span className="text-[9px] bg-blue-500/20 text-blue-400/80 px-2 py-0.5 rounded font-bold" title="Auto-starts on system boot">
-                                  ⚡ BOOT
-                                </span>
-                              )}
-                              {proc.watchdog_enabled && (
-                                <span className="text-[9px] bg-purple-500/20 text-purple-400/80 px-2 py-0.5 rounded font-bold" title="Monitored by system watchdog">
-                                  🛡️ WATCHDOG
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-text-secondary">
-                              {inputType.toUpperCase()} ➔ {outputType.toUpperCase()}
-                            </div>
-                          </div>
-                          <div className="flex gap-4 items-center">
-                            <div className="flex gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleStartService(proc.id);
-                                }}
-                                className="w-8 h-8 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center text-sm border border-brand-lime/20 text-brand-lime transition-all hover:scale-105"
-                                title="Start Service"
-                              >
-                                ▶️
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingProcess(proc);
-                                }}
-                                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
-                                title="Edit Service Settings"
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCloneProcess(proc);
-                                }}
-                                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
-                                title="Clone Service"
-                              >
-                                📋
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteProcess(proc);
-                                }}
-                                className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center text-sm border border-red-500/20 text-red-400 transition-all hover:scale-105"
-                                title="Delete Service"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
+                  <h4 className="text-xs font-black uppercase text-text-secondary tracking-wider mb-4">Node Resources Load</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-text-secondary">CPU Node Load</span>
+                        <span className="text-brand-lime font-mono font-bold">
+                          {telemetry.reduce((acc, p) => acc + (p.status === 'running' ? (p.cpu || 0) : 0), 0)}%
+                        </span>
+                      </div>
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-brand-lime transition-all duration-500" 
+                          style={{ width: `${Math.min(100, telemetry.reduce((acc, p) => acc + (p.status === 'running' ? (p.cpu || 0) : 0), 0))}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-text-secondary">Memory Consumption</span>
+                        <span className="text-brand-orange font-mono font-bold">
+                          {telemetry.reduce((acc, p) => acc + (p.status === 'running' ? (p.ram || 0) : 0), 0)} MB
+                        </span>
+                      </div>
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-brand-orange transition-all duration-500" 
+                          style={{ width: `${Math.min(100, (telemetry.reduce((acc, p) => acc + (p.status === 'running' ? (p.ram || 0) : 0), 0) / 16384) * 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="glass-card p-8">
-                <h3 className="text-xl font-semibold mb-6">System Load</h3>
-                <div className="space-y-8">
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <span className="text-text-secondary">Total CPU</span>
-                      <span className="text-brand-lime">12%</span>
+              {/* Column 2: Hardware Capabilities Detection */}
+              <div className="glass-card p-8 border-brand-orange/10">
+                <h3 className="text-xl font-black mb-6">HARDWARE DETECTION</h3>
+                <p className="text-xs text-text-secondary mb-8 leading-relaxed">
+                  Real-time introspection of host media acceleration capabilities, sound servers, and capture hardware devices.
+                </p>
+                <div className="space-y-6">
+                  {Object.entries(capabilities || {}).map(([key, value]: [string, any]) => (
+                    <div key={key} className="flex flex-col gap-1 p-3 bg-white/2 border border-white/5 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs uppercase text-white font-mono">{key}</span>
+                        <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                          value.available
+                            ? key === 'decklink'
+                              ? 'bg-blue-500/20 text-blue-400'
+                              : 'bg-brand-lime/25 text-brand-lime'
+                            : 'bg-white/5 text-white/40'
+                        }`}>
+                          {value.available ? (key === 'decklink' ? 'SIMULATED' : 'AVAILABLE') : 'UNAVAILABLE'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-text-secondary mt-1">{value.details}</p>
                     </div>
-                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-lime w-[12%] transition-all"></div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Column 3: System Info & Scheduler status */}
+              <div className="space-y-8">
+                {/* System Info */}
+                <div className="glass-card p-8 border-white/5">
+                  <h3 className="text-xl font-black mb-6">SYSTEM INFO</h3>
+                  <div className="space-y-4">
+                    <div className="flex justify-between py-2 border-b border-white/5">
+                      <span className="text-xs text-text-secondary">Host OS & Arch</span>
+                      <span className="text-xs font-mono font-bold text-white">Linux x86_64</span>
                     </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <span className="text-text-secondary">Memory Usage</span>
-                      <span className="text-brand-orange">2.4GB / 16GB</span>
+                    <div className="flex justify-between py-2 border-b border-white/5">
+                      <span className="text-xs text-text-secondary">Active Profiles</span>
+                      <span className="text-xs font-mono font-bold text-brand-lime text-right">
+                        {builds.filter(b => b.status === 'ready').length}
+                      </span>
                     </div>
-                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-orange w-[15%] transition-all"></div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-xs text-text-secondary">Backend API Version</span>
+                      <span className="text-xs font-mono font-bold text-brand-lime text-right">v1.2.0-stable</span>
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-3 mt-12">
-                  <button onClick={() => setShowAddModal(true)}
-                    className="pill-button bg-brand-lime text-black w-full py-4">+ NEW SERVICE</button>
-                  <button onClick={() => importFileRef.current?.click()}
-                    className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white w-full py-4">📥 IMPORT PROFILE</button>
-                  <input 
-                    type="file" 
-                    ref={importFileRef} 
-                    className="hidden" 
-                    accept=".json" 
-                    onChange={handleImportFileChange} 
-                  />
+
+                {/* Scheduler status banner placeholder */}
+                <div className="glass-card p-8 border-purple-500/10 bg-purple-500/2">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-2xl">📅</span>
+                    <h3 className="text-lg font-black text-white/90">SCHEDULER STATUS</h3>
+                  </div>
+                  <div className="p-3 bg-purple-500/10 border border-purple-500/25 rounded-2xl">
+                    <div className="text-[10px] uppercase font-black text-purple-400 tracking-wider mb-1">
+                      CRON DAEMON
+                    </div>
+                    <div className="text-xs text-white/80 font-bold">DISABLED / NOT CONFIGURED</div>
+                    <div className="text-[10px] text-text-secondary mt-2 leading-relaxed">
+                      Task program and queue scheduling is set to run in Phase 2. Telemetry feeds will update dynamically when active.
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
