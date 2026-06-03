@@ -294,7 +294,7 @@ async def auto_start_services():
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Startup: Checking and cleaning up stale build profiles...")
+    logger.info("Startup: Checking and cleaning up stale build profiles and processes...")
     try:
         with SessionLocal() as db:
             stale_builds = db.query(FfmpegBuild).filter(FfmpegBuild.status == "building").all()
@@ -302,9 +302,20 @@ async def startup_event():
                 build.status = "failed"
                 build.build_log_summary = "Build aborted (server restarted)"
                 logger.info(f"Cleaned up stale build profile ID {build.id} on startup.")
+            
+            stale_processes = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
+            for p in stale_processes:
+                p.status = "stopped"
+                p.pid = None
+                p.cpu_usage = 0
+                p.ram_usage = 0
+                p.fps = "0"
+                p.bitrate = "0 kb/s"
+                p.speed = "0x"
+                logger.info(f"Cleaned up stale running process '{p.name}' (ID: {p.id}) on startup.")
             db.commit()
     except Exception as e:
-        logger.error(f"Failed to clean up stale builds on startup: {e}")
+        logger.error(f"Failed to clean up stale builds/processes on startup: {e}")
 
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())

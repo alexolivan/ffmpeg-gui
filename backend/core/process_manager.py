@@ -88,21 +88,28 @@ class ProcessManager:
     async def stop_process(self, process_id: int, graceful: bool = True):
         proc = self.processes.get(process_id)
         self.restart_counts.pop(process_id, None)
-        if not proc:
-            return
-
-        if graceful:
-            # Send 'q' to stdin for FFMPEG graceful stop
-            if proc.stdin:
-                proc.stdin.write(b'q')
-                await proc.stdin.drain()
+        
+        if proc:
+            if graceful:
+                # Send 'q' to stdin for FFMPEG graceful stop
+                if proc.stdin:
+                    proc.stdin.write(b'q')
+                    await proc.stdin.drain()
+                
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=10.0)
+                except asyncio.TimeoutError:
+                    proc.terminate()
+            else:
+                proc.kill()
             
             try:
-                await asyncio.wait_for(proc.wait(), timeout=10.0)
-            except asyncio.TimeoutError:
-                proc.terminate()
-        else:
-            proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
+
+            if process_id in self.processes:
+                del self.processes[process_id]
 
         with self.db_session_factory() as session:
             from database.models import MediaProcess
@@ -110,10 +117,13 @@ class ProcessManager:
             if media_proc:
                 media_proc.status = 'stopped'
                 media_proc.pid = None
+                media_proc.cpu_usage = 0
+                media_proc.ram_usage = 0
+                media_proc.fps = "0"
+                media_proc.bitrate = "0 kb/s"
+                media_proc.speed = "0x"
                 media_proc.last_stop = datetime.utcnow()
                 session.commit()
-        
-        del self.processes[process_id]
 
     def _build_ffmpeg_cmd(self, media_proc, ffmpeg_bin):
         """Build the ffmpeg command line from the process configuration.
