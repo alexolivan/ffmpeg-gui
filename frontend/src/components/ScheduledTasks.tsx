@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ProcessConfigForm from './ProcessConfigForm';
 
 interface ScheduledTasksProps {
   API: string;
@@ -20,33 +21,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const [importJson, setImportJson] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
 
-  // Available builds
-  const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
-
   // Logs autoscroll reference
   const logsContainerRef = useRef<HTMLDivElement>(null);
-
-  // Task form state
-  const [taskForm, setTaskForm] = useState({
-    name: '',
-    is_active: true,
-    input_path: '',
-    has_video: true,
-    has_audio: false,
-    output_path: '',
-    vcodec: 'libx264',
-    acodec: 'aac',
-    vbitrate: '4000k',
-    ffmpeg_build_id: '' as string | number,
-    threads: 0,
-    schedule_type: 'manual', // manual, one_shot, recurring
-    schedule_cron: '*/30 * * * *',
-    schedule_datetime: '',
-    duration_type: 'input_dependent', // input_dependent, timer
-    duration_seconds: 60,
-    retry_max: 3,
-    retry_delay: 10
-  });
 
   const fetchTasks = async () => {
     try {
@@ -62,24 +38,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     }
   };
 
-  const fetchBuilds = async () => {
-    try {
-      const r = await fetch(`${API}/builds`);
-      if (r.ok) {
-        const data = await r.json();
-        const ready = data.filter((b: any) => b.status === 'ready');
-        setAvailableBuilds(ready);
-        const def = ready.find((b: any) => b.is_default);
-        if (def && !taskForm.ffmpeg_build_id) {
-          setTaskForm(prev => ({ ...prev, ffmpeg_build_id: def.id }));
-        }
-      }
-    } catch {}
-  };
-
   useEffect(() => {
     fetchTasks();
-    fetchBuilds();
   }, []);
 
   // Poll logs when viewing logs modal
@@ -125,48 +85,18 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   }, [selectedTaskDetails]);
 
   // Handle Save (Create / Update)
-  const handleSaveTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const payload = {
-      name: taskForm.name,
-      is_active: taskForm.is_active,
-      input_config: {
-        input1: {
-          type: (taskForm.input_path.startsWith('testsrc') || taskForm.input_path.startsWith('sine')) ? 'lavfi' : 'file',
-          path: taskForm.input_path
-        },
-        has_video: taskForm.has_video,
-        has_audio: taskForm.has_audio
-      },
-      output_config: {
-        type: 'file',
-        path: taskForm.output_path
-      },
-      codec_config: {
-        vcodec: taskForm.vcodec,
-        acodec: taskForm.acodec,
-        bitrate: taskForm.vbitrate
-      },
-      filter_config: taskForm.threads ? { advanced: { threads: taskForm.threads } } : null,
-      ffmpeg_build_id: taskForm.ffmpeg_build_id ? Number(taskForm.ffmpeg_build_id) : null,
-      schedule_type: taskForm.schedule_type,
-      schedule_cron: taskForm.schedule_type === 'recurring' ? taskForm.schedule_cron : null,
-      schedule_datetime: taskForm.schedule_type === 'one_shot' && taskForm.schedule_datetime ? new Date(taskForm.schedule_datetime).toISOString() : null,
-      duration_type: taskForm.duration_type,
-      duration_seconds: taskForm.duration_type === 'timer' ? Number(taskForm.duration_seconds) : null,
-      retry_policy: {
-        max_retries: Number(taskForm.retry_max),
-        retry_delay: Number(taskForm.retry_delay)
-      }
+  const handleSaveTask = async (payload: any) => {
+    const finalPayload = {
+      ...payload,
+      is_active: editingTask ? editingTask.is_active : true
     };
-
     try {
       const url = editingTask ? `${API}/tasks/${editingTask.id}` : `${API}/tasks`;
       const method = editingTask ? 'PUT' : 'POST';
       const r = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(finalPayload)
       });
       if (!r.ok) {
         const errData = await r.json();
@@ -182,26 +112,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
   const handleEditClick = (task: any) => {
     setEditingTask(task);
-    setTaskForm({
-      name: task.name,
-      is_active: task.is_active,
-      input_path: task.input_config?.input1?.path || '',
-      has_video: task.input_config?.has_video !== false,
-      has_audio: !!task.input_config?.has_audio,
-      output_path: task.output_config?.path || '',
-      vcodec: task.codec_config?.vcodec || 'libx264',
-      acodec: task.codec_config?.acodec || 'aac',
-      vbitrate: task.codec_config?.bitrate || '4000k',
-      ffmpeg_build_id: task.ffmpeg_build_id || '',
-      threads: task.filter_config?.advanced?.threads || 0,
-      schedule_type: task.schedule_type,
-      schedule_cron: task.schedule_cron || '*/30 * * * *',
-      schedule_datetime: task.schedule_datetime ? task.schedule_datetime.substring(0, 16) : '',
-      duration_type: task.duration_type || 'input_dependent',
-      duration_seconds: task.duration_seconds || 60,
-      retry_max: task.retry_policy?.max_retries || 3,
-      retry_delay: task.retry_policy?.retry_delay || 10
-    });
     setShowAddModal(true);
   };
 
@@ -332,26 +242,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           <button 
             onClick={() => {
               setEditingTask(null);
-              setTaskForm({
-                name: '',
-                is_active: true,
-                input_path: '',
-                has_video: true,
-                has_audio: false,
-                output_path: '',
-                vcodec: 'libx264',
-                acodec: 'aac',
-                vbitrate: '4000k',
-                ffmpeg_build_id: availableBuilds.find(b => b.is_default)?.id || '',
-                threads: 0,
-                schedule_type: 'manual',
-                schedule_cron: '*/30 * * * *',
-                schedule_datetime: '',
-                duration_type: 'input_dependent',
-                duration_seconds: 60,
-                retry_max: 3,
-                retry_delay: 10
-              });
               setShowAddModal(true);
             }}
             className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20"
@@ -639,11 +529,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
       {/* CREATE / EDIT TASK MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-6 z-40">
-          <div className="glass-card w-full max-w-3xl p-8 relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-6 z-40 overflow-y-auto">
+          <div className="glass-card w-full max-w-4xl p-6 relative my-8">
             <button 
-              onClick={() => setShowAddModal(false)}
-              className="absolute top-6 right-6 text-text-secondary hover:text-white text-xl"
+              onClick={() => {
+                setShowAddModal(false);
+                setEditingTask(null);
+              }}
+              className="absolute top-6 right-6 text-text-secondary hover:text-white text-xl z-50"
             >
               ✕
             </button>
@@ -652,244 +545,15 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               {editingTask ? 'Edit Scheduled Task' : 'New Scheduled Task'}
             </h3>
 
-            <form onSubmit={handleSaveTask} className="space-y-6">
-              
-              {/* Task Name */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-text-secondary uppercase tracking-widest">Task Job Name</label>
-                <input 
-                  type="text" required
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-lime transition-all"
-                  placeholder="e.g. Transcode Security Stream Hourly"
-                  value={taskForm.name}
-                  onChange={e => setTaskForm({...taskForm, name: e.target.value})}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* Schedule Type */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-text-secondary uppercase tracking-widest">Trigger Mechanism</label>
-                  <select
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none"
-                    value={taskForm.schedule_type}
-                    onChange={e => setTaskForm({...taskForm, schedule_type: e.target.value})}
-                  >
-                    <option value="manual">Manual Trigger Only</option>
-                    <option value="one_shot">One-shot (Target DateTime)</option>
-                    <option value="recurring">Recurring (Cron Schedule)</option>
-                  </select>
-                </div>
-
-                {/* Schedule details based on selection */}
-                {taskForm.schedule_type === 'recurring' && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-brand-lime uppercase tracking-widest">Cron Expression</label>
-                    <input 
-                      type="text" required
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-lime transition-all text-brand-lime font-mono"
-                      placeholder="e.g. */15 * * * *"
-                      value={taskForm.schedule_cron}
-                      onChange={e => setTaskForm({...taskForm, schedule_cron: e.target.value})}
-                    />
-                    <span className="text-[10px] text-text-secondary">Minute, Hour, Day, Month, Weekday format.</span>
-                  </div>
-                )}
-
-                {taskForm.schedule_type === 'one_shot' && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-brand-orange uppercase tracking-widest">Target Date & Time</label>
-                    <input 
-                      type="datetime-local" required
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-orange transition-all text-white"
-                      value={taskForm.schedule_datetime}
-                      onChange={e => setTaskForm({...taskForm, schedule_datetime: e.target.value})}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Input Config */}
-              <div className="glass-card p-6 bg-white/5 border-white/5 space-y-4">
-                <h4 className="text-sm font-black uppercase text-white tracking-widest">Input Stream / File</h4>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-text-secondary uppercase">Source Stream Path or lavfi Pattern</label>
-                  <input 
-                    type="text" required
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-lime transition-all font-mono"
-                    placeholder="e.g. /media/storage/video.mkv OR testsrc=duration=5"
-                    value={taskForm.input_path}
-                    onChange={e => setTaskForm({...taskForm, input_path: e.target.value})}
-                  />
-                </div>
-                <div className="flex gap-6">
-                  <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-                    <input 
-                      type="checkbox"
-                      className="accent-brand-lime"
-                      checked={taskForm.has_video}
-                      onChange={e => setTaskForm({...taskForm, has_video: e.target.checked})}
-                    />
-                    Includes Video
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-                    <input 
-                      type="checkbox"
-                      className="accent-brand-lime"
-                      checked={taskForm.has_audio}
-                      onChange={e => setTaskForm({...taskForm, has_audio: e.target.checked})}
-                    />
-                    Includes Audio
-                  </label>
-                </div>
-              </div>
-
-              {/* Codecs & Output */}
-              <div className="glass-card p-6 bg-white/5 border-white/5 space-y-4">
-                <h4 className="text-sm font-black uppercase text-white tracking-widest">Transcoding & Target</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-text-secondary uppercase">Video Codec</label>
-                    <select
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none"
-                      value={taskForm.vcodec}
-                      onChange={e => setTaskForm({...taskForm, vcodec: e.target.value})}
-                    >
-                      <option value="libx264">H.264 (libx264)</option>
-                      <option value="libx265">H.265 (libx265)</option>
-                      <option value="copy">Copy Video Stream</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-text-secondary uppercase">Audio Codec</label>
-                    <select
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none"
-                      value={taskForm.acodec}
-                      onChange={e => setTaskForm({...taskForm, acodec: e.target.value})}
-                    >
-                      <option value="aac">AAC</option>
-                      <option value="mp3">MP3</option>
-                      <option value="copy">Copy Audio Stream</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-text-secondary uppercase">Video Bitrate</label>
-                    <input 
-                      type="text" required
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-lime transition-all"
-                      placeholder="e.g. 4000k or 6M"
-                      value={taskForm.vbitrate}
-                      onChange={e => setTaskForm({...taskForm, vbitrate: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-text-secondary uppercase">Destination File Path</label>
-                    <input 
-                      type="text" required
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-lime transition-all font-mono"
-                      placeholder="e.g. /media/storage/output.mp4"
-                      value={taskForm.output_path}
-                      onChange={e => setTaskForm({...taskForm, output_path: e.target.value})}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Extra Limits / Watchdog */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-text-secondary uppercase">FFmpeg Build</label>
-                  <select
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none"
-                    value={taskForm.ffmpeg_build_id}
-                    onChange={e => setTaskForm({...taskForm, ffmpeg_build_id: e.target.value})}
-                  >
-                    <option value="">Default Build</option>
-                    {availableBuilds.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-text-secondary uppercase">CPU Threads (0=all)</label>
-                  <input 
-                    type="number" min="0" max="64"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-lime transition-all"
-                    value={taskForm.threads || ''}
-                    onChange={e => setTaskForm({...taskForm, threads: parseInt(e.target.value) || 0})}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-text-secondary uppercase">Watchdog Timeout</label>
-                  <select
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none"
-                    value={taskForm.duration_type}
-                    onChange={e => setTaskForm({...taskForm, duration_type: e.target.value})}
-                  >
-                    <option value="input_dependent">Stream End / Input Dependent</option>
-                    <option value="timer">Fixed Timer (Seconds)</option>
-                  </select>
-                </div>
-              </div>
-
-              {taskForm.duration_type === 'timer' && (
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-brand-orange uppercase">Execution Timer (Seconds)</label>
-                  <input 
-                    type="number" min="1" required
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-orange transition-all"
-                    value={taskForm.duration_seconds}
-                    onChange={e => setTaskForm({...taskForm, duration_seconds: parseInt(e.target.value) || 60})}
-                  />
-                </div>
-              )}
-
-              {/* Retry Policy */}
-              <div className="glass-card p-6 bg-white/5 border-white/5 space-y-4">
-                <h4 className="text-sm font-black uppercase text-white tracking-widest">Retry Policy</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-text-secondary uppercase">Max Retries</label>
-                    <input 
-                      type="number" min="0" max="10"
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-lime transition-all"
-                      value={taskForm.retry_max}
-                      onChange={e => setTaskForm({...taskForm, retry_max: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-text-secondary uppercase">Retry Delay (Seconds)</label>
-                    <input 
-                      type="number" min="1" max="300"
-                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-lime transition-all"
-                      value={taskForm.retry_delay}
-                      onChange={e => setTaskForm({...taskForm, retry_delay: parseInt(e.target.value) || 5})}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="flex gap-4 pt-4">
-                <button 
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl font-bold hover:bg-white/10 transition-all text-sm"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 py-3 bg-brand-lime text-black rounded-xl font-black shadow-lg shadow-brand-lime/20 text-sm"
-                >
-                  Save Task
-                </button>
-              </div>
-
-            </form>
+            <ProcessConfigForm
+              isTask={true}
+              initialConfig={editingTask}
+              onCancel={() => {
+                setShowAddModal(false);
+                setEditingTask(null);
+              }}
+              onSubmit={handleSaveTask}
+            />
           </div>
         </div>
       )}

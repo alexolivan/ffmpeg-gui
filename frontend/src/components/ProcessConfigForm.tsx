@@ -50,6 +50,15 @@ interface ProcessConfig {
   auto_start: boolean;
   watchdog_enabled: boolean;
   watchdog_retries: number;
+
+  // Task scheduling
+  schedule_type: string;
+  schedule_cron: string;
+  schedule_datetime: string;
+  duration_type: string;
+  duration_seconds: number;
+  retry_max: number;
+  retry_delay: number;
 }
 
 interface ProcessConfigFormProps {
@@ -57,11 +66,12 @@ interface ProcessConfigFormProps {
   onSubmit: (config: any) => void;
   onSaveAs?: (config: any) => void;
   initialConfig?: any;
+  isTask?: boolean;
 }
 
 // ── Component ────────────────────────────────────────────────────
 
-const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit, onSaveAs, initialConfig }) => {
+const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit, onSaveAs, initialConfig, isTask = false }) => {
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
   const [selectedBuildOptions, setSelectedBuildOptions] = useState<Record<string, boolean> | undefined>();
   const [activeSection, setActiveSection] = useState<string>('inputs');
@@ -111,6 +121,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         auto_start: !!initialConfig.auto_start,
         watchdog_enabled: !!initialConfig.watchdog_enabled,
         watchdog_retries: initialConfig.watchdog_retries ?? 5,
+        schedule_type: initialConfig.schedule_type || 'manual',
+        schedule_cron: initialConfig.schedule_cron || '*/30 * * * *',
+        schedule_datetime: initialConfig.schedule_datetime ? initialConfig.schedule_datetime.substring(0, 16) : '',
+        duration_type: initialConfig.duration_type || 'input_dependent',
+        duration_seconds: initialConfig.duration_seconds ?? 60,
+        retry_max: initialConfig.retry_policy?.max_retries ?? 3,
+        retry_delay: initialConfig.retry_policy?.retry_delay ?? 10
       };
     }
     return {
@@ -136,6 +153,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       auto_start: false,
       watchdog_enabled: false,
       watchdog_retries: 5,
+      schedule_type: 'manual',
+      schedule_cron: '*/30 * * * *',
+      schedule_datetime: '',
+      duration_type: 'input_dependent',
+      duration_seconds: 60,
+      retry_max: 3,
+      retry_delay: 10
     };
   };
 
@@ -180,7 +204,6 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     // Transform to API-compatible structure
     const payload = {
       name: config.name,
-      type: 'service', // Or appropriate type
       ffmpeg_build_id: config.ffmpeg_build_id,
       input_config: {
         has_video: config.has_video,
@@ -206,9 +229,21 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         framerate: config.filters.framerate,
         advanced: config.filters.advanced,
       },
-      auto_start: config.auto_start,
-      watchdog_enabled: config.watchdog_enabled,
-      watchdog_retries: config.watchdog_retries,
+      ...(isTask ? {
+        schedule_type: config.schedule_type,
+        schedule_cron: config.schedule_type === 'recurring' ? config.schedule_cron : null,
+        schedule_datetime: config.schedule_type === 'one_shot' && config.schedule_datetime ? new Date(config.schedule_datetime).toISOString() : null,
+        duration_type: config.duration_type,
+        duration_seconds: config.duration_type === 'timer' ? Number(config.duration_seconds) : null,
+        retry_policy: {
+          max_retries: Number(config.retry_max),
+          retry_delay: Number(config.retry_delay)
+        }
+      } : {
+        auto_start: config.auto_start,
+        watchdog_enabled: config.watchdog_enabled,
+        watchdog_retries: config.watchdog_retries,
+      })
     };
     onSubmit(payload);
   };
@@ -217,7 +252,6 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     if (!onSaveAs) return;
     const payload = {
       name: `${config.name} (Copy)`,
-      type: 'service',
       ffmpeg_build_id: config.ffmpeg_build_id,
       input_config: {
         has_video: config.has_video,
@@ -243,9 +277,21 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         framerate: config.filters.framerate,
         advanced: config.filters.advanced,
       },
-      auto_start: config.auto_start,
-      watchdog_enabled: config.watchdog_enabled,
-      watchdog_retries: config.watchdog_retries,
+      ...(isTask ? {
+        schedule_type: config.schedule_type,
+        schedule_cron: config.schedule_type === 'recurring' ? config.schedule_cron : null,
+        schedule_datetime: config.schedule_type === 'one_shot' && config.schedule_datetime ? new Date(config.schedule_datetime).toISOString() : null,
+        duration_type: config.duration_type,
+        duration_seconds: config.duration_type === 'timer' ? Number(config.duration_seconds) : null,
+        retry_policy: {
+          max_retries: Number(config.retry_max),
+          retry_delay: Number(config.retry_delay)
+        }
+      } : {
+        auto_start: config.auto_start,
+        watchdog_enabled: config.watchdog_enabled,
+        watchdog_retries: config.watchdog_retries,
+      })
     };
     onSaveAs(payload);
   };
@@ -305,7 +351,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     { id: 'encoding', label: 'Encoding', icon: '⚙️' },
     { id: 'filters', label: 'Filters', icon: '🎛️' },
     { id: 'output', label: 'Destination', icon: '📤' },
-    { id: 'system', label: 'System & Watchdog', icon: '🛡️' },
+    { id: 'system', label: isTask ? 'Schedule & Limits' : 'System & Watchdog', icon: '🛡️' },
   ];
 
   return (
@@ -315,7 +361,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         <input
           type="text"
           className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all text-lg font-medium"
-          placeholder="Service name (e.g. Primary Encoder Node-01)"
+          placeholder={isTask ? "Task name (e.g. Daily Transcode of Stream)" : "Service name (e.g. Primary Encoder Node-01)"}
           value={config.name}
           onChange={e => setConfig({ ...config, name: e.target.value })}
         />
@@ -533,89 +579,190 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         {/* ═══ SYSTEM & WATCHDOG SECTION ═══ */}
         {activeSection === 'system' && (
           <div className="space-y-4 animate-in fade-in duration-300">
-            <div className="glass-card p-4 !rounded-2xl space-y-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-2 h-2 rounded-full bg-brand-lime" />
-                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Process Lifecycle Settings</h4>
-              </div>
-
-              {/* Auto Start Toggle */}
-              <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium text-white">Auto-start on boot</span>
-                  <span className="text-xs text-text-secondary">Launch this service automatically when the application starts.</span>
+            {isTask ? (
+              <div className="glass-card p-4 !rounded-2xl space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-2 h-2 rounded-full bg-brand-lime" />
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Trigger & Scheduling</h4>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={config.auto_start}
-                    onChange={e => setConfig({ ...config, auto_start: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
-                </label>
-              </div>
 
-              {/* Watchdog Toggle */}
-              <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium text-white">Enable Watchdog</span>
-                  <span className="text-xs text-text-secondary">Monitor process health and auto-restart on unexpected crashes.</span>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={config.watchdog_enabled}
-                    onChange={e => setConfig({ ...config, watchdog_enabled: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
-                </label>
-              </div>
-
-              {/* Watchdog Retries */}
-              {config.watchdog_enabled && (
-                <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-3 animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium text-white">Infinite Restart Attempts</span>
-                      <span className="text-xs text-text-secondary">Keep trying to restart the process indefinitely.</span>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={config.watchdog_retries === -1}
-                        onChange={e => setConfig({
-                          ...config,
-                          watchdog_retries: e.target.checked ? -1 : 5
-                        })}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
-                    </label>
+                {/* Trigger Mechanism */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Trigger Mechanism</label>
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      value={config.schedule_type}
+                      onChange={e => setConfig({...config, schedule_type: e.target.value})}
+                    >
+                      <option value="manual">Manual Trigger Only</option>
+                      <option value="one_shot">One-shot (Target DateTime)</option>
+                      <option value="recurring">Recurring (Cron Schedule)</option>
+                    </select>
                   </div>
 
-                  {config.watchdog_retries !== -1 && (
-                    <div className="flex items-center gap-3 pt-2 border-t border-white/5 animate-in fade-in duration-200">
-                      <label className="text-xs font-bold uppercase tracking-wider text-text-secondary block">
-                        Maximum consecutive retries:
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none w-24 focus:border-brand-lime"
-                        value={config.watchdog_retries}
-                        onChange={e => setConfig({
-                          ...config,
-                          watchdog_retries: Math.max(1, parseInt(e.target.value) || 1)
-                        })}
+                  {/* Cron Expression (Recurring) */}
+                  {config.schedule_type === 'recurring' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-brand-lime tracking-wider block">Cron Expression</label>
+                      <input 
+                        type="text" required
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none focus:border-brand-lime transition-all text-brand-lime font-mono"
+                        placeholder="e.g. */15 * * * *"
+                        value={config.schedule_cron}
+                        onChange={e => setConfig({...config, schedule_cron: e.target.value})}
+                      />
+                    </div>
+                  )}
+
+                  {/* One-shot DateTime */}
+                  {config.schedule_type === 'one_shot' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-brand-orange tracking-wider block">Target Date & Time</label>
+                      <input 
+                        type="datetime-local" required
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none focus:border-brand-orange transition-all text-white"
+                        value={config.schedule_datetime}
+                        onChange={e => setConfig({...config, schedule_datetime: e.target.value})}
                       />
                     </div>
                   )}
                 </div>
-              )}
-            </div>
+
+                {/* Task duration limit */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-white/5">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Duration Type</label>
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      value={config.duration_type}
+                      onChange={e => setConfig({...config, duration_type: e.target.value})}
+                    >
+                      <option value="input_dependent">Input Dependent (FFmpeg processes naturally)</option>
+                      <option value="timer">Max Duration Timer</option>
+                    </select>
+                  </div>
+
+                  {config.duration_type === 'timer' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Duration Limit (Seconds)</label>
+                      <input
+                        type="number" min="1"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                        value={config.duration_seconds}
+                        onChange={e => setConfig({...config, duration_seconds: Number(e.target.value)})}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Retry policy */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-white/5">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Maximum Retries on Failure</label>
+                    <input
+                      type="number" min="0" max="10"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      value={config.retry_max}
+                      onChange={e => setConfig({...config, retry_max: Number(e.target.value)})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Retry Delay (Seconds)</label>
+                    <input
+                      type="number" min="1" max="300"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      value={config.retry_delay}
+                      onChange={e => setConfig({...config, retry_delay: Number(e.target.value)})}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="glass-card p-4 !rounded-2xl space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-2 h-2 rounded-full bg-brand-lime" />
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Process Lifecycle Settings</h4>
+                </div>
+
+                {/* Auto Start Toggle */}
+                <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium text-white">Auto-start on boot</span>
+                    <span className="text-xs text-text-secondary">Launch this service automatically when the application starts.</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={config.auto_start}
+                      onChange={e => setConfig({ ...config, auto_start: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+                  </label>
+                </div>
+
+                {/* Watchdog Toggle */}
+                <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium text-white">Enable Watchdog</span>
+                    <span className="text-xs text-text-secondary">Monitor process health and auto-restart on unexpected crashes.</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={config.watchdog_enabled}
+                      onChange={e => setConfig({ ...config, watchdog_enabled: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+                  </label>
+                </div>
+
+                {/* Watchdog Retries */}
+                {config.watchdog_enabled && (
+                  <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium text-white">Infinite Restart Attempts</span>
+                        <span className="text-xs text-text-secondary">Keep trying to restart the process indefinitely.</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={config.watchdog_retries === -1}
+                          onChange={e => setConfig({
+                            ...config,
+                            watchdog_retries: e.target.checked ? -1 : 5
+                          })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+                      </label>
+                    </div>
+
+                    {config.watchdog_retries !== -1 && (
+                      <div className="flex items-center gap-3 pt-2 border-t border-white/5 animate-in fade-in duration-200">
+                        <label className="text-xs font-bold uppercase tracking-wider text-text-secondary block">
+                          Maximum consecutive retries:
+                         </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none w-24 focus:border-brand-lime"
+                          value={config.watchdog_retries}
+                          onChange={e => setConfig({
+                            ...config,
+                            watchdog_retries: Math.max(1, parseInt(e.target.value) || 1)
+                          })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ═══ ADVANCED FFMPEG FLAGS ═══ */}
             <div className="glass-card p-4 !rounded-2xl space-y-4">
@@ -784,7 +931,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           disabled={!config.name.trim()}
           className="flex-1 py-3 bg-brand-lime text-black rounded-xl font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-sm shadow-xl shadow-brand-lime/20 disabled:opacity-30 disabled:hover:scale-100"
         >
-          {initialConfig ? 'Save Changes' : 'Deploy Service'}
+          {initialConfig ? 'Save Changes' : (isTask ? 'Create Task' : 'Deploy Service')}
         </button>
         {initialConfig && onSaveAs && (
           <button
