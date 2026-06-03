@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
 from database.db import init_db, get_db, SessionLocal
-from database.models import FfmpegBuild, MediaProcess, ProcessLog
+from database.models import FfmpegBuild, MediaProcess, ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog
 from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
@@ -50,6 +50,13 @@ process_manager = ProcessManager(db_session_factory=SessionLocal)
 preview_manager = PreviewManager()
 build_manager = BuildManager(builds_root="./ffmpeg_builds")
 sdk_manager = SdkManager(workspace_root=".")
+
+from core.task_manager import TaskManager
+from core.scheduler import Scheduler
+from utils.cron_helper import CronHelper
+
+task_manager = TaskManager(db_session_factory=SessionLocal)
+scheduler = Scheduler(db_session_factory=SessionLocal, task_manager=task_manager)
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────
@@ -277,6 +284,22 @@ async def telemetry_broadcast_loop():
                     "pending_changes": p.pending_changes,
                 } for p in processes
             ]
+
+            active_executions = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "pending"])).all()
+            exec_data = [
+                {
+                    "id": ex.id,
+                    "task_id": ex.task_id,
+                    "task_name": ex.task.name if ex.task else "Unknown",
+                    "status": ex.status,
+                    "cpu": ex.cpu_usage,
+                    "ram": ex.ram_usage,
+                    "bitrate": ex.bitrate,
+                    "fps": ex.fps,
+                    "speed": ex.speed,
+                    "started_at": ex.started_at.isoformat() if ex.started_at else None,
+                } for ex in active_executions
+            ]
             
             # Gather global host system metrics
             sys_cpu = psutil.cpu_percent(interval=None)
@@ -293,6 +316,7 @@ async def telemetry_broadcast_loop():
             await manager.broadcast({
                 "type": "telemetry",
                 "data": data,
+                "task_executions": exec_data,
                 "system": system_data
             })
         await asyncio.sleep(1)
@@ -315,7 +339,7 @@ async def auto_start_services():
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Startup: Checking and cleaning up stale build profiles and processes...")
+    logger.info("Startup: Checking and cleaning up stale build profiles, processes and tasks...")
     try:
         with SessionLocal() as db:
             stale_builds = db.query(FfmpegBuild).filter(FfmpegBuild.status == "building").all()
@@ -334,12 +358,28 @@ async def startup_event():
                 p.bitrate = "0 kb/s"
                 p.speed = "0x"
                 logger.info(f"Cleaned up stale running process '{p.name}' (ID: {p.id}) on startup.")
+            
+            stale_executions = db.query(TaskExecution).filter(TaskExecution.status == "running").all()
+            for ex in stale_executions:
+                ex.status = "interrupted"
+                ex.error_message = "Server restarted during execution"
+                ex.stopped_at = datetime.datetime.utcnow()
+                ex.pid = None
+                ex.cpu_usage = 0
+                ex.ram_usage = 0
+                logger.info(f"Cleaned up stale running task execution ID {ex.id} on startup.")
             db.commit()
     except Exception as e:
-        logger.error(f"Failed to clean up stale builds/processes on startup: {e}")
+        logger.error(f"Failed to clean up stale builds/processes/tasks on startup: {e}")
 
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
+    await scheduler.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Shutdown: Stopping scheduler...")
+    await scheduler.stop()
 
 
 # ── Build WebSocket (per-build log streaming) ────────────────────
@@ -1034,3 +1074,308 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "created_at": build.created_at.isoformat() if build.created_at else None,
         "built_at": build.built_at.isoformat() if build.built_at else None,
     }
+
+
+# ── Scheduled Tasks Pydantic Schemas ──────────────────────────────
+
+class ScheduledTaskCreate(BaseModel):
+    name: str
+    is_active: Optional[bool] = True
+    input_config: dict
+    output_config: dict
+    codec_config: dict
+    filter_config: Optional[dict] = None
+    ffmpeg_build_id: Optional[int] = None
+    schedule_type: str
+    schedule_cron: Optional[str] = None
+    schedule_datetime: Optional[datetime.datetime] = None
+    duration_type: Optional[str] = 'input_dependent'
+    duration_seconds: Optional[int] = None
+    duration_end_time: Optional[datetime.datetime] = None
+    retry_policy: Optional[dict] = None
+
+class ScheduledTaskUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+    input_config: Optional[dict] = None
+    output_config: Optional[dict] = None
+    codec_config: Optional[dict] = None
+    filter_config: Optional[dict] = None
+    ffmpeg_build_id: Optional[int] = None
+    schedule_type: Optional[str] = None
+    schedule_cron: Optional[str] = None
+    schedule_datetime: Optional[datetime.datetime] = None
+    duration_type: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    duration_end_time: Optional[datetime.datetime] = None
+    retry_policy: Optional[dict] = None
+
+
+# ── Scheduled Tasks API Endpoints ─────────────────────────────────
+
+@app.get("/tasks")
+def list_tasks(db: Session = Depends(get_db)):
+    tasks = db.query(ScheduledTask).all()
+    res = []
+    for t in tasks:
+        # Find last execution
+        last_exec = db.query(TaskExecution).filter(TaskExecution.task_id == t.id).order_by(TaskExecution.id.desc()).first()
+        res.append({
+            "id": t.id,
+            "name": t.name,
+            "is_active": t.is_active,
+            "input_config": t.input_config,
+            "output_config": t.output_config,
+            "codec_config": t.codec_config,
+            "filter_config": t.filter_config,
+            "ffmpeg_build_id": t.ffmpeg_build_id,
+            "schedule_type": t.schedule_type,
+            "schedule_cron": t.schedule_cron,
+            "schedule_datetime": t.schedule_datetime.isoformat() if t.schedule_datetime else None,
+            "next_run": t.next_run.isoformat() if t.next_run else None,
+            "duration_type": t.duration_type,
+            "duration_seconds": t.duration_seconds,
+            "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
+            "retry_policy": t.retry_policy,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+            "last_execution": {
+                "id": last_exec.id,
+                "status": last_exec.status,
+                "started_at": last_exec.started_at.isoformat() if last_exec.started_at else None,
+                "stopped_at": last_exec.stopped_at.isoformat() if last_exec.stopped_at else None,
+                "exit_code": last_exec.exit_code,
+                "error_message": last_exec.error_message,
+            } if last_exec else None
+        })
+    return res
+
+@app.post("/tasks")
+def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
+    # Validate cron expression if recurring
+    next_run = None
+    if payload.schedule_type == 'recurring':
+        if not payload.schedule_cron or not CronHelper.validate_cron(payload.schedule_cron):
+            raise HTTPException(status_code=400, detail="A valid cron expression is required for recurring tasks")
+        next_run = CronHelper.get_next_run(payload.schedule_cron)
+    elif payload.schedule_type == 'one_shot':
+        if not payload.schedule_datetime:
+            raise HTTPException(status_code=400, detail="schedule_datetime is required for one_shot tasks")
+        next_run = payload.schedule_datetime
+
+    db_task = ScheduledTask(
+        name=payload.name,
+        is_active=payload.is_active,
+        input_config=payload.input_config,
+        output_config=payload.output_config,
+        codec_config=payload.codec_config,
+        filter_config=payload.filter_config,
+        ffmpeg_build_id=payload.ffmpeg_build_id,
+        schedule_type=payload.schedule_type,
+        schedule_cron=payload.schedule_cron,
+        schedule_datetime=payload.schedule_datetime,
+        next_run=next_run,
+        duration_type=payload.duration_type,
+        duration_seconds=payload.duration_seconds,
+        duration_end_time=payload.duration_end_time,
+        retry_policy=payload.retry_policy
+    )
+    db.add(db_task)
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+@app.get("/tasks/export")
+def export_tasks(db: Session = Depends(get_db)):
+    tasks = db.query(ScheduledTask).all()
+    exported = []
+    for t in tasks:
+        exported.append({
+            "name": t.name,
+            "is_active": t.is_active,
+            "input_config": t.input_config,
+            "output_config": t.output_config,
+            "codec_config": t.codec_config,
+            "filter_config": t.filter_config,
+            "ffmpeg_build_id": t.ffmpeg_build_id,
+            "schedule_type": t.schedule_type,
+            "schedule_cron": t.schedule_cron,
+            "schedule_datetime": t.schedule_datetime.isoformat() if t.schedule_datetime else None,
+            "duration_type": t.duration_type,
+            "duration_seconds": t.duration_seconds,
+            "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
+            "retry_policy": t.retry_policy
+        })
+    return {
+        "version": 2,
+        "exported_at": datetime.datetime.utcnow().isoformat(),
+        "tasks": exported
+    }
+
+@app.post("/tasks/import")
+def import_tasks(payload: dict, db: Session = Depends(get_db)):
+    version = payload.get("version", 2)
+    tasks_data = payload.get("tasks", [])
+    if not tasks_data and "profile" in payload:
+        tasks_data = [payload["profile"]]
+        
+    imported = []
+    for td in tasks_data:
+        next_run = None
+        stype = td.get("schedule_type", "manual")
+        if stype == "recurring" and td.get("schedule_cron"):
+            next_run = CronHelper.get_next_run(td["schedule_cron"])
+        elif stype == "one_shot" and td.get("schedule_datetime"):
+            next_run = datetime.datetime.fromisoformat(td["schedule_datetime"])
+
+        db_task = ScheduledTask(
+            name=f"Imported: {td.get('name', 'Untitled')}",
+            is_active=td.get("is_active", True),
+            input_config=td.get("input_config", {}),
+            output_config=td.get("output_config", {}),
+            codec_config=td.get("codec_config", {}),
+            filter_config=td.get("filter_config"),
+            ffmpeg_build_id=td.get("ffmpeg_build_id"),
+            schedule_type=stype,
+            schedule_cron=td.get("schedule_cron"),
+            schedule_datetime=datetime.datetime.fromisoformat(td["schedule_datetime"]) if td.get("schedule_datetime") else None,
+            next_run=next_run,
+            duration_type=td.get("duration_type", "input_dependent"),
+            duration_seconds=td.get("duration_seconds"),
+            duration_end_time=datetime.datetime.fromisoformat(td["duration_end_time"]) if td.get("duration_end_time") else None,
+            retry_policy=td.get("retry_policy")
+        )
+        db.add(db_task)
+        imported.append(db_task)
+        
+    db.commit()
+    return {"status": "success", "count": len(imported)}
+
+@app.get("/tasks/{task_id}")
+def get_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(ScheduledTask).get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    executions = db.query(TaskExecution).filter(TaskExecution.task_id == task_id).order_by(TaskExecution.id.desc()).all()
+    
+    return {
+        "task": {
+            "id": task.id,
+            "name": task.name,
+            "is_active": task.is_active,
+            "input_config": task.input_config,
+            "output_config": task.output_config,
+            "codec_config": task.codec_config,
+            "filter_config": task.filter_config,
+            "ffmpeg_build_id": task.ffmpeg_build_id,
+            "schedule_type": task.schedule_type,
+            "schedule_cron": task.schedule_cron,
+            "schedule_datetime": task.schedule_datetime.isoformat() if task.schedule_datetime else None,
+            "next_run": task.next_run.isoformat() if task.next_run else None,
+            "duration_type": task.duration_type,
+            "duration_seconds": task.duration_seconds,
+            "duration_end_time": task.duration_end_time.isoformat() if task.duration_end_time else None,
+            "retry_policy": task.retry_policy,
+        },
+        "executions": [
+            {
+                "id": ex.id,
+                "status": ex.status,
+                "pid": ex.pid,
+                "started_at": ex.started_at.isoformat() if ex.started_at else None,
+                "stopped_at": ex.stopped_at.isoformat() if ex.stopped_at else None,
+                "cpu": ex.cpu_usage,
+                "ram": ex.ram_usage,
+                "bitrate": ex.bitrate,
+                "fps": ex.fps,
+                "speed": ex.speed,
+                "exit_code": ex.exit_code,
+                "error_message": ex.error_message,
+                "retry_count": ex.retry_count
+            } for ex in executions
+        ]
+    }
+
+@app.put("/tasks/{task_id}")
+def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depends(get_db)):
+    task = db.query(ScheduledTask).get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    update_data = payload.dict(exclude_unset=True)
+    
+    sched_changed = ('schedule_type' in update_data or 
+                     'schedule_cron' in update_data or 
+                     'schedule_datetime' in update_data or
+                     'is_active' in update_data)
+    
+    for k, v in update_data.items():
+        setattr(task, k, v)
+        
+    if sched_changed:
+        if not task.is_active:
+            task.next_run = None
+        else:
+            if task.schedule_type == 'recurring':
+                if not task.schedule_cron or not CronHelper.validate_cron(task.schedule_cron):
+                    raise HTTPException(status_code=400, detail="A valid cron expression is required for recurring tasks")
+                task.next_run = CronHelper.get_next_run(task.schedule_cron)
+            elif task.schedule_type == 'one_shot':
+                if not task.schedule_datetime:
+                    raise HTTPException(status_code=400, detail="schedule_datetime is required for one_shot tasks")
+                task.next_run = task.schedule_datetime
+            else:
+                task.next_run = None
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+@app.delete("/tasks/{task_id}")
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(ScheduledTask).get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(task)
+    db.commit()
+    return {"status": "success", "message": f"Task {task_id} and its executions deleted."}
+
+@app.post("/tasks/{task_id}/trigger")
+async def trigger_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(ScheduledTask).get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    execution = TaskExecution(
+        task_id=task.id,
+        status="pending",
+        retry_count=0
+    )
+    db.add(execution)
+    db.commit()
+    db.refresh(execution)
+    
+    asyncio.create_task(task_manager.start_execution(execution.id))
+    return {"status": "success", "execution_id": execution.id}
+
+@app.post("/tasks/executions/{execution_id}/stop")
+async def stop_task_execution(execution_id: int, db: Session = Depends(get_db)):
+    execution = db.query(TaskExecution).get(execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    
+    await task_manager.stop_execution(execution_id, status="stopped", error_msg="Stopped manually by user")
+    return {"status": "success", "message": f"Execution {execution_id} stopped."}
+
+@app.get("/tasks/executions/{execution_id}/logs")
+def get_execution_logs(execution_id: int, db: Session = Depends(get_db)):
+    logs = db.query(TaskExecutionLog).filter(TaskExecutionLog.execution_id == execution_id).order_by(TaskExecutionLog.id.asc()).all()
+    return [
+        {
+            "id": l.id,
+            "timestamp": l.timestamp.isoformat(),
+            "level": l.level,
+            "message": l.message
+        } for l in logs
+    ]
