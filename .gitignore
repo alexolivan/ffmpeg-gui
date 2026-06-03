@@ -42,3 +42,7 @@ docs/*.md
 docs/issues.txt
 docs/todo.txt
 docs/sprint.txt
+
+# Agent rule files and tool configs
+.agents/
+.antigravityignore
