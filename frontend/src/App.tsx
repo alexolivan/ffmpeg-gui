@@ -13,6 +13,12 @@ const API = 'http://localhost:8000'
 function App() {
   const [activeView, setActiveView] = useState('dashboard')
   const [telemetry, setTelemetry] = useState<any[]>([])
+  const [systemTelemetry, setSystemTelemetry] = useState<any>({
+    cpu: 0,
+    ram_used: 0,
+    ram_total: 0,
+    gpu: { vendor: 'none', utilization: 0, vram_used: 0, vram_total: 0 }
+  })
   const [selectedProcess, setSelectedProcess] = useState<any | null>(null)
   const [logs, setLogs] = useState<any[]>([])
   const processLogsContainerRef = useRef<HTMLDivElement>(null)
@@ -175,7 +181,12 @@ function App() {
     const ws = new WebSocket('ws://localhost:8000/ws/telemetry')
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data)
-      if (msg.type === 'telemetry') setTelemetry(msg.data)
+      if (msg.type === 'telemetry') {
+        setTelemetry(msg.data)
+        if (msg.system) {
+          setSystemTelemetry(msg.system)
+        }
+      }
     }
     return () => ws.close()
   }, [])
@@ -589,32 +600,85 @@ function App() {
                   <div className="space-y-4">
                     <div>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary">CPU Node Load</span>
+                        <span className="text-text-secondary">System CPU Load</span>
                         <span className="text-brand-lime font-mono font-bold">
-                          {telemetry.reduce((acc, p) => acc + (p.status === 'running' ? (p.cpu || 0) : 0), 0)}%
+                          {systemTelemetry.cpu}%
                         </span>
                       </div>
                       <div className="h-2 bg-white/5 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-brand-lime transition-all duration-500" 
-                          style={{ width: `${Math.min(100, telemetry.reduce((acc, p) => acc + (p.status === 'running' ? (p.cpu || 0) : 0), 0))}%` }}
+                          style={{ width: `${Math.min(100, systemTelemetry.cpu)}%` }}
                         ></div>
                       </div>
                     </div>
                     <div>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-text-secondary">Memory Consumption</span>
+                        <span className="text-text-secondary">System Memory Usage</span>
                         <span className="text-brand-orange font-mono font-bold">
-                          {telemetry.reduce((acc, p) => acc + (p.status === 'running' ? (p.ram || 0) : 0), 0)} MB
+                          {systemTelemetry.ram_used} MB / {systemTelemetry.ram_total || 16384} MB
                         </span>
                       </div>
                       <div className="h-2 bg-white/5 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-brand-orange transition-all duration-500" 
-                          style={{ width: `${Math.min(100, (telemetry.reduce((acc, p) => acc + (p.status === 'running' ? (p.ram || 0) : 0), 0) / 16384) * 100)}%` }}
+                          style={{ 
+                            width: `${Math.min(100, systemTelemetry.ram_total > 0 
+                              ? (systemTelemetry.ram_used / systemTelemetry.ram_total) * 100 
+                              : 0)}%` 
+                          }}
                         ></div>
                       </div>
                     </div>
+
+                    {systemTelemetry.gpu && systemTelemetry.gpu.vendor && systemTelemetry.gpu.vendor !== 'none' ? (
+                      <>
+                        <div className="pt-2 border-t border-white/5">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-text-secondary flex items-center gap-1.5">
+                              GPU Load 
+                              <span className="text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">
+                                {systemTelemetry.gpu.vendor}
+                              </span>
+                            </span>
+                            <span className="text-blue-400 font-mono font-bold">
+                              {systemTelemetry.gpu.utilization}%
+                            </span>
+                          </div>
+                          <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-blue-400 transition-all duration-500" 
+                              style={{ width: `${Math.min(100, systemTelemetry.gpu.utilization)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-text-secondary">VRAM Usage</span>
+                            <span className="text-blue-400 font-mono font-bold">
+                              {systemTelemetry.gpu.vram_used} MB / {systemTelemetry.gpu.vram_total} MB
+                            </span>
+                          </div>
+                          <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-blue-400 transition-all duration-500" 
+                              style={{ 
+                                width: `${Math.min(100, systemTelemetry.gpu.vram_total > 0 
+                                  ? (systemTelemetry.gpu.vram_used / systemTelemetry.gpu.vram_total) * 100 
+                                  : 0)}%` 
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="pt-3 border-t border-white/5">
+                        <div className="flex flex-col items-center justify-center p-4 bg-white/2 border border-white/5 rounded-xl text-center">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-white/30 font-mono mb-1">GPU Telemetry</span>
+                          <span className="text-xs font-bold text-white/40">Not Detected</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
