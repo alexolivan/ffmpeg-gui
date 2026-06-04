@@ -312,12 +312,31 @@ async def telemetry_broadcast_loop():
                 "ram_total": int(sys_ram.total / (1024 * 1024)), # MB
                 "gpu": gpu_stats
             }
+
+            # Task statistics
+            scheduled_count = db.query(ScheduledTask).filter(
+                ScheduledTask.is_active == True,
+                ScheduledTask.schedule_type.in_(["recurring", "one_shot"])
+            ).count()
+            
+            inactive_count = db.query(ScheduledTask).filter(
+                (ScheduledTask.is_active == False) | (ScheduledTask.schedule_type == "manual")
+            ).count()
+            
+            active_exec_count = db.query(TaskExecution).filter(
+                TaskExecution.status == "running"
+            ).count()
             
             await manager.broadcast({
                 "type": "telemetry",
                 "data": data,
                 "task_executions": exec_data,
-                "system": system_data
+                "system": system_data,
+                "task_stats": {
+                    "active": active_exec_count,
+                    "scheduled": scheduled_count,
+                    "inactive": inactive_count
+                }
             })
         await asyncio.sleep(1)
 
