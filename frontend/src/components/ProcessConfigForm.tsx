@@ -57,6 +57,7 @@ interface ProcessConfig {
   schedule_datetime: string;
   duration_type: string;
   duration_seconds: number;
+  duration_end_time: string;
   retry_max: number;
   retry_delay: number;
 }
@@ -126,6 +127,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         schedule_datetime: initialConfig.schedule_datetime ? initialConfig.schedule_datetime.substring(0, 16) : '',
         duration_type: initialConfig.duration_type || 'input_dependent',
         duration_seconds: initialConfig.duration_seconds ?? 60,
+        duration_end_time: initialConfig.duration_end_time ? initialConfig.duration_end_time.substring(0, 16) : '',
         retry_max: initialConfig.retry_policy?.max_retries ?? 3,
         retry_delay: initialConfig.retry_policy?.retry_delay ?? 10
       };
@@ -158,6 +160,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       schedule_datetime: '',
       duration_type: 'input_dependent',
       duration_seconds: 60,
+      duration_end_time: '',
       retry_max: 3,
       retry_delay: 10
     };
@@ -235,6 +238,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         schedule_datetime: config.schedule_type === 'one_shot' && config.schedule_datetime ? new Date(config.schedule_datetime).toISOString() : null,
         duration_type: config.duration_type,
         duration_seconds: config.duration_type === 'timer' ? Number(config.duration_seconds) : null,
+        duration_end_time: config.duration_type === 'end_time' && config.duration_end_time ? new Date(config.duration_end_time).toISOString() : null,
         retry_policy: {
           max_retries: Number(config.retry_max),
           retry_delay: Number(config.retry_delay)
@@ -283,6 +287,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         schedule_datetime: config.schedule_type === 'one_shot' && config.schedule_datetime ? new Date(config.schedule_datetime).toISOString() : null,
         duration_type: config.duration_type,
         duration_seconds: config.duration_type === 'timer' ? Number(config.duration_seconds) : null,
+        duration_end_time: config.duration_type === 'end_time' && config.duration_end_time ? new Date(config.duration_end_time).toISOString() : null,
         retry_policy: {
           max_retries: Number(config.retry_max),
           retry_delay: Number(config.retry_delay)
@@ -298,9 +303,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
 
   const handlePreview = async () => {
     setIsPreviewing(true);
+    const previewUrl = isTask ? 'http://localhost:8000/tasks/preview-cmd' : 'http://localhost:8000/processes/preview-cmd';
     const payload = {
       name: config.name || 'preview',
-      type: 'service',
       ffmpeg_build_id: config.ffmpeg_build_id,
       input_config: {
         has_video: config.has_video,
@@ -326,10 +331,27 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         framerate: config.filters.framerate,
         advanced: config.filters.advanced,
       },
+      ...(isTask ? {
+        schedule_type: config.schedule_type,
+        schedule_cron: config.schedule_type === 'recurring' ? config.schedule_cron : null,
+        schedule_datetime: config.schedule_type === 'one_shot' && config.schedule_datetime ? new Date(config.schedule_datetime).toISOString() : null,
+        duration_type: config.duration_type,
+        duration_seconds: config.duration_type === 'timer' ? Number(config.duration_seconds) : null,
+        duration_end_time: config.duration_type === 'end_time' && config.duration_end_time ? new Date(config.duration_end_time).toISOString() : null,
+        retry_policy: {
+          max_retries: Number(config.retry_max),
+          retry_delay: Number(config.retry_delay)
+        }
+      } : {
+        type: 'service',
+        auto_start: false,
+        watchdog_enabled: false,
+        watchdog_retries: 5,
+      })
     };
 
     try {
-      const res = await fetch('http://localhost:8000/processes/preview-cmd', {
+      const res = await fetch(previewUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -640,6 +662,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                     >
                       <option value="input_dependent">Input Dependent (FFmpeg processes naturally)</option>
                       <option value="timer">Max Duration Timer</option>
+                      <option value="end_time">Target Datetime (Stop at absolute time)</option>
                     </select>
                   </div>
 
@@ -651,6 +674,18 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                         className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
                         value={config.duration_seconds}
                         onChange={e => setConfig({...config, duration_seconds: Number(e.target.value)})}
+                      />
+                    </div>
+                  )}
+
+                  {config.duration_type === 'end_time' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Target Stop Datetime</label>
+                      <input
+                        type="datetime-local" required
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none text-white"
+                        value={config.duration_end_time || ''}
+                        onChange={e => setConfig({...config, duration_end_time: e.target.value})}
                       />
                     </div>
                   )}
