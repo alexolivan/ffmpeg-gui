@@ -570,17 +570,23 @@ function App() {
                 {/* Process Management & Load metrics */}
                 <div className="glass-card p-8 border-brand-lime/10">
                   <h3 className="text-xl font-black mb-6">SYSTEM STATS</h3>
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
-                      <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Active Services</div>
-                      <div className="font-black text-2xl text-brand-lime">
+                  <div className="grid grid-cols-3 gap-3 mb-6">
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Active Services</div>
+                      <div className="font-black text-xl text-brand-lime">
                         {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length}
                       </div>
                     </div>
-                    <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
-                      <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Active Batch Jobs</div>
-                      <div className="font-black text-2xl text-brand-orange">
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Active Batch</div>
+                      <div className="font-black text-xl text-brand-orange">
                         {telemetry.filter(p => p.type === 'batch' && p.status === 'running').length}
+                      </div>
+                    </div>
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Active Tasks</div>
+                      <div className="font-black text-xl text-brand-blue">
+                        {taskExecutions.filter(e => e.status === 'running').length}
                       </div>
                     </div>
                   </div>
@@ -736,25 +742,82 @@ function App() {
                   </div>
                 </div>
 
-                {/* Scheduler status banner placeholder */}
+                {/* Scheduler status banner */}
                 <div className="glass-card p-8 border-purple-500/10 bg-purple-500/2">
                   <div className="flex items-center gap-3 mb-4">
                     <span className="text-2xl">📅</span>
                     <h3 className="text-lg font-black text-white/90">SCHEDULER STATUS</h3>
                   </div>
-                  <div className="p-3 bg-purple-500/10 border border-purple-500/25 rounded-2xl">
-                    <div className="text-[10px] uppercase font-black text-purple-400 tracking-wider mb-1">
-                      CRON DAEMON
+                  <div className="p-4 bg-purple-500/10 border border-purple-500/25 rounded-2xl">
+                    <div className="text-[10px] uppercase font-black text-purple-400 tracking-wider mb-1 flex items-center justify-between">
+                      <span>CRON DAEMON</span>
+                      <span className={`w-2 h-2 rounded-full ${taskExecutions.some(e => e.status === 'running') ? 'bg-brand-lime animate-pulse' : 'bg-purple-400'}`}></span>
                     </div>
-                    <div className="text-xs text-white/80 font-bold">DISABLED / NOT CONFIGURED</div>
+                    <div className="text-xs text-white font-bold">
+                      {taskExecutions.some(e => e.status === 'running')
+                        ? `ACTIVE / RUNNING (${taskExecutions.filter(e => e.status === 'running').length} active)`
+                        : 'ONLINE / IDLE'}
+                    </div>
                     <div className="text-[10px] text-text-secondary mt-2 leading-relaxed">
-                      Task program and queue scheduling is set to run in Phase 2. Telemetry feeds will update dynamically when active.
+                      Real-time monitor of task schedules, cron intervals, and batch processes.
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
+            {/* Active Task Executions telemetry list */}
+            <div className="glass-card p-8 border-brand-lime/10 mt-8">
+              <h3 className="text-xl font-black mb-6">ACTIVE TASK EXECUTIONS</h3>
+              <div className="space-y-4">
+                {taskExecutions.filter(e => e.status === 'running').length === 0 ? (
+                  <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
+                    No active task executions running
+                  </div>
+                ) : (
+                  taskExecutions.filter(e => e.status === 'running').map(exec => {
+                    const elapsed = exec.started_at
+                      ? Math.floor((new Date().getTime() - new Date(exec.started_at).getTime()) / 1000)
+                      : 0;
+                    return (
+                      <div key={exec.id} className="flex items-center justify-between p-4 bg-brand-lime/5 rounded-2xl border border-brand-lime/10">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-brand-lime animate-pulse"></span>
+                            <span className="font-bold text-white text-sm">{exec.task_name || 'Scheduled Task'}</span>
+                            <span className="text-[9px] uppercase font-black tracking-wider px-2 py-0.5 rounded bg-brand-lime/20 text-brand-lime">
+                              Run #{exec.id}
+                            </span>
+                            {exec.retry_count > 0 && (
+                              <span className="text-[9px] uppercase font-black tracking-wider px-2 py-0.5 rounded bg-brand-orange/20 text-brand-orange">
+                                Retry #{exec.retry_count}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-text-secondary">
+                            Started: {exec.started_at ? new Date(exec.started_at).toLocaleTimeString() : 'N/A'}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-xs font-mono text-brand-lime font-bold">
+                            {elapsed > 0 ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : 'running'}
+                          </span>
+                          <button
+                            onClick={() => {
+                              fetch(`${API}/tasks/executions/${exec.id}/stop`, { method: 'POST' })
+                                .then(() => alert('Task execution stop signal sent.'));
+                            }}
+                            className="pill-button bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs py-1.5 px-3 border border-red-500/20"
+                          >
+                            Stop
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
 
           </>
         ) : activeView === 'services' ? (
