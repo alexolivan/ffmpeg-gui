@@ -7,6 +7,9 @@ import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS } from './codec/codecRegis
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
 
+const VIDEO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video'];
+const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio'];
+
 // ── Types ────────────────────────────────────────────────────────
 
 interface ProcessConfig {
@@ -407,7 +410,26 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox" checked={config.has_video}
-                onChange={e => setConfig({ ...config, has_video: e.target.checked })}
+                onChange={e => {
+                  const val = e.target.checked;
+                  const nextSecondary = val && config.has_audio ? config.use_secondary_input : false;
+                  let nextInput1 = config.input1;
+                  if (!val && config.has_audio) {
+                    if (!AUDIO_ALLOWED_TYPES.includes(nextInput1.type)) {
+                      nextInput1 = { ...nextInput1, type: 'file' };
+                    }
+                  } else if (val && !config.has_audio) {
+                    if (!VIDEO_ALLOWED_TYPES.includes(nextInput1.type)) {
+                      nextInput1 = { ...nextInput1, type: 'file' };
+                    }
+                  }
+                  setConfig({ 
+                    ...config, 
+                    has_video: val, 
+                    use_secondary_input: nextSecondary,
+                    input1: nextInput1
+                  });
+                }}
                 className="w-3.5 h-3.5 accent-brand-orange"
               />
               <span className={`text-xs font-bold uppercase tracking-wider ${config.has_video ? 'text-brand-orange' : 'text-text-secondary'}`}>
@@ -418,7 +440,26 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox" checked={config.has_audio}
-                onChange={e => setConfig({ ...config, has_audio: e.target.checked })}
+                onChange={e => {
+                  const val = e.target.checked;
+                  const nextSecondary = config.has_video && val ? config.use_secondary_input : false;
+                  let nextInput1 = config.input1;
+                  if (config.has_video && !val) {
+                    if (!VIDEO_ALLOWED_TYPES.includes(nextInput1.type)) {
+                      nextInput1 = { ...nextInput1, type: 'file' };
+                    }
+                  } else if (!config.has_video && val) {
+                    if (!AUDIO_ALLOWED_TYPES.includes(nextInput1.type)) {
+                      nextInput1 = { ...nextInput1, type: 'file' };
+                    }
+                  }
+                  setConfig({ 
+                    ...config, 
+                    has_audio: val, 
+                    use_secondary_input: nextSecondary,
+                    input1: nextInput1
+                  });
+                }}
                 className="w-3.5 h-3.5 accent-blue-400"
               />
               <span className={`text-xs font-bold uppercase tracking-wider ${config.has_audio ? 'text-blue-400' : 'text-text-secondary'}`}>
@@ -456,38 +497,78 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             {/* Input 1 (Primary) */}
             <div className="glass-card p-4 !rounded-2xl">
               <InputSourcePanel
-                label="Input 1 — Primary Source"
+                label={
+                  config.use_secondary_input
+                    ? "Input 1 — Video Source"
+                    : config.has_video && !config.has_audio
+                    ? "Input 1 — Video Source"
+                    : !config.has_video && config.has_audio
+                    ? "Input 1 — Audio Source"
+                    : "Primary Source (Audio & Video)"
+                }
                 accentColor="var(--accent-lime)"
                 config={config.input1}
+                allowedTypes={
+                  !config.has_audio && config.has_video
+                    ? VIDEO_ALLOWED_TYPES
+                    : config.has_video && !config.has_audio
+                    ? VIDEO_ALLOWED_TYPES
+                    : config.use_secondary_input
+                    ? VIDEO_ALLOWED_TYPES
+                    : !config.has_video && config.has_audio
+                    ? AUDIO_ALLOWED_TYPES
+                    : undefined
+                }
                 onChange={input1 => setConfig({ ...config, input1 })}
               />
             </div>
 
             {/* Toggle: Use secondary input */}
-            <div className="flex items-center gap-3 px-2">
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={config.use_secondary_input}
-                  onChange={e => setConfig({ ...config, use_secondary_input: e.target.checked })}
-                  className="w-4 h-4 accent-brand-lime"
-                />
-                <span className="text-xs font-bold uppercase tracking-wider text-text-secondary group-hover:text-white transition-colors">
-                  Use separate source for Input 2
+            {config.has_video && config.has_audio && (
+              <div className="flex items-center gap-3 px-2">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={config.use_secondary_input}
+                    onChange={e => {
+                      const val = e.target.checked;
+                      let nextInput1 = config.input1;
+                      let nextInput2 = config.input2;
+                      if (val) {
+                        if (!VIDEO_ALLOWED_TYPES.includes(nextInput1.type)) {
+                          nextInput1 = { ...nextInput1, type: 'file' };
+                        }
+                        if (!AUDIO_ALLOWED_TYPES.includes(nextInput2.type)) {
+                          nextInput2 = { ...nextInput2, type: 'file' };
+                        }
+                      }
+                      setConfig({ 
+                        ...config, 
+                        use_secondary_input: val,
+                        input1: nextInput1,
+                        input2: nextInput2
+                      });
+                    }}
+                    className="w-4 h-4 accent-brand-lime"
+                  />
+                  <span className="text-xs font-bold uppercase tracking-wider text-text-secondary group-hover:text-white transition-colors">
+                    Use separate source for Input 2
+                  </span>
+                </label>
+                <span className="text-[10px] text-white/20 italic">
+                  (e.g. video from SDI + audio from network)
                 </span>
-              </label>
-              <span className="text-[10px] text-white/20 italic">
-                (e.g. video from SDI + audio from network)
-              </span>
-            </div>
+              </div>
+            )}
 
             {/* Input 2 (Secondary) */}
             {config.use_secondary_input && (
               <div className="glass-card p-4 !rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
                 <InputSourcePanel
-                  label="Input 2 — Secondary Source"
+                  label="Input 2 — Audio Source"
                   accentColor="#60a5fa"
                   config={config.input2}
+                  allowedTypes={AUDIO_ALLOWED_TYPES}
                   onChange={input2 => setConfig({ ...config, input2 })}
                 />
               </div>
