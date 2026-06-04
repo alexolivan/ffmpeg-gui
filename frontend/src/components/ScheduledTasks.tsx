@@ -17,12 +17,12 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<any | null>(null);
   const [viewingLogsExecutionId, setViewingLogsExecutionId] = useState<number | null>(null);
   const [logs, setLogs] = useState<any[]>([]);
-  const [isImportOpen, setIsImportOpen] = useState(false);
-  const [importJson, setImportJson] = useState('');
-  const [importError, setImportError] = useState<string | null>(null);
 
   // Logs autoscroll reference
   const logsContainerRef = useRef<HTMLDivElement>(null);
+
+  // File import reference
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const fetchTasks = async () => {
     try {
@@ -147,42 +147,88 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     } catch {}
   };
 
-  const handleExportTasks = async () => {
+  const handleExportTask = async (task: any) => {
     try {
-      const r = await fetch(`${API}/tasks/export`);
+      const r = await fetch(`${API}/tasks/${task.id}/export`);
       if (r.ok) {
-        const blob = await r.blob();
+        const data = await r.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `ffmpeg_scheduled_tasks_${new Date().toISOString().slice(0,10)}.json`;
+        a.download = `ffmpeg_scheduled_task_${task.name.replace(/\s+/g, '_')}.json`;
         document.body.appendChild(a);
         a.click();
         a.remove();
+      } else {
+        alert('Failed to export task.');
       }
-    } catch {}
+    } catch (err) {
+      console.error("Error exporting task:", err);
+    }
   };
 
-  const handleImportTasks = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCloneTask = async (task: any) => {
     try {
-      const parsed = JSON.parse(importJson);
-      const r = await fetch(`${API}/tasks/import`, {
+      const res = await fetch(`${API}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed)
+        body: JSON.stringify({
+          name: `${task.name} (Copy)`,
+          is_active: task.is_active,
+          input_config: task.input_config,
+          output_config: task.output_config,
+          codec_config: task.codec_config,
+          filter_config: task.filter_config,
+          ffmpeg_build_id: task.ffmpeg_build_id,
+          schedule_type: task.schedule_type,
+          schedule_cron: task.schedule_cron,
+          schedule_datetime: task.schedule_datetime,
+          duration_type: task.duration_type,
+          duration_seconds: task.duration_seconds,
+          duration_end_time: task.duration_end_time,
+          retry_policy: task.retry_policy,
+        })
       });
-      if (!r.ok) {
-        throw new Error('Failed to import tasks config.');
+      if (res.ok) {
+        fetchTasks();
+        alert('Task cloned successfully!');
+      } else {
+        const errData = await res.json();
+        alert(`Error cloning task: ${errData.detail || 'Unknown error'}`);
       }
-      setIsImportOpen(false);
-      setImportJson('');
-      setImportError(null);
-      fetchTasks();
-      alert('Tasks imported successfully!');
-    } catch (err: any) {
-      setImportError(err.message);
+    } catch (err) {
+      console.error("Error cloning task:", err);
     }
+  };
+
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const json = JSON.parse(evt.target?.result as string);
+        const response = await fetch(`${API}/tasks/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(json)
+        });
+        
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.detail || 'Import failed');
+        }
+        
+        alert(`Successfully imported task(s).`);
+        e.target.value = '';
+        fetchTasks();
+      } catch (err: any) {
+        alert(`Import Error: ${err.message || err}`);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleToggleActive = async (task: any) => {
@@ -228,17 +274,18 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         </div>
         <div className="flex gap-4">
           <button 
-            onClick={handleExportTasks} 
+            onClick={() => importFileRef.current?.click()} 
             className="pill-button bg-white/5 border border-white/10 text-white hover:bg-white/10 text-sm py-2.5 px-6"
           >
-            📥 EXPORT
+            📥 IMPORT TASK
           </button>
-          <button 
-            onClick={() => { setIsImportOpen(true); setImportError(null); }} 
-            className="pill-button bg-white/5 border border-white/10 text-white hover:bg-white/10 text-sm py-2.5 px-6"
-          >
-            📤 IMPORT
-          </button>
+          <input 
+            type="file" 
+            ref={importFileRef} 
+            className="hidden" 
+            accept=".json" 
+            onChange={handleImportFileChange} 
+          />
           <button 
             onClick={() => {
               setEditingTask(null);
@@ -405,6 +452,22 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   </button>
                   
                   <button 
+                    onClick={() => handleCloneTask(task)}
+                    className="pill-button bg-white/5 hover:bg-white/10 text-xs p-2 rounded-xl"
+                    title="Clone Task"
+                  >
+                    📋
+                  </button>
+
+                  <button 
+                    onClick={() => handleExportTask(task)}
+                    className="pill-button bg-white/5 hover:bg-white/10 text-xs p-2 rounded-xl"
+                    title="Export Task"
+                  >
+                    📤
+                  </button>
+
+                  <button 
                     onClick={() => handleEditClick(task)}
                     className="pill-button bg-white/5 hover:bg-white/10 text-xs p-2 rounded-xl"
                     title="Edit Task"
@@ -554,57 +617,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               }}
               onSubmit={handleSaveTask}
             />
-          </div>
-        </div>
-      )}
-
-      {/* IMPORT DIALOG */}
-      {isImportOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-6 z-40">
-          <div className="glass-card w-full max-w-2xl p-8 relative">
-            <button 
-              onClick={() => setIsImportOpen(false)}
-              className="absolute top-6 right-6 text-text-secondary hover:text-white text-xl"
-            >
-              ✕
-            </button>
-            <h3 className="text-2xl font-black mb-2">Import Tasks Configuration</h3>
-            <p className="text-text-secondary text-sm mb-6">Paste the exported JSON task structure below to import them.</p>
-
-            <form onSubmit={handleImportTasks} className="space-y-6">
-              <div className="space-y-2">
-                <textarea 
-                  required
-                  rows={10}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 outline-none focus:border-brand-lime font-mono text-xs text-brand-lime"
-                  placeholder='{ "version": 2, "tasks": [...] }'
-                  value={importJson}
-                  onChange={e => setImportJson(e.target.value)}
-                />
-              </div>
-
-              {importError && (
-                <div className="text-red-400 font-bold text-xs p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-                  {importError}
-                </div>
-              )}
-
-              <div className="flex gap-4">
-                <button 
-                  type="button"
-                  onClick={() => setIsImportOpen(false)}
-                  className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl font-bold hover:bg-white/10 transition-all text-sm"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 py-3 bg-brand-lime text-black rounded-xl font-black shadow-lg shadow-brand-lime/20 text-sm"
-                >
-                  Import Configuration
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
