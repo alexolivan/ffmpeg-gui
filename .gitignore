@@ -39,9 +39,7 @@ backend/data/
 docs/superpowers/
 docs/*.png
 docs/*.md
-docs/issues.txt
-docs/todo.txt
-docs/sprint.txt
+docs/*.txt
 
 # Agent rule files and tool configs
 .agents/
