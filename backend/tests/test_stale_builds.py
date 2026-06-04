@@ -8,7 +8,7 @@ from database.db import SessionLocal, init_db
 from database.models import FfmpegBuild
 from core.build_manager import BuildManager
 
-async def test_stale_builds():
+def test_stale_builds():
     init_db()
     
     # 1. Create a dummy stale build in database
@@ -81,4 +81,4 @@ async def test_stale_builds():
         print("Cleanup done.")
 
 if __name__ == "__main__":
-    asyncio.run(test_stale_builds())
+    test_stale_builds()

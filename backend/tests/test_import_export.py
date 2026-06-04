@@ -8,7 +8,7 @@ from database.db import SessionLocal, init_db
 from database.models import MediaProcess, FfmpegBuild
 from main import migrate_and_validate_profile, export_process, import_process, export_build_recipe, import_build_recipe
 
-async def test_import_export():
+def test_import_export():
     init_db()
     
     # 1. Setup mock build profiles and clean previous runs
@@ -169,4 +169,4 @@ async def test_import_export():
     print("ALL BACKEND IMPORT/EXPORT/MIGRATION/SDK TESTS PASSED!")
 
 if __name__ == "__main__":
-    asyncio.run(test_import_export())
+    test_import_export()
