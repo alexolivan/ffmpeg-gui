@@ -916,6 +916,24 @@ function App() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                fetch(`${API}/processes/${proc.id}/export`)
+                                  .then(r => r.json())
+                                  .then(data => {
+                                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                                    const a = document.createElement('a')
+                                    a.href = URL.createObjectURL(blob)
+                                    a.download = `${proc.name}_profile.json`
+                                    a.click()
+                                  })
+                              }}
+                              className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                              title="Export Service"
+                            >
+                              📤
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleStopService(proc.id);
                               }}
                               className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center text-sm border border-red-500/20 text-red-400 transition-all hover:scale-105"
@@ -1002,6 +1020,24 @@ function App() {
                                 title="Clone Service"
                               >
                                 📋
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  fetch(`${API}/processes/${proc.id}/export`)
+                                    .then(r => r.json())
+                                    .then(data => {
+                                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                                      const a = document.createElement('a')
+                                      a.href = URL.createObjectURL(blob)
+                                      a.download = `${proc.name}_profile.json`
+                                      a.click()
+                                    })
+                                }}
+                                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                                title="Export Service"
+                              >
+                                📤
                               </button>
                               <button
                                 onClick={(e) => {
