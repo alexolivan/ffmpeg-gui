@@ -100,5 +100,48 @@ class TestTaskAPI(unittest.TestCase):
             self.db.delete(t)
         self.db.commit()
 
+    def test_single_task_export_import_and_preview(self):
+        # 1. Create a task
+        payload = {
+            "name": "API Test Single Task",
+            "input_config": {"type": "lavfi", "path": "testsrc"},
+            "output_config": {"type": "file", "path": "/tmp/single_task.mp4"},
+            "codec_config": {"vcodec": "libx264"},
+            "schedule_type": "manual",
+            "duration_type": "timer",
+            "duration_seconds": 45
+        }
+        res = self.client.post("/tasks", json=payload)
+        self.assertEqual(res.status_code, 200)
+        task_id = res.json()["id"]
+
+        # 2. Export single task
+        res = self.client.get(f"/tasks/{task_id}/export")
+        self.assertEqual(res.status_code, 200)
+        exported = res.json()
+        self.assertEqual(exported["version"], 2)
+        self.assertEqual(exported["task"]["name"], "API Test Single Task")
+        self.assertEqual(exported["task"]["duration_seconds"], 45)
+
+        # 3. Preview task command
+        res = self.client.post("/tasks/preview-cmd", json=payload)
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("ffmpeg", res.json()["command"])
+        self.assertIn("-t 45", res.json()["command"])
+
+        # 4. Import single task
+        import_payload = {
+            "version": 2,
+            "task": exported["task"]
+        }
+        res = self.client.post("/tasks/import", json=import_payload)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["count"], 1)
+
+        # Cleanup
+        for t in self.db.query(ScheduledTask).filter(ScheduledTask.name.like("%API Test Single Task%")).all():
+            self.db.delete(t)
+        self.db.commit()
+
 if __name__ == "__main__":
     unittest.main()

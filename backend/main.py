@@ -1212,13 +1212,73 @@ def export_tasks(db: Session = Depends(get_db)):
         "tasks": exported
     }
 
+@app.get("/tasks/{task_id}/export")
+def export_single_task(task_id: int, db: Session = Depends(get_db)):
+    t = db.query(ScheduledTask).get(task_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    return {
+        "version": 2,
+        "exported_at": datetime.datetime.utcnow().isoformat(),
+        "task": {
+            "name": t.name,
+            "is_active": t.is_active,
+            "input_config": t.input_config,
+            "output_config": t.output_config,
+            "codec_config": t.codec_config,
+            "filter_config": t.filter_config,
+            "ffmpeg_build_id": t.ffmpeg_build_id,
+            "schedule_type": t.schedule_type,
+            "schedule_cron": t.schedule_cron,
+            "schedule_datetime": t.schedule_datetime.isoformat() if t.schedule_datetime else None,
+            "duration_type": t.duration_type,
+            "duration_seconds": t.duration_seconds,
+            "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
+            "retry_policy": t.retry_policy
+        }
+    }
+
+@app.post("/tasks/preview-cmd")
+def preview_task_command(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
+    db_task = ScheduledTask(
+        name=payload.name,
+        input_config=payload.input_config,
+        output_config=payload.output_config,
+        codec_config=payload.codec_config,
+        filter_config=payload.filter_config,
+        ffmpeg_build_id=payload.ffmpeg_build_id,
+        duration_type=payload.duration_type,
+        duration_seconds=payload.duration_seconds,
+        duration_end_time=payload.duration_end_time,
+    )
+    limit_sec = None
+    if db_task.duration_type == 'timer':
+        limit_sec = db_task.duration_seconds
+    elif db_task.duration_type == 'end_time' and db_task.duration_end_time:
+        now = datetime.datetime.utcnow()
+        diff = (db_task.duration_end_time - now).total_seconds()
+        limit_sec = max(1, int(diff))
+
+    ffmpeg_bin = task_manager._detect_ffmpeg()
+    if db_task.ffmpeg_build_id:
+        build = db.query(FfmpegBuild).get(db_task.ffmpeg_build_id)
+        if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+            ffmpeg_bin = build.ffmpeg_binary
+            
+    cmd = task_manager._build_ffmpeg_cmd(db_task, ffmpeg_bin, limit_sec)
+    return {"command": shlex.join(cmd)}
+
 @app.post("/tasks/import")
 def import_tasks(payload: dict, db: Session = Depends(get_db)):
     version = payload.get("version", 2)
     tasks_data = payload.get("tasks", [])
-    if not tasks_data and "profile" in payload:
-        tasks_data = [payload["profile"]]
-        
+    if not tasks_data:
+        if "task" in payload:
+            tasks_data = [payload["task"]]
+        elif "profile" in payload:
+            tasks_data = [payload["profile"]]
+            
     imported = []
     for td in tasks_data:
         next_run = None
