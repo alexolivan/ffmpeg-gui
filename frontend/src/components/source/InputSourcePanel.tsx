@@ -37,6 +37,9 @@ const ALL_SOURCE_TYPES = [
   { value: 'v4l2', label: 'Video4Linux2 (USB/Magewell)' },
   { value: 'lavfi_video', label: 'Internal Generator (Video)' },
   { value: 'lavfi_audio', label: 'Internal Generator (Audio)' },
+  { value: 'http_audio', label: 'HTTP Audio Stream (Icecast/Shoutcast)' },
+  { value: 'rtmp', label: 'RTMP Stream' },
+  { value: 'hls', label: 'HLS Stream' },
 ];
 
 const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
@@ -84,10 +87,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       </select>
 
       {/* ── Type-specific fields ── */}
-      {config.type === 'file' && (
+      {(config.type === 'file' || config.type === 'http_audio' || config.type === 'rtmp' || config.type === 'hls') && (
         <input
           type="text"
-          placeholder="Absolute path to file"
+          placeholder={config.type === 'file' ? "Absolute path to file" : "Stream URL (e.g. rtmp://... or http://...)"}
           className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
           value={config.path || ''}
           onChange={e => update({ path: e.target.value })}

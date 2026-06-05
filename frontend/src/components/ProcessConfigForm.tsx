@@ -7,8 +7,8 @@ import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS } from './codec/codecRegis
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
 
-const VIDEO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video'];
-const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio'];
+const VIDEO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
+const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls'];
 
 // ── Types ────────────────────────────────────────────────────────
 
