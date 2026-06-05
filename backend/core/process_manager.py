@@ -317,6 +317,8 @@ class ProcessManager:
         elif input_type == 'v4l2':
             device = input_cfg.get('device', '/dev/video0')
             cmd += ["-f", "v4l2", "-i", device]
+        elif input_type in ('http_audio', 'rtmp', 'hls'):
+            cmd += ["-i", input_cfg.get('path', '')]
         elif input_type == 'lavfi_video':
             pattern = input_cfg.get('pattern', 'testsrc')
             size = input_cfg.get('size')
@@ -493,6 +495,34 @@ class ProcessManager:
             password = output_cfg.get('icecast_password', 'hackme')
             cmd += ["-f", "ogg", "-content_type", "application/ogg",
                     f"icecast://source:{password}@{host}:{port}{mount}"]
+        elif output_type == 'hls':
+            path = output_cfg.get('path', '')
+            method = output_cfg.get('hls_method', 'local')
+            hls_time = output_cfg.get('hls_time', 2)
+            hls_list_size = output_cfg.get('hls_list_size', 5)
+            hls_delete = output_cfg.get('hls_delete_segments', True)
+            headers = output_cfg.get('headers', '')
+
+            cmd += ["-f", "hls"]
+            cmd += ["-hls_time", str(hls_time)]
+            cmd += ["-hls_list_size", str(hls_list_size)]
+
+            if method in ('PUT', 'POST'):
+                cmd += ["-method", method]
+                if headers:
+                    formatted_headers = headers.strip()
+                    if not formatted_headers.endswith('\r\n'):
+                        formatted_headers += '\r\n'
+                    cmd += ["-headers", formatted_headers]
+            else:
+                if hls_delete:
+                    cmd += ["-hls_flags", "delete_segments"]
+                
+                if path.endswith('.m3u8'):
+                    segment_pattern = path.replace('.m3u8', '_%03d.ts')
+                    cmd += ["-hls_segment_filename", segment_pattern]
+
+            cmd += [path]
 
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process):
         import re

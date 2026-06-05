@@ -143,5 +143,91 @@ class TestTaskAPI(unittest.TestCase):
             self.db.delete(t)
         self.db.commit()
 
+    def test_streaming_inputs_and_hls_output_preview(self):
+        # Test 1: Inputs http_audio, rtmp, hls
+        payload_input_http = {
+            "name": "Test Stream HTTP Audio",
+            "type": "service",
+            "input_config": {"input1": {"type": "http_audio", "path": "http://icecast.live/stream.mp3"}},
+            "output_config": {"type": "udp", "host": "127.0.0.1", "port": "1234"},
+            "codec_config": {"vcodec": "libx264"}
+        }
+        res = self.client.post("/processes/preview-cmd", json=payload_input_http)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        self.assertIn("-i http://icecast.live/stream.mp3", cmd)
+
+        payload_input_rtmp = {
+            "name": "Test Stream RTMP",
+            "type": "service",
+            "input_config": {"input1": {"type": "rtmp", "path": "rtmp://live.rtmp/app/key"}},
+            "output_config": {"type": "udp", "host": "127.0.0.1", "port": "1234"},
+            "codec_config": {"vcodec": "libx264"}
+        }
+        res = self.client.post("/processes/preview-cmd", json=payload_input_rtmp)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        self.assertIn("-i rtmp://live.rtmp/app/key", cmd)
+
+        payload_input_hls = {
+            "name": "Test Stream HLS",
+            "type": "service",
+            "input_config": {"input1": {"type": "hls", "path": "http://live.hls/playlist.m3u8"}},
+            "output_config": {"type": "udp", "host": "127.0.0.1", "port": "1234"},
+            "codec_config": {"vcodec": "libx264"}
+        }
+        res = self.client.post("/processes/preview-cmd", json=payload_input_hls)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        self.assertIn("-i http://live.hls/playlist.m3u8", cmd)
+
+        # Test 2: HLS Output local with delete segments
+        payload_output_hls_local = {
+            "name": "Test Output HLS Local",
+            "type": "service",
+            "input_config": {"input1": {"type": "file", "path": "/tmp/test.mp4"}},
+            "output_config": {
+                "type": "hls",
+                "path": "/var/www/hls/stream.m3u8",
+                "hls_method": "local",
+                "hls_time": 4,
+                "hls_list_size": 10,
+                "hls_delete_segments": True
+            },
+            "codec_config": {"vcodec": "libx264"}
+        }
+        res = self.client.post("/processes/preview-cmd", json=payload_output_hls_local)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        self.assertIn("-f hls", cmd)
+        self.assertIn("-hls_time 4", cmd)
+        self.assertIn("-hls_list_size 10", cmd)
+        self.assertIn("-hls_flags delete_segments", cmd)
+        self.assertIn("-hls_segment_filename /var/www/hls/stream_%03d.ts", cmd)
+        self.assertIn("/var/www/hls/stream.m3u8", cmd)
+
+        # Test 3: HLS Output remote with custom headers
+        payload_output_hls_remote = {
+            "name": "Test Output HLS Remote",
+            "type": "service",
+            "input_config": {"input1": {"type": "file", "path": "/tmp/test.mp4"}},
+            "output_config": {
+                "type": "hls",
+                "path": "http://ingest.server/live/stream.m3u8",
+                "hls_method": "PUT",
+                "hls_time": 2,
+                "hls_list_size": 5,
+                "headers": "Authorization: Bearer test_token"
+            },
+            "codec_config": {"vcodec": "libx264"}
+        }
+        res = self.client.post("/processes/preview-cmd", json=payload_output_hls_remote)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        self.assertIn("-f hls", cmd)
+        self.assertIn("-method PUT", cmd)
+        self.assertIn("-headers 'Authorization: Bearer test_token\r\n'", cmd)
+        self.assertIn("http://ingest.server/live/stream.m3u8", cmd)
+
 if __name__ == "__main__":
     unittest.main()
