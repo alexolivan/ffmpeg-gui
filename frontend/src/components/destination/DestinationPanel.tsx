@@ -53,7 +53,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 }) => {
   const availableTypes = OUTPUT_TYPES.filter(t => {
     if (t.requiresVideo && !hasVideo) return false;
-    if (t.value === 'icecast' && !hasAudio) return false;
+    if (t.value === 'icecast' && (!hasAudio || hasVideo)) return false;
     return true;
   });
 
