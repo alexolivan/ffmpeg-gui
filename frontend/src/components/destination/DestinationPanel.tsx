@@ -12,6 +12,11 @@ export interface OutputConfig {
   icecast_mount?: string;
   icecast_password?: string;
   device?: string;
+  hls_method?: string;
+  hls_time?: number;
+  hls_list_size?: number;
+  hls_delete_segments?: boolean;
+  headers?: string;
 }
 
 interface DestinationPanelProps {
@@ -30,6 +35,7 @@ const OUTPUT_TYPES = [
   { value: 'file', label: 'Local Recording', requiresVideo: false },
   { value: 'icecast', label: 'Icecast2 (Audio Stream)', requiresVideo: false },
   { value: 'rtp', label: 'RTP Stream', requiresVideo: false },
+  { value: 'hls', label: 'HLS Live Streaming', requiresVideo: false },
 ];
 
 const CONTAINERS = [
@@ -70,6 +76,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           host: '', port: '', path: '', url: '',
           mode: 'caller', latency: 200,
           container: 'mp4', icecast_mount: '', icecast_password: '',
+          hls_method: 'local', hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
         })}
       >
         {availableTypes.map(t => (
@@ -194,6 +201,85 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
             value={config.icecast_password || ''} onChange={e => update({ icecast_password: e.target.value })}
           />
+        </div>
+      )}
+
+      {config.type === 'hls' && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">HLS Ingest Method</label>
+              <select
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                value={config.hls_method || 'local'}
+                onChange={e => update({ hls_method: e.target.value })}
+              >
+                <option value="local">Local Directory (.m3u8 + .ts)</option>
+                <option value="PUT">HTTP PUT Upload</option>
+                <option value="POST">HTTP POST Upload</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Segment (s)</label>
+                <input
+                  type="number" min={1} max={60}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.hls_time ?? 2}
+                  onChange={e => update({ hls_time: Number(e.target.value) })}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">List Size</label>
+                <input
+                  type="number" min={2} max={100}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.hls_list_size ?? 5}
+                  onChange={e => update({ hls_list_size: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">
+              {config.hls_method === 'local' ? 'Output Playlist File Path' : 'Remote Ingest URL'}
+            </label>
+            <input
+              type="text"
+              placeholder={config.hls_method === 'local' ? 'e.g. /var/www/html/live/stream.m3u8' : 'e.g. http://ingest.server/live/stream.m3u8'}
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+              value={config.path || ''}
+              onChange={e => update({ path: e.target.value })}
+            />
+          </div>
+
+          {config.hls_method === 'local' && (
+            <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+              <input
+                type="checkbox" id="hls-delete-chk"
+                className="w-4 h-4 accent-purple-400"
+                checked={config.hls_delete_segments ?? true}
+                onChange={e => update({ hls_delete_segments: e.target.checked })}
+              />
+              <label htmlFor="hls-delete-chk" className="text-sm font-medium cursor-pointer">
+                Delete Expired Segments (keep playlist clean)
+              </label>
+            </div>
+          )}
+
+          {(config.hls_method === 'PUT' || config.hls_method === 'POST') && (
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Custom HTTP Headers (Optional)</label>
+              <textarea
+                placeholder="e.g. Authorization: Bearer token123&#10;X-Custom-Header: value"
+                rows={2}
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono resize-none"
+                value={config.headers || ''}
+                onChange={e => update({ headers: e.target.value })}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
