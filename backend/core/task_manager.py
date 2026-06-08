@@ -310,6 +310,10 @@ class TaskManager:
                 "-map", "0:v",
                 "-c:v", "mjpeg",
                 "-vf", "fps=1,scale=480:-1",
+            ]
+            if limit_sec:
+                cmd += ["-t", str(limit_sec)]
+            cmd += [
                 "-update", "1",
                 "-y", preview_path
             ]
