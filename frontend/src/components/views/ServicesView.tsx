@@ -87,20 +87,22 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-text-secondary flex gap-4 items-center flex-wrap">
+                    <div className="text-xs text-text-secondary space-y-1">
+                      <p className="truncate">
+                        Input: <code className="text-white font-mono">{formatInputDesc(proc.input_config)}</code>
+                      </p>
+                      <p className="truncate">
+                        Output: <code className="text-white font-mono">{formatOutputDesc(proc.output_config)}</code>
+                      </p>
+                    </div>
+                    <div className="flex gap-4 mt-2 text-xs text-text-secondary flex-wrap items-center">
                       <span>PID: <strong className="text-white font-mono">{proc.pid || 'N/A'}</strong></span>
                       <span className="text-white/10 select-none">|</span>
-                      <span className="font-mono">{formatInputDesc(proc.input_config)} ➔ {formatOutputDesc(proc.output_config)}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-8">
-                    <div className="text-center">
-                      <div className="text-brand-lime font-mono font-bold">{proc.cpu || 0}%</div>
-                      <div className="text-[10px] uppercase text-text-secondary">CPU</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-brand-orange font-mono font-bold">{proc.ram || 0}MB</div>
-                      <div className="text-[10px] uppercase text-text-secondary">RAM</div>
+                      <span>CPU: <strong className="text-white">{proc.cpu || 0}%</strong></span>
+                      <span>RAM: <strong className="text-white">{proc.ram || 0} MB</strong></span>
+                      {proc.fps && <span>FPS: <strong className="text-white">{proc.fps}</strong></span>}
+                      {proc.bitrate && <span>Bitrate: <strong className="text-white">{proc.bitrate}</strong></span>}
+                      {proc.speed && <span>Speed: <strong className="text-white">{proc.speed}</strong></span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -189,8 +191,13 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-text-secondary font-mono">
-                        {formatInputDesc(proc.input_config)} ➔ {formatOutputDesc(proc.output_config)}
+                      <div className="text-xs text-text-secondary space-y-1 mt-1.5">
+                        <p className="truncate">
+                          Input: <code className="text-white font-mono">{formatInputDesc(proc.input_config)}</code>
+                        </p>
+                        <p className="truncate">
+                          Output: <code className="text-white font-mono">{formatOutputDesc(proc.output_config)}</code>
+                        </p>
                       </div>
                     </div>
                     <div className="flex gap-4 items-center">
