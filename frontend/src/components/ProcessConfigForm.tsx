@@ -7,10 +7,14 @@ import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS } from './codec/codecRegis
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
 
+import FiltersFormSection from './form/FiltersFormSection';
+import SchedulingFormSection from './form/SchedulingFormSection';
+import LifecycleFormSection from './form/LifecycleFormSection';
+import AdvancedFlagsFormSection from './form/AdvancedFlagsFormSection';
+import PreviewCmdModal from './modals/PreviewCmdModal';
+
 const VIDEO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
 const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls'];
-
-// ── Types ────────────────────────────────────────────────────────
 
 interface ProcessConfig {
   name: string;
@@ -19,18 +23,14 @@ interface ProcessConfig {
   has_audio: boolean;
   use_secondary_input: boolean;
 
-  // Input 1 (primary — carries video, or audio if video disabled)
   input1: InputSourceConfig;
-  // Input 2 (secondary — independent audio source when split)
   input2: InputSourceConfig;
 
-  // Codec settings
   video_codec_id: string;
   video_codec_params: Record<string, string | number | boolean>;
   audio_codec_id: string;
   audio_codec_params: Record<string, string | number | boolean>;
 
-  // Filters
   filters: {
     scale: string;
     deinterlace: boolean;
@@ -46,15 +46,12 @@ interface ProcessConfig {
     };
   };
 
-  // Output
   output: OutputConfig;
 
-  // Watchdog & Auto-start Settings
   auto_start: boolean;
   watchdog_enabled: boolean;
   watchdog_retries: number;
 
-  // Task scheduling
   schedule_type: string;
   schedule_cron: string;
   schedule_datetime: string;
@@ -72,8 +69,6 @@ interface ProcessConfigFormProps {
   initialConfig?: any;
   isTask?: boolean;
 }
-
-// ── Component ────────────────────────────────────────────────────
 
 const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit, onSaveAs, initialConfig, isTask = false }) => {
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
@@ -206,9 +201,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     }
   };
 
-  const handleSubmit = () => {
-    // Transform to API-compatible structure
-    const payload = {
+  const createPayload = () => {
+    return {
       name: config.name,
       ffmpeg_build_id: config.ffmpeg_build_id,
       input_config: {
@@ -252,55 +246,16 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         watchdog_retries: config.watchdog_retries,
       })
     };
-    onSubmit(payload);
+  };
+
+  const handleSubmit = () => {
+    onSubmit(createPayload());
   };
 
   const handleSaveAs = () => {
     if (!onSaveAs) return;
-    const payload = {
-      name: `${config.name} (Copy)`,
-      ffmpeg_build_id: config.ffmpeg_build_id,
-      input_config: {
-        has_video: config.has_video,
-        has_audio: config.has_audio,
-        use_secondary_input: config.use_secondary_input,
-        input1: config.input1,
-        ...(config.use_secondary_input ? { input2: config.input2 } : {}),
-      },
-      codec_config: {
-        ...(config.has_video ? {
-          vcodec: config.video_codec_id,
-          video_params: config.video_codec_params,
-        } : {}),
-        ...(config.has_audio ? {
-          acodec: config.audio_codec_id,
-          audio_params: config.audio_codec_params,
-        } : {}),
-      },
-      output_config: config.output,
-      filter_config: {
-        scale: config.filters.scale,
-        deinterlace: config.filters.deinterlace,
-        framerate: config.filters.framerate,
-        advanced: config.filters.advanced,
-      },
-      ...(isTask ? {
-        schedule_type: config.schedule_type,
-        schedule_cron: config.schedule_type === 'recurring' ? config.schedule_cron : null,
-        schedule_datetime: config.schedule_type === 'one_shot' && config.schedule_datetime ? new Date(config.schedule_datetime).toISOString() : null,
-        duration_type: config.duration_type,
-        duration_seconds: config.duration_type === 'timer' ? Number(config.duration_seconds) : null,
-        duration_end_time: config.duration_type === 'end_time' && config.duration_end_time ? new Date(config.duration_end_time).toISOString() : null,
-        retry_policy: {
-          max_retries: Number(config.retry_max),
-          retry_delay: Number(config.retry_delay)
-        }
-      } : {
-        auto_start: config.auto_start,
-        watchdog_enabled: config.watchdog_enabled,
-        watchdog_retries: config.watchdog_retries,
-      })
-    };
+    const payload = createPayload();
+    payload.name = `${config.name} (Copy)`;
     onSaveAs(payload);
   };
 
@@ -308,49 +263,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     setIsPreviewing(true);
     const previewUrl = isTask ? 'http://localhost:8000/tasks/preview-cmd' : 'http://localhost:8000/processes/preview-cmd';
     const payload = {
-      name: config.name || 'preview',
-      ffmpeg_build_id: config.ffmpeg_build_id,
-      input_config: {
-        has_video: config.has_video,
-        has_audio: config.has_audio,
-        use_secondary_input: config.use_secondary_input,
-        input1: config.input1,
-        ...(config.use_secondary_input ? { input2: config.input2 } : {}),
-      },
-      codec_config: {
-        ...(config.has_video ? {
-          vcodec: config.video_codec_id,
-          video_params: config.video_codec_params,
-        } : {}),
-        ...(config.has_audio ? {
-          acodec: config.audio_codec_id,
-          audio_params: config.audio_codec_params,
-        } : {}),
-      },
-      output_config: config.output,
-      filter_config: {
-        scale: config.filters.scale,
-        deinterlace: config.filters.deinterlace,
-        framerate: config.filters.framerate,
-        advanced: config.filters.advanced,
-      },
-      ...(isTask ? {
-        schedule_type: config.schedule_type,
-        schedule_cron: config.schedule_type === 'recurring' ? config.schedule_cron : null,
-        schedule_datetime: config.schedule_type === 'one_shot' && config.schedule_datetime ? new Date(config.schedule_datetime).toISOString() : null,
-        duration_type: config.duration_type,
-        duration_seconds: config.duration_type === 'timer' ? Number(config.duration_seconds) : null,
-        duration_end_time: config.duration_type === 'end_time' && config.duration_end_time ? new Date(config.duration_end_time).toISOString() : null,
-        retry_policy: {
-          max_retries: Number(config.retry_max),
-          retry_delay: Number(config.retry_delay)
-        }
-      } : {
-        type: 'service',
-        auto_start: false,
-        watchdog_enabled: false,
-        watchdog_retries: 5,
-      })
+      ...createPayload(),
+      ...(!isTask ? { type: 'service' } : {})
     };
 
     try {
@@ -370,7 +284,6 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     }
   };
 
-  // ── Section tabs ───────────────────────────────────────────────
   const sections = [
     { id: 'inputs', label: 'Sources', icon: '📡' },
     { id: 'encoding', label: 'Encoding', icon: '⚙️' },
@@ -617,53 +530,19 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
 
         {/* ═══ FILTERS SECTION ═══ */}
         {activeSection === 'filters' && (
-          <div className="space-y-4 animate-in fade-in duration-300">
-            {config.has_video ? (
-              <div className="glass-card p-4 !rounded-2xl">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2 h-2 rounded-full bg-brand-lime" />
-                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Video Filters</h4>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">Scale / Resize</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 1920:1080 or -1:720"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                      value={config.filters.scale}
-                      onChange={e => setConfig({ ...config, filters: { ...config.filters, scale: e.target.value } })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">Framerate Convert</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 25, 29.97, 50"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                      value={config.filters.framerate}
-                      onChange={e => setConfig({ ...config, filters: { ...config.filters, framerate: e.target.value } })}
-                    />
-                  </div>
-                  <div className="col-span-2 flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                    <input
-                      type="checkbox" id="deinterlace-chk"
-                      className="w-4 h-4 accent-brand-lime"
-                      checked={config.filters.deinterlace}
-                      onChange={e => setConfig({ ...config, filters: { ...config.filters, deinterlace: e.target.checked } })}
-                    />
-                    <label htmlFor="deinterlace-chk" className="text-sm font-medium cursor-pointer">
-                      Enable Deinterlacing (YADIF)
-                    </label>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-12 text-text-secondary text-sm italic">
-                Video filters are only available when video stream is enabled.
-              </div>
-            )}
-          </div>
+          <FiltersFormSection
+            hasVideo={config.has_video}
+            scale={config.filters.scale}
+            framerate={config.filters.framerate}
+            deinterlace={config.filters.deinterlace}
+            onChange={updates => setConfig({
+              ...config,
+              filters: {
+                ...config.filters,
+                ...updates,
+              }
+            })}
+          />
         )}
 
         {/* ═══ OUTPUT SECTION ═══ */}
@@ -679,350 +558,56 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             </div>
           </div>
         )}
+
         {/* ═══ SYSTEM & WATCHDOG SECTION ═══ */}
         {activeSection === 'system' && (
           <div className="space-y-4 animate-in fade-in duration-300">
             {isTask ? (
-              <div className="glass-card p-4 !rounded-2xl space-y-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2 h-2 rounded-full bg-brand-lime" />
-                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Trigger & Scheduling</h4>
-                </div>
-
-                {/* Trigger Mechanism */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Trigger Mechanism</label>
-                    <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                      value={config.schedule_type}
-                      onChange={e => setConfig({...config, schedule_type: e.target.value})}
-                    >
-                      <option value="manual">Manual Trigger Only</option>
-                      <option value="one_shot">One-shot (Target DateTime)</option>
-                      <option value="recurring">Recurring (Cron Schedule)</option>
-                    </select>
-                  </div>
-
-                  {/* Cron Expression (Recurring) */}
-                  {config.schedule_type === 'recurring' && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-brand-lime tracking-wider block">Cron Expression</label>
-                      <input 
-                        type="text" required
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none focus:border-brand-lime transition-all text-brand-lime font-mono"
-                        placeholder="e.g. */15 * * * *"
-                        value={config.schedule_cron}
-                        onChange={e => setConfig({...config, schedule_cron: e.target.value})}
-                      />
-                    </div>
-                  )}
-
-                  {/* One-shot DateTime */}
-                  {config.schedule_type === 'one_shot' && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-brand-orange tracking-wider block">Target Date & Time</label>
-                      <input 
-                        type="datetime-local" required
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none focus:border-brand-orange transition-all text-white"
-                        value={config.schedule_datetime}
-                        onChange={e => setConfig({...config, schedule_datetime: e.target.value})}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Task duration limit */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-white/5">
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Duration Type</label>
-                    <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                      value={config.duration_type}
-                      onChange={e => setConfig({...config, duration_type: e.target.value})}
-                    >
-                      <option value="input_dependent">Input Dependent (FFmpeg processes naturally)</option>
-                      <option value="timer">Max Duration Timer</option>
-                      <option value="end_time">Target Datetime (Stop at absolute time)</option>
-                    </select>
-                  </div>
-
-                  {config.duration_type === 'timer' && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Duration Limit (Seconds)</label>
-                      <input
-                        type="number" min="1"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                        value={config.duration_seconds}
-                        onChange={e => setConfig({...config, duration_seconds: Number(e.target.value)})}
-                      />
-                    </div>
-                  )}
-
-                  {config.duration_type === 'end_time' && (
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Target Stop Datetime</label>
-                      <input
-                        type="datetime-local" required
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none text-white"
-                        value={config.duration_end_time || ''}
-                        onChange={e => setConfig({...config, duration_end_time: e.target.value})}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Retry policy */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-white/5">
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Maximum Retries on Failure</label>
-                    <input
-                      type="number" min="0" max="10"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                      value={config.retry_max}
-                      onChange={e => setConfig({...config, retry_max: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Retry Delay (Seconds)</label>
-                    <input
-                      type="number" min="1" max="300"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                      value={config.retry_delay}
-                      onChange={e => setConfig({...config, retry_delay: Number(e.target.value)})}
-                    />
-                  </div>
-                </div>
-              </div>
+              <SchedulingFormSection
+                schedule_type={config.schedule_type}
+                schedule_cron={config.schedule_cron}
+                schedule_datetime={config.schedule_datetime}
+                duration_type={config.duration_type}
+                duration_seconds={config.duration_seconds}
+                duration_end_time={config.duration_end_time}
+                retry_max={config.retry_max}
+                retry_delay={config.retry_delay}
+                onChange={updates => setConfig({
+                  ...config,
+                  ...updates
+                })}
+              />
             ) : (
-              <div className="glass-card p-4 !rounded-2xl space-y-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="w-2 h-2 rounded-full bg-brand-lime" />
-                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Process Lifecycle Settings</h4>
-                </div>
-
-                {/* Auto Start Toggle */}
-                <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium text-white">Auto-start on boot</span>
-                    <span className="text-xs text-text-secondary">Launch this service automatically when the application starts.</span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={config.auto_start}
-                      onChange={e => setConfig({ ...config, auto_start: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
-                  </label>
-                </div>
-
-                {/* Watchdog Toggle */}
-                <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium text-white">Enable Watchdog</span>
-                    <span className="text-xs text-text-secondary">Monitor process health and auto-restart on unexpected crashes.</span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={config.watchdog_enabled}
-                      onChange={e => setConfig({ ...config, watchdog_enabled: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
-                  </label>
-                </div>
-
-                {/* Watchdog Retries */}
-                {config.watchdog_enabled && (
-                  <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-3 animate-in fade-in duration-200">
-                    <div className="flex items-center justify-between">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-sm font-medium text-white">Infinite Restart Attempts</span>
-                        <span className="text-xs text-text-secondary">Keep trying to restart the process indefinitely.</span>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={config.watchdog_retries === -1}
-                          onChange={e => setConfig({
-                            ...config,
-                            watchdog_retries: e.target.checked ? -1 : 5
-                          })}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
-                      </label>
-                    </div>
-
-                    {config.watchdog_retries !== -1 && (
-                      <div className="flex items-center gap-3 pt-2 border-t border-white/5 animate-in fade-in duration-200">
-                        <label className="text-xs font-bold uppercase tracking-wider text-text-secondary block">
-                          Maximum consecutive retries:
-                         </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="100"
-                          className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none w-24 focus:border-brand-lime"
-                          value={config.watchdog_retries}
-                          onChange={e => setConfig({
-                            ...config,
-                            watchdog_retries: Math.max(1, parseInt(e.target.value) || 1)
-                          })}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <LifecycleFormSection
+                auto_start={config.auto_start}
+                watchdog_enabled={config.watchdog_enabled}
+                watchdog_retries={config.watchdog_retries}
+                onChange={updates => setConfig({
+                  ...config,
+                  ...updates
+                })}
+              />
             )}
 
-            {/* ═══ ADVANCED FFMPEG FLAGS ═══ */}
-            <div className="glass-card p-4 !rounded-2xl space-y-4">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-2 h-2 rounded-full bg-brand-orange" />
-                <h4 className="text-brand-orange font-bold text-xs uppercase tracking-wider">Advanced FFmpeg Flags</h4>
-                <span className="text-[10px] text-white/20 italic ml-auto">Speed control & resource limits</span>
-              </div>
-
-              {/* Realtime (-re) */}
-              <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium text-white">Realtime Playback <code className="text-[10px] text-brand-orange bg-white/5 px-1.5 py-0.5 rounded ml-1">-re</code></span>
-                  <span className="text-xs text-text-secondary">
-                    Throttle input read to native framerate. Essential for file/lavfi sources in live streaming.
-                    {config.filters.advanced.realtime === null && (
-                      <span className="text-brand-lime ml-1">(auto: {['file', 'lavfi_video', 'lavfi_audio'].includes(config.input1.type) ? 'ON' : 'OFF'})</span>
-                    )}
-                  </span>
-                </div>
-                <select
-                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none w-28 text-center"
-                  value={config.filters.advanced.realtime === null ? 'auto' : config.filters.advanced.realtime ? 'on' : 'off'}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setConfig({
-                      ...config,
-                      filters: { ...config.filters, advanced: {
-                        ...config.filters.advanced,
-                        realtime: val === 'auto' ? null : val === 'on',
-                      }},
-                    });
-                  }}
-                >
-                  <option value="auto">Auto</option>
-                  <option value="on">Always ON</option>
-                  <option value="off">Always OFF</option>
-                </select>
-              </div>
-
-              {/* Stream Loop — only for file inputs */}
-              {config.input1.type === 'file' && (
-                <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 animate-in fade-in duration-200">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium text-white">Input Loop <code className="text-[10px] text-brand-orange bg-white/5 px-1.5 py-0.5 rounded ml-1">-stream_loop</code></span>
-                    <span className="text-xs text-text-secondary">Repeat file input. -1 = infinite (24/7 playout). 0 = off.</span>
-                  </div>
-                  <input
-                    type="number" min="-1" max="9999"
-                    className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none w-24 text-center font-mono focus:border-brand-orange"
-                    value={config.filters.advanced.stream_loop ?? 0}
-                    onChange={e => setConfig({
-                      ...config,
-                      filters: { ...config.filters, advanced: {
-                        ...config.filters.advanced,
-                        stream_loop: e.target.value === '' ? null : parseInt(e.target.value),
-                      }},
-                    })}
-                  />
-                </div>
-              )}
-
-              {/* Threads + HW Accel row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
-                    Threads <code className="text-brand-orange">-threads</code>
-                  </label>
-                  <input
-                    type="number" min="0" max="128" placeholder="0 = auto"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono focus:border-brand-orange"
-                    value={config.filters.advanced.threads || ''}
-                    onChange={e => setConfig({
-                      ...config,
-                      filters: { ...config.filters, advanced: {
-                        ...config.filters.advanced,
-                        threads: parseInt(e.target.value) || 0,
-                      }},
-                    })}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
-                    HW Acceleration <code className="text-brand-orange">-hwaccel</code>
-                  </label>
-                  <select
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none focus:border-brand-orange"
-                    value={config.filters.advanced.hwaccel}
-                    onChange={e => setConfig({
-                      ...config,
-                      filters: { ...config.filters, advanced: {
-                        ...config.filters.advanced,
-                        hwaccel: e.target.value,
-                        hwaccel_output_format: e.target.value === 'none' ? '' : e.target.value,
-                      }},
-                    })}
-                  >
-                    <option value="none">None (Software)</option>
-                    <option value="vaapi">VAAPI (Intel/AMD)</option>
-                    <option value="cuda">CUDA (NVIDIA)</option>
-                    <option value="qsv">Quick Sync (Intel)</option>
-                    <option value="auto">Auto-detect</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Probesize + Thread Queue Size row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
-                    Probe Size <code className="text-brand-orange">-probesize</code>
-                  </label>
-                  <input
-                    type="text" placeholder="e.g. 5M, 20M"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono focus:border-brand-orange"
-                    value={config.filters.advanced.probesize}
-                    onChange={e => setConfig({
-                      ...config,
-                      filters: { ...config.filters, advanced: {
-                        ...config.filters.advanced,
-                        probesize: e.target.value,
-                      }},
-                    })}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
-                    Thread Queue <code className="text-brand-orange">-thread_queue_size</code>
-                  </label>
-                  <input
-                    type="number" min="0" max="65536" placeholder="0 = default"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono focus:border-brand-orange"
-                    value={config.filters.advanced.thread_queue_size || ''}
-                    onChange={e => setConfig({
-                      ...config,
-                      filters: { ...config.filters, advanced: {
-                        ...config.filters.advanced,
-                        thread_queue_size: parseInt(e.target.value) || 0,
-                      }},
-                    })}
-                  />
-                </div>
-              </div>
-            </div>
+            <AdvancedFlagsFormSection
+              inputType={config.input1.type}
+              realtime={config.filters.advanced.realtime}
+              stream_loop={config.filters.advanced.stream_loop}
+              threads={config.filters.advanced.threads}
+              hwaccel={config.filters.advanced.hwaccel}
+              probesize={config.filters.advanced.probesize}
+              thread_queue_size={config.filters.advanced.thread_queue_size}
+              onChange={updates => setConfig({
+                ...config,
+                filters: {
+                  ...config.filters,
+                  advanced: {
+                    ...config.filters.advanced,
+                    ...updates
+                  }
+                }
+              })}
+            />
           </div>
         )}
       </div>
@@ -1062,30 +647,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
 
       {/* ── Preview Modal ── */}
       {previewCmd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-3xl shadow-2xl flex flex-col">
-            <h3 className="text-xl font-black text-white mb-4">FFmpeg Command Preview</h3>
-            <div className="bg-black border border-white/10 p-4 rounded-xl mb-6 overflow-x-auto custom-scrollbar font-mono text-sm text-brand-lime break-all">
-              {previewCmd}
-            </div>
-            <div className="flex justify-end gap-3 mt-auto">
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(previewCmd);
-                }}
-                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg font-bold transition-all"
-              >
-                Copy to Clipboard
-              </button>
-              <button
-                onClick={() => setPreviewCmd(null)}
-                className="px-4 py-2 bg-brand-orange text-black rounded-lg font-bold hover:bg-orange-400 transition-all"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <PreviewCmdModal
+          previewCmd={previewCmd}
+          onClose={() => setPreviewCmd(null)}
+        />
       )}
     </div>
   );
