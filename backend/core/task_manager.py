@@ -13,6 +13,7 @@ class TaskManager:
         self.ffmpeg_path = ffmpeg_path
         self.logger = logging.getLogger("TaskManager")
         self.running_processes = {}
+        self.last_activity = {}
 
     def _detect_ffmpeg(self):
         local_bin = os.path.abspath("./ffmpeg_bin/bin/ffmpeg")
@@ -59,6 +60,7 @@ class TaskManager:
                     stdin=asyncio.subprocess.PIPE
                 )
                 self.running_processes[execution_id] = proc
+                self.last_activity[execution_id] = datetime.utcnow()
                 execution.pid = proc.pid
                 session.commit()
                 
@@ -451,6 +453,7 @@ class TaskManager:
             try: await proc.wait()
             except Exception: pass
             self.running_processes.pop(execution_id, None)
+            self.last_activity.pop(execution_id, None)
 
         with self.db_session_factory() as session:
             execution = session.query(TaskExecution).get(execution_id)
@@ -488,6 +491,7 @@ class TaskManager:
                     buffer.extend(char)
 
     def _handle_log_line(self, execution_id: int, msg: str, status_re):
+        self.last_activity[execution_id] = datetime.utcnow()
         level = "ERROR" if any(kw in msg.lower() for kw in ["error", "failed", "invalid"]) else "INFO"
         with self.db_session_factory() as session:
             match = status_re.search(msg)
@@ -506,15 +510,25 @@ class TaskManager:
 
     async def _watchdog(self, execution_id: int, proc, limit_sec):
         start_time = datetime.utcnow()
-        limit = (limit_sec + 30) if limit_sec else None
+        hard_limit = (limit_sec * 5 + 600) if limit_sec else 3600 * 12
         
         try:
             p = psutil.Process(proc.pid)
             p.cpu_percent(interval=None)
             while proc.returncode is None:
-                if limit and (datetime.utcnow() - start_time).total_seconds() > limit:
-                    self.logger.warning(f"Safety watchdog: execution {execution_id} exceeded time limits. Force killing...")
-                    await self.stop_execution(execution_id, status="error", error_msg="Execution timed out (force terminated by watchdog)")
+                now = datetime.utcnow()
+                
+                # Check 1: Hard timeout limit
+                if (now - start_time).total_seconds() > hard_limit:
+                    self.logger.warning(f"Safety watchdog: execution {execution_id} exceeded hard time limit. Force killing...")
+                    await self.stop_execution(execution_id, status="error", error_msg="Execution timed out (exceeded hard limit)")
+                    return
+
+                # Check 2: Inactivity timeout (no logs)
+                last_active = self.last_activity.get(execution_id, start_time)
+                if (now - last_active).total_seconds() > 60:
+                    self.logger.warning(f"Safety watchdog: execution {execution_id} stopped producing logs for 60s. Force killing...")
+                    await self.stop_execution(execution_id, status="error", error_msg="Execution hung (no log activity for 60s)")
                     return
 
                 try:
@@ -550,3 +564,4 @@ class TaskManager:
                     execution.ram_usage = 0
                     session.commit()
             self.running_processes.pop(execution_id, None)
+            self.last_activity.pop(execution_id, None)
