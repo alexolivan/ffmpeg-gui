@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 import os
 import sys
 import datetime
@@ -261,6 +262,140 @@ class TestTaskAPI(unittest.TestCase):
         
         # Cleanup
         self.client.delete(f"/processes/{proc_id}")
+
+    def test_hls_abr_command_generation(self):
+        payload = {
+            "name": "Test Command HLS ABR",
+            "type": "service",
+            "input_config": {"input1": {"type": "file", "path": "/tmp/test.mp4"}},
+            "output_config": {
+                "type": "hls",
+                "path": "/var/www/hls/stream.m3u8",
+                "hls_method": "local",
+                "hls_time": 4,
+                "hls_list_size": 10,
+                "hls_delete_segments": True,
+                "variants": [
+                    {"resolution": "1920:1080", "video_bitrate": "4500k", "audio_bitrate": "192k"},
+                    {"resolution": "1280:720", "video_bitrate": "2500k", "audio_bitrate": "192k"},
+                    {"resolution": "854:480", "video_bitrate": "1000k", "audio_bitrate": "96k"}
+                ]
+            },
+            "codec_config": {"vcodec": "libx264"}
+        }
+        res = self.client.post("/processes/preview-cmd", json=payload)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        
+        # Validaciones de video
+        self.assertIn("-filter:v:0 scale=1920:1080", cmd)
+        self.assertIn("-filter:v:1 scale=1280:720", cmd)
+        self.assertIn("-filter:v:2 scale=854:480", cmd)
+        self.assertIn("-c:v:0 libx264 -b:v:0 4500k", cmd)
+        self.assertIn("-c:v:1 libx264 -b:v:1 2500k", cmd)
+        self.assertIn("-c:v:2 libx264 -b:v:2 1000k", cmd)
+        
+        # Validaciones de audio (deduplicado: sólo 2 streams de audio para 3 variantes)
+        self.assertIn("-b:a:0 192k", cmd)
+        self.assertIn("-b:a:1 96k", cmd)
+        # No debe haber un tercer codificador de audio con 192k o 96k ya que se reutiliza
+        self.assertNotIn("-b:a:2", cmd)
+        
+        # Validaciones de muxer HLS ABR
+        self.assertIn("-f hls", cmd)
+        self.assertIn("-hls_time 4", cmd)
+        self.assertIn("-hls_list_size 10", cmd)
+        self.assertIn("-master_pl_name master.m3u8", cmd)
+        self.assertIn("v:0,a:0 v:1,a:0 v:2,a:1", cmd)
+        self.assertIn("-hls_segment_filename /var/www/hls/stream_%v_%03d.ts", cmd)
+        self.assertIn("/var/www/hls/stream_%v.m3u8", cmd)
+
+    def test_task_hls_abr_command_generation(self):
+        payload = {
+            "name": "API Test Task HLS ABR",
+            "input_config": {"type": "file", "path": "/tmp/test.mp4"},
+            "output_config": {
+                "type": "hls",
+                "path": "/var/www/hls/task_abr.m3u8",
+                "variants": [
+                    {"resolution": "1920:1080", "video_bitrate": "4500k", "audio_bitrate": "128k"}
+                ]
+            },
+            "codec_config": {"vcodec": "libx264"},
+            "schedule_type": "manual"
+        }
+        res = self.client.post("/tasks/preview-cmd", json=payload)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        self.assertIn("-filter:v:0 scale=1920:1080", cmd)
+        self.assertIn("v:0,a:0", cmd)
+
+    @patch("asyncio.create_subprocess_exec")
+    def test_hls_abr_e2e_execution(self, mock_exec):
+        import asyncio
+        from unittest.mock import MagicMock
+        
+        # Mocking the async subprocess response
+        mock_proc = MagicMock()
+        mock_proc.pid = 99999
+        mock_proc.returncode = None
+        
+        # Async mock for wait
+        async def mock_wait():
+            return 0
+        mock_proc.wait = mock_wait
+        
+        # Async mock for create_subprocess_exec
+        async def mock_create(*args, **kwargs):
+            return mock_proc
+        mock_exec.side_effect = mock_create
+        
+        payload = {
+            "name": "E2E Task HLS ABR",
+            "input_config": {
+                "input1": {
+                    "type": "lavfi",
+                    "path": "testsrc=size=640x360:rate=25"
+                },
+                "has_video": True,
+                "has_audio": False,
+                "use_secondary_input": False
+            },
+            "output_config": {
+                "type": "hls",
+                "path": "/tmp/live.m3u8",
+                "hls_method": "local",
+                "hls_time": 1,
+                "hls_list_size": 3,
+                "hls_delete_segments": True,
+                "variants": [
+                    {"resolution": "480x270", "video_bitrate": "150k", "audio_bitrate": "64k"},
+                    {"resolution": "320x180", "video_bitrate": "80k", "audio_bitrate": "64k"}
+                ]
+            },
+            "codec_config": {
+                "vcodec": "libx264",
+                "acodec": "aac"
+            },
+            "schedule_type": "manual"
+        }
+        res = self.client.post("/tasks", json=payload)
+        self.assertEqual(res.status_code, 200)
+        task_id = res.json()["id"]
+        
+        try:
+            res = self.client.post(f"/tasks/{task_id}/trigger")
+            self.assertEqual(res.status_code, 200)
+            exec_id = res.json()["execution_id"]
+            
+            # Verify execution triggered
+            self.assertIsNotNone(exec_id)
+            
+            res = self.client.post(f"/tasks/executions/{exec_id}/stop")
+            self.assertEqual(res.status_code, 200)
+            
+        finally:
+            self.client.delete(f"/tasks/{task_id}")
 
 if __name__ == "__main__":
     unittest.main()
