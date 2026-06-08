@@ -24,9 +24,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   // File import reference
   const importFileRef = useRef<HTMLInputElement>(null);
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const r = await fetch(`${API}/tasks`);
       if (!r.ok) throw new Error('Failed to load tasks');
       setTasks(await r.json());
@@ -34,14 +34,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     } catch (e: any) {
       setError(e.message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchTasks();
     const interval = setInterval(() => {
-      fetchTasks();
+      fetchTasks(true);
     }, 3000);
     return () => clearInterval(interval);
   }, []);
