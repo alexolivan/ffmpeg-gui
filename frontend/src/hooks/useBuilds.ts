@@ -48,7 +48,7 @@ export function useBuilds(activeView: string) {
 
   const fetchCapabilities = async () => {
     try {
-      const res = await fetch(`${API}/capabilities`);
+      const res = await fetch(`${API}/system/capabilities`);
       if (res.ok) setCapabilities(await res.json());
     } catch (err) {
       console.error("Failed to fetch capabilities:", err);
