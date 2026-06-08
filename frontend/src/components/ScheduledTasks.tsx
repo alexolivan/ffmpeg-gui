@@ -586,52 +586,75 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
             {(() => {
               const activeExec = taskExecutions.find(e => e.id === viewingLogsExecutionId);
-              if (activeExec) {
-                return (
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
-                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">CPU Usage</div>
-                      <div className="font-bold font-mono text-sm text-brand-lime">{activeExec.cpu || 0}%</div>
-                    </div>
-                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">RAM Usage</div>
-                      <div className="font-bold font-mono text-sm text-brand-orange">{activeExec.ram || 0} MB</div>
-                    </div>
-                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">FPS</div>
-                      <div className="font-bold font-mono text-sm">{activeExec.fps || '0'}</div>
-                    </div>
-                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
-                      <div className="font-bold font-mono text-sm">{activeExec.bitrate || '0 kb/s'}</div>
-                    </div>
-                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center col-span-2 sm:col-span-1">
-                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Speed</div>
-                      <div className="font-bold font-mono text-sm text-brand-blue">{activeExec.speed || '0x'}</div>
-                    </div>
-                  </div>
-                );
-              }
-              return null;
-            })()}
+              const taskConfig = tasks.find(t => t.id === activeExec?.task_id);
+              const hasVideo = taskConfig ? taskConfig.input_config?.has_video !== false : true;
+              const showPreview = activeExec && activeExec.status === 'running' && hasVideo;
 
-            <div 
-              ref={logsContainerRef}
-              className="flex-1 bg-black/50 border border-white/5 rounded-2xl p-6 overflow-y-auto font-mono text-xs text-brand-lime space-y-1.5 scrollbar-thin"
-            >
-              {logs.length === 0 ? (
-                <div className="text-white/20 italic">Awaiting telemetry logs...</div>
-              ) : (
-                logs.map((log) => (
-                  <div key={log.id} className="flex gap-4">
-                    <span className="text-white/30 select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                    <span className={log.level === 'error' ? 'text-red-400' : log.level === 'warning' ? 'text-brand-orange' : 'text-green-400'}>
-                      {log.message}
-                    </span>
+              return (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
+                  <div className={`${showPreview ? 'lg:col-span-2' : 'lg:col-span-3'} flex flex-col min-h-0 space-y-4`}>
+                    {/* Metrics */}
+                    {activeExec && (
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">CPU Usage</div>
+                          <div className="font-bold font-mono text-sm text-brand-lime">{activeExec.cpu || 0}%</div>
+                        </div>
+                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">RAM Usage</div>
+                          <div className="font-bold font-mono text-sm text-brand-orange">{activeExec.ram || 0} MB</div>
+                        </div>
+                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">FPS</div>
+                          <div className="font-bold font-mono text-sm">{activeExec.fps || '0'}</div>
+                        </div>
+                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
+                          <div className="font-bold font-mono text-sm">{activeExec.bitrate || '0 kb/s'}</div>
+                        </div>
+                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center col-span-2 sm:col-span-1">
+                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Speed</div>
+                          <div className="font-bold font-mono text-sm text-brand-blue">{activeExec.speed || '0x'}</div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Terminal */}
+                    <div 
+                      ref={logsContainerRef}
+                      className="flex-1 bg-black/50 border border-white/5 rounded-2xl p-6 overflow-y-auto font-mono text-xs text-brand-lime space-y-1.5 scrollbar-thin select-text"
+                    >
+                      {logs.length === 0 ? (
+                        <div className="text-white/20 italic text-center py-20">Awaiting telemetry logs...</div>
+                      ) : (
+                        logs.map((log) => (
+                          <div key={log.id} className="flex gap-4">
+                            <span className="text-white/30 select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                            <span className={log.level === 'error' ? 'text-red-400' : log.level === 'warning' ? 'text-brand-orange' : 'text-green-400'}>
+                              {log.message}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
-                ))
-              )}
-            </div>
+
+                  {showPreview && (
+                    <div className="flex flex-col justify-center">
+                      <div className="aspect-video bg-black rounded-2xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
+                        <img 
+                          src={`${API}/tasks/executions/${viewingLogsExecutionId}/preview`} 
+                          alt="Live Preview" 
+                          className="max-h-full max-w-full object-contain" 
+                        />
+                        <div className="absolute top-3 left-3 px-2.5 py-1 bg-brand-lime text-black text-[9px] font-black rounded-md tracking-wider uppercase animate-pulse">
+                          LIVE
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

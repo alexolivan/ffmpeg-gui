@@ -48,7 +48,7 @@ class TaskManager:
                 if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
                     ffmpeg_bin = build.ffmpeg_binary
 
-            cmd = self._build_ffmpeg_cmd(task, ffmpeg_bin, limit_sec)
+            cmd = self._build_ffmpeg_cmd(task, ffmpeg_bin, limit_sec, execution_id=execution_id)
             self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
             
             try:
@@ -71,7 +71,7 @@ class TaskManager:
                 execution.stopped_at = datetime.utcnow()
                 session.commit()
 
-    def _build_ffmpeg_cmd(self, task, ffmpeg_bin, limit_sec):
+    def _build_ffmpeg_cmd(self, task, ffmpeg_bin, limit_sec, execution_id=None):
         cmd = [ffmpeg_bin, "-hide_banner", "-y"]
         
         input_cfg = task.input_config
@@ -296,6 +296,22 @@ class TaskManager:
 
             # Output
             self._append_output(cmd, task.output_config, codec_cfg)
+
+        # ── Secondary Preview Output ──
+        if execution_id and has_video:
+            import os
+            from database.db import BASE_DIR
+            previews_dir = os.path.join(BASE_DIR, "data", "previews")
+            os.makedirs(previews_dir, exist_ok=True)
+            preview_path = os.path.join(previews_dir, f"preview_task_{execution_id}.jpg")
+            cmd += [
+                "-map", "0:v",
+                "-c:v", "mjpeg",
+                "-vf", "fps=1,scale=480:-1",
+                "-update", "1",
+                "-y", preview_path
+            ]
+
         return cmd
 
     def _append_input(self, cmd: list, input_cfg: dict):

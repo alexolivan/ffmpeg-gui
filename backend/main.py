@@ -1069,6 +1069,20 @@ async def get_preview(process_id: int, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/tasks/executions/{execution_id}/preview")
+async def get_task_preview(execution_id: int, db: Session = Depends(get_db)):
+    execution = db.query(TaskExecution).get(execution_id)
+    if not execution:
+        raise HTTPException(status_code=404, detail="Execution not found")
+
+    is_running = execution.status == 'running'
+    input_config = execution.task.input_config if execution.task else {}
+    return StreamingResponse(
+        preview_manager.get_mjpeg_stream(execution.id, input_config, is_running, is_task=True),
+        media_type="multipart/x-mixed-replace; boundary=ffmpeg"
+    )
+
+
 # ── Serialization helpers ─────────────────────────────────────────
 
 def _serialize_build(build: FfmpegBuild) -> dict:

@@ -7,11 +7,12 @@ class PreviewManager:
     def __init__(self):
         self.logger = logging.getLogger("PreviewManager")
 
-    async def get_mjpeg_stream(self, process_id: int, input_config: dict, is_running: bool):
+    async def get_mjpeg_stream(self, process_id: int, input_config: dict, is_running: bool, is_task: bool = False):
         if is_running:
             # Stream the generated JPEG thumbnail from disk
             from database.db import BASE_DIR
-            preview_path = os.path.join(BASE_DIR, "data", "previews", f"preview_{process_id}.jpg")
+            prefix = "preview_task" if is_task else "preview"
+            preview_path = os.path.join(BASE_DIR, "data", "previews", f"{prefix}_{process_id}.jpg")
             
             last_mtime = 0
             while True:
