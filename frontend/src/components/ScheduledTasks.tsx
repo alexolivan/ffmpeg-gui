@@ -573,86 +573,191 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
       {/* LIVE LOGGER CLI MODAL */}
       {viewingLogsExecutionId !== null && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-6 z-50">
-          <div className="glass-card w-full max-w-4xl p-8 relative flex flex-col h-[80vh]">
-            <button 
-              onClick={() => { setViewingLogsExecutionId(null); setLogs([]); }}
-              className="absolute top-6 right-6 text-text-secondary hover:text-white text-xl"
-            >
-              ✕
-            </button>
-            <h3 className="text-xl font-black mb-1">Execution Terminal</h3>
-            <p className="text-text-secondary text-xs mb-6">Realtime logs for task execution #{viewingLogsExecutionId}</p>
-
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 md:p-8 z-50">
+          <div 
+            className="glass-card w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden relative border border-white/10"
+          >
             {(() => {
               const activeExec = taskExecutions.find(e => e.id === viewingLogsExecutionId);
               const taskConfig = tasks.find(t => t.id === activeExec?.task_id);
               const hasVideo = taskConfig ? taskConfig.input_config?.has_video !== false : true;
-              const showPreview = activeExec && activeExec.status === 'running' && hasVideo;
+              const isRunning = activeExec?.status === 'running';
+              const showPreview = isRunning && hasVideo;
+              
+              const title = taskConfig ? taskConfig.name : `Task Execution #${viewingLogsExecutionId}`;
+              const status = activeExec ? activeExec.status : 'finished';
 
               return (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-                  <div className={`${showPreview ? 'lg:col-span-2' : 'lg:col-span-3'} flex flex-col min-h-0 space-y-4`}>
-                    {/* Metrics */}
-                    {activeExec && (
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">CPU Usage</div>
-                          <div className="font-bold font-mono text-sm text-brand-lime">{activeExec.cpu || 0}%</div>
+                <>
+                  {/* Header */}
+                  <div className="p-6 border-b border-white/5 flex justify-between items-center flex-shrink-0 bg-white/2">
+                    <div>
+                      <h3 className="text-2xl font-black uppercase tracking-tight">{title}</h3>
+                      <p className="text-text-secondary text-xs uppercase tracking-wider mt-0.5">
+                        {showPreview ? 'Live Task Preview (MJPEG)' : 'Task Execution Status & Logs'}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => { setViewingLogsExecutionId(null); setLogs([]); }}
+                      className="w-10 h-10 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Scrollable Body */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0 custom-scrollbar">
+                    {showPreview ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                        {/* Col 1: System Telemetry Stats */}
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                              <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Status</div>
+                              <div className="font-black text-sm tracking-tight text-brand-lime">
+                                RUNNING
+                              </div>
+                            </div>
+                            <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                              <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
+                              <div className="font-bold font-mono text-sm">{activeExec?.bitrate || '0 kb/s'}</div>
+                            </div>
+                            <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                              <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">FPS</div>
+                              <div className="font-bold font-mono text-sm">{activeExec?.fps || '0'}</div>
+                            </div>
+                            <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                              <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Speed</div>
+                              <div className="font-bold font-mono text-sm">{activeExec?.speed || '0x'}</div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                              <span className="text-[10px] uppercase font-black text-text-secondary">CPU Usage</span>
+                              <span className="font-mono font-bold text-brand-lime">{activeExec?.cpu || 0}%</span>
+                            </div>
+                            <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                              <span className="text-[10px] uppercase font-black text-text-secondary">RAM Usage</span>
+                              <span className="font-mono font-bold text-brand-orange">{activeExec?.ram || 0} MB</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">RAM Usage</div>
-                          <div className="font-bold font-mono text-sm text-brand-orange">{activeExec.ram || 0} MB</div>
-                        </div>
-                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">FPS</div>
-                          <div className="font-bold font-mono text-sm">{activeExec.fps || '0'}</div>
-                        </div>
-                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
-                          <div className="font-bold font-mono text-sm">{activeExec.bitrate || '0 kb/s'}</div>
-                        </div>
-                        <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center col-span-2 sm:col-span-1">
-                          <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Speed</div>
-                          <div className="font-bold font-mono text-sm text-brand-blue">{activeExec.speed || '0x'}</div>
+
+                        {/* Col 2: Live Video Preview */}
+                        <div className="flex flex-col justify-center">
+                          <div className="aspect-video bg-black rounded-2xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
+                            <img 
+                              src={`${API}/tasks/executions/${viewingLogsExecutionId}/preview`} 
+                              alt="Live Preview" 
+                              className="max-h-full max-w-full object-contain" 
+                            />
+                            <div className="absolute top-3 left-3 px-2.5 py-1 bg-brand-lime text-black text-[9px] font-black rounded-md tracking-wider uppercase animate-pulse">
+                              LIVE
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    )}
-                    {/* Terminal */}
-                    <div 
-                      ref={logsContainerRef}
-                      className="flex-1 bg-black/50 border border-white/5 rounded-2xl p-6 overflow-y-auto font-mono text-xs text-brand-lime space-y-1.5 scrollbar-thin select-text"
-                    >
-                      {logs.length === 0 ? (
-                        <div className="text-white/20 italic text-center py-20">Awaiting telemetry logs...</div>
-                      ) : (
-                        logs.map((log) => (
-                          <div key={log.id} className="flex gap-4">
-                            <span className="text-white/30 select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                            <span className={log.level === 'error' ? 'text-red-400' : log.level === 'warning' ? 'text-brand-orange' : 'text-green-400'}>
-                              {log.message}
-                            </span>
+                    ) : (
+                      <div className="max-w-3xl mx-auto space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Status</div>
+                            <div className={`font-black text-sm tracking-tight ${status === 'finished' ? 'text-blue-400' : status === 'error' ? 'text-red-400' : 'text-white/60'}`}>
+                              {status.toUpperCase()}
+                            </div>
                           </div>
-                        ))
-                      )}
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
+                            <div className="font-bold font-mono text-sm">{activeExec?.bitrate || '0 kb/s'}</div>
+                          </div>
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">FPS</div>
+                            <div className="font-bold font-mono text-sm">{activeExec?.fps || '0'}</div>
+                          </div>
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Speed</div>
+                            <div className="font-bold font-mono text-sm">{activeExec?.speed || '0x'}</div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                            <span className="text-[10px] uppercase font-black text-text-secondary">CPU Usage</span>
+                            <span className="font-mono font-bold text-brand-lime">{activeExec?.cpu || 0}%</span>
+                          </div>
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                            <span className="text-[10px] uppercase font-black text-text-secondary">RAM Usage</span>
+                            <span className="font-mono font-bold text-brand-orange">{activeExec?.ram || 0} MB</span>
+                          </div>
+                        </div>
+
+                        {!hasVideo && isRunning && (
+                          <div className="p-5 bg-brand-blue/10 border border-brand-blue/20 rounded-2xl flex items-center gap-4 animate-in fade-in duration-300">
+                            <span className="text-2xl">📻</span>
+                            <div>
+                              <div className="font-bold text-brand-blue uppercase text-xs tracking-wider">Audio-Only Task Active</div>
+                              <div className="text-xs text-text-secondary mt-0.5">This execution does not produce video outputs. Audio signals are processing normally.</div>
+                            </div>
+                          </div>
+                        )}
+
+                        {!isRunning && (
+                          <div className="p-5 bg-white/2 border border-white/5 rounded-2xl flex items-center gap-4 text-text-secondary">
+                            <span className="text-2xl">💤</span>
+                            <div>
+                              <div className="font-bold uppercase text-xs tracking-wider">Execution Inactive</div>
+                              <div className="text-xs mt-0.5">This task execution has finished running or has been stopped.</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Terminal logs */}
+                    <div className="bg-black/60 border border-white/5 rounded-2xl p-4 font-mono text-xs max-w-5xl mx-auto w-full">
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="text-brand-lime font-bold uppercase tracking-wider text-[10px]">Execution Logs</span>
+                        <span className="text-text-secondary text-[10px] font-bold">{logs.length} lines buffered</span>
+                      </div>
+                      <div 
+                        ref={logsContainerRef}
+                        className="h-44 space-y-1 custom-scrollbar pr-2 select-text overflow-y-auto"
+                      >
+                        {logs.length === 0 ? (
+                          <div className="text-white/20 italic text-center py-10 select-none">No logs available for this task execution</div>
+                        ) : (
+                          logs.map((log) => (
+                            <div key={log.id} className="leading-relaxed whitespace-pre-wrap flex gap-4">
+                              <span className="text-white/30 select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                              <span className={log.level === 'error' ? 'text-red-400 font-bold' : log.level === 'warning' ? 'text-brand-orange' : 'text-white/80'}>
+                                {log.message}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {showPreview && (
-                    <div className="flex flex-col justify-center">
-                      <div className="aspect-video bg-black rounded-2xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
-                        <img 
-                          src={`${API}/tasks/executions/${viewingLogsExecutionId}/preview`} 
-                          alt="Live Preview" 
-                          className="max-h-full max-w-full object-contain" 
-                        />
-                        <div className="absolute top-3 left-3 px-2.5 py-1 bg-brand-lime text-black text-[9px] font-black rounded-md tracking-wider uppercase animate-pulse">
-                          LIVE
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  {/* Footer */}
+                  <div className="p-6 border-t border-white/5 flex-shrink-0 bg-white/2 flex justify-end items-center gap-3">
+                    {isRunning && (
+                      <button 
+                        onClick={() => handleStopExecution(viewingLogsExecutionId)}
+                        className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-2 px-6 border border-red-500/25"
+                      >
+                        ABORT TASK
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => { setViewingLogsExecutionId(null); setLogs([]); }}
+                      className="pill-button bg-white/5 hover:bg-white/10 text-xs border border-white/10 py-2 px-6"
+                    >
+                      CLOSE
+                    </button>
+                  </div>
+                </>
               );
             })()}
           </div>
