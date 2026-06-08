@@ -229,5 +229,38 @@ class TestTaskAPI(unittest.TestCase):
         self.assertIn("-headers 'Authorization: Bearer test_token\r\n'", cmd)
         self.assertIn("http://ingest.server/live/stream.m3u8", cmd)
 
+    def test_create_process_hls_abr(self):
+        payload = {
+            "name": "API Test HLS ABR",
+            "type": "service",
+            "input_config": {"input1": {"type": "file", "path": "/tmp/test.mp4"}},
+            "output_config": {
+                "type": "hls",
+                "path": "/var/www/hls/abr.m3u8",
+                "hls_time": 4,
+                "hls_list_size": 10,
+                "hls_delete_segments": True,
+                "variants": [
+                    {"resolution": "1920:1080", "video_bitrate": "4500k", "audio_bitrate": "192k"},
+                    {"resolution": "1280:720", "video_bitrate": "2500k", "audio_bitrate": "128k"}
+                ]
+            },
+            "codec_config": {"vcodec": "libx264"}
+        }
+        res = self.client.post("/processes", json=payload)
+        self.assertEqual(res.status_code, 200)
+        proc_id = res.json()["id"]
+        
+        # Recuperar proceso
+        res = self.client.get("/processes")
+        self.assertEqual(res.status_code, 200)
+        procs = res.json()
+        proc = next(p for p in procs if p["id"] == proc_id)
+        self.assertIn("variants", proc["output_config"])
+        self.assertEqual(len(proc["output_config"]["variants"]), 2)
+        
+        # Cleanup
+        self.client.delete(f"/processes/{proc_id}")
+
 if __name__ == "__main__":
     unittest.main()
