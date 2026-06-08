@@ -1,4 +1,5 @@
 import React from 'react';
+import { HlsVariantsForm, type HlsVariant } from './HlsVariantsForm';
 
 export interface OutputConfig {
   type: string;
@@ -17,6 +18,7 @@ export interface OutputConfig {
   hls_list_size?: number;
   hls_delete_segments?: boolean;
   headers?: string;
+  variants?: HlsVariant[];
 }
 
 interface DestinationPanelProps {
@@ -280,6 +282,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               />
             </div>
           )}
+
+          <HlsVariantsForm
+            variants={config.variants || []}
+            onChange={variants => update({ variants })}
+          />
         </div>
       )}
     </div>
