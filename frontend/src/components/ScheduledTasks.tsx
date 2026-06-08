@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ProcessConfigForm from './ProcessConfigForm';
+import { formatInputDesc, formatOutputDesc } from '../utils/formatters';
 
 interface ScheduledTasksProps {
   API: string;
@@ -345,7 +346,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     <span className="font-bold text-white">{exec.task_name}</span>
                     <span className="text-xs font-mono text-white/40">#run-{exec.id}</span>
                   </div>
-                  <div className="flex gap-4 mt-2 text-xs text-text-secondary">
+                  <div className="flex gap-4 mt-2 text-xs text-text-secondary flex-wrap items-center">
+                    <span>PID: <strong className="text-white font-mono">{exec.pid || 'N/A'}</strong></span>
+                    <span className="text-white/10 select-none">|</span>
                     <span>CPU: <strong className="text-white">{exec.cpu}%</strong></span>
                     <span>RAM: <strong className="text-white">{exec.ram} MB</strong></span>
                     {exec.fps && <span>FPS: <strong className="text-white">{exec.fps}</strong></span>}
@@ -419,10 +422,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
                   <div className="text-xs text-text-secondary space-y-1">
                     <p className="truncate">
-                      Input: <code className="text-white font-mono">{task.input_config?.input1?.path || 'N/A'}</code>
+                      Input: <code className="text-white font-mono">{formatInputDesc(task.input_config)}</code>
                     </p>
                     <p className="truncate">
-                      Output: <code className="text-white font-mono">{task.output_config?.path || 'N/A'}</code>
+                      Output: <code className="text-white font-mono">{formatOutputDesc(task.output_config)}</code>
                     </p>
                     {task.schedule_type === 'recurring' && (
                       <p>
@@ -632,13 +635,17 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-3 gap-4">
                             <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
-                              <span className="text-[10px] uppercase font-black text-text-secondary">CPU Usage</span>
+                              <span className="text-[10px] uppercase font-black text-text-secondary">PID</span>
+                              <span className="font-mono font-bold text-white">{activeExec?.pid || 'N/A'}</span>
+                            </div>
+                            <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                              <span className="text-[10px] uppercase font-black text-text-secondary">CPU</span>
                               <span className="font-mono font-bold text-brand-lime">{activeExec?.cpu || 0}%</span>
                             </div>
                             <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
-                              <span className="text-[10px] uppercase font-black text-text-secondary">RAM Usage</span>
+                              <span className="text-[10px] uppercase font-black text-text-secondary">RAM</span>
                               <span className="font-mono font-bold text-brand-orange">{activeExec?.ram || 0} MB</span>
                             </div>
                           </div>
@@ -681,13 +688,17 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-3 gap-4">
                           <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
-                            <span className="text-[10px] uppercase font-black text-text-secondary">CPU Usage</span>
+                            <span className="text-[10px] uppercase font-black text-text-secondary">PID</span>
+                            <span className="font-mono font-bold text-white">{activeExec?.pid || 'N/A'}</span>
+                          </div>
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                            <span className="text-[10px] uppercase font-black text-text-secondary">CPU</span>
                             <span className="font-mono font-bold text-brand-lime">{activeExec?.cpu || 0}%</span>
                           </div>
                           <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
-                            <span className="text-[10px] uppercase font-black text-text-secondary">RAM Usage</span>
+                            <span className="text-[10px] uppercase font-black text-text-secondary">RAM</span>
                             <span className="font-mono font-bold text-brand-orange">{activeExec?.ram || 0} MB</span>
                           </div>
                         </div>

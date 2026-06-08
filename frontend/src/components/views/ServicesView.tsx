@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatInputDesc, formatOutputDesc } from '../../utils/formatters';
 
 interface ServicesViewProps {
   telemetry: any[];
@@ -86,7 +87,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-text-secondary">PID: {proc.pid || 'N/A'}</div>
+                    <div className="text-xs text-text-secondary flex gap-4 items-center flex-wrap">
+                      <span>PID: <strong className="text-white font-mono">{proc.pid || 'N/A'}</strong></span>
+                      <span className="text-white/10 select-none">|</span>
+                      <span className="font-mono">{formatInputDesc(proc.input_config)} ➔ {formatOutputDesc(proc.output_config)}</span>
+                    </div>
                   </div>
                   <div className="flex gap-8">
                     <div className="text-center">
@@ -166,14 +171,6 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               </div>
             ) : (
               telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').map(proc => {
-                const inputCfg = proc.input_config || {};
-                const isNewFormat = 'input1' in inputCfg;
-                const inputType = isNewFormat 
-                  ? (inputCfg.input1?.type || 'N/A') 
-                  : (inputCfg.type || 'N/A');
-                const outputCfg = proc.output_config || {};
-                const outputType = outputCfg.type || 'N/A';
-
                 return (
                   <div key={proc.id} onClick={() => onSelectedProcess(proc)}
                     className="flex items-center justify-between p-4 bg-white/2 opacity-75 hover:opacity-100 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">
@@ -192,8 +189,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-text-secondary">
-                        {inputType.toUpperCase()} ➔ {outputType.toUpperCase()}
+                      <div className="text-xs text-text-secondary font-mono">
+                        {formatInputDesc(proc.input_config)} ➔ {formatOutputDesc(proc.output_config)}
                       </div>
                     </div>
                     <div className="flex gap-4 items-center">
