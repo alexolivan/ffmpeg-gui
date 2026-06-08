@@ -40,6 +40,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
   useEffect(() => {
     fetchTasks();
+    const interval = setInterval(() => {
+      fetchTasks();
+    }, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   // Poll logs when viewing logs modal
@@ -143,6 +147,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       const r = await fetch(`${API}/tasks/executions/${execId}/stop`, { method: 'POST' });
       if (r.ok) {
         alert('Task execution stop signal sent.');
+        fetchTasks();
       }
     } catch {}
   };
@@ -330,7 +335,11 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           </h3>
           <div className="space-y-4">
             {taskExecutions.map(exec => (
-              <div key={exec.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5 gap-4">
+              <div 
+                key={exec.id} 
+                onClick={() => setViewingLogsExecutionId(exec.id)}
+                className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5 gap-4 cursor-pointer hover:bg-white/10 transition-colors"
+              >
                 <div>
                   <div className="flex items-center gap-3">
                     <span className="font-bold text-white">{exec.task_name}</span>
@@ -346,13 +355,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 </div>
                 <div className="flex items-center gap-3">
                   <button 
-                    onClick={() => setViewingLogsExecutionId(exec.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setViewingLogsExecutionId(exec.id);
+                    }}
                     className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4"
                   >
                     CLI LOGS
                   </button>
                   <button 
-                    onClick={() => handleStopExecution(exec.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStopExecution(exec.id);
+                    }}
                     className="pill-button bg-red-500 text-white font-bold hover:bg-red-600 text-xs py-1.5 px-4"
                   >
                     ABORT
@@ -567,7 +582,38 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               ✕
             </button>
             <h3 className="text-xl font-black mb-1">Execution Terminal</h3>
-            <p className="text-text-secondary text-xs mb-4">Realtime logs for task execution #{viewingLogsExecutionId}</p>
+            <p className="text-text-secondary text-xs mb-6">Realtime logs for task execution #{viewingLogsExecutionId}</p>
+
+            {(() => {
+              const activeExec = taskExecutions.find(e => e.id === viewingLogsExecutionId);
+              if (activeExec) {
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">CPU Usage</div>
+                      <div className="font-bold font-mono text-sm text-brand-lime">{activeExec.cpu || 0}%</div>
+                    </div>
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">RAM Usage</div>
+                      <div className="font-bold font-mono text-sm text-brand-orange">{activeExec.ram || 0} MB</div>
+                    </div>
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">FPS</div>
+                      <div className="font-bold font-mono text-sm">{activeExec.fps || '0'}</div>
+                    </div>
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
+                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
+                      <div className="font-bold font-mono text-sm">{activeExec.bitrate || '0 kb/s'}</div>
+                    </div>
+                    <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center col-span-2 sm:col-span-1">
+                      <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Speed</div>
+                      <div className="font-bold font-mono text-sm text-brand-blue">{activeExec.speed || '0x'}</div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             <div 
               ref={logsContainerRef}
