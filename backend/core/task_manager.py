@@ -107,6 +107,19 @@ class TaskManager:
         if tqs and int(tqs) > 0:
             cmd += ["-thread_queue_size", str(int(tqs))]
 
+        # Realtime flag (-re): throttles input read to native framerate.
+        _SELF_PACED_INPUTS = {'file', 'lavfi_video', 'lavfi_audio'}
+        realtime = advanced.get('realtime')
+        if realtime is None:
+            realtime = limit_sec is not None and primary_input_type in _SELF_PACED_INPUTS
+        if realtime:
+            cmd += ["-re"]
+
+        # Stream loop (-stream_loop)
+        stream_loop = advanced.get('stream_loop')
+        if stream_loop is not None and primary_input_type == 'file':
+            cmd += ["-stream_loop", str(int(stream_loop))]
+
         # Inputs
         if is_new_format:
             has_video = input_cfg.get('has_video', True)
