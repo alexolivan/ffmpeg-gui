@@ -122,55 +122,167 @@ class TaskManager:
             use_secondary = False
             self._append_input(cmd, input_cfg)
 
-        # Video processing
-        if not has_video:
-            cmd += ["-vn"]
-        else:
-            vf = []
-            if filter_cfg.get('scale'):
-                vf.append(f"scale={filter_cfg['scale']}")
-            if filter_cfg.get('deinterlace'):
-                vf.append("yadif")
-            if filter_cfg.get('framerate'):
-                vf.append(f"fps={filter_cfg['framerate']}")
-            if vf:
-                cmd += ["-vf", ",".join(vf)]
+        # ── HLS ABR detection ──
+        output_cfg = task.output_config
+        variants = output_cfg.get('variants', [])
+        is_abr = output_cfg.get('type') == 'hls' and len(variants) > 0
 
+        if is_abr:
             vcodec = codec_cfg.get('vcodec', 'libx264')
-            cmd += ["-c:v", vcodec]
-            
             video_params = codec_cfg.get('video_params', {})
-            if video_params:
-                self._append_video_codec_params(cmd, vcodec, video_params)
+            hwaccel = advanced.get('hwaccel', 'none')
+            
+            # Video variant scale and mapping
+            if not has_video:
+                cmd += ["-vn"]
             else:
-                if vcodec == 'libx264':
-                    cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
-                if codec_cfg.get('bitrate'):
-                    cmd += ["-b:v", codec_cfg['bitrate']]
+                for idx, v in enumerate(variants):
+                    cmd += ["-map", "0:v"]
+                    
+                    # Video filters
+                    scale_filter = "scale"
+                    if hwaccel == 'vaapi':
+                        scale_filter = "scale_vaapi"
+                    elif hwaccel in ('cuda', 'npp'):
+                        scale_filter = "scale_npp"
+                        
+                    vf_list = []
+                    if filter_cfg.get('deinterlace'):
+                        vf_list.append("yadif")
+                    vf_list.append(f"{scale_filter}={v['resolution']}")
+                    if filter_cfg.get('framerate'):
+                        vf_list.append(f"fps={filter_cfg['framerate']}")
+                        
+                    cmd += [f"-filter:v:{idx}", ",".join(vf_list)]
+                    cmd += [f"-c:v:{idx}", vcodec]
+                    
+                    self._append_video_codec_params_indexed(cmd, vcodec, video_params, idx, v['video_bitrate'])
 
-        # Audio processing
-        if not has_audio:
-            cmd += ["-an"]
+            # Audio variant mapping (deduplication)
+            if not has_audio:
+                cmd += ["-an"]
+            else:
+                acodec = codec_cfg.get('acodec', 'aac')
+                audio_params = codec_cfg.get('audio_params', {})
+                
+                unique_audios = list(dict.fromkeys([v['audio_bitrate'] for v in variants if v.get('audio_bitrate')]))
+                if not unique_audios:
+                    unique_audios = [audio_params.get('b:a', '128k')]
+                
+                audio_map_idx = 1 if (is_new_format and use_secondary) else 0
+                for idx, audio_bitrate in enumerate(unique_audios):
+                    cmd += ["-map", f"{audio_map_idx}:a"]
+                    cmd += [f"-c:a:{idx}", acodec]
+                    self._append_audio_codec_params_indexed(cmd, acodec, audio_params, idx, audio_bitrate)
+
+            # Output Muxer ABR
+            path = output_cfg.get('path', '')
+            method = output_cfg.get('hls_method', 'local')
+            hls_time = output_cfg.get('hls_time', 2)
+            hls_list_size = output_cfg.get('hls_list_size', 5)
+            hls_delete = output_cfg.get('hls_delete_segments', True)
+            headers = output_cfg.get('headers', '')
+            
+            cmd += ["-f", "hls"]
+            cmd += ["-hls_time", str(hls_time)]
+            cmd += ["-hls_list_size", str(hls_list_size)]
+            
+            cmd += ["-master_pl_name", "master.m3u8"]
+            
+            # Map stream configs to index mappings
+            unique_audios = list(dict.fromkeys([v['audio_bitrate'] for v in variants if v.get('audio_bitrate')]))
+            if not unique_audios:
+                unique_audios = [audio_params.get('b:a', '128k')]
+                
+            stream_maps = []
+            for idx, v in enumerate(variants):
+                a_bitrate = v.get('audio_bitrate', unique_audios[0])
+                try:
+                    a_idx = unique_audios.index(a_bitrate)
+                except ValueError:
+                    a_idx = 0
+                if has_audio:
+                    stream_maps.append(f"v:{idx},a:{a_idx}")
+                else:
+                    stream_maps.append(f"v:{idx}")
+                    
+            cmd += ["-var_stream_map", " ".join(stream_maps)]
+            
+            if path.endswith('.m3u8'):
+                base_path = path[:-5]
+                segment_pattern = f"{base_path}_%v_%03d.ts"
+                variant_playlist = f"{base_path}_%v.m3u8"
+            else:
+                segment_pattern = f"{path}_%v_%03d.ts"
+                variant_playlist = f"{path}_%v.m3u8"
+                
+            if method in ('PUT', 'POST'):
+                cmd += ["-method", method]
+                if headers:
+                    formatted_headers = headers.strip()
+                    if not formatted_headers.endswith('\r\n'):
+                        formatted_headers += '\r\n'
+                    cmd += ["-headers", formatted_headers]
+            else:
+                if hls_delete:
+                    cmd += ["-hls_flags", "delete_segments"]
+                cmd += ["-hls_segment_filename", segment_pattern]
+            
+            if limit_sec:
+                cmd += ["-t", str(limit_sec)]
+                
+            cmd += [variant_playlist]
+
         else:
-            acodec = codec_cfg.get('acodec', 'aac')
-            cmd += ["-c:a", acodec]
-            audio_params = codec_cfg.get('audio_params', {})
-            if audio_params:
-                self._append_audio_codec_params(cmd, acodec, audio_params)
+            # Video processing
+            if not has_video:
+                cmd += ["-vn"]
+            else:
+                vf = []
+                if filter_cfg.get('scale'):
+                    vf.append(f"scale={filter_cfg['scale']}")
+                if filter_cfg.get('deinterlace'):
+                    vf.append("yadif")
+                if filter_cfg.get('framerate'):
+                    vf.append(f"fps={filter_cfg['framerate']}")
+                if vf:
+                    cmd += ["-vf", ",".join(vf)]
 
-        # Stream mapping
-        if is_new_format and use_secondary:
-            if has_video:
-                cmd += ["-map", "0:v"]
-            if has_audio:
-                cmd += ["-map", "1:a"]
+                vcodec = codec_cfg.get('vcodec', 'libx264')
+                cmd += ["-c:v", vcodec]
+                
+                video_params = codec_cfg.get('video_params', {})
+                if video_params:
+                    self._append_video_codec_params(cmd, vcodec, video_params)
+                else:
+                    if vcodec == 'libx264':
+                        cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
+                    if codec_cfg.get('bitrate'):
+                        cmd += ["-b:v", codec_cfg['bitrate']]
 
-        # Native duration limit (placed before output)
-        if limit_sec:
-            cmd += ["-t", str(limit_sec)]
+            # Audio processing
+            if not has_audio:
+                cmd += ["-an"]
+            else:
+                acodec = codec_cfg.get('acodec', 'aac')
+                cmd += ["-c:a", acodec]
+                audio_params = codec_cfg.get('audio_params', {})
+                if audio_params:
+                    self._append_audio_codec_params(cmd, acodec, audio_params)
 
-        # Output
-        self._append_output(cmd, task.output_config, codec_cfg)
+            # Stream mapping
+            if is_new_format and use_secondary:
+                if has_video:
+                    cmd += ["-map", "0:v"]
+                if has_audio:
+                    cmd += ["-map", "1:a"]
+
+            # Native duration limit (placed before output)
+            if limit_sec:
+                cmd += ["-t", str(limit_sec)]
+
+            # Output
+            self._append_output(cmd, task.output_config, codec_cfg)
         return cmd
 
     def _append_input(self, cmd: list, input_cfg: dict):
@@ -241,6 +353,44 @@ class TaskManager:
         if params.get('b:a'): cmd += ["-b:a", params['b:a']]
         if params.get('ac'): cmd += ["-ac", str(params['ac'])]
         if params.get('ar'): cmd += ["-ar", str(params['ar'])]
+
+    def _append_video_codec_params_indexed(self, cmd: list, vcodec: str, params: dict, idx: int, bitrate: str):
+        """Append video codec-specific parameters to the command for a specific stream index."""
+        cmd += [f"-b:v:{idx}", bitrate]
+        rc_mode = params.get('rc_mode', '')
+        
+        if vcodec in ('libx264', 'libx265'):
+            if params.get('preset'):
+                cmd += [f"-preset:v:{idx}", params['preset']]
+            tune = params.get('tune', 'none')
+            if tune and tune != 'none':
+                cmd += [f"-tune:v:{idx}", tune]
+            if params.get('profile'):
+                cmd += [f"-profile:v:{idx}", params['profile']]
+            if params.get('g'):
+                cmd += [f"-g:v:{idx}", str(params['g'])]
+            if params.get('bf') is not None:
+                cmd += [f"-bf:v:{idx}", str(params['bf'])]
+            
+            pix_fmt = params.get('pix_fmt', 'yuv420p')
+            cmd += [f"-pix_fmt:v:{idx}", pix_fmt]
+            
+            if rc_mode == 'crf':
+                crf = params.get('crf', 23)
+                cmd += [f"-crf:v:{idx}", str(crf)]
+            elif rc_mode in ('cbr', 'vbr'):
+                if params.get('maxrate'):
+                    cmd += [f"-maxrate:v:{idx}", params['maxrate']]
+                if params.get('bufsize'):
+                    cmd += [f"-bufsize:v:{idx}", params['bufsize']]
+
+    def _append_audio_codec_params_indexed(self, cmd: list, acodec: str, params: dict, idx: int, bitrate: str):
+        """Append audio codec-specific parameters to the command for a specific stream index."""
+        cmd += [f"-b:a:{idx}", bitrate]
+        if params.get('ac'):
+            cmd += [f"-ac:a:{idx}", str(params['ac'])]
+        if params.get('ar'):
+            cmd += [f"-ar:a:{idx}", str(params['ar'])]
 
     def _append_output(self, cmd: list, output_cfg: dict, codec_cfg: dict):
         output_type = output_cfg.get('type')
