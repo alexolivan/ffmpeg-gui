@@ -48,7 +48,7 @@ verify_installer_tools() {
 install_debian_deps() {
     echo "--> Installing system dependencies via apt-get..."
     apt-get update
-    apt-get install -y python3-venv python3-pip python3-dev \
+    apt-get install -y python3-venv python3-pip python3-dev nodejs npm \
                        build-essential cmake git pkg-config yasm nasm \
                        libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev
 }
@@ -57,14 +57,11 @@ install_debian_deps() {
 install_rhel_deps() {
     echo "--> Installing system dependencies via dnf..."
     dnf groupinstall -y "Development Tools"
-    dnf install -y python3-devel cmake git pkgconfig yasm nasm \
+    dnf install -y python3-devel nodejs npm cmake git pkgconfig yasm nasm \
                    x264-devel x265-devel openssl-devel libva-devel libdrm-devel
 }
 
-# 1. Verificar herramientas de compilación básicas
-verify_installer_tools
-
-# 2. Gestionar dependencias del sistema según el modo
+# 1. Gestionar dependencias del sistema según el modo
 if [ "$MODE" = "system" ]; then
     if [ "$EUID" -ne 0 ]; then
         echo "Error: System-wide installation requires root/sudo privileges."
@@ -79,7 +76,12 @@ if [ "$MODE" = "system" ]; then
     else
         echo "Warning: Unsupported package manager. Please ensure development tools and libraries (x264, x265, openssl, libva, libdrm) are installed manually."
     fi
+
+    # Verificar herramientas indispensables después de la instalación
+    verify_installer_tools
 else
+    # Modo de espacio de usuario: verificar primero ya que no podemos autoinstalar
+    verify_installer_tools
     # Modo de espacio de usuario: solo alertar dependencias faltantes
     echo "--> Verifying compilation dependencies for user-space..."
     MISSING_LIBS=()
