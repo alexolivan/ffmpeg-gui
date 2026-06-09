@@ -170,7 +170,7 @@ database = /var/lib/ffmpeg-gui/ffmpeg_gui.db
 EOF
     fi
 
-    chown -R ffmpeg-gui:ffmpeg-gui /var/lib/ffmpeg-gui /var/log/ffmpeg-gui /etc/ffmpeg-gui
+    chown -R ffmpeg-gui:ffmpeg-gui /var/lib/ffmpeg-gui /var/log/ffmpeg-gui /etc/ffmpeg-gui "$PROJ_DIR"
 
     # Escribir unidad de systemd
     SERVICE_FILE="/etc/systemd/system/ffmpeg-gui.service"
