@@ -17,7 +17,7 @@ const BatchJobForm: React.FC<BatchJobFormProps> = ({ onCancel, onSubmit }) => {
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('http://localhost:8000/builds')
+    fetch('/builds')
       .then(r => r.json())
       .then(builds => {
         const ready = builds.filter((b: any) => b.status === 'ready');

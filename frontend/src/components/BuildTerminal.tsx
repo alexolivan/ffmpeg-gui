@@ -12,7 +12,8 @@ export default function BuildTerminal({ buildId, buildName, onClose }: BuildTerm
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/ws/build/${buildId}`)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/build/${buildId}`)
     wsRef.current = ws
 
     ws.onmessage = (event) => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const API = 'http://localhost:8000';
+const API = '';
 
 export function useAuth() {
   const [settings, setSettings] = useState({

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API = 'http://localhost:8000';
+const API = '';
 
 export function useProcesses() {
   const [telemetry, setTelemetry] = useState<any[]>([]);
@@ -28,7 +28,8 @@ export function useProcesses() {
 
   // ── Telemetry WebSocket ────────────────────────────────────────
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:8000/ws/telemetry');
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/telemetry`);
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === 'telemetry') {

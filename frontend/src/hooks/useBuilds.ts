@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { BuildProfile } from '../components/BuildProfileCard';
 import type { BuildFormData } from '../components/BuildFormModal';
 
-const API = 'http://localhost:8000';
+const API = '';
 
 export function useBuilds(activeView: string) {
   const [builds, setBuilds] = useState<BuildProfile[]>([]);

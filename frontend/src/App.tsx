@@ -11,7 +11,7 @@ import { SettingsView } from './components/views/SettingsView';
 import { ForgeView } from './components/views/ForgeView';
 import { ProcessPreviewModal } from './components/modals/ProcessPreviewModal';
 
-const API = 'http://localhost:8000';
+const API = '';
 
 function App() {
   const [activeView, setActiveView] = useState('dashboard');

@@ -17,7 +17,7 @@ export interface BuildFormData {
   auto_clean: boolean
 }
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = '';
 
 export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps }: BuildFormModalProps) {
   const [name, setName] = useState(editBuild?.name || '')

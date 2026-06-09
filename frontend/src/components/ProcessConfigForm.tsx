@@ -167,7 +167,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   const [config, setConfig] = useState<ProcessConfig>(getInitialState);
 
   useEffect(() => {
-    fetch('http://localhost:8000/builds')
+    fetch('/builds')
       .then(r => r.json())
       .then(builds => {
         const ready = builds.filter((b: any) => b.status === 'ready');
@@ -261,7 +261,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
 
   const handlePreview = async () => {
     setIsPreviewing(true);
-    const previewUrl = isTask ? 'http://localhost:8000/tasks/preview-cmd' : 'http://localhost:8000/processes/preview-cmd';
+    const previewUrl = isTask ? '/tasks/preview-cmd' : '/processes/preview-cmd';
     const payload = {
       ...createPayload(),
       ...(!isTask ? { type: 'service' } : {})
