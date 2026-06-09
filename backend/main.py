@@ -6,7 +6,7 @@ import shutil
 import uuid
 import shlex
 from PIL import Image
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
@@ -23,11 +23,75 @@ import asyncio
 import datetime
 from fastapi import BackgroundTasks
 
+import time
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("FFMPEG-GUI")
 
+class NginxAccessLogMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        status_code = [200]
+        content_length = ["-"]
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                status_code[0] = message["status"]
+                headers = message.get("headers", [])
+                for key, val in headers:
+                    if key.lower() == b"content-length":
+                        content_length[0] = val.decode("utf-8")
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            client = scope.get("client")
+            client_host = client[0] if client else "-"
+            remote_user = "-"
+            
+            now = datetime.datetime.now(datetime.timezone.utc)
+            time_local = now.strftime("%d/%b/%Y:%H:%M:%S +0000")
+            
+            method = scope.get("method", "-")
+            path = scope.get("path", "-")
+            query_string = scope.get("query_string", b"").decode("utf-8")
+            if query_string:
+                path = f"{path}?{query_string}"
+                
+            http_version = scope.get("http_version", "1.1")
+            request_line = f"{method} {path} HTTP/{http_version}"
+            
+            headers = scope.get("headers", [])
+            referer = "-"
+            user_agent = "-"
+            for key, val in headers:
+                if key.lower() == b"referer":
+                    referer = val.decode("utf-8")
+                elif key.lower() == b"user-agent":
+                    user_agent = val.decode("utf-8")
+            
+            log_line = f'{client_host} - {remote_user} [{time_local}] "{request_line}" {status_code[0]} {content_length[0]} "{referer}" "{user_agent}"'
+            logger.info(log_line)
+            
+            access_log_path = os.getenv("ACCESS_LOG_PATH")
+            if access_log_path:
+                try:
+                    with open(access_log_path, "a") as f:
+                        f.write(log_line + "\n")
+                except Exception:
+                    pass
+
 app = FastAPI(title="FFMPEG Orchestrator API")
+
+app.add_middleware(NginxAccessLogMiddleware)
 
 # CORS
 app.add_middleware(
@@ -1475,3 +1539,24 @@ def get_execution_logs(execution_id: int, db: Session = Depends(get_db)):
             "message": l.message
         } for l in logs
     ]
+
+# Mounting static files and SPA fallback
+FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", "../frontend/dist")
+os.makedirs(os.path.join(FRONTEND_DIST_DIR, "assets"), exist_ok=True)
+app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST_DIR, "assets")), name="assets")
+
+@app.get("/{catchall:path}")
+def serve_spa(catchall: str):
+    api_prefixes = ["ws", "settings", "login", "builds", "processes", "tasks", "sdks", "uploads", "system"]
+    first_part = catchall.split("/")[0] if catchall else ""
+    if first_part in api_prefixes:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    index_path = os.path.join(FRONTEND_DIST_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+
+    return HTMLResponse(
+        content="<h1>FFmpeg-GUI Backend</h1><p>Frontend assets not found. Build the frontend or configure FRONTEND_DIST_DIR.</p>",
+        status_code=200
+    )
