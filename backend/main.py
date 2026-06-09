@@ -486,7 +486,7 @@ async def websocket_build(websocket: WebSocket, build_id: int):
 
 # ── Root ──────────────────────────────────────────────────────────
 
-@app.get("/")
+@app.get("/api/status")
 def read_root():
     return {"status": "online", "message": "FFMPEG Orchestrator API is running"}
 
