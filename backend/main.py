@@ -286,10 +286,31 @@ def get_system_capabilities():
     }
 
 
+def get_effective_ffmpeg_path() -> str:
+    from database.models import FfmpegBuild
+    from database.db import SessionLocal
+    import os
+    
+    db = SessionLocal()
+    try:
+        build = db.query(FfmpegBuild).filter(FfmpegBuild.is_default == True, FfmpegBuild.status == 'ready').first()
+        if not build:
+            build = db.query(FfmpegBuild).filter(FfmpegBuild.status == 'ready').first()
+            
+        if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+            return build.ffmpeg_binary
+    except Exception as e:
+        logger.warning(f"Error querying active ffmpeg build from DB: {e}")
+    finally:
+        db.close()
+        
+    return process_manager.ffmpeg_path
+
+
 @app.get("/decklink/devices")
 async def get_decklink_devices():
     import re
-    ffmpeg_bin = process_manager.ffmpeg_path
+    ffmpeg_bin = get_effective_ffmpeg_path()
     inputs = []
     outputs = []
 
@@ -396,7 +417,7 @@ async def get_decklink_devices():
 @app.get("/decklink/formats")
 async def get_decklink_formats(device: str):
     import re
-    ffmpeg_bin = process_manager.ffmpeg_path
+    ffmpeg_bin = get_effective_ffmpeg_path()
     formats = []
     try:
         proc = await asyncio.create_subprocess_exec(
