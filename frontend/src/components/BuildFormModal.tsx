@@ -36,11 +36,13 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [sdkPaths, setSdkPaths] = useState<Record<string, string>>(editBuild?.sdk_paths || { 
     decklink: '', 
     ndi: '',
-    ndi_patch_url: ''
+    ndi_patch_url: '',
+    nvenc_headers: 'auto'
   })
 
   const [ffmpegTags, setFfmpegTags] = useState<string[]>([])
   const [srtTags, setSrtTags] = useState<string[]>([])
+  const [nvencTags, setNvencTags] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Dynamic SDK lists
@@ -83,14 +85,17 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   useEffect(() => {
     const fetchTags = async () => {
       try {
-        const [ffRes, srtRes] = await Promise.all([
+        const [ffRes, srtRes, nvencRes] = await Promise.all([
           fetch(`${API_BASE}/builds/tags/ffmpeg`),
           fetch(`${API_BASE}/builds/tags/srt`),
+          fetch(`${API_BASE}/builds/tags/nvenc`),
         ])
         const ffData = await ffRes.json()
         const srtData = await srtRes.json()
+        const nvencData = await nvencRes.json()
         setFfmpegTags(ffData.tags || [])
         setSrtTags(srtData.tags || [])
+        setNvencTags(nvencData.tags || [])
 
         if (!isEditing) {
           if (ffData.tags?.length > 0 && !ffmpegVersion) setFfmpegVersion(ffData.tags[0])
@@ -298,13 +303,29 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
               <div className={`p-3 bg-white/5 rounded-xl border ${options.nvenc ? 'border-brand-orange/40' : 'border-white/5'} col-span-full`}>
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex flex-col">
-                    <span className="text-xs font-bold">NVIDIA NVENC (Autopilot)</span>
+                    <span className="text-xs font-bold">NVIDIA NVENC (Aceleración GPU)</span>
                     <span className="text-[9px] text-text-secondary leading-tight mt-0.5">
                       Descarga y registro automático de ffnvcodec headers desde GitHub.
                     </span>
                   </div>
                   <input type="checkbox" className="w-4 h-4 accent-brand-orange" checked={options.nvenc} onChange={e => setOptions({...options, nvenc: e.target.checked})} />
                 </div>
+                {options.nvenc && (
+                  <div className="space-y-2 mt-2 pt-2 border-t border-white/5 animate-in slide-in-from-top-2 duration-300">
+                    <label className="text-[8px] text-text-secondary uppercase tracking-widest block font-bold">Cabeceras ffnvcodec (Versión del SDK)</label>
+                    <select
+                      className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none"
+                      value={sdkPaths.nvenc_headers || 'auto'}
+                      onChange={e => setSdkPaths({ ...sdkPaths, nvenc_headers: e.target.value })}
+                    >
+                      <option value="auto">✈ Autopilot (Detección automática de tag compatible)</option>
+                      <option value="master">master (Último SDK 13.1 - Requiere FFmpeg en desarrollo)</option>
+                      {nvencTags.map(tag => (
+                        <option key={tag} value={tag}>{tag}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* DeckLink */}

@@ -122,7 +122,14 @@ class BuildManager:
         Returns a sorted list of tag names (most recent first).
         Uses `git ls-remote --tags` to avoid cloning.
         """
-        url = self.FFMPEG_GIT_URL if repo == "ffmpeg" else self.SRT_GIT_URL
+        if repo == "ffmpeg":
+            url = self.FFMPEG_GIT_URL
+        elif repo == "srt":
+            url = self.SRT_GIT_URL
+        elif repo in ["nvenc", "nvenc_headers"]:
+            url = "https://github.com/FFmpeg/nv-codec-headers.git"
+        else:
+            url = repo
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -276,8 +283,14 @@ class BuildManager:
                 await log_callback("━━━ STAGE 1.5: NVIDIA NVENC HEADERS ━━━\n")
                 nv_src = os.path.join(src_path, "nv-codec-headers")
                 
-                # Determine correct ffnvcodec tag based on FFmpeg version
-                nv_tag = self.get_ffnvcodec_tag(ffmpeg_version)
+                # Determine correct ffnvcodec tag based on user selection or FFmpeg version compatibility
+                nv_tag = None
+                if sdk_paths and sdk_paths.get("nvenc_headers"):
+                    nv_tag = sdk_paths.get("nvenc_headers")
+                    if nv_tag == "auto":
+                        nv_tag = self.get_ffnvcodec_tag(ffmpeg_version)
+                else:
+                    nv_tag = self.get_ffnvcodec_tag(ffmpeg_version)
 
                 if not os.path.exists(nv_src) or sources_cleaned:
                     if os.path.exists(nv_src):
@@ -294,7 +307,7 @@ class BuildManager:
                     )
 
                 if nv_tag:
-                    await log_callback(f"Checking out nv-codec-headers tag: {nv_tag} for compatibility with FFmpeg {ffmpeg_version}...\n")
+                    await log_callback(f"Checking out nv-codec-headers tag: {nv_tag}...\n")
                     await self._run_logged_cmd(
                         ["git", "checkout", "-f", nv_tag],
                         log_callback,

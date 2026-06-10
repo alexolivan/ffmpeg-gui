@@ -58,7 +58,11 @@ function formatOptions(options: Record<string, boolean>, sdkPaths: Record<string
         const ver = sdkPaths?.decklink;
         return ver ? `DECKLINK ${ver}` : 'DECKLINK';
       }
-      const labels: Record<string, string> = { vaapi: 'VAAPI', nvenc: 'NVENC' }
+      if (k === 'nvenc') {
+        const ver = sdkPaths?.nvenc_headers;
+        return ver && ver !== 'auto' ? `NVENC (${ver})` : 'NVENC';
+      }
+      const labels: Record<string, string> = { vaapi: 'VAAPI' }
       return labels[k] || k.toUpperCase()
     })
     .filter(Boolean)

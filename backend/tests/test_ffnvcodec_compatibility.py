@@ -37,5 +37,12 @@ class TestFfnvcodecCompatibility(unittest.TestCase):
         self.assertIsNone(self.build_manager.get_ffnvcodec_tag(""))
         self.assertIsNone(self.build_manager.get_ffnvcodec_tag(None))
 
+    def test_fetch_available_tags_nvenc(self):
+        import asyncio
+        tags = asyncio.run(self.build_manager.fetch_available_tags("nvenc"))
+        self.assertIsInstance(tags, list)
+        if tags:
+            self.assertTrue(any(t.startswith("n") for t in tags))
+
 if __name__ == "__main__":
     unittest.main()

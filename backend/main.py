@@ -530,6 +530,12 @@ async def get_srt_tags():
     tags = await build_manager.fetch_available_tags("srt")
     return {"tags": tags}
 
+@app.get("/builds/tags/nvenc")
+async def get_nvenc_tags():
+    """List available nv-codec-headers git tags from the remote repository."""
+    tags = await build_manager.fetch_available_tags("nvenc")
+    return {"tags": tags}
+
 @app.get("/builds/disk-info")
 def get_disk_info():
     """Get free space on the partition where builds are stored."""
