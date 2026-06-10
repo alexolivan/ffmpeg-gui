@@ -169,9 +169,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span className="font-bold text-xs uppercase text-white font-mono">{key}</span>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                     value.available
-                      ? key === 'decklink'
-                        ? 'bg-blue-500/20 text-blue-400'
-                        : 'bg-brand-lime/25 text-brand-lime'
+                      ? 'bg-brand-lime/25 text-brand-lime'
                       : 'bg-white/5 text-white/40'
                   }`}>
                     {value.available ? 'AVAILABLE' : 'UNAVAILABLE'}
