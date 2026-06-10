@@ -145,6 +145,24 @@ class BuildManager:
             self.logger.error(f"Failed to fetch tags for {repo}: {exc}")
             return []
 
+    def get_ffnvcodec_tag(self, ffmpeg_version: str) -> str | None:
+        """Determine correct ffnvcodec tag based on FFmpeg version."""
+        if not ffmpeg_version or any(dev in ffmpeg_version.lower() for dev in ["master", "dev", "git"]):
+            return None
+        try:
+            parts = ffmpeg_version.split('.')
+            major = int(parts[0])
+            if major == 6:
+                return "n12.1.14.0"
+            elif major == 5:
+                return "n11.1.5.3"
+            elif major <= 4:
+                return "n9.1.23.2"
+        except Exception:
+            pass
+        return None
+
+
     # ── Disk information ──────────────────────────────────────────
 
     def get_partition_free_space(self) -> dict:
@@ -254,6 +272,9 @@ class BuildManager:
                 await log_callback("━━━ STAGE 1.5: NVIDIA NVENC HEADERS ━━━\n")
                 nv_src = os.path.join(src_path, "nv-codec-headers")
                 
+                # Determine correct ffnvcodec tag based on FFmpeg version
+                nv_tag = self.get_ffnvcodec_tag(ffmpeg_version)
+
                 if not os.path.exists(nv_src) or sources_cleaned:
                     if os.path.exists(nv_src):
                         shutil.rmtree(nv_src)
@@ -263,9 +284,29 @@ class BuildManager:
                         log_callback,
                     )
                 else:
-                    await log_callback("NVIDIA headers source exists, pulling updates...\n")
+                    await log_callback("Fetching updates for nv-codec-headers...\n")
                     await self._run_logged_cmd(
-                        ["git", "pull"], log_callback, cwd=nv_src
+                        ["git", "fetch", "--tags"], log_callback, cwd=nv_src
+                    )
+
+                if nv_tag:
+                    await log_callback(f"Checking out nv-codec-headers tag: {nv_tag} for compatibility with FFmpeg {ffmpeg_version}...\n")
+                    await self._run_logged_cmd(
+                        ["git", "checkout", "-f", nv_tag],
+                        log_callback,
+                        cwd=nv_src,
+                    )
+                else:
+                    await log_callback("Using latest master branch for nv-codec-headers...\n")
+                    await self._run_logged_cmd(
+                        ["git", "checkout", "-f", "master"],
+                        log_callback,
+                        cwd=nv_src,
+                    )
+                    await self._run_logged_cmd(
+                        ["git", "pull"],
+                        log_callback,
+                        cwd=nv_src,
                     )
 
                 await log_callback("Installing ffnvcodec headers to install prefix...\n")
