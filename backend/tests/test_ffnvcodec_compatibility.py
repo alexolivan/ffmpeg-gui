@@ -25,12 +25,15 @@ class TestFfnvcodecCompatibility(unittest.TestCase):
         self.assertEqual(self.build_manager.get_ffnvcodec_tag("4.4"), "n9.1.23.2")
         self.assertEqual(self.build_manager.get_ffnvcodec_tag("n4.3.1"), "n9.1.23.2")
 
-        # FFmpeg 7.x or master -> None (latest)
-        self.assertIsNone(self.build_manager.get_ffnvcodec_tag("7.0"))
-        self.assertIsNone(self.build_manager.get_ffnvcodec_tag("n7.1.3"))
+        # FFmpeg 7.x / 8.x -> n13.0.19.0
+        self.assertEqual(self.build_manager.get_ffnvcodec_tag("7.0"), "n13.0.19.0")
+        self.assertEqual(self.build_manager.get_ffnvcodec_tag("n7.1.3"), "n13.0.19.0")
+        self.assertEqual(self.build_manager.get_ffnvcodec_tag("n8.1.1"), "n13.0.19.0")
+        
+        # Development / Git versions -> None
         self.assertIsNone(self.build_manager.get_ffnvcodec_tag("master"))
         
-        # Invalid / Empty version -> None
+        # Invalid / Empty version / Fallbacks
         self.assertIsNone(self.build_manager.get_ffnvcodec_tag(""))
         self.assertIsNone(self.build_manager.get_ffnvcodec_tag(None))
 

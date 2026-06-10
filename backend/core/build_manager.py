@@ -154,7 +154,9 @@ class BuildManager:
             cleaned_version = ffmpeg_version.lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
             parts = cleaned_version.split('.')
             major = int(parts[0])
-            if major == 6:
+            if major >= 7:
+                return "n13.0.19.0"
+            elif major == 6:
                 return "n12.1.14.0"
             elif major == 5:
                 return "n11.1.5.3"
@@ -162,7 +164,7 @@ class BuildManager:
                 return "n9.1.23.2"
         except Exception:
             pass
-        return None
+        return "n13.0.19.0"
 
 
     # ── Disk information ──────────────────────────────────────────
