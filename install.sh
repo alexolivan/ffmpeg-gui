@@ -50,7 +50,8 @@ install_debian_deps() {
     apt-get update
     apt-get install -y python3-venv python3-pip python3-dev nodejs npm \
                        build-essential cmake git pkg-config yasm nasm \
-                       libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev
+                       libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev \
+                       libavahi-client-dev libavahi-common-dev
 }
 
 # Paquetes a instalar en RedHat/Fedora/CentOS
@@ -58,7 +59,8 @@ install_rhel_deps() {
     echo "--> Installing system dependencies via dnf..."
     dnf groupinstall -y "Development Tools"
     dnf install -y python3-devel nodejs npm cmake git pkgconfig yasm nasm \
-                   x264-devel x265-devel openssl-devel libva-devel libdrm-devel
+                   x264-devel x265-devel openssl-devel libva-devel libdrm-devel \
+                   avahi-devel
 }
 
 # 1. Gestionar dependencias del sistema según el modo
@@ -85,7 +87,7 @@ else
     # Modo de espacio de usuario: solo alertar dependencias faltantes
     echo "--> Verifying compilation dependencies for user-space..."
     MISSING_LIBS=()
-    for lib in x264 x265 openssl libva libdrm; do
+    for lib in x264 x265 openssl libva libdrm avahi-client avahi-common; do
         if ! pkg-config --exists "$lib" 2>/dev/null; then
             MISSING_LIBS+=("$lib")
         fi

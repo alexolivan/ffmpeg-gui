@@ -494,6 +494,7 @@ class BuildManager:
                 config_flags.append(f"--extra-ldflags=-L{ndi_sdk_path}/lib/x86_64-linux-gnu")
                 # Add RPATH to ensure the compiled ffmpeg binary can load the dynamic libndi.so correctly
                 config_flags.append(f"--extra-ldflags=-Wl,-rpath,{ndi_sdk_path}/lib/x86_64-linux-gnu")
+                config_flags.append("--extra-libs=-lavahi-client -lavahi-common")
 
             # PKG_CONFIG_PATH for locally-compiled libs (e.g. LibSRT and ffnvcodec)
             env = os.environ.copy()
