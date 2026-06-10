@@ -174,7 +174,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         : 'bg-brand-lime/25 text-brand-lime'
                       : 'bg-white/5 text-white/40'
                   }`}>
-                    {value.available ? (key === 'decklink' ? 'SIMULATED' : 'AVAILABLE') : 'UNAVAILABLE'}
+                    {value.available ? 'AVAILABLE' : 'UNAVAILABLE'}
                   </span>
                 </div>
                 <p className="text-[10px] text-text-secondary mt-1">{value.details}</p>
