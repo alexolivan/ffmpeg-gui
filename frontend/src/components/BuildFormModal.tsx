@@ -191,6 +191,9 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     if (options.nvenc && sdkPaths.nvenc_headers) {
       finalSdkPaths.nvenc_headers = sdkPaths.nvenc_headers
     }
+    if (options.vaapi && sdkPaths.vaapi) {
+      finalSdkPaths.vaapi = sdkPaths.vaapi
+    }
 
     await onSubmit({
       name: name.trim(),
