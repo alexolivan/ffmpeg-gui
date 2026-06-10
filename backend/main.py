@@ -755,6 +755,11 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                     db_build.disk_usage_mb = result.get("disk_usage_mb")
                     db_build.built_at = datetime.datetime.utcnow()
                     db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
+                    if result.get("sdk_paths"):
+                        # SQLAlchemy flag mutation for JSON fields
+                        from sqlalchemy.orm.attributes import flag_modified
+                        db_build.sdk_paths = result.get("sdk_paths")
+                        flag_modified(db_build, "sdk_paths")
                 else:
                     db_build.status = "failed"
                     db_build.build_log_summary = result.get("error", "Unknown error")

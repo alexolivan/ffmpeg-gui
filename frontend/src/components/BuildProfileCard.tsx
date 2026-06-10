@@ -45,29 +45,7 @@ function formatDate(iso: string | null): string {
   })
 }
 
-function formatOptions(options: Record<string, boolean>, sdkPaths: Record<string, string> | null): string {
-  return Object.entries(options)
-    .filter(([, v]) => v)
-    .map(([k]) => {
-      if (k === 'libsrt') return ''; // Skip SRT since it's already shown as a separate badge
-      if (k === 'ndi') {
-        const ver = sdkPaths?.ndi;
-        return ver ? `NDI ${ver}` : 'NDI';
-      }
-      if (k === 'decklink') {
-        const ver = sdkPaths?.decklink;
-        return ver ? `DECKLINK ${ver}` : 'DECKLINK';
-      }
-      if (k === 'nvenc') {
-        const ver = sdkPaths?.nvenc_headers;
-        return ver && ver !== 'auto' ? `NVENC (${ver})` : 'NVENC';
-      }
-      const labels: Record<string, string> = { vaapi: 'VAAPI' }
-      return labels[k] || k.toUpperCase()
-    })
-    .filter(Boolean)
-    .join(' · ')
-}
+
 
 export default function BuildProfileCard({
   build, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport,
@@ -86,18 +64,33 @@ export default function BuildProfileCard({
           )}
           <div>
             <h4 className="text-lg font-bold">{build.name}</h4>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-xs font-mono bg-white/5 px-2 py-0.5 rounded">
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
                 FFmpeg {build.ffmpeg_version}
               </span>
               {build.srt_version && (
-                <span className="text-xs font-mono bg-white/5 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
                   SRT {build.srt_version}
                 </span>
               )}
-              {build.build_options && (
-                <span className="text-xs text-text-secondary">
-                  {formatOptions(build.build_options, build.sdk_paths)}
+              {build.build_options?.vaapi && (
+                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                  VAAPI{build.sdk_paths?.vaapi ? ` ${build.sdk_paths.vaapi}` : ''}
+                </span>
+              )}
+              {build.build_options?.ndi && (
+                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                  NDI{build.sdk_paths?.ndi ? ` ${build.sdk_paths.ndi}` : ''}
+                </span>
+              )}
+              {build.build_options?.decklink && (
+                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                  DeckLink{build.sdk_paths?.decklink ? ` ${build.sdk_paths.decklink}` : ''}
+                </span>
+              )}
+              {build.build_options?.nvenc && (
+                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                  NVENC{build.sdk_paths?.nvenc_headers ? ` ${build.sdk_paths.nvenc_headers}` : ''}
                 </span>
               )}
             </div>

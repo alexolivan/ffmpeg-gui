@@ -225,6 +225,23 @@ class BuildManager:
             os.makedirs(src_path, exist_ok=True)
             os.makedirs(install_path, exist_ok=True)
 
+            # Auto-detect VAAPI version if enabled
+            if options.get("vaapi"):
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        "pkg-config", "--modversion", "libva",
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout, _ = await proc.communicate()
+                    libva_ver = stdout.decode().strip()
+                    if libva_ver:
+                        if sdk_paths is None:
+                            sdk_paths = {}
+                        sdk_paths["vaapi"] = libva_ver
+                except Exception as e:
+                    self.logger.error(f"Failed to detect libva version: {e}")
+
             # ── 1. LibSRT (if enabled) ────────────────────────────
             if options.get("libsrt") and srt_version:
                 await log_callback("━━━ STAGE 1: LIBSRT BUILD ━━━\n")
@@ -524,6 +541,7 @@ class BuildManager:
                 "ffprobe_binary": ffprobe_bin if os.path.isfile(ffprobe_bin) else None,
                 "version_output": version_output,
                 "disk_usage_mb": self.get_disk_usage(build_id),
+                "sdk_paths": sdk_paths,
             }
 
         except Exception as exc:
