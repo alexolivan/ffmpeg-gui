@@ -305,16 +305,11 @@ async def get_decklink_devices():
         
         for line in output.splitlines():
             line = line.strip()
-            if '[' in line and ']' in line:
-                match = re.search(r'\[([^\]]+)\]$', line)
-                if match:
-                    inputs.append(match.group(1))
-                else:
-                    match2 = re.search(r'^\[decklink\s+@\s+\w+\]\s+(.+)$', line)
-                    if match2:
-                        name = match2.group(1).strip()
-                        if not name.startswith("Auto-detected") and not name.startswith("format_code") and not name.startswith("Supported"):
-                            inputs.append(name)
+            brackets = re.findall(r'\[([^\]]+)\]', line)
+            for item in brackets:
+                item_clean = item.strip()
+                if not any(p in item_clean for p in ("decklink", "in#", "out#", "@")):
+                    inputs.append(item_clean)
     except Exception as e:
         logger.warning(f"Error querying decklink sources: {e}")
 
@@ -338,7 +333,7 @@ async def get_decklink_devices():
                     in_input_devices = False
                     continue
                 
-                if in_input_devices and line.startswith("[decklink"):
+                if in_input_devices and not any(k in line for k in ("Error", "opening", "Failed")):
                     match = re.search(r"'(.*?)'", line)
                     if match:
                         inputs.append(match.group(1))
@@ -357,16 +352,11 @@ async def get_decklink_devices():
         
         for line in output.splitlines():
             line = line.strip()
-            if '[' in line and ']' in line:
-                match = re.search(r'\[([^\]]+)\]$', line)
-                if match:
-                    outputs.append(match.group(1))
-                else:
-                    match2 = re.search(r'^\[decklink\s+@\s+\w+\]\s+(.+)$', line)
-                    if match2:
-                        name = match2.group(1).strip()
-                        if not name.startswith("Auto-detected") and not name.startswith("format_code") and not name.startswith("Supported"):
-                            outputs.append(name)
+            brackets = re.findall(r'\[([^\]]+)\]', line)
+            for item in brackets:
+                item_clean = item.strip()
+                if not any(p in item_clean for p in ("decklink", "in#", "out#", "@")):
+                    outputs.append(item_clean)
     except Exception as e:
         logger.warning(f"Error querying decklink sinks: {e}")
 
@@ -390,7 +380,7 @@ async def get_decklink_devices():
                     in_output_devices = False
                     continue
                 
-                if in_output_devices and line.startswith("[decklink"):
+                if in_output_devices and not any(k in line for k in ("Error", "opening", "Failed")):
                     match = re.search(r"'(.*?)'", line)
                     if match:
                         outputs.append(match.group(1))
@@ -420,23 +410,20 @@ async def get_decklink_formats(device: str):
         start_parsing = False
         for line in output.splitlines():
             line = line.strip()
+            if "Error opening" in line or "Unsupported" in line:
+                continue
             if "format_code" in line and "description" in line:
                 start_parsing = True
                 continue
             if start_parsing:
-                match = re.search(r'^\[decklink\s+@\s+\w+\]\s+(\S+)\s+(.+)$', line)
-                if match:
-                    code = match.group(1)
-                    desc = match.group(2).strip()
-                    if code.startswith("[") or code == "format_code":
-                        continue
-                    formats.append({"code": code, "description": desc})
-                else:
-                    parts = line.split(None, 1)
-                    if len(parts) == 2:
-                        code, desc = parts
-                        if not code.startswith("[") and code != "format_code":
-                            formats.append({"code": code, "description": desc.strip()})
+                line_clean = re.sub(r'^\[[^\]]+\]\s*', '', line).strip()
+                if not line_clean:
+                    continue
+                parts = line_clean.split(None, 1)
+                if len(parts) == 2:
+                    code, desc = parts
+                    if re.match(r'^[a-zA-Z0-9]{3,6}$', code) and code != "format":
+                        formats.append({"code": code, "description": desc.strip()})
     except Exception as e:
         logger.warning(f"Error listing decklink formats: {e}")
     
