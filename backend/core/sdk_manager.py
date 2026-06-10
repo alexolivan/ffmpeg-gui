@@ -59,6 +59,9 @@ class SdkManager:
             # 1. Unpack archive
             self._unpack_archive(file_path, temp_extract_dir)
 
+            # 1.5 Clean non-Linux platform folders immediately to save disk and prevent wrong resolution
+            self._clean_non_linux_dirs(temp_extract_dir)
+
             # 2. Extract Version from filename as fallback
             version = self._extract_version_from_name(original_filename)
 
@@ -106,11 +109,35 @@ class SdkManager:
         match = re.search(r'(\d+(?:\.\d+)+)', filename)
         return match.group(1) if match else "1.0.0"
 
+    def _clean_non_linux_dirs(self, temp_extract_dir: str):
+        """Recursively removes macOS, Windows, and iOS directories from the extracted SDK."""
+        non_linux_names = {"mac", "mac_os", "macos", "win", "win32", "windows", "ios"}
+        for root, dirs, files in os.walk(temp_extract_dir, topdown=True):
+            # Modify dirs in-place to prevent os.walk from descending into deleted directories
+            for d in list(dirs):
+                if d.lower() in non_linux_names:
+                    dir_path = os.path.join(root, d)
+                    try:
+                        shutil.rmtree(dir_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to remove non-Linux directory {dir_path}: {e}")
+                    dirs.remove(d)
+
     def _find_file_recursively(self, root_dir: str, target_filename: str) -> Optional[str]:
+        candidates = []
         for dirpath, _, filenames in os.walk(root_dir):
             if target_filename in filenames:
-                return os.path.join(dirpath, target_filename)
-        return None
+                candidates.append(os.path.join(dirpath, target_filename))
+        
+        if not candidates:
+            return None
+            
+        # Prioritize Linux path
+        for candidate in candidates:
+            if "linux" in candidate.lower():
+                return candidate
+                
+        return candidates[0]
 
     # ── Specific SDK Handlers ────────────────────────────────────────
 
