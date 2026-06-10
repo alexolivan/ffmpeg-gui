@@ -24,6 +24,7 @@ export default defineConfig({
       '/sdks': `http://localhost:${backendPort}`,
       '/uploads': `http://localhost:${backendPort}`,
       '/system': `http://localhost:${backendPort}`,
+      '/decklink': `http://localhost:${backendPort}`,
     }
   }
 })

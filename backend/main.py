@@ -1737,7 +1737,7 @@ app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST_DIR, "asse
 
 @app.get("/{catchall:path}")
 def serve_spa(catchall: str):
-    api_prefixes = ["ws", "settings", "login", "builds", "processes", "tasks", "sdks", "uploads", "system"]
+    api_prefixes = ["ws", "settings", "login", "builds", "processes", "tasks", "sdks", "uploads", "system", "decklink"]
     first_part = catchall.split("/")[0] if catchall else ""
     if first_part in api_prefixes:
         raise HTTPException(status_code=404, detail="Not Found")
