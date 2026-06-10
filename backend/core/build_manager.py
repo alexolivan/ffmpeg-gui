@@ -283,14 +283,11 @@ class BuildManager:
                 await log_callback("━━━ STAGE 1.5: NVIDIA NVENC HEADERS ━━━\n")
                 nv_src = os.path.join(src_path, "nv-codec-headers")
                 
-                # Determine correct ffnvcodec tag based on user selection or FFmpeg version compatibility
-                nv_tag = None
-                if sdk_paths and sdk_paths.get("nvenc_headers"):
-                    nv_tag = sdk_paths.get("nvenc_headers")
-                    if nv_tag == "auto":
-                        nv_tag = self.get_ffnvcodec_tag(ffmpeg_version)
-                else:
+                # Determine correct ffnvcodec tag based on user selection
+                nv_tag = sdk_paths.get("nvenc_headers") if sdk_paths else None
+                if not nv_tag:
                     nv_tag = self.get_ffnvcodec_tag(ffmpeg_version)
+                    await log_callback(f"⚠️ Warning: No explicit nv-codec-headers tag selected. Falling back to auto-detected compatibility tag: {nv_tag}\n")
 
                 if not os.path.exists(nv_src) or sources_cleaned:
                     if os.path.exists(nv_src):

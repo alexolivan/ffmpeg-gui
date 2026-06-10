@@ -101,6 +101,16 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
           if (ffData.tags?.length > 0 && !ffmpegVersion) setFfmpegVersion(ffData.tags[0])
           if (srtData.tags?.length > 0 && !srtVersion) setSrtVersion(srtData.tags[0])
         }
+
+        if (nvencData.tags?.length > 0) {
+          setSdkPaths(prev => {
+            const currentVal = prev.nvenc_headers
+            if (!currentVal || currentVal === 'auto') {
+              return { ...prev, nvenc_headers: nvencData.tags[0] }
+            }
+            return prev
+          })
+        }
       } catch (err) {
         console.error('Failed to load tags:', err)
       }
@@ -178,6 +188,9 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
         finalSdkPaths.ndi_patch_url = sdkPaths.ndi_patch_url
       }
     }
+    if (options.nvenc && sdkPaths.nvenc_headers) {
+      finalSdkPaths.nvenc_headers = sdkPaths.nvenc_headers
+    }
 
     await onSubmit({
       name: name.trim(),
@@ -193,7 +206,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const isValid = name.trim().length > 0 && 
                   ffmpegVersion.length > 0 && 
                   (!options.decklink || !!sdkPaths.decklink) && 
-                  (!options.ndi || !!sdkPaths.ndi)
+                  (!options.ndi || !!sdkPaths.ndi) &&
+                  (!options.nvenc || !!sdkPaths.nvenc_headers)
 
   // Drag and Drop events
   const handleDragOver = (e: React.DragEvent) => {
@@ -315,11 +329,9 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     <label className="text-[8px] text-text-secondary uppercase tracking-widest block font-bold">Cabeceras ffnvcodec (Versión del SDK)</label>
                     <select
                       className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none"
-                      value={sdkPaths.nvenc_headers || 'auto'}
+                      value={sdkPaths.nvenc_headers || ''}
                       onChange={e => setSdkPaths({ ...sdkPaths, nvenc_headers: e.target.value })}
                     >
-                      <option value="auto">✈ Autopilot (Detección automática de tag compatible)</option>
-                      <option value="master">master (Último SDK 13.1 - Requiere FFmpeg en desarrollo)</option>
                       {nvencTags.map(tag => (
                         <option key={tag} value={tag}>{tag}</option>
                       ))}
