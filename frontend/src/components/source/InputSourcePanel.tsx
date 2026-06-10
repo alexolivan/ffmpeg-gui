@@ -15,6 +15,9 @@ export interface InputSourceConfig {
   size?: string;
   rate?: string;
   frequency?: number;
+  video_input?: string;
+  audio_input?: string;
+  format_code?: string;
 }
 
 interface InputSourcePanelProps {
@@ -56,6 +59,66 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   const update = (patch: Partial<InputSourceConfig>) => {
     onChange({ ...config, ...patch });
   };
+
+  const [devices, setDevices] = React.useState<string[]>([]);
+  const [loadingDevices, setLoadingDevices] = React.useState(false);
+  const [formats, setFormats] = React.useState<{ code: string; description: string }[]>([]);
+  const [loadingFormats, setLoadingFormats] = React.useState(false);
+  const [manualDeviceMode, setManualDeviceMode] = React.useState(false);
+
+  React.useEffect(() => {
+    if (config.type !== 'decklink') return;
+    let active = true;
+    const fetchDevices = async () => {
+      setLoadingDevices(true);
+      try {
+        const res = await fetch('/decklink/devices');
+        if (!res.ok) throw new Error("Failed to fetch");
+        const data = await res.json();
+        if (active) {
+          setDevices(data.inputs || []);
+          if (data.inputs && data.inputs.length > 0) {
+            const found = data.inputs.includes(config.device || '');
+            if (!found && config.device) {
+              setManualDeviceMode(true);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching decklink devices:", err);
+      } finally {
+        if (active) setLoadingDevices(false);
+      }
+    };
+    fetchDevices();
+    return () => { active = false; };
+  }, [config.type]);
+
+  React.useEffect(() => {
+    if (config.type !== 'decklink' || !config.device || manualDeviceMode) {
+      setFormats([]);
+      return;
+    }
+    let active = true;
+    const fetchFormats = async () => {
+      setLoadingFormats(true);
+      try {
+        const res = await fetch(`/decklink/formats?device=${encodeURIComponent(config.device || '')}`);
+        if (!res.ok) throw new Error("Failed to fetch formats");
+        const data = await res.json();
+        if (active) {
+          setFormats(data || []);
+        }
+      } catch (err) {
+        console.error("Error fetching formats:", err);
+        if (active) setFormats([]);
+      } finally {
+        if (active) setLoadingFormats(false);
+      }
+    };
+    fetchFormats();
+    return () => { active = false; };
+  }, [config.type, config.device, manualDeviceMode]);
 
   return (
     <div className="space-y-3">
@@ -169,13 +232,137 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'decklink' && (
-        <input
-          type="text"
-          placeholder="Device name (e.g. DeckLink Mini Recorder)"
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-          value={config.device || ''}
-          onChange={e => update({ device: e.target.value })}
-        />
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Dispositivo DeckLink</label>
+            {loadingDevices ? (
+              <div className="text-xs text-text-secondary animate-pulse">Cargando dispositivos...</div>
+            ) : devices.length === 0 ? (
+              <div className="space-y-2">
+                <div className="text-xs text-amber-500 font-medium">⚠️ No se detectaron tarjetas de captura DeckLink.</div>
+                <input
+                  type="text"
+                  placeholder="Nombre del dispositivo (ej: DeckLink Mini Recorder)"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                  value={config.device || ''}
+                  onChange={e => update({ device: e.target.value })}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  {!manualDeviceMode ? (
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      value={config.device || ''}
+                      onChange={e => {
+                        if (e.target.value === '__manual__') {
+                          setManualDeviceMode(true);
+                          update({ device: '' });
+                        } else {
+                          update({ device: e.target.value });
+                        }
+                      }}
+                    >
+                      <option value="">-- Seleccionar dispositivo --</option>
+                      {devices.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                      <option value="__manual__">📝 Entrada manual...</option>
+                    </select>
+                  ) : (
+                    <div className="flex w-full gap-2">
+                      <input
+                        type="text"
+                        placeholder="Nombre del dispositivo"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                        value={config.device || ''}
+                        onChange={e => update({ device: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors"
+                        onClick={() => {
+                          setManualDeviceMode(false);
+                          update({ device: devices[0] || '' });
+                        }}
+                      >
+                        Lista
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Conector de Video (video_input)</label>
+            <select
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+              value={config.video_input || ''}
+              onChange={e => update({ video_input: e.target.value })}
+            >
+              <option value="">Por defecto / No especificado</option>
+              <option value="sdi">SDI</option>
+              <option value="hdmi">HDMI</option>
+              <option value="optical_sdi">Optical SDI</option>
+              <option value="component">Component</option>
+              <option value="composite">Composite</option>
+              <option value="s_video">S-Video</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Conector de Audio (audio_input)</label>
+            <select
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+              value={config.audio_input || ''}
+              onChange={e => update({ audio_input: e.target.value })}
+            >
+              <option value="">Por defecto / No especificado</option>
+              <option value="embedded">Embedded (SDI/HDMI)</option>
+              <option value="aes_ebu">AES/EBU (Digital)</option>
+              <option value="analog">Analog (XLR/RCA)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Formato de Entrada (format_code)</label>
+            {manualDeviceMode ? (
+              <input
+                type="text"
+                placeholder="Código de formato (ej: hp50)"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.format_code || ''}
+                onChange={e => update({ format_code: e.target.value })}
+              />
+            ) : loadingFormats ? (
+              <div className="text-xs text-text-secondary animate-pulse">Cargando formatos soportados...</div>
+            ) : formats.length === 0 ? (
+              <input
+                type="text"
+                placeholder="Código de formato (ej: hp50) - No se detectaron formatos"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.format_code || ''}
+                onChange={e => update({ format_code: e.target.value })}
+              />
+            ) : (
+              <select
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.format_code || ''}
+                onChange={e => update({ format_code: e.target.value })}
+              >
+                <option value="">Por defecto / Detección automática (SDK)</option>
+                {formats.map(f => (
+                  <option key={f.code} value={f.code}>
+                    {f.code} ({f.description})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
       )}
 
       {config.type === 'alsa' && (

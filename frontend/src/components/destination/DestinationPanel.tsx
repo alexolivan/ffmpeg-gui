@@ -63,6 +63,38 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     onChange({ ...config, ...patch });
   };
 
+  const [devices, setDevices] = React.useState<string[]>([]);
+  const [loadingDevices, setLoadingDevices] = React.useState(false);
+  const [manualDeviceMode, setManualDeviceMode] = React.useState(false);
+
+  React.useEffect(() => {
+    if (config.type !== 'decklink') return;
+    let active = true;
+    const fetchDevices = async () => {
+      setLoadingDevices(true);
+      try {
+        const res = await fetch('/decklink/devices');
+        if (!res.ok) throw new Error("Failed to fetch");
+        const data = await res.json();
+        if (active) {
+          setDevices(data.outputs || []);
+          if (data.outputs && data.outputs.length > 0) {
+            const found = data.outputs.includes(config.device || '');
+            if (!found && config.device) {
+              setManualDeviceMode(true);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching decklink devices:", err);
+      } finally {
+        if (active) setLoadingDevices(false);
+      }
+    };
+    fetchDevices();
+    return () => { active = false; };
+  }, [config.type]);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 mb-1">
@@ -153,12 +185,70 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       )}
 
       {config.type === 'decklink' && (
-        <input
-          type="text"
-          placeholder="Device name (e.g. DeckLink Mini Monitor)"
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-          value={config.device || ''} onChange={e => update({ device: e.target.value })}
-        />
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Dispositivo DeckLink de Salida</label>
+            {loadingDevices ? (
+              <div className="text-xs text-text-secondary animate-pulse">Cargando dispositivos...</div>
+            ) : devices.length === 0 ? (
+              <div className="space-y-2">
+                <div className="text-xs text-amber-500 font-medium">⚠️ No se detectaron tarjetas de salida DeckLink.</div>
+                <input
+                  type="text"
+                  placeholder="Nombre del dispositivo (ej: DeckLink Mini Monitor)"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                  value={config.device || ''}
+                  onChange={e => update({ device: e.target.value })}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  {!manualDeviceMode ? (
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      value={config.device || ''}
+                      onChange={e => {
+                        if (e.target.value === '__manual__') {
+                          setManualDeviceMode(true);
+                          update({ device: '' });
+                        } else {
+                          update({ device: e.target.value });
+                        }
+                      }}
+                    >
+                      <option value="">-- Seleccionar dispositivo --</option>
+                      {devices.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                      <option value="__manual__">📝 Entrada manual...</option>
+                    </select>
+                  ) : (
+                    <div className="flex w-full gap-2">
+                      <input
+                        type="text"
+                        placeholder="Nombre del dispositivo"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                        value={config.device || ''}
+                        onChange={e => update({ device: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors"
+                        onClick={() => {
+                          setManualDeviceMode(false);
+                          update({ device: devices[0] || '' });
+                        }}
+                      >
+                        Lista
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {config.type === 'file' && (

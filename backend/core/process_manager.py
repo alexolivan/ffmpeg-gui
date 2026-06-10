@@ -411,6 +411,15 @@ class ProcessManager:
             name = input_cfg.get('name', '')
             cmd += ["-f", "libndi_newtek", "-find_sources", "1", "-i", name]
         elif input_type == 'decklink':
+            video_input = input_cfg.get('video_input')
+            if video_input and video_input != 'unset':
+                cmd += ["-video_input", video_input]
+            audio_input = input_cfg.get('audio_input')
+            if audio_input and audio_input != 'unset':
+                cmd += ["-audio_input", audio_input]
+            format_code = input_cfg.get('format_code')
+            if format_code and format_code != 'unset':
+                cmd += ["-format_code", format_code]
             cmd += ["-f", "decklink", "-i", input_cfg.get('device', '')]
         elif input_type == 'udp':
             host = input_cfg.get('host', '')

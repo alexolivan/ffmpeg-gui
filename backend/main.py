@@ -286,6 +286,164 @@ def get_system_capabilities():
     }
 
 
+@app.get("/decklink/devices")
+async def get_decklink_devices():
+    import re
+    ffmpeg_bin = process_manager.ffmpeg_path
+    inputs = []
+    outputs = []
+
+    # 1. Query inputs
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            ffmpeg_bin, "-sources", "decklink",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        output = stdout.decode('utf-8', errors='replace') + stderr.decode('utf-8', errors='replace')
+        
+        for line in output.splitlines():
+            line = line.strip()
+            if '[' in line and ']' in line:
+                match = re.search(r'\[([^\]]+)\]$', line)
+                if match:
+                    inputs.append(match.group(1))
+                else:
+                    match2 = re.search(r'^\[decklink\s+@\s+\w+\]\s+(.+)$', line)
+                    if match2:
+                        name = match2.group(1).strip()
+                        if not name.startswith("Auto-detected") and not name.startswith("format_code") and not name.startswith("Supported"):
+                            inputs.append(name)
+    except Exception as e:
+        logger.warning(f"Error querying decklink sources: {e}")
+
+    if not inputs:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                ffmpeg_bin, "-f", "decklink", "-list_devices", "1", "-i", "dummy",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            output = stderr.decode('utf-8', errors='replace')
+            
+            in_input_devices = False
+            for line in output.splitlines():
+                line = line.strip()
+                if "Blackmagic DeckLink input devices:" in line:
+                    in_input_devices = True
+                    continue
+                elif "devices:" in line:
+                    in_input_devices = False
+                    continue
+                
+                if in_input_devices and line.startswith("[decklink"):
+                    match = re.search(r"'(.*?)'", line)
+                    if match:
+                        inputs.append(match.group(1))
+        except Exception as e:
+            logger.warning(f"Error fallback querying decklink sources: {e}")
+
+    # 2. Query outputs
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            ffmpeg_bin, "-sinks", "decklink",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        output = stdout.decode('utf-8', errors='replace') + stderr.decode('utf-8', errors='replace')
+        
+        for line in output.splitlines():
+            line = line.strip()
+            if '[' in line and ']' in line:
+                match = re.search(r'\[([^\]]+)\]$', line)
+                if match:
+                    outputs.append(match.group(1))
+                else:
+                    match2 = re.search(r'^\[decklink\s+@\s+\w+\]\s+(.+)$', line)
+                    if match2:
+                        name = match2.group(1).strip()
+                        if not name.startswith("Auto-detected") and not name.startswith("format_code") and not name.startswith("Supported"):
+                            outputs.append(name)
+    except Exception as e:
+        logger.warning(f"Error querying decklink sinks: {e}")
+
+    if not outputs:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                ffmpeg_bin, "-f", "lavfi", "-t", "1", "-i", "nullsrc", "-f", "decklink", "-list_devices", "1", "dummy",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            output = stderr.decode('utf-8', errors='replace')
+            
+            in_output_devices = False
+            for line in output.splitlines():
+                line = line.strip()
+                if "Blackmagic DeckLink output devices:" in line:
+                    in_output_devices = True
+                    continue
+                elif "devices:" in line:
+                    in_output_devices = False
+                    continue
+                
+                if in_output_devices and line.startswith("[decklink"):
+                    match = re.search(r"'(.*?)'", line)
+                    if match:
+                        outputs.append(match.group(1))
+        except Exception as e:
+            logger.warning(f"Error fallback querying decklink sinks: {e}")
+
+    return {
+        "inputs": list(dict.fromkeys(inputs)),
+        "outputs": list(dict.fromkeys(outputs))
+    }
+
+
+@app.get("/decklink/formats")
+async def get_decklink_formats(device: str):
+    import re
+    ffmpeg_bin = process_manager.ffmpeg_path
+    formats = []
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            ffmpeg_bin, "-f", "decklink", "-list_formats", "1", "-i", device,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        output = stderr.decode('utf-8', errors='replace')
+        
+        start_parsing = False
+        for line in output.splitlines():
+            line = line.strip()
+            if "format_code" in line and "description" in line:
+                start_parsing = True
+                continue
+            if start_parsing:
+                match = re.search(r'^\[decklink\s+@\s+\w+\]\s+(\S+)\s+(.+)$', line)
+                if match:
+                    code = match.group(1)
+                    desc = match.group(2).strip()
+                    if code.startswith("[") or code == "format_code":
+                        continue
+                    formats.append({"code": code, "description": desc})
+                else:
+                    parts = line.split(None, 1)
+                    if len(parts) == 2:
+                        code, desc = parts
+                        if not code.startswith("[") and code != "format_code":
+                            formats.append({"code": code, "description": desc.strip()})
+    except Exception as e:
+        logger.warning(f"Error listing decklink formats: {e}")
+    
+    return formats
+
+
+
 # ── WebSocket Connection Manager ──────────────────────────────────
 
 class ConnectionManager:
