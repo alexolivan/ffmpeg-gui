@@ -150,7 +150,9 @@ class BuildManager:
         if not ffmpeg_version or any(dev in ffmpeg_version.lower() for dev in ["master", "dev", "git"]):
             return None
         try:
-            parts = ffmpeg_version.split('.')
+            # Strip leading alphabetic characters (like 'n' or 'v') to support git tags (e.g. 'n6.0')
+            cleaned_version = ffmpeg_version.lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+            parts = cleaned_version.split('.')
             major = int(parts[0])
             if major == 6:
                 return "n12.1.14.0"
