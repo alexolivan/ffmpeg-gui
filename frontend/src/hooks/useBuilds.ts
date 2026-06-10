@@ -89,9 +89,16 @@ export function useBuilds(activeView: string) {
 
   const handleCompile = async (id: number) => {
     const build = builds.find(b => Number(b.id) === Number(id));
+    let clean = false;
+    if (build && (build.status === 'failed' || build.status === 'ready')) {
+      clean = window.confirm(
+        `¿Deseas realizar una compilación limpia (Clean Compile)?\n\nEsto eliminará las fuentes temporales previas y volverá a descargar y compilar todo de cero, lo cual es muy recomendable para solucionar problemas de dependencias.`
+      );
+    }
     setTerminalBuild({ id, name: build?.name || `Build #${id}` });
     try {
-      const res = await fetch(`${API}/builds/${id}/compile`, { method: 'POST' });
+      const url = clean ? `${API}/builds/${id}/compile?clean=true` : `${API}/builds/${id}/compile`;
+      const res = await fetch(url, { method: 'POST' });
       if (!res.ok) console.error("Server returned error:", res.status);
       refreshBuilds();
     } catch (err) {

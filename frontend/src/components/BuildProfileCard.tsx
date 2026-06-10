@@ -170,7 +170,7 @@ export default function BuildProfileCard({
           </>
         )}
 
-        {build.status === 'building' && (
+        {(build.status === 'building' || build.status === 'ready' || build.status === 'failed') && (
           <button onClick={() => onViewLogs(build.id)}
             className="pill-button bg-white/5 text-xs hover:bg-white/10">VIEW LOGS</button>
         )}

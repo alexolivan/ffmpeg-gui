@@ -472,6 +472,20 @@ async def shutdown_event():
 @app.websocket("/ws/build/{build_id}")
 async def websocket_build(websocket: WebSocket, build_id: int):
     await websocket.accept()
+    
+    # Send existing logs from file if it exists
+    log_file_path = os.path.join(build_manager.get_build_path(build_id), "build.log")
+    if os.path.exists(log_file_path):
+        try:
+            with open(log_file_path, "r", errors="replace") as f:
+                content = f.read()
+                if content:
+                    # Send split lines to match line-by-line format expected by frontend
+                    for line in content.splitlines(keepends=True):
+                        await websocket.send_text(line)
+        except Exception as e:
+            logger.error(f"Error sending initial build logs: {e}")
+
     if build_id not in build_ws_connections:
         build_ws_connections[build_id] = []
     build_ws_connections[build_id].append(websocket)
@@ -667,7 +681,7 @@ def delete_build(build_id: int, db: Session = Depends(get_db)):
 
 @app.post("/builds/{build_id}/compile")
 async def compile_build(build_id: int, background_tasks: BackgroundTasks,
-                        db: Session = Depends(get_db)):
+                        clean: bool = False, db: Session = Depends(get_db)):
     """Start compilation of a build profile."""
     build = db.query(FfmpegBuild).get(build_id)
     if not build:
@@ -678,10 +692,30 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
     # Mark as building
     build.status = "building"
     build.build_log_summary = None
+    if clean:
+        build.sources_cleaned = False
     db.commit()
 
+    # Prepare log file path
+    build_path = build_manager.get_build_path(build_id)
+    os.makedirs(build_path, exist_ok=True)
+    log_file_path = os.path.join(build_path, "build.log")
+
+    # Clear the file first
+    try:
+        with open(log_file_path, "w") as f:
+            f.write("")
+    except Exception as e:
+        logger.error(f"Failed to clear build log file: {e}")
+
     async def _log_callback(msg: str):
-        """Broadcast log lines to all WebSocket clients watching this build."""
+        """Broadcast log lines to all WebSocket clients and write to file."""
+        try:
+            with open(log_file_path, "a") as f:
+                f.write(msg)
+        except Exception as e:
+            logger.error(f"Failed to write to build log file: {e}")
+
         if build_id in build_ws_connections:
             dead = []
             for ws in build_ws_connections[build_id]:
@@ -700,7 +734,7 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                 srt_version=build.srt_version,
                 options=build.build_options,
                 sdk_paths=build.sdk_paths,
-                sources_cleaned=build.sources_cleaned,
+                sources_cleaned=clean or build.sources_cleaned,
                 log_callback=_log_callback,
                 auto_clean=build.auto_clean or False,
             )
