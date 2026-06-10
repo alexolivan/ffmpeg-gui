@@ -141,24 +141,28 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             <div className="text-text-secondary text-sm">Create your first FFmpeg build profile to get started</div>
           </div>
         ) : (
-          builds.map(build => (
-            <BuildProfileCard
-              key={build.id}
-              build={build}
-              onCompile={handleCompile}
-              onStop={handleStopBuild}
-              onValidate={handleValidate}
-              onCleanSources={handleCleanSources}
-              onDelete={handleDeleteBuild}
-              onSetDefault={handleSetDefault}
-              onEdit={(b) => { setEditingBuild(b); setShowBuildForm(true) }}
-              onViewLogs={(id) => {
-                const b = builds.find(x => x.id === id)
-                if (b) setTerminalBuild({ id, name: b.name })
-              }}
-              onExport={handleExportRecipe}
-            />
-          ))
+          (() => {
+            const isAnyBuilding = builds.some(b => b.status === 'building');
+            return builds.map(build => (
+              <BuildProfileCard
+                key={build.id}
+                build={build}
+                isAnyBuilding={isAnyBuilding}
+                onCompile={handleCompile}
+                onStop={handleStopBuild}
+                onValidate={handleValidate}
+                onCleanSources={handleCleanSources}
+                onDelete={handleDeleteBuild}
+                onSetDefault={handleSetDefault}
+                onEdit={(b) => { setEditingBuild(b); setShowBuildForm(true) }}
+                onViewLogs={(id) => {
+                  const b = builds.find(x => x.id === id)
+                  if (b) setTerminalBuild({ id, name: b.name })
+                }}
+                onExport={handleExportRecipe}
+              />
+            ));
+          })()
         )}
       </div>
 

@@ -99,7 +99,15 @@ export function useBuilds(activeView: string) {
     try {
       const url = clean ? `${API}/builds/${id}/compile?clean=true` : `${API}/builds/${id}/compile`;
       const res = await fetch(url, { method: 'POST' });
-      if (!res.ok) console.error("Server returned error:", res.status);
+      if (!res.ok) {
+        if (res.status === 409) {
+          alert("Ya hay otra compilación en curso. Por favor, espera a que termine o cancélala.");
+        } else {
+          console.error("Server returned error:", res.status);
+          alert("Error al iniciar la compilación. Revisa la consola o los logs del servidor.");
+        }
+        setTerminalBuild(null);
+      }
       refreshBuilds();
     } catch (err) {
       console.error("Fetch failed:", err);

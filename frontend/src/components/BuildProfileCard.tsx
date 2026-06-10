@@ -19,6 +19,7 @@ interface BuildProfile {
 
 interface BuildProfileCardProps {
   build: BuildProfile
+  isAnyBuilding?: boolean
   onCompile: (id: number) => void
   onStop: (id: number) => void
   onValidate: (id: number) => void
@@ -48,7 +49,7 @@ function formatDate(iso: string | null): string {
 
 
 export default function BuildProfileCard({
-  build, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport,
+  build, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport,
 }: BuildProfileCardProps) {
   const style = STATUS_STYLES[build.status] || STATUS_STYLES.pending
 
@@ -142,10 +143,13 @@ export default function BuildProfileCard({
         ) : (
           <button
             onClick={() => onCompile(build.id)}
+            disabled={isAnyBuilding}
             className={`pill-button text-xs transition-all ${
-              build.status === 'failed' 
-                ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' 
-                : 'bg-brand-orange/20 text-brand-orange hover:bg-brand-orange/30'
+              isAnyBuilding
+                ? 'opacity-30 cursor-not-allowed bg-white/5 text-white/40 border border-white/5'
+                : build.status === 'failed' 
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' 
+                  : 'bg-brand-orange/20 text-brand-orange hover:bg-brand-orange/30'
             }`}
           >
             {build.status === 'ready' ? 'RECOMPILE' : build.status === 'failed' ? 'RETRY BUILD' : 'COMPILE'}
@@ -175,8 +179,13 @@ export default function BuildProfileCard({
         <button onClick={() => onExport(build.id)}
           className="pill-button bg-white/5 text-xs hover:bg-white/10">EXPORT RECIPE</button>
 
-        <button onClick={() => onEdit(build)}
-          className="pill-button bg-white/5 text-xs hover:bg-white/10 ml-auto">EDIT</button>
+        <button
+          onClick={() => onEdit(build)}
+          disabled={build.status === 'building'}
+          className={`pill-button text-xs ml-auto ${build.status === 'building' ? 'opacity-30 cursor-not-allowed bg-white/5 text-white/40' : 'bg-white/5 hover:bg-white/10'}`}
+        >
+          EDIT
+        </button>
 
         {build.status !== 'building' && (
           <button onClick={() => onDelete(build.id)}
