@@ -697,10 +697,6 @@ class ProcessManager:
                         cmd += ["-field_order", "tt"]
                 else:
                     cmd += ["-field_order", "progressive"]
-            if output_cfg.get('video_size'):
-                cmd += ["-s:v", output_cfg['video_size']]
-            if output_cfg.get('framerate'):
-                cmd += ["-r:v", output_cfg['framerate']]
             cmd += [device]
         elif output_type == 'rtp':
             host = output_cfg.get('host', '127.0.0.1')

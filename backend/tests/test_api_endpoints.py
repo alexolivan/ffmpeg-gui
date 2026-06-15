@@ -425,7 +425,13 @@ class TestTaskAPI(unittest.TestCase):
             "name": "Test DeckLink Service Preview",
             "type": "service",
             "input_config": {"input1": {"type": "file", "path": "/tmp/test.mp4"}},
-            "output_config": {"type": "decklink", "device": "Intensity Pro", "format_code": "Hi50"},
+            "output_config": {
+                "type": "decklink",
+                "device": "Intensity Pro",
+                "format_code": "Hi50",
+                "video_size": "1920x1080",
+                "framerate": "25"
+            },
             "codec_config": {"vcodec": "rawvideo", "video_params": {"pix_fmt": "uyvy422"}},
             "filter_config": {}
         }
@@ -435,12 +441,20 @@ class TestTaskAPI(unittest.TestCase):
         self.assertIn("-c:v wrapped_avframe", cmd)
         self.assertNotIn("-c:v rawvideo", cmd)
         self.assertIn("-pix_fmt uyvy422", cmd)
+        self.assertNotIn("-s:v 1920x1080", cmd)
+        self.assertNotIn("-r:v 25", cmd)
 
         # Test mapping in task_manager (tasks)
         payload_task = {
             "name": "API Test DeckLink Task Preview",
             "input_config": {"type": "file", "path": "/tmp/test.mp4"},
-            "output_config": {"type": "decklink", "device": "Intensity Pro", "format_code": "Hi50"},
+            "output_config": {
+                "type": "decklink",
+                "device": "Intensity Pro",
+                "format_code": "Hi50",
+                "video_size": "1920x1080",
+                "framerate": "25"
+            },
             "codec_config": {"vcodec": "rawvideo", "video_params": {"pix_fmt": "uyvy422"}},
             "schedule_type": "manual"
         }
@@ -450,6 +464,8 @@ class TestTaskAPI(unittest.TestCase):
         self.assertIn("-c:v wrapped_avframe", cmd_task)
         self.assertNotIn("-c:v rawvideo", cmd_task)
         self.assertIn("-pix_fmt uyvy422", cmd_task)
+        self.assertNotIn("-s:v 1920x1080", cmd_task)
+        self.assertNotIn("-r:v 25", cmd_task)
 
 if __name__ == "__main__":
     unittest.main()
