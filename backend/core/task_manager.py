@@ -271,6 +271,12 @@ class TaskManager:
                     vf.append("format=nv12")
                     vf.append("hwupload")
                     
+                if output_cfg.get('type') == 'decklink':
+                    if output_cfg.get('video_size'):
+                        vf.append(f"scale={output_cfg['video_size']}")
+                    if output_cfg.get('framerate'):
+                        vf.append(f"fps={output_cfg['framerate']}")
+
                 if vf:
                     cmd += ["-vf", ",".join(vf)]
 
