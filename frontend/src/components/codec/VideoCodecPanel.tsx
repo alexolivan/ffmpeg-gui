@@ -63,6 +63,36 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Hardware Decoding Selection */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-brand-lime" />
+          <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Hardware Decoding (Input)</h4>
+          <span className="text-[10px] text-white/20 italic ml-auto">-hwaccel</span>
+        </div>
+
+        <select
+          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-brand-lime transition-all"
+          value={hwaccel}
+          onChange={e => onHwaccelChange(e.target.value)}
+        >
+          <option value="none">None (Software Decoding)</option>
+          {(!systemCapabilities || systemCapabilities.nvenc?.available) && (
+            <option value="cuda">NVIDIA GPU (CUDA)</option>
+          )}
+          {(!systemCapabilities || systemCapabilities.vaapi?.available) && (
+            <>
+              <option value="vaapi">Intel/AMD GPU (VAAPI)</option>
+              <option value="qsv">Intel Quick Sync (QSV)</option>
+            </>
+          )}
+          <option value="auto">Auto-detect</option>
+        </select>
+        <span className="text-[10px] text-text-secondary block px-1">
+          Offloads video decoding to the selected GPU. Recommended for high-bitrate file or network inputs.
+        </span>
+      </div>
+
       {/* Video Codec Selection */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
@@ -94,36 +124,6 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
             </optgroup>
           )}
         </select>
-      </div>
-
-      {/* Hardware Decoding Selection */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-brand-lime" />
-          <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Hardware Decoding (Input)</h4>
-          <span className="text-[10px] text-white/20 italic ml-auto">-hwaccel</span>
-        </div>
-
-        <select
-          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-brand-lime transition-all"
-          value={hwaccel}
-          onChange={e => onHwaccelChange(e.target.value)}
-        >
-          <option value="none">None (Software Decoding)</option>
-          {(!systemCapabilities || systemCapabilities.nvenc?.available) && (
-            <option value="cuda">NVIDIA GPU (CUDA)</option>
-          )}
-          {(!systemCapabilities || systemCapabilities.vaapi?.available) && (
-            <>
-              <option value="vaapi">Intel/AMD GPU (VAAPI)</option>
-              <option value="qsv">Intel Quick Sync (QSV)</option>
-            </>
-          )}
-          <option value="auto">Auto-detect</option>
-        </select>
-        <span className="text-[10px] text-text-secondary block px-1">
-          Offloads video decoding to the selected GPU. Recommended for high-bitrate file or network inputs.
-        </span>
       </div>
 
       {/* Codec Parameters */}
