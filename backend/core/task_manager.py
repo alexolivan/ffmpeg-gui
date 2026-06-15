@@ -510,16 +510,58 @@ class TaskManager:
 
     def _append_output(self, cmd: list, output_cfg: dict, codec_cfg: dict):
         output_type = output_cfg.get('type')
+        
         if output_type == 'file':
-            cmd += [output_cfg.get('path', 'output.mp4')]
+            path = output_cfg.get('path', 'output.mp4')
+            cmd += [path]
         elif output_type == 'udp':
-            cmd += ["-f", "mpegts", f"udp://{output_cfg.get('host', '127.0.0.1')}:{output_cfg.get('port', '1234')}"]
+            host = output_cfg.get('host', '127.0.0.1')
+            port = output_cfg.get('port', '1234')
+            cmd += ["-f", "mpegts", f"udp://{host}:{port}"]
         elif output_type == 'srt':
-            h, p = output_cfg.get('host', '127.0.0.1'), output_cfg.get('port', '1234')
-            m, l = output_cfg.get('mode', 'caller'), output_cfg.get('latency', 200)
-            cmd += ["-f", "mpegts", f"srt://{h}:{p}?mode={m}&latency={l}"]
+            host = output_cfg.get('host', '127.0.0.1')
+            port = output_cfg.get('port', '1234')
+            mode = output_cfg.get('mode', 'caller')
+            latency = output_cfg.get('latency', 200)
+            cmd += ["-f", "mpegts", f"srt://{host}:{port}?mode={mode}&latency={latency}"]
         elif output_type == 'rtmp':
             cmd += ["-f", "flv", output_cfg.get('url', '')]
+        elif output_type == 'ndi':
+            name = output_cfg.get('path', 'FFMPEG-OUTPUT')
+            cmd += ["-f", "libndi_newtek", "-ndi_name", name, "output.ndi"]
+        elif output_type == 'decklink':
+            device = output_cfg.get('device', 'DeckLink Mini Monitor')
+            cmd += ["-f", "decklink"]
+            if output_cfg.get('format_code'):
+                cmd += ["-format_code", output_cfg['format_code']]
+            if output_cfg.get('video_size'):
+                cmd += ["-s:v", output_cfg['video_size']]
+            if output_cfg.get('framerate'):
+                cmd += ["-r:v", output_cfg['framerate']]
+            cmd += [device]
+        elif output_type == 'rtp':
+            host = output_cfg.get('host', '127.0.0.1')
+            port = output_cfg.get('port', '5004')
+            cmd += ["-f", "rtp", f"rtp://{host}:{port}"]
+        elif output_type == 'icecast':
+            host = output_cfg.get('host', 'localhost')
+            port = output_cfg.get('port', '8000')
+            mount = output_cfg.get('icecast_mount', '/live')
+            password = output_cfg.get('icecast_password', 'hackme')
+            cmd += ["-f", "ogg", "-content_type", "application/ogg",
+                    f"icecast://source:{password}@{host}:{port}{mount}"]
+        elif output_type == 'hls':
+            path = output_cfg.get('path', '')
+            hls_time = output_cfg.get('hls_time', 2)
+            hls_list_size = output_cfg.get('hls_list_size', 5)
+            hls_delete = output_cfg.get('hls_delete_segments', True)
+
+            cmd += ["-f", "hls"]
+            cmd += ["-hls_time", str(hls_time)]
+            cmd += ["-hls_list_size", str(hls_list_size)]
+            if hls_delete:
+                cmd += ["-hls_flags", "delete_segments"]
+            cmd += [path]
 
     async def stop_execution(self, execution_id: int, status="stopped", error_msg=None):
         proc = self.running_processes.get(execution_id)

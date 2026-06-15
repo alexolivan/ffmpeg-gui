@@ -14,6 +14,9 @@ export interface OutputConfig {
   icecast_mount?: string;
   icecast_password?: string;
   device?: string;
+  format_code?: string;
+  video_size?: string;
+  framerate?: string;
   hls_method?: string;
   hls_time?: number;
   hls_list_size?: number;
@@ -102,6 +105,68 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     fetchDevices();
     return () => { active = false; };
   }, [config.type]);
+
+  const [formats, setFormats] = React.useState<any[]>([]);
+  const [loadingFormats, setLoadingFormats] = React.useState(false);
+
+  React.useEffect(() => {
+    if (config.type !== 'decklink' || !config.device) {
+      setFormats([]);
+      return;
+    }
+    let active = true;
+    const fetchFormats = async () => {
+      setLoadingFormats(true);
+      try {
+        const res = await fetch(`/decklink/formats?device=${encodeURIComponent(config.device || '')}`);
+        if (!res.ok) throw new Error("Failed to fetch formats");
+        const data = await res.json();
+        if (active) {
+          setFormats(data || []);
+        }
+      } catch (err) {
+        console.error("Error fetching formats:", err);
+        if (active) setFormats([]);
+      } finally {
+        if (active) setLoadingFormats(false);
+      }
+    };
+    fetchFormats();
+    return () => { active = false; };
+  }, [config.type, config.device, manualDeviceMode]);
+
+  const parseFormatDescription = (desc: string) => {
+    const resMatch = desc.match(/(\d+)x(\d+)/);
+    const fpsMatch = desc.match(/at ([\d/]+) fps/);
+    return {
+      video_size: resMatch ? `${resMatch[1]}x${resMatch[2]}` : undefined,
+      framerate: fpsMatch ? fpsMatch[1] : undefined,
+    };
+  };
+
+  const handleFormatChange = (code: string) => {
+    if (!code) {
+      update({
+        format_code: '',
+        video_size: '',
+        framerate: '',
+      });
+      return;
+    }
+    const fmt = formats.find(f => f.code === code);
+    if (fmt) {
+      const parsed = parseFormatDescription(fmt.description);
+      update({
+        format_code: code,
+        video_size: parsed.video_size || '',
+        framerate: parsed.framerate || '',
+      });
+    } else {
+      update({
+        format_code: code,
+      });
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -259,6 +324,83 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Formato de Salida (format_code)</label>
+            {manualDeviceMode ? (
+              <div className="grid grid-cols-3 gap-3">
+                <input
+                  type="text"
+                  placeholder="Formato (ej: Hp25)"
+                  className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.format_code || ''}
+                  onChange={e => update({ format_code: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="Resolución (ej: 1920x1080)"
+                  className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.video_size || ''}
+                  onChange={e => update({ video_size: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="FPS (ej: 25)"
+                  className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.framerate || ''}
+                  onChange={e => update({ framerate: e.target.value })}
+                />
+              </div>
+            ) : loadingFormats ? (
+              <div className="text-xs text-text-secondary animate-pulse">Cargando formatos soportados...</div>
+            ) : formats.length === 0 ? (
+              <div className="grid grid-cols-3 gap-3">
+                <input
+                  type="text"
+                  placeholder="Formato (ej: Hp25) - No detectados"
+                  className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.format_code || ''}
+                  onChange={e => update({ format_code: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="Resolución (ej: 1920x1080)"
+                  className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.video_size || ''}
+                  onChange={e => update({ video_size: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="FPS (ej: 25)"
+                  className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.framerate || ''}
+                  onChange={e => update({ framerate: e.target.value })}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <select
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.format_code || ''}
+                  onChange={e => handleFormatChange(e.target.value)}
+                >
+                  <option value="">Por defecto / Detección automática (SDK)</option>
+                  {formats.map(f => (
+                    <option key={f.code} value={f.code}>
+                      {f.code} ({f.description})
+                    </option>
+                  ))}
+                </select>
+                
+                {config.format_code && (
+                  <div className="flex gap-4 px-1 text-[11px] text-text-secondary font-mono">
+                    <div>Resolución forzada: <span className="text-purple-300">{config.video_size || 'Auto'}</span></div>
+                    <div>Tasa de frames forzada: <span className="text-purple-300">{config.framerate || 'Auto'}</span></div>
+                  </div>
+                )}
               </div>
             )}
           </div>

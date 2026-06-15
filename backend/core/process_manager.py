@@ -670,7 +670,14 @@ class ProcessManager:
             cmd += ["-f", "libndi_newtek", "-ndi_name", name, "output.ndi"]
         elif output_type == 'decklink':
             device = output_cfg.get('device', 'DeckLink Mini Monitor')
-            cmd += ["-f", "decklink", device]
+            cmd += ["-f", "decklink"]
+            if output_cfg.get('format_code'):
+                cmd += ["-format_code", output_cfg['format_code']]
+            if output_cfg.get('video_size'):
+                cmd += ["-s:v", output_cfg['video_size']]
+            if output_cfg.get('framerate'):
+                cmd += ["-r:v", output_cfg['framerate']]
+            cmd += [device]
         elif output_type == 'rtp':
             host = output_cfg.get('host', '127.0.0.1')
             port = output_cfg.get('port', '5004')
