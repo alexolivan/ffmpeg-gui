@@ -246,6 +246,10 @@ class ProcessManager:
                     vf_list.append(f"{scale_filter}={v['resolution']}")
                     if filter_cfg.get('framerate'):
                         vf_list.append(f"fps={filter_cfg['framerate']}")
+                    
+                    if vcodec in ('h264_vaapi', 'hevc_vaapi') and hwaccel != 'vaapi':
+                        vf_list.append("format=nv12")
+                        vf_list.append("hwupload")
                         
                     cmd += [f"-filter:v:{idx}", ",".join(vf_list)]
                     cmd += [f"-c:v:{idx}", vcodec]
@@ -337,6 +341,13 @@ class ProcessManager:
                     vf.append("yadif")
                 if filter_cfg.get('framerate'):
                     vf.append(f"fps={filter_cfg['framerate']}")
+                
+                vcodec = codec_cfg.get('vcodec', 'libx264')
+                hwaccel = advanced.get('hwaccel', 'none')
+                if vcodec in ('h264_vaapi', 'hevc_vaapi') and hwaccel != 'vaapi':
+                    vf.append("format=nv12")
+                    vf.append("hwupload")
+                    
                 if vf:
                     cmd += ["-vf", ",".join(vf)]
 
