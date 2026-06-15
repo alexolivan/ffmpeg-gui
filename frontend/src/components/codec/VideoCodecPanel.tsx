@@ -15,6 +15,7 @@ interface VideoCodecPanelProps {
   hwaccel: string;
   onHwaccelChange: (hwaccel: string) => void;
   onChange: (codecId: string, params: Record<string, string | number | boolean>) => void;
+  primaryInputType?: string;
 }
 
 const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
@@ -25,9 +26,12 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
   hwaccel,
   onHwaccelChange,
   onChange,
+  primaryInputType,
 }) => {
   const available = getAvailableVideoCodecs(buildOptions, systemCapabilities);
   const selected = available.find(c => c.id === codecId) || available[0];
+
+  const supportsHwdec = !primaryInputType || !['lavfi', 'decklink'].includes(primaryInputType);
 
   // Auto-heal selected codec if the current one becomes unavailable
   useEffect(() => {
@@ -36,8 +40,14 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
     }
   }, [available, codecId, onChange]);
 
-  // Auto-heal hardware decoding selection if capabilities change or are missing
+  // Auto-heal hardware decoding selection if capabilities change or are missing, or if input type doesn't support it
   useEffect(() => {
+    if (!supportsHwdec) {
+      if (hwaccel !== 'none') {
+        onHwaccelChange('none');
+      }
+      return;
+    }
     if (systemCapabilities) {
       if (hwaccel === 'cuda' && !systemCapabilities.nvenc?.available) {
         onHwaccelChange('none');
@@ -45,7 +55,7 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
         onHwaccelChange('none');
       }
     }
-  }, [systemCapabilities, hwaccel, onHwaccelChange]);
+  }, [systemCapabilities, hwaccel, onHwaccelChange, supportsHwdec]);
 
   const handleCodecChange = (newCodecId: string) => {
     const codec = available.find(c => c.id === newCodecId);
@@ -72,9 +82,12 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
         </div>
 
         <select
-          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-brand-lime transition-all"
+          className={`w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none transition-all ${
+            !supportsHwdec ? 'opacity-50 cursor-not-allowed' : 'focus:border-brand-lime'
+          }`}
           value={hwaccel}
           onChange={e => onHwaccelChange(e.target.value)}
+          disabled={!supportsHwdec}
         >
           <option value="none">None (Software Decoding)</option>
           {(!systemCapabilities || systemCapabilities.nvenc?.available) && (
@@ -89,7 +102,10 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
           <option value="auto">Auto-detect</option>
         </select>
         <span className="text-[10px] text-text-secondary block px-1">
-          Offloads video decoding to the selected GPU. Recommended for high-bitrate file or network inputs.
+          {!supportsHwdec 
+            ? "⚠️ Hardware decoding is not supported for software generators or raw capture inputs (lavfi / decklink)."
+            : "Offloads video decoding to the selected GPU. Recommended for high-bitrate file or network inputs."
+          }
         </span>
       </div>
 

@@ -261,8 +261,36 @@ def get_system_capabilities():
     vaapi_details = "Render nodes detected in /dev/dri" if vaapi_available else "No render nodes found in /dev/dri"
 
     # NVENC
-    nvenc_available = shutil.which("nvidia-smi") is not None or os.path.exists("/dev/nvidia0")
-    nvenc_details = "NVIDIA driver/card detected" if nvenc_available else "NVIDIA command/device not found"
+    has_nvidia_hardware = shutil.which("nvidia-smi") is not None or os.path.exists("/dev/nvidia0")
+    libcuda_loadable = False
+    libnvenc_loadable = False
+
+    if has_nvidia_hardware:
+        import ctypes
+        try:
+            ctypes.CDLL("libcuda.so.1")
+            libcuda_loadable = True
+        except Exception:
+            pass
+
+        try:
+            ctypes.CDLL("libnvidia-encode.so.1")
+            libnvenc_loadable = True
+        except Exception:
+            pass
+
+    nvenc_available = has_nvidia_hardware and libcuda_loadable and libnvenc_loadable
+
+    if not has_nvidia_hardware:
+        nvenc_details = "NVIDIA GPU not detected"
+    elif not libcuda_loadable and not libnvenc_loadable:
+        nvenc_details = "NVIDIA GPU detected, but libcuda.so.1 and libnvidia-encode.so.1 are missing. Install libcuda1 and libnvidia-encode1."
+    elif not libcuda_loadable:
+        nvenc_details = "NVIDIA GPU detected, but libcuda.so.1 is missing. Install libcuda1."
+    elif not libnvenc_loadable:
+        nvenc_details = "NVIDIA GPU detected, but libnvidia-encode.so.1 is missing. Install libnvidia-encode1."
+    else:
+        nvenc_details = "NVIDIA GPU and driver libraries detected"
 
     # V4L2
     v4l2_devices = glob.glob("/dev/video*")

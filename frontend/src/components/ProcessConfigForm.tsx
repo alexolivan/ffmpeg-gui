@@ -524,6 +524,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                     video_codec_id: id,
                     video_codec_params: params,
                   })}
+                  primaryInputType={config.input1.type}
                 />
               </div>
             )}
