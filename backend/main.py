@@ -254,11 +254,29 @@ def get_system_capabilities():
     import glob
     import shutil
 
-    # VAAPI
-    vaapi_available = os.path.exists("/dev/dri") and len(
-        glob.glob("/dev/dri/renderD*") + glob.glob("/dev/dri/card*")
-    ) > 0
-    vaapi_details = "Render nodes detected in /dev/dri" if vaapi_available else "No render nodes found in /dev/dri"
+    # VAAPI (Intel: 0x8086, AMD: 0x1002)
+    vaapi_available = False
+    vaapi_details = "No VAAPI compatible render nodes (Intel/AMD) found"
+    
+    render_nodes = glob.glob("/sys/class/drm/renderD*")
+    detected_vendors = []
+    for node in render_nodes:
+        vendor_path = os.path.join(node, "device/vendor")
+        if os.path.exists(vendor_path):
+            try:
+                with open(vendor_path, "r") as f:
+                    vendor_id = f.read().strip().lower()
+                detected_vendors.append(vendor_id)
+                # 0x8086 = Intel, 0x1002 = AMD
+                if "0x8086" in vendor_id or "0x1002" in vendor_id:
+                    vaapi_available = True
+                    vaapi_details = f"VAAPI compatible GPU detected (Intel/AMD) on node {os.path.basename(node)}"
+                    break
+            except Exception as e:
+                pass
+                
+    if not vaapi_available and detected_vendors:
+        vaapi_details = f"Render nodes found but no compatible Intel/AMD GPU (vendors: {', '.join(detected_vendors)})"
 
     # NVENC
     has_nvidia_hardware = shutil.which("nvidia-smi") is not None or os.path.exists("/dev/nvidia0")
