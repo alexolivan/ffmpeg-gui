@@ -1,4 +1,5 @@
 import React from 'react';
+import type { SystemCapabilities } from '../codec/codecRegistry';
 import { HlsVariantsForm, type HlsVariant } from './HlsVariantsForm';
 
 export interface OutputConfig {
@@ -26,6 +27,7 @@ interface DestinationPanelProps {
   hasVideo: boolean;
   hasAudio: boolean;
   onChange: (config: OutputConfig) => void;
+  systemCapabilities?: SystemCapabilities;
 }
 
 const OUTPUT_TYPES = [
@@ -52,8 +54,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   hasVideo,
   hasAudio,
   onChange,
+  systemCapabilities,
 }) => {
-  const availableTypes = OUTPUT_TYPES.filter(t => {
+  const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
+  const filteredOutputTypes = decklinkAvailable
+    ? OUTPUT_TYPES
+    : OUTPUT_TYPES.filter(t => t.value !== 'decklink');
+
+  const availableTypes = filteredOutputTypes.filter(t => {
     if (t.requiresVideo && !hasVideo) return false;
     if (t.value === 'icecast' && (!hasAudio || hasVideo)) return false;
     return true;
@@ -186,6 +194,12 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'decklink' && (
         <div className="space-y-3">
+          <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-300 flex items-start gap-2.5">
+            <span className="text-sm">ℹ️</span>
+            <div>
+              <strong>Transmisión sin compresión activa:</strong> Al emitir a una tarjeta física DeckLink, la señal de video y audio se enviará sin comprimir (<code>rawvideo</code> + <code>pcm_s16le</code> en formato <code>uyvy422</code>) tal como lo requiere el hardware. Se ignorarán los parámetros de compresión H.264/HEVC.
+            </div>
+          </div>
           <div>
             <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Dispositivo DeckLink de Salida</label>
             {loadingDevices ? (

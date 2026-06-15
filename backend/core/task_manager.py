@@ -275,26 +275,35 @@ class TaskManager:
                     cmd += ["-vf", ",".join(vf)]
 
                 vcodec = codec_cfg.get('vcodec', 'libx264')
+                if output_cfg.get('type') == 'decklink':
+                    vcodec = 'rawvideo'
                 cmd += ["-c:v", vcodec]
                 
-                video_params = codec_cfg.get('video_params', {})
-                if video_params:
-                    self._append_video_codec_params(cmd, vcodec, video_params)
+                if output_cfg.get('type') == 'decklink':
+                    cmd += ["-pix_fmt", "uyvy422"]
                 else:
-                    if vcodec == 'libx264':
-                        cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
-                    if codec_cfg.get('bitrate'):
-                        cmd += ["-b:v", codec_cfg['bitrate']]
+                    video_params = codec_cfg.get('video_params', {})
+                    if video_params:
+                        self._append_video_codec_params(cmd, vcodec, video_params)
+                    else:
+                        if vcodec == 'libx264':
+                            cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
+                        if codec_cfg.get('bitrate'):
+                            cmd += ["-b:v", codec_cfg['bitrate']]
 
             # Audio processing
             if not has_audio:
                 cmd += ["-an"]
             else:
                 acodec = codec_cfg.get('acodec', 'aac')
+                if output_cfg.get('type') == 'decklink':
+                    acodec = 'pcm_s16le'
                 cmd += ["-c:a", acodec]
-                audio_params = codec_cfg.get('audio_params', {})
-                if audio_params:
-                    self._append_audio_codec_params(cmd, acodec, audio_params)
+                
+                if output_cfg.get('type') != 'decklink':
+                    audio_params = codec_cfg.get('audio_params', {})
+                    if audio_params:
+                        self._append_audio_codec_params(cmd, acodec, audio_params)
 
             # Stream mapping
             if is_new_format and use_secondary:

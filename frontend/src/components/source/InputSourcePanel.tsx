@@ -1,4 +1,5 @@
 import React from 'react';
+import type { SystemCapabilities } from '../codec/codecRegistry';
 
 // ── Input source types ───────────────────────────────────────────
 
@@ -27,6 +28,7 @@ interface InputSourcePanelProps {
   /** Restrict available source types (e.g. audio-only sources) */
   allowedTypes?: string[];
   onChange: (config: InputSourceConfig) => void;
+  systemCapabilities?: SystemCapabilities;
 }
 
 const ALL_SOURCE_TYPES = [
@@ -51,10 +53,16 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   config,
   allowedTypes,
   onChange,
+  systemCapabilities,
 }) => {
+  const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
+  const filteredSourceTypes = decklinkAvailable
+    ? ALL_SOURCE_TYPES
+    : ALL_SOURCE_TYPES.filter(t => t.value !== 'decklink');
+
   const types = allowedTypes
-    ? ALL_SOURCE_TYPES.filter(t => allowedTypes.includes(t.value))
-    : ALL_SOURCE_TYPES;
+    ? filteredSourceTypes.filter(t => allowedTypes.includes(t.value))
+    : filteredSourceTypes;
 
   const update = (patch: Partial<InputSourceConfig>) => {
     onChange({ ...config, ...patch });

@@ -442,6 +442,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                     : undefined
                 }
                 onChange={input1 => setConfig({ ...config, input1 })}
+                systemCapabilities={systemCapabilities}
               />
             </div>
 
@@ -492,6 +493,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   config={config.input2}
                   allowedTypes={AUDIO_ALLOWED_TYPES}
                   onChange={input2 => setConfig({ ...config, input2 })}
+                  systemCapabilities={systemCapabilities}
                 />
               </div>
             )}
@@ -576,6 +578,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 hasVideo={config.has_video}
                 hasAudio={config.has_audio}
                 onChange={output => setConfig({ ...config, output })}
+                systemCapabilities={systemCapabilities}
               />
             </div>
           </div>
