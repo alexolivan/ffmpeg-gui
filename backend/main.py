@@ -320,8 +320,10 @@ def get_system_capabilities():
     alsa_details = "ALSA sound card node(s) present" if alsa_available else "No ALSA interface found"
 
     # DeckLink
-    decklink_available = os.path.exists("/dev/blackmagic") or os.path.exists("/dev/bm0")
-    decklink_details = "DeckLink kernel driver active" if decklink_available else "No DeckLink interface found (simulated)"
+    import glob
+    decklink_nodes = glob.glob("/dev/blackmagic/io*") + glob.glob("/dev/blackmagic/dv*") + glob.glob("/dev/bm*")
+    decklink_available = len(decklink_nodes) > 0
+    decklink_details = f"Detected DeckLink card nodes: {', '.join(decklink_nodes)}" if decklink_available else "No physical DeckLink cards detected"
 
     return {
         "vaapi": {"available": vaapi_available, "details": vaapi_details},
