@@ -4,6 +4,7 @@ import type { InputSourceConfig } from './source/InputSourcePanel';
 import VideoCodecPanel from './codec/VideoCodecPanel';
 import AudioCodecPanel from './codec/AudioCodecPanel';
 import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS } from './codec/codecRegistry';
+import type { SystemCapabilities } from './codec/codecRegistry';
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
 
@@ -76,6 +77,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   const [activeSection, setActiveSection] = useState<string>('inputs');
   const [previewCmd, setPreviewCmd] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [systemCapabilities, setSystemCapabilities] = useState<SystemCapabilities | undefined>();
 
   const defaultVideoCodec = VIDEO_CODECS[0];
   const defaultAudioCodec = AUDIO_CODECS[0];
@@ -190,6 +192,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       })
       .catch(() => {});
   }, [config.ffmpeg_build_id, initialConfig]);
+
+  useEffect(() => {
+    fetch('/system/capabilities')
+      .then(r => r.json())
+      .then(caps => setSystemCapabilities(caps))
+      .catch(() => {});
+  }, []);
 
   const handleBuildChange = (buildId: number | null) => {
     setConfig(prev => ({ ...prev, ffmpeg_build_id: buildId }));
@@ -498,6 +507,18 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   codecId={config.video_codec_id}
                   params={config.video_codec_params}
                   buildOptions={selectedBuildOptions}
+                  systemCapabilities={systemCapabilities}
+                  hwaccel={config.filters.advanced.hwaccel}
+                  onHwaccelChange={(hwaccel) => setConfig(prev => ({
+                    ...prev,
+                    filters: {
+                      ...prev.filters,
+                      advanced: {
+                        ...prev.filters.advanced,
+                        hwaccel
+                      }
+                    }
+                  }))}
                   onChange={(id, params) => setConfig({
                     ...config,
                     video_codec_id: id,
@@ -594,7 +615,6 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
               realtime={config.filters.advanced.realtime}
               stream_loop={config.filters.advanced.stream_loop}
               threads={config.filters.advanced.threads}
-              hwaccel={config.filters.advanced.hwaccel}
               probesize={config.filters.advanced.probesize}
               thread_queue_size={config.filters.advanced.thread_queue_size}
               onChange={updates => setConfig({

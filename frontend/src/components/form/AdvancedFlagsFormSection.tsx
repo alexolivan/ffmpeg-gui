@@ -5,14 +5,12 @@ interface AdvancedFlagsFormSectionProps {
   realtime: boolean | null;
   stream_loop: number | null;
   threads: number;
-  hwaccel: string;
   probesize: string;
   thread_queue_size: number;
   onChange: (updates: {
     realtime?: boolean | null;
     stream_loop?: number | null;
     threads?: number;
-    hwaccel?: string;
     probesize?: string;
     thread_queue_size?: number;
   }) => void;
@@ -23,7 +21,6 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
   realtime,
   stream_loop,
   threads,
-  hwaccel,
   probesize,
   thread_queue_size,
   onChange,
@@ -85,7 +82,7 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
         </div>
       )}
 
-      {/* Threads + HW Accel row */}
+      {/* Resource Allocation Grid */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
@@ -97,41 +94,6 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
             value={threads || ''}
             onChange={e => onChange({
               threads: parseInt(e.target.value) || 0,
-            })}
-          />
-        </div>
-        <div>
-          <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
-            HW Acceleration <code className="text-brand-orange">-hwaccel</code>
-          </label>
-          <select
-            className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none focus:border-brand-orange"
-            value={hwaccel}
-            onChange={e => onChange({
-              hwaccel: e.target.value,
-            })}
-          >
-            <option value="none">None (Software)</option>
-            <option value="vaapi">VAAPI (Intel/AMD)</option>
-            <option value="cuda">CUDA (NVIDIA)</option>
-            <option value="qsv">Quick Sync (Intel)</option>
-            <option value="auto">Auto-detect</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Probesize + Thread Queue Size row */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
-            Probe Size <code className="text-brand-orange">-probesize</code>
-          </label>
-          <input
-            type="text" placeholder="e.g. 5M, 20M"
-            className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono focus:border-brand-orange"
-            value={probesize}
-            onChange={e => onChange({
-              probesize: e.target.value,
             })}
           />
         </div>
@@ -149,7 +111,23 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
           />
         </div>
       </div>
+
+      {/* Probesize row */}
+      <div>
+        <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
+          Probe Size <code className="text-brand-orange">-probesize</code>
+        </label>
+        <input
+          type="text" placeholder="e.g. 5M, 20M"
+          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono focus:border-brand-orange"
+          value={probesize}
+          onChange={e => onChange({
+            probesize: e.target.value,
+          })}
+        />
+      </div>
     </div>
   );
 };
+
 export default AdvancedFlagsFormSection;

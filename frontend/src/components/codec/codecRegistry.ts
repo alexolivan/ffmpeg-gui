@@ -632,15 +632,43 @@ export const AUDIO_CODECS: CodecDefinition[] = [
  * Maps build_options keys to the codec categories they unlock.
  * A codec with requiresBuildOption is hidden unless the build has that option enabled.
  */
-export function getAvailableVideoCodecs(buildOptions?: Record<string, boolean>): CodecDefinition[] {
+export interface SystemCapabilities {
+  vaapi: { available: boolean; details: string };
+  nvenc: { available: boolean; details: string };
+  v4l2: { available: boolean; details: string };
+  alsa: { available: boolean; details: string };
+  decklink: { available: boolean; details: string };
+}
+
+export function getAvailableVideoCodecs(
+  buildOptions?: Record<string, boolean>,
+  systemCapabilities?: SystemCapabilities
+): CodecDefinition[] {
+  let codecs = VIDEO_CODECS;
   if (!buildOptions) {
     // No build selected — show only SW + passthrough
-    return VIDEO_CODECS.filter(c => !c.requiresBuildOption);
+    codecs = VIDEO_CODECS.filter(c => !c.requiresBuildOption);
+  } else {
+    codecs = VIDEO_CODECS.filter(c => {
+      if (!c.requiresBuildOption) return true;
+      return buildOptions[c.requiresBuildOption] === true;
+    });
   }
-  return VIDEO_CODECS.filter(c => {
-    if (!c.requiresBuildOption) return true;
-    return buildOptions[c.requiresBuildOption] === true;
-  });
+
+  // Filter out hardware codecs if the host hardware is not present
+  if (systemCapabilities) {
+    codecs = codecs.filter(c => {
+      if (c.category === 'hw_nvenc' && !systemCapabilities.nvenc?.available) {
+        return false;
+      }
+      if ((c.category === 'hw_vaapi' || c.category === 'hw_qsv') && !systemCapabilities.vaapi?.available) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  return codecs;
 }
 
 export function getAvailableAudioCodecs(_buildOptions?: Record<string, boolean>): CodecDefinition[] {
