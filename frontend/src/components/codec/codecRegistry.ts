@@ -263,7 +263,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
     label: 'H.264 — VAAPI (Intel/AMD)',
     type: 'video',
     category: 'hw_vaapi',
-    requiresBuildOption: 'enable_vaapi',
+    requiresBuildOption: 'vaapi',
     params: [
       {
         key: 'rc_mode', label: 'Rate Control', type: 'select',
@@ -300,7 +300,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
     label: 'H.265 (HEVC) — VAAPI',
     type: 'video',
     category: 'hw_vaapi',
-    requiresBuildOption: 'enable_vaapi',
+    requiresBuildOption: 'vaapi',
     params: [
       {
         key: 'rc_mode', label: 'Rate Control', type: 'select',
@@ -328,7 +328,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
     label: 'H.264 — Intel QSV',
     type: 'video',
     category: 'hw_qsv',
-    requiresBuildOption: 'enable_qsv',
+    requiresBuildOption: 'qsv',
     params: [
       {
         key: 'preset', label: 'Preset', type: 'select',
@@ -360,7 +360,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
     label: 'H.264 — NVIDIA NVENC',
     type: 'video',
     category: 'hw_nvenc',
-    requiresBuildOption: 'enable_nvenc',
+    requiresBuildOption: 'nvenc',
     params: [
       {
         key: 'preset', label: 'Preset', type: 'select',
@@ -415,7 +415,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
     label: 'H.265 (HEVC) — NVIDIA NVENC',
     type: 'video',
     category: 'hw_nvenc',
-    requiresBuildOption: 'enable_nvenc',
+    requiresBuildOption: 'nvenc',
     params: [
       {
         key: 'preset', label: 'Preset', type: 'select',
