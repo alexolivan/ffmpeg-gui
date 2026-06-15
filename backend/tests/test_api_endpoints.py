@@ -419,5 +419,37 @@ class TestTaskAPI(unittest.TestCase):
         self.assertNotIn("-hwaccel_output_format ''", cmd)
         self.assertNotIn("-hwaccel_output_format \"\"", cmd)
 
+    def test_decklink_rawvideo_mapping_preview(self):
+        # Test mapping in process_manager (services)
+        payload_service = {
+            "name": "Test DeckLink Service Preview",
+            "type": "service",
+            "input_config": {"input1": {"type": "file", "path": "/tmp/test.mp4"}},
+            "output_config": {"type": "decklink", "device": "Intensity Pro", "format_code": "Hi50"},
+            "codec_config": {"vcodec": "rawvideo", "video_params": {"pix_fmt": "uyvy422"}},
+            "filter_config": {}
+        }
+        res = self.client.post("/processes/preview-cmd", json=payload_service)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        self.assertIn("-c:v wrapped_avframe", cmd)
+        self.assertNotIn("-c:v rawvideo", cmd)
+        self.assertIn("-pix_fmt uyvy422", cmd)
+
+        # Test mapping in task_manager (tasks)
+        payload_task = {
+            "name": "API Test DeckLink Task Preview",
+            "input_config": {"type": "file", "path": "/tmp/test.mp4"},
+            "output_config": {"type": "decklink", "device": "Intensity Pro", "format_code": "Hi50"},
+            "codec_config": {"vcodec": "rawvideo", "video_params": {"pix_fmt": "uyvy422"}},
+            "schedule_type": "manual"
+        }
+        res = self.client.post("/tasks/preview-cmd", json=payload_task)
+        self.assertEqual(res.status_code, 200)
+        cmd_task = res.json()["command"]
+        self.assertIn("-c:v wrapped_avframe", cmd_task)
+        self.assertNotIn("-c:v rawvideo", cmd_task)
+        self.assertIn("-pix_fmt uyvy422", cmd_task)
+
 if __name__ == "__main__":
     unittest.main()

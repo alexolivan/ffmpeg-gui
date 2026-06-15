@@ -296,7 +296,10 @@ class TaskManager:
                     cmd += ["-vf", ",".join(vf)]
 
                 vcodec = codec_cfg.get('vcodec', 'libx264')
-                cmd += ["-c:v", vcodec]
+                if output_cfg.get('type') == 'decklink' and vcodec == 'rawvideo':
+                    cmd += ["-c:v", "wrapped_avframe"]
+                else:
+                    cmd += ["-c:v", vcodec]
                 
                 video_params = codec_cfg.get('video_params', {})
                 if video_params:

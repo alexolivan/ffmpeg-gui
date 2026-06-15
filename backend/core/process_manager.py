@@ -374,7 +374,10 @@ class ProcessManager:
 
                 # Video codec
                 vcodec = codec_cfg.get('vcodec', 'libx264')
-                cmd += ["-c:v", vcodec]
+                if output_cfg.get('type') == 'decklink' and vcodec == 'rawvideo':
+                    cmd += ["-c:v", "wrapped_avframe"]
+                else:
+                    cmd += ["-c:v", vcodec]
                 
                 # Video codec parameters (new format)
                 video_params = codec_cfg.get('video_params', {})
