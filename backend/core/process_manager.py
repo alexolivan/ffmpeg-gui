@@ -353,39 +353,31 @@ class ProcessManager:
 
                 # Video codec
                 vcodec = codec_cfg.get('vcodec', 'libx264')
-                if output_cfg.get('type') == 'decklink':
-                    vcodec = 'rawvideo'
                 cmd += ["-c:v", vcodec]
                 
-                if output_cfg.get('type') == 'decklink':
-                    cmd += ["-pix_fmt", "uyvy422"]
+                # Video codec parameters (new format)
+                video_params = codec_cfg.get('video_params', {})
+                if video_params:
+                    self._append_video_codec_params(cmd, vcodec, video_params)
                 else:
-                    # Video codec parameters (new format)
-                    video_params = codec_cfg.get('video_params', {})
-                    if video_params:
-                        self._append_video_codec_params(cmd, vcodec, video_params)
-                    else:
-                        # Legacy fallback: basic preset for x264
-                        if vcodec == 'libx264':
-                            cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
-                        # Legacy bitrate
-                        if codec_cfg.get('bitrate'):
-                            cmd += ["-b:v", codec_cfg['bitrate']]
+                    # Legacy fallback: basic preset for x264
+                    if vcodec == 'libx264':
+                        cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
+                    # Legacy bitrate
+                    if codec_cfg.get('bitrate'):
+                        cmd += ["-b:v", codec_cfg['bitrate']]
 
             # ── Audio processing ──
             if not has_audio:
                 cmd += ["-an"]
             else:
                 acodec = codec_cfg.get('acodec', 'aac')
-                if output_cfg.get('type') == 'decklink':
-                    acodec = 'pcm_s16le'
                 cmd += ["-c:a", acodec]
                 
-                if output_cfg.get('type') != 'decklink':
-                    # Audio codec parameters (new format)
-                    audio_params = codec_cfg.get('audio_params', {})
-                    if audio_params:
-                        self._append_audio_codec_params(cmd, acodec, audio_params)
+                # Audio codec parameters (new format)
+                audio_params = codec_cfg.get('audio_params', {})
+                if audio_params:
+                    self._append_audio_codec_params(cmd, acodec, audio_params)
 
             # ── Stream mapping for dual input ──
             if is_new_format and use_secondary:
@@ -573,6 +565,13 @@ class ProcessManager:
                 cmd += ["-g", str(params['g'])]
             if params.get('bf') is not None:
                 cmd += ["-bf", str(params['bf'])]
+                
+        elif vcodec == 'rawvideo':
+            pix_fmt = params.get('pix_fmt', 'uyvy422')
+            cmd += ["-pix_fmt", pix_fmt]
+            
+        elif vcodec == 'v210':
+            pass
 
     def _append_audio_codec_params(self, cmd: list, acodec: str, params: dict):
         """Append audio codec-specific parameters to the command."""

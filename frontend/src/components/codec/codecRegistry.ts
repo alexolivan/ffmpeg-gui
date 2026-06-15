@@ -257,6 +257,30 @@ export const VIDEO_CODECS: CodecDefinition[] = [
       },
     ],
   },
+  {
+    id: 'rawvideo',
+    label: 'Uncompressed 8-bit (rawvideo)',
+    type: 'video',
+    category: 'software',
+    params: [
+      {
+        key: 'pix_fmt', label: 'Pixel Format', type: 'select',
+        options: [
+          { value: 'uyvy422', label: 'UYVY 4:2:2 (standard)' },
+          { value: 'yuv420p', label: 'YUV 4:2:0' },
+          { value: 'rgb24', label: 'RGB 24-bit' },
+        ],
+        default: 'uyvy422',
+      }
+    ],
+  },
+  {
+    id: 'v210',
+    label: 'Uncompressed 10-bit (v210)',
+    type: 'video',
+    category: 'software',
+    params: [],
+  },
   // ── HW Accelerated ──
   {
     id: 'h264_vaapi',
