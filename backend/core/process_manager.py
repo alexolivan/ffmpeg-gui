@@ -531,7 +531,7 @@ class ProcessManager:
             cmd += ["-vaapi_device", "/dev/dri/renderD128"]
             rc_mode_vaapi = params.get('rc_mode', 'CBR')
             cmd += ["-rc_mode", rc_mode_vaapi]
-            if params.get('bitrate'):
+            if rc_mode_vaapi != 'CQP' and params.get('bitrate'):
                 cmd += ["-b:v", params['bitrate']]
             if rc_mode_vaapi == 'CQP' and params.get('qp') is not None:
                 cmd += ["-qp", str(params['qp'])]

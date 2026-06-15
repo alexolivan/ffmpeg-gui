@@ -403,6 +403,59 @@ class TaskManager:
             if params.get('g'): cmd += ["-g", str(params['g'])]
             if params.get('bf') is not None: cmd += ["-bf", str(params['bf'])]
             cmd += ["-pix_fmt", params.get('pix_fmt', 'yuv420p')]
+            
+        elif vcodec == 'prores_ks':
+            if params.get('profile') is not None:
+                cmd += ["-profile:v", str(params['profile'])]
+            if params.get('vendor'):
+                cmd += ["-vendor", params['vendor']]
+                
+        elif vcodec == 'dnxhd':
+            profile = params.get('profile', 'dnxhr_hq')
+            if profile == 'dnxhd':
+                if params.get('bitrate'):
+                    cmd += ["-b:v", params['bitrate']]
+            else:
+                cmd += ["-profile:v", profile]
+                
+        elif vcodec in ('h264_vaapi', 'hevc_vaapi'):
+            cmd += ["-vaapi_device", "/dev/dri/renderD128"]
+            rc_mode_vaapi = params.get('rc_mode', 'CBR')
+            cmd += ["-rc_mode", rc_mode_vaapi]
+            if rc_mode_vaapi != 'CQP' and params.get('bitrate'):
+                cmd += ["-b:v", params['bitrate']]
+            if rc_mode_vaapi == 'CQP' and params.get('qp') is not None:
+                cmd += ["-qp", str(params['qp'])]
+            if params.get('profile'):
+                cmd += ["-profile:v", params['profile']]
+            if params.get('g'):
+                cmd += ["-g", str(params['g'])]
+                
+        elif vcodec in ('h264_qsv',):
+            if params.get('preset'):
+                cmd += ["-preset", params['preset']]
+            if params.get('bitrate'):
+                cmd += ["-b:v", params['bitrate']]
+            if params.get('global_quality') is not None:
+                cmd += ["-global_quality", str(params['global_quality'])]
+            if params.get('g'):
+                cmd += ["-g", str(params['g'])]
+                
+        elif vcodec in ('h264_nvenc', 'hevc_nvenc'):
+            if params.get('preset'):
+                cmd += ["-preset", params['preset']]
+            rc = params.get('rc', 'cbr')
+            cmd += ["-rc", rc]
+            if params.get('bitrate'):
+                cmd += ["-b:v", params['bitrate']]
+            if rc in ('constqp', 'vbr') and params.get('cq') is not None:
+                cmd += ["-cq", str(params['cq'])]
+            if params.get('profile'):
+                cmd += ["-profile:v", params['profile']]
+            if params.get('g'):
+                cmd += ["-g", str(params['g'])]
+            if params.get('bf') is not None:
+                cmd += ["-bf", str(params['bf'])]
 
     def _append_audio_codec_params(self, cmd: list, acodec: str, params: dict):
         if params.get('b:a'): cmd += ["-b:a", params['b:a']]
