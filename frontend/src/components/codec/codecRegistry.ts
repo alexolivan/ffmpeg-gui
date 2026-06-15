@@ -272,7 +272,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
           { value: 'CBR', label: 'CBR (Constant Bitrate)' },
           { value: 'VBR', label: 'VBR (Variable Bitrate)' },
         ],
-        default: 'CBR',
+        default: 'CQP',
       },
       { key: 'bitrate', label: 'Bitrate', type: 'text', default: '4000k' },
       {
@@ -309,7 +309,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
           { value: 'CBR', label: 'CBR (Constant Bitrate)' },
           { value: 'VBR', label: 'VBR (Variable Bitrate)' },
         ],
-        default: 'CBR',
+        default: 'CQP',
       },
       { key: 'bitrate', label: 'Bitrate', type: 'text', default: '3000k' },
       {
