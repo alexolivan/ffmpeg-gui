@@ -397,5 +397,27 @@ class TestTaskAPI(unittest.TestCase):
         finally:
             self.client.delete(f"/tasks/{task_id}")
 
+    def test_hwaccel_command_generation(self):
+        payload = {
+            "name": "Test HWaccel Command Generation",
+            "type": "service",
+            "input_config": {"input1": {"type": "file", "path": "/tmp/test.mp4"}},
+            "output_config": {"type": "udp", "host": "127.0.0.1", "port": "1234"},
+            "codec_config": {"vcodec": "libx264"},
+            "filter_config": {
+                "advanced": {
+                    "hwaccel": "cuda",
+                    "hwaccel_output_format": ""
+                }
+            }
+        }
+        res = self.client.post("/processes/preview-cmd", json=payload)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        self.assertIn("-hwaccel cuda", cmd)
+        # Verify that we do not have an empty format argument
+        self.assertNotIn("-hwaccel_output_format ''", cmd)
+        self.assertNotIn("-hwaccel_output_format \"\"", cmd)
+
 if __name__ == "__main__":
     unittest.main()

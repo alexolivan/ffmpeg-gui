@@ -161,8 +161,11 @@ class ProcessManager:
         if hwaccel and hwaccel != 'none':
             cmd += ["-hwaccel", hwaccel]
             # Output format defaults to match hwaccel (vaapi→vaapi, cuda→cuda)
-            hwaccel_out = advanced.get('hwaccel_output_format', hwaccel)
-            cmd += ["-hwaccel_output_format", hwaccel_out]
+            hwaccel_out = advanced.get('hwaccel_output_format', '')
+            if not hwaccel_out:
+                hwaccel_out = hwaccel
+            if hwaccel_out and hwaccel_out != 'none':
+                cmd += ["-hwaccel_output_format", hwaccel_out]
 
         # Probe size (analysis buffer for input detection)
         probesize = advanced.get('probesize', '')
