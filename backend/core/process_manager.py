@@ -367,6 +367,7 @@ class ProcessManager:
                         vf.append(f"scale={size_arg}")
                     if output_cfg.get('framerate'):
                         vf.append(f"fps={output_cfg['framerate']}")
+                    vf.append("format=yuv422p")
                         
                 if vf:
                     cmd += ["-vf", ",".join(vf)]
@@ -682,8 +683,17 @@ class ProcessManager:
         elif output_type == 'decklink':
             device = output_cfg.get('device', 'DeckLink Mini Monitor')
             cmd += ["-f", "decklink"]
-            if output_cfg.get('format_code'):
-                cmd += ["-format_code", output_cfg['format_code']]
+            format_code = output_cfg.get('format_code')
+            if format_code:
+                cmd += ["-format_code", format_code]
+                code_lower = format_code.lower()
+                if code_lower in ('pal', 'ntsc') or code_lower.startswith('hi'):
+                    if code_lower == 'ntsc':
+                        cmd += ["-field_order", "bb"]
+                    else:
+                        cmd += ["-field_order", "tt"]
+                else:
+                    cmd += ["-field_order", "progressive"]
             if output_cfg.get('video_size'):
                 cmd += ["-s:v", output_cfg['video_size']]
             if output_cfg.get('framerate'):
