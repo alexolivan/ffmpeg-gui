@@ -253,13 +253,26 @@ class TaskManager:
             cmd += [variant_playlist]
 
         else:
+            # ── Stream mapping ──
+            if is_new_format and use_secondary:
+                if has_video:
+                    cmd += ["-map", "0:v"]
+                if has_audio:
+                    cmd += ["-map", "1:a"]
+            else:
+                if has_video:
+                    cmd += ["-map", "0:v"]
+                if has_audio:
+                    cmd += ["-map", "0:a"]
+
             # Video processing
             if not has_video:
                 cmd += ["-vn"]
             else:
                 vf = []
                 if filter_cfg.get('scale'):
-                    vf.append(f"scale={filter_cfg['scale']}")
+                    scale_val = filter_cfg['scale'].replace('x', ':')
+                    vf.append(f"scale={scale_val}")
                 if filter_cfg.get('deinterlace'):
                     vf.append("yadif")
                 if filter_cfg.get('framerate'):
@@ -273,7 +286,8 @@ class TaskManager:
                     
                 if output_cfg.get('type') == 'decklink':
                     if output_cfg.get('video_size'):
-                        vf.append(f"scale={output_cfg['video_size']}")
+                        size_arg = output_cfg['video_size'].replace('x', ':')
+                        vf.append(f"scale={size_arg}")
                     if output_cfg.get('framerate'):
                         vf.append(f"fps={output_cfg['framerate']}")
 
@@ -302,13 +316,6 @@ class TaskManager:
                 audio_params = codec_cfg.get('audio_params', {})
                 if audio_params:
                     self._append_audio_codec_params(cmd, acodec, audio_params)
-
-            # Stream mapping
-            if is_new_format and use_secondary:
-                if has_video:
-                    cmd += ["-map", "0:v"]
-                if has_audio:
-                    cmd += ["-map", "1:a"]
 
             # Native duration limit (placed before output)
             if limit_sec:

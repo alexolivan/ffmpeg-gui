@@ -329,6 +329,18 @@ class ProcessManager:
             cmd += [variant_playlist]
 
         else:
+            # ── Stream mapping ──
+            if is_new_format and use_secondary:
+                if has_video:
+                    cmd += ["-map", "0:v"]
+                if has_audio:
+                    cmd += ["-map", "1:a"]
+            else:
+                if has_video:
+                    cmd += ["-map", "0:v"]
+                if has_audio:
+                    cmd += ["-map", "0:a"]
+
             # ── Video processing ──
             if not has_video:
                 cmd += ["-vn"]
@@ -336,7 +348,8 @@ class ProcessManager:
                 # Video filters
                 vf = []
                 if filter_cfg.get('scale'):
-                    vf.append(f"scale={filter_cfg['scale']}")
+                    scale_val = filter_cfg['scale'].replace('x', ':')
+                    vf.append(f"scale={scale_val}")
                 if filter_cfg.get('deinterlace'):
                     vf.append("yadif")
                 if filter_cfg.get('framerate'):
@@ -350,7 +363,8 @@ class ProcessManager:
                     
                 if output_cfg.get('type') == 'decklink':
                     if output_cfg.get('video_size'):
-                        vf.append(f"scale={output_cfg['video_size']}")
+                        size_arg = output_cfg['video_size'].replace('x', ':')
+                        vf.append(f"scale={size_arg}")
                     if output_cfg.get('framerate'):
                         vf.append(f"fps={output_cfg['framerate']}")
                         
@@ -384,15 +398,6 @@ class ProcessManager:
                 audio_params = codec_cfg.get('audio_params', {})
                 if audio_params:
                     self._append_audio_codec_params(cmd, acodec, audio_params)
-
-            # ── Stream mapping for dual input ──
-            if is_new_format and use_secondary:
-                # Map video from input 0, audio from input 1 (or vice versa)
-                # Default: input1=video, input2=audio
-                if has_video:
-                    cmd += ["-map", "0:v"]
-                if has_audio:
-                    cmd += ["-map", "1:a"]
 
             # ── Output ──
             self._append_output(cmd, output_cfg, codec_cfg)
