@@ -31,7 +31,7 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
   const available = getAvailableVideoCodecs(buildOptions, systemCapabilities);
   const selected = available.find(c => c.id === codecId) || available[0];
 
-  const supportsHwdec = !primaryInputType || !['lavfi', 'decklink'].includes(primaryInputType);
+  const supportsHwdec = !primaryInputType || (!primaryInputType.startsWith('lavfi') && primaryInputType !== 'decklink');
 
   // Auto-heal selected codec if the current one becomes unavailable
   useEffect(() => {
