@@ -140,6 +140,16 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
             </optgroup>
           )}
         </select>
+        {codecId === 'v210' && (
+          <span className="text-[10px] text-brand-lime block px-1">
+            💡 Recommended for professional playout on modern DeckLink cards (10-bit YUV).
+          </span>
+        )}
+        {codecId === 'rawvideo' && (
+          <span className="text-[10px] text-brand-orange block px-1">
+            ⚠️ Legacy 8-bit format. Recommended only for older DeckLink cards (like the original Intensity Pro).
+          </span>
+        )}
       </div>
 
       {/* Codec Parameters */}

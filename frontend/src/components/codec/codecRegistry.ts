@@ -259,7 +259,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
   },
   {
     id: 'rawvideo',
-    label: 'Uncompressed 8-bit (rawvideo)',
+    label: 'Uncompressed 8-bit (rawvideo) [Legacy / Compatibility]',
     type: 'video',
     category: 'software',
     params: [
@@ -276,7 +276,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
   },
   {
     id: 'v210',
-    label: 'Uncompressed 10-bit (v210)',
+    label: 'Uncompressed 10-bit (v210) [Recommended]',
     type: 'video',
     category: 'software',
     params: [],
