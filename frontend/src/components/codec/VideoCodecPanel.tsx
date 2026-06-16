@@ -28,7 +28,9 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
   onChange,
   primaryInputType,
 }) => {
-  const available = getAvailableVideoCodecs(buildOptions, systemCapabilities);
+  const available = React.useMemo(() => {
+    return getAvailableVideoCodecs(buildOptions, systemCapabilities);
+  }, [buildOptions, systemCapabilities]);
   const selected = available.find(c => c.id === codecId) || available[0];
 
   const supportsHwdec = !primaryInputType || (!primaryInputType.startsWith('lavfi') && primaryInputType !== 'decklink');

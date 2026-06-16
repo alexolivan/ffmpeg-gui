@@ -584,7 +584,7 @@ async def telemetry_broadcast_loop():
             # Gather global host system metrics
             sys_cpu = psutil.cpu_percent(interval=None)
             sys_ram = psutil.virtual_memory()
-            gpu_stats = gpu_sensor.get_stats()
+            gpu_stats = await asyncio.to_thread(gpu_sensor.get_stats)
             
             system_data = {
                 "cpu": sys_cpu,

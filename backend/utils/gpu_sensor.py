@@ -1,10 +1,13 @@
 import subprocess
 import shutil
 import os
+import time
 
 class GPUSensor:
     def __init__(self):
         self.vendor = self._detect_vendor()
+        self._cached_stats = None
+        self._last_query_time = 0.0
 
     def _detect_vendor(self) -> str:
         # Check for nvidia-smi command first
@@ -29,7 +32,11 @@ class GPUSensor:
 
     def get_stats(self) -> dict:
         """Return dict with keys: vendor, utilization, vram_used, vram_total"""
-        default_stats = {
+        now = time.time()
+        if self._cached_stats is not None and (now - self._last_query_time) < 5.0:
+            return self._cached_stats
+
+        stats = {
             "vendor": self.vendor,
             "utilization": 0,
             "vram_used": 0,
@@ -48,7 +55,7 @@ class GPUSensor:
                 )
                 parts = [p.strip() for p in res.stdout.strip().split(",")]
                 if len(parts) >= 4:
-                    return {
+                    stats = {
                         "vendor": "nvidia",
                         "utilization": int(parts[0]),
                         "vram_used": int(parts[2]),
@@ -79,7 +86,7 @@ class GPUSensor:
                     with open(vram_total_path, "r") as f:
                         total = int(int(f.read().strip()) / (1024 * 1024)) # B to MB
 
-                return {
+                stats = {
                     "vendor": "amd",
                     "utilization": util,
                     "vram_used": used,
@@ -91,11 +98,13 @@ class GPUSensor:
         elif self.vendor == "intel":
             # Intel GPUs on Linux do not expose VRAM/Utilization under standard sysfs device path without debugfs
             # We report as detected but with zero stats to avoid mock assumptions.
-            return {
+            stats = {
                 "vendor": "intel",
                 "utilization": 0,
                 "vram_used": 0,
                 "vram_total": 0
             }
 
-        return default_stats
+        self._cached_stats = stats
+        self._last_query_time = now
+        return stats

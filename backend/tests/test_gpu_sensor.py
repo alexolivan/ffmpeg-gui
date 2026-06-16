@@ -74,3 +74,31 @@ class TestGPUSensor(unittest.TestCase):
             self.assertEqual(stats["utilization"], 15)
             self.assertEqual(stats["vram_used"], 100)
             self.assertEqual(stats["vram_total"], 4000)
+
+    @patch("shutil.which")
+    @patch("subprocess.run")
+    @patch("time.time")
+    def test_get_stats_nvidia_caching(self, mock_time, mock_run, mock_which):
+        mock_which.return_value = "/usr/bin/nvidia-smi"
+        mock_time.return_value = 1000.0
+        
+        # First call return values
+        mock_run.return_value = MagicMock(stdout=" 25, 10, 1024, 8192\n", returncode=0)
+        sensor = GPUSensor()
+        stats1 = sensor.get_stats()
+        self.assertEqual(stats1["utilization"], 25)
+        self.assertEqual(mock_run.call_count, 1)
+
+        # Second call within 5 seconds (same timestamp)
+        # Change mock return value to make sure it's not queried
+        mock_run.return_value = MagicMock(stdout=" 50, 20, 2048, 8192\n", returncode=0)
+        stats2 = sensor.get_stats()
+        self.assertEqual(stats2["utilization"], 25) # Should still be cached 25
+        self.assertEqual(mock_run.call_count, 1) # Call count remains 1
+
+        # Third call after 6 seconds
+        mock_time.return_value = 1006.0
+        stats3 = sensor.get_stats()
+        self.assertEqual(stats3["utilization"], 50) # Should query and get new stats 50
+        self.assertEqual(mock_run.call_count, 2) # Call count should increase to 2
+
