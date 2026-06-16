@@ -170,6 +170,9 @@ class SettingsUpdate(BaseModel):
     gui_password: Optional[str] = None
     logo_text: Optional[str] = None
     accent_color: Optional[str] = None
+    lcd_enabled: Optional[bool] = None
+    lcd_port: Optional[str] = None
+    lcd_model: Optional[str] = None
 
 class LoginRequest(BaseModel):
     password: str
@@ -200,6 +203,9 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.gui_password is not None: settings.gui_password = settings_in.gui_password
     if settings_in.logo_text is not None: settings.logo_text = settings_in.logo_text
     if settings_in.accent_color is not None: settings.accent_color = settings_in.accent_color
+    if settings_in.lcd_enabled is not None: settings.lcd_enabled = settings_in.lcd_enabled
+    if settings_in.lcd_port is not None: settings.lcd_port = settings_in.lcd_port
+    if settings_in.lcd_model is not None: settings.lcd_model = settings_in.lcd_model
     
     db.commit()
     db.refresh(settings)

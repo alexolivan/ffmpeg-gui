@@ -129,6 +129,11 @@ class SystemSettings(Base):
     logo_path = Column(String, nullable=True)     # Path to custom uploaded logo
     accent_color = Column(String, default="#FF6B00")  # Default Brand Orange
 
+    # LCD Settings
+    lcd_enabled = Column(Boolean, default=False)
+    lcd_port = Column(String, default="/dev/ttyACM0")
+    lcd_model = Column(String, default="cfa635")
+
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 

@@ -36,6 +36,16 @@ def init_db():
         if "auto_clean" not in build_columns:
             cursor.execute("ALTER TABLE ffmpeg_builds ADD COLUMN auto_clean BOOLEAN DEFAULT 0")
             
+        # Migración para la tabla system_settings
+        cursor.execute("PRAGMA table_info(system_settings)")
+        settings_columns = [col[1] for col in cursor.fetchall()]
+        if "lcd_enabled" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_enabled BOOLEAN DEFAULT 0")
+        if "lcd_port" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_port TEXT DEFAULT '/dev/ttyACM0'")
+        if "lcd_model" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_model TEXT DEFAULT 'cfa635'")
+
         conn.commit()
     except Exception as e:
         print(f"Database migration failed: {e}")
