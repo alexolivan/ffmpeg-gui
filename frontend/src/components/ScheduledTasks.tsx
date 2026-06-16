@@ -483,34 +483,34 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   
                   <button 
                     onClick={() => handleCloneTask(task)}
-                    className="pill-button bg-white/5 hover:bg-white/10 p-2 rounded-xl flex items-center justify-center border border-white/5"
+                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                     title="Clone Task"
                   >
-                    <ClipboardIcon size={14} />
+                    <ClipboardIcon size={16} />
                   </button>
 
                   <button 
                     onClick={() => handleExportTask(task)}
-                    className="pill-button bg-white/5 hover:bg-white/10 p-2 rounded-xl flex items-center justify-center border border-white/5"
+                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                     title="Export Task"
                   >
-                    <ExportIcon size={14} />
+                    <ExportIcon size={16} />
                   </button>
 
                   <button 
                     onClick={() => handleEditClick(task)}
-                    className="pill-button bg-white/5 hover:bg-white/10 p-2 rounded-xl flex items-center justify-center border border-white/5"
+                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                     title="Edit Task"
                   >
-                    <PencilIcon size={14} />
+                    <PencilIcon size={16} />
                   </button>
 
                   <button 
                     onClick={() => handleDeleteTask(task.id)}
-                    className="pill-button bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-xl flex items-center justify-center border border-red-500/20"
+                    className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105"
                     title="Delete Task"
                   >
-                    <TrashIcon size={14} />
+                    <TrashIcon size={16} />
                   </button>
                 </div>
               </div>

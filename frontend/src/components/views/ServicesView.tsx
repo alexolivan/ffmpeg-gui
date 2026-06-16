@@ -124,20 +124,20 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           e.stopPropagation();
                           onEditProcess(proc);
                         }}
-                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                         title="Edit Service Settings"
                       >
-                        <PencilIcon size={14} />
+                        <PencilIcon size={16} />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onCloneProcess(proc);
                         }}
-                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                         title="Clone Service"
                       >
-                        <ClipboardIcon size={14} />
+                        <ClipboardIcon size={16} />
                       </button>
                       <button
                         onClick={(e) => {
@@ -152,20 +152,20 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                               a.click()
                             })
                         }}
-                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                         title="Export Service"
                       >
-                        <ExportIcon size={14} />
+                        <ExportIcon size={16} />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onStopService(proc.id);
                         }}
-                        className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105"
+                        className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105"
                         title="Stop Service"
                       >
-                        <StopIcon size={14} />
+                        <StopIcon size={16} />
                       </button>
                     </div>
                   </div>
@@ -219,30 +219,30 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                             e.stopPropagation();
                             onStartService(proc.id);
                           }}
-                          className="w-8 h-8 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center border border-brand-lime/20 text-brand-lime transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center border border-brand-lime/20 text-brand-lime transition-all hover:scale-105"
                           title="Start Service"
                         >
-                          <PlayIcon size={14} />
+                          <PlayIcon size={16} />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onEditProcess(proc);
                           }}
-                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                           title="Edit Service Settings"
                         >
-                          <PencilIcon size={14} />
+                          <PencilIcon size={16} />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onCloneProcess(proc);
                           }}
-                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                           title="Clone Service"
                         >
-                          <ClipboardIcon size={14} />
+                          <ClipboardIcon size={16} />
                         </button>
                         <button
                           onClick={(e) => {
@@ -257,20 +257,20 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                                 a.click()
                               })
                           }}
-                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                           title="Export Service"
                         >
-                          <ExportIcon size={14} />
+                          <ExportIcon size={16} />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onDeleteProcess(proc);
                           }}
-                          className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105"
                           title="Delete Service"
                         >
-                          <TrashIcon size={14} />
+                          <TrashIcon size={16} />
                         </button>
                       </div>
                     </div>
