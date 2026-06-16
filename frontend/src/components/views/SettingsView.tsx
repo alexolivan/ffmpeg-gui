@@ -40,6 +40,60 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLogoText(settings.logo_text || '');
   }, [settings.node_name, settings.logo_text]);
 
+  const [lcdEnabled, setLcdEnabled] = useState(settings.lcd_enabled || false);
+  const [lcdPort, setLcdPort] = useState(settings.lcd_port || '/dev/ttyACM0');
+  const [lcdModel, setLcdModel] = useState(settings.lcd_model || 'cfa635');
+  const [isProbing, setIsProbing] = useState(false);
+  const [probeResults, setProbeResults] = useState<any[]>([]);
+  const [isSavingLcd, setIsSavingLcd] = useState(false);
+  const [saveLcdSuccess, setSaveLcdSuccess] = useState(false);
+
+  useEffect(() => {
+    setLcdEnabled(settings.lcd_enabled || false);
+    setLcdPort(settings.lcd_port || '/dev/ttyACM0');
+    setLcdModel(settings.lcd_model || 'cfa635');
+  }, [settings.lcd_enabled, settings.lcd_port, settings.lcd_model]);
+
+  const handleProbe = async () => {
+    setIsProbing(true);
+    setProbeResults([]);
+    try {
+      const res = await fetch(`${API}/settings/lcd/probe`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setProbeResults(data.ports || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsProbing(false);
+    }
+  };
+
+  const handleSaveLcd = async () => {
+    setIsSavingLcd(true);
+    setSaveLcdSuccess(false);
+    try {
+      await onUpdateSettings({
+        ...settings,
+        lcd_enabled: lcdEnabled,
+        lcd_port: lcdPort,
+        lcd_model: lcdModel,
+      });
+      setSaveLcdSuccess(true);
+      setTimeout(() => setSaveLcdSuccess(false), 3000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingLcd(false);
+    }
+  };
+
+  const hasLcdChanges = 
+    lcdEnabled !== (settings.lcd_enabled || false) || 
+    lcdPort !== (settings.lcd_port || '/dev/ttyACM0') || 
+    lcdModel !== (settings.lcd_model || 'cfa635');
+
   const handleSaveIdentity = async () => {
     setIsSaving(true);
     setSaveSuccess(false);
@@ -126,6 +180,114 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 }`}
               >
                 {isSaving ? 'SAVING...' : saveSuccess ? '✓ SAVED' : 'SAVE IDENTITY'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* LCD Integration Section */}
+        <div className="glass-card p-8 border-brand-lime/10">
+          <h3 className="text-xl font-bold mb-8 flex items-center gap-3">
+            <span className="w-8 h-8 rounded-lg bg-brand-lime/10 flex items-center justify-center text-brand-lime text-xs font-black">LCD</span>
+            LCD CONTROL PANEL
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
+                <div>
+                  <h4 className="text-sm font-bold text-white">Enable LCD display</h4>
+                  <p className="text-[10px] text-text-secondary">Control FFMPEG-GUI via hardware screen</p>
+                </div>
+                <button
+                  onClick={() => setLcdEnabled(!lcdEnabled)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    lcdEnabled ? 'bg-brand-lime' : 'bg-white/10'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-black transition-transform ${
+                      lcdEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">LCD Model</label>
+                <select
+                  value={lcdModel}
+                  onChange={e => setLcdModel(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all text-white"
+                >
+                  <option value="cfa635" className="bg-black text-white">Crystalfontz CFA-635 / CFA-735</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Serial Port</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="/dev/ttyACM0"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all text-white"
+                    value={lcdPort}
+                    onChange={e => setLcdPort(e.target.value)}
+                  />
+                  <button
+                    onClick={handleProbe}
+                    disabled={isProbing}
+                    className="px-4 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 font-bold text-xs uppercase tracking-widest transition-all text-white"
+                  >
+                    {isProbing ? 'Scanning...' : 'Scan'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 h-full flex flex-col justify-between">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider mb-2 text-white">Auto-Detected Devices</h4>
+                  {probeResults.length === 0 ? (
+                    <p className="text-[10px] text-text-secondary italic">No LCD devices detected. Click "Scan" to probe active COM ports.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {probeResults.map((p: any, idx: number) => (
+                        <div
+                          key={idx}
+                          onClick={() => setLcdPort(p.port)}
+                          className="p-3 bg-brand-lime/10 border border-brand-lime/20 rounded-xl flex items-center justify-between cursor-pointer hover:bg-brand-lime/20 transition-all"
+                        >
+                          <div>
+                            <div className="text-xs font-bold text-brand-lime">{p.port}</div>
+                            <div className="text-[9px] text-text-secondary">{p.description}</div>
+                          </div>
+                          <span className="text-[9px] font-black uppercase bg-brand-lime text-black px-2 py-0.5 rounded">
+                            {p.driver}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                <p className="text-[9px] text-text-secondary italic mt-4">
+                  Note: The driver communicates using 115200 baud. Make sure the user running the ffmpeg-gui service has read/write permissions for the selected serial port (e.g. dialout group).
+                </p>
+              </div>
+            </div>
+
+            <div className="md:col-span-2 flex justify-end pt-4 border-t border-white/5">
+              <button
+                onClick={handleSaveLcd}
+                disabled={isSavingLcd || !hasLcdChanges}
+                className={`pill-button font-black text-xs py-2.5 px-6 transition-all ${
+                  hasLcdChanges
+                    ? 'bg-brand-lime text-black hover:scale-[1.02] shadow-lg shadow-brand-lime/20'
+                    : 'bg-white/5 text-white/40 cursor-not-allowed border border-white/5'
+                }`}
+              >
+                {isSavingLcd ? 'SAVING...' : saveLcdSuccess ? '✓ SAVED' : 'SAVE LCD CONFIG'}
               </button>
             </div>
           </div>

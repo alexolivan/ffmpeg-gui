@@ -8,7 +8,10 @@ export function useAuth() {
     logo_text: 'FF',
     logo_path: null as string | null,
     gui_password: '',
-    accent_color: '#FF6B00'
+    accent_color: '#FF6B00',
+    lcd_enabled: false,
+    lcd_port: '/dev/ttyACM0',
+    lcd_model: 'cfa635'
   });
   const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [loginPass, setLoginPass] = useState('');
