@@ -555,86 +555,89 @@ async def telemetry_broadcast_loop():
     gpu_sensor = GPUSensor()
     psutil.cpu_percent(interval=None)
     while True:
-        with SessionLocal() as db:
-            processes = db.query(MediaProcess).all()
-            data = [
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "type": p.type,
-                    "status": p.status,
-                    "pid": p.pid,
-                    "cpu": p.cpu_usage,
-                    "ram": p.ram_usage,
-                    "bitrate": p.bitrate,
-                    "fps": p.fps,
-                    "speed": p.speed,
-                    "ffmpeg_build_id": p.ffmpeg_build_id,
-                    "input_config": p.input_config,
-                    "output_config": p.output_config,
-                    "codec_config": p.codec_config,
-                    "filter_config": p.filter_config,
-                    "auto_start": p.auto_start,
-                    "watchdog_enabled": p.watchdog_enabled,
-                    "watchdog_retries": p.watchdog_retries,
-                    "pending_changes": p.pending_changes,
-                } for p in processes
-            ]
+        try:
+            with SessionLocal() as db:
+                processes = db.query(MediaProcess).all()
+                data = [
+                    {
+                        "id": p.id,
+                        "name": p.name,
+                        "type": p.type,
+                        "status": p.status,
+                        "pid": p.pid,
+                        "cpu": p.cpu_usage,
+                        "ram": p.ram_usage,
+                        "bitrate": p.bitrate,
+                        "fps": p.fps,
+                        "speed": p.speed,
+                        "ffmpeg_build_id": p.ffmpeg_build_id,
+                        "input_config": p.input_config,
+                        "output_config": p.output_config,
+                        "codec_config": p.codec_config,
+                        "filter_config": p.filter_config,
+                        "auto_start": p.auto_start,
+                        "watchdog_enabled": p.watchdog_enabled,
+                        "watchdog_retries": p.watchdog_retries,
+                        "pending_changes": p.pending_changes,
+                    } for p in processes
+                ]
 
-            active_executions = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "pending"])).all()
-            exec_data = [
-                {
-                    "id": ex.id,
-                    "task_id": ex.task_id,
-                    "task_name": ex.task.name if ex.task else "Unknown",
-                    "status": ex.status,
-                    "pid": ex.pid,
-                    "cpu": ex.cpu_usage,
-                    "ram": ex.ram_usage,
-                    "bitrate": ex.bitrate,
-                    "fps": ex.fps,
-                    "speed": ex.speed,
-                    "started_at": ex.started_at.isoformat() if ex.started_at else None,
-                } for ex in active_executions
-            ]
-            
-            # Gather global host system metrics
-            sys_cpu = psutil.cpu_percent(interval=None)
-            sys_ram = psutil.virtual_memory()
-            gpu_stats = await asyncio.to_thread(gpu_sensor.get_stats)
-            
-            system_data = {
-                "cpu": sys_cpu,
-                "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
-                "ram_total": int(sys_ram.total / (1024 * 1024)), # MB
-                "gpu": gpu_stats
-            }
-
-            # Task statistics
-            scheduled_count = db.query(ScheduledTask).filter(
-                ScheduledTask.is_active == True,
-                ScheduledTask.schedule_type.in_(["recurring", "one_shot"])
-            ).count()
-            
-            inactive_count = db.query(ScheduledTask).filter(
-                (ScheduledTask.is_active == False) | (ScheduledTask.schedule_type == "manual")
-            ).count()
-            
-            active_exec_count = db.query(TaskExecution).filter(
-                TaskExecution.status == "running"
-            ).count()
-            
-            await manager.broadcast({
-                "type": "telemetry",
-                "data": data,
-                "task_executions": exec_data,
-                "system": system_data,
-                "task_stats": {
-                    "active": active_exec_count,
-                    "scheduled": scheduled_count,
-                    "inactive": inactive_count
+                active_executions = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "pending"])).all()
+                exec_data = [
+                    {
+                        "id": ex.id,
+                        "task_id": ex.task_id,
+                        "task_name": ex.task.name if ex.task else "Unknown",
+                        "status": ex.status,
+                        "pid": ex.pid,
+                        "cpu": ex.cpu_usage,
+                        "ram": ex.ram_usage,
+                        "bitrate": ex.bitrate,
+                        "fps": ex.fps,
+                        "speed": ex.speed,
+                        "started_at": ex.started_at.isoformat() if ex.started_at else None,
+                    } for ex in active_executions
+                ]
+                
+                # Gather global host system metrics
+                sys_cpu = psutil.cpu_percent(interval=None)
+                sys_ram = psutil.virtual_memory()
+                gpu_stats = await asyncio.to_thread(gpu_sensor.get_stats)
+                
+                system_data = {
+                    "cpu": sys_cpu,
+                    "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
+                    "ram_total": int(sys_ram.total / (1024 * 1024)), # MB
+                    "gpu": gpu_stats
                 }
-            })
+
+                # Task statistics
+                scheduled_count = db.query(ScheduledTask).filter(
+                    ScheduledTask.is_active == True,
+                    ScheduledTask.schedule_type.in_(["recurring", "one_shot"])
+                ).count()
+                
+                inactive_count = db.query(ScheduledTask).filter(
+                    (ScheduledTask.is_active == False) | (ScheduledTask.schedule_type == "manual")
+                ).count()
+                
+                active_exec_count = db.query(TaskExecution).filter(
+                    TaskExecution.status == "running"
+                ).count()
+                
+                await manager.broadcast({
+                    "type": "telemetry",
+                    "data": data,
+                    "task_executions": exec_data,
+                    "system": system_data,
+                    "task_stats": {
+                        "active": active_exec_count,
+                        "scheduled": scheduled_count,
+                        "inactive": inactive_count
+                    }
+                })
+        except Exception as e:
+            logger.exception(f"Error in telemetry broadcast loop: {e}")
         await asyncio.sleep(1)
 
 async def auto_start_services():
