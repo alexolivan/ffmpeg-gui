@@ -475,6 +475,17 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 }
                 onChange={input1 => setConfig({ ...config, input1 })}
                 systemCapabilities={systemCapabilities}
+                onSyncAlsaAudio={alsaDevice => {
+                  setConfig(prev => ({
+                    ...prev,
+                    use_secondary_input: true,
+                    input2: {
+                      ...prev.input2,
+                      type: 'alsa',
+                      device: alsaDevice
+                    }
+                  }));
+                }}
               />
             </div>
 

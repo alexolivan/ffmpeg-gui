@@ -17,6 +17,7 @@ from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
 from core.sdk_manager import SdkManager
 from utils.gpu_sensor import GPUSensor
+from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats
 import psutil
 import logging
 import asyncio
@@ -353,6 +354,22 @@ def get_effective_ffmpeg_path() -> str:
         db.close()
         
     return process_manager.ffmpeg_path
+
+
+@app.get("/v4l2/devices")
+async def get_v4l2_devices_route():
+    return await get_v4l2_devices()
+
+
+@app.get("/v4l2/formats")
+async def get_v4l2_formats_route(device: str):
+    ffmpeg_bin = get_effective_ffmpeg_path()
+    return await get_v4l2_formats(device, ffmpeg_binary=ffmpeg_bin)
+
+
+@app.get("/alsa/devices")
+async def get_alsa_devices_route():
+    return await get_alsa_devices()
 
 
 @app.get("/decklink/devices")

@@ -463,6 +463,12 @@ class ProcessManager:
             cmd += ["-f", "alsa", "-i", device]
         elif input_type == 'v4l2':
             device = input_cfg.get('device', '/dev/video0')
+            pixel_format = input_cfg.get('pixel_format')
+            size = input_cfg.get('size')
+            if pixel_format:
+                cmd += ["-input_format", pixel_format]
+            if size:
+                cmd += ["-video_size", size]
             cmd += ["-f", "v4l2", "-i", device]
         elif input_type in ('http_audio', 'rtmp', 'hls'):
             cmd += ["-i", input_cfg.get('path', '')]

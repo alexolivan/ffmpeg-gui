@@ -404,6 +404,18 @@ class TaskManager:
             if format_code and format_code != 'unset':
                 cmd += ["-format_code", format_code]
             cmd += ["-f", "decklink", "-i", input_cfg.get('device', '')]
+        elif input_type == 'alsa':
+            device = input_cfg.get('device', 'hw:0,0')
+            cmd += ["-f", "alsa", "-i", device]
+        elif input_type == 'v4l2':
+            device = input_cfg.get('device', '/dev/video0')
+            pixel_format = input_cfg.get('pixel_format')
+            size = input_cfg.get('size')
+            if pixel_format:
+                cmd += ["-input_format", pixel_format]
+            if size:
+                cmd += ["-video_size", size]
+            cmd += ["-f", "v4l2", "-i", device]
 
     def _append_video_codec_params(self, cmd: list, vcodec: str, params: dict):
         rc_mode = params.get('rc_mode', '')

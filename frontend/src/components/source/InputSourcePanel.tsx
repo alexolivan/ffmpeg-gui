@@ -19,6 +19,7 @@ export interface InputSourceConfig {
   video_input?: string;
   audio_input?: string;
   format_code?: string;
+  pixel_format?: string;
 }
 
 interface InputSourcePanelProps {
@@ -29,6 +30,7 @@ interface InputSourcePanelProps {
   allowedTypes?: string[];
   onChange: (config: InputSourceConfig) => void;
   systemCapabilities?: SystemCapabilities;
+  onSyncAlsaAudio?: (alsaDevice: string) => void;
 }
 
 const ALL_SOURCE_TYPES = [
@@ -54,6 +56,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   allowedTypes,
   onChange,
   systemCapabilities,
+  onSyncAlsaAudio,
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const filteredSourceTypes = decklinkAvailable
@@ -73,6 +76,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   const [formats, setFormats] = React.useState<{ code: string; description: string }[]>([]);
   const [loadingFormats, setLoadingFormats] = React.useState(false);
   const [manualDeviceMode, setManualDeviceMode] = React.useState(false);
+
+  // V4L2 State
+  const [v4l2Devices, setV4l2Devices] = React.useState<any[]>([]);
+  const [loadingV4l2Devices, setLoadingV4l2Devices] = React.useState(false);
+  const [v4l2Formats, setV4l2Formats] = React.useState<any[]>([]);
+  const [loadingV4l2Formats, setLoadingV4l2Formats] = React.useState(false);
+  const [manualV4l2Mode, setManualV4l2Mode] = React.useState(false);
+
+  // ALSA State
+  const [alsaDevices, setAlsaDevices] = React.useState<any[]>([]);
+  const [loadingAlsaDevices, setLoadingAlsaDevices] = React.useState(false);
+  const [manualAlsaMode, setManualAlsaMode] = React.useState(false);
 
   React.useEffect(() => {
     if (config.type !== 'decklink') return;
@@ -127,6 +142,92 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
     fetchFormats();
     return () => { active = false; };
   }, [config.type, config.device, manualDeviceMode]);
+
+  // Fetch V4L2 devices
+  React.useEffect(() => {
+    if (config.type !== 'v4l2') return;
+    let active = true;
+    const fetchV4l2 = async () => {
+      setLoadingV4l2Devices(true);
+      try {
+        const res = await fetch('/v4l2/devices');
+        if (!res.ok) throw new Error("Failed to fetch V4L2 devices");
+        const data = await res.json();
+        if (active) {
+          setV4l2Devices(data || []);
+          if (data && data.length > 0) {
+            const found = data.some((d: any) => d.device === config.device);
+            if (!found && config.device) {
+              setManualV4l2Mode(true);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching V4L2 devices:", err);
+      } finally {
+        if (active) setLoadingV4l2Devices(false);
+      }
+    };
+    fetchV4l2();
+    return () => { active = false; };
+  }, [config.type]);
+
+  // Fetch V4L2 formats
+  React.useEffect(() => {
+    if (config.type !== 'v4l2' || !config.device || manualV4l2Mode) {
+      setV4l2Formats([]);
+      return;
+    }
+    let active = true;
+    const fetchV4l2Formats = async () => {
+      setLoadingV4l2Formats(true);
+      try {
+        const res = await fetch(`/v4l2/formats?device=${encodeURIComponent(config.device || '')}`);
+        if (!res.ok) throw new Error("Failed to fetch V4L2 formats");
+        const data = await res.json();
+        if (active) {
+          setV4l2Formats(data || []);
+        }
+      } catch (err) {
+        console.error("Error fetching V4L2 formats:", err);
+        if (active) setV4l2Formats([]);
+      } finally {
+        if (active) setLoadingV4l2Formats(false);
+      }
+    };
+    fetchV4l2Formats();
+    return () => { active = false; };
+  }, [config.type, config.device, manualV4l2Mode]);
+
+  // Fetch ALSA devices
+  React.useEffect(() => {
+    if (config.type !== 'alsa') return;
+    let active = true;
+    const fetchAlsa = async () => {
+      setLoadingAlsaDevices(true);
+      try {
+        const res = await fetch('/alsa/devices');
+        if (!res.ok) throw new Error("Failed to fetch ALSA devices");
+        const data = await res.json();
+        if (active) {
+          setAlsaDevices(data || []);
+          if (data && data.length > 0) {
+            const found = data.some((d: any) => d.device === config.device);
+            if (!found && config.device) {
+              setManualAlsaMode(true);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching ALSA devices:", err);
+      } finally {
+        if (active) setLoadingAlsaDevices(false);
+      }
+    };
+    fetchAlsa();
+    return () => { active = false; };
+  }, [config.type]);
+
 
   return (
     <div className="space-y-3">
@@ -374,23 +475,202 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'alsa' && (
-        <input
-          type="text"
-          placeholder="ALSA device (e.g. hw:0,0)"
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-          value={config.device || ''}
-          onChange={e => update({ device: e.target.value })}
-        />
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Dispositivo ALSA</label>
+            {loadingAlsaDevices ? (
+              <div className="text-xs text-text-secondary animate-pulse">Cargando dispositivos ALSA...</div>
+            ) : alsaDevices.length === 0 ? (
+              <div className="space-y-2">
+                <div className="text-xs text-amber-500 font-medium">⚠️ No se detectaron tarjetas de sonido ALSA.</div>
+                <input
+                  type="text"
+                  placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                  value={config.device || ''}
+                  onChange={e => update({ device: e.target.value })}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  {!manualAlsaMode ? (
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      value={config.device || ''}
+                      onChange={e => {
+                        if (e.target.value === '__manual__') {
+                          setManualAlsaMode(true);
+                          update({ device: '' });
+                        } else {
+                          update({ device: e.target.value });
+                        }
+                      }}
+                    >
+                      <option value="">-- Seleccionar dispositivo ALSA --</option>
+                      {alsaDevices.map(d => (
+                        <option key={d.device} value={d.device}>{d.name} ({d.device})</option>
+                      ))}
+                      <option value="__manual__">📝 Entrada manual...</option>
+                    </select>
+                  ) : (
+                    <div className="flex w-full gap-2">
+                      <input
+                        type="text"
+                        placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                        value={config.device || ''}
+                        onChange={e => update({ device: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors"
+                        onClick={() => {
+                          setManualAlsaMode(false);
+                          update({ device: alsaDevices[0]?.device || '' });
+                        }}
+                      >
+                        Lista
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {config.type === 'v4l2' && (
-        <input
-          type="text"
-          placeholder="V4L2 device (e.g. /dev/video0)"
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-          value={config.device || ''}
-          onChange={e => update({ device: e.target.value })}
-        />
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Dispositivo V4L2</label>
+            {loadingV4l2Devices ? (
+              <div className="text-xs text-text-secondary animate-pulse">Cargando dispositivos V4L2...</div>
+            ) : v4l2Devices.length === 0 ? (
+              <div className="space-y-2">
+                <div className="text-xs text-amber-500 font-medium">⚠️ No se detectaron dispositivos V4L2.</div>
+                <input
+                  type="text"
+                  placeholder="Ruta del dispositivo (ej: /dev/video0)"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                  value={config.device || ''}
+                  onChange={e => update({ device: e.target.value })}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  {!manualV4l2Mode ? (
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      value={config.device || ''}
+                      onChange={e => {
+                        if (e.target.value === '__manual__') {
+                          setManualV4l2Mode(true);
+                          update({ device: '' });
+                        } else {
+                          update({ device: e.target.value });
+                        }
+                      }}
+                    >
+                      <option value="">-- Seleccionar dispositivo V4L2 --</option>
+                      {v4l2Devices.map(d => (
+                        <option key={d.device} value={d.device}>{d.name} ({d.device})</option>
+                      ))}
+                      <option value="__manual__">📝 Entrada manual...</option>
+                    </select>
+                  ) : (
+                    <div className="flex w-full gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ruta del dispositivo (ej: /dev/video0)"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                        value={config.device || ''}
+                        onChange={e => update({ device: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors"
+                        onClick={() => {
+                          setManualV4l2Mode(false);
+                          update({ device: v4l2Devices[0]?.device || '' });
+                        }}
+                      >
+                        Lista
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!manualV4l2Mode && config.device && (
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Formato y Resolución</label>
+              {loadingV4l2Formats ? (
+                <div className="text-xs text-text-secondary animate-pulse">Cargando formatos...</div>
+              ) : v4l2Formats.length === 0 ? (
+                <div className="text-xs text-text-secondary italic">No se detectaron formatos. Se usará el valor por defecto.</div>
+              ) : (
+                <select
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  value={config.pixel_format && config.size ? `${config.pixel_format}|${config.size}` : ''}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (!val) {
+                      update({ pixel_format: undefined, size: undefined });
+                    } else {
+                      const [fmt, sz] = val.split('|');
+                      update({ pixel_format: fmt, size: sz });
+                    }
+                  }}
+                >
+                  <option value="">Por defecto / Detección automática</option>
+                  {v4l2Formats.map(f => (
+                    <optgroup key={`${f.type}-${f.pixel_format}`} label={`${f.type}: ${f.description || f.pixel_format}`}>
+                      {f.resolutions.map((r: string) => (
+                        <option key={`${f.pixel_format}|${r}`} value={`${f.pixel_format}|${r}`}>
+                          {f.pixel_format} @ {r}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {(() => {
+            const selDev = v4l2Devices.find(d => d.device === config.device);
+            if (selDev && selDev.is_magewell && selDev.alsa_device && onSyncAlsaAudio) {
+              return (
+                <div className="border border-lime-500/20 bg-lime-500/5 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 animate-in fade-in duration-300">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] bg-lime-500/20 text-lime-400 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        Magewell Link
+                      </span>
+                      <span className="text-xs font-semibold text-white">Audio Embebido Detectado</span>
+                    </div>
+                    <p className="text-[11px] text-text-secondary">
+                      Este dispositivo Magewell tiene asociado el dispositivo ALSA <span className="font-mono text-lime-400">{selDev.alsa_device}</span>.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onSyncAlsaAudio(selDev.alsa_device)}
+                    className="text-xs bg-lime-500 hover:bg-lime-600 text-black font-bold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap self-end sm:self-center"
+                  >
+                    Sincronizar Audio (Input 2)
+                  </button>
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
       )}
 
       {config.type === 'lavfi_video' && (
