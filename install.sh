@@ -191,7 +191,7 @@ if [ "$MODE" = "system" ]; then
     fi
 
     # Asignar grupos de hardware
-    for group in video audio render; do
+    for group in video audio render dialout; do
         if getent group "$group" >/dev/null; then
             echo "Adding ffmpeg-gui to group $group"
             usermod -aG "$group" ffmpeg-gui
