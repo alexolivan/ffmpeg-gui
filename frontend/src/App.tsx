@@ -91,11 +91,23 @@ function App() {
 
   // ── Render Auth Screen ──────────────────────────────────────────
   if (!isAuthenticated) {
+    const logoUrl = settings.logo_path ? `${API}${settings.logo_path}` : null;
+    const accent = settings.accent_color || '#FF6B00';
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white p-4">
-        <div className="glass-card w-full max-w-md p-10 border-brand-orange/30 animate-in zoom-in duration-500">
-          <div className="w-20 h-20 bg-brand-orange rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-brand-orange/20">
-            <span className="text-black font-black text-3xl">{settings.logo_text}</span>
+        <div 
+          className="glass-card w-full max-w-md p-10 animate-in zoom-in duration-500"
+          style={{ borderColor: `${accent}4d` }}
+        >
+          <div 
+            className="w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl overflow-hidden"
+            style={!logoUrl ? { backgroundColor: accent, boxShadow: `0 10px 20px ${accent}33` } : undefined}
+          >
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
+            ) : (
+              <span className="text-black font-black text-3xl">{settings.logo_text}</span>
+            )}
           </div>
           <h1 className="text-2xl font-bold text-center mb-2 uppercase tracking-tighter">{settings.node_name}</h1>
           <p className="text-text-secondary text-center text-sm mb-10">Access restricted. Enter node password.</p>
@@ -103,7 +115,7 @@ function App() {
           <div className="space-y-6">
             <input 
               type="password" 
-              className={`w-full bg-white/5 border ${isLoginError ? 'border-red-500' : 'border-white/10'} rounded-2xl p-4 text-center text-2xl tracking-[0.5em] outline-none focus:border-brand-orange transition-all`}
+              className={`w-full bg-white/5 border ${isLoginError ? 'border-red-500' : 'border-white/10'} rounded-2xl p-4 text-center text-2xl tracking-[0.5em] outline-none transition-all`}
               value={loginPass}
               onChange={e => setLoginPass(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
@@ -112,7 +124,8 @@ function App() {
             {isLoginError && <p className="text-red-500 text-center text-xs font-bold animate-shake">INVALID PASSWORD</p>}
             <button 
               onClick={handleLogin}
-              className="w-full py-4 bg-brand-orange text-black font-black rounded-2xl hover:scale-[1.02] transition-all uppercase tracking-widest"
+              className="w-full py-4 text-black font-black rounded-2xl hover:scale-[1.02] transition-all uppercase tracking-widest"
+              style={{ backgroundColor: accent, boxShadow: `0 10px 20px ${accent}33` }}
             >
               Unlock Node
             </button>
