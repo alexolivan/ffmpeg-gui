@@ -1,6 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ProcessConfigForm from './ProcessConfigForm';
 import { formatInputDesc, formatOutputDesc } from '../utils/formatters';
+import { 
+  ImportIcon, 
+  PlusIcon, 
+  LightningIcon, 
+  ClipboardIcon, 
+  ExportIcon, 
+  PencilIcon, 
+  TrashIcon, 
+  SourceIcon, 
+  StopIcon 
+} from './Icons';
 
 interface ScheduledTasksProps {
   API: string;
@@ -281,9 +292,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         <div className="flex gap-4">
           <button 
             onClick={() => importFileRef.current?.click()} 
-            className="pill-button bg-white/5 border border-white/10 text-white hover:bg-white/10 text-sm py-2.5 px-6"
+            className="pill-button bg-white/5 border border-white/10 text-white hover:bg-white/10 text-sm py-2.5 px-6 flex items-center gap-1.5"
           >
-            📥 IMPORT TASK
+            <ImportIcon size={14} /> IMPORT TASK
           </button>
           <input 
             type="file" 
@@ -297,9 +308,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               setEditingTask(null);
               setShowAddModal(true);
             }}
-            className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20"
+            className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20 flex items-center gap-1.5"
           >
-            + CREATE TASK
+            <PlusIcon size={14} /> CREATE TASK
           </button>
         </div>
       </header>
@@ -410,13 +421,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     </span>
                     <button 
                       onClick={() => handleToggleActive(task)}
-                      className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border ${
+                      className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 ${
                         task.is_active 
                           ? 'bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20' 
                           : 'bg-white/5 text-white/30 border-white/10 hover:bg-white/10'
                       }`}
                     >
-                      {task.is_active ? '● Active' : '○ Disabled'}
+                      <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>
+                      {task.is_active ? 'Active' : 'Disabled'}
                     </button>
                   </div>
 
@@ -464,41 +476,41 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   
                   <button 
                     onClick={() => handleTriggerTask(task.id)}
-                    className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20"
+                    className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1"
                   >
-                    ⚡ RUN NOW
+                    <LightningIcon size={12} /> RUN NOW
                   </button>
                   
                   <button 
                     onClick={() => handleCloneTask(task)}
-                    className="pill-button bg-white/5 hover:bg-white/10 text-xs p-2 rounded-xl"
+                    className="pill-button bg-white/5 hover:bg-white/10 p-2 rounded-xl flex items-center justify-center border border-white/5"
                     title="Clone Task"
                   >
-                    📋
+                    <ClipboardIcon size={14} />
                   </button>
 
                   <button 
                     onClick={() => handleExportTask(task)}
-                    className="pill-button bg-white/5 hover:bg-white/10 text-xs p-2 rounded-xl"
+                    className="pill-button bg-white/5 hover:bg-white/10 p-2 rounded-xl flex items-center justify-center border border-white/5"
                     title="Export Task"
                   >
-                    📤
+                    <ExportIcon size={14} />
                   </button>
 
                   <button 
                     onClick={() => handleEditClick(task)}
-                    className="pill-button bg-white/5 hover:bg-white/10 text-xs p-2 rounded-xl"
+                    className="pill-button bg-white/5 hover:bg-white/10 p-2 rounded-xl flex items-center justify-center border border-white/5"
                     title="Edit Task"
                   >
-                    ✏️
+                    <PencilIcon size={14} />
                   </button>
 
                   <button 
                     onClick={() => handleDeleteTask(task.id)}
-                    className="pill-button bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs p-2 rounded-xl"
+                    className="pill-button bg-red-500/10 hover:bg-red-500/20 text-red-400 p-2 rounded-xl flex items-center justify-center border border-red-500/20"
                     title="Delete Task"
                   >
-                    🗑️
+                    <TrashIcon size={14} />
                   </button>
                 </div>
               </div>
@@ -705,17 +717,21 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
                         {!hasVideo && isRunning && (
                           <div className="p-5 bg-brand-blue/10 border border-brand-blue/20 rounded-2xl flex items-center gap-4 animate-in fade-in duration-300">
-                            <span className="text-2xl">📻</span>
+                            <span className="text-brand-blue flex-shrink-0">
+                              <SourceIcon size={24} />
+                            </span>
                             <div>
                               <div className="font-bold text-brand-blue uppercase text-xs tracking-wider">Audio-Only Task Active</div>
                               <div className="text-xs text-text-secondary mt-0.5">This execution does not produce video outputs. Audio signals are processing normally.</div>
                             </div>
                           </div>
                         )}
-
+ 
                         {!isRunning && (
                           <div className="p-5 bg-white/2 border border-white/5 rounded-2xl flex items-center gap-4 text-text-secondary">
-                            <span className="text-2xl">💤</span>
+                            <span className="text-text-secondary flex-shrink-0">
+                              <StopIcon size={24} />
+                            </span>
                             <div>
                               <div className="font-bold uppercase text-xs tracking-wider">Execution Inactive</div>
                               <div className="text-xs mt-0.5">This task execution has finished running or has been stopped.</div>

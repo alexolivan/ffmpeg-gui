@@ -1,5 +1,17 @@
 import React from 'react';
 import { formatInputDesc, formatOutputDesc } from '../../utils/formatters';
+import { 
+  ImportIcon, 
+  ExportIcon, 
+  PlusIcon, 
+  PencilIcon, 
+  ClipboardIcon, 
+  StopIcon, 
+  PlayIcon, 
+  TrashIcon, 
+  LightningIcon, 
+  ShieldIcon 
+} from '../Icons';
 
 interface ServicesViewProps {
   telemetry: any[];
@@ -37,8 +49,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
         <div className="flex gap-4">
           <button onClick={() => importFileRef.current?.click()}
-            className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold transition-all">
-            📥 IMPORT PROFILE
+            className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold transition-all flex items-center gap-1.5">
+            <ImportIcon size={14} /> IMPORT PROFILE
           </button>
           <input 
             type="file" 
@@ -48,8 +60,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             onChange={handleImportFileChange} 
           />
           <button onClick={() => setShowAddModal(true)}
-            className="pill-button bg-brand-lime text-black font-bold transition-all">
-            + NEW SERVICE
+            className="pill-button bg-brand-lime text-black font-black transition-all flex items-center gap-1.5">
+            <PlusIcon size={14} /> NEW SERVICE
           </button>
         </div>
       </header>
@@ -77,13 +89,13 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         </span>
                       )}
                       {proc.auto_start && (
-                        <span className="text-[9px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-bold" title="Auto-starts on system boot">
-                          ⚡ BOOT
+                        <span className="text-[9px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Auto-starts on system boot">
+                          <LightningIcon size={10} /> BOOT
                         </span>
                       )}
                       {proc.watchdog_enabled && (
-                        <span className="text-[9px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded font-bold" title="Monitored by system watchdog">
-                          🛡️ WATCHDOG
+                        <span className="text-[9px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Monitored by system watchdog">
+                          <ShieldIcon size={10} /> WATCHDOG
                         </span>
                       )}
                     </div>
@@ -112,20 +124,20 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           e.stopPropagation();
                           onEditProcess(proc);
                         }}
-                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                         title="Edit Service Settings"
                       >
-                        ✏️
+                        <PencilIcon size={14} />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onCloneProcess(proc);
                         }}
-                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                         title="Clone Service"
                       >
-                        📋
+                        <ClipboardIcon size={14} />
                       </button>
                       <button
                         onClick={(e) => {
@@ -140,20 +152,20 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                               a.click()
                             })
                         }}
-                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                        className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                         title="Export Service"
                       >
-                        📤
+                        <ExportIcon size={14} />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onStopService(proc.id);
                         }}
-                        className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center text-sm border border-red-500/20 text-red-400 transition-all hover:scale-105"
+                        className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105"
                         title="Stop Service"
                       >
-                        ⏹️
+                        <StopIcon size={14} />
                       </button>
                     </div>
                   </div>
@@ -181,13 +193,13 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         <span className="w-2.5 h-2.5 rounded-full bg-white/20"></span>
                         <span className="font-bold text-white/80">{proc.name}</span>
                         {proc.auto_start && (
-                          <span className="text-[9px] bg-blue-500/20 text-blue-400/80 px-2 py-0.5 rounded font-bold" title="Auto-starts on system boot">
-                            ⚡ BOOT
+                          <span className="text-[9px] bg-blue-500/20 text-blue-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Auto-starts on system boot">
+                            <LightningIcon size={10} /> BOOT
                           </span>
                         )}
                         {proc.watchdog_enabled && (
-                          <span className="text-[9px] bg-purple-500/20 text-purple-400/80 px-2 py-0.5 rounded font-bold" title="Monitored by system watchdog">
-                            🛡️ WATCHDOG
+                          <span className="text-[9px] bg-purple-500/20 text-purple-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Monitored by system watchdog">
+                            <ShieldIcon size={10} /> WATCHDOG
                           </span>
                         )}
                       </div>
@@ -207,30 +219,30 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                             e.stopPropagation();
                             onStartService(proc.id);
                           }}
-                          className="w-8 h-8 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center text-sm border border-brand-lime/20 text-brand-lime transition-all hover:scale-105"
+                          className="w-8 h-8 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center border border-brand-lime/20 text-brand-lime transition-all hover:scale-105"
                           title="Start Service"
                         >
-                          ▶️
+                          <PlayIcon size={14} />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onEditProcess(proc);
                           }}
-                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                           title="Edit Service Settings"
                         >
-                          ✏️
+                          <PencilIcon size={14} />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onCloneProcess(proc);
                           }}
-                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                           title="Clone Service"
                         >
-                          📋
+                          <ClipboardIcon size={14} />
                         </button>
                         <button
                           onClick={(e) => {
@@ -245,20 +257,20 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                                 a.click()
                               })
                           }}
-                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-sm border border-white/10 transition-all hover:scale-105"
+                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
                           title="Export Service"
                         >
-                          📤
+                          <ExportIcon size={14} />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onDeleteProcess(proc);
                           }}
-                          className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center text-sm border border-red-500/20 text-red-400 transition-all hover:scale-105"
+                          className="w-8 h-8 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105"
                           title="Delete Service"
                         >
-                          🗑️
+                          <TrashIcon size={14} />
                         </button>
                       </div>
                     </div>

@@ -22,6 +22,7 @@ function App() {
   const {
     settings,
     isAuthenticated,
+    setIsAuthenticated,
     loginPass,
     setLoginPass,
     isLoginError,
@@ -130,6 +131,10 @@ function App() {
         logoText={settings.logo_text}
         logoPath={settings.logo_path ? `${API}${settings.logo_path}` : undefined}
         accentColor={settings.accent_color}
+        onLogout={settings.gui_password ? () => {
+          setLoginPass('');
+          setIsAuthenticated(false);
+        } : undefined}
       />
 
       <main className="flex-1 overflow-y-auto p-8 lg:p-12">

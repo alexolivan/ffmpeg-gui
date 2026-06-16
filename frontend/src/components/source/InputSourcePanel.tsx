@@ -356,6 +356,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
+                <p className="text-[10px] text-text-secondary">
+                  Ejemplo: <code className="text-brand-orange font-mono">DeckLink Mini Recorder</code> o <code className="text-brand-orange font-mono">DeckLink Quad HDMI Recorder (1)</code>.
+                </p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -380,24 +383,29 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <option value="__manual__">📝 Entrada manual...</option>
                     </select>
                   ) : (
-                    <div className="flex w-full gap-2">
-                      <input
-                        type="text"
-                        placeholder="Nombre del dispositivo"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                        value={config.device || ''}
-                        onChange={e => update({ device: e.target.value })}
-                      />
-                      <button
-                        type="button"
-                        className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors"
-                        onClick={() => {
-                          setManualDeviceMode(false);
-                          update({ device: devices[0] || '' });
-                        }}
-                      >
-                        Lista
-                      </button>
+                    <div className="flex flex-col w-full gap-2">
+                      <div className="flex w-full gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nombre del dispositivo"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                          value={config.device || ''}
+                          onChange={e => update({ device: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                          onClick={() => {
+                            setManualDeviceMode(false);
+                            update({ device: devices[0] || '' });
+                          }}
+                        >
+                          Lista
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-text-secondary">
+                        Ejemplo: <code className="text-brand-orange font-mono">DeckLink Mini Recorder</code> o <code className="text-brand-orange font-mono">DeckLink Duo (2)</code>.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -490,6 +498,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
+                <p className="text-[10px] text-text-secondary">
+                  Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code> (primera tarjeta, primer canal) o <code className="text-brand-orange font-mono">hw:1,0</code> (segunda tarjeta).
+                </p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -514,24 +525,29 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <option value="__manual__">📝 Entrada manual...</option>
                     </select>
                   ) : (
-                    <div className="flex w-full gap-2">
-                      <input
-                        type="text"
-                        placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                        value={config.device || ''}
-                        onChange={e => update({ device: e.target.value })}
-                      />
-                      <button
-                        type="button"
-                        className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors"
-                        onClick={() => {
-                          setManualAlsaMode(false);
-                          update({ device: alsaDevices[0]?.device || '' });
-                        }}
-                      >
-                        Lista
-                      </button>
+                    <div className="flex flex-col w-full gap-2">
+                      <div className="flex w-full gap-2">
+                        <input
+                          type="text"
+                          placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                          value={config.device || ''}
+                          onChange={e => update({ device: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                          onClick={() => {
+                            setManualAlsaMode(false);
+                            update({ device: alsaDevices[0]?.device || '' });
+                          }}
+                        >
+                          Lista
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-text-secondary">
+                        Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code> (primera tarjeta, primer canal) o <code className="text-brand-orange font-mono">hw:1,0</code> (segunda tarjeta).
+                      </p>
                     </div>
                   )}
                 </div>
@@ -557,6 +573,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
+                <p className="text-[10px] text-text-secondary">
+                  Ejemplo: <code className="text-brand-orange font-mono">/dev/video0</code> o <code className="text-brand-orange font-mono">/dev/video1</code> para tarjetas de captura físicas o webcams.
+                </p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -581,24 +600,29 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <option value="__manual__">📝 Entrada manual...</option>
                     </select>
                   ) : (
-                    <div className="flex w-full gap-2">
-                      <input
-                        type="text"
-                        placeholder="Ruta del dispositivo (ej: /dev/video0)"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-                        value={config.device || ''}
-                        onChange={e => update({ device: e.target.value })}
-                      />
-                      <button
-                        type="button"
-                        className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors"
-                        onClick={() => {
-                          setManualV4l2Mode(false);
-                          update({ device: v4l2Devices[0]?.device || '' });
-                        }}
-                      >
-                        Lista
-                      </button>
+                    <div className="flex flex-col w-full gap-2">
+                      <div className="flex w-full gap-2">
+                        <input
+                          type="text"
+                          placeholder="Ruta del dispositivo (ej: /dev/video0)"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                          value={config.device || ''}
+                          onChange={e => update({ device: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                          onClick={() => {
+                            setManualV4l2Mode(false);
+                            update({ device: v4l2Devices[0]?.device || '' });
+                          }}
+                        >
+                          Lista
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-text-secondary">
+                        Ejemplo: <code className="text-brand-orange font-mono">/dev/video0</code> o <code className="text-brand-orange font-mono">/dev/video1</code> para tarjetas de captura físicas o webcams.
+                      </p>
                     </div>
                   )}
                 </div>

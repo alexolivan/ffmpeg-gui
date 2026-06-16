@@ -13,6 +13,7 @@ import SchedulingFormSection from './form/SchedulingFormSection';
 import LifecycleFormSection from './form/LifecycleFormSection';
 import AdvancedFlagsFormSection from './form/AdvancedFlagsFormSection';
 import PreviewCmdModal from './modals/PreviewCmdModal';
+import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
 
 const VIDEO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
 const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls'];
@@ -300,11 +301,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   };
 
   const sections = [
-    { id: 'inputs', label: 'Sources', icon: '📡' },
-    { id: 'encoding', label: 'Encoding', icon: '⚙️' },
-    { id: 'filters', label: 'Filters', icon: '🎛️' },
-    { id: 'output', label: 'Destination', icon: '📤' },
-    { id: 'system', label: isTask ? 'Schedule & Limits' : 'System & Watchdog', icon: '🛡️' },
+    { id: 'inputs', label: 'Sources', icon: <SourceIcon size={16} /> },
+    { id: 'encoding', label: 'Encoding', icon: <GearIcon size={16} /> },
+    { id: 'filters', label: 'Filters', icon: <KnobsIcon size={16} /> },
+    { id: 'output', label: 'Destination', icon: <DestinationIcon size={16} /> },
+    { id: 'system', label: isTask ? 'Schedule & Limits' : 'System & Watchdog', icon: <ShieldIcon size={16} /> },
   ];
 
   return (
@@ -410,7 +411,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 : 'text-text-secondary hover:bg-white/5 hover:text-white/70'
             }`}
           >
-            <span>{s.icon}</span>
+            <span className="flex items-center justify-center">{s.icon}</span>
             {s.label}
           </button>
         ))}
@@ -419,7 +420,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       {hasDeckLinkCodecIncompatibility && (
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300 mb-3 animate-in fade-in slide-in-from-top-1 duration-200">
           <div className="flex items-start gap-2.5">
-            <span className="text-sm mt-0.5">⚠️</span>
+            <span className="text-sm mt-0.5 text-amber-400">
+              <ShieldIcon size={14} />
+            </span>
             <div>
               <strong>Configuración de códec incompatible:</strong> Has seleccionado salida física DeckLink, pero la codificación de vídeo/audio configurada no es compatible con el hardware (requiere vídeo sin compresión v210 o rawvideo/uyvy422, y audio PCM).
             </div>
@@ -435,9 +438,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 audio_codec_params: prev.has_audio ? { ar: '48000', ac: '2' } : prev.audio_codec_params,
               }));
             }}
-            className="flex-shrink-0 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-black font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            className="flex-shrink-0 flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-black font-black px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
           >
-            🛠️ Ajustar a compatible
+            <ToolsIcon size={14} /> Ajustar a compatible
           </button>
         </div>
       )}

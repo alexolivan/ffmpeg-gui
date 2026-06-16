@@ -3,6 +3,13 @@ import BuildProfileCard from '../BuildProfileCard';
 import type { BuildProfile } from '../BuildProfileCard';
 import BuildFormModal from '../BuildFormModal';
 import BuildTerminal from '../BuildTerminal';
+import { 
+  ImportIcon, 
+  PlusIcon, 
+  GearIcon, 
+  ToolsIcon, 
+  ClipboardIcon 
+} from '../Icons';
 
 interface ForgeViewProps {
   builds: BuildProfile[];
@@ -86,8 +93,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             </div>
           )}
           <button onClick={() => importRecipeRef.current?.click()}
-            className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold hover:scale-105 transition-transform">
-            📥 IMPORT RECIPE
+            className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold hover:scale-105 transition-transform flex items-center gap-1.5">
+            <ImportIcon size={14} /> IMPORT RECIPE
           </button>
           <input 
             type="file" 
@@ -97,8 +104,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             onChange={handleImportRecipeChange} 
           />
           <button onClick={() => { setEditingBuild(null); setShowBuildForm(true) }}
-            className="pill-button bg-brand-orange text-black font-bold hover:scale-105 transition-transform">
-            + NEW BUILD PROFILE
+            className="pill-button bg-brand-orange text-black font-black hover:scale-105 transition-transform flex items-center gap-1.5">
+            <PlusIcon size={14} /> NEW BUILD PROFILE
           </button>
         </div>
       </header>
@@ -107,7 +114,13 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
       <div className="glass-card p-6 mb-8 bg-white/2 border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl">
-            {checkStatus === 'loading' ? '⏳' : buildDeps?.all_required_met ? '✓' : '⚠️'}
+            {checkStatus === 'loading' ? (
+              <span className="w-5 h-5 border-2 border-brand-orange border-t-transparent rounded-full animate-spin inline-block" />
+            ) : buildDeps?.all_required_met ? (
+              <span className="text-brand-lime font-black">✓</span>
+            ) : (
+              <span className="text-brand-orange font-black">!</span>
+            )}
           </div>
           <div>
             <h4 className="text-sm font-black uppercase tracking-wider">Estado del Entorno FFMPEG Forge</h4>
@@ -128,7 +141,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           onClick={() => setShowEnvModal(true)}
           className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all hover:scale-102 flex items-center gap-2"
         >
-          ⚙️ Gestionar Dependencias
+          <GearIcon size={14} /> Gestionar Dependencias
         </button>
       </div>
 
@@ -136,7 +149,9 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
       <div className="space-y-4">
         {builds.length === 0 ? (
           <div className="text-center py-20 border-2 border-dashed border-white/5 rounded-3xl">
-            <div className="text-white/10 text-6xl mb-6">🔨</div>
+            <div className="text-white/10 mb-6 flex justify-center">
+              <ToolsIcon size={48} />
+            </div>
             <div className="text-text-secondary text-lg mb-2">No build profiles yet</div>
             <div className="text-text-secondary text-sm">Create your first FFmpeg build profile to get started</div>
           </div>
@@ -213,7 +228,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             </button>
 
             <h3 className="text-lg font-black tracking-tight mb-1 flex items-center gap-2">
-              🛠️ ESTADO DEL ENTORNO DE COMPILACIÓN
+              <ToolsIcon size={16} /> ESTADO DEL ENTORNO DE COMPILACIÓN
             </h3>
             <p className="text-xs text-text-secondary mb-6 leading-relaxed">
               FFmpeg Forge necesita compiladores de bajo nivel y bibliotecas externas de codecs para generar un binario robusto optimizado.
@@ -340,7 +355,9 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 return (
                   <div className="bg-white/5 border border-white/5 p-4 rounded-2xl space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-black uppercase text-brand-orange tracking-wider">🛠️ Comando de Instalación Sugerido</span>
+                      <span className="text-[10px] font-black uppercase text-brand-orange tracking-wider flex items-center gap-1">
+                        <ToolsIcon size={12} /> Comando de Instalación Sugerido
+                      </span>
                       <div className="flex gap-2">
                         {(['debian', 'fedora', 'arch'] as const).map(distro => (
                           <button
@@ -363,10 +380,10 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                           navigator.clipboard.writeText(cmdStr);
                           alert("Comando copiado al portapapeles con éxito.");
                         }}
-                        className="shrink-0 p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs hover:scale-105 transition-all active:scale-95"
+                        className="shrink-0 p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs hover:scale-105 transition-all active:scale-95 flex items-center justify-center text-text-secondary hover:text-white"
                         title="Copiar Comando"
                       >
-                        📋
+                        <ClipboardIcon size={14} />
                       </button>
                     </div>
                     <p className="text-[9px] text-text-secondary leading-tight">

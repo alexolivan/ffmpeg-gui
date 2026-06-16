@@ -1,4 +1,12 @@
 import React from 'react';
+import { 
+  DashboardIcon, 
+  LightningIcon, 
+  CalendarIcon, 
+  GearIcon, 
+  ToolsIcon,
+  LogoutIcon 
+} from './Icons';
 
 interface SidebarProps {
   activeView: string;
@@ -6,15 +14,23 @@ interface SidebarProps {
   logoText?: string;
   logoPath?: string;
   accentColor?: string;
+  onLogout?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, logoText = 'FF', logoPath, accentColor = '#FF6B00' }) => {
+const Sidebar: React.FC<SidebarProps> = ({ 
+  activeView, 
+  onViewChange, 
+  logoText = 'FF', 
+  logoPath, 
+  accentColor = '#FF6B00',
+  onLogout
+}) => {
   const items = [
-    { id: 'dashboard', icon: '🏠', label: 'Dashboard' },
-    { id: 'services', icon: '⚡', label: 'Services' },
-    { id: 'batch', icon: '📅', label: 'Tasks' },
-    { id: 'settings', icon: '⚙️', label: 'Settings' },
-    { id: 'tools', icon: '🛠️', label: 'Tools' },
+    { id: 'dashboard', icon: <DashboardIcon size={20} />, label: 'Dashboard' },
+    { id: 'services', icon: <LightningIcon size={20} />, label: 'Services' },
+    { id: 'batch', icon: <CalendarIcon size={20} />, label: 'Tasks' },
+    { id: 'settings', icon: <GearIcon size={20} />, label: 'Settings' },
+    { id: 'tools', icon: <ToolsIcon size={20} />, label: 'Tools' },
   ];
 
   return (
@@ -38,11 +54,26 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, logoText = 
             onClick={() => onViewChange(item.id)}
             className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all ${activeView === item.id ? 'bg-white/10 text-brand-lime' : 'text-text-secondary hover:bg-white/5'}`}
           >
-            <span className="text-xl">{item.icon}</span>
+            <span className="flex items-center justify-center w-6 h-6">{item.icon}</span>
             <span className="hidden lg:block font-medium">{item.label}</span>
           </div>
         ))}
       </div>
+
+      {onLogout && (
+        <div className="w-full px-4 mt-auto">
+          <div 
+            onClick={onLogout}
+            className="flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all text-red-400 hover:bg-red-500/10"
+            title="Lock Console"
+          >
+            <span className="flex items-center justify-center w-6 h-6">
+              <LogoutIcon size={20} />
+            </span>
+            <span className="hidden lg:block font-medium">Logout</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
