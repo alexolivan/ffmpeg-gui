@@ -136,8 +136,7 @@ export function useProcesses() {
 
     try {
       setLogs([]);
-      await fetch(`${API}/processes/${procId}/stop`, { method: 'POST' });
-      await fetch(`${API}/processes/${procId}/start`, { method: 'POST' });
+      await fetch(`${API}/processes/${procId}/restart`, { method: 'POST' });
     } catch (err) {
       console.error("Error restarting process:", err);
     }

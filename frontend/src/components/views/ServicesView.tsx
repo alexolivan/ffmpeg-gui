@@ -10,7 +10,8 @@ import {
   PlayIcon, 
   TrashIcon, 
   LightningIcon, 
-  ShieldIcon 
+  ShieldIcon,
+  RefreshIcon
 } from '../Icons';
 
 interface ServicesViewProps {
@@ -19,6 +20,7 @@ interface ServicesViewProps {
   onCloneProcess: (proc: any) => void;
   onStartService: (procId: number) => void;
   onStopService: (procId: number) => void;
+  onRestartService: (procId: number, name: string) => void;
   onDeleteProcess: (proc: any) => void;
   onSelectedProcess: (proc: any) => void;
   importFileRef: React.RefObject<HTMLInputElement | null>;
@@ -33,6 +35,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   onCloneProcess,
   onStartService,
   onStopService,
+  onRestartService,
   onDeleteProcess,
   onSelectedProcess,
   importFileRef,
@@ -156,6 +159,20 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         title="Export Service"
                       >
                         <ExportIcon size={16} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRestartService(proc.id, proc.name);
+                        }}
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
+                          proc.pending_changes
+                            ? "bg-brand-orange/20 hover:bg-brand-orange/30 border border-brand-orange text-brand-orange animate-pulse"
+                            : "bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400"
+                        }`}
+                        title={proc.pending_changes ? "Restart service to apply new configuration" : "Restart Service"}
+                      >
+                        <RefreshIcon size={16} />
                       </button>
                       <button
                         onClick={(e) => {
