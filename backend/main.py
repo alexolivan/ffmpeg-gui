@@ -662,6 +662,9 @@ async def auto_start_services():
             except Exception as e:
                 logger.error(f"Failed to auto-start service {service.id}: {e}")
 
+# Global LCD Manager instance
+lcd_manager = None
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Startup: Checking and cleaning up stale build profiles, processes and tasks...")
@@ -697,6 +700,24 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to clean up stale builds/processes/tasks on startup: {e}")
 
+    # Start LCD Manager if enabled
+    global lcd_manager
+    try:
+        with SessionLocal() as db:
+            from database.models import SystemSettings
+            settings = db.query(SystemSettings).first()
+            if settings and settings.lcd_enabled:
+                from core.lcd.manager import LCDManager
+                lcd_manager = LCDManager(
+                    db_session_factory=SessionLocal,
+                    process_manager=process_manager,
+                    task_manager=task_manager,
+                    port=settings.lcd_port
+                )
+                lcd_manager.start()
+    except Exception as e:
+        logger.error(f"Failed to start LCD manager on startup: {e}")
+
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
     await scheduler.start()
@@ -705,6 +726,11 @@ async def startup_event():
 async def shutdown_event():
     logger.info("Shutdown: Stopping scheduler...")
     await scheduler.stop()
+    
+    global lcd_manager
+    if lcd_manager:
+        logger.info("Shutdown: Stopping LCD manager...")
+        lcd_manager.stop()
 
 
 # ── Build WebSocket (per-build log streaming) ────────────────────
