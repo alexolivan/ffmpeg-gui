@@ -8,3 +8,4 @@ python-multipart
 Pillow
 websockets
 croniter
+pyserial
