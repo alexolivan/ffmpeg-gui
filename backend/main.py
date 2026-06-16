@@ -1221,6 +1221,12 @@ async def stop_process(process_id: int):
     await process_manager.stop_process(process_id)
     return {"status": "stopping", "process_id": process_id}
 
+@app.post("/processes/{process_id}/restart")
+async def restart_process(process_id: int):
+    await process_manager.stop_process(process_id)
+    await process_manager.start_process(process_id)
+    return {"status": "restarting", "process_id": process_id}
+
 def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
     if "profile" in payload and isinstance(payload["profile"], dict):
         profile = payload["profile"]

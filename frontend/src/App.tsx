@@ -160,6 +160,7 @@ function App() {
             onCloneProcess={handleCloneProcess}
             onStartService={handleStartService}
             onStopService={handleStopService}
+            onRestartService={handleRestartService}
             onDeleteProcess={handleDeleteProcess}
             onSelectedProcess={setSelectedProcess}
             importFileRef={importFileRef}

@@ -377,3 +377,24 @@ export const LogoutIcon: React.FC<IconProps> = ({ size = 18, className = '', ...
     <line x1="21" y1="12" x2="9" y2="12" />
   </svg>
 );
+
+export const RefreshIcon: React.FC<IconProps> = ({ size = 18, className = '', ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+    <path d="M16 16h5v5" />
+  </svg>
+);
