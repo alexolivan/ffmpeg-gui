@@ -768,7 +768,39 @@ async def websocket_build(websocket: WebSocket, build_id: int):
 
 @app.get("/api/status")
 def read_root():
-    return {"status": "online", "message": "FFMPEG Orchestrator API is running"}
+    global lcd_manager
+    return {
+        "status": "online", 
+        "message": "FFMPEG Orchestrator API is running",
+        "lcd": {
+            "connected": lcd_manager is not None and lcd_manager._running,
+            "port": lcd_manager.port if lcd_manager else None
+        }
+    }
+
+@app.post("/settings/lcd/probe")
+def probe_lcd_ports():
+    import serial.tools.list_ports
+    from core.lcd.drivers.cfa635 import Cfa635Driver
+    
+    ports = serial.tools.list_ports.comports()
+    detected_ports = []
+    
+    # List of registered drivers to try
+    drivers = [Cfa635Driver]
+    
+    for port_info in ports:
+        port_device = port_info.device
+        for driver in drivers:
+            if driver.probe(port_device):
+                detected_ports.append({
+                    "port": port_device,
+                    "driver": driver.__name__,
+                    "description": port_info.description
+                })
+                break
+                
+    return {"ports": detected_ports}
 
 
 # ══════════════════════════════════════════════════════════════════
