@@ -14,6 +14,7 @@ class ProcessManager:
         self.processes: Dict[int, asyncio.subprocess.Process] = {}
         self.log_buffers: Dict[int, collections.deque] = {}
         self.restart_counts: Dict[int, int] = {}
+        self.pending_restarts: Dict[int, asyncio.Task] = {}
         self.db_session_factory = db_session_factory
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
@@ -50,6 +51,10 @@ class ProcessManager:
             }
             if not is_restart:
                 self.restart_counts.pop(process_id, None)
+            
+            pending = self.pending_restarts.pop(process_id, None)
+            if pending:
+                pending.cancel()
 
             # Determine which FFmpeg binary to use
             ffmpeg_bin = self.ffmpeg_path  # Default fallback
@@ -86,28 +91,46 @@ class ProcessManager:
                 session.commit()
 
     async def stop_process(self, process_id: int, graceful: bool = True):
+        pending = self.pending_restarts.pop(process_id, None)
+        if pending:
+            try:
+                pending.cancel()
+            except Exception as e:
+                self.logger.warning(f"Error cancelling pending restart task for process {process_id}: {e}")
+
         proc = self.processes.get(process_id)
         self.restart_counts.pop(process_id, None)
         
         if proc:
             if graceful:
-                # Send 'q' to stdin for FFMPEG graceful stop
                 if proc.stdin:
-                    proc.stdin.write(b'q')
-                    await proc.stdin.drain()
+                    try:
+                        proc.stdin.write(b'q')
+                        await proc.stdin.drain()
+                    except Exception as e:
+                        self.logger.warning(f"Failed to write 'q' to stdin for process {process_id}: {e}")
                 
                 try:
-                    await asyncio.wait_for(proc.wait(), timeout=10.0)
+                    await asyncio.wait_for(proc.wait(), timeout=4.0)
                 except asyncio.TimeoutError:
-                    proc.terminate()
-            else:
-                proc.kill()
+                    self.logger.warning(f"Process {process_id} did not stop gracefully. Escalating to SIGTERM.")
             
-            try:
-                await proc.wait()
-            except Exception:
-                pass
-
+            if proc.returncode is None:
+                try:
+                    proc.terminate()
+                    await asyncio.wait_for(proc.wait(), timeout=3.0)
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"Process {process_id} ignored SIGTERM. Escalating to SIGKILL.")
+                except Exception as e:
+                    self.logger.warning(f"Error terminating process {process_id}: {e}")
+            
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                    await asyncio.wait_for(proc.wait(), timeout=2.0)
+                except Exception as e:
+                    self.logger.error(f"Failed to kill process {process_id}: {e}")
+            
             if process_id in self.processes:
                 del self.processes[process_id]
 
@@ -814,11 +837,19 @@ class ProcessManager:
             return False
 
     async def _delayed_restart(self, process_id: int):
-        await asyncio.sleep(5)
-        if process_id not in self.processes:
-            self.logger.info(f"Watchdog triggering restart for process {process_id}")
+        try:
+            await asyncio.sleep(5)
+            if process_id in self.processes:
+                return
+
             with self.db_session_factory() as session:
-                from database.models import ProcessLog
+                from database.models import MediaProcess, ProcessLog
+                media_proc = session.query(MediaProcess).get(process_id)
+                if not media_proc or media_proc.status == 'stopped':
+                    self.logger.info(f"Watchdog: Process {process_id} status is stopped or deleted. Aborting restart.")
+                    return
+
+                self.logger.info(f"Watchdog triggering restart for process {process_id}")
                 log = ProcessLog(
                     process_id=process_id,
                     level='INFO',
@@ -826,7 +857,14 @@ class ProcessManager:
                 )
                 session.add(log)
                 session.commit()
+
             await self.start_process(process_id, is_restart=True)
+        except asyncio.CancelledError:
+            self.logger.info(f"Watchdog: Cancelled pending restart for process {process_id}")
+            raise
+        finally:
+            if self.pending_restarts.get(process_id) == asyncio.current_task():
+                self.pending_restarts.pop(process_id, None)
 
     async def _watchdog(self, process_id: int, proc: asyncio.subprocess.Process):
         was_unexpected = False
@@ -994,7 +1032,14 @@ class ProcessManager:
                             )
                             session.add(restart_log)
                             session.commit()
-                            asyncio.create_task(self._delayed_restart(process_id))
+                            old_task = self.pending_restarts.pop(process_id, None)
+                            if old_task:
+                                try:
+                                    old_task.cancel()
+                                except Exception:
+                                    pass
+                            task = asyncio.create_task(self._delayed_restart(process_id))
+                            self.pending_restarts[process_id] = task
                         else:
                             self.logger.warning(f"Watchdog: Max restart attempts ({retries}) reached for process {process_id}. Giving up.")
                             limit_log = ProcessLog(
