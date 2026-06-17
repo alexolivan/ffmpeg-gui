@@ -45,6 +45,20 @@ def init_db():
             cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_port TEXT DEFAULT '/dev/ttyACM0'")
         if "lcd_model" not in settings_columns:
             cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_model TEXT DEFAULT 'cfa635'")
+        if "lcd_brightness" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_brightness INTEGER DEFAULT 100")
+        if "lcd_dim_brightness" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_dim_brightness INTEGER DEFAULT 20")
+        if "lcd_dim_timeout" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_dim_timeout INTEGER DEFAULT 30")
+        if "lcd_led0_profile" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_led0_profile TEXT DEFAULT 'heartbeat'")
+        if "lcd_led1_profile" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_led1_profile TEXT DEFAULT 'streams'")
+        if "lcd_led2_profile" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_led2_profile TEXT DEFAULT 'tasks'")
+        if "lcd_led3_profile" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_led3_profile TEXT DEFAULT 'alert'")
 
         conn.commit()
     except Exception as e:

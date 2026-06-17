@@ -133,6 +133,13 @@ class SystemSettings(Base):
     lcd_enabled = Column(Boolean, default=False)
     lcd_port = Column(String, default="/dev/ttyACM0")
     lcd_model = Column(String, default="cfa635")
+    lcd_brightness = Column(Integer, default=100)
+    lcd_dim_brightness = Column(Integer, default=20)
+    lcd_dim_timeout = Column(Integer, default=30)
+    lcd_led0_profile = Column(String, default="heartbeat")
+    lcd_led1_profile = Column(String, default="streams")
+    lcd_led2_profile = Column(String, default="tasks")
+    lcd_led3_profile = Column(String, default="alert")
 
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
