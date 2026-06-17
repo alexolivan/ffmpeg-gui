@@ -467,5 +467,42 @@ class TestTaskAPI(unittest.TestCase):
         self.assertNotIn("-s:v 1920x1080", cmd_task)
         self.assertNotIn("-r:v 25", cmd_task)
 
+    def test_process_alias_serialization(self):
+        # 1. Create a process with alias
+        payload = {
+            "name": "API Test Process Alias",
+            "alias": "My-Alias_123",
+            "type": "service",
+            "input_config": {"input1": {"type": "file", "path": "/tmp/test.mp4"}},
+            "output_config": {"type": "udp", "host": "127.0.0.1", "port": "1234"},
+            "codec_config": {"vcodec": "libx264"}
+        }
+        res = self.client.post("/processes", json=payload)
+        self.assertEqual(res.status_code, 200)
+        proc_id = res.json()["id"]
+        self.assertEqual(res.json()["alias"], "My-Alias_123")
+
+        # 2. Get processes list and verify alias is present
+        res = self.client.get("/processes")
+        self.assertEqual(res.status_code, 200)
+        procs = res.json()
+        proc = next(p for p in procs if p["id"] == proc_id)
+        self.assertEqual(proc["alias"], "My-Alias_123")
+
+        # 3. Update process alias
+        update_payload = {"alias": "New-Alias"}
+        res = self.client.put(f"/processes/{proc_id}", json=update_payload)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["alias"], "New-Alias")
+
+        # 4. Export process and verify alias is present
+        res = self.client.get(f"/processes/{proc_id}/export")
+        self.assertEqual(res.status_code, 200)
+        exported = res.json()
+        self.assertEqual(exported["profile"]["alias"], "New-Alias")
+
+        # 5. Clean up
+        self.client.delete(f"/processes/{proc_id}")
+
 if __name__ == "__main__":
     unittest.main()

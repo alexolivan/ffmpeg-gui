@@ -691,6 +691,7 @@ async def telemetry_broadcast_loop():
                     {
                         "id": p.id,
                         "name": p.name,
+                        "alias": p.alias,
                         "type": p.type,
                         "status": p.status,
                         "pid": p.pid,
@@ -1320,6 +1321,7 @@ def list_processes(db: Session = Depends(get_db)):
         {
             "id": p.id,
             "name": p.name,
+            "alias": p.alias,
             "type": p.type,
             "status": p.status,
             "pid": p.pid,
@@ -1497,6 +1499,18 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
                     profile["ffmpeg_build_id"] = any_build.id
                 else:
                     profile["ffmpeg_build_id"] = None
+
+    # Validate alias if present
+    alias = profile.get("alias")
+    if alias:
+        import re
+        alias = str(alias).strip()
+        if len(alias) > 12:
+            alias = alias[:12]
+        alias = re.sub(r"[^a-zA-Z0-9\s\-_]", "", alias)
+        profile["alias"] = alias
+    else:
+        profile["alias"] = None
                     
     return profile
 
@@ -1511,6 +1525,7 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
         "exported_at": datetime.datetime.utcnow().isoformat(),
         "profile": {
             "name": proc.name,
+            "alias": proc.alias,
             "type": proc.type,
             "input_config": proc.input_config,
             "output_config": proc.output_config,
@@ -1532,6 +1547,7 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         
     db_proc = MediaProcess(
         name=f"Imported: {profile.get('name', 'Untitled')}",
+        alias=profile.get('alias'),
         type=profile.get('type', 'service'),
         input_config=profile.get('input_config', {}),
         output_config=profile.get('output_config', {}),
