@@ -11,16 +11,24 @@ class DashboardView(LCDView):
         cpu = int(psutil.cpu_percent())
         ram = int(psutil.virtual_memory().percent)
         db = self.manager.db_session_factory()
+        node_name = "FFMPEG-GUI"
+        active_count = 0
         try:
-            from database.models import MediaProcess
+            from database.models import MediaProcess, SystemSettings
             active_count = db.query(MediaProcess).filter(MediaProcess.status == 'running').count()
+            settings = db.query(SystemSettings).first()
+            if settings and settings.node_name:
+                node_name = settings.node_name
         except Exception:
-            active_count = 0
+            pass
         finally:
             db.close()
 
+        # Center/pad the node name to 18 characters
+        header = node_name[:18].center(18)
+
         return [
-            "=== STATUS GUI ===",
+            header,
             f"CPU: {cpu}%",
             f"RAM: {ram}%",
             f"Active: {active_count} streams"

@@ -63,7 +63,8 @@ class ServicesMenuView(LCDView):
             svc = self.services[i]
             prefix = "> " if i == self.selected_index else "  "
             status_char = "*" if svc.status == "running" else " "
-            lines.append(f"{prefix}({status_char}) {svc.name[:12]}")
+            display_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
+            lines.append(f"{prefix}({status_char}) {display_name[:12]}")
         
         while len(lines) < 4:
             lines.append("")
@@ -116,7 +117,8 @@ class TasksMenuView(LCDView):
         for i in range(start, end):
             task = self.tasks[i]
             prefix = "> " if i == self.selected_index else "  "
-            lines.append(f"{prefix}{task.name[:16]}")
+            display_name = task.alias if task.alias and task.alias.strip() else task.name
+            lines.append(f"{prefix}{display_name[:16]}")
 
         while len(lines) < 4:
             lines.append("")

@@ -17,7 +17,7 @@ class ServiceDetailMenuView(LCDView):
             from database.models import MediaProcess
             svc = db.query(MediaProcess).get(self.svc_id)
             if svc:
-                self.svc_name = svc.name
+                self.svc_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
                 self.svc_status = svc.status
         except Exception:
             pass
@@ -87,8 +87,9 @@ class ServiceStatusDetailView(LCDView):
             from database.models import MediaProcess
             svc = db.query(MediaProcess).get(self.svc_id)
             if svc:
+                display_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
                 lines = [
-                    f"SVC:{svc.name[:14]}",
+                    f"SVC:{display_name[:14]}",
                     f"Status:{svc.status}",
                     f"PID:{svc.pid or 'N/A'} CPU:{int(svc.cpu_usage or 0)}%",
                     f"FPS:{svc.fps or '0'} SPD:{svc.speed or '0x'}"
@@ -118,7 +119,7 @@ class TaskDetailMenuView(LCDView):
             from database.models import ScheduledTask
             task = db.query(ScheduledTask).get(self.task_id)
             if task:
-                self.task_name = task.name
+                self.task_name = task.alias if task.alias and task.alias.strip() else task.name
         except Exception:
             pass
         finally:
@@ -179,12 +180,13 @@ class TaskStatusDetailView(LCDView):
             from database.models import ScheduledTask, TaskExecution
             task = db.query(ScheduledTask).get(self.task_id)
             if task:
+                display_name = task.alias if task.alias and task.alias.strip() else task.name
                 # Get latest execution
                 latest_exec = db.query(TaskExecution).filter(TaskExecution.task_id == self.task_id).order_by(TaskExecution.id.desc()).first()
                 status_str = latest_exec.status if latest_exec else "Idle"
                 pid_str = str(latest_exec.pid) if (latest_exec and latest_exec.pid) else "N/A"
                 lines = [
-                    f"TSK:{task.name[:14]}",
+                    f"TSK:{display_name[:14]}",
                     f"Status:{status_str}",
                     f"PID:{pid_str}",
                     "Press X to return"
