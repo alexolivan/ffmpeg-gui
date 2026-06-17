@@ -58,3 +58,65 @@ def test_submenu_views():
     assert "TSK:Test Task" in lines[0]
     assert "> Run Now" in lines[1]
 
+
+def test_lcd_views_with_alias_and_node_name():
+    from unittest.mock import MagicMock
+    from database.models import MediaProcess, ScheduledTask, SystemSettings
+    from core.lcd.views.dashboard import DashboardView
+    from core.lcd.views.menu import ServicesMenuView, TasksMenuView
+    from core.lcd.views.submenu import (
+        ServiceDetailMenuView, ServiceStatusDetailView,
+        TaskDetailMenuView, TaskStatusDetailView
+    )
+
+    manager = MagicMock()
+    db_mock = MagicMock()
+    manager.db_session_factory.return_value = db_mock
+
+    # Mock system settings, media process, and scheduled task with aliases
+    settings = SystemSettings(node_name="Custom Node 1")
+    svc = MediaProcess(id=1, name="Long Service Name", alias="ShortSvc", type="service", status="running")
+    task = ScheduledTask(id=1, name="Long Task Name", alias="ShortTask")
+
+    def mock_query(model):
+        q = MagicMock()
+        if model == SystemSettings:
+            q.first.return_value = settings
+        elif model == MediaProcess:
+            q.filter.return_value.all.return_value = [svc]
+            q.get.return_value = svc
+        elif model == ScheduledTask:
+            q.all.return_value = [task]
+            q.get.return_value = task
+        return q
+    db_mock.query.side_effect = mock_query
+
+    # 1. Test DashboardView node name display
+    dash = DashboardView(manager)
+    dash_lines = dash.render()
+    assert "Custom Node 1" in dash_lines[0]
+
+    # 2. Test ServicesMenuView uses alias
+    svc_menu = ServicesMenuView(manager)
+    svc_menu_lines = svc_menu.render()
+    assert "ShortSvc" in svc_menu_lines[1]
+
+    # 3. Test TasksMenuView uses alias
+    task_menu = TasksMenuView(manager)
+    task_menu_lines = task_menu.render()
+    assert "ShortTask" in task_menu_lines[1]
+
+    # 4. Test Detail & Status submenus use alias
+    svc_detail = ServiceDetailMenuView(manager, 1)
+    assert "ShortSvc" in svc_detail.render()[0]
+
+    svc_status = ServiceStatusDetailView(manager, 1)
+    assert "ShortSvc" in svc_status.render()[0]
+
+    task_detail = TaskDetailMenuView(manager, 1)
+    assert "ShortTask" in task_detail.render()[0]
+
+    task_status = TaskStatusDetailView(manager, 1)
+    assert "ShortTask" in task_status.render()[0]
+
+
