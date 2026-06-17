@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { BuildProfile } from '../../components/BuildProfileCard';
 
 interface DashboardViewProps {
@@ -16,6 +16,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   taskExecutions,
   builds,
 }) => {
+  const [locatorActive, setLocatorActive] = useState(false);
+
+  useEffect(() => {
+    let interval: any;
+    if (systemTelemetry.lcd && systemTelemetry.lcd.connected) {
+      const checkStatus = () => {
+        fetch('/api/lcd/locator')
+          .then(res => res.json())
+          .then(data => setLocatorActive(!!data.active))
+          .catch(err => console.error(err));
+      };
+      checkStatus();
+      interval = setInterval(checkStatus, 2000);
+    }
+    return () => clearInterval(interval);
+  }, [systemTelemetry.lcd?.connected]);
+
+  const toggleLocator = async () => {
+    try {
+      const targetState = !locatorActive;
+      const res = await fetch('/api/lcd/locator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: targetState }),
+      });
+      if (res.ok) {
+        setLocatorActive(targetState);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <>
       <header className="flex justify-between items-center mb-12">
@@ -24,6 +57,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <p className="text-text-secondary">Monitoring and controlling FFMPEG nodes</p>
         </div>
         <div className="flex gap-4">
+          {systemTelemetry.lcd && systemTelemetry.lcd.connected && (
+            <button
+              onClick={toggleLocator}
+              className={`pill-button flex items-center gap-2 transition-all ${
+                locatorActive 
+                  ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/25 border border-red-500' 
+                  : 'bg-white/5 border border-white/10 text-white/60 hover:bg-white/10'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${locatorActive ? 'bg-white' : 'bg-red-500'}`}></span>
+              {locatorActive ? 'LOCATOR ACTIVE' : 'FIND ME'}
+            </button>
+          )}
           <div className="pill-button bg-white/5 border border-white/10 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-brand-lime"></span>
             Node: Standalone
