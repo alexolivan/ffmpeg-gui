@@ -49,6 +49,15 @@ class Cfa635Driver(LCDDisplayInterface):
         brightness = max(0, min(100, brightness))
         self._send_packet(14, struct.pack("B", brightness))
 
+    def set_gpo(self, pin: int, duty_cycle: int) -> None:
+        """
+        Set GPO duty cycle (0-100).
+        Command 34 (0x22). data[0] = pin (5-12), data[1] = duty_cycle (0-100).
+        """
+        pin = max(5, min(12, pin))
+        duty_cycle = max(0, min(100, duty_cycle))
+        self._send_packet(34, struct.pack("BB", pin, duty_cycle))
+
     @classmethod
     def probe(cls, port: str) -> bool:
         try:

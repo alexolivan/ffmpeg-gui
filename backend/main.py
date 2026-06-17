@@ -211,17 +211,10 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.logo_text is not None: settings.logo_text = settings_in.logo_text
     if settings_in.accent_color is not None: settings.accent_color = settings_in.accent_color
     
-    lcd_params_changed = (
+    lcd_core_changed = (
         (settings_in.lcd_enabled is not None and settings_in.lcd_enabled != settings.lcd_enabled) or
         (settings_in.lcd_port is not None and settings_in.lcd_port != settings.lcd_port) or
-        (settings_in.lcd_model is not None and settings_in.lcd_model != settings.lcd_model) or
-        (settings_in.lcd_brightness is not None and settings_in.lcd_brightness != settings.lcd_brightness) or
-        (settings_in.lcd_dim_brightness is not None and settings_in.lcd_dim_brightness != settings.lcd_dim_brightness) or
-        (settings_in.lcd_dim_timeout is not None and settings_in.lcd_dim_timeout != settings.lcd_dim_timeout) or
-        (settings_in.lcd_led0_profile is not None and settings_in.lcd_led0_profile != settings.lcd_led0_profile) or
-        (settings_in.lcd_led1_profile is not None and settings_in.lcd_led1_profile != settings.lcd_led1_profile) or
-        (settings_in.lcd_led2_profile is not None and settings_in.lcd_led2_profile != settings.lcd_led2_profile) or
-        (settings_in.lcd_led3_profile is not None and settings_in.lcd_led3_profile != settings.lcd_led3_profile)
+        (settings_in.lcd_model is not None and settings_in.lcd_model != settings.lcd_model)
     )
 
     if settings_in.lcd_enabled is not None: settings.lcd_enabled = settings_in.lcd_enabled
@@ -239,7 +232,7 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     db.refresh(settings)
 
     global lcd_manager
-    if lcd_params_changed:
+    if lcd_core_changed:
         if lcd_manager:
             try:
                 lcd_manager.stop()
@@ -259,7 +252,27 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
                 lcd_manager.start()
             except Exception:
                 pass
-    
+    else:
+        if lcd_manager and lcd_manager._running:
+            if settings_in.lcd_brightness is not None:
+                lcd_manager.active_brightness = settings_in.lcd_brightness
+                try:
+                    lcd_manager._register_activity()
+                except Exception:
+                    pass
+            if settings_in.lcd_dim_brightness is not None:
+                lcd_manager.dim_brightness = settings_in.lcd_dim_brightness
+            if settings_in.lcd_dim_timeout is not None:
+                lcd_manager.dim_timeout = settings_in.lcd_dim_timeout
+            if settings_in.lcd_led0_profile is not None:
+                lcd_manager.lcd_led0_profile = settings_in.lcd_led0_profile
+            if settings_in.lcd_led1_profile is not None:
+                lcd_manager.lcd_led1_profile = settings_in.lcd_led1_profile
+            if settings_in.lcd_led2_profile is not None:
+                lcd_manager.lcd_led2_profile = settings_in.lcd_led2_profile
+            if settings_in.lcd_led3_profile is not None:
+                lcd_manager.lcd_led3_profile = settings_in.lcd_led3_profile
+
     return settings
 
 @app.post("/login")
@@ -869,6 +882,23 @@ def probe_lcd_ports():
                 break
                 
     return {"ports": detected_ports}
+
+class LocatorRequest(BaseModel):
+    active: bool
+
+@app.post("/api/lcd/locator")
+def toggle_lcd_locator(req: LocatorRequest):
+    global lcd_manager
+    if not lcd_manager or not lcd_manager._running:
+        raise HTTPException(status_code=400, detail="LCD subsystem not connected")
+    lcd_manager.locator_active = req.active
+    return {"status": "ok", "active": req.active}
+
+@app.get("/api/lcd/locator")
+def get_lcd_locator_status():
+    global lcd_manager
+    active = lcd_manager.locator_active if (lcd_manager and lcd_manager._running) else False
+    return {"active": active}
 
 
 # ══════════════════════════════════════════════════════════════════
