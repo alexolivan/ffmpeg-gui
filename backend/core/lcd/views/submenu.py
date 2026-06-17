@@ -30,7 +30,7 @@ class ServiceDetailMenuView(LCDView):
         action_text = "Stop" if self.svc_status == "running" else "Start"
         options = [f"{action_text}", "Restart", "Status Info"]
         
-        lines = [f"SVC:{self.svc_name[:16]}"]
+        lines = [f"SVC:{self.svc_name[:14]}"]
         for idx, opt in enumerate(options):
             prefix = "> " if idx == self.selected_index else "  "
             lines.append(f"{prefix}{opt}")
@@ -88,7 +88,7 @@ class ServiceStatusDetailView(LCDView):
             svc = db.query(MediaProcess).get(self.svc_id)
             if svc:
                 lines = [
-                    f"SVC:{svc.name[:16]}",
+                    f"SVC:{svc.name[:14]}",
                     f"Status:{svc.status}",
                     f"PID:{svc.pid or 'N/A'} CPU:{int(svc.cpu_usage or 0)}%",
                     f"FPS:{svc.fps or '0'} SPD:{svc.speed or '0x'}"
@@ -127,7 +127,7 @@ class TaskDetailMenuView(LCDView):
     def render(self) -> List[str]:
         self.fetch_task()
         options = ["Run Now", "Status Info"]
-        lines = [f"TSK:{self.task_name[:16]}"]
+        lines = [f"TSK:{self.task_name[:14]}"]
         for idx, opt in enumerate(options):
             prefix = "> " if idx == self.selected_index else "  "
             lines.append(f"{prefix}{opt}")
@@ -184,7 +184,7 @@ class TaskStatusDetailView(LCDView):
                 status_str = latest_exec.status if latest_exec else "Idle"
                 pid_str = str(latest_exec.pid) if (latest_exec and latest_exec.pid) else "N/A"
                 lines = [
-                    f"TSK:{task.name[:16]}",
+                    f"TSK:{task.name[:14]}",
                     f"Status:{status_str}",
                     f"PID:{pid_str}",
                     "Press X to return"

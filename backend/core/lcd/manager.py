@@ -341,14 +341,14 @@ class LCDManager:
                 from .views.base import clean_ascii
                 cleaned_text = clean_ascii(line_text)
                 
-                # Truncate/pad to 19 characters to leave room for the 20th character legend
-                trimmed_text = cleaned_text[:19].ljust(19)
-                
-                # Get and append the legend character
+                # Get the legend character
                 profile = led_profiles[row] if row < len(led_profiles) else "disabled"
                 legend_char = self.get_led_legend_char(profile)
                 
-                final_text = trimmed_text + legend_char
+                # Truncate/pad to 18 characters to leave room for the 2 character prefix
+                trimmed_text = cleaned_text[:18].ljust(18)
+                
+                final_text = legend_char + " " + trimmed_text
                 
                 # Dirty check optimization
                 if final_text != self._last_rendered_lines[row]:
