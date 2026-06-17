@@ -39,3 +39,28 @@ def test_lcd_new_settings_defaults():
     finally:
         db.close()
 
+def test_update_lcd_settings():
+    from fastapi.testclient import TestClient
+    from main import app
+    client = TestClient(app)
+    payload = {
+        "lcd_brightness": 80,
+        "lcd_dim_brightness": 15,
+        "lcd_dim_timeout": 60,
+        "lcd_led0_profile": "alert",
+        "lcd_led1_profile": "disabled",
+        "lcd_led2_profile": "heartbeat",
+        "lcd_led3_profile": "streams"
+    }
+    resp = client.post("/settings", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["lcd_brightness"] == 80
+    assert data["lcd_dim_brightness"] == 15
+    assert data["lcd_dim_timeout"] == 60
+    assert data["lcd_led0_profile"] == "alert"
+    assert data["lcd_led1_profile"] == "disabled"
+    assert data["lcd_led2_profile"] == "heartbeat"
+    assert data["lcd_led3_profile"] == "streams"
+
+

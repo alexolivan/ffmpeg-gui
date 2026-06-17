@@ -173,6 +173,13 @@ class SettingsUpdate(BaseModel):
     lcd_enabled: Optional[bool] = None
     lcd_port: Optional[str] = None
     lcd_model: Optional[str] = None
+    lcd_brightness: Optional[int] = None
+    lcd_dim_brightness: Optional[int] = None
+    lcd_dim_timeout: Optional[int] = None
+    lcd_led0_profile: Optional[str] = None
+    lcd_led1_profile: Optional[str] = None
+    lcd_led2_profile: Optional[str] = None
+    lcd_led3_profile: Optional[str] = None
 
 class LoginRequest(BaseModel):
     password: str
@@ -203,12 +210,56 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.gui_password is not None: settings.gui_password = settings_in.gui_password
     if settings_in.logo_text is not None: settings.logo_text = settings_in.logo_text
     if settings_in.accent_color is not None: settings.accent_color = settings_in.accent_color
+    
+    lcd_params_changed = (
+        (settings_in.lcd_enabled is not None and settings_in.lcd_enabled != settings.lcd_enabled) or
+        (settings_in.lcd_port is not None and settings_in.lcd_port != settings.lcd_port) or
+        (settings_in.lcd_model is not None and settings_in.lcd_model != settings.lcd_model) or
+        (settings_in.lcd_brightness is not None and settings_in.lcd_brightness != settings.lcd_brightness) or
+        (settings_in.lcd_dim_brightness is not None and settings_in.lcd_dim_brightness != settings.lcd_dim_brightness) or
+        (settings_in.lcd_dim_timeout is not None and settings_in.lcd_dim_timeout != settings.lcd_dim_timeout) or
+        (settings_in.lcd_led0_profile is not None and settings_in.lcd_led0_profile != settings.lcd_led0_profile) or
+        (settings_in.lcd_led1_profile is not None and settings_in.lcd_led1_profile != settings.lcd_led1_profile) or
+        (settings_in.lcd_led2_profile is not None and settings_in.lcd_led2_profile != settings.lcd_led2_profile) or
+        (settings_in.lcd_led3_profile is not None and settings_in.lcd_led3_profile != settings.lcd_led3_profile)
+    )
+
     if settings_in.lcd_enabled is not None: settings.lcd_enabled = settings_in.lcd_enabled
     if settings_in.lcd_port is not None: settings.lcd_port = settings_in.lcd_port
     if settings_in.lcd_model is not None: settings.lcd_model = settings_in.lcd_model
-    
+    if settings_in.lcd_brightness is not None: settings.lcd_brightness = settings_in.lcd_brightness
+    if settings_in.lcd_dim_brightness is not None: settings.lcd_dim_brightness = settings_in.lcd_dim_brightness
+    if settings_in.lcd_dim_timeout is not None: settings.lcd_dim_timeout = settings_in.lcd_dim_timeout
+    if settings_in.lcd_led0_profile is not None: settings.lcd_led0_profile = settings_in.lcd_led0_profile
+    if settings_in.lcd_led1_profile is not None: settings.lcd_led1_profile = settings_in.lcd_led1_profile
+    if settings_in.lcd_led2_profile is not None: settings.lcd_led2_profile = settings_in.lcd_led2_profile
+    if settings_in.lcd_led3_profile is not None: settings.lcd_led3_profile = settings_in.lcd_led3_profile
+
     db.commit()
     db.refresh(settings)
+
+    global lcd_manager
+    if lcd_params_changed:
+        if lcd_manager:
+            try:
+                lcd_manager.stop()
+            except Exception:
+                pass
+            lcd_manager = None
+        
+        if settings.lcd_enabled:
+            try:
+                from core.lcd.manager import LCDManager
+                lcd_manager = LCDManager(
+                    db_session_factory=SessionLocal,
+                    process_manager=process_manager,
+                    task_manager=task_manager,
+                    port=settings.lcd_port
+                )
+                lcd_manager.start()
+            except Exception:
+                pass
+    
     return settings
 
 @app.post("/login")
