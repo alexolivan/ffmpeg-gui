@@ -43,9 +43,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [lcdEnabled, setLcdEnabled] = useState(settings.lcd_enabled || false);
   const [lcdPort, setLcdPort] = useState(settings.lcd_port || '/dev/ttyACM0');
   const [lcdModel, setLcdModel] = useState(settings.lcd_model || 'cfa635');
-  const [lcdBrightness, setLcdBrightness] = useState(settings.lcd_brightness !== undefined ? settings.lcd_brightness : 100);
-  const [lcdDimBrightness, setLcdDimBrightness] = useState(settings.lcd_dim_brightness !== undefined ? settings.lcd_dim_brightness : 20);
-  const [lcdDimTimeout, setLcdDimTimeout] = useState(settings.lcd_dim_timeout !== undefined ? settings.lcd_dim_timeout : 30);
+  const [lcdBrightness, setLcdBrightness] = useState(settings.lcd_brightness !== undefined && settings.lcd_brightness !== null ? settings.lcd_brightness : 100);
+  const [lcdDimBrightness, setLcdDimBrightness] = useState(settings.lcd_dim_brightness !== undefined && settings.lcd_dim_brightness !== null ? settings.lcd_dim_brightness : 20);
+  const [lcdDimTimeout, setLcdDimTimeout] = useState(settings.lcd_dim_timeout !== undefined && settings.lcd_dim_timeout !== null ? settings.lcd_dim_timeout : 30);
   const [lcdLed0Profile, setLcdLed0Profile] = useState(settings.lcd_led0_profile || 'heartbeat');
   const [lcdLed1Profile, setLcdLed1Profile] = useState(settings.lcd_led1_profile || 'streams');
   const [lcdLed2Profile, setLcdLed2Profile] = useState(settings.lcd_led2_profile || 'tasks');
@@ -60,9 +60,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLcdEnabled(settings.lcd_enabled || false);
     setLcdPort(settings.lcd_port || '/dev/ttyACM0');
     setLcdModel(settings.lcd_model || 'cfa635');
-    setLcdBrightness(settings.lcd_brightness !== undefined ? settings.lcd_brightness : 100);
-    setLcdDimBrightness(settings.lcd_dim_brightness !== undefined ? settings.lcd_dim_brightness : 20);
-    setLcdDimTimeout(settings.lcd_dim_timeout !== undefined ? settings.lcd_dim_timeout : 30);
+    setLcdBrightness(settings.lcd_brightness !== undefined && settings.lcd_brightness !== null ? settings.lcd_brightness : 100);
+    setLcdDimBrightness(settings.lcd_dim_brightness !== undefined && settings.lcd_dim_brightness !== null ? settings.lcd_dim_brightness : 20);
+    setLcdDimTimeout(settings.lcd_dim_timeout !== undefined && settings.lcd_dim_timeout !== null ? settings.lcd_dim_timeout : 30);
     setLcdLed0Profile(settings.lcd_led0_profile || 'heartbeat');
     setLcdLed1Profile(settings.lcd_led1_profile || 'streams');
     setLcdLed2Profile(settings.lcd_led2_profile || 'tasks');
@@ -79,6 +79,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings.lcd_led2_profile,
     settings.lcd_led3_profile
   ]);
+
+  // Auto-scan on component mount
+  useEffect(() => {
+    handleProbe();
+  }, []);
 
   const handleProbe = async () => {
     setIsProbing(true);
@@ -126,9 +131,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     lcdEnabled !== (settings.lcd_enabled || false) || 
     lcdPort !== (settings.lcd_port || '/dev/ttyACM0') || 
     lcdModel !== (settings.lcd_model || 'cfa635') ||
-    lcdBrightness !== (settings.lcd_brightness !== undefined ? settings.lcd_brightness : 100) ||
-    lcdDimBrightness !== (settings.lcd_dim_brightness !== undefined ? settings.lcd_dim_brightness : 20) ||
-    lcdDimTimeout !== (settings.lcd_dim_timeout !== undefined ? settings.lcd_dim_timeout : 30) ||
+    lcdBrightness !== (settings.lcd_brightness !== undefined && settings.lcd_brightness !== null ? settings.lcd_brightness : 100) ||
+    lcdDimBrightness !== (settings.lcd_dim_brightness !== undefined && settings.lcd_dim_brightness !== null ? settings.lcd_dim_brightness : 20) ||
+    lcdDimTimeout !== (settings.lcd_dim_timeout !== undefined && settings.lcd_dim_timeout !== null ? settings.lcd_dim_timeout : 30) ||
     lcdLed0Profile !== (settings.lcd_led0_profile || 'heartbeat') ||
     lcdLed1Profile !== (settings.lcd_led1_profile || 'streams') ||
     lcdLed2Profile !== (settings.lcd_led2_profile || 'tasks') ||
@@ -288,15 +293,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 h-full flex flex-col justify-between">
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider mb-2 text-white">Auto-Detected Devices</h4>
-                  {probeResults.length === 0 ? (
+                  {probeResults.length === 0 && (!settings.lcd_enabled || !settings.lcd_port) ? (
                     <p className="text-[10px] text-text-secondary italic">No LCD devices detected. Click "Scan" to probe active COM ports.</p>
                   ) : (
                     <div className="space-y-2">
+                      {settings.lcd_enabled && settings.lcd_port && !probeResults.some(p => p.port === settings.lcd_port) && (
+                        <div
+                          onClick={() => setLcdPort(settings.lcd_port)}
+                          className={`p-3 border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
+                            lcdPort === settings.lcd_port
+                              ? 'bg-brand-lime/20 border-brand-lime/40'
+                              : 'bg-white/5 border-white/10 hover:bg-white/10'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-xs font-bold text-brand-lime">{settings.lcd_port}</div>
+                            <div className="text-[9px] text-text-secondary">Configured Device (Active)</div>
+                          </div>
+                          <span className="text-[9px] font-black uppercase bg-brand-lime text-black px-2 py-0.5 rounded">
+                            {settings.lcd_model || 'cfa635'}
+                          </span>
+                        </div>
+                      )}
+
                       {probeResults.map((p: any, idx: number) => (
                         <div
                           key={idx}
                           onClick={() => setLcdPort(p.port)}
-                          className="p-3 bg-brand-lime/10 border border-brand-lime/20 rounded-xl flex items-center justify-between cursor-pointer hover:bg-brand-lime/20 transition-all"
+                          className={`p-3 border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
+                            lcdPort === p.port
+                              ? 'bg-brand-lime/20 border-brand-lime/40'
+                              : 'bg-white/5 border-white/10 hover:bg-white/10'
+                          }`}
                         >
                           <div>
                             <div className="text-xs font-bold text-brand-lime">{p.port}</div>

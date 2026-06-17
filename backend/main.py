@@ -196,6 +196,35 @@ def get_settings(db: Session = Depends(get_db)):
         db.add(settings)
         db.commit()
         db.refresh(settings)
+    
+    # Backwards compatibility auto-normalization for pre-existing rows
+    dirty = False
+    if settings.lcd_brightness is None:
+        settings.lcd_brightness = 100
+        dirty = True
+    if settings.lcd_dim_brightness is None:
+        settings.lcd_dim_brightness = 20
+        dirty = True
+    if settings.lcd_dim_timeout is None:
+        settings.lcd_dim_timeout = 30
+        dirty = True
+    if settings.lcd_led0_profile is None:
+        settings.lcd_led0_profile = "heartbeat"
+        dirty = True
+    if settings.lcd_led1_profile is None:
+        settings.lcd_led1_profile = "streams"
+        dirty = True
+    if settings.lcd_led2_profile is None:
+        settings.lcd_led2_profile = "tasks"
+        dirty = True
+    if settings.lcd_led3_profile is None:
+        settings.lcd_led3_profile = "alert"
+        dirty = True
+        
+    if dirty:
+        db.commit()
+        db.refresh(settings)
+        
     return settings
 
 @app.post("/settings")

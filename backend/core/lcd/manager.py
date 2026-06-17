@@ -80,6 +80,7 @@ class LCDManager:
                 logger.error(f"Failed to load LCD settings from DB: {e}")
             finally:
                 db.close()
+        self._last_led_colors = [None] * 4
 
     @property
     def locator_active(self) -> bool:
@@ -89,12 +90,16 @@ class LCDManager:
     def locator_active(self, val: bool):
         was_active = self._locator_active
         self._locator_active = val
+        self._last_led_colors = [None] * 4
         if was_active and not val:
             # Re-initialize clean render check when locator completes
             self._last_rendered_lines = [""] * 4
             self.refresh_display()
 
     def set_led_color(self, led_idx: int, color: str):
+        if self._last_led_colors[led_idx] == color:
+            return
+        
         gpos = {
             0: {"red": 5, "green": 6},
             1: {"red": 7, "green": 8},
@@ -103,6 +108,9 @@ class LCDManager:
         }.get(led_idx)
         if not gpos:
             return
+        
+        # Cache color state
+        self._last_led_colors[led_idx] = color
         
         try:
             if color == "red":
@@ -192,7 +200,10 @@ class LCDManager:
                             "===================="
                         ]
                     for row in range(4):
-                        self.driver.write_line(row, lines[row])
+                        target_text = lines[row]
+                        if target_text != self._last_rendered_lines[row]:
+                            self.driver.write_line(row, target_text)
+                            self._last_rendered_lines[row] = target_text
                     
                     locator_tick += 1
                     await asyncio.sleep(0.25)
