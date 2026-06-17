@@ -17,6 +17,10 @@ class LCDDisplayInterface(ABC):
     def clear(self) -> None:
         pass
 
+    @abstractmethod
+    def set_backlight(self, brightness: int) -> None:
+        pass
+
     @classmethod
     @abstractmethod
     def probe(cls, port: str) -> bool:

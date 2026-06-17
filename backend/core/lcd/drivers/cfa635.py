@@ -41,6 +41,14 @@ class Cfa635Driver(LCDDisplayInterface):
     def clear(self) -> None:
         self._send_packet(6, b"")
 
+    def set_backlight(self, brightness: int) -> None:
+        """
+        Set backlight brightness (0-100).
+        Command 14 (0x0E), data length 1, value 0-100.
+        """
+        brightness = max(0, min(100, brightness))
+        self._send_packet(14, struct.pack("B", brightness))
+
     @classmethod
     def probe(cls, port: str) -> bool:
         try:
