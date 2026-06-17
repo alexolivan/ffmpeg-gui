@@ -322,9 +322,8 @@ class LCDManager:
             # Check locator override first (handled in Task 5)
             # If locator is active, it will override the display. We can check self.locator_active.
             if getattr(self, "locator_active", False):
-                # If locator is active, we let the locator drawing handle it, or skip legend addition.
-                # Actually, during locator, we display a flashing screen, so we skip normal menu render.
-                pass
+                # If locator is active, we let the locator drawing handle it, so we skip normal menu render.
+                return
 
             led_profiles = [
                 getattr(self, "lcd_led0_profile", "heartbeat"),
@@ -414,9 +413,14 @@ class LCDManager:
                             # We only trigger action on key press (1-6).
                             if key_code in self.key_map:
                                 self._register_activity()
-                                key_name = self.key_map[key_code]
-                                self.current_view.handle_key(key_name)
-                                self.refresh_display()
+                                if getattr(self, "locator_active", False):
+                                    # Any key press acknowledges/dismisses locator mode
+                                    self.locator_active = False
+                                    logger.info("Locator mode dismissed via local keypad press.")
+                                else:
+                                    key_name = self.key_map[key_code]
+                                    self.current_view.handle_key(key_name)
+                                    self.refresh_display()
                 await asyncio.sleep(0.02)
             except Exception as e:
                 logger.error(f"Error in read loop: {e}")

@@ -71,3 +71,33 @@ async def test_locator_mode_activation():
         manager.locator_active = False
         assert len(manager._last_rendered_lines) == 4
         assert "FFMPEG-GUI" in manager._last_rendered_lines[0]
+
+@pytest.mark.asyncio
+async def test_locator_keypad_dismiss():
+    db_factory = MagicMock()
+    proc_mgr = MagicMock()
+    task_mgr = MagicMock()
+    
+    manager = LCDManager(db_factory, proc_mgr, task_mgr, port="/dev/ttyUSB0")
+    manager.driver = MagicMock()
+    manager.locator_active = True
+    assert manager.locator_active is True
+    
+    mock_ser = MagicMock()
+    mock_ser.is_open = True
+    # Simulate packet: type 0x80, len 1, key 1, CRC 2 bytes
+    mock_ser.in_waiting = 2
+    mock_ser.read.side_effect = [b'\x80', b'\x01', b'\x01', b'\x00\x00']
+    
+    manager.driver.ser = mock_ser
+    manager._running = True
+    manager.refresh_display = MagicMock()
+    
+    with patch('asyncio.sleep', side_effect=Exception("Exit Loop")):
+        try:
+            await manager._read_loop()
+        except Exception as e:
+            assert str(e) == "Exit Loop"
+            
+    # Verify that locator was dismissed
+    assert manager.locator_active is False
