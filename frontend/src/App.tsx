@@ -252,21 +252,30 @@ function App() {
             <ProcessConfigForm
               onCancel={() => setShowAddModal(false)}
               onSubmit={async (config) => {
-                await fetch(`${API}/processes`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    name: config.name, type: 'service',
-                    alias: config.alias,
-                    input_config: config.input_config, output_config: config.output_config,
-                    codec_config: config.codec_config, filter_config: config.filter_config,
-                    ffmpeg_build_id: config.ffmpeg_build_id,
-                    auto_start: config.auto_start,
-                    watchdog_enabled: config.watchdog_enabled,
-                    watchdog_retries: config.watchdog_retries,
-                  })
-                });
-                setShowAddModal(false);
+                try {
+                  const res = await fetch(`${API}/processes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      name: config.name, type: 'service',
+                      alias: config.alias,
+                      input_config: config.input_config, output_config: config.output_config,
+                      codec_config: config.codec_config, filter_config: config.filter_config,
+                      ffmpeg_build_id: config.ffmpeg_build_id,
+                      auto_start: config.auto_start,
+                      watchdog_enabled: config.watchdog_enabled,
+                      watchdog_retries: config.watchdog_retries,
+                    })
+                  });
+                  if (res.ok) {
+                    setShowAddModal(false);
+                  } else {
+                    const errData = await res.json();
+                    alert(`Error creating service: ${errData.detail || 'Unknown error'}`);
+                  }
+                } catch (err: any) {
+                  alert(`Network error creating service: ${err.message || err}`);
+                }
               }}
             />
           </div>
@@ -284,29 +293,47 @@ function App() {
               initialConfig={editingProcess}
               onCancel={() => setEditingProcess(null)}
               onSubmit={async (config) => {
-                await fetch(`${API}/processes/${editingProcess.id}`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    name: config.name,
-                    alias: config.alias,
-                    input_config: config.input_config, output_config: config.output_config,
-                    codec_config: config.codec_config, filter_config: config.filter_config,
-                    ffmpeg_build_id: config.ffmpeg_build_id,
-                    auto_start: config.auto_start,
-                    watchdog_enabled: config.watchdog_enabled,
-                    watchdog_retries: config.watchdog_retries,
-                  })
-                });
-                setEditingProcess(null);
+                try {
+                  const res = await fetch(`${API}/processes/${editingProcess.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      name: config.name,
+                      alias: config.alias,
+                      input_config: config.input_config, output_config: config.output_config,
+                      codec_config: config.codec_config, filter_config: config.filter_config,
+                      ffmpeg_build_id: config.ffmpeg_build_id,
+                      auto_start: config.auto_start,
+                      watchdog_enabled: config.watchdog_enabled,
+                      watchdog_retries: config.watchdog_retries,
+                    })
+                  });
+                  if (res.ok) {
+                    setEditingProcess(null);
+                  } else {
+                    const errData = await res.json();
+                    alert(`Error updating service: ${errData.detail || 'Unknown error'}`);
+                  }
+                } catch (err: any) {
+                  alert(`Network error updating service: ${err.message || err}`);
+                }
               }}
               onSaveAs={async (config) => {
-                await fetch(`${API}/processes`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(config)
-                });
-                setEditingProcess(null);
+                try {
+                  const res = await fetch(`${API}/processes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                  });
+                  if (res.ok) {
+                    setEditingProcess(null);
+                  } else {
+                    const errData = await res.json();
+                    alert(`Error saving service as copy: ${errData.detail || 'Unknown error'}`);
+                  }
+                } catch (err: any) {
+                  alert(`Network error saving service copy: ${err.message || err}`);
+                }
               }}
             />
           </div>
