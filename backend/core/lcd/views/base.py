@@ -1,5 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import List
+import unicodedata
+
+def clean_ascii(text: str) -> str:
+    if not text:
+        return ""
+    normalized = unicodedata.normalize('NFKD', text)
+    return normalized.encode('ascii', 'ignore').decode('ascii')
 
 class LCDView(ABC):
     def __init__(self, manager):

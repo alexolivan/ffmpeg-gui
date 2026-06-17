@@ -82,19 +82,9 @@ class ServicesMenuView(LCDView):
         elif key == "DOWN":
             self.selected_index = (self.selected_index + 1) % len(self.services)
         elif key == "TICK":
-            # Toggle Service Status
             svc = self.services[self.selected_index]
-            import asyncio
-            if svc.status == "running":
-                asyncio.create_task(self.manager.process_manager.stop_process(svc.id))
-            else:
-                asyncio.create_task(self.manager.process_manager.start_process(svc.id))
-            # Wait briefly and refresh list
-            async def refresh():
-                await asyncio.sleep(0.5)
-                self.fetch_services()
-                self.manager.refresh_display()
-            asyncio.create_task(refresh())
+            from .submenu import ServiceDetailMenuView
+            self.manager.switch_to_view(ServiceDetailMenuView(self.manager, svc.id))
 
 class TasksMenuView(LCDView):
     def __init__(self, manager):
@@ -145,18 +135,6 @@ class TasksMenuView(LCDView):
         elif key == "DOWN":
             self.selected_index = (self.selected_index + 1) % len(self.tasks)
         elif key == "TICK":
-            # Run task execution now
             task = self.tasks[self.selected_index]
-            import asyncio
-            db = self.manager.db_session_factory()
-            try:
-                from database.models import TaskExecution
-                exec_obj = TaskExecution(task_id=task.id, status="pending")
-                db.add(exec_obj)
-                db.commit()
-                # Launch execution via TaskManager
-                asyncio.create_task(self.manager.task_manager.start_execution(exec_obj.id))
-            except Exception:
-                pass
-            finally:
-                db.close()
+            from .submenu import TaskDetailMenuView
+            self.manager.switch_to_view(TaskDetailMenuView(self.manager, task.id))
