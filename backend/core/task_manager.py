@@ -6,6 +6,7 @@ import shlex
 from datetime import datetime
 import re
 from database.models import ScheduledTask, TaskExecution, TaskExecutionLog, FfmpegBuild
+from utils.process_utils import cleanup_rogue_processes
 
 class TaskManager:
     def __init__(self, db_session_factory, ffmpeg_path="ffmpeg"):
@@ -22,6 +23,7 @@ class TaskManager:
         return self.ffmpeg_path
 
     async def start_execution(self, execution_id: int):
+        cleanup_rogue_processes(execution_id=execution_id)
         with self.db_session_factory() as session:
             execution = session.query(TaskExecution).get(execution_id)
             if not execution:
@@ -53,11 +55,13 @@ class TaskManager:
             self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
             
             try:
+                sub_env = {**os.environ, "FFMPEG_GUI_EXECUTION_ID": str(execution_id)}
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                    stdin=asyncio.subprocess.PIPE
+                    stdin=asyncio.subprocess.PIPE,
+                    env=sub_env
                 )
                 self.running_processes[execution_id] = proc
                 self.last_activity[execution_id] = datetime.utcnow()
@@ -615,6 +619,8 @@ class TaskManager:
             except Exception: pass
             self.running_processes.pop(execution_id, None)
             self.last_activity.pop(execution_id, None)
+
+        cleanup_rogue_processes(execution_id=execution_id)
 
         with self.db_session_factory() as session:
             execution = session.query(TaskExecution).get(execution_id)
