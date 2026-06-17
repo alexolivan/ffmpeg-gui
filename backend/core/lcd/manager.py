@@ -23,6 +23,7 @@ class LCDManager:
         self._running = True
         try:
             self.driver.connect()
+            self.driver.set_backlight(100)
             self.driver.clear()
             self._read_task = asyncio.create_task(self._read_loop())
             self._refresh_task = asyncio.create_task(self._refresh_loop())
@@ -38,9 +39,15 @@ class LCDManager:
         if self._refresh_task:
             self._refresh_task.cancel()
         try:
+            # Clear display and write offline notice
+            self.driver.clear()
+            self.driver.write_line(1, "   SYSTEM OFFLINE   ")
+            self.driver.write_line(2, "  SERVICE STOPPED   ")
+            # Turn off backlight
+            self.driver.set_backlight(0)
             self.driver.disconnect()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error during LCD shutdown: {e}")
 
     def switch_to_view(self, new_view):
         try:
