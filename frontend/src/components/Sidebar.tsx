@@ -15,7 +15,6 @@ interface SidebarProps {
   logoPath?: string;
   accentColor?: string;
   onLogout?: () => void;
-  lcdConnected?: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -24,8 +23,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   logoText = 'FF', 
   logoPath, 
   accentColor = '#FF6B00',
-  onLogout,
-  lcdConnected
+  onLogout
 }) => {
   const items = [
     { id: 'dashboard', icon: <DashboardIcon size={20} />, label: 'Dashboard' },
@@ -48,20 +46,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           <span className="text-black font-black text-xl">{logoText}</span>
         )}
       </div>
-
-      {/* LCD Status Indicator for smaller screens (just the dot) */}
-      <div className="lg:hidden w-2.5 h-2.5 rounded-full mb-6 border border-white/10" 
-           style={{ backgroundColor: lcdConnected ? '#9eff00' : 'rgba(255,255,255,0.1)' }}
-           title={lcdConnected ? 'LCD Connected' : 'LCD Disconnected'}
-      />
-
-      {/* LCD Status Indicator for larger screens */}
-      {lcdConnected !== undefined && (
-        <div className="hidden lg:flex items-center gap-2 px-4 py-1.5 mb-6 bg-white/5 rounded-full border border-white/5 text-[9px] uppercase font-bold tracking-widest text-text-secondary">
-          <span className={`w-2 h-2 rounded-full ${lcdConnected ? 'bg-brand-lime shadow-lg shadow-brand-lime/50 animate-pulse' : 'bg-white/20'}`} />
-          <span>{lcdConnected ? 'LCD Connected' : 'LCD Offline'}</span>
-        </div>
-      )}
       
       <div className="flex-1 flex flex-col gap-6 w-full px-4">
         {items.map((item) => (

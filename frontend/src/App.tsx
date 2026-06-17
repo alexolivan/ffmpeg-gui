@@ -148,7 +148,6 @@ function App() {
           setLoginPass('');
           setIsAuthenticated(false);
         } : undefined}
-        lcdConnected={systemTelemetry?.lcd?.connected}
       />
 
       <main className="flex-1 overflow-y-auto p-8 lg:p-12">

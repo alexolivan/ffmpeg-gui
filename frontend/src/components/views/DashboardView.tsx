@@ -158,11 +158,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Column 2: Hardware Capabilities Detection */}
         <div className="glass-card p-8 border-brand-orange/10">
-          <h3 className="text-xl font-black mb-6">HARDWARE DETECTION</h3>
+          <h3 className="text-xl font-black mb-6">HARDWARE & PERIPHERALS</h3>
           <p className="text-xs text-text-secondary mb-8 leading-relaxed">
             Real-time introspection of host media acceleration capabilities, sound servers, and capture hardware devices.
           </p>
           <div className="space-y-6">
+            {/* LCD Status Item */}
+            {systemTelemetry.lcd && (
+              <div className="flex flex-col gap-1 p-3 bg-white/2 border border-white/5 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs uppercase text-white font-mono">LCD PANEL</span>
+                  <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
+                    systemTelemetry.lcd.connected
+                      ? 'bg-brand-lime/25 text-brand-lime'
+                      : 'bg-white/5 text-white/40'
+                  }`}>
+                    {systemTelemetry.lcd.connected ? 'CONNECTED' : 'OFFLINE'}
+                  </span>
+                </div>
+                <p className="text-[10px] text-text-secondary mt-1">
+                  {systemTelemetry.lcd.connected 
+                    ? `Crystalfontz CFA-635 active on ${systemTelemetry.lcd.port || 'detected port'}`
+                    : 'External hardware control panel is offline or disabled'
+                  }
+                </p>
+              </div>
+            )}
+
             {Object.entries(systemTelemetry.capabilities || {}).map(([key, value]: [string, any]) => (
               <div key={key} className="flex flex-col gap-1 p-3 bg-white/2 border border-white/5 rounded-xl">
                 <div className="flex items-center justify-between">
