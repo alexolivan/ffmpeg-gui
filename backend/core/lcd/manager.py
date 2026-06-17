@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import time
+import struct
 from typing import List, Optional
 from .drivers.cfa635 import Cfa635Driver
 from .views.dashboard import DashboardView
@@ -7,6 +9,15 @@ from .views.dashboard import DashboardView
 logger = logging.getLogger("LCD-Manager")
 
 class LCDManager:
+    key_map = {
+        1: "UP",
+        2: "DOWN",
+        3: "LEFT",
+        4: "RIGHT",
+        5: "TICK",
+        6: "X"
+    }
+
     def __init__(self, db_session_factory, process_manager, task_manager, port: str):
         self.db_session_factory = db_session_factory
         self.process_manager = process_manager
@@ -18,15 +29,42 @@ class LCDManager:
         self._running = False
         self._read_task = None
         self._refresh_task = None
+        self._dim_task = None
+        
+        # Inactivity Dimming configuration
+        self.active_brightness = 100
+        self.dim_brightness = 20
+        self.dim_timeout = 30
+        self._last_activity = time.time()
+        self._is_dimmed = False
+
+        # Load values from DB settings if available
+        if self.db_session_factory:
+            db = self.db_session_factory()
+            try:
+                from database.models import SystemSettings
+                settings = db.query(SystemSettings).first()
+                if settings:
+                    if settings.lcd_brightness is not None:
+                        self.active_brightness = settings.lcd_brightness
+                    if settings.lcd_dim_brightness is not None:
+                        self.dim_brightness = settings.lcd_dim_brightness
+                    if settings.lcd_dim_timeout is not None:
+                        self.dim_timeout = settings.lcd_dim_timeout
+            except Exception as e:
+                logger.error(f"Failed to load LCD settings from DB: {e}")
+            finally:
+                db.close()
 
     def start(self):
         self._running = True
         try:
             self.driver.connect()
-            self.driver.set_backlight(100)
+            self.driver.set_backlight(self.active_brightness)
             self.driver.clear()
             self._read_task = asyncio.create_task(self._read_loop())
             self._refresh_task = asyncio.create_task(self._refresh_loop())
+            self._dim_task = asyncio.create_task(self._dim_loop())
             self.refresh_display()
             logger.info(f"LCD Manager started successfully on port {self.port}")
         except Exception as e:
@@ -38,6 +76,8 @@ class LCDManager:
             self._read_task.cancel()
         if self._refresh_task:
             self._refresh_task.cancel()
+        if self._dim_task:
+            self._dim_task.cancel()
         try:
             # Clear display and write offline notice
             self.driver.clear()
@@ -73,15 +113,34 @@ class LCDManager:
         except Exception as e:
             logger.error(f"Error rendering LCD view: {e}")
 
+    def _register_activity(self):
+        self._last_activity = time.time()
+        if self._is_dimmed:
+            self._is_dimmed = False
+            if self.driver:
+                try:
+                    self.driver.set_backlight(self.active_brightness)
+                except Exception:
+                    pass
+
+    async def _check_dim_timeout(self):
+        if not self._is_dimmed and (time.time() - self._last_activity > self.dim_timeout):
+            self._is_dimmed = True
+            if self.driver:
+                try:
+                    self.driver.set_backlight(self.dim_brightness)
+                except Exception:
+                    pass
+
+    async def _dim_loop(self):
+        while self._running:
+            try:
+                await self._check_dim_timeout()
+            except Exception:
+                pass
+            await asyncio.sleep(1.0)
+
     async def _read_loop(self):
-        key_map = {
-            1: "UP",
-            2: "TICK",
-            4: "X",
-            8: "LEFT",
-            16: "RIGHT",
-            32: "DOWN"
-        }
         while self._running:
             try:
                 # Direct serial byte read
@@ -98,9 +157,12 @@ class LCDManager:
                                     key_code = key_code_byte[0]
                                     # Consume CRC (2 bytes)
                                     self.driver.ser.read(2)
-                                    # We only trigger action on key press
-                                    if key_code in key_map:
-                                        key_name = key_map[key_code]
+                                    
+                                    # Key codes 1-6 are pressed, 7-12 are released.
+                                    # We only trigger action on key press (1-6).
+                                    if key_code in self.key_map:
+                                        self._register_activity()
+                                        key_name = self.key_map[key_code]
                                         self.current_view.handle_key(key_name)
                                         self.refresh_display()
                 await asyncio.sleep(0.05)
