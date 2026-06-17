@@ -23,6 +23,7 @@ import logging
 import asyncio
 import datetime
 from fastapi import BackgroundTasks
+from utils.process_utils import cleanup_rogue_processes
 
 import time
 
@@ -797,6 +798,11 @@ lcd_manager = None
 @app.on_event("startup")
 async def startup_event():
     logger.info("Startup: Checking and cleaning up stale build profiles, processes and tasks...")
+    try:
+        cleanup_rogue_processes()
+    except Exception as e:
+        logger.error(f"Failed to clean up rogue processes on startup: {e}")
+
     try:
         with SessionLocal() as db:
             stale_builds = db.query(FfmpegBuild).filter(FfmpegBuild.status == "building").all()
