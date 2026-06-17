@@ -791,11 +791,23 @@ def probe_lcd_ports():
     ports = serial.tools.list_ports.comports()
     detected_ports = []
     
+    global lcd_manager
+    
     # List of registered drivers to try
     drivers = [Cfa635Driver]
     
     for port_info in ports:
         port_device = port_info.device
+        
+        # If the port is currently used by our active manager, skip serial open probe
+        if lcd_manager and lcd_manager._running and lcd_manager.port == port_device:
+            detected_ports.append({
+                "port": port_device,
+                "driver": "Cfa635Driver",
+                "description": f"{port_info.description} (Active)"
+            })
+            continue
+            
         for driver in drivers:
             if driver.probe(port_device):
                 detected_ports.append({
