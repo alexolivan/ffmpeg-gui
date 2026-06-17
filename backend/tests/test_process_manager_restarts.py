@@ -110,3 +110,55 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
         finally:
             self.db.delete(media_proc)
             self.db.commit()
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_watchdog_does_not_overwrite_restarted_process_status(self, mock_exec):
+        media_proc = MediaProcess(
+            name="Test Stale Watchdog Avoidance",
+            type="service",
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/test_pm_out_stale.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="running",
+            pid=99999,
+            watchdog_enabled=True,
+            watchdog_retries=3
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        try:
+            # 1. Create a mocked old process
+            mock_proc_old = MagicMock()
+            mock_proc_old.pid = 99999
+            mock_proc_old.returncode = 0
+            
+            async def mock_wait():
+                return 0
+            mock_proc_old.wait = mock_wait
+
+            # 2. Simulate watchdog running for mock_proc_old.
+            # But in the meantime, self.manager.processes[media_proc.id] has a different process
+            # (simulating that it restarted and has a new mock process object)
+            mock_proc_new = MagicMock()
+            mock_proc_new.pid = 88888
+            self.manager.processes[media_proc.id] = mock_proc_new
+
+            # 3. Call _watchdog's body or directly run the finally block of _watchdog by calling it
+            # and letting it finish.
+            with patch("psutil.Process") as mock_psutil:
+                # Make psutil raise NoSuchProcess so the main loop exits immediately
+                import psutil
+                mock_psutil.side_effect = psutil.NoSuchProcess(pid=99999)
+                
+                await self.manager._watchdog(media_proc.id, mock_proc_old)
+
+            # 4. Check that the DB still shows pid=99999 (meaning the stale watchdog did NOT overwrite it to None)
+            self.db.refresh(media_proc)
+            self.assertEqual(media_proc.pid, 99999)
+            self.assertEqual(media_proc.status, "running")
+
+        finally:
+            self.db.delete(media_proc)
+            self.db.commit()

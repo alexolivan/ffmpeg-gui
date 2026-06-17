@@ -977,6 +977,12 @@ class ProcessManager:
             await proc.wait()
             exit_code = proc.returncode
             
+            # If this process is no longer tracked as the active process for process_id,
+            # do not overwrite status/pid in the DB.
+            if self.processes.get(process_id) is not proc:
+                self.logger.info(f"Watchdog for process {process_id} (PID {proc.pid}) exiting without DB update (replaced or stopped).")
+                return
+
             with self.db_session_factory() as session:
                 from database.models import MediaProcess, ProcessLog
                 media_proc = session.query(MediaProcess).get(process_id)
