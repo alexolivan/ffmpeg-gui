@@ -257,6 +257,7 @@ function App() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     name: config.name, type: 'service',
+                    alias: config.alias,
                     input_config: config.input_config, output_config: config.output_config,
                     codec_config: config.codec_config, filter_config: config.filter_config,
                     ffmpeg_build_id: config.ffmpeg_build_id,
@@ -288,6 +289,7 @@ function App() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     name: config.name,
+                    alias: config.alias,
                     input_config: config.input_config, output_config: config.output_config,
                     codec_config: config.codec_config, filter_config: config.filter_config,
                     ffmpeg_build_id: config.ffmpeg_build_id,
