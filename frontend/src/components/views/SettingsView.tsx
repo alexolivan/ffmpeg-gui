@@ -43,6 +43,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [lcdEnabled, setLcdEnabled] = useState(settings.lcd_enabled || false);
   const [lcdPort, setLcdPort] = useState(settings.lcd_port || '/dev/ttyACM0');
   const [lcdModel, setLcdModel] = useState(settings.lcd_model || 'cfa635');
+  const [lcdBrightness, setLcdBrightness] = useState(settings.lcd_brightness !== undefined ? settings.lcd_brightness : 100);
+  const [lcdDimBrightness, setLcdDimBrightness] = useState(settings.lcd_dim_brightness !== undefined ? settings.lcd_dim_brightness : 20);
+  const [lcdDimTimeout, setLcdDimTimeout] = useState(settings.lcd_dim_timeout !== undefined ? settings.lcd_dim_timeout : 30);
+  const [lcdLed0Profile, setLcdLed0Profile] = useState(settings.lcd_led0_profile || 'heartbeat');
+  const [lcdLed1Profile, setLcdLed1Profile] = useState(settings.lcd_led1_profile || 'streams');
+  const [lcdLed2Profile, setLcdLed2Profile] = useState(settings.lcd_led2_profile || 'tasks');
+  const [lcdLed3Profile, setLcdLed3Profile] = useState(settings.lcd_led3_profile || 'alert');
+
   const [isProbing, setIsProbing] = useState(false);
   const [probeResults, setProbeResults] = useState<any[]>([]);
   const [isSavingLcd, setIsSavingLcd] = useState(false);
@@ -52,7 +60,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLcdEnabled(settings.lcd_enabled || false);
     setLcdPort(settings.lcd_port || '/dev/ttyACM0');
     setLcdModel(settings.lcd_model || 'cfa635');
-  }, [settings.lcd_enabled, settings.lcd_port, settings.lcd_model]);
+    setLcdBrightness(settings.lcd_brightness !== undefined ? settings.lcd_brightness : 100);
+    setLcdDimBrightness(settings.lcd_dim_brightness !== undefined ? settings.lcd_dim_brightness : 20);
+    setLcdDimTimeout(settings.lcd_dim_timeout !== undefined ? settings.lcd_dim_timeout : 30);
+    setLcdLed0Profile(settings.lcd_led0_profile || 'heartbeat');
+    setLcdLed1Profile(settings.lcd_led1_profile || 'streams');
+    setLcdLed2Profile(settings.lcd_led2_profile || 'tasks');
+    setLcdLed3Profile(settings.lcd_led3_profile || 'alert');
+  }, [
+    settings.lcd_enabled,
+    settings.lcd_port,
+    settings.lcd_model,
+    settings.lcd_brightness,
+    settings.lcd_dim_brightness,
+    settings.lcd_dim_timeout,
+    settings.lcd_led0_profile,
+    settings.lcd_led1_profile,
+    settings.lcd_led2_profile,
+    settings.lcd_led3_profile
+  ]);
 
   const handleProbe = async () => {
     setIsProbing(true);
@@ -79,6 +105,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         lcd_enabled: lcdEnabled,
         lcd_port: lcdPort,
         lcd_model: lcdModel,
+        lcd_brightness: Number(lcdBrightness),
+        lcd_dim_brightness: Number(lcdDimBrightness),
+        lcd_dim_timeout: Number(lcdDimTimeout),
+        lcd_led0_profile: lcdLed0Profile,
+        lcd_led1_profile: lcdLed1Profile,
+        lcd_led2_profile: lcdLed2Profile,
+        lcd_led3_profile: lcdLed3Profile,
       });
       setSaveLcdSuccess(true);
       setTimeout(() => setSaveLcdSuccess(false), 3000);
@@ -92,7 +125,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const hasLcdChanges = 
     lcdEnabled !== (settings.lcd_enabled || false) || 
     lcdPort !== (settings.lcd_port || '/dev/ttyACM0') || 
-    lcdModel !== (settings.lcd_model || 'cfa635');
+    lcdModel !== (settings.lcd_model || 'cfa635') ||
+    lcdBrightness !== (settings.lcd_brightness !== undefined ? settings.lcd_brightness : 100) ||
+    lcdDimBrightness !== (settings.lcd_dim_brightness !== undefined ? settings.lcd_dim_brightness : 20) ||
+    lcdDimTimeout !== (settings.lcd_dim_timeout !== undefined ? settings.lcd_dim_timeout : 30) ||
+    lcdLed0Profile !== (settings.lcd_led0_profile || 'heartbeat') ||
+    lcdLed1Profile !== (settings.lcd_led1_profile || 'streams') ||
+    lcdLed2Profile !== (settings.lcd_led2_profile || 'tasks') ||
+    lcdLed3Profile !== (settings.lcd_led3_profile || 'alert');
 
   const handleSaveIdentity = async () => {
     setIsSaving(true);
@@ -274,6 +314,108 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <p className="text-[9px] text-text-secondary italic mt-4">
                   Note: The driver communicates using 115200 baud. Make sure the user running the ffmpeg-gui service has read/write permissions for the selected serial port (e.g. dialout group).
                 </p>
+              </div>
+            </div>
+
+            {/* Backlight Settings */}
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6 pt-6 border-t border-white/5">
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Active Brightness ({lcdBrightness}%)</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-lime"
+                  value={lcdBrightness}
+                  onChange={e => setLcdBrightness(Number(e.target.value))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Dimmed Brightness ({lcdDimBrightness}%)</label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-lime"
+                  value={lcdDimBrightness}
+                  onChange={e => setLcdDimBrightness(Number(e.target.value))}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">Dim Timeout (seconds)</label>
+                <input
+                  type="number"
+                  min="5"
+                  max="3600"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 focus:border-brand-lime outline-none transition-all text-white text-xs"
+                  value={lcdDimTimeout}
+                  onChange={e => setLcdDimTimeout(Number(e.target.value))}
+                />
+              </div>
+            </div>
+
+            {/* LED Profiles */}
+            <div className="md:col-span-2 space-y-4 pt-6 border-t border-white/5">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-white">Status LED Profiles</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[9px] uppercase font-black text-text-secondary tracking-widest">LED 0 (Top)</label>
+                  <select
+                    value={lcdLed0Profile}
+                    onChange={e => setLcdLed0Profile(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 focus:border-brand-lime outline-none transition-all text-white text-xs"
+                  >
+                    <option value="heartbeat" className="bg-black text-white">Heartbeat (Green blink)</option>
+                    <option value="streams" className="bg-black text-white">Streams / Services</option>
+                    <option value="tasks" className="bg-black text-white">Tasks (Last 24h)</option>
+                    <option value="alert" className="bg-black text-white">Alert (CPU/RAM)</option>
+                    <option value="disabled" className="bg-black text-white">Disabled</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] uppercase font-black text-text-secondary tracking-widest">LED 1</label>
+                  <select
+                    value={lcdLed1Profile}
+                    onChange={e => setLcdLed1Profile(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 focus:border-brand-lime outline-none transition-all text-white text-xs"
+                  >
+                    <option value="heartbeat" className="bg-black text-white">Heartbeat (Green blink)</option>
+                    <option value="streams" className="bg-black text-white">Streams / Services</option>
+                    <option value="tasks" className="bg-black text-white">Tasks (Last 24h)</option>
+                    <option value="alert" className="bg-black text-white">Alert (CPU/RAM)</option>
+                    <option value="disabled" className="bg-black text-white">Disabled</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] uppercase font-black text-text-secondary tracking-widest">LED 2</label>
+                  <select
+                    value={lcdLed2Profile}
+                    onChange={e => setLcdLed2Profile(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 focus:border-brand-lime outline-none transition-all text-white text-xs"
+                  >
+                    <option value="heartbeat" className="bg-black text-white">Heartbeat (Green blink)</option>
+                    <option value="streams" className="bg-black text-white">Streams / Services</option>
+                    <option value="tasks" className="bg-black text-white">Tasks (Last 24h)</option>
+                    <option value="alert" className="bg-black text-white">Alert (CPU/RAM)</option>
+                    <option value="disabled" className="bg-black text-white">Disabled</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] uppercase font-black text-text-secondary tracking-widest">LED 3 (Bottom)</label>
+                  <select
+                    value={lcdLed3Profile}
+                    onChange={e => setLcdLed3Profile(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-2.5 focus:border-brand-lime outline-none transition-all text-white text-xs"
+                  >
+                    <option value="heartbeat" className="bg-black text-white">Heartbeat (Green blink)</option>
+                    <option value="streams" className="bg-black text-white">Streams / Services</option>
+                    <option value="tasks" className="bg-black text-white">Tasks (Last 24h)</option>
+                    <option value="alert" className="bg-black text-white">Alert (CPU/RAM)</option>
+                    <option value="disabled" className="bg-black text-white">Disabled</option>
+                  </select>
+                </div>
               </div>
             </div>
 
