@@ -101,10 +101,10 @@ class LCDManager:
             return
         
         gpos = {
-            0: {"red": 5, "green": 6},
-            1: {"red": 7, "green": 8},
-            2: {"red": 9, "green": 10},
-            3: {"red": 11, "green": 12}
+            0: {"red": 6, "green": 5},
+            1: {"red": 8, "green": 7},
+            2: {"red": 10, "green": 9},
+            3: {"red": 12, "green": 11}
         }.get(led_idx)
         if not gpos:
             return
@@ -174,6 +174,9 @@ class LCDManager:
         locator_tick = 0
         while self._running:
             try:
+                tick_10 = locator_tick % 10
+                locator_tick += 1
+                
                 # Check locator active
                 if self.locator_active:
                     # Locator mode: flashes all bicolor LEDs in red/green/yellow alternations at 2Hz
@@ -205,7 +208,6 @@ class LCDManager:
                             self.driver.write_line(row, target_text)
                             self._last_rendered_lines[row] = target_text
                     
-                    locator_tick += 1
                     await asyncio.sleep(0.25)
                     continue
                 
@@ -221,7 +223,7 @@ class LCDManager:
                     color = "off"
                     if profile == "heartbeat":
                         # flash green for 100ms every 1s
-                        if (int(time.time() * 10) % 10) == 0:
+                        if tick_10 == 0:
                             color = "green"
                         else:
                             color = "off"
@@ -385,30 +387,39 @@ class LCDManager:
     async def _read_loop(self):
         while self._running:
             try:
-                # Direct serial byte read
                 if self.driver.ser and self.driver.ser.is_open:
-                    if self.driver.ser.in_waiting > 0:
-                        # CrystalFontz packet: [type][length][data...][crc_lsb][crc_msb]
-                        # For Key activity (0x80), length is 1, data is key code
-                        cmd_byte = self.driver.ser.read(1)
-                        if len(cmd_byte) > 0 and cmd_byte[0] == 0x80:
-                            len_byte = self.driver.ser.read(1)
-                            if len(len_byte) > 0 and len_byte[0] == 1:
-                                key_code_byte = self.driver.ser.read(1)
-                                if len(key_code_byte) > 0:
-                                    key_code = key_code_byte[0]
-                                    # Consume CRC (2 bytes)
-                                    self.driver.ser.read(2)
-                                    
-                                    # Key codes 1-6 are pressed, 7-12 are released.
-                                    # We only trigger action on key press (1-6).
-                                    if key_code in self.key_map:
-                                        self._register_activity()
-                                        key_name = self.key_map[key_code]
-                                        self.current_view.handle_key(key_name)
-                                        self.refresh_display()
-                await asyncio.sleep(0.05)
+                    if self.driver.ser.in_waiting >= 2:
+                        type_byte_arr = self.driver.ser.read(1)
+                        if not type_byte_arr:
+                            continue
+                        type_byte = type_byte_arr[0]
+                        
+                        length_byte_arr = self.driver.ser.read(1)
+                        if not length_byte_arr:
+                            continue
+                        length_byte = length_byte_arr[0]
+                        
+                        payload_len = length_byte
+                        data_bytes = b""
+                        if payload_len > 0:
+                            data_bytes = self.driver.ser.read(payload_len)
+                        
+                        # Consume CRC (2 bytes)
+                        self.driver.ser.read(2)
+                        
+                        # Process keypad event (type 0x80, data length 1)
+                        if type_byte == 0x80 and length_byte == 1 and len(data_bytes) == 1:
+                            key_code = data_bytes[0]
+                            # Key codes 1-6 are pressed, 7-12 are released.
+                            # We only trigger action on key press (1-6).
+                            if key_code in self.key_map:
+                                self._register_activity()
+                                key_name = self.key_map[key_code]
+                                self.current_view.handle_key(key_name)
+                                self.refresh_display()
+                await asyncio.sleep(0.02)
             except Exception as e:
+                logger.error(f"Error in read loop: {e}")
                 await asyncio.sleep(1)
 
     async def _refresh_loop(self):

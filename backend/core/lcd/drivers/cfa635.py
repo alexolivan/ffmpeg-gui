@@ -25,13 +25,11 @@ class Cfa635Driver(LCDDisplayInterface):
                 crc = (crc >> 1) ^ 0x8408 if crc & 0x0001 else crc >> 1
         return ~crc & 0xFFFF
 
-    def _send_packet(self, command: int, data: bytes) -> bytes:
+    def _send_packet(self, command: int, data: bytes) -> None:
         packet = struct.pack(f"BB{len(data)}s", command, len(data), data)
         full_packet = packet + struct.pack("<H", self._calculate_crc(packet))
         if self.ser and self.ser.is_open:
             self.ser.write(full_packet)
-            return self.ser.read(100)
-        return b""
 
     def write_line(self, row: int, text: str) -> None:
         formatted_text = text[:self.cols].ljust(self.cols)
