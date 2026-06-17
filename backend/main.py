@@ -8,7 +8,7 @@ import shlex
 from PIL import Image
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import List, Optional
 from database.db import init_db, get_db, SessionLocal
 from database.models import FfmpegBuild, MediaProcess, ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog
@@ -153,6 +153,21 @@ class ProcessCreate(BaseModel):
     auto_start: Optional[bool] = False
     watchdog_enabled: Optional[bool] = False
     watchdog_retries: Optional[int] = 5
+    alias: Optional[str] = None
+
+    @validator('alias')
+    def validate_alias(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 12:
+            raise ValueError("Alias must be 12 characters or less")
+        import re
+        if not re.match(r"^[a-zA-Z0-9\s\-_]+$", v):
+            raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
+        return v
 
 class ProcessUpdate(BaseModel):
     name: Optional[str] = None
@@ -164,6 +179,21 @@ class ProcessUpdate(BaseModel):
     auto_start: Optional[bool] = None
     watchdog_enabled: Optional[bool] = None
     watchdog_retries: Optional[int] = None
+    alias: Optional[str] = None
+
+    @validator('alias')
+    def validate_alias(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 12:
+            raise ValueError("Alias must be 12 characters or less")
+        import re
+        if not re.match(r"^[a-zA-Z0-9\s\-_]+$", v):
+            raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
+        return v
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -1332,6 +1362,7 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         auto_start=proc_in.auto_start,
         watchdog_enabled=proc_in.watchdog_enabled,
         watchdog_retries=proc_in.watchdog_retries,
+        alias=proc_in.alias,
     )
     db.add(db_proc)
     db.commit()
@@ -1373,6 +1404,7 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.auto_start is not None: db_proc.auto_start = proc_in.auto_start
     if proc_in.watchdog_enabled is not None: db_proc.watchdog_enabled = proc_in.watchdog_enabled
     if proc_in.watchdog_retries is not None: db_proc.watchdog_retries = proc_in.watchdog_retries
+    if proc_in.alias is not None: db_proc.alias = proc_in.alias
 
     db.commit()
     db.refresh(db_proc)
@@ -1669,6 +1701,21 @@ class ScheduledTaskCreate(BaseModel):
     duration_seconds: Optional[int] = None
     duration_end_time: Optional[datetime.datetime] = None
     retry_policy: Optional[dict] = None
+    alias: Optional[str] = None
+
+    @validator('alias')
+    def validate_alias(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 12:
+            raise ValueError("Alias must be 12 characters or less")
+        import re
+        if not re.match(r"^[a-zA-Z0-9\s\-_]+$", v):
+            raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
+        return v
 
 class ScheduledTaskUpdate(BaseModel):
     name: Optional[str] = None
@@ -1685,6 +1732,21 @@ class ScheduledTaskUpdate(BaseModel):
     duration_seconds: Optional[int] = None
     duration_end_time: Optional[datetime.datetime] = None
     retry_policy: Optional[dict] = None
+    alias: Optional[str] = None
+
+    @validator('alias')
+    def validate_alias(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 12:
+            raise ValueError("Alias must be 12 characters or less")
+        import re
+        if not re.match(r"^[a-zA-Z0-9\s\-_]+$", v):
+            raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
+        return v
 
 
 # ── Scheduled Tasks API Endpoints ─────────────────────────────────
@@ -1713,6 +1775,7 @@ def list_tasks(db: Session = Depends(get_db)):
             "duration_seconds": t.duration_seconds,
             "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
             "retry_policy": t.retry_policy,
+            "alias": t.alias,
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
             "last_execution": {
@@ -1754,7 +1817,8 @@ def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
         duration_type=payload.duration_type,
         duration_seconds=payload.duration_seconds,
         duration_end_time=payload.duration_end_time,
-        retry_policy=payload.retry_policy
+        retry_policy=payload.retry_policy,
+        alias=payload.alias,
     )
     db.add(db_task)
     db.commit()
@@ -1780,7 +1844,8 @@ def export_tasks(db: Session = Depends(get_db)):
             "duration_type": t.duration_type,
             "duration_seconds": t.duration_seconds,
             "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
-            "retry_policy": t.retry_policy
+            "retry_policy": t.retry_policy,
+            "alias": t.alias,
         })
     return {
         "version": 2,
@@ -1811,7 +1876,8 @@ def export_single_task(task_id: int, db: Session = Depends(get_db)):
             "duration_type": t.duration_type,
             "duration_seconds": t.duration_seconds,
             "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
-            "retry_policy": t.retry_policy
+            "retry_policy": t.retry_policy,
+            "alias": t.alias,
         }
     }
 
@@ -1879,7 +1945,8 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
             duration_type=td.get("duration_type", "input_dependent"),
             duration_seconds=td.get("duration_seconds"),
             duration_end_time=datetime.datetime.fromisoformat(td["duration_end_time"]) if td.get("duration_end_time") else None,
-            retry_policy=td.get("retry_policy")
+            retry_policy=td.get("retry_policy"),
+            alias=td.get("alias")
         )
         db.add(db_task)
         imported.append(db_task)
@@ -1913,6 +1980,7 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
             "duration_seconds": task.duration_seconds,
             "duration_end_time": task.duration_end_time.isoformat() if task.duration_end_time else None,
             "retry_policy": task.retry_policy,
+            "alias": task.alias,
         },
         "executions": [
             {
