@@ -70,4 +70,4 @@ async def test_locator_mode_activation():
         # Test setter transition reset
         manager.locator_active = False
         assert len(manager._last_rendered_lines) == 4
-        assert "STATUS" in manager._last_rendered_lines[0]
+        assert "FFMPEG-GUI" in manager._last_rendered_lines[0]
