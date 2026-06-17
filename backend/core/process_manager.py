@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Dict, Optional
 import json
 import collections
+from utils.process_utils import cleanup_rogue_processes
 
 class ProcessManager:
     def __init__(self, db_session_factory):
@@ -27,6 +28,7 @@ class ProcessManager:
         return "ffmpeg"
 
     async def start_process(self, process_id: int, is_restart: bool = False):
+        cleanup_rogue_processes(process_id=process_id)
         with self.db_session_factory() as session:
             from database.models import MediaProcess, FfmpegBuild, ProcessLog
             media_proc = session.query(MediaProcess).get(process_id)
@@ -69,11 +71,13 @@ class ProcessManager:
             
             try:
                 self.log_buffers[process_id] = collections.deque(maxlen=100)
+                sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                    stdin=asyncio.subprocess.PIPE
+                    stdin=asyncio.subprocess.PIPE,
+                    env=sub_env
                 )
                 self.processes[process_id] = proc
                 media_proc.pid = proc.pid
@@ -133,6 +137,8 @@ class ProcessManager:
             
             if process_id in self.processes:
                 del self.processes[process_id]
+
+        cleanup_rogue_processes(process_id=process_id)
 
         with self.db_session_factory() as session:
             from database.models import MediaProcess
