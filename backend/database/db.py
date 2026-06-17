@@ -29,6 +29,14 @@ def init_db():
             cursor.execute("ALTER TABLE media_processes ADD COLUMN watchdog_retries INTEGER DEFAULT 5")
         if "last_started_config" not in columns:
             cursor.execute("ALTER TABLE media_processes ADD COLUMN last_started_config JSON DEFAULT NULL")
+        if "alias" not in columns:
+            cursor.execute("ALTER TABLE media_processes ADD COLUMN alias TEXT DEFAULT NULL")
+            
+        # Migración para la tabla scheduled_tasks
+        cursor.execute("PRAGMA table_info(scheduled_tasks)")
+        task_columns = [col[1] for col in cursor.fetchall()]
+        if "alias" not in task_columns:
+            cursor.execute("ALTER TABLE scheduled_tasks ADD COLUMN alias TEXT DEFAULT NULL")
         
         # Migración para la columna auto_clean en ffmpeg_builds
         cursor.execute("PRAGMA table_info(ffmpeg_builds)")

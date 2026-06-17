@@ -84,6 +84,7 @@ class MediaProcess(Base):
     ffmpeg_build_id = Column(Integer, ForeignKey('ffmpeg_builds.id'), nullable=True)
     ffmpeg_build = relationship("FfmpegBuild", back_populates="processes")
 
+    alias = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     @property
@@ -168,6 +169,7 @@ class ScheduledTask(Base):
 
     retry_policy = Column(JSON, nullable=True)
 
+    alias = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
