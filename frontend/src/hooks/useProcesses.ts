@@ -108,6 +108,7 @@ export function useProcesses() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: `${proc.name} (Copy)`,
+          alias: proc.alias ? `${proc.alias.slice(0, 7)}_copy`.slice(0, 12) : null,
           type: 'service',
           input_config: proc.input_config,
           output_config: proc.output_config,

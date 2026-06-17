@@ -192,6 +192,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: `${task.name} (Copy)`,
+          alias: task.alias ? `${task.alias.slice(0, 7)}_copy`.slice(0, 12) : null,
           is_active: task.is_active,
           input_config: task.input_config,
           output_config: task.output_config,

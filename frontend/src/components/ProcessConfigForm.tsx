@@ -20,6 +20,7 @@ const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'al
 
 interface ProcessConfig {
   name: string;
+  alias: string;
   ffmpeg_build_id: number | null;
   has_video: boolean;
   has_audio: boolean;
@@ -95,6 +96,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
 
       return {
         name: initialConfig.name || '',
+        alias: initialConfig.alias || '',
         ffmpeg_build_id: initialConfig.ffmpeg_build_id ?? null,
         has_video: inputCfg.has_video !== false,
         has_audio: inputCfg.has_audio !== false,
@@ -135,6 +137,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     }
     return {
       name: '',
+      alias: '',
       ffmpeg_build_id: null,
       has_video: true,
       has_audio: true,
@@ -220,6 +223,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   const createPayload = () => {
     return {
       name: config.name,
+      alias: config.alias ? config.alias.trim() : null,
       ffmpeg_build_id: config.ffmpeg_build_id,
       input_config: {
         has_video: config.has_video,
@@ -272,6 +276,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     if (!onSaveAs) return;
     const payload = createPayload();
     payload.name = `${config.name} (Copy)`;
+    if (payload.alias) {
+      payload.alias = `${config.alias.slice(0, 7)}_copy`.slice(0, 12);
+    }
     onSaveAs(payload);
   };
 
@@ -312,13 +319,31 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     <div className="flex flex-col h-full max-h-[75vh]">
       {/* ── Header: Name + Build ── */}
       <div className="space-y-3 mb-4 flex-shrink-0">
-        <input
-          type="text"
-          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all text-lg font-medium"
-          placeholder={isTask ? "Task name (e.g. Daily Transcode of Stream)" : "Service name (e.g. Primary Encoder Node-01)"}
-          value={config.name}
-          onChange={e => setConfig({ ...config, name: e.target.value })}
-        />
+        <div className="flex gap-3">
+          <div className="flex-[3]">
+            <input
+              type="text"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all text-lg font-medium"
+              placeholder={isTask ? "Task name (e.g. Daily Transcode of Stream)" : "Service name (e.g. Primary Encoder Node-01)"}
+              value={config.name}
+              onChange={e => setConfig({ ...config, name: e.target.value })}
+            />
+          </div>
+          <div className="w-[180px] flex-shrink-0">
+            <input
+              type="text"
+              maxLength={12}
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all text-lg font-medium text-brand-lime placeholder-white/20"
+              placeholder="LCD Alias"
+              title="Alias for LCD display (max 12 alphanumeric characters, spaces, hyphens, underscores)"
+              value={config.alias}
+              onChange={e => {
+                const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
+                setConfig({ ...config, alias: val });
+              }}
+            />
+          </div>
+        </div>
         <div className="flex gap-3 items-center">
           {availableBuilds.length > 0 && (
             <select
