@@ -120,3 +120,31 @@ def test_lcd_views_with_alias_and_node_name():
     assert "ShortTask" in task_status.render()[0]
 
 
+def test_2_row_scrolling():
+    from unittest.mock import MagicMock
+    from database.models import MediaProcess
+    from core.lcd.views.menu import ServicesMenuView
+    
+    manager = MagicMock()
+    manager.driver.rows = 2
+    
+    db_mock = MagicMock()
+    manager.db_session_factory.return_value = db_mock
+    
+    svc1 = MediaProcess(id=1, name="Svc1", status="running")
+    svc2 = MediaProcess(id=2, name="Svc2", status="stopped")
+    
+    db_mock.query.return_value.filter.return_value.all.return_value = [svc1, svc2]
+    
+    menu = ServicesMenuView(manager)
+    # Selected index 0
+    menu.selected_index = 0
+    lines = menu.render()
+    assert lines[0] == "-- SERVICES MENU -"
+    assert "> * Svc1" in lines[1]
+    
+    # Selected index 1
+    menu.selected_index = 1
+    lines = menu.render()
+    assert lines[0] == "-- SERVICES MENU -"
+    assert ">   Svc2" in lines[1]
