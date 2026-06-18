@@ -343,8 +343,8 @@ class TaskManager:
         # ── Secondary Preview Output ──
         if execution_id and has_video:
             import os
-            from database.db import BASE_DIR
-            previews_dir = os.path.join(BASE_DIR, "data", "previews")
+            from database.db import PREVIEWS_DIR
+            previews_dir = PREVIEWS_DIR
             os.makedirs(previews_dir, exist_ok=True)
             preview_path = os.path.join(previews_dir, f"preview_task_{execution_id}.jpg")
             cmd += [
