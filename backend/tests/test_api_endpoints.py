@@ -419,6 +419,26 @@ class TestTaskAPI(unittest.TestCase):
         self.assertNotIn("-hwaccel_output_format ''", cmd)
         self.assertNotIn("-hwaccel_output_format \"\"", cmd)
 
+    def test_input_level_hwaccel_command_generation(self):
+        payload = {
+            "name": "Test Input-Level HWaccel Command Generation",
+            "type": "service",
+            "input_config": {
+                "input1": {
+                    "type": "file",
+                    "path": "/tmp/test.mp4",
+                    "hwaccel": "vaapi",
+                    "hwaccel_output_format": "vaapi"
+                }
+            },
+            "output_config": {"type": "udp", "host": "127.0.0.1", "port": "1234"},
+            "codec_config": {"vcodec": "libx264"}
+        }
+        res = self.client.post("/processes/preview-cmd", json=payload)
+        self.assertEqual(res.status_code, 200)
+        cmd = res.json()["command"]
+        self.assertIn("-hwaccel vaapi -hwaccel_output_format vaapi -i /tmp/test.mp4", cmd)
+
     def test_decklink_rawvideo_mapping_preview(self):
         # Test mapping in process_manager (services)
         payload_service = {

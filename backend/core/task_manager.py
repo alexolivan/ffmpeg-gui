@@ -96,12 +96,20 @@ class TaskManager:
         if threads and int(threads) > 0:
             cmd += ["-threads", str(int(threads))]
 
-        # HW Accel
-        hwaccel = advanced.get('hwaccel', 'none')
-        if hwaccel and hwaccel != 'none':
-            cmd += ["-hwaccel", hwaccel]
-            hwaccel_out = advanced.get('hwaccel_output_format', hwaccel)
-            cmd += ["-hwaccel_output_format", hwaccel_out]
+        # Hardware acceleration (legacy fallback)
+        has_input_level_hwdec = False
+        if is_new_format:
+            p_hw = input_cfg.get('input1', {}).get('hwaccel', 'none')
+            s_hw = input_cfg.get('input2', {}).get('hwaccel', 'none')
+            if (p_hw and p_hw != 'none') or (s_hw and s_hw != 'none'):
+                has_input_level_hwdec = True
+
+        if not has_input_level_hwdec:
+            hwaccel = advanced.get('hwaccel', 'none')
+            if hwaccel and hwaccel != 'none':
+                cmd += ["-hwaccel", hwaccel]
+                hwaccel_out = advanced.get('hwaccel_output_format', hwaccel)
+                cmd += ["-hwaccel_output_format", hwaccel_out]
 
         # Probe size
         probesize = advanced.get('probesize', '')
@@ -355,6 +363,16 @@ class TaskManager:
 
     def _append_input(self, cmd: list, input_cfg: dict):
         input_type = input_cfg.get('type')
+        
+        # Input-specific hardware acceleration
+        hwaccel = input_cfg.get('hwaccel', 'none')
+        if hwaccel and hwaccel != 'none':
+            cmd += ["-hwaccel", hwaccel]
+            hwaccel_out = input_cfg.get('hwaccel_output_format', '')
+            if not hwaccel_out:
+                hwaccel_out = hwaccel
+            if hwaccel_out and hwaccel_out != 'none':
+                cmd += ["-hwaccel_output_format", hwaccel_out]
         if input_type == 'file':
             cmd += ["-i", input_cfg.get('path', '')]
         elif input_type == 'lavfi':
