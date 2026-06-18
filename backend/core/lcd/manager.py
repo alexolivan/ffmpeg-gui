@@ -194,19 +194,42 @@ class LCDManager:
                     # Overriding LCD display with a blinking rack locator screen
                     flash_phase = locator_tick % 2
                     if flash_phase == 0:
-                        lines = ["", "", "", ""]
+                        lines = [""] * (self.driver.rows if self.driver else 4)
                     else:
-                        lines = [
-                            "====================",
-                            "   *** FIND ME! *** ",
-                            "      RACK LOCATOR  ",
-                            "===================="
-                        ]
-                    for row in range(4):
-                        target_text = lines[row]
-                        if target_text != self._last_rendered_lines[row]:
-                            self.driver.write_line(row, target_text)
-                            self._last_rendered_lines[row] = target_text
+                        cols = self.driver.cols if self.driver else 20
+                        rows = self.driver.rows if self.driver else 4
+                        if cols == 16:
+                            if rows == 2:
+                                lines = [
+                                    "  *** FINDME ***",
+                                    "  RACK LOCATOR  "
+                                ]
+                            else:
+                                lines = [
+                                    "================",
+                                    "  *** FINDME ***",
+                                    "  RACK LOCATOR  ",
+                                    "================"
+                                ]
+                        else:
+                            if rows == 2:
+                                lines = [
+                                    "   *** FIND ME! *** ",
+                                    "      RACK LOCATOR  "
+                                ]
+                            else:
+                                lines = [
+                                    "====================",
+                                    "   *** FIND ME! *** ",
+                                    "      RACK LOCATOR  ",
+                                    "===================="
+                                ]
+                    if self.driver:
+                        for row in range(self.driver.rows):
+                            target_text = lines[row] if row < len(lines) else ""
+                            if target_text != self._last_rendered_lines[row]:
+                                self.driver.write_line(row, target_text)
+                                self._last_rendered_lines[row] = target_text
                     
                     await asyncio.sleep(0.25)
                     continue
@@ -306,16 +329,16 @@ class LCDManager:
             pass
         self.refresh_display()
 
-    def get_led_legend_char(self, profile: str) -> str:
+    def get_led_legend_prefix(self, profile: str) -> str:
         if profile == "heartbeat":
-            return "H"
+            return "HB  "
         elif profile == "streams":
-            return "S"
+            return "SRV "
         elif profile == "tasks":
-            return "T"
+            return "TSK "
         elif profile == "alert":
-            return "A"
-        return " "
+            return "ERR "
+        return "    "
 
     def refresh_display(self):
         try:
@@ -333,25 +356,34 @@ class LCDManager:
             ]
 
             lines = self.current_view.render()
-            for row in range(4):
+            rows_limit = self.driver.rows if self.driver else 4
+            for row in range(rows_limit):
                 line_text = lines[row] if row < len(lines) else ""
                 
                 # Apply text ASCII cleaning
                 from .views.base import clean_ascii
                 cleaned_text = clean_ascii(line_text)
                 
-                # Get the legend character
-                profile = led_profiles[row] if row < len(led_profiles) else "disabled"
-                legend_char = self.get_led_legend_char(profile)
+                # Truncate/pad to 16 characters content core
+                trimmed_text = cleaned_text[:16].ljust(16)
                 
-                # Truncate/pad to 18 characters to leave room for the 2 character prefix
-                trimmed_text = cleaned_text[:18].ljust(18)
-                
-                final_text = legend_char + " " + trimmed_text
+                # Determine prefix / centering based on columns count
+                cols = self.driver.cols if self.driver else 20
+                if cols == 20:
+                    from .drivers.cfa635 import Cfa635Driver
+                    if self.driver and isinstance(self.driver, Cfa635Driver):
+                        profile = led_profiles[row] if row < len(led_profiles) else "disabled"
+                        prefix = self.get_led_legend_prefix(profile)
+                        final_text = prefix + trimmed_text
+                    else:
+                        final_text = "  " + trimmed_text + "  "
+                else:
+                    final_text = trimmed_text
                 
                 # Dirty check optimization
                 if final_text != self._last_rendered_lines[row]:
-                    self.driver.write_line(row, final_text)
+                    if self.driver:
+                        self.driver.write_line(row, final_text)
                     self._last_rendered_lines[row] = final_text
         except Exception as e:
             logger.error(f"Error rendering LCD view: {e}")
