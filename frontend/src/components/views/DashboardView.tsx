@@ -219,13 +219,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       ? 'bg-brand-lime/25 text-brand-lime'
                       : 'bg-white/5 text-white/40'
                   }`}>
-                    {systemTelemetry.lcd.connected ? 'CONNECTED' : 'OFFLINE'}
+                    {systemTelemetry.lcd.connected ? 'AVAILABLE' : 'UNAVAILABLE'}
                   </span>
                 </div>
                 <p className="text-[10px] text-text-secondary mt-1">
                   {systemTelemetry.lcd.connected 
                     ? `Crystalfontz CFA-635 active on ${systemTelemetry.lcd.port || 'detected port'}`
-                    : 'External hardware control panel is offline or disabled'
+                    : 'External hardware control panel is not detected'
                   }
                 </p>
               </div>
