@@ -30,10 +30,14 @@ class ServiceDetailMenuView(LCDView):
         action_text = "Stop" if self.svc_status == "running" else "Start"
         options = [f"{action_text}", "Restart", "Status Info"]
         
-        lines = [f"SVC:{self.svc_name[:14]}"]
-        for idx, opt in enumerate(options):
-            prefix = "> " if idx == self.selected_index else "  "
-            lines.append(f"{prefix}{opt}")
+        lines = [f"SVC:{self.svc_name[:12]}"]
+        rows = self.manager.driver.rows if self.manager and self.manager.driver else 4
+        if rows == 2:
+            lines.append(f"> {options[self.selected_index]}")
+        else:
+            for idx, opt in enumerate(options):
+                prefix = "> " if idx == self.selected_index else "  "
+                lines.append(f"{prefix}{opt}")
         return lines
 
     def handle_key(self, key: str) -> None:
@@ -89,9 +93,9 @@ class ServiceStatusDetailView(LCDView):
             if svc:
                 display_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
                 lines = [
-                    f"SVC:{display_name[:14]}",
+                    f"SVC:{display_name[:12]}",
                     f"Status:{svc.status}",
-                    f"PID:{svc.pid or 'N/A'} CPU:{int(svc.cpu_usage or 0)}%",
+                    f"PID:{svc.pid or 'N/A'} C:{int(svc.cpu_usage or 0)}%",
                     f"FPS:{svc.fps or '0'} SPD:{svc.speed or '0x'}"
                 ]
         except Exception:
@@ -128,11 +132,15 @@ class TaskDetailMenuView(LCDView):
     def render(self) -> List[str]:
         self.fetch_task()
         options = ["Run Now", "Status Info"]
-        lines = [f"TSK:{self.task_name[:14]}"]
-        for idx, opt in enumerate(options):
-            prefix = "> " if idx == self.selected_index else "  "
-            lines.append(f"{prefix}{opt}")
-        lines.append("") # 4th line empty
+        lines = [f"TSK:{self.task_name[:12]}"]
+        rows = self.manager.driver.rows if self.manager and self.manager.driver else 4
+        if rows == 2:
+            lines.append(f"> {options[self.selected_index]}")
+        else:
+            for idx, opt in enumerate(options):
+                prefix = "> " if idx == self.selected_index else "  "
+                lines.append(f"{prefix}{opt}")
+            lines.append("") # 4th line empty
         return lines
 
     def handle_key(self, key: str) -> None:
@@ -186,7 +194,7 @@ class TaskStatusDetailView(LCDView):
                 status_str = latest_exec.status if latest_exec else "Idle"
                 pid_str = str(latest_exec.pid) if (latest_exec and latest_exec.pid) else "N/A"
                 lines = [
-                    f"TSK:{display_name[:14]}",
+                    f"TSK:{display_name[:12]}",
                     f"Status:{status_str}",
                     f"PID:{pid_str}",
                     "Press X to return"

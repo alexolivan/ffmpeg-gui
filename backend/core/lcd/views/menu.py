@@ -9,9 +9,13 @@ class MainMenuView(LCDView):
 
     def render(self) -> List[str]:
         lines = ["--- MAIN MENU ---"]
-        for idx in range(3):
-            prefix = "> " if idx == self.selected_index else "  "
-            lines.append(f"{prefix}{self.options[idx]}")
+        rows = self.manager.driver.rows if self.manager and self.manager.driver else 4
+        if rows == 2:
+            lines.append(f"> {self.options[self.selected_index]}")
+        else:
+            for idx in range(3):
+                prefix = "> " if idx == self.selected_index else "  "
+                lines.append(f"{prefix}{self.options[idx]}")
         return lines
 
     def handle_key(self, key: str) -> None:
@@ -56,15 +60,21 @@ class ServicesMenuView(LCDView):
             lines.append("Press X to return")
             return lines
 
-        # Render 3 services window
-        start = max(0, self.selected_index - 1)
-        end = min(len(self.services), start + 3)
+        rows = self.manager.driver.rows if self.manager and self.manager.driver else 4
+        window_size = 1 if rows == 2 else 3
+        if window_size == 1:
+            start = self.selected_index
+            end = start + 1
+        else:
+            start = max(0, self.selected_index - 1)
+            end = min(len(self.services), start + 3)
+
         for i in range(start, end):
             svc = self.services[i]
             prefix = "> " if i == self.selected_index else "  "
             status_char = "*" if svc.status == "running" else " "
             display_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
-            lines.append(f"{prefix}({status_char}) {display_name[:12]}")
+            lines.append(f"{prefix}{status_char} {display_name[:12]}")
         
         while len(lines) < 4:
             lines.append("")
@@ -112,13 +122,20 @@ class TasksMenuView(LCDView):
             lines.append("Press X to return")
             return lines
 
-        start = max(0, self.selected_index - 1)
-        end = min(len(self.tasks), start + 3)
+        rows = self.manager.driver.rows if self.manager and self.manager.driver else 4
+        window_size = 1 if rows == 2 else 3
+        if window_size == 1:
+            start = self.selected_index
+            end = start + 1
+        else:
+            start = max(0, self.selected_index - 1)
+            end = min(len(self.tasks), start + 3)
+
         for i in range(start, end):
             task = self.tasks[i]
             prefix = "> " if i == self.selected_index else "  "
             display_name = task.alias if task.alias and task.alias.strip() else task.name
-            lines.append(f"{prefix}{display_name[:16]}")
+            lines.append(f"{prefix}{display_name[:14]}")
 
         while len(lines) < 4:
             lines.append("")

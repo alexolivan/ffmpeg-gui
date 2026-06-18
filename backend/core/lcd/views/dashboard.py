@@ -24,14 +24,14 @@ class DashboardView(LCDView):
         finally:
             db.close()
 
-        # Center/pad the node name to 18 characters
-        header = node_name[:18].center(18)
+        # Center/pad the node name to 16 characters
+        header = node_name[:16].center(16)
 
         return [
             header,
+            f"Streams: {active_count}",
             f"CPU: {cpu}%",
-            f"RAM: {ram}%",
-            f"Active: {active_count} streams"
+            f"RAM: {ram}%"
         ]
 
     def handle_key(self, key: str) -> None:
