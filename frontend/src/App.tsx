@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import ProcessConfigForm from './components/ProcessConfigForm';
 import { ScheduledTasks } from './components/ScheduledTasks';
@@ -88,6 +88,35 @@ function App() {
     handleRestartService,
     handleImportFileChange,
   } = useProcesses();
+
+  useEffect(() => {
+    // 1. Update document title
+    document.title = settings.lcd_alias || settings.node_name || 'FFMPEG-GUI';
+
+    // 2. Update favicon
+    let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    
+    if (settings.logo_path) {
+      link.href = `${API}${settings.logo_path}`;
+    } else {
+      const accent = settings.accent_color || '#FF6B00';
+      const text = (settings.logo_text || 'FF').toUpperCase().slice(0, 3);
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+          <rect width="32" height="32" rx="8" fill="${accent}" />
+          <text x="50%" y="55%" dominant-baseline="central" text-anchor="middle" fill="#000000" font-family="sans-serif" font-size="12" font-weight="900">
+            ${text}
+          </text>
+        </svg>
+      `.trim();
+      link.href = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    }
+  }, [settings.lcd_alias, settings.node_name, settings.logo_path, settings.logo_text, settings.accent_color]);
 
   // ── Render Auth Screen ──────────────────────────────────────────
   if (!isAuthenticated) {
