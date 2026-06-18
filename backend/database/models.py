@@ -91,18 +91,23 @@ class MediaProcess(Base):
     def pending_changes(self) -> bool:
         if self.status != 'running' or not self.last_started_config:
             return False
-        current_cfg = {
-            "name": self.name,
-            "ffmpeg_build_id": self.ffmpeg_build_id,
-            "input_config": self.input_config,
-            "output_config": self.output_config,
-            "codec_config": self.codec_config,
-            "filter_config": self.filter_config,
-            "auto_start": self.auto_start,
-            "watchdog_enabled": self.watchdog_enabled,
-            "watchdog_retries": self.watchdog_retries,
-        }
-        return current_cfg != self.last_started_config
+        
+        # Compare only parameters that modify the ffmpeg execution command/environment
+        # (excluding administrative fields like name, auto_start, watchdog settings)
+        functional_keys = [
+            "ffmpeg_build_id",
+            "input_config",
+            "output_config",
+            "codec_config",
+            "filter_config"
+        ]
+        
+        for key in functional_keys:
+            current_val = getattr(self, key, None)
+            started_val = self.last_started_config.get(key, None)
+            if current_val != started_val:
+                return True
+        return False
 
 
 class ProcessLog(Base):
