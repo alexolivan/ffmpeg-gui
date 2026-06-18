@@ -101,10 +101,10 @@ class LCDManager:
             return
         
         gpos = {
-            0: {"red": 6, "green": 5},
-            1: {"red": 8, "green": 7},
-            2: {"red": 10, "green": 9},
-            3: {"red": 12, "green": 11}
+            0: {"red": 12, "green": 11},
+            1: {"red": 10, "green": 9},
+            2: {"red": 8, "green": 7},
+            3: {"red": 6, "green": 5}
         }.get(led_idx)
         if not gpos:
             return

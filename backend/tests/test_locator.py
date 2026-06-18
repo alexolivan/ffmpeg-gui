@@ -25,28 +25,28 @@ async def test_led_color_gpo_mapping():
     manager = LCDManager(db_factory, proc_mgr, task_mgr, port="/dev/ttyUSB0")
     manager.driver = MagicMock()
     
-    # Test setting RED on LED 0 (pin 5 = GREEN, pin 6 = RED)
+    # Test setting RED on LED 0 (pin 11 = GREEN, pin 12 = RED)
     manager.set_led_color(0, "red")
-    manager.driver.set_gpo.assert_any_call(5, 0)
-    manager.driver.set_gpo.assert_any_call(6, 100)
-    manager.driver.reset_mock()
-    
-    # Test setting GREEN on LED 1 (pin 7 = GREEN, pin 8 = RED)
-    manager.set_led_color(1, "green")
-    manager.driver.set_gpo.assert_any_call(7, 100)
-    manager.driver.set_gpo.assert_any_call(8, 0)
-    manager.driver.reset_mock()
-    
-    # Test setting YELLOW on LED 2 (pin 9 = GREEN, pin 10 = RED)
-    manager.set_led_color(2, "yellow")
-    manager.driver.set_gpo.assert_any_call(9, 100)
-    manager.driver.set_gpo.assert_any_call(10, 100)
-    manager.driver.reset_mock()
-    
-    # Test setting OFF on LED 3 (pin 11 = GREEN, pin 12 = RED)
-    manager.set_led_color(3, "off")
     manager.driver.set_gpo.assert_any_call(11, 0)
-    manager.driver.set_gpo.assert_any_call(12, 0)
+    manager.driver.set_gpo.assert_any_call(12, 100)
+    manager.driver.reset_mock()
+    
+    # Test setting GREEN on LED 1 (pin 9 = GREEN, pin 10 = RED)
+    manager.set_led_color(1, "green")
+    manager.driver.set_gpo.assert_any_call(9, 100)
+    manager.driver.set_gpo.assert_any_call(10, 0)
+    manager.driver.reset_mock()
+    
+    # Test setting YELLOW on LED 2 (pin 7 = GREEN, pin 8 = RED)
+    manager.set_led_color(2, "yellow")
+    manager.driver.set_gpo.assert_any_call(7, 100)
+    manager.driver.set_gpo.assert_any_call(8, 100)
+    manager.driver.reset_mock()
+    
+    # Test setting OFF on LED 3 (pin 5 = GREEN, pin 6 = RED)
+    manager.set_led_color(3, "off")
+    manager.driver.set_gpo.assert_any_call(5, 0)
+    manager.driver.set_gpo.assert_any_call(6, 0)
 
 @pytest.mark.asyncio
 async def test_locator_mode_activation():
