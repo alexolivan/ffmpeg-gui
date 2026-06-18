@@ -581,23 +581,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   params={config.video_codec_params}
                   buildOptions={selectedBuildOptions}
                   systemCapabilities={systemCapabilities}
-                  hwaccel={config.filters.advanced.hwaccel}
-                  onHwaccelChange={(hwaccel) => setConfig(prev => ({
-                    ...prev,
-                    filters: {
-                      ...prev.filters,
-                      advanced: {
-                        ...prev.filters.advanced,
-                        hwaccel
-                      }
-                    }
-                  }))}
+                  hwaccel={config.input1.hwaccel}
                   onChange={(id, params) => setConfig({
                     ...config,
                     video_codec_id: id,
                     video_codec_params: params,
                   })}
-                  primaryInputType={config.input1.type}
                 />
               </div>
             )}

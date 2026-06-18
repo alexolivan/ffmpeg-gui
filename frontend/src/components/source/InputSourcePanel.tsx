@@ -20,6 +20,8 @@ export interface InputSourceConfig {
   audio_input?: string;
   format_code?: string;
   pixel_format?: string;
+  hwaccel?: string;
+  hwaccel_output_format?: string;
 }
 
 interface InputSourcePanelProps {
@@ -770,6 +772,37 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               />
             </div>
           )}
+        </div>
+      )}
+
+      {['file', 'srt', 'udp', 'rtp', 'rtmp', 'hls'].includes(config.type) && (
+        <div className="space-y-2 pt-3 border-t border-white/5 animate-in fade-in duration-300">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-brand-lime" />
+            <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Hardware Decoding (Input)</h4>
+            <span className="text-[10px] text-white/20 italic ml-auto">-hwaccel</span>
+          </div>
+
+          <select
+            className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none transition-all focus:border-brand-lime"
+            value={config.hwaccel || 'none'}
+            onChange={e => update({ hwaccel: e.target.value })}
+          >
+            <option value="none">None (Software Decoding)</option>
+            {(!systemCapabilities || systemCapabilities.nvenc?.available) && (
+              <option value="cuda">NVIDIA GPU (CUDA)</option>
+            )}
+            {(!systemCapabilities || systemCapabilities.vaapi?.available) && (
+              <>
+                <option value="vaapi">Intel/AMD GPU (VAAPI)</option>
+                <option value="qsv">Intel Quick Sync (QSV)</option>
+              </>
+            )}
+            <option value="auto">Auto-detect</option>
+          </select>
+          <span className="text-[10px] text-text-secondary block px-1">
+            Offloads video decoding to the selected GPU. Recommended for high-bitrate file or network inputs.
+          </span>
         </div>
       )}
     </div>
