@@ -198,10 +198,25 @@ class ProcessUpdate(BaseModel):
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
+    lcd_alias: Optional[str] = None
     gui_password: Optional[str] = None
     logo_text: Optional[str] = None
     accent_color: Optional[str] = None
     lcd_enabled: Optional[bool] = None
+
+    @validator('lcd_alias')
+    def validate_lcd_alias(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("LCD Alias cannot be empty")
+        if len(v) > 12:
+            raise ValueError("LCD Alias must be 12 characters or less")
+        import re
+        if not re.match(r"^[a-zA-Z0-9\s\-_]+$", v):
+            raise ValueError("LCD Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
+        return v
     lcd_port: Optional[str] = None
     lcd_model: Optional[str] = None
     lcd_brightness: Optional[int] = None
@@ -230,6 +245,9 @@ def get_settings(db: Session = Depends(get_db)):
     
     # Backwards compatibility auto-normalization for pre-existing rows
     dirty = False
+    if settings.lcd_alias is None:
+        settings.lcd_alias = "NODE-01"
+        dirty = True
     if settings.lcd_brightness is None:
         settings.lcd_brightness = 100
         dirty = True
@@ -267,6 +285,7 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
         db.add(settings)
     
     if settings_in.node_name is not None: settings.node_name = settings_in.node_name
+    if settings_in.lcd_alias is not None: settings.lcd_alias = settings_in.lcd_alias
     if settings_in.gui_password is not None: settings.gui_password = settings_in.gui_password
     if settings_in.logo_text is not None: settings.logo_text = settings_in.logo_text
     if settings_in.accent_color is not None: settings.accent_color = settings_in.accent_color

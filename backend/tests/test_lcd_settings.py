@@ -64,3 +64,28 @@ def test_update_lcd_settings():
     assert data["lcd_led3_profile"] == "streams"
 
 
+def test_lcd_alias_validation():
+    # 1. Test presence of lcd_alias attribute
+    settings = SystemSettings()
+    assert hasattr(settings, "lcd_alias")
+
+    # 2. Test valid schemas
+    assert SettingsUpdate(lcd_alias="NODE-01").lcd_alias == "NODE-01"
+    assert SettingsUpdate(lcd_alias="  NODE-02  ").lcd_alias == "NODE-02"
+    assert SettingsUpdate(lcd_alias="NODE_03").lcd_alias == "NODE_03"
+    assert SettingsUpdate(lcd_alias="node 04").lcd_alias == "node 04"
+
+    # 3. Test invalid schemas (too long)
+    with pytest.raises(ValueError, match="LCD Alias must be 12 characters or less"):
+        SettingsUpdate(lcd_alias="ABCDEFGHIJKLM")
+
+    # 4. Test invalid characters
+    with pytest.raises(ValueError, match="LCD Alias must contain only alphanumeric characters, spaces, dashes, or underscores"):
+        SettingsUpdate(lcd_alias="NODE-01!")
+
+    # 5. Test empty string
+    with pytest.raises(ValueError, match="LCD Alias cannot be empty"):
+        SettingsUpdate(lcd_alias="   ")
+
+
+

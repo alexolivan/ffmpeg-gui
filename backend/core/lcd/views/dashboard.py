@@ -17,7 +17,9 @@ class DashboardView(LCDView):
             from database.models import MediaProcess, SystemSettings
             active_count = db.query(MediaProcess).filter(MediaProcess.status == 'running').count()
             settings = db.query(SystemSettings).first()
-            if settings and isinstance(getattr(settings, "node_name", None), str):
+            if settings and isinstance(getattr(settings, "lcd_alias", None), str):
+                node_name = settings.lcd_alias
+            elif settings and isinstance(getattr(settings, "node_name", None), str):
                 node_name = settings.node_name
         except Exception:
             pass

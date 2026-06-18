@@ -7,6 +7,7 @@ interface DashboardViewProps {
   taskStats: any;
   taskExecutions: any[];
   builds: BuildProfile[];
+  settings: any;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -15,6 +16,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   taskStats,
   taskExecutions,
   builds,
+  settings,
 }) => {
   const [locatorActive, setLocatorActive] = useState(false);
 
@@ -72,7 +74,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
           <div className="pill-button bg-white/5 border border-white/10 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-brand-lime"></span>
-            Node: Standalone
+            Node: {settings.lcd_alias || 'NODE-01'}
           </div>
         </div>
       </header>

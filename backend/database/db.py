@@ -48,6 +48,8 @@ def init_db():
         # Migración para la tabla system_settings
         cursor.execute("PRAGMA table_info(system_settings)")
         settings_columns = [col[1] for col in cursor.fetchall()]
+        if "lcd_alias" not in settings_columns:
+            cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_alias TEXT DEFAULT 'NODE-01'")
         if "lcd_enabled" not in settings_columns:
             cursor.execute("ALTER TABLE system_settings ADD COLUMN lcd_enabled BOOLEAN DEFAULT 0")
         if "lcd_port" not in settings_columns:

@@ -162,6 +162,7 @@ function App() {
             taskStats={taskStats}
             taskExecutions={taskExecutions}
             builds={builds}
+            settings={settings}
           />
         )}
 

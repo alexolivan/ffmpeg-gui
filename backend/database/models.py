@@ -130,6 +130,7 @@ class SystemSettings(Base):
 
     id = Column(Integer, primary_key=True)
     node_name = Column(String, default="FFMPEG-GUI Standalone")
+    lcd_alias = Column(String, default="NODE-01")
     gui_password = Column(String, nullable=True)  # Null means open access
     logo_text = Column(String, default="FF")
     logo_path = Column(String, nullable=True)     # Path to custom uploaded logo

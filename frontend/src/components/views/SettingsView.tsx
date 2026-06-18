@@ -32,13 +32,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [nodeName, setNodeName] = useState(settings.node_name || '');
   const [logoText, setLogoText] = useState(settings.logo_text || '');
+  const [lcdAlias, setLcdAlias] = useState(settings.lcd_alias || 'NODE-01');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     setNodeName(settings.node_name || '');
     setLogoText(settings.logo_text || '');
-  }, [settings.node_name, settings.logo_text]);
+    setLcdAlias(settings.lcd_alias || 'NODE-01');
+  }, [settings.node_name, settings.logo_text, settings.lcd_alias]);
 
   const [lcdEnabled, setLcdEnabled] = useState(settings.lcd_enabled || false);
   const [lcdPort, setLcdPort] = useState(settings.lcd_port || '/dev/ttyACM0');
@@ -147,6 +149,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ...settings,
         node_name: nodeName,
         logo_text: logoText,
+        lcd_alias: lcdAlias,
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -157,7 +160,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const hasIdentityChanges = nodeName !== (settings.node_name || '') || logoText !== (settings.logo_text || '');
+  const hasIdentityChanges = 
+    nodeName !== (settings.node_name || '') || 
+    logoText !== (settings.logo_text || '') ||
+    lcdAlias !== (settings.lcd_alias || 'NODE-01');
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl">
@@ -192,6 +198,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all uppercase"
                   value={logoText}
                   onChange={e => setLogoText(e.target.value.toUpperCase())}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase font-black text-text-secondary tracking-widest">LCD / Node Alias</label>
+                <input 
+                  type="text" 
+                  maxLength={12}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all"
+                  value={lcdAlias}
+                  onChange={e => {
+                    const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
+                    setLcdAlias(val);
+                  }}
+                  placeholder="e.g. NODE-01"
                 />
               </div>
             </div>

@@ -11,7 +11,8 @@ export function useAuth() {
     accent_color: '#FF6B00',
     lcd_enabled: false,
     lcd_port: '/dev/ttyACM0',
-    lcd_model: 'cfa635'
+    lcd_model: 'cfa635',
+    lcd_alias: 'NODE-01'
   });
   const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [loginPass, setLoginPass] = useState('');
