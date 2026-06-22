@@ -626,7 +626,6 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   params={config.video_codec_params}
                   buildOptions={selectedBuildOptions}
                   systemCapabilities={systemCapabilities}
-                  hwaccel={config.input1.hwaccel}
                   onChange={(id, params) => setConfig({
                     ...config,
                     video_codec_id: id,
