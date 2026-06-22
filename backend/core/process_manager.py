@@ -509,10 +509,19 @@ class ProcessManager:
             previews_dir = PREVIEWS_DIR
             os.makedirs(previews_dir, exist_ok=True)
             preview_path = os.path.join(previews_dir, f"preview_{media_proc.id}.jpg")
+            
+            # If the decoded frames are in VRAM, download them to system memory first
+            preview_vf = "fps=1,scale=480:-1"
+            try:
+                if is_vram:
+                    preview_vf = "hwdownload,format=nv12,fps=1,scale=480:-1"
+            except NameError:
+                pass
+                
             cmd += [
                 "-map", "0:v",
                 "-c:v", "mjpeg",
-                "-vf", "fps=1,scale=480:-1",
+                "-vf", preview_vf,
                 "-update", "1",
                 "-y", preview_path
             ]
