@@ -49,3 +49,18 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
                         logger.error(f"Failed to SIGKILL rogue process {pid}: {e}")
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
+
+def get_ffmpeg_version(binary_path: str = "ffmpeg") -> float:
+    import subprocess
+    import re
+    try:
+        res = subprocess.run([binary_path, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+        first_line = res.stdout.split('\n')[0]
+        # Match pattern like "ffmpeg version 4.4" or "version 5.1-css"
+        match = re.search(r'version\s+([0-9]+\.[0-9]+)', first_line)
+        if match:
+            return float(match.group(1))
+    except Exception:
+        pass
+    return 4.4  # Default fallback
+

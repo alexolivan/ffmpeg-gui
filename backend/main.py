@@ -665,6 +665,36 @@ async def get_decklink_formats(device: str):
     return formats
 
 
+@app.get("/ndi/sources")
+async def get_ndi_sources():
+    import re
+    ffmpeg_bin = get_effective_ffmpeg_path()
+    sources = []
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            ffmpeg_bin, "-f", "libndi_newtek", "-find_sources", "1", "-i", "dummy",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+            output = stdout.decode('utf-8', errors='replace') + stderr.decode('utf-8', errors='replace')
+        except asyncio.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = await proc.communicate()
+            output = stdout.decode('utf-8', errors='replace') + stderr.decode('utf-8', errors='replace')
+            
+        for line in output.splitlines():
+            match = re.search(r"Found NDI source:\s*'([^']+)'", line)
+            if match:
+                sources.append(match.group(1))
+    except Exception as e:
+        logger.error(f"Error scanning NDI sources: {e}")
+        
+    return {"sources": sources}
+
+
+
 
 # ── WebSocket Connection Manager ──────────────────────────────────
 
