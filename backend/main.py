@@ -475,12 +475,53 @@ def get_system_capabilities():
     decklink_available = len(decklink_nodes) > 0
     decklink_details = f"Detected DeckLink card nodes: {', '.join(decklink_nodes)}" if decklink_available else "No physical DeckLink cards detected"
 
+    # Dynamic FFmpeg capability discovery
+    ffmpeg_bin = get_effective_ffmpeg_path()
+    supported_filters = []
+    supported_encoders = []
+    supported_decoders = []
+    
+    ffmpeg_exists = os.path.exists(ffmpeg_bin) if os.path.isabs(ffmpeg_bin) else shutil.which(ffmpeg_bin) is not None
+    if ffmpeg_exists:
+        import subprocess
+        try:
+            # Query filters
+            res_filters = subprocess.run([ffmpeg_bin, "-filters"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+            if res_filters.returncode == 0:
+                for line in res_filters.stdout.split('\n'):
+                    parts = line.split()
+                    if len(parts) >= 2 and not parts[0].startswith('-') and not parts[0].startswith('F'):
+                        supported_filters.append(parts[1])
+            
+            # Query encoders
+            res_encoders = subprocess.run([ffmpeg_bin, "-encoders"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+            if res_encoders.returncode == 0:
+                for line in res_encoders.stdout.split('\n'):
+                    parts = line.split()
+                    if len(parts) >= 2 and not parts[0].startswith('-') and not parts[0].startswith('E'):
+                        supported_encoders.append(parts[1])
+
+            # Query decoders
+            res_decoders = subprocess.run([ffmpeg_bin, "-decoders"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+            if res_decoders.returncode == 0:
+                for line in res_decoders.stdout.split('\n'):
+                    parts = line.split()
+                    if len(parts) >= 2 and not parts[0].startswith('-') and not parts[0].startswith('D'):
+                        supported_decoders.append(parts[1])
+        except Exception as e:
+            logger.warning(f"Error querying active ffmpeg binary capabilities at {ffmpeg_bin}: {e}")
+
     return {
         "vaapi": {"available": vaapi_available, "details": vaapi_details},
         "nvenc": {"available": nvenc_available, "details": nvenc_details},
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
         "alsa": {"available": alsa_available, "details": alsa_details},
-        "decklink": {"available": decklink_available, "details": decklink_details}
+        "decklink": {"available": decklink_available, "details": decklink_details},
+        "ffmpeg": {
+            "filters": supported_filters,
+            "encoders": supported_encoders,
+            "decoders": supported_decoders
+        }
     }
 
 

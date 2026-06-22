@@ -1,5 +1,6 @@
 # Ignorar el estado temporal del agente local
 .agent/current_state.json
+.superpowers/
 
 # Python
 __pycache__/

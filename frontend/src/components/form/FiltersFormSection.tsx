@@ -34,6 +34,11 @@ interface FiltersFormSectionProps {
   overlays: OverlayItem[];
 
   onChange: (updates: any) => void;
+
+  // Hardware capabilities validation
+  hwaccel?: string;
+  isVram?: boolean;
+  systemCapabilities?: any;
 }
 
 export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
@@ -50,6 +55,9 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   aresample = false,
   overlays = [],
   onChange,
+  hwaccel = 'none',
+  isVram = false,
+  systemCapabilities = null,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'video' | 'audio' | 'overlays'>('video');
 
@@ -196,6 +204,24 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 Enable Deinterlacing (YADIF / QSV VPP / CUDA yadif)
               </label>
             </div>
+            {deinterlace && isVram && hwaccel === 'cuda' && systemCapabilities?.ffmpeg?.filters && !systemCapabilities.ffmpeg.filters.includes('yadif_cuda') && (
+              <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-3 rounded-lg leading-snug font-bold">
+                ⚠️ El binario activo de FFmpeg no soporta el filtro de hardware 'yadif_cuda'.
+                Se recomienda cambiar el formato de salida a 'System Memory (CPU RAM)' en la pestaña Source, o recompilar con soporte CUDA Filters.
+              </div>
+            )}
+            {deinterlace && isVram && hwaccel === 'vaapi' && systemCapabilities?.ffmpeg?.filters && !systemCapabilities.ffmpeg.filters.includes('deinterlace_vaapi') && (
+              <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-3 rounded-lg leading-snug font-bold">
+                ⚠️ El binario activo de FFmpeg no soporta el filtro de hardware 'deinterlace_vaapi'.
+                Se recomienda cambiar el formato de salida a 'System Memory (CPU RAM)' en la pestaña Source.
+              </div>
+            )}
+            {deinterlace && isVram && hwaccel === 'qsv' && systemCapabilities?.ffmpeg?.filters && !systemCapabilities.ffmpeg.filters.includes('vpp_qsv') && (
+              <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-3 rounded-lg leading-snug font-bold">
+                ⚠️ El binario activo de FFmpeg no soporta el filtro de hardware 'vpp_qsv'.
+                Se recomienda cambiar el formato de salida a 'System Memory (CPU RAM)' en la pestaña Source.
+              </div>
+            )}
           </div>
         </div>
       )}

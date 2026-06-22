@@ -30,7 +30,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     vaapi: false, 
     ndi: false,
     decklink: false,
-    nvenc: false
+    nvenc: false,
+    cuda_filters: false
   })
   
   const [sdkPaths, setSdkPaths] = useState<Record<string, string>>(editBuild?.sdk_paths || { 
@@ -210,7 +211,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                   ffmpegVersion.length > 0 && 
                   (!options.decklink || !!sdkPaths.decklink) && 
                   (!options.ndi || !!sdkPaths.ndi) &&
-                  (!options.nvenc || !!sdkPaths.nvenc_headers)
+                  (!options.nvenc || !!sdkPaths.nvenc_headers) &&
+                  (!options.cuda_filters || (buildDeps?.dependencies?.clang?.installed !== false && buildDeps?.dependencies?.['nvidia-cuda-dev']?.installed !== false))
 
   // Drag and Drop events
   const handleDragOver = (e: React.DragEvent) => {
@@ -325,7 +327,19 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                       Descarga y registro automático de ffnvcodec headers desde GitHub.
                     </span>
                   </div>
-                  <input type="checkbox" className="w-4 h-4 accent-brand-orange" checked={options.nvenc} onChange={e => setOptions({...options, nvenc: e.target.checked})} />
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 accent-brand-orange" 
+                    checked={options.nvenc} 
+                    onChange={e => {
+                      const checked = e.target.checked;
+                      setOptions({
+                        ...options,
+                        nvenc: checked,
+                        cuda_filters: checked ? options.cuda_filters : false
+                      });
+                    }} 
+                  />
                 </div>
                 {options.nvenc && (
                   <div className="space-y-2 mt-2 pt-2 border-t border-white/5 animate-in slide-in-from-top-2 duration-300">
@@ -339,6 +353,32 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                         <option key={tag} value={tag}>{tag}</option>
                       ))}
                     </select>
+
+                    {/* Indented NVIDIA CUDA Filters Checkbox */}
+                    <div className="pt-2 mt-2 border-t border-white/5 space-y-2 pl-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-semibold">NVIDIA CUDA Filters (yadif_cuda, scale_npp)</span>
+                          <span className="text-[9px] text-text-secondary leading-tight mt-0.5">
+                            Habilita procesamiento de filtros acelerados por hardware en VRAM.
+                          </span>
+                        </div>
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 accent-brand-orange" 
+                          checked={options.cuda_filters} 
+                          onChange={e => setOptions({...options, cuda_filters: e.target.checked})} 
+                        />
+                      </div>
+                      {options.cuda_filters && (buildDeps?.dependencies?.clang?.installed === false || buildDeps?.dependencies?.['nvidia-cuda-dev']?.installed === false) && (
+                        <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[9px] p-2 rounded-lg leading-snug font-bold">
+                          ⚠️ Faltan dependencias de CUDA Filters:
+                          {buildDeps?.dependencies?.clang?.installed === false && ' [clang]'}
+                          {buildDeps?.dependencies?.['nvidia-cuda-dev']?.installed === false && ' [nvidia-cuda-dev (npp.h)]'}.
+                          Instala estas herramientas en el sistema para poder compilar con éxito.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

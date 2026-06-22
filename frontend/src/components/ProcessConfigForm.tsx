@@ -672,6 +672,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             volume={config.filters.volume}
             aresample={config.filters.aresample}
             overlays={config.filters.overlays || []}
+            hwaccel={config.input1.hwaccel || 'none'}
+            isVram={
+              config.input1.hwaccel_output_format !== '' &&
+              config.input1.hwaccel_output_format !== 'system' &&
+              config.input1.hwaccel_output_format !== undefined
+            }
+            systemCapabilities={systemCapabilities}
             onChange={updates => setConfig({
               ...config,
               filters: {

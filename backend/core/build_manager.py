@@ -51,6 +51,7 @@ class BuildManager:
             "make": {"type": "required", "description": "Herramienta de automatización de compilación"},
             "gcc": {"type": "required", "description": "Compilador de código C/C++"},
             "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo"},
+            "clang": {"type": "optional", "description": "Compilador LLVM/Clang (requerido para filtros CUDA)"},
         }
         
         results = {}
@@ -99,6 +100,19 @@ class BuildManager:
                 "description": info["description"],
                 "pkg_config_name": info["pkg"]
             }
+
+        # Check libnpp (Nvidia CUDA Toolkit) via npp.h headers presence
+        npp_installed = False
+        for path in ["/usr/include/npp.h", "/usr/local/cuda/include/npp.h", "/usr/include/x86_64-linux-gnu/npp.h"]:
+            if os.path.exists(path):
+                npp_installed = True
+                break
+        
+        results["nvidia-cuda-dev"] = {
+            "installed": npp_installed,
+            "type": "optional",
+            "description": "Cabeceras de desarrollo de NVIDIA CUDA / NPP (nvidia-cuda-dev)"
+        }
 
         # Calculate all_required_met
         all_required_met = all(
@@ -418,6 +432,19 @@ class BuildManager:
             if options.get("nvenc"):
                 config_flags.append("--enable-nvenc")
                 config_flags.append("--enable-ffnvcodec")
+                if options.get("cuda_filters"):
+                    # Validate dependencies strictly
+                    dep_check = self.check_dependencies()
+                    clang_installed = dep_check["dependencies"].get("clang", {}).get("installed", False)
+                    npp_installed = dep_check["dependencies"].get("nvidia-cuda-dev", {}).get("installed", False)
+                    if not clang_installed or not npp_installed:
+                        raise RuntimeError(
+                            "Cannot compile NVIDIA CUDA Filters: missing dependencies. "
+                            "Please ensure Clang ('clang') and NVIDIA CUDA/NPP development headers ('nvidia-cuda-dev') are installed on the system."
+                        )
+                    config_flags.append("--enable-cuda-llvm")
+                    config_flags.append("--enable-libnpp")
+                    config_flags.append("--enable-nvdec")
 
             # NDI Integration (using the global versioned directory + patch application)
             if options.get("ndi") and sdk_paths and sdk_paths.get("ndi"):

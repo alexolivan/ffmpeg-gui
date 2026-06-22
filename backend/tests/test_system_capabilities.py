@@ -18,6 +18,14 @@ class TestSystemCapabilities(unittest.TestCase):
             self.assertIn(key, data)
             self.assertIn("available", data[key])
             self.assertIn("details", data[key])
+        
+        self.assertIn("ffmpeg", data)
+        self.assertIn("filters", data["ffmpeg"])
+        self.assertIn("decoders", data["ffmpeg"])
+        self.assertIn("encoders", data["ffmpeg"])
+        self.assertIsInstance(data["ffmpeg"]["filters"], list)
+        self.assertIsInstance(data["ffmpeg"]["decoders"], list)
+        self.assertIsInstance(data["ffmpeg"]["encoders"], list)
 
 if __name__ == "__main__":
     unittest.main()
