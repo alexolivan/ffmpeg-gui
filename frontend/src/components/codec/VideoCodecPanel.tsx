@@ -12,7 +12,6 @@ interface VideoCodecPanelProps {
   params: Record<string, string | number | boolean>;
   buildOptions?: Record<string, boolean>;
   systemCapabilities?: SystemCapabilities;
-  hwaccel?: string;
   onChange: (codecId: string, params: Record<string, string | number | boolean>) => void;
 }
 
@@ -21,7 +20,6 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
   params,
   buildOptions,
   systemCapabilities,
-  hwaccel = 'none',
   onChange,
 }) => {
   const available = React.useMemo(() => {

@@ -62,8 +62,8 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   }
 
   // Ensure default bands are present
-  const defaultBands = { '60': 0, '230': 0, '910': 0, '4000': 0, '14000': 0 };
-  const bandsObj = { ...defaultBands, ...(equalizer.bands || {}) };
+  const defaultBands: Record<string, number> = { '60': 0, '230': 0, '910': 0, '4000': 0, '14000': 0 };
+  const bandsObj: Record<string, number> = { ...defaultBands, ...(equalizer.bands || {}) };
 
   const updateEqBand = (band: string, val: number) => {
     onChange({
@@ -283,7 +283,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                         max="20"
                         step="1"
                         className="h-24 w-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none orientation-vertical cursor-ns-resize"
-                        style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' } as React.CSSProperties}
+                        style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' } as any}
                         value={bandsObj[band]}
                         onChange={e => updateEqBand(band, Number(e.target.value))}
                       />

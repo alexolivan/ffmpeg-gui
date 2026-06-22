@@ -22,6 +22,8 @@ export interface InputSourceConfig {
   pixel_format?: string;
   hwaccel?: string;
   hwaccel_output_format?: string;
+  streamid?: string;
+  frames_destination?: string;
 }
 
 interface InputSourcePanelProps {
