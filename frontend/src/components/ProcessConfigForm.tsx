@@ -459,10 +459,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       {/* ── Persistent Transcode Flow Diagram ── */}
       {config.has_video && (
         <ResourcePipelineDiagram
-          hwaccel={config.filters.advanced.hwaccel}
+          hwaccel={config.input1.hwaccel || 'none'}
           isVram={
-            config.filters.advanced.hwaccel_output_format !== '' &&
-            config.filters.advanced.hwaccel_output_format !== 'system'
+            config.input1.hwaccel_output_format !== '' &&
+            config.input1.hwaccel_output_format !== 'system' &&
+            config.input1.hwaccel_output_format !== undefined
           }
           codecId={config.video_codec_id}
           hasCpuFilters={!!(config.filters.overlays && config.filters.overlays.length > 0)}

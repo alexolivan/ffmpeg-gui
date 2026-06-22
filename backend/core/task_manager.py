@@ -303,7 +303,15 @@ class TaskManager:
                 else:
                     frames_destination = input_cfg.get('frames_destination', 'cpu')
                     
-                hwaccel = advanced.get('hwaccel', 'none')
+                hwaccel = 'none'
+                if is_new_format:
+                    hwaccel = input_cfg['input1'].get('hwaccel', 'none')
+                else:
+                    hwaccel = input_cfg.get('hwaccel', 'none')
+                
+                if hwaccel == 'none':
+                    hwaccel = advanced.get('hwaccel', 'none')
+
                 is_vram = (frames_destination == 'vram')
                 if hwaccel == 'none':
                     is_vram = False
