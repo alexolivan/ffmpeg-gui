@@ -108,52 +108,52 @@ export const ResourcePipelineDiagram: React.FC<ResourcePipelineDiagramProps> = (
   }
 
   return (
-    <div className={`p-4 rounded-2xl border bg-white/[0.02] flex flex-col gap-3.5 transition-all duration-300 ${pathColorClass} mb-4`}>
+    <div className={`p-2.5 rounded-xl border bg-white/[0.02] flex flex-col gap-2 transition-all duration-300 ${pathColorClass} mb-2.5`}>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase font-black tracking-widest text-text-secondary">
+        <span className="text-[9px] uppercase font-black tracking-widest text-text-secondary">
           Active Transcode Pipeline
         </span>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${badgeColorClass}`}>
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${badgeColorClass}`}>
           {pathType}
         </span>
       </div>
 
-      <div className="flex items-center justify-between gap-1 py-1 font-mono text-xs text-center">
+      <div className="flex items-center justify-between gap-1 py-0.5 font-mono text-[10px] text-center">
         {/* Step 1: Decode */}
-        <div className="flex-1 flex flex-col items-center gap-1.5 p-2 rounded-lg bg-white/5 border border-white/10 min-w-0">
-          <span className="text-[9px] uppercase font-bold text-text-secondary">1. Decode</span>
+        <div className="flex-1 flex flex-col items-center gap-1 p-1.5 rounded-lg bg-white/5 border border-white/10 min-w-0">
+          <span className="text-[8px] uppercase font-bold text-text-secondary">1. Decode</span>
           <span className={`font-black truncate w-full ${isDecodeGPU ? 'text-brand-lime' : 'text-white'}`}>{decodeResource}</span>
-          <span className="text-[10px] text-text-secondary truncate w-full">{decodeDetails}</span>
+          <span className="text-[9px] text-text-secondary truncate w-full">{decodeDetails}</span>
         </div>
 
         {/* Arrow 1 */}
-        <div className="flex-shrink-0 flex flex-col items-center justify-center px-1 text-text-secondary text-[10px]">
+        <div className="flex-shrink-0 flex flex-col items-center justify-center px-0.5 text-text-secondary text-[9px]">
           <span>➔</span>
-          {boundaryDownload && <span className="text-[8px] text-brand-orange font-bold">DOWN</span>}
+          {boundaryDownload && <span className="text-[7px] text-brand-orange font-bold">DOWN</span>}
         </div>
 
         {/* Step 2: Filters */}
-        <div className="flex-1 flex flex-col items-center gap-1.5 p-2 rounded-lg bg-white/5 border border-white/10 min-w-0">
-          <span className="text-[9px] uppercase font-bold text-text-secondary">2. Filters</span>
+        <div className="flex-1 flex flex-col items-center gap-1 p-1.5 rounded-lg bg-white/5 border border-white/10 min-w-0">
+          <span className="text-[8px] uppercase font-bold text-text-secondary">2. Filters</span>
           <span className={`font-black truncate w-full ${isFilterGPU ? 'text-brand-lime' : 'text-white'}`}>{filterResource}</span>
-          <span className="text-[10px] text-text-secondary truncate w-full">{filterDetails}</span>
+          <span className="text-[9px] text-text-secondary truncate w-full">{filterDetails}</span>
         </div>
 
         {/* Arrow 2 */}
-        <div className="flex-shrink-0 flex flex-col items-center justify-center px-1 text-text-secondary text-[10px]">
+        <div className="flex-shrink-0 flex flex-col items-center justify-center px-0.5 text-text-secondary text-[9px]">
           <span>➔</span>
-          {boundaryUpload && <span className="text-[8px] text-brand-orange font-bold">UP</span>}
+          {boundaryUpload && <span className="text-[7px] text-brand-orange font-bold">UP</span>}
         </div>
 
         {/* Step 3: Encode */}
-        <div className="flex-1 flex flex-col items-center gap-1.5 p-2 rounded-lg bg-white/5 border border-white/10 min-w-0">
-          <span className="text-[9px] uppercase font-bold text-text-secondary">3. Encode</span>
+        <div className="flex-1 flex flex-col items-center gap-1 p-1.5 rounded-lg bg-white/5 border border-white/10 min-w-0">
+          <span className="text-[8px] uppercase font-bold text-text-secondary">3. Encode</span>
           <span className={`font-black truncate w-full ${isEncodeGPU ? 'text-brand-lime' : 'text-white'}`}>{encodeResource}</span>
-          <span className="text-[10px] text-text-secondary truncate w-full">{encodeDetails}</span>
+          <span className="text-[9px] text-text-secondary truncate w-full">{encodeDetails}</span>
         </div>
       </div>
 
-      <p className="text-xs text-text-secondary leading-relaxed">
+      <p className="text-[10px] text-text-secondary leading-normal">
         {pathDesc}
       </p>
     </div>

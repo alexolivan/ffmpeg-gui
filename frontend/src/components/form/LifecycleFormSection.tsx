@@ -18,17 +18,17 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
   onChange,
 }) => {
   return (
-    <div className="glass-card p-4 !rounded-2xl space-y-4">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="w-2 h-2 rounded-full bg-brand-lime" />
+    <div className="glass-card p-2.5 !rounded-lg space-y-2">
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
         <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Process Lifecycle Settings</h4>
       </div>
 
       {/* Auto Start Toggle */}
-      <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
         <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium text-white">Auto-start on boot</span>
-          <span className="text-xs text-text-secondary">Launch this service automatically when the application starts.</span>
+          <span className="text-xs font-semibold text-white">Auto-start on boot</span>
+          <span className="text-[10px] text-text-secondary">Launch this service automatically when the application starts.</span>
         </div>
         <label className="relative inline-flex items-center cursor-pointer">
           <input
@@ -37,15 +37,15 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
             onChange={e => onChange({ auto_start: e.target.checked })}
             className="sr-only peer"
           />
-          <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+          <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
         </label>
       </div>
 
       {/* Watchdog Toggle */}
-      <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
         <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium text-white">Enable Watchdog</span>
-          <span className="text-xs text-text-secondary">Monitor process health and auto-restart on unexpected crashes.</span>
+          <span className="text-xs font-semibold text-white">Enable Watchdog</span>
+          <span className="text-[10px] text-text-secondary">Monitor process health and auto-restart on unexpected crashes.</span>
         </div>
         <label className="relative inline-flex items-center cursor-pointer">
           <input
@@ -54,17 +54,17 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
             onChange={e => onChange({ watchdog_enabled: e.target.checked })}
             className="sr-only peer"
           />
-          <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+          <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
         </label>
       </div>
 
       {/* Watchdog Retries */}
       {watchdog_enabled && (
-        <div className="p-3 bg-white/5 rounded-xl border border-white/5 space-y-3 animate-in fade-in duration-200">
+        <div className="p-2 bg-white/5 rounded-lg border border-white/5 space-y-2 animate-in fade-in duration-200">
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium text-white">Infinite Restart Attempts</span>
-              <span className="text-xs text-text-secondary">Keep trying to restart the process indefinitely.</span>
+              <span className="text-xs font-semibold text-white">Infinite Restart Attempts</span>
+              <span className="text-[10px] text-text-secondary">Keep trying to restart the process indefinitely.</span>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -75,20 +75,20 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
                 })}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+              <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
             </label>
           </div>
 
           {watchdog_retries !== -1 && (
-            <div className="flex items-center gap-3 pt-2 border-t border-white/5 animate-in fade-in duration-200">
-              <label className="text-xs font-bold uppercase tracking-wider text-text-secondary block">
+            <div className="flex items-center gap-2 pt-1.5 border-t border-white/5 animate-in fade-in duration-200">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
                 Maximum consecutive retries:
               </label>
               <input
                 type="number"
                 min="1"
                 max="100"
-                className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none w-24 focus:border-brand-lime"
+                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-20 focus:border-brand-lime"
                 value={watchdog_retries}
                 onChange={e => onChange({
                   watchdog_retries: Math.max(1, parseInt(e.target.value) || 1)

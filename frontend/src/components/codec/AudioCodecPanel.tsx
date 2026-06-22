@@ -34,14 +34,14 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
         <h4 className="text-blue-400 font-bold text-xs uppercase tracking-wider">Audio Codec</h4>
       </div>
 
       <select
-        className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none focus:border-blue-400 transition-all"
+        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-blue-400 transition-all"
         value={selected.id}
         onChange={e => handleCodecChange(e.target.value)}
       >
@@ -53,7 +53,7 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
       </select>
 
       {selected.params.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 pt-1">
+        <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-white/5">
           {selected.params.map(param =>
             isParamVisible(param, params) ? (
               <AudioParamControl
@@ -80,7 +80,7 @@ interface AudioParamControlProps {
 
 const AudioParamControl: React.FC<AudioParamControlProps> = ({ param, value, onChange }) => {
   const labelEl = (
-    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">
+    <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">
       {param.label}
       {param.hint && (
         <span className="ml-1 text-white/20 normal-case tracking-normal" title={param.hint}>ⓘ</span>
@@ -93,7 +93,7 @@ const AudioParamControl: React.FC<AudioParamControlProps> = ({ param, value, onC
       <div>
         {labelEl}
         <select
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm outline-none"
+          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
           value={String(value)}
           onChange={e => onChange(e.target.value)}
         >
@@ -126,7 +126,7 @@ const AudioParamControl: React.FC<AudioParamControlProps> = ({ param, value, onC
             step={param.step}
             value={Number(value)}
             onChange={e => onChange(Number(e.target.value))}
-            className="w-16 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs text-center outline-none font-mono"
+            className="w-12 bg-white/5 border border-white/10 rounded-lg p-1 text-[11px] text-center outline-none font-mono"
           />
         </div>
       </div>
@@ -135,14 +135,14 @@ const AudioParamControl: React.FC<AudioParamControlProps> = ({ param, value, onC
 
   if (param.type === 'toggle') {
     return (
-      <div className="flex items-center gap-3 col-span-2">
+      <div className="flex items-center gap-2 col-span-2 py-0.5">
         <input
           type="checkbox"
           checked={Boolean(value)}
           onChange={e => onChange(e.target.checked)}
-          className="w-4 h-4 accent-blue-400"
+          className="w-3.5 h-3.5 accent-blue-400"
         />
-        <span className="text-sm">{param.label}</span>
+        <span className="text-xs">{param.label}</span>
       </div>
     );
   }
@@ -156,7 +156,7 @@ const AudioParamControl: React.FC<AudioParamControlProps> = ({ param, value, onC
         value={String(value)}
         onChange={e => onChange(e.target.value)}
         placeholder={param.hint}
-        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-sm outline-none"
+        className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
       />
     </div>
   );

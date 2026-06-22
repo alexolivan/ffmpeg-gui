@@ -260,16 +260,16 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: accentColor }} />
-        <h4 className="font-bold text-xs uppercase tracking-wider" style={{ color: accentColor }}>
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 mb-0.5">
+        <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: accentColor }} />
+        <h4 className="font-bold text-[10px] uppercase tracking-wider" style={{ color: accentColor }}>
           {label}
         </h4>
       </div>
 
       <select
-        className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none transition-all"
+        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none transition-all"
         value={config.type}
         onChange={e => {
           const newType = e.target.value;
@@ -293,19 +293,19 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         <input
           type="text"
           placeholder={config.type === 'file' ? "Absolute path to file" : "Stream URL (e.g. rtmp://... or http://...)"}
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
           value={config.path || ''}
           onChange={e => update({ path: e.target.value })}
         />
       )}
 
       {config.type === 'srt' && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
             <div className="col-span-2">
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">SRT Connection Mode</label>
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">SRT Connection Mode</label>
               <select
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.mode || 'listener'}
                 onChange={e => {
                   const m = e.target.value;
@@ -322,66 +322,66 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             </div>
 
             <div>
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
                 {config.mode === 'listener' ? 'Bind Interface / Host' : 'Remote Host / IP'}
               </label>
               <input
                 type="text"
                 placeholder={config.mode === 'listener' ? "0.0.0.0 (all interfaces)" : "e.g. 52.210.205.135"}
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.host || ''}
                 onChange={e => update({ host: e.target.value })}
               />
             </div>
 
             <div>
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Port</label>
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
               <input
                 type="text"
                 placeholder="9000"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.port || ''}
                 onChange={e => update({ port: e.target.value })}
               />
             </div>
 
             <div>
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Latency (ms)</label>
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Latency (ms)</label>
               <input
                 type="number"
                 placeholder="200"
                 min={20}
                 max={8000}
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.latency || 200}
                 onChange={e => update({ latency: Number(e.target.value) })}
               />
             </div>
 
             <div>
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Stream ID (Optional)</label>
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Stream ID (Optional)</label>
               <input
                 type="text"
                 placeholder="e.g. input_stream_1"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.streamid || ''}
                 onChange={e => update({ streamid: e.target.value })}
               />
             </div>
           </div>
           
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-300">
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-[10px] text-blue-300">
             {config.mode === 'listener' ? (
               <span>
-                <strong>Listener Mode:</strong> FFmpeg will open a local UDP socket on port <strong>{config.port || '9000'}</strong> and wait for a remote SRT Caller to connect and stream video.
+                <strong>Listener Mode:</strong> FFmpeg opens a local UDP socket on port <strong>{config.port || '9000'}</strong> and waits.
               </span>
             ) : config.mode === 'caller' ? (
               <span>
-                <strong>Caller Mode:</strong> FFmpeg will actively try to connect to the remote host <strong>{config.host || 'Host'}</strong> on port <strong>{config.port || 'Port'}</strong>.
+                <strong>Caller Mode:</strong> FFmpeg actively connects to remote host <strong>{config.host || 'Host'}</strong> on port <strong>{config.port || 'Port'}</strong>.
               </span>
             ) : (
               <span>
-                <strong>Rendezvous Mode:</strong> Both nodes must be configured in Rendezvous mode, using the same port. Useful to traverse firewalls.
+                <strong>Rendezvous Mode:</strong> Both nodes must use Rendezvous mode on the same port.
               </span>
             )}
           </div>
@@ -389,21 +389,21 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'ndi' && (
-        <div className="space-y-2">
-          <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">
+        <div className="space-y-1.5">
+          <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
             NDI Source Name
           </label>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             {!manualNdiMode ? (
               <select
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.name || ''}
                 onChange={e => {
                   if (e.target.value === '__manual__') {
-                    setManualNdiMode(true);
-                    update({ name: '' });
+                     setManualNdiMode(true);
+                     update({ name: '' });
                   } else {
-                    update({ name: e.target.value });
+                     update({ name: e.target.value });
                   }
                 }}
               >
@@ -414,18 +414,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 <option value="__manual__">📝 Manual input...</option>
               </select>
             ) : (
-              <div className="flex w-full gap-2">
+              <div className="flex w-full gap-1.5">
                 <input
                   type="text"
                   placeholder="NDI Source Name (e.g. MY-PC (OBS))"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.name || ''}
                   onChange={e => update({ name: e.target.value })}
                 />
                 {ndiSources.length > 0 && (
                   <button
                     type="button"
-                    className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                    className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
                     onClick={() => {
                       setManualNdiMode(false);
                       update({ name: ndiSources[0] || '' });
@@ -440,7 +440,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               type="button"
               disabled={scanningNdi}
               onClick={scanNdi}
-              className="px-3 bg-brand-lime hover:bg-brand-lime/80 disabled:opacity-50 text-black font-black rounded-lg text-xs transition-colors shrink-0 cursor-pointer"
+              className="px-2.5 bg-brand-lime hover:bg-brand-lime/80 disabled:opacity-50 text-black font-black rounded-lg text-xs transition-colors shrink-0 cursor-pointer"
             >
               {scanningNdi ? "Scanning..." : "Scan"}
             </button>
@@ -449,61 +449,61 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'udp' && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <input
             type="text" placeholder="Multicast / Host"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.host || ''} onChange={e => update({ host: e.target.value })}
           />
           <input
             type="text" placeholder="Port"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.port || ''} onChange={e => update({ port: e.target.value })}
           />
         </div>
       )}
 
       {config.type === 'rtp' && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <input
             type="text" placeholder="Host"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.host || ''} onChange={e => update({ host: e.target.value })}
           />
           <input
             type="text" placeholder="Port"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.port || ''} onChange={e => update({ port: e.target.value })}
           />
         </div>
       )}
 
       {config.type === 'decklink' && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div>
-            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Dispositivo DeckLink</label>
+            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo DeckLink</label>
             {loadingDevices ? (
-              <div className="text-xs text-text-secondary animate-pulse">Cargando dispositivos...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos...</div>
             ) : devices.length === 0 ? (
-              <div className="space-y-2">
-                <div className="text-xs text-amber-500 font-medium">⚠️ No se detectaron tarjetas de captura DeckLink.</div>
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron tarjetas de captura DeckLink.</div>
                 <input
                   type="text"
                   placeholder="Nombre del dispositivo (ej: DeckLink Mini Recorder)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
-                <p className="text-[10px] text-text-secondary">
-                  Ejemplo: <code className="text-brand-orange font-mono">DeckLink Mini Recorder</code> o <code className="text-brand-orange font-mono">DeckLink Quad HDMI Recorder (1)</code>.
+                <p className="text-[9px] text-text-secondary">
+                  Ejemplo: <code className="text-brand-orange font-mono">DeckLink Mini Recorder</code>.
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                <div className="flex gap-2">
+              <div className="space-y-1.5">
+                <div className="flex gap-1.5">
                   {!manualDeviceMode ? (
                     <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                       value={config.device || ''}
                       onChange={e => {
                         if (e.target.value === '__manual__') {
@@ -521,18 +521,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <option value="__manual__">📝 Entrada manual...</option>
                     </select>
                   ) : (
-                    <div className="flex flex-col w-full gap-2">
-                      <div className="flex w-full gap-2">
+                    <div className="flex flex-col w-full gap-1.5">
+                      <div className="flex w-full gap-1.5">
                         <input
                           type="text"
                           placeholder="Nombre del dispositivo"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                           value={config.device || ''}
                           onChange={e => update({ device: e.target.value })}
                         />
                         <button
                           type="button"
-                          className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                          className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
                           onClick={() => {
                             setManualDeviceMode(false);
                             update({ device: devices[0] || '' });
@@ -541,8 +541,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           Lista
                         </button>
                       </div>
-                      <p className="text-[10px] text-text-secondary">
-                        Ejemplo: <code className="text-brand-orange font-mono">DeckLink Mini Recorder</code> o <code className="text-brand-orange font-mono">DeckLink Duo (2)</code>.
+                      <p className="text-[9px] text-text-secondary">
+                        Ejemplo: <code className="text-brand-orange font-mono">DeckLink Mini Recorder</code>.
                       </p>
                     </div>
                   )}
@@ -552,9 +552,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
 
           <div>
-            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Conector de Video (video_input)</label>
+            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Conector de Video (video_input)</label>
             <select
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
               value={config.video_input || ''}
               onChange={e => update({ video_input: e.target.value })}
             >
@@ -569,9 +569,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
 
           <div>
-            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Conector de Audio (audio_input)</label>
+            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Conector de Audio (audio_input)</label>
             <select
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
               value={config.audio_input || ''}
               onChange={e => update({ audio_input: e.target.value })}
             >
@@ -583,28 +583,28 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
 
           <div>
-            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Formato de Entrada (format_code)</label>
+            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato de Entrada (format_code)</label>
             {manualDeviceMode ? (
               <input
                 type="text"
                 placeholder="Código de formato (ej: hp50)"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.format_code || ''}
                 onChange={e => update({ format_code: e.target.value })}
               />
             ) : loadingFormats ? (
-              <div className="text-xs text-text-secondary animate-pulse">Cargando formatos soportados...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">Cargando formatos soportados...</div>
             ) : formats.length === 0 ? (
               <input
                 type="text"
                 placeholder="Código de formato (ej: hp50) - No se detectaron formatos"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.format_code || ''}
                 onChange={e => update({ format_code: e.target.value })}
               />
             ) : (
               <select
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.format_code || ''}
                 onChange={e => update({ format_code: e.target.value })}
               >
@@ -621,31 +621,31 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'alsa' && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div>
-            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Dispositivo ALSA</label>
+            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo ALSA</label>
             {loadingAlsaDevices ? (
-              <div className="text-xs text-text-secondary animate-pulse">Cargando dispositivos ALSA...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos ALSA...</div>
             ) : alsaDevices.length === 0 ? (
-              <div className="space-y-2">
-                <div className="text-xs text-amber-500 font-medium">⚠️ No se detectaron tarjetas de sonido ALSA.</div>
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron tarjetas de sonido ALSA.</div>
                 <input
                   type="text"
                   placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
-                <p className="text-[10px] text-text-secondary">
-                  Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code> (primera tarjeta, primer canal) o <code className="text-brand-orange font-mono">hw:1,0</code> (segunda tarjeta).
+                <p className="text-[9px] text-text-secondary">
+                  Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code>.
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                <div className="flex gap-2">
+              <div className="space-y-1.5">
+                <div className="flex gap-1.5">
                   {!manualAlsaMode ? (
                     <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                       value={config.device || ''}
                       onChange={e => {
                         if (e.target.value === '__manual__') {
@@ -663,18 +663,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <option value="__manual__">📝 Entrada manual...</option>
                     </select>
                   ) : (
-                    <div className="flex flex-col w-full gap-2">
-                      <div className="flex w-full gap-2">
+                    <div className="flex flex-col w-full gap-1.5">
+                      <div className="flex w-full gap-1.5">
                         <input
                           type="text"
                           placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                           value={config.device || ''}
                           onChange={e => update({ device: e.target.value })}
                         />
                         <button
                           type="button"
-                          className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                          className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
                           onClick={() => {
                             setManualAlsaMode(false);
                             update({ device: alsaDevices[0]?.device || '' });
@@ -683,8 +683,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           Lista
                         </button>
                       </div>
-                      <p className="text-[10px] text-text-secondary">
-                        Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code> (primera tarjeta, primer canal) o <code className="text-brand-orange font-mono">hw:1,0</code> (segunda tarjeta).
+                      <p className="text-[9px] text-text-secondary">
+                        Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code>.
                       </p>
                     </div>
                   )}
@@ -696,31 +696,31 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'v4l2' && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div>
-            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Dispositivo V4L2</label>
+            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo V4L2</label>
             {loadingV4l2Devices ? (
-              <div className="text-xs text-text-secondary animate-pulse">Cargando dispositivos V4L2...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos V4L2...</div>
             ) : v4l2Devices.length === 0 ? (
-              <div className="space-y-2">
-                <div className="text-xs text-amber-500 font-medium">⚠️ No se detectaron dispositivos V4L2.</div>
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron dispositivos V4L2.</div>
                 <input
                   type="text"
                   placeholder="Ruta del dispositivo (ej: /dev/video0)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
-                <p className="text-[10px] text-text-secondary">
-                  Ejemplo: <code className="text-brand-orange font-mono">/dev/video0</code> o <code className="text-brand-orange font-mono">/dev/video1</code> para tarjetas de captura físicas o webcams.
+                <p className="text-[9px] text-text-secondary">
+                  Ejemplo: <code className="text-brand-orange font-mono">/dev/video0</code>.
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                <div className="flex gap-2">
+              <div className="space-y-1.5">
+                <div className="flex gap-1.5">
                   {!manualV4l2Mode ? (
                     <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                       value={config.device || ''}
                       onChange={e => {
                         if (e.target.value === '__manual__') {
@@ -738,18 +738,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <option value="__manual__">📝 Entrada manual...</option>
                     </select>
                   ) : (
-                    <div className="flex flex-col w-full gap-2">
-                      <div className="flex w-full gap-2">
+                    <div className="flex flex-col w-full gap-1.5">
+                      <div className="flex w-full gap-1.5">
                         <input
                           type="text"
                           placeholder="Ruta del dispositivo (ej: /dev/video0)"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                           value={config.device || ''}
                           onChange={e => update({ device: e.target.value })}
                         />
                         <button
                           type="button"
-                          className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                          className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
                           onClick={() => {
                             setManualV4l2Mode(false);
                             update({ device: v4l2Devices[0]?.device || '' });
@@ -758,8 +758,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           Lista
                         </button>
                       </div>
-                      <p className="text-[10px] text-text-secondary">
-                        Ejemplo: <code className="text-brand-orange font-mono">/dev/video0</code> o <code className="text-brand-orange font-mono">/dev/video1</code> para tarjetas de captura físicas o webcams.
+                      <p className="text-[9px] text-text-secondary">
+                        Ejemplo: <code className="text-brand-orange font-mono">/dev/video0</code>.
                       </p>
                     </div>
                   )}
@@ -770,14 +770,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
           {!manualV4l2Mode && config.device && (
             <div>
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Formato y Resolución</label>
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato y Resolución</label>
               {loadingV4l2Formats ? (
-                <div className="text-xs text-text-secondary animate-pulse">Cargando formatos...</div>
+                <div className="text-[10px] text-text-secondary animate-pulse">Cargando formatos...</div>
               ) : v4l2Formats.length === 0 ? (
-                <div className="text-xs text-text-secondary italic">No se detectaron formatos. Se usará el valor por defecto.</div>
+                <div className="text-[10px] text-text-secondary italic">No se detectaron formatos.</div>
               ) : (
                 <select
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.pixel_format && config.size ? `${config.pixel_format}|${config.size}` : ''}
                   onChange={e => {
                     const val = e.target.value;
@@ -808,22 +808,22 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             const selDev = v4l2Devices.find(d => d.device === config.device);
             if (selDev && selDev.is_magewell && selDev.alsa_device && onSyncAlsaAudio) {
               return (
-                <div className="border border-lime-500/20 bg-lime-500/5 p-3 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 animate-in fade-in duration-300">
+                <div className="border border-lime-500/20 bg-lime-500/5 p-2 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 animate-in fade-in duration-300">
                   <div className="space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] bg-lime-500/20 text-lime-400 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] bg-lime-500/20 text-lime-400 px-1 py-0.5 rounded-full font-bold uppercase tracking-wider">
                         Magewell Link
                       </span>
-                      <span className="text-xs font-semibold text-white">Audio Embebido Detectado</span>
+                      <span className="text-[11px] font-semibold text-white">Audio Embebido Detectado</span>
                     </div>
-                    <p className="text-[11px] text-text-secondary">
-                      Este dispositivo Magewell tiene asociado el dispositivo ALSA <span className="font-mono text-lime-400">{selDev.alsa_device}</span>.
+                    <p className="text-[10px] text-text-secondary">
+                      Asociado a ALSA <span className="font-mono text-lime-400">{selDev.alsa_device}</span>.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => onSyncAlsaAudio(selDev.alsa_device)}
-                    className="text-xs bg-lime-500 hover:bg-lime-600 text-black font-bold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap self-end sm:self-center"
+                    className="text-[10px] bg-lime-500 hover:bg-lime-600 text-black font-bold px-2 py-1 rounded-lg transition-colors whitespace-nowrap self-end sm:self-center"
                   >
                     Sincronizar Audio (Input 2)
                   </button>
@@ -836,9 +836,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'lavfi_video' && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <select
-            className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+            className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.pattern || 'testsrc'}
             onChange={e => update({ pattern: e.target.value })}
           >
@@ -847,11 +847,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             <option value="color=c=black">Black Screen</option>
             <option value="color=c=white">White Screen</option>
           </select>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Resolution (size)</label>
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Resolution (size)</label>
               <select
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.size || '1920x1080'}
                 onChange={e => update({ size: e.target.value })}
               >
@@ -863,9 +863,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Framerate (rate)</label>
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Framerate (rate)</label>
               <select
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.rate || '25'}
                 onChange={e => update({ rate: e.target.value })}
               >
@@ -883,9 +883,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'lavfi_audio' && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <select
-            className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+            className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.pattern || 'sine'}
             onChange={e => update({ pattern: e.target.value })}
           >
@@ -896,13 +896,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </select>
           {(config.pattern === 'sine' || !config.pattern) && (
             <div>
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Frequency (Hz)</label>
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Frequency (Hz)</label>
               <input
                 type="number"
                 placeholder="1000"
                 min={20}
                 max={20000}
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.frequency || 1000}
                 onChange={e => update({ frequency: Number(e.target.value) })}
               />
@@ -912,15 +912,15 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {['file', 'srt', 'udp', 'rtp', 'rtmp', 'hls'].includes(config.type) && (
-        <div className="space-y-2 pt-3 border-t border-white/5 animate-in fade-in duration-300">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-brand-lime" />
-            <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Hardware Decoding (Input)</h4>
-            <span className="text-[10px] text-white/20 italic ml-auto">-hwaccel</span>
+        <div className="space-y-1.5 pt-2 border-t border-white/5 animate-in fade-in duration-300">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+            <h4 className="text-brand-lime font-bold text-[10px] uppercase tracking-wider">Hardware Decoding (Input)</h4>
+            <span className="text-[9px] text-white/20 italic ml-auto">-hwaccel</span>
           </div>
 
           <select
-            className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none transition-all focus:border-brand-lime"
+            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none transition-all focus:border-brand-lime"
             value={config.hwaccel || 'none'}
             onChange={e => {
               const val = e.target.value;
@@ -943,17 +943,17 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             )}
             <option value="auto">Auto-detect</option>
           </select>
-          <span className="text-[10px] text-text-secondary block px-1">
+          <span className="text-[9px] text-text-secondary block px-1">
             Offloads video decoding to the selected GPU. Recommended for high-bitrate file or network inputs.
           </span>
 
           {config.hwaccel && config.hwaccel !== 'none' && (
-            <div className="mt-2 animate-in fade-in duration-200">
-              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">
+            <div className="mt-1.5 animate-in fade-in duration-200">
+              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
                 Decoded Frames Destination
               </label>
               <select
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.hwaccel_output_format || 'system'}
                 onChange={e => {
                   const val = e.target.value;

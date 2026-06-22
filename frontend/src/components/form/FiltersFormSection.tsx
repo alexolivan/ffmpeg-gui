@@ -126,14 +126,14 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-300">
+    <div className="space-y-2 animate-in fade-in duration-300">
       {/* Sub-tabs header */}
-      <div className="flex gap-2 border-b border-white/5 pb-2.5">
+      <div className="flex gap-1.5 border-b border-white/5 pb-1.5">
         {hasVideo && (
           <button
             type="button"
             onClick={() => setActiveSubTab('video')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+            className={`px-2 py-1 rounded text-[11px] font-black uppercase tracking-wider transition-all ${
               activeSubTab === 'video' ? 'bg-brand-lime text-black' : 'text-text-secondary hover:bg-white/5 hover:text-white'
             }`}
           >
@@ -144,7 +144,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
           <button
             type="button"
             onClick={() => setActiveSubTab('audio')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+            className={`px-2 py-1 rounded text-[11px] font-black uppercase tracking-wider transition-all ${
               activeSubTab === 'audio' ? 'bg-brand-lime text-black' : 'text-text-secondary hover:bg-white/5 hover:text-white'
             }`}
           >
@@ -155,7 +155,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
           <button
             type="button"
             onClick={() => setActiveSubTab('overlays')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+            className={`px-2 py-1 rounded text-[11px] font-black uppercase tracking-wider transition-all ${
               activeSubTab === 'overlays' ? 'bg-brand-lime text-black' : 'text-text-secondary hover:bg-white/5 hover:text-white'
             }`}
           >
@@ -166,58 +166,58 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
       {/* SUB-TAB: Video Settings */}
       {activeSubTab === 'video' && hasVideo && (
-        <div className="glass-card p-4 !rounded-2xl space-y-4">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-brand-lime" />
+        <div className="glass-card p-2.5 !rounded-lg space-y-2">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
             <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Video Filters</h4>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">Scale / Resize</label>
+              <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">Scale / Resize</label>
               <input
                 type="text"
                 placeholder="e.g. 1920:1080 or -1:720"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={scale}
                 onChange={e => onChange({ scale: e.target.value })}
               />
             </div>
             <div>
-              <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">Framerate Convert</label>
+              <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">Framerate Convert</label>
               <input
                 type="text"
                 placeholder="e.g. 25, 29.97, 50"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={framerate}
                 onChange={e => onChange({ framerate: e.target.value })}
               />
             </div>
-            <div className="col-span-2 flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+            <div className="col-span-2 flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5">
               <input
                 type="checkbox" id="deinterlace-chk"
-                className="w-4 h-4 accent-brand-lime cursor-pointer"
+                className="w-3.5 h-3.5 accent-brand-lime cursor-pointer"
                 checked={deinterlace}
                 onChange={e => onChange({ deinterlace: e.target.checked })}
               />
-              <label htmlFor="deinterlace-chk" className="text-sm font-medium cursor-pointer select-none">
+              <label htmlFor="deinterlace-chk" className="text-xs font-semibold cursor-pointer select-none">
                 Enable Deinterlacing (YADIF / QSV VPP / CUDA yadif)
               </label>
             </div>
             {deinterlace && isVram && hwaccel === 'cuda' && systemCapabilities?.ffmpeg?.filters && !systemCapabilities.ffmpeg.filters.includes('yadif_cuda') && (
-              <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-3 rounded-lg leading-snug font-bold">
+              <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
                 ⚠️ El binario activo de FFmpeg no soporta el filtro de hardware 'yadif_cuda'.
                 Se recomienda cambiar el formato de salida a 'System Memory (CPU RAM)' en la pestaña Source, o recompilar con soporte CUDA Filters.
               </div>
             )}
             {deinterlace && isVram && hwaccel === 'vaapi' && systemCapabilities?.ffmpeg?.filters && !systemCapabilities.ffmpeg.filters.includes('deinterlace_vaapi') && (
-              <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-3 rounded-lg leading-snug font-bold">
+              <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
                 ⚠️ El binario activo de FFmpeg no soporta el filtro de hardware 'deinterlace_vaapi'.
                 Se recomienda cambiar el formato de salida a 'System Memory (CPU RAM)' en la pestaña Source.
               </div>
             )}
             {deinterlace && isVram && hwaccel === 'qsv' && systemCapabilities?.ffmpeg?.filters && !systemCapabilities.ffmpeg.filters.includes('vpp_qsv') && (
-              <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-3 rounded-lg leading-snug font-bold">
+              <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
                 ⚠️ El binario activo de FFmpeg no soporta el filtro de hardware 'vpp_qsv'.
                 Se recomienda cambiar el formato de salida a 'System Memory (CPU RAM)' en la pestaña Source.
               </div>
@@ -228,92 +228,92 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
       {/* SUB-TAB: Audio Settings */}
       {activeSubTab === 'audio' && hasAudio && (
-        <div className="glass-card p-4 !rounded-2xl space-y-4">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full bg-brand-lime" />
+        <div className="glass-card p-2.5 !rounded-lg space-y-2">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
             <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Audio DSP & Levels</h4>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">Volume Adjustment</label>
+              <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">Volume Adjustment</label>
               <input
                 type="text"
                 placeholder="e.g. 1.0 (no change), 1.5 (+50%), 0.5 (-50%), -10dB"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={volume}
                 onChange={e => onChange({ volume: e.target.value })}
               />
             </div>
 
             <div className="flex flex-col justify-end">
-              <div className="flex items-center gap-3 p-2.5 bg-white/5 rounded-xl border border-white/5 h-[42px]">
+              <div className="flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5 h-[28px]">
                 <input
                   type="checkbox" id="compressor-chk"
-                  className="w-4 h-4 accent-brand-lime cursor-pointer"
+                  className="w-3.5 h-3.5 accent-brand-lime cursor-pointer"
                   checked={compressor}
                   onChange={e => onChange({ compressor: e.target.checked })}
                 />
-                <label htmlFor="compressor-chk" className="text-xs font-semibold cursor-pointer select-none">
+                <label htmlFor="compressor-chk" className="text-[11px] font-semibold cursor-pointer select-none">
                   Enable Compand Dynamic Limiter
                 </label>
               </div>
             </div>
 
             <div>
-              <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">Highpass Filter (Hz)</label>
+              <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">Highpass Filter (Hz)</label>
               <input
                 type="text"
                 placeholder="Cutoff frequency, e.g. 80"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={highpass}
                 onChange={e => onChange({ highpass: e.target.value })}
               />
             </div>
 
             <div>
-              <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block mb-1">Lowpass Filter (Hz)</label>
+              <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">Lowpass Filter (Hz)</label>
               <input
                 type="text"
                 placeholder="Cutoff frequency, e.g. 15000"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={lowpass}
                 onChange={e => onChange({ lowpass: e.target.value })}
               />
             </div>
 
-            <div className="col-span-2 border-t border-white/5 pt-3">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
+            <div className="col-span-2 border-t border-white/5 pt-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="checkbox" id="eq-chk"
-                    className="w-4 h-4 accent-brand-lime cursor-pointer"
+                    className="w-3.5 h-3.5 accent-brand-lime cursor-pointer"
                     checked={equalizer.enabled || false}
                     onChange={e => onChange({ equalizer: { ...equalizer, enabled: e.target.checked } })}
                   />
-                  <label htmlFor="eq-chk" className="text-xs font-bold uppercase tracking-wider text-text-secondary select-none cursor-pointer">
+                  <label htmlFor="eq-chk" className="text-[11px] font-bold uppercase tracking-wider text-text-secondary select-none cursor-pointer">
                     5-Band Graphic Equalizer
                   </label>
                 </div>
-                {equalizer.enabled && <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime">ACTIVE</span>}
+                {equalizer.enabled && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">ACTIVE</span>}
               </div>
 
               {equalizer.enabled && (
-                <div className="grid grid-cols-5 gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+                <div className="grid grid-cols-5 gap-1.5 p-2 bg-white/5 rounded-lg border border-white/5">
                   {Object.keys(bandsObj).map(band => (
-                    <div key={band} className="flex flex-col items-center gap-2 font-mono">
+                    <div key={band} className="flex flex-col items-center gap-1 font-mono">
                       <span className="text-[9px] text-text-secondary">{band}Hz</span>
                       <input
                         type="range"
                         min="-20"
                         max="20"
                         step="1"
-                        className="h-24 w-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none orientation-vertical cursor-ns-resize"
+                        className="h-16 w-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none orientation-vertical cursor-ns-resize"
                         style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' } as any}
                         value={bandsObj[band]}
                         onChange={e => updateEqBand(band, Number(e.target.value))}
                       />
-                      <span className={`text-[10px] font-bold ${bandsObj[band] > 0 ? 'text-brand-lime' : bandsObj[band] < 0 ? 'text-brand-orange' : 'text-text-secondary'}`}>
+                      <span className={`text-[9px] font-bold ${bandsObj[band] > 0 ? 'text-brand-lime' : bandsObj[band] < 0 ? 'text-brand-orange' : 'text-text-secondary'}`}>
                         {bandsObj[band] > 0 ? `+${bandsObj[band]}` : bandsObj[band]}dB
                       </span>
                     </div>
@@ -322,14 +322,14 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               )}
             </div>
 
-            <div className="col-span-2 flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
+            <div className="col-span-2 flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5">
               <input
                 type="checkbox" id="aresample-chk"
-                className="w-4 h-4 accent-brand-lime cursor-pointer"
+                className="w-3.5 h-3.5 accent-brand-lime cursor-pointer"
                 checked={aresample}
                 onChange={e => onChange({ aresample: e.target.checked })}
               />
-              <label htmlFor="aresample-chk" className="text-xs font-semibold cursor-pointer select-none">
+              <label htmlFor="aresample-chk" className="text-[11px] font-semibold cursor-pointer select-none">
                 Enable Audio Resampling Sync (aresample=async=1)
               </label>
             </div>
@@ -339,10 +339,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
       {/* SUB-TAB: Overlays */}
       {activeSubTab === 'overlays' && hasVideo && (
-        <div className="glass-card p-4 !rounded-2xl space-y-4">
+        <div className="glass-card p-2.5 !rounded-lg space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-brand-lime" />
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
               <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Video Overlays Layering</h4>
             </div>
 

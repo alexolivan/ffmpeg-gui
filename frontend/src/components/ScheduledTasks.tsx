@@ -794,19 +794,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
       {/* CREATE / EDIT TASK MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-6 z-40 overflow-y-auto">
-          <div className="glass-card w-full max-w-4xl p-6 relative my-8">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
             <button 
               onClick={() => {
                 setShowAddModal(false);
                 setEditingTask(null);
               }}
-              className="absolute top-6 right-6 text-text-secondary hover:text-white text-xl z-50"
+              className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs"
             >
               ✕
             </button>
             
-            <h3 className="text-2xl font-black text-brand-lime uppercase tracking-wide mb-6">
+            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase text-brand-lime">
               {editingTask ? 'Edit Scheduled Task' : 'New Scheduled Task'}
             </h3>
 

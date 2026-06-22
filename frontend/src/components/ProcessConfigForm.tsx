@@ -340,32 +340,32 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   };
 
   const sections = [
-    { id: 'system', label: 'General', icon: <ShieldIcon size={16} /> },
-    { id: 'inputs', label: 'Input', icon: <SourceIcon size={16} /> },
-    { id: 'output', label: 'Output', icon: <DestinationIcon size={16} /> },
-    { id: 'encoding', label: 'Codecs', icon: <GearIcon size={16} /> },
-    { id: 'filters', label: 'Filters', icon: <KnobsIcon size={16} /> },
+    { id: 'system', label: 'General', icon: <ShieldIcon size={14} /> },
+    { id: 'inputs', label: 'Input', icon: <SourceIcon size={14} /> },
+    { id: 'output', label: 'Output', icon: <DestinationIcon size={14} /> },
+    { id: 'encoding', label: 'Codecs', icon: <GearIcon size={14} /> },
+    { id: 'filters', label: 'Filters', icon: <KnobsIcon size={14} /> },
   ];
 
   return (
-    <div className="flex flex-col h-full max-h-[75vh]">
+    <div className="flex flex-col h-full max-h-[85vh]">
       {/* ── Header: Name + Build ── */}
-      <div className="space-y-3 mb-4 flex-shrink-0">
-        <div className="flex gap-3">
+      <div className="space-y-2 mb-2.5 flex-shrink-0">
+        <div className="flex gap-2">
           <div className="flex-[3]">
             <input
               type="text"
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all text-lg font-medium"
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium"
               placeholder={isTask ? "Task name (e.g. Daily Transcode of Stream)" : "Service name (e.g. Primary Encoder Node-01)"}
               value={config.name}
               onChange={e => setConfig({ ...config, name: e.target.value })}
             />
           </div>
-          <div className="w-[180px] flex-shrink-0">
+          <div className="w-[140px] flex-shrink-0">
             <input
               type="text"
               maxLength={12}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 focus:border-brand-lime outline-none transition-all text-lg font-medium text-brand-lime placeholder-white/20"
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium text-brand-lime placeholder-white/20"
               placeholder="LCD Alias"
               title="Alias for LCD display (max 12 alphanumeric characters, spaces, hyphens, underscores)"
               value={config.alias}
@@ -376,10 +376,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             />
           </div>
         </div>
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-2 items-center">
           {availableBuilds.length > 0 && (
             <select
-              className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-xl p-2.5 text-sm outline-none focus:border-brand-orange transition-all truncate"
+              className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-orange transition-all truncate"
               value={config.ffmpeg_build_id ?? ''}
               onChange={e => handleBuildChange(e.target.value ? Number(e.target.value) : null)}
             >
@@ -392,8 +392,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             </select>
           )}
           {/* Stream toggles */}
-          <div className="flex items-center gap-4 bg-white/5 rounded-xl px-4 py-2.5 border border-white/10 flex-shrink-0">
-            <label className="flex items-center gap-2 cursor-pointer">
+          <div className="flex items-center gap-3 bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/10 flex-shrink-0">
+            <label className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox" checked={config.has_video}
                 onChange={e => {
@@ -418,12 +418,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 }}
                 className="w-3.5 h-3.5 accent-brand-orange"
               />
-              <span className={`text-xs font-bold uppercase tracking-wider ${config.has_video ? 'text-brand-orange' : 'text-text-secondary'}`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_video ? 'text-brand-orange' : 'text-text-secondary'}`}>
                 Video
               </span>
             </label>
-            <span className="w-px h-4 bg-white/10" />
-            <label className="flex items-center gap-2 cursor-pointer">
+            <span className="w-px h-3 bg-white/10" />
+            <label className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox" checked={config.has_audio}
                 onChange={e => {
@@ -448,7 +448,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 }}
                 className="w-3.5 h-3.5 accent-blue-400"
               />
-              <span className={`text-xs font-bold uppercase tracking-wider ${config.has_audio ? 'text-blue-400' : 'text-text-secondary'}`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_audio ? 'text-blue-400' : 'text-text-secondary'}`}>
                 Audio
               </span>
             </label>
@@ -471,12 +471,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       )}
 
       {/* ── Section tabs ── */}
-      <div className="flex gap-1 mb-3 flex-shrink-0 border-b border-white/5 pb-3">
+      <div className="flex gap-1 mb-2 flex-shrink-0 border-b border-white/5 pb-2">
         {sections.map(s => (
           <button
             key={s.id}
             onClick={() => setActiveSection(s.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
               activeSection === s.id
                 ? 'bg-white/10 text-white'
                 : 'text-text-secondary hover:bg-white/5 hover:text-white/70'
@@ -757,24 +757,24 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       </div>
 
       {/* ── Sticky footer ── */}
-      <div className="flex gap-4 pt-4 mt-3 border-t border-white/5 flex-shrink-0">
+      <div className="flex gap-3 pt-3 mt-2.5 border-t border-white/5 flex-shrink-0">
         <button
           onClick={onCancel}
-          className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl font-bold hover:bg-white/10 transition-all uppercase tracking-widest text-sm"
+          className="flex-1 py-2 bg-white/5 border border-white/10 rounded-lg font-bold hover:bg-white/10 transition-all uppercase tracking-widest text-xs"
         >
           Cancel
         </button>
         <button
           onClick={handlePreview}
           disabled={isPreviewing}
-          className="flex-1 py-3 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl font-bold hover:bg-blue-500/30 transition-all uppercase tracking-widest text-sm"
+          className="flex-1 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg font-bold hover:bg-blue-500/30 transition-all uppercase tracking-widest text-xs"
         >
           {isPreviewing ? 'Wait...' : 'Preview CLI'}
         </button>
         <button
           onClick={handleSubmit}
           disabled={!config.name.trim()}
-          className="flex-1 py-3 bg-brand-lime text-black rounded-xl font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-sm shadow-xl shadow-brand-lime/20 disabled:opacity-30 disabled:hover:scale-100"
+          className="flex-1 py-2 bg-brand-lime text-black rounded-lg font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs shadow-xl shadow-brand-lime/20 disabled:opacity-30 disabled:hover:scale-100"
         >
           {initialConfig ? 'Save Changes' : (isTask ? 'Create Task' : 'Deploy Service')}
         </button>
@@ -782,7 +782,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           <button
             onClick={handleSaveAs}
             disabled={!config.name.trim()}
-            className="flex-1 py-3 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-xl font-bold hover:bg-brand-orange/30 transition-all uppercase tracking-widest text-sm"
+            className="flex-1 py-2 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-lg font-bold hover:bg-brand-orange/30 transition-all uppercase tracking-widest text-xs"
           >
             Save as New
           </button>

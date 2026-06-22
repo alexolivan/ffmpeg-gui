@@ -275,10 +275,10 @@ function App() {
       {/* ── Add Service Modal ── */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="glass-card w-full max-w-3xl p-8 relative max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
             <button onClick={() => setShowAddModal(false)}
-              className="absolute top-6 right-6 w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10">✕</button>
-            <h3 className="text-2xl font-bold mb-4 flex-shrink-0">ADD NEW SERVICE</h3>
+              className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs">✕</button>
+            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase">ADD NEW SERVICE</h3>
             <ProcessConfigForm
               onCancel={() => setShowAddModal(false)}
               onSubmit={async (config) => {
@@ -315,10 +315,10 @@ function App() {
       {/* ── Edit Service Modal ── */}
       {editingProcess && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="glass-card w-full max-w-3xl p-8 relative max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
             <button onClick={() => setEditingProcess(null)}
-              className="absolute top-6 right-6 w-8 h-8 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10">✕</button>
-            <h3 className="text-2xl font-bold mb-4 flex-shrink-0">EDIT SERVICE: {editingProcess.name.toUpperCase()}</h3>
+              className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs">✕</button>
+            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase">EDIT SERVICE: {editingProcess.name.toUpperCase()}</h3>
             <ProcessConfigForm
               initialConfig={editingProcess}
               onCancel={() => setEditingProcess(null)}
