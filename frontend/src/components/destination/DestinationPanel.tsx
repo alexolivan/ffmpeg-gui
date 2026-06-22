@@ -23,6 +23,14 @@ export interface OutputConfig {
   hls_delete_segments?: boolean;
   headers?: string;
   variants?: HlsVariant[];
+  muxrate?: string;
+  service_provider?: string;
+  service_name?: string;
+  transport_stream_id?: string;
+  original_network_id?: string;
+  service_id?: string;
+  pkt_size?: number;
+  streamid?: string;
 }
 
 interface DestinationPanelProps {
@@ -194,47 +202,186 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {/* ── Type-specific fields ── */}
 
       {(config.type === 'udp' || config.type === 'rtp') && (
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            type="text" placeholder="Host / Multicast"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-            value={config.host || ''} onChange={e => update({ host: e.target.value })}
-          />
-          <input
-            type="text" placeholder="Port"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-            value={config.port || ''} onChange={e => update({ port: e.target.value })}
-          />
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Host / Multicast IP</label>
+              <input
+                type="text" placeholder="e.g. 239.0.0.1 or 127.0.0.1"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                value={config.host || ''} onChange={e => update({ host: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Port</label>
+              <input
+                type="text" placeholder="1234"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.port || ''} onChange={e => update({ port: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {config.type === 'udp' && (
+            <div className="border border-white/5 bg-white/[0.01] rounded-xl p-3.5 space-y-3">
+              <span className="text-[10px] uppercase font-black tracking-widest text-text-secondary">
+                MPEG-TS & DVB Broadcast Options
+              </span>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] text-text-secondary font-bold block mb-1">Constant Muxrate (bps)</label>
+                  <input
+                    type="text" placeholder="e.g. 5000000 (5 Mbps)"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-xs outline-none font-mono"
+                    value={config.muxrate || ''} onChange={e => update({ muxrate: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-text-secondary font-bold block mb-1">Socket Packet Size (pkt_size)</label>
+                  <input
+                    type="number" placeholder="1316" min={188} max={65535}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-xs outline-none font-mono"
+                    value={config.pkt_size || 1316} onChange={e => update({ pkt_size: Number(e.target.value) })}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-text-secondary font-bold block mb-1">Service Provider</label>
+                  <input
+                    type="text" placeholder="e.g. Antigravity Broadcast"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-xs outline-none"
+                    value={config.service_provider || ''} onChange={e => update({ service_provider: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-text-secondary font-bold block mb-1">Service Name</label>
+                  <input
+                    type="text" placeholder="e.g. Main HD Channel"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-xs outline-none"
+                    value={config.service_name || ''} onChange={e => update({ service_name: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-text-secondary font-bold block mb-1">Transport Stream ID (HEX/DEC)</label>
+                  <input
+                    type="text" placeholder="e.g. 0x0001 or 1"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-xs outline-none font-mono"
+                    value={config.transport_stream_id || ''} onChange={e => update({ transport_stream_id: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-text-secondary font-bold block mb-1">Original Network ID (HEX/DEC)</label>
+                  <input
+                    type="text" placeholder="e.g. 0x20fa or 8442"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-xs outline-none font-mono"
+                    value={config.original_network_id || ''} onChange={e => update({ original_network_id: e.target.value })}
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="text-[10px] text-text-secondary font-bold block mb-1">Service ID (HEX/DEC)</label>
+                  <input
+                    type="text" placeholder="e.g. 0x0001 or 1"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-xs outline-none font-mono"
+                    value={config.service_id || ''} onChange={e => update({ service_id: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {config.type === 'srt' && (
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            type="text" placeholder="Host"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-            value={config.host || ''} onChange={e => update({ host: e.target.value })}
-          />
-          <input
-            type="text" placeholder="Port"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-            value={config.port || ''} onChange={e => update({ port: e.target.value })}
-          />
-          <select
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-            value={config.mode || 'caller'} onChange={e => update({ mode: e.target.value })}
-          >
-            <option value="caller">Caller (Client)</option>
-            <option value="listener">Listener (Server)</option>
-          </select>
-          <div>
-            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Latency (ms)</label>
-            <input
-              type="number" placeholder="200" min={20} max={8000}
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
-              value={config.latency || 200}
-              onChange={e => update({ latency: Number(e.target.value) })}
-            />
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">SRT Connection Mode</label>
+              <select
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                value={config.mode || 'caller'}
+                onChange={e => {
+                  const m = e.target.value;
+                  update({ 
+                    mode: m, 
+                    host: m === 'listener' ? '0.0.0.0' : config.host 
+                  });
+                }}
+              >
+                <option value="caller">Caller (Client Mode — push stream to remote listener)</option>
+                <option value="listener">Listener (Server Mode — wait for remote caller to fetch stream)</option>
+                <option value="rendezvous">Rendezvous Mode (Peer-to-peer connection)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">
+                {config.mode === 'listener' ? 'Bind Interface / Host' : 'Remote Host / IP'}
+              </label>
+              <input
+                type="text"
+                placeholder={config.mode === 'listener' ? "0.0.0.0 (all interfaces)" : "e.g. 52.210.205.135"}
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                value={config.host || ''}
+                onChange={e => update({ host: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Port</label>
+              <input
+                type="text"
+                placeholder="9000"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.port || ''}
+                onChange={e => update({ port: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Latency (ms)</label>
+              <input
+                type="number"
+                placeholder="200"
+                min={20}
+                max={8000}
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.latency || 200}
+                onChange={e => update({ latency: Number(e.target.value) })}
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Stream ID (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. output_stream_1"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.streamid || ''}
+                onChange={e => update({ streamid: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 text-xs text-purple-300">
+            {config.mode === 'caller' ? (
+              <span>
+                <strong>Caller Mode (Standard):</strong> FFmpeg will push the transcoded stream to the remote SRT listener at <strong>{config.host || 'Host'}</strong>:<strong>{config.port || 'Port'}</strong>.
+              </span>
+            ) : config.mode === 'listener' ? (
+              <span>
+                <strong>Listener Mode:</strong> FFmpeg will open a port at <strong>{config.port || '9000'}</strong>. The stream will start transcoding and broadcasting only when a remote client connects.
+              </span>
+            ) : (
+              <span>
+                <strong>Rendezvous Mode:</strong> Peer-to-peer streaming connection. Requires both nodes to use the same port.
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -249,12 +396,27 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       )}
 
       {config.type === 'ndi' && (
-        <input
-          type="text"
-          placeholder="NDI Output Name (e.g. MY-ENCODER)"
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-          value={config.path || ''} onChange={e => update({ path: e.target.value })}
-        />
+        <div className="space-y-3">
+          <div>
+            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">NDI Output Connection Name</label>
+            <input
+              type="text"
+              placeholder="e.g. MY-ENCODER-OUT"
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+              value={config.path || ''} onChange={e => update({ path: e.target.value })}
+            />
+          </div>
+          <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl text-xs text-purple-300 space-y-1">
+            <div className="flex items-center gap-1.5 font-bold">
+              <span>🔒 Locked NDI Specifications:</span>
+            </div>
+            <ul className="list-disc pl-4 space-y-0.5 text-text-secondary">
+              <li>Format: <code className="text-purple-300 font-mono">libndi_newtek</code></li>
+              <li>Pixel Format: <code className="text-purple-300 font-mono">uyvy422</code> (enforced)</li>
+              <li>Framerate / Resolution: Dynamic (passed through from filters)</li>
+            </ul>
+          </div>
+        </div>
       )}
 
       {config.type === 'decklink' && (

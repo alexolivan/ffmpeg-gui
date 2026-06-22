@@ -366,52 +366,99 @@ class ProcessManager:
             cmd += [variant_playlist]
 
         else:
-            # ── Stream mapping ──
-            if is_new_format and use_secondary:
-                if has_video:
-                    cmd += ["-map", "0:v"]
-                if has_audio:
-                    cmd += ["-map", "1:a"]
+            # ── Stream mapping (with custom mapping support) ──
+            video_map = None
+            audio_map = None
+            if is_new_format:
+                video_map = input_cfg['input1'].get('video_map')
+                audio_map = input_cfg['input1'].get('audio_map')
             else:
-                if has_video:
+                video_map = input_cfg.get('video_map')
+                audio_map = input_cfg.get('audio_map')
+                
+            if video_map and has_video:
+                cmd += ["-map", video_map]
+            elif has_video:
+                if is_new_format and use_secondary:
                     cmd += ["-map", "0:v"]
-                if has_audio:
+                else:
+                    cmd += ["-map", "0:v"]
+                    
+            if audio_map and has_audio:
+                cmd += ["-map", audio_map]
+            elif has_audio:
+                if is_new_format and use_secondary:
+                    cmd += ["-map", "1:a"]
+                else:
                     cmd += ["-map", "0:a"]
 
             # ── Video processing ──
             if not has_video:
                 cmd += ["-vn"]
             else:
-                # Video filters
-                vf = []
-                if filter_cfg.get('scale'):
-                    scale_val = filter_cfg['scale'].replace('x', ':')
-                    vf.append(f"scale={scale_val}")
-                if filter_cfg.get('deinterlace'):
-                    vf.append("yadif")
-                if filter_cfg.get('framerate'):
-                    vf.append(f"fps={filter_cfg['framerate']}")
+                from core.filter_graph import FilterGraphBuilder
                 
-                vcodec = codec_cfg.get('vcodec', 'libx264')
-                hwaccel = advanced.get('hwaccel', 'none')
-                if vcodec in ('h264_vaapi', 'hevc_vaapi') and hwaccel != 'vaapi':
-                    vf.append("format=nv12")
-                    vf.append("hwupload")
+                frames_destination = 'cpu'
+                if is_new_format:
+                    frames_destination = input_cfg['input1'].get('frames_destination', 'cpu')
+                else:
+                    frames_destination = input_cfg.get('frames_destination', 'cpu')
                     
-                if output_cfg.get('type') == 'decklink':
+                hwaccel = advanced.get('hwaccel', 'none')
+                is_vram = (frames_destination == 'vram')
+                if hwaccel == 'none':
+                    is_vram = False
+                    
+                vf_str, remains_vram = FilterGraphBuilder.build_video_filters(
+                    input_cfg, filter_cfg, is_vram, hwaccel
+                )
+                
+                vf_list = []
+                if vf_str:
+                    vf_list.append(vf_str)
+                    
+                if filter_cfg.get('framerate'):
+                    if remains_vram:
+                        vf_list.append("hwdownload")
+                        vf_list.append("format=nv12")
+                        remains_vram = False
+                    vf_list.append(f"fps={filter_cfg['framerate']}")
+                    
+                vcodec = codec_cfg.get('vcodec', 'libx264')
+                output_type = output_cfg.get('type')
+                
+                needs_cpu_frames = (
+                    output_type in ('decklink', 'ndi') or
+                    vcodec in ('libx264', 'libx265', 'rawvideo', 'wrapped_avframe')
+                )
+                
+                if remains_vram and needs_cpu_frames:
+                    vf_list.append("hwdownload")
+                    vf_list.append("format=nv12")
+                    remains_vram = False
+                    
+                if output_type == 'decklink':
                     if output_cfg.get('video_size'):
                         size_arg = output_cfg['video_size'].replace('x', ':')
-                        vf.append(f"scale={size_arg}")
+                        vf_list.append(f"scale={size_arg}")
                     if output_cfg.get('framerate'):
-                        vf.append(f"fps={output_cfg['framerate']}")
-                    vf.append("format=yuv422p")
-                        
-                if vf:
-                    cmd += ["-vf", ",".join(vf)]
+                        vf_list.append(f"fps={output_cfg['framerate']}")
+                    vf_list.append("format=yuv422p")
+                elif output_type == 'ndi':
+                    vf_list.append("format=uyvy422")
+                    
+                is_hw_encoder = vcodec in ('h264_vaapi', 'hevc_vaapi', 'h264_qsv', 'hevc_qsv')
+                if not remains_vram and is_hw_encoder:
+                    vf_list.append("format=nv12")
+                    vf_list.append("hwupload")
+                    remains_vram = True
+                    
+                final_vf = ",".join(vf_list) if vf_list else ""
+                if final_vf:
+                    cmd += ["-vf", final_vf]
 
                 # Video codec
-                vcodec = codec_cfg.get('vcodec', 'libx264')
-                if output_cfg.get('type') == 'decklink' and vcodec == 'rawvideo':
+                if output_type == 'decklink' and vcodec == 'rawvideo':
                     cmd += ["-c:v", "wrapped_avframe"]
                 else:
                     cmd += ["-c:v", vcodec]
@@ -421,10 +468,8 @@ class ProcessManager:
                 if video_params:
                     self._append_video_codec_params(cmd, vcodec, video_params)
                 else:
-                    # Legacy fallback: basic preset for x264
                     if vcodec == 'libx264':
                         cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
-                    # Legacy bitrate
                     if codec_cfg.get('bitrate'):
                         cmd += ["-b:v", codec_cfg['bitrate']]
 
@@ -432,6 +477,11 @@ class ProcessManager:
             if not has_audio:
                 cmd += ["-an"]
             else:
+                from core.filter_graph import FilterGraphBuilder
+                af_str = FilterGraphBuilder.build_audio_filters(filter_cfg)
+                if af_str:
+                    cmd += ["-af", af_str]
+                    
                 acodec = codec_cfg.get('acodec', 'aac')
                 cmd += ["-c:a", acodec]
                 
@@ -478,14 +528,23 @@ class ProcessManager:
         if input_type == 'file':
             cmd += ["-i", input_cfg.get('path', '')]
         elif input_type == 'srt':
-            mode = input_cfg.get('mode', 'listener')
-            latency = input_cfg.get('latency', 200)
-            host = input_cfg.get('host', '')
+            mode = input_cfg.get('mode', 'caller')
+            latency = input_cfg.get('latency', 250)
+            host = input_cfg.get('host') or ('0.0.0.0' if mode == 'listener' else '127.0.0.1')
             port = input_cfg.get('port', '9000')
-            cmd += ["-i", f"srt://{host}:{port}?mode={mode}&latency={latency}"]
+            streamid = input_cfg.get('streamid', '')
+            
+            from utils.process_utils import get_ffmpeg_version
+            version = get_ffmpeg_version(self.ffmpeg_path)
+            timeout_param = "timeout=5000000" if version >= 4.0 else "rw_timeout=5000000"
+            
+            url = f"srt://{host}:{port}?mode={mode}&latency={latency}&{timeout_param}"
+            if streamid:
+                url += f"&streamid={streamid}"
+            cmd += ["-i", url]
         elif input_type == 'ndi':
             name = input_cfg.get('name', '')
-            cmd += ["-f", "libndi_newtek", "-find_sources", "1", "-i", name]
+            cmd += ["-f", "libndi_newtek", "-i", name]
         elif input_type == 'decklink':
             video_input = input_cfg.get('video_input')
             if video_input and video_input != 'unset':
@@ -716,21 +775,94 @@ class ProcessManager:
         """Append output destination to the command."""
         output_type = output_cfg.get('type')
         
+        is_mpegts = (
+            output_type in ('udp', 'srt', 'rtp_mpegts') or 
+            (output_type == 'file' and output_cfg.get('container') == 'mpegts') or
+            (output_type == 'file' and output_cfg.get('path', '').endswith('.ts'))
+        )
+        
+        if is_mpegts:
+            vcodec = codec_cfg.get('vcodec', '').lower()
+            if '264' in vcodec or 'h264' in vcodec:
+                cmd += ["-bsf:v", "h264_mp4toannexb"]
+            elif '265' in vcodec or 'hevc' in vcodec or 'h256' in vcodec:
+                cmd += ["-bsf:v", "hevc_mp4toannexb"]
+                
+        def append_mpegts_options(cmd: list, cfg: dict):
+            if cfg.get('muxrate'):
+                cmd += ["-muxrate", str(cfg['muxrate'])]
+            
+            ts_id = cfg.get('transport_stream_id') or cfg.get('ts_id')
+            if ts_id is not None and ts_id != '':
+                cmd += ["-mpegts_transport_stream_id", str(ts_id)]
+                
+            net_id = cfg.get('original_network_id') or cfg.get('net_id')
+            if net_id is not None and net_id != '':
+                cmd += ["-mpegts_original_network_id", str(net_id)]
+                
+            service_id = cfg.get('service_id')
+            if service_id is not None and service_id != '':
+                cmd += ["-mpegts_service_id", str(service_id)]
+
+            for param, flag in [
+                ('pmt_start_pid', '-mpegts_pmt_start_pid'),
+                ('start_pid', '-mpegts_start_pid')
+            ]:
+                if cfg.get(param):
+                    cmd += [flag, str(cfg[param])]
+            if cfg.get('service_provider'):
+                cmd += ["-metadata", f"service_provider={cfg['service_provider']}"]
+            if cfg.get('service_name'):
+                cmd += ["-metadata", f"service_name={cfg['service_name']}"]
+            if cfg.get('service_type'):
+                cmd += ["-mpegts_service_type", str(cfg['service_type'])]
+            if cfg.get('audio_language'):
+                cmd += ["-metadata:s:a:0", f"language={cfg['audio_language']}"]
+            flags = []
+            if cfg.get('pat_pmt_at_frames'):
+                flags.append("pat_pmt_at_frames")
+            if cfg.get('system_b'):
+                flags.append("system_b")
+            if flags:
+                cmd += ["-mpegts_flags", "+".join(flags)]
+                
         if output_type == 'file':
             path = output_cfg.get('path', 'output.mp4')
-            container = output_cfg.get('container', '')
-            # If container hint doesn't match extension, let ffmpeg figure it out
+            if is_mpegts:
+                cmd += ["-f", "mpegts"]
+                append_mpegts_options(cmd, output_cfg)
             cmd += [path]
         elif output_type == 'udp':
             host = output_cfg.get('host', '127.0.0.1')
             port = output_cfg.get('port', '1234')
-            cmd += ["-f", "mpegts", f"udp://{host}:{port}"]
+            pkt_size = output_cfg.get('pkt_size', '1316')
+            url = f"udp://{host}:{port}"
+            if pkt_size:
+                url += f"?pkt_size={pkt_size}"
+            cmd += ["-f", "mpegts", url]
+            append_mpegts_options(cmd, output_cfg)
         elif output_type == 'srt':
             host = output_cfg.get('host', '127.0.0.1')
             port = output_cfg.get('port', '1234')
             mode = output_cfg.get('mode', 'caller')
             latency = output_cfg.get('latency', 200)
-            cmd += ["-f", "mpegts", f"srt://{host}:{port}?mode={mode}&latency={latency}"]
+            streamid = output_cfg.get('streamid', '')
+            
+            from utils.process_utils import get_ffmpeg_version
+            version = get_ffmpeg_version(self.ffmpeg_path)
+            timeout_param = "timeout=5000000" if version >= 4.0 else "rw_timeout=5000000"
+            
+            url = f"srt://{host}:{port}?mode={mode}&latency={latency}&{timeout_param}"
+            if streamid:
+                url += f"&streamid={streamid}"
+                
+            cmd += ["-f", "mpegts", url]
+            append_mpegts_options(cmd, output_cfg)
+        elif output_type == 'rtp_mpegts':
+            host = output_cfg.get('host', '127.0.0.1')
+            port = output_cfg.get('port', '5004')
+            cmd += ["-f", "rtp_mpegts", f"rtp://{host}:{port}"]
+            append_mpegts_options(cmd, output_cfg)
         elif output_type == 'rtmp':
             cmd += ["-f", "flv", output_cfg.get('url', '')]
         elif output_type == 'ndi':

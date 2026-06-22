@@ -91,6 +91,32 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   const [loadingAlsaDevices, setLoadingAlsaDevices] = React.useState(false);
   const [manualAlsaMode, setManualAlsaMode] = React.useState(false);
 
+  // NDI Scan State
+  const [ndiSources, setNdiSources] = React.useState<string[]>([]);
+  const [scanningNdi, setScanningNdi] = React.useState(false);
+  const [manualNdiMode, setManualNdiMode] = React.useState(false);
+
+  const scanNdi = async () => {
+    setScanningNdi(true);
+    try {
+      const res = await fetch('/ndi/sources');
+      if (res.ok) {
+        const data = await res.json();
+        setNdiSources(data.sources || []);
+        if (data.sources && data.sources.length > 0) {
+          update({ name: data.sources[0] });
+          setManualNdiMode(false);
+        } else {
+          setManualNdiMode(true);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to scan NDI sources", err);
+    } finally {
+      setScanningNdi(false);
+    }
+  };
+
   React.useEffect(() => {
     if (config.type !== 'decklink') return;
     let active = true;
@@ -272,44 +298,152 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'srt' && (
-        <div className="grid grid-cols-2 gap-3">
-          <input
-            type="text" placeholder="Host"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-            value={config.host || ''} onChange={e => update({ host: e.target.value })}
-          />
-          <input
-            type="text" placeholder="Port"
-            className="bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-            value={config.port || ''} onChange={e => update({ port: e.target.value })}
-          />
-          <select
-            className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-            value={config.mode || 'listener'} onChange={e => update({ mode: e.target.value })}
-          >
-            <option value="listener">Listener (Server)</option>
-            <option value="caller">Caller (Client)</option>
-          </select>
-          <div>
-            <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Latency (ms)</label>
-            <input
-              type="number" placeholder="200" min={20} max={8000}
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
-              value={config.latency || 200}
-              onChange={e => update({ latency: Number(e.target.value) })}
-            />
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">SRT Connection Mode</label>
+              <select
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                value={config.mode || 'listener'}
+                onChange={e => {
+                  const m = e.target.value;
+                  update({ 
+                    mode: m, 
+                    host: m === 'listener' ? '0.0.0.0' : config.host 
+                  });
+                }}
+              >
+                <option value="listener">Listener (Server Mode — wait for connection)</option>
+                <option value="caller">Caller (Client Mode — initiate connection)</option>
+                <option value="rendezvous">Rendezvous Mode (Peer-to-peer connection)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">
+                {config.mode === 'listener' ? 'Bind Interface / Host' : 'Remote Host / IP'}
+              </label>
+              <input
+                type="text"
+                placeholder={config.mode === 'listener' ? "0.0.0.0 (all interfaces)" : "e.g. 52.210.205.135"}
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                value={config.host || ''}
+                onChange={e => update({ host: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Port</label>
+              <input
+                type="text"
+                placeholder="9000"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.port || ''}
+                onChange={e => update({ port: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Latency (ms)</label>
+              <input
+                type="number"
+                placeholder="200"
+                min={20}
+                max={8000}
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.latency || 200}
+                onChange={e => update({ latency: Number(e.target.value) })}
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">Stream ID (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. input_stream_1"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none font-mono"
+                value={config.streamid || ''}
+                onChange={e => update({ streamid: e.target.value })}
+              />
+            </div>
+          </div>
+          
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-300">
+            {config.mode === 'listener' ? (
+              <span>
+                <strong>Listener Mode:</strong> FFmpeg will open a local UDP socket on port <strong>{config.port || '9000'}</strong> and wait for a remote SRT Caller to connect and stream video.
+              </span>
+            ) : config.mode === 'caller' ? (
+              <span>
+                <strong>Caller Mode:</strong> FFmpeg will actively try to connect to the remote host <strong>{config.host || 'Host'}</strong> on port <strong>{config.port || 'Port'}</strong>.
+              </span>
+            ) : (
+              <span>
+                <strong>Rendezvous Mode:</strong> Both nodes must be configured in Rendezvous mode, using the same port. Useful to traverse firewalls.
+              </span>
+            )}
           </div>
         </div>
       )}
 
       {config.type === 'ndi' && (
-        <input
-          type="text"
-          placeholder="NDI Source Name (e.g. MY-PC (OBS))"
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
-          value={config.name || ''}
-          onChange={e => update({ name: e.target.value })}
-        />
+        <div className="space-y-2">
+          <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">
+            NDI Source Name
+          </label>
+          <div className="flex gap-2">
+            {!manualNdiMode ? (
+              <select
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                value={config.name || ''}
+                onChange={e => {
+                  if (e.target.value === '__manual__') {
+                    setManualNdiMode(true);
+                    update({ name: '' });
+                  } else {
+                    update({ name: e.target.value });
+                  }
+                }}
+              >
+                <option value="">-- Select NDI Source --</option>
+                {ndiSources.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+                <option value="__manual__">📝 Manual input...</option>
+              </select>
+            ) : (
+              <div className="flex w-full gap-2">
+                <input
+                  type="text"
+                  placeholder="NDI Source Name (e.g. MY-PC (OBS))"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                  value={config.name || ''}
+                  onChange={e => update({ name: e.target.value })}
+                />
+                {ndiSources.length > 0 && (
+                  <button
+                    type="button"
+                    className="px-3 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                    onClick={() => {
+                      setManualNdiMode(false);
+                      update({ name: ndiSources[0] || '' });
+                    }}
+                  >
+                    List
+                  </button>
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              disabled={scanningNdi}
+              onClick={scanNdi}
+              className="px-3 bg-brand-lime hover:bg-brand-lime/80 disabled:opacity-50 text-black font-black rounded-lg text-xs transition-colors shrink-0 cursor-pointer"
+            >
+              {scanningNdi ? "Scanning..." : "Scan"}
+            </button>
+          </div>
+        </div>
       )}
 
       {config.type === 'udp' && (
@@ -786,7 +920,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           <select
             className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none transition-all focus:border-brand-lime"
             value={config.hwaccel || 'none'}
-            onChange={e => update({ hwaccel: e.target.value })}
+            onChange={e => {
+              const val = e.target.value;
+              update({ 
+                hwaccel: val,
+                hwaccel_output_format: val !== 'none' ? 'system' : '',
+                frames_destination: 'cpu'
+              });
+            }}
           >
             <option value="none">None (Software Decoding)</option>
             {(!systemCapabilities || systemCapabilities.nvenc?.available) && (
@@ -803,6 +944,34 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           <span className="text-[10px] text-text-secondary block px-1">
             Offloads video decoding to the selected GPU. Recommended for high-bitrate file or network inputs.
           </span>
+
+          {config.hwaccel && config.hwaccel !== 'none' && (
+            <div className="mt-2 animate-in fade-in duration-200">
+              <label className="text-[10px] uppercase text-text-secondary font-bold block mb-1">
+                Decoded Frames Destination
+              </label>
+              <select
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-2.5 text-sm outline-none"
+                value={config.hwaccel_output_format || 'system'}
+                onChange={e => {
+                  const val = e.target.value;
+                  update({ 
+                    hwaccel_output_format: val,
+                    frames_destination: val === 'system' ? 'cpu' : 'vram'
+                  });
+                }}
+              >
+                <option value="system">System Memory (CPU RAM) — Maximum Compatibility</option>
+                <option value={config.hwaccel}>GPU Memory (VRAM) — High Performance GPU Transcode</option>
+              </select>
+              <span className="text-[9px] text-text-secondary block mt-1 px-1">
+                {config.hwaccel_output_format === 'system'
+                  ? "Copies decoded frames to system RAM. Works with all software filters/encoders."
+                  : "Keeps decoded frames in VRAM. Bypasses CPU copies, requires hardware filters/encoders."
+                }
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

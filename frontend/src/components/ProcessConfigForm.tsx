@@ -7,6 +7,7 @@ import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS } from './codec/codecRegis
 import type { SystemCapabilities } from './codec/codecRegistry';
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
+import { ResourcePipelineDiagram } from './codec/ResourcePipelineDiagram';
 
 import FiltersFormSection from './form/FiltersFormSection';
 import SchedulingFormSection from './form/SchedulingFormSection';
@@ -47,6 +48,16 @@ interface ProcessConfig {
       probesize: string;
       thread_queue_size: number;
     };
+    highpass?: string;
+    lowpass?: string;
+    equalizer?: {
+      enabled?: boolean;
+      bands?: Record<string, number>;
+    };
+    compressor?: boolean;
+    volume?: string;
+    aresample?: boolean;
+    overlays?: any[];
   };
 
   output: OutputConfig;
@@ -76,7 +87,7 @@ interface ProcessConfigFormProps {
 const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit, onSaveAs, initialConfig, isTask = false }) => {
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
   const [selectedBuildOptions, setSelectedBuildOptions] = useState<Record<string, boolean> | undefined>();
-  const [activeSection, setActiveSection] = useState<string>('inputs');
+  const [activeSection, setActiveSection] = useState<string>('system');
   const [previewCmd, setPreviewCmd] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [systemCapabilities, setSystemCapabilities] = useState<SystemCapabilities | undefined>();
@@ -120,6 +131,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             probesize: filterCfg.advanced?.probesize ?? '',
             thread_queue_size: filterCfg.advanced?.thread_queue_size ?? 0,
           },
+          highpass: filterCfg.highpass || '',
+          lowpass: filterCfg.lowpass || '',
+          equalizer: filterCfg.equalizer || { enabled: false, bands: { '60': 0, '230': 0, '910': 0, '4000': 0, '14000': 0 } },
+          compressor: !!filterCfg.compressor,
+          volume: filterCfg.volume || '',
+          aresample: !!filterCfg.aresample,
+          overlays: filterCfg.overlays || [],
         },
         output: outputCfg || { type: 'udp', host: '239.0.0.1', port: '1234' },
         auto_start: !!initialConfig.auto_start,
@@ -154,6 +172,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           realtime: null, stream_loop: null, threads: 0,
           hwaccel: 'none', hwaccel_output_format: '', probesize: '', thread_queue_size: 0,
         },
+        highpass: '',
+        lowpass: '',
+        equalizer: { enabled: false, bands: { '60': 0, '230': 0, '910': 0, '4000': 0, '14000': 0 } },
+        compressor: false,
+        volume: '',
+        aresample: false,
+        overlays: [],
       },
       output: { type: 'udp', host: '239.0.0.1', port: '1234' },
       auto_start: false,
@@ -248,6 +273,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         deinterlace: config.filters.deinterlace,
         framerate: config.filters.framerate,
         advanced: config.filters.advanced,
+        highpass: config.filters.highpass || null,
+        lowpass: config.filters.lowpass || null,
+        equalizer: config.filters.equalizer || null,
+        compressor: config.filters.compressor || false,
+        volume: config.filters.volume || null,
+        aresample: config.filters.aresample || false,
+        overlays: config.filters.overlays || [],
       },
       ...(isTask ? {
         schedule_type: config.schedule_type,
@@ -308,11 +340,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   };
 
   const sections = [
-    { id: 'inputs', label: 'Sources', icon: <SourceIcon size={16} /> },
-    { id: 'encoding', label: 'Encoding', icon: <GearIcon size={16} /> },
+    { id: 'system', label: 'General', icon: <ShieldIcon size={16} /> },
+    { id: 'inputs', label: 'Input', icon: <SourceIcon size={16} /> },
+    { id: 'output', label: 'Output', icon: <DestinationIcon size={16} /> },
+    { id: 'encoding', label: 'Codecs', icon: <GearIcon size={16} /> },
     { id: 'filters', label: 'Filters', icon: <KnobsIcon size={16} /> },
-    { id: 'output', label: 'Destination', icon: <DestinationIcon size={16} /> },
-    { id: 'system', label: isTask ? 'Schedule & Limits' : 'System & Watchdog', icon: <ShieldIcon size={16} /> },
   ];
 
   return (
@@ -423,6 +455,19 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           </div>
         </div>
       </div>
+
+      {/* ── Persistent Transcode Flow Diagram ── */}
+      {config.has_video && (
+        <ResourcePipelineDiagram
+          hwaccel={config.filters.advanced.hwaccel}
+          isVram={
+            config.filters.advanced.hwaccel_output_format !== '' &&
+            config.filters.advanced.hwaccel_output_format !== 'system'
+          }
+          codecId={config.video_codec_id}
+          hasCpuFilters={!!(config.filters.overlays && config.filters.overlays.length > 0)}
+        />
+      )}
 
       {/* ── Section tabs ── */}
       <div className="flex gap-1 mb-3 flex-shrink-0 border-b border-white/5 pb-3">
@@ -616,9 +661,17 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         {activeSection === 'filters' && (
           <FiltersFormSection
             hasVideo={config.has_video}
+            hasAudio={config.has_audio}
             scale={config.filters.scale}
             framerate={config.filters.framerate}
             deinterlace={config.filters.deinterlace}
+            highpass={config.filters.highpass}
+            lowpass={config.filters.lowpass}
+            equalizer={config.filters.equalizer}
+            compressor={config.filters.compressor}
+            volume={config.filters.volume}
+            aresample={config.filters.aresample}
+            overlays={config.filters.overlays || []}
             onChange={updates => setConfig({
               ...config,
               filters: {
