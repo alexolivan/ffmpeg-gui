@@ -45,10 +45,10 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 }) => {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="flex justify-between items-center mb-12">
+      <header className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-4xl font-bold mb-2">SERVICES</h1>
-          <p className="text-text-secondary">Continuous media streaming and processing node instances</p>
+          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">SERVICES</h1>
+          <p className="text-xs text-text-secondary">Continuous media streaming and processing node instances</p>
         </div>
         <div className="flex gap-4">
           <button onClick={() => importFileRef.current?.click()}

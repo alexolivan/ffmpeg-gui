@@ -180,9 +180,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl flex flex-col h-[82vh]">
       {/* Header */}
-      <header className="mb-4 shrink-0">
-        <h1 className="text-xl font-bold tracking-tight text-white mb-0.5 uppercase">Settings</h1>
-        <p className="text-xs text-text-secondary">Node identity, security and hardware branding configuration</p>
+      <header className="flex justify-between items-center mb-6 shrink-0">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5 uppercase">Settings</h1>
+          <p className="text-xs text-text-secondary">Node identity, security and hardware branding configuration</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Status Indicator */}
+          <div className="text-[10px] text-text-secondary font-medium">
+            {saveSuccess ? (
+              <span className="text-brand-lime font-bold animate-pulse">✓ Settings saved.</span>
+            ) : passwordError ? (
+              <span className="text-red-500 font-bold">⚠️ Check Security errors.</span>
+            ) : hasChanges ? (
+              <span className="text-brand-orange font-bold">● Unsaved changes.</span>
+            ) : (
+              <span className="opacity-40">Up to date.</span>
+            )}
+          </div>
+          <button
+            onClick={handleSaveAll}
+            disabled={isSaving || !hasChanges}
+            className={`pill-button font-black text-xs py-2.5 px-6 transition-all uppercase tracking-widest ${
+              hasChanges && !isSaving
+                ? 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-brand-lime/20'
+                : 'bg-white/5 text-white/40 cursor-not-allowed border border-white/5'
+            }`}
+          >
+            {isSaving ? 'Saving...' : 'Save Settings'}
+          </button>
+        </div>
       </header>
 
       {/* Tabs selector */}
@@ -564,32 +591,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
       </div>
 
-      {/* Sticky footer with unified action */}
-      <div className="flex items-center justify-between pt-3 border-t border-white/5 shrink-0 mt-auto">
-        <div className="text-[10px] text-text-secondary font-medium">
-          {saveSuccess ? (
-            <span className="text-brand-lime font-bold animate-pulse">✓ Settings saved successfully.</span>
-          ) : passwordError ? (
-            <span className="text-red-500 font-bold">⚠️ Form contains errors. Please check Security tab.</span>
-          ) : hasChanges ? (
-            <span className="text-brand-orange font-bold">● You have unsaved changes.</span>
-          ) : (
-            <span className="opacity-40">All configurations are up to date.</span>
-          )}
-        </div>
-
-        <button
-          onClick={handleSaveAll}
-          disabled={isSaving || !hasChanges}
-          className={`pill-button font-black text-xs py-2 px-6 transition-all uppercase tracking-widest ${
-            hasChanges && !isSaving
-              ? 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-brand-lime/20'
-              : 'bg-white/5 text-white/40 cursor-not-allowed border border-white/5'
-          }`}
-        >
-          {isSaving ? 'Saving...' : 'Save Settings'}
-        </button>
-      </div>
     </div>
   );
 };
