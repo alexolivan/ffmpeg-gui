@@ -37,7 +37,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [sdkPaths, setSdkPaths] = useState<Record<string, string>>(editBuild?.sdk_paths || { 
     decklink: '', 
     ndi: '',
-    ndi_patch_url: '',
+    ndi_patch_file: '',
     nvenc_headers: 'auto'
   })
 
@@ -50,6 +50,21 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [decklinkSdks, setDecklinkSdks] = useState<{ version: string; path: string }[]>([])
   const [ndiSdks, setNdiSdks] = useState<{ version: string; path: string }[]>([])
 
+  // Dynamic Patch list
+  interface PatchItem {
+    filename: string;
+    display_name: string;
+    ffmpeg_version_major: string;
+    source: string;
+  }
+  const [patches, setPatches] = useState<PatchItem[]>([])
+  const [uploadingPatch, setUploadingPatch] = useState(false)
+  const [uploadPatchError, setUploadPatchError] = useState('')
+  const [showAddPatchForm, setShowAddPatchForm] = useState(false)
+  const [newPatchDisplayName, setNewPatchDisplayName] = useState('')
+  const [newPatchFfmpegVersion, setNewPatchFfmpegVersion] = useState('7')
+  const [selectedPatchFile, setSelectedPatchFile] = useState<File | null>(null)
+
   // Upload UIs states
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
   const [uploadingSdk, setUploadingSdk] = useState<Record<string, boolean>>({})
@@ -58,8 +73,19 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   // Refs for file inputs
   const decklinkInputRef = useRef<HTMLInputElement>(null)
   const ndiInputRef = useRef<HTMLInputElement>(null)
+  const patchInputRef = useRef<HTMLInputElement>(null)
 
   const isEditing = editBuild !== null
+
+  const fetchPatches = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/system/patches`)
+      const data = await res.json()
+      setPatches(data)
+    } catch (err) {
+      console.error('Failed to fetch patches:', err)
+    }
+  }
 
   // Fetch Tags and SDKs
   const fetchSdks = async (sdkType: 'decklink' | 'ndi') => {
@@ -119,6 +145,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     fetchTags()
     fetchSdks('decklink')
     fetchSdks('ndi')
+    fetchPatches()
   }, [])
 
   // File Upload logic using raw XMLHttpRequest for progress tracking
@@ -174,6 +201,39 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     xhr.send(formData)
   }
 
+  const handlePatchUpload = async () => {
+    if (!selectedPatchFile) return
+    setUploadingPatch(true)
+    setUploadPatchError('')
+    
+    const formData = new FormData()
+    formData.append('file', selectedPatchFile)
+    formData.append('display_name', newPatchDisplayName || selectedPatchFile.name)
+    formData.append('ffmpeg_version_major', newPatchFfmpegVersion)
+    
+    try {
+      const res = await fetch(`${API_BASE}/system/patches/upload`, {
+        method: 'POST',
+        body: formData
+      })
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.detail || 'Upload failed')
+      }
+      const data = await res.json()
+      await fetchPatches()
+      setSdkPaths(prev => ({ ...prev, ndi_patch_file: data.patch.filename }))
+      setSelectedPatchFile(null)
+      setNewPatchDisplayName('')
+      setShowAddPatchForm(false)
+    } catch (err: any) {
+      console.error('Failed to upload patch:', err)
+      setUploadPatchError(err.message || 'Upload failed')
+    } finally {
+      setUploadingPatch(false)
+    }
+  }
+
   const handleSubmit = async () => {
     if (!name.trim() || !ffmpegVersion) return
     setIsSubmitting(true)
@@ -185,8 +245,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     }
     if (options.ndi && sdkPaths.ndi) {
       finalSdkPaths.ndi = sdkPaths.ndi
-      if (sdkPaths.ndi_patch_url) {
-        finalSdkPaths.ndi_patch_url = sdkPaths.ndi_patch_url
+      if (sdkPaths.ndi_patch_file) {
+        finalSdkPaths.ndi_patch_file = sdkPaths.ndi_patch_file
       }
     }
     if (options.nvenc && sdkPaths.nvenc_headers) {
@@ -542,16 +602,126 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                       </div>
                     )}
 
-                    {/* Patch URL */}
-                    <div>
-                      <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">URL de Parche NDI personalizado (Opcional)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. https://domain.com/my-patch.patch"
-                        className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-[9px] font-mono focus:border-brand-orange outline-none"
-                        value={sdkPaths.ndi_patch_url || ''}
-                        onChange={e => setSdkPaths({ ...sdkPaths, ndi_patch_url: e.target.value })}
-                      />
+                    {/* Parche NDI local */}
+                    <div className="space-y-2 pt-1 border-t border-white/5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[8px] text-text-secondary uppercase tracking-widest block font-bold">Parche de Compilación NDI</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddPatchForm(!showAddPatchForm)}
+                          className="text-[9px] font-bold text-brand-orange hover:underline cursor-pointer"
+                        >
+                          {showAddPatchForm ? "✕ Cancelar subida" : "+ Subir Parche Personalizado"}
+                        </button>
+                      </div>
+
+                      {showAddPatchForm ? (
+                        <div className="p-2.5 bg-black/40 border border-white/10 rounded-lg space-y-2 animate-in slide-in-from-top-1 duration-200">
+                          <span className="text-[9px] font-bold text-white block uppercase tracking-wider">Subir Parche Personalizado (.patch / .diff)</span>
+                          
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">Alias descriptivo</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Parche NDI v7.1.3"
+                                className="w-full bg-black/50 border border-white/5 rounded p-1 text-[9px] outline-none focus:border-brand-orange text-white"
+                                value={newPatchDisplayName}
+                                onChange={e => setNewPatchDisplayName(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">Versión FFmpeg</label>
+                              <select
+                                className="w-full bg-black/50 border border-white/5 rounded p-1 text-[9px] outline-none focus:border-brand-orange text-white"
+                                value={newPatchFfmpegVersion}
+                                onChange={e => setNewPatchFfmpegVersion(e.target.value)}
+                              >
+                                <option value="7">FFmpeg 7.x</option>
+                                <option value="6">FFmpeg 6.x</option>
+                                <option value="5">FFmpeg 5.x</option>
+                                <option value="any">Cualquiera / Otro</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => patchInputRef.current?.click()}
+                              className="px-3 py-1 bg-white/10 text-white text-[9px] font-bold rounded hover:bg-white/15 tracking-wider uppercase"
+                            >
+                              Seleccionar Archivo
+                            </button>
+                            <input
+                              type="file"
+                              ref={patchInputRef}
+                              className="hidden"
+                              accept=".patch,.diff"
+                              onChange={e => {
+                                if (e.target.files && e.target.files.length > 0) {
+                                  setSelectedPatchFile(e.target.files[0])
+                                  if (!newPatchDisplayName) {
+                                    setNewPatchDisplayName(e.target.files[0].name)
+                                  }
+                                }
+                              }}
+                            />
+                            <span className="text-[9px] font-mono text-text-secondary truncate max-w-[150px]">
+                              {selectedPatchFile ? selectedPatchFile.name : "Ninguno seleccionado"}
+                            </span>
+                          </div>
+
+                          {uploadPatchError && (
+                            <div className="text-[8px] text-red-400 font-bold bg-red-500/10 border border-red-500/20 p-1 rounded">
+                              ⚠️ {uploadPatchError}
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={uploadingPatch || !selectedPatchFile}
+                            onClick={handlePatchUpload}
+                            className={`w-full py-1 text-center font-black rounded text-[9px] uppercase tracking-widest ${
+                              selectedPatchFile && !uploadingPatch
+                                ? "bg-brand-orange hover:bg-brand-orange/90 text-black cursor-pointer"
+                                : "bg-white/5 text-white/30 cursor-not-allowed"
+                            }`}
+                          >
+                            {uploadingPatch ? "Subiendo..." : "Confirmar y Subir Parche"}
+                          </button>
+                        </div>
+                      ) : (
+                        <select
+                          className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none"
+                          value={sdkPaths.ndi_patch_file || ''}
+                          onChange={e => setSdkPaths({ ...sdkPaths, ndi_patch_file: e.target.value })}
+                        >
+                          <option value="">-- Autodetectar parche recomendado (Sistema) --</option>
+                          
+                          {/* Recomendados */}
+                          <optgroup label={`Recomendados para FFmpeg ${ffmpegVersion.replace(/^n/, '').split('.')[0]}.x`}>
+                            {patches
+                              .filter(p => p.ffmpeg_version_major === ffmpegVersion.replace(/^n/, '').split('.')[0])
+                              .map(p => (
+                                <option key={p.filename} value={p.filename}>
+                                  {p.display_name} {p.source === 'system' ? '(Sistema)' : '(Usuario)'}
+                                </option>
+                              ))}
+                          </optgroup>
+
+                          {/* Otros */}
+                          <optgroup label="Otros parches disponibles">
+                            {patches
+                              .filter(p => p.ffmpeg_version_major !== ffmpegVersion.replace(/^n/, '').split('.')[0])
+                              .map(p => (
+                                <option key={p.filename} value={p.filename}>
+                                  {p.display_name} ({p.ffmpeg_version_major === 'any' ? 'Universal' : `v${p.ffmpeg_version_major}.x`})
+                                </option>
+                              ))}
+                          </optgroup>
+                        </select>
+                      )}
                     </div>
 
                     {!sdkPaths.ndi && <p className="text-[9px] text-red-400 pl-1 font-bold">⚠ Se requiere seleccionar o subir un SDK de NDI</p>}

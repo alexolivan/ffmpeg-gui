@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -16,6 +16,7 @@ from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
 from core.sdk_manager import SdkManager
+from core.patch_manager import PatchManager
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats
 import psutil
@@ -116,6 +117,7 @@ process_manager = ProcessManager(db_session_factory=SessionLocal)
 preview_manager = PreviewManager()
 build_manager = BuildManager(builds_root="./ffmpeg_builds")
 sdk_manager = SdkManager(workspace_root=".")
+patch_manager = PatchManager(workspace_root=".")
 
 from core.task_manager import TaskManager
 from core.scheduler import Scheduler
@@ -1133,6 +1135,38 @@ async def upload_sdk(sdk_type: str = File(...), file: UploadFile = File(...)):
             except OSError:
                 pass
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/system/patches")
+def get_patches():
+    """List all NDI/compilation patches available in the system."""
+    return patch_manager.list_patches()
+
+@app.post("/system/patches/upload")
+async def upload_patch(
+    file: UploadFile = File(...),
+    display_name: str = Form(...),
+    ffmpeg_version_major: str = Form(...)
+):
+    """Upload a custom compilation patch with metadata."""
+    content = await file.read()
+    result = patch_manager.upload_patch(
+        file_content=content,
+        original_filename=file.filename,
+        display_name=display_name,
+        ffmpeg_version_major=ffmpeg_version_major
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+@app.delete("/system/patches/{filename}")
+def delete_patch(filename: str):
+    """Delete a custom patch."""
+    result = patch_manager.delete_patch(filename)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
 
 
 @app.get("/builds/{build_id}")
