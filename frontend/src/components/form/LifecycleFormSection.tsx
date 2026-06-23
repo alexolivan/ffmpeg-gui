@@ -101,4 +101,4 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
     </div>
   );
 };
-export default LifecycleFormSection;
+export default React.memo(LifecycleFormSection);

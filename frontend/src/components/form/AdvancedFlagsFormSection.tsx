@@ -130,4 +130,4 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
   );
 };
 
-export default AdvancedFlagsFormSection;
+export default React.memo(AdvancedFlagsFormSection);

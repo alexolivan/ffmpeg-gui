@@ -980,4 +980,4 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   );
 };
 
-export default InputSourcePanel;
+export default React.memo(InputSourcePanel);
