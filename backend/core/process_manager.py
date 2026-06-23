@@ -884,7 +884,7 @@ class ProcessManager:
             cmd += ["-f", "flv", output_cfg.get('url', '')]
         elif output_type == 'ndi':
             name = output_cfg.get('path', 'FFMPEG-OUTPUT')
-            cmd += ["-f", "libndi_newtek", "-ndi_name", name, "output.ndi"]
+            cmd += ["-f", "libndi_newtek", name]
         elif output_type == 'decklink':
             device = output_cfg.get('device', 'DeckLink Mini Monitor')
             cmd += ["-f", "decklink"]
