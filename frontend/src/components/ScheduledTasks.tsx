@@ -283,12 +283,12 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
       {/* HEADER */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
         <div>
-          <h1 className="text-4xl font-black tracking-tight text-white uppercase bg-gradient-to-r from-white via-white to-white/40 bg-clip-text text-transparent">
+          <h1 className="text-2xl font-black tracking-tight text-white uppercase mb-0.5">
             Task Scheduling
           </h1>
-          <p className="text-text-secondary mt-1">Automate batch jobs, recurring feeds and cron conversions.</p>
+          <p className="text-xs text-text-secondary">Automate batch jobs, recurring feeds and cron conversions.</p>
         </div>
         <div className="flex gap-4">
           <button 

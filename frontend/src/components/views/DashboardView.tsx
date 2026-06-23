@@ -53,10 +53,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <>
-      <header className="flex justify-between items-center mb-12">
+      <header className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-4xl font-bold mb-2">DASHBOARD</h1>
-          <p className="text-text-secondary">Monitoring and controlling FFMPEG nodes</p>
+          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">DASHBOARD</h1>
+          <p className="text-xs text-text-secondary">Monitoring and controlling FFMPEG nodes</p>
         </div>
         <div className="flex gap-4">
           {systemTelemetry.lcd && systemTelemetry.lcd.connected && (
