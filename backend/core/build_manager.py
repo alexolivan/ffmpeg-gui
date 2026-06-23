@@ -459,17 +459,15 @@ class BuildManager:
                 # Apply dynamic NDI patch
                 await log_callback("━━━ APPLYING NDI COMMUNITY PATCH ━━━\n")
                 custom_patch_url = sdk_paths.get("ndi_patch_url")
-                if custom_patch_url:
-                    patch_url = custom_patch_url
-                else:
-                    if ffmpeg_version.startswith("7."):
-                        patch_url = "https://aur.archlinux.org/cgit/aur.git/plain/chore-Add-nonfree-libndi_newtek-device.patch?h=ffmpeg-ndi"
-                    elif ffmpeg_version.startswith("6."):
+                patch_url = custom_patch_url
+                if not patch_url:
+                    # Resolve pre-validated patch url based on ffmpeg version major
+                    if ffmpeg_version.startswith("6."):
                         patch_url = "https://raw.githubusercontent.com/aur-archive/ffmpeg-ndi/master/ffmpeg-6.0-ndi.patch"
                     elif ffmpeg_version.startswith("5."):
                         patch_url = "https://raw.githubusercontent.com/aur-archive/ffmpeg-ndi/master/ffmpeg-5.0-ndi.patch"
                     else:
-                        patch_url = "https://aur.archlinux.org/cgit/aur.git/plain/chore-Add-nonfree-libndi_newtek-device.patch?h=ffmpeg-ndi"
+                        patch_url = "https://raw.githubusercontent.com/aur-archive/ffmpeg-ndi/master/ffmpeg-6.0-ndi.patch"
                 
                 await log_callback(f"NDI Patch URL: {patch_url}\n")
                 patch_file = os.path.join(src_path, "ndi.patch")
