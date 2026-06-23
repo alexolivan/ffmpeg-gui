@@ -412,7 +412,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               <div key={task.id} className="py-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-white/[0.01] transition-all px-2">
                 <div className="flex-1 space-y-1.5 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <h3 className="font-bold text-lg text-white truncate">{task.name}</h3>
+                    <h3 className="font-bold text-lg text-white truncate">
+                      {task.name}
+                      {task.alias && (
+                        <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
+                          [{task.alias}]
+                        </span>
+                      )}
+                    </h3>
                     <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                       task.schedule_type === 'recurring' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' :
                       task.schedule_type === 'one_shot' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
@@ -530,7 +537,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
             >
               ✕
             </button>
-            <h3 className="text-2xl font-black mb-1">{selectedTaskDetails.task.name}</h3>
+            <h3 className="text-2xl font-black mb-1">
+              {selectedTaskDetails.task.name}
+              {selectedTaskDetails.task.alias && (
+                <span className="text-sm font-semibold text-text-secondary ml-2 opacity-80" title={`LCD Alias: ${selectedTaskDetails.task.alias}`}>
+                  [{selectedTaskDetails.task.alias}]
+                </span>
+              )}
+            </h3>
             <p className="text-text-secondary text-sm mb-6">Execution History & Diagnostics</p>
 
             <div className="space-y-4">
