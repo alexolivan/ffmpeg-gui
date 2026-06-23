@@ -460,7 +460,12 @@ class BuildManager:
                 await log_callback("━━━ APPLYING NDI COMMUNITY PATCH ━━━\n")
                 custom_patch_file = sdk_paths.get("ndi_patch_file")
                 system_patches_dir = os.path.join(self.workspace_root, "backend", "patches")
+                if not os.path.exists(system_patches_dir):
+                    system_patches_dir = os.path.join(self.workspace_root, "patches")
+                    
                 user_patches_dir = os.path.join(self.workspace_root, "backend", "data", "patches")
+                if not os.path.exists(user_patches_dir):
+                    user_patches_dir = os.path.join(self.workspace_root, "data", "patches")
                 
                 if custom_patch_file:
                     # Look in user uploads first, fallback to system
