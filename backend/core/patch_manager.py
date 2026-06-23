@@ -15,13 +15,13 @@ class PatchManager:
     
     def __init__(self, workspace_root: str):
         self.workspace_root = os.path.abspath(workspace_root)
-        self.system_patches_dir = os.path.join(self.workspace_root, "backend", "patches")
-        if not os.path.exists(self.system_patches_dir):
+        
+        if os.path.basename(self.workspace_root) == "backend":
             self.system_patches_dir = os.path.join(self.workspace_root, "patches")
-            
-        self.user_patches_dir = os.path.join(self.workspace_root, "backend", "data", "patches")
-        if not os.path.exists(self.user_patches_dir):
             self.user_patches_dir = os.path.join(self.workspace_root, "data", "patches")
+        else:
+            self.system_patches_dir = os.path.join(self.workspace_root, "backend", "patches")
+            self.user_patches_dir = os.path.join(self.workspace_root, "backend", "data", "patches")
         
         os.makedirs(self.system_patches_dir, exist_ok=True)
         os.makedirs(self.user_patches_dir, exist_ok=True)
