@@ -204,7 +204,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         const ready = builds.filter((b: any) => b.status === 'ready');
         setAvailableBuilds(ready);
         
-        const currentBuildId = config.ffmpeg_build_id;
+        const currentBuildId = initialConfig?.ffmpeg_build_id ?? null;
         if (currentBuildId) {
           const selected = ready.find((b: any) => b.id === currentBuildId);
           if (selected) {
@@ -220,7 +220,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         }
       })
       .catch(() => {});
-  }, [config.ffmpeg_build_id, initialConfig]);
+  }, [initialConfig]);
 
   useEffect(() => {
     fetch('/system/capabilities')
