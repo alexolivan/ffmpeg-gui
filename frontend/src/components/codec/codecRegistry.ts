@@ -281,6 +281,13 @@ export const VIDEO_CODECS: CodecDefinition[] = [
     category: 'software',
     params: [],
   },
+  {
+    id: 'wrapped_avframe',
+    label: 'Wrapped AVFrame (NDI Native) [wrapped_avframe]',
+    type: 'video',
+    category: 'software',
+    params: [],
+  },
   // ── HW Accelerated ──
   {
     id: 'h264_vaapi',

@@ -91,6 +91,11 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
             ⚠️ Legacy 8-bit format. Recommended only for older DeckLink cards (like the original Intensity Pro).
           </span>
         )}
+        {codecId === 'wrapped_avframe' && (
+          <span className="text-[9px] text-brand-lime block px-1">
+            💡 Required for professional live playout over NDI networks.
+          </span>
+        )}
       </div>
 
       {/* Codec Parameters */}
