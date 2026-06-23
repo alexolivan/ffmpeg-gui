@@ -493,4 +493,4 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   );
 };
 
-export default FiltersFormSection;
+export default React.memo(FiltersFormSection);

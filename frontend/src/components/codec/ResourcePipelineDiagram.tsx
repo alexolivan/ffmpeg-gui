@@ -7,7 +7,7 @@ interface ResourcePipelineDiagramProps {
   hasCpuFilters: boolean;
 }
 
-export const ResourcePipelineDiagram: React.FC<ResourcePipelineDiagramProps> = ({
+export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(({
   hwaccel,
   isVram,
   codecId,
@@ -158,4 +158,4 @@ export const ResourcePipelineDiagram: React.FC<ResourcePipelineDiagramProps> = (
       </p>
     </div>
   );
-};
+});

@@ -74,14 +74,36 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   refreshBuilds,
   refreshDiskInfo,
 }) => {
+  const fallbackCopy = (text: string) => {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        alert("Comando copiado al portapapeles con éxito.");
+      } else {
+        alert("No se pudo copiar el comando. Por favor, cópielo manualmente.");
+      }
+    } catch (err) {
+      alert("No se pudo copiar el comando. Por favor, cópielo manualmente.");
+    }
+    document.body.removeChild(textArea);
+  };
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="flex justify-between items-center mb-10">
+      <header className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-4xl font-bold mb-2 tracking-tighter">
+          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">
             FFMPEG <span className="text-brand-orange">FORGE</span>
           </h1>
-          <p className="text-text-secondary italic">Build Profiles Manager</p>
+          <p className="text-xs text-text-secondary">Build Profiles Manager</p>
         </div>
         <div className="flex items-center gap-4">
           {diskInfo && (
@@ -377,8 +399,13 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                       </code>
                       <button
                         onClick={() => {
-                          navigator.clipboard.writeText(cmdStr);
-                          alert("Comando copiado al portapapeles con éxito.");
+                          if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(cmdStr)
+                              .then(() => alert("Comando copiado al portapapeles con éxito."))
+                              .catch(() => fallbackCopy(cmdStr));
+                          } else {
+                            fallbackCopy(cmdStr);
+                          }
                         }}
                         className="shrink-0 p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs hover:scale-105 transition-all active:scale-95 flex items-center justify-center text-text-secondary hover:text-white"
                         title="Copiar Comando"

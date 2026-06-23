@@ -45,10 +45,10 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 }) => {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="flex justify-between items-center mb-12">
+      <header className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-4xl font-bold mb-2">SERVICES</h1>
-          <p className="text-text-secondary">Continuous media streaming and processing node instances</p>
+          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">SERVICES</h1>
+          <p className="text-xs text-text-secondary">Continuous media streaming and processing node instances</p>
         </div>
         <div className="flex gap-4">
           <button onClick={() => importFileRef.current?.click()}
@@ -85,7 +85,14 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-brand-lime animate-pulse"></span>
-                      <span className="font-bold text-white">{proc.name}</span>
+                      <span className="font-bold text-white">
+                        {proc.name}
+                        {proc.alias && (
+                          <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${proc.alias}`}>
+                            [{proc.alias}]
+                          </span>
+                        )}
+                      </span>
                       {proc.pending_changes && (
                         <span className="text-[10px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse" title="Requires reboot to apply new configuration">
                           PENDING REBOOT
@@ -208,7 +215,14 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-white/20"></span>
-                        <span className="font-bold text-white/80">{proc.name}</span>
+                        <span className="font-bold text-white/80">
+                          {proc.name}
+                          {proc.alias && (
+                            <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-75" title={`LCD Alias: ${proc.alias}`}>
+                              [{proc.alias}]
+                            </span>
+                          )}
+                        </span>
                         {proc.auto_start && (
                           <span className="text-[9px] bg-blue-500/20 text-blue-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Auto-starts on system boot">
                             <LightningIcon size={10} /> BOOT

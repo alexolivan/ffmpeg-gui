@@ -146,4 +146,4 @@ export const SchedulingFormSection: React.FC<SchedulingFormSectionProps> = ({
     </div>
   );
 };
-export default SchedulingFormSection;
+export default React.memo(SchedulingFormSection);

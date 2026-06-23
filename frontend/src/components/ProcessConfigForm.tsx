@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import InputSourcePanel from './source/InputSourcePanel';
 import type { InputSourceConfig } from './source/InputSourcePanel';
 import VideoCodecPanel from './codec/VideoCodecPanel';
@@ -204,7 +204,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         const ready = builds.filter((b: any) => b.status === 'ready');
         setAvailableBuilds(ready);
         
-        const currentBuildId = config.ffmpeg_build_id;
+        const currentBuildId = initialConfig?.ffmpeg_build_id ?? null;
         if (currentBuildId) {
           const selected = ready.find((b: any) => b.id === currentBuildId);
           if (selected) {
@@ -220,7 +220,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         }
       })
       .catch(() => {});
-  }, [config.ffmpeg_build_id, initialConfig]);
+  }, [initialConfig]);
 
   useEffect(() => {
     fetch('/system/capabilities')
@@ -339,6 +339,141 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     }
   };
 
+  const handleInput1Change = useCallback((input1: InputSourceConfig) => {
+    setConfig(prev => ({ ...prev, input1 }));
+  }, []);
+
+  const handleInput2Change = useCallback((input2: InputSourceConfig) => {
+    setConfig(prev => ({ ...prev, input2 }));
+  }, []);
+
+  const handleSyncAlsaAudio = useCallback((alsaDevice: string) => {
+    setConfig(prev => ({
+      ...prev,
+      use_secondary_input: true,
+      input2: {
+        ...prev.input2,
+        type: 'alsa',
+        device: alsaDevice
+      }
+    }));
+  }, []);
+
+  const handleVideoCodecChange = useCallback((id: string, params: Record<string, string | number | boolean>) => {
+    setConfig(prev => ({
+      ...prev,
+      video_codec_id: id,
+      video_codec_params: params,
+    }));
+  }, []);
+
+  const handleAudioCodecChange = useCallback((id: string, params: Record<string, string | number | boolean>) => {
+    setConfig(prev => ({
+      ...prev,
+      audio_codec_id: id,
+      audio_codec_params: params,
+    }));
+  }, []);
+
+  const handleFiltersChange = useCallback((updates: any) => {
+    setConfig(prev => ({
+      ...prev,
+      filters: {
+        ...prev.filters,
+        ...updates,
+      }
+    }));
+  }, []);
+
+  const handleOutputChange = useCallback((output: OutputConfig) => {
+    setConfig(prev => ({ ...prev, output }));
+  }, []);
+
+  const handleLifecycleOrSchedulingChange = useCallback((updates: any) => {
+    setConfig(prev => ({
+      ...prev,
+      ...updates
+    }));
+  }, []);
+
+  const handleAdvancedFlagsChange = useCallback((updates: any) => {
+    setConfig(prev => ({
+      ...prev,
+      filters: {
+        ...prev.filters,
+        advanced: {
+          ...prev.filters.advanced,
+          ...updates
+        }
+      }
+    }));
+  }, []);
+
+  const handleHasVideoChange = useCallback((val: boolean) => {
+    setConfig(prev => {
+      const nextSecondary = val && prev.has_audio ? prev.use_secondary_input : false;
+      let nextInput1 = prev.input1;
+      if (!val && prev.has_audio) {
+        if (!AUDIO_ALLOWED_TYPES.includes(nextInput1.type)) {
+          nextInput1 = { ...nextInput1, type: 'file' };
+        }
+      } else if (val && !prev.has_audio) {
+        if (!VIDEO_ALLOWED_TYPES.includes(nextInput1.type)) {
+          nextInput1 = { ...nextInput1, type: 'file' };
+        }
+      }
+      return {
+        ...prev,
+        has_video: val,
+        use_secondary_input: nextSecondary,
+        input1: nextInput1
+      };
+    });
+  }, []);
+
+  const handleHasAudioChange = useCallback((val: boolean) => {
+    setConfig(prev => {
+      const nextSecondary = prev.has_video && val ? prev.use_secondary_input : false;
+      let nextInput1 = prev.input1;
+      if (prev.has_video && !val) {
+        if (!VIDEO_ALLOWED_TYPES.includes(nextInput1.type)) {
+          nextInput1 = { ...nextInput1, type: 'file' };
+        }
+      } else if (!prev.has_video && val) {
+        if (!AUDIO_ALLOWED_TYPES.includes(nextInput1.type)) {
+          nextInput1 = { ...nextInput1, type: 'file' };
+        }
+      }
+      return {
+        ...prev,
+        has_audio: val,
+        use_secondary_input: nextSecondary,
+        input1: nextInput1
+      };
+    });
+  }, []);
+
+  const handleUseSecondaryInputChange = useCallback((val: boolean) => {
+    setConfig(prev => {
+      let nextInput1 = prev.input1;
+      let nextInput2 = prev.input2;
+      if (val) {
+        if (!VIDEO_ALLOWED_TYPES.includes(nextInput1.type)) {
+          nextInput1 = { ...nextInput1, type: 'file' };
+        }
+        if (!AUDIO_ALLOWED_TYPES.includes(nextInput2.type)) {
+          nextInput2 = { ...nextInput2, type: 'file' };
+        }
+      }
+      return {
+        ...prev,
+        use_secondary_input: val,
+        input1: nextInput1,
+        input2: nextInput2
+      };
+    });
+  }, []);
+
   const sections = [
     { id: 'system', label: 'General', icon: <ShieldIcon size={14} /> },
     { id: 'inputs', label: 'Input', icon: <SourceIcon size={14} /> },
@@ -396,26 +531,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox" checked={config.has_video}
-                onChange={e => {
-                  const val = e.target.checked;
-                  const nextSecondary = val && config.has_audio ? config.use_secondary_input : false;
-                  let nextInput1 = config.input1;
-                  if (!val && config.has_audio) {
-                    if (!AUDIO_ALLOWED_TYPES.includes(nextInput1.type)) {
-                      nextInput1 = { ...nextInput1, type: 'file' };
-                    }
-                  } else if (val && !config.has_audio) {
-                    if (!VIDEO_ALLOWED_TYPES.includes(nextInput1.type)) {
-                      nextInput1 = { ...nextInput1, type: 'file' };
-                    }
-                  }
-                  setConfig({ 
-                    ...config, 
-                    has_video: val, 
-                    use_secondary_input: nextSecondary,
-                    input1: nextInput1
-                  });
-                }}
+                onChange={e => handleHasVideoChange(e.target.checked)}
                 className="w-3.5 h-3.5 accent-brand-orange"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_video ? 'text-brand-orange' : 'text-text-secondary'}`}>
@@ -426,26 +542,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox" checked={config.has_audio}
-                onChange={e => {
-                  const val = e.target.checked;
-                  const nextSecondary = config.has_video && val ? config.use_secondary_input : false;
-                  let nextInput1 = config.input1;
-                  if (config.has_video && !val) {
-                    if (!VIDEO_ALLOWED_TYPES.includes(nextInput1.type)) {
-                      nextInput1 = { ...nextInput1, type: 'file' };
-                    }
-                  } else if (!config.has_video && val) {
-                    if (!AUDIO_ALLOWED_TYPES.includes(nextInput1.type)) {
-                      nextInput1 = { ...nextInput1, type: 'file' };
-                    }
-                  }
-                  setConfig({ 
-                    ...config, 
-                    has_audio: val, 
-                    use_secondary_input: nextSecondary,
-                    input1: nextInput1
-                  });
-                }}
+                onChange={e => handleHasAudioChange(e.target.checked)}
                 className="w-3.5 h-3.5 accent-blue-400"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_audio ? 'text-blue-400' : 'text-text-secondary'}`}>
@@ -547,19 +644,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                     ? AUDIO_ALLOWED_TYPES
                     : undefined
                 }
-                onChange={input1 => setConfig({ ...config, input1 })}
+                onChange={handleInput1Change}
                 systemCapabilities={systemCapabilities}
-                onSyncAlsaAudio={alsaDevice => {
-                  setConfig(prev => ({
-                    ...prev,
-                    use_secondary_input: true,
-                    input2: {
-                      ...prev.input2,
-                      type: 'alsa',
-                      device: alsaDevice
-                    }
-                  }));
-                }}
+                onSyncAlsaAudio={handleSyncAlsaAudio}
               />
             </div>
 
@@ -570,25 +657,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   <input
                     type="checkbox"
                     checked={config.use_secondary_input}
-                    onChange={e => {
-                      const val = e.target.checked;
-                      let nextInput1 = config.input1;
-                      let nextInput2 = config.input2;
-                      if (val) {
-                        if (!VIDEO_ALLOWED_TYPES.includes(nextInput1.type)) {
-                          nextInput1 = { ...nextInput1, type: 'file' };
-                        }
-                        if (!AUDIO_ALLOWED_TYPES.includes(nextInput2.type)) {
-                          nextInput2 = { ...nextInput2, type: 'file' };
-                        }
-                      }
-                      setConfig({ 
-                        ...config, 
-                        use_secondary_input: val,
-                        input1: nextInput1,
-                        input2: nextInput2
-                      });
-                    }}
+                    onChange={e => handleUseSecondaryInputChange(e.target.checked)}
                     className="w-4 h-4 accent-brand-lime"
                   />
                   <span className="text-xs font-bold uppercase tracking-wider text-text-secondary group-hover:text-white transition-colors">
@@ -609,7 +678,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   accentColor="#60a5fa"
                   config={config.input2}
                   allowedTypes={AUDIO_ALLOWED_TYPES}
-                  onChange={input2 => setConfig({ ...config, input2 })}
+                  onChange={handleInput2Change}
                   systemCapabilities={systemCapabilities}
                 />
               </div>
@@ -627,11 +696,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   params={config.video_codec_params}
                   buildOptions={selectedBuildOptions}
                   systemCapabilities={systemCapabilities}
-                  onChange={(id, params) => setConfig({
-                    ...config,
-                    video_codec_id: id,
-                    video_codec_params: params,
-                  })}
+                  onChange={handleVideoCodecChange}
                 />
               </div>
             )}
@@ -641,11 +706,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   codecId={config.audio_codec_id}
                   params={config.audio_codec_params}
                   buildOptions={selectedBuildOptions}
-                  onChange={(id, params) => setConfig({
-                    ...config,
-                    audio_codec_id: id,
-                    audio_codec_params: params,
-                  })}
+                  onChange={handleAudioCodecChange}
                 />
               </div>
             )}
@@ -679,13 +740,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
               config.input1.hwaccel_output_format !== undefined
             }
             systemCapabilities={systemCapabilities}
-            onChange={updates => setConfig({
-              ...config,
-              filters: {
-                ...config.filters,
-                ...updates,
-              }
-            })}
+            onChange={handleFiltersChange}
           />
         )}
 
@@ -697,7 +752,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 config={config.output}
                 hasVideo={config.has_video}
                 hasAudio={config.has_audio}
-                onChange={output => setConfig({ ...config, output })}
+                onChange={handleOutputChange}
                 systemCapabilities={systemCapabilities}
               />
             </div>
@@ -717,20 +772,14 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 duration_end_time={config.duration_end_time}
                 retry_max={config.retry_max}
                 retry_delay={config.retry_delay}
-                onChange={updates => setConfig({
-                  ...config,
-                  ...updates
-                })}
+                onChange={handleLifecycleOrSchedulingChange}
               />
             ) : (
               <LifecycleFormSection
                 auto_start={config.auto_start}
                 watchdog_enabled={config.watchdog_enabled}
                 watchdog_retries={config.watchdog_retries}
-                onChange={updates => setConfig({
-                  ...config,
-                  ...updates
-                })}
+                onChange={handleLifecycleOrSchedulingChange}
               />
             )}
 
@@ -741,16 +790,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
               threads={config.filters.advanced.threads}
               probesize={config.filters.advanced.probesize}
               thread_queue_size={config.filters.advanced.thread_queue_size}
-              onChange={updates => setConfig({
-                ...config,
-                filters: {
-                  ...config.filters,
-                  advanced: {
-                    ...config.filters.advanced,
-                    ...updates
-                  }
-                }
-              })}
+              onChange={handleAdvancedFlagsChange}
             />
           </div>
         )}

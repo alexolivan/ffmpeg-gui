@@ -701,4 +701,4 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   );
 };
 
-export default DestinationPanel;
+export default React.memo(DestinationPanel);

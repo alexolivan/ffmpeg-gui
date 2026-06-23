@@ -204,4 +204,4 @@ const ParamControl: React.FC<ParamControlProps> = ({ param, value, onChange }) =
   );
 };
 
-export default VideoCodecPanel;
+export default React.memo(VideoCodecPanel);

@@ -162,4 +162,4 @@ const AudioParamControl: React.FC<AudioParamControlProps> = ({ param, value, onC
   );
 };
 
-export default AudioCodecPanel;
+export default React.memo(AudioCodecPanel);
