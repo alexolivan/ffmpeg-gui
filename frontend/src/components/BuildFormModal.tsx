@@ -535,6 +535,12 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                       ⚠️ ADVERTENCIA LEGAL: El SDK de NewTek NDI es propietario. Binario resultante bajo licencia GPL con --enable-nonfree.
                     </div>
 
+                    {buildDeps?.dependencies?.['avahi-daemon']?.installed === false && (
+                      <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[9px] p-2 rounded-lg leading-snug font-bold">
+                        ⚠️ Runtime de NDI requiere Avahi. Instala 'avahi-daemon' y 'avahi-utils' en el sistema host para que funcione.
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-3 gap-2">
                       <div className="col-span-2">
                         <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">Elegir Versión del SDK</label>
