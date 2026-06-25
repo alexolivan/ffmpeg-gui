@@ -5,6 +5,7 @@ import os
 import shutil
 import uuid
 import shlex
+import platform
 from PIL import Image
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
@@ -25,6 +26,8 @@ import asyncio
 import datetime
 from fastapi import BackgroundTasks
 from utils.process_utils import cleanup_rogue_processes
+from version import __version__ as backend_version
+from database.version import __schema_version__ as schema_version
 
 import time
 
@@ -874,6 +877,9 @@ async def telemetry_broadcast_loop():
                     "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
                     "ram_total": int(sys_ram.total / (1024 * 1024)), # MB
                     "gpu": gpu_stats,
+                    "host_os_arch": f"{platform.system()} {platform.machine()}",
+                    "backend_version": backend_version,
+                    "schema_version": schema_version,
                     "lcd": {
                         "connected": lcd_manager is not None and lcd_manager._running,
                         "port": lcd_manager.port if lcd_manager else None
@@ -1035,11 +1041,13 @@ async def websocket_build(websocket: WebSocket, build_id: int):
 # ── Root ──────────────────────────────────────────────────────────
 
 @app.get("/api/status")
-def read_root():
+def read_root() -> dict:
     global lcd_manager
     return {
         "status": "online", 
         "message": "FFMPEG Orchestrator API is running",
+        "version": backend_version,
+        "schema_version": schema_version,
         "lcd": {
             "connected": lcd_manager is not None and lcd_manager._running,
             "port": lcd_manager.port if lcd_manager else None
