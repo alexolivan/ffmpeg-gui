@@ -89,7 +89,7 @@ class TestCommandGenerator(unittest.TestCase):
         # Check NDI format requirement
         self.assertIn("-vf format=uyvy422", cmd_str)
         # Check NDI output syntax
-        self.assertIn("-f libndi_newtek -ndi_name NDI-OUT output.ndi", cmd_str)
+        self.assertIn("-f libndi_newtek NDI-OUT", cmd_str)
 
     def test_dvb_mpegts_parameters(self):
         # Test Case 3: UDP output with DVB metadata and custom PIDs

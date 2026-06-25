@@ -1,0 +1,103 @@
+From d7caa351e2dada0d493fd745bbd6a00f0e3f2d66 Mon Sep 17 00:00:00 2001
+From: tytan652 <tytan652@tytanium.xyz>
+Date: Thu, 17 Feb 2022 20:21:33 +0100
+Subject: [PATCH] Revert "lavd: Remove libndi_newtek"
+
+This reverts commit 4b32f8b3ebfa011fcc5991bcaa97c3f5b61b49ad.
+---
+ configure                |  7 +++++
+ doc/indevs.texi          | 65 ++++++++++++++++++++++++++++++++++++++++
+ doc/outdevs.texi         | 45 ++++++++++++++++++++++++++++
+ libavdevice/Makefile     |  4 +++
+ libavdevice/alldevices.c |  2 ++
+ 5 files changed, 123 insertions(+)
+
+diff --git a/configure b/configure
+index 1535dc3c5b..dcfc925814 100755
+--- a/configure
++++ b/configure
+@@ -306,6 +306,7 @@ External library support:
+   --enable-lv2             enable LV2 audio filtering [no]
+   --disable-lzma           disable lzma [autodetect]
+   --enable-decklink        enable Blackmagic DeckLink I/O support [no]
++  --enable-libndi_newtek   enable Newteck NDI I/O support [no]
+   --enable-mbedtls         enable mbedTLS, needed for https support
+                            if openssl, gnutls or libtls is not used [no]
+   --enable-mediacodec      enable Android MediaCodec support [no]
+@@ -1784,6 +1785,7 @@ EXTERNAL_LIBRARY_GPL_LIST="
+ 
+ EXTERNAL_LIBRARY_NONFREE_LIST="
+     decklink
++    libndi_newtek
+     libfdk_aac
+     libtls
+ "
+@@ -3496,6 +3498,10 @@ decklink_indev_suggest="libzvbi"
+ decklink_outdev_deps="decklink threads"
+ decklink_outdev_suggest="libklvanc"
+ decklink_outdev_extralibs="-lstdc++"
++libndi_newtek_indev_deps="libndi_newtek"
++libndi_newtek_indev_extralibs="-lndi"
++libndi_newtek_outdev_deps="libndi_newtek"
++libndi_newtek_outdev_extralibs="-lndi"
+ dshow_indev_deps="IBaseFilter"
+ dshow_indev_extralibs="-lpsapi -lole32 -lstrmiids -luuid -loleaut32 -lshlwapi"
+ fbdev_indev_deps="linux_fb_h"
+@@ -6493,6 +6499,7 @@ enabled cuda_nvcc         && { check_nvcc cuda_nvcc || die "ERROR: failed checki
+ enabled chromaprint       && require chromaprint chromaprint.h chromaprint_get_version -lchromaprint
+ enabled decklink          && { require_headers DeckLinkAPI.h &&
+                                { test_cpp_condition DeckLinkAPIVersion.h "BLACKMAGIC_DECKLINK_API_VERSION >= 0x0a0b0000" || die "ERROR: Decklink API version must be >= 10.11"; } }
++enabled libndi_newtek     && require_headers Processing.NDI.Lib.h
+ enabled frei0r            && require_headers "frei0r.h"
+ enabled gmp               && require gmp gmp.h mpz_export -lgmp
+ enabled gnutls            && require_pkg_config gnutls gnutls gnutls/gnutls.h gnutls_global_init
+diff --git a/libavdevice/Makefile b/libavdevice/Makefile
+index 53efda0514..8bef2a2f73 100644
+--- a/libavdevice/Makefile
++++ b/libavdevice/Makefile
+@@ -20,6 +20,8 @@ OBJS-$(CONFIG_BKTR_INDEV)                += bktr.o
+ OBJS-$(CONFIG_CACA_OUTDEV)               += caca.o
+ OBJS-$(CONFIG_DECKLINK_OUTDEV)           += decklink_enc.o decklink_enc_c.o decklink_common.o
+ OBJS-$(CONFIG_DECKLINK_INDEV)            += decklink_dec.o decklink_dec_c.o decklink_common.o
++OBJS-$(CONFIG_LIBNDI_NEWTEK_OUTDEV)      += libndi_newtek_enc.o
++OBJS-$(CONFIG_LIBNDI_NEWTEK_INDEV)       += libndi_newtek_dec.o
+ OBJS-$(CONFIG_DSHOW_INDEV)               += dshow_crossbar.o dshow.o dshow_enummediatypes.o \
+                                             dshow_enumpins.o dshow_filter.o \
+                                             dshow_pin.o dshow_common.o
+@@ -62,6 +64,8 @@ SLIBOBJS-$(HAVE_GNU_WINDRES)             += avdeviceres.o
+ SKIPHEADERS                              += decklink_common.h
+ SKIPHEADERS-$(CONFIG_DECKLINK)           += decklink_enc.h decklink_dec.h \
+                                             decklink_common_c.h
++SKIPHEADERS-$(CONFIG_LIBNDI_NEWTEK_INDEV) += libndi_newtek_common.h
++SKIPHEADERS-$(CONFIG_LIBNDI_NEWTEK_OUTDEV) += libndi_newtek_common.h
+ SKIPHEADERS-$(CONFIG_DSHOW_INDEV)        += dshow_capture.h
+ SKIPHEADERS-$(CONFIG_FBDEV_INDEV)        += fbdev_common.h
+ SKIPHEADERS-$(CONFIG_FBDEV_OUTDEV)       += fbdev_common.h
+diff --git a/libavdevice/alldevices.c b/libavdevice/alldevices.c
+index 22323a0a44..5ffd97fca7 100644
+--- a/libavdevice/alldevices.c
++++ b/libavdevice/alldevices.c
+@@ -31,6 +31,8 @@ extern const AVInputFormat  ff_bktr_demuxer;
+ extern const AVOutputFormat ff_caca_muxer;
+ extern const AVInputFormat  ff_decklink_demuxer;
+ extern const AVOutputFormat ff_decklink_muxer;
++extern const AVInputFormat  ff_libndi_newtek_demuxer;
++extern const AVOutputFormat ff_libndi_newtek_muxer;
+ extern const AVInputFormat  ff_dshow_demuxer;
+ extern const AVInputFormat  ff_fbdev_demuxer;
+ extern const AVOutputFormat ff_fbdev_muxer;
+-- 
+2.35.1
+
+diff --git a/libavdevice/libndi_newtek_dec.c b/libavdevice/libndi_newtek_dec.c
+index 28e0467..40c5843 100644
+--- a/libavdevice/libndi_newtek_dec.c
++++ b/libavdevice/libndi_newtek_dec.c
+@@ -292,5 +292,5 @@ static int ndi_read_header(AVFormatContext *avctx)
+ {
+     int ret;
+-    NDIlib_recv_create_v3_t recv_create_desc;
++    NDIlib_recv_create_v3_t recv_create_desc = { 0 };
+     const NDIlib_tally_t tally_state = { .on_program = true, .on_preview = false };
+
+

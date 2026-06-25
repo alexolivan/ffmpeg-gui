@@ -35,6 +35,7 @@ interface InputSourcePanelProps {
   onChange: (config: InputSourceConfig) => void;
   systemCapabilities?: SystemCapabilities;
   onSyncAlsaAudio?: (alsaDevice: string) => void;
+  ffmpegBuildId?: number | null;
 }
 
 const ALL_SOURCE_TYPES = [
@@ -61,11 +62,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   onChange,
   systemCapabilities,
   onSyncAlsaAudio,
+  ffmpegBuildId,
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
-  const filteredSourceTypes = decklinkAvailable
-    ? ALL_SOURCE_TYPES
-    : ALL_SOURCE_TYPES.filter(t => t.value !== 'decklink');
+  const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
+
+  let filteredSourceTypes = ALL_SOURCE_TYPES;
+  if (!decklinkAvailable) {
+    filteredSourceTypes = filteredSourceTypes.filter(t => t.value !== 'decklink');
+  }
+  if (!avahiAvailable) {
+    filteredSourceTypes = filteredSourceTypes.filter(t => t.value !== 'ndi');
+  }
 
   const types = allowedTypes
     ? filteredSourceTypes.filter(t => allowedTypes.includes(t.value))
@@ -97,23 +105,33 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   const [ndiSources, setNdiSources] = React.useState<string[]>([]);
   const [scanningNdi, setScanningNdi] = React.useState(false);
   const [manualNdiMode, setManualNdiMode] = React.useState(false);
+  const [scanResult, setScanResult] = React.useState<{ success: boolean; count: number; error?: string } | null>(null);
+
+  const displayedNdiSources = React.useMemo(() => {
+    const list = [...ndiSources];
+    if (config.name && config.type === 'ndi' && !list.includes(config.name) && config.name !== '__manual__') {
+      list.unshift(config.name);
+    }
+    return list;
+  }, [ndiSources, config.name, config.type]);
 
   const scanNdi = async () => {
     setScanningNdi(true);
+    setScanResult(null);
     try {
-      const res = await fetch('/ndi/sources');
+      const buildParam = ffmpegBuildId ? `?build_id=${ffmpegBuildId}` : '';
+      const res = await fetch(`/ndi/sources${buildParam}`);
       if (res.ok) {
         const data = await res.json();
-        setNdiSources(data.sources || []);
-        if (data.sources && data.sources.length > 0) {
-          update({ name: data.sources[0] });
-          setManualNdiMode(false);
-        } else {
-          setManualNdiMode(true);
-        }
+        const sourcesList = data.sources || [];
+        setNdiSources(sourcesList);
+        setScanResult({ success: true, count: sourcesList.length });
+      } else {
+        setScanResult({ success: false, count: 0, error: "Failed to scan" });
       }
     } catch (err) {
       console.error("Failed to scan NDI sources", err);
+      setScanResult({ success: false, count: 0, error: String(err) });
     } finally {
       setScanningNdi(false);
     }
@@ -408,7 +426,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 }}
               >
                 <option value="">-- Select NDI Source --</option>
-                {ndiSources.map(s => (
+                {displayedNdiSources.map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
                 <option value="__manual__">📝 Manual input...</option>
@@ -422,18 +440,16 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   value={config.name || ''}
                   onChange={e => update({ name: e.target.value })}
                 />
-                {ndiSources.length > 0 && (
-                  <button
-                    type="button"
-                    className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
-                    onClick={() => {
-                      setManualNdiMode(false);
-                      update({ name: ndiSources[0] || '' });
-                    }}
-                  >
-                    List
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                  onClick={() => {
+                    setManualNdiMode(false);
+                    update({ name: ndiSources[0] || '' });
+                  }}
+                >
+                  List
+                </button>
               </div>
             )}
             <button
@@ -445,6 +461,33 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               {scanningNdi ? "Scanning..." : "Scan"}
             </button>
           </div>
+          
+          {/* NDI Scan Feedback and Helper Tips */}
+          {scanningNdi && (
+            <p className="text-[10px] text-brand-orange animate-pulse font-bold mt-1.5">
+              🔍 Buscando fuentes NDI activas en la red local...
+            </p>
+          )}
+          {!scanningNdi && scanResult && (
+            <div className="space-y-1 mt-1.5">
+              <p className={`text-[10px] font-bold ${scanResult.success && scanResult.count > 0 ? 'text-brand-lime' : 'text-brand-orange'}`}>
+                {scanResult.success 
+                  ? (scanResult.count > 0 
+                    ? `✓ Se encontraron ${scanResult.count} fuentes NDI en la red.` 
+                    : '⚠️ No se detectó ninguna fuente NDI activa.')
+                  : '❌ Error de comunicación al escanear fuentes NDI.'}
+              </p>
+              {scanResult.success && scanResult.count > 0 && manualNdiMode && (
+                <button
+                  type="button"
+                  onClick={() => setManualNdiMode(false)}
+                  className="text-[9px] text-brand-lime underline hover:text-brand-lime/80 block font-bold cursor-pointer text-left"
+                >
+                  👉 Hacer clic aquí para ver la lista y seleccionar una fuente detectada.
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

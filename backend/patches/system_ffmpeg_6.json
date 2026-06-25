@@ -1,0 +1,6 @@
+{
+  "display_name": "NDI Support v6.x (Sistema)",
+  "ffmpeg_version_major": "6",
+  "filename": "system_ffmpeg_6.patch",
+  "source": "system"
+}

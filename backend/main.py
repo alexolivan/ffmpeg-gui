@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -16,6 +16,7 @@ from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
 from core.sdk_manager import SdkManager
+from core.patch_manager import PatchManager
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats
 import psutil
@@ -116,6 +117,7 @@ process_manager = ProcessManager(db_session_factory=SessionLocal)
 preview_manager = PreviewManager()
 build_manager = BuildManager(builds_root="./ffmpeg_builds")
 sdk_manager = SdkManager(workspace_root=".")
+patch_manager = PatchManager(workspace_root=".")
 
 from core.task_manager import TaskManager
 from core.scheduler import Scheduler
@@ -475,6 +477,17 @@ def get_system_capabilities():
     decklink_available = len(decklink_nodes) > 0
     decklink_details = f"Detected DeckLink card nodes: {', '.join(decklink_nodes)}" if decklink_available else "No physical DeckLink cards detected"
 
+    # Avahi
+    avahi_installed = os.path.exists("/usr/sbin/avahi-daemon") or shutil.which("avahi-daemon") is not None
+    avahi_running = os.path.exists("/var/run/avahi-daemon/socket")
+    avahi_available = avahi_installed and avahi_running
+    if not avahi_installed:
+        avahi_details = "Avahi daemon is not installed. Install avahi-daemon."
+    elif not avahi_running:
+        avahi_details = "Avahi daemon is installed but not running. Start avahi-daemon service."
+    else:
+        avahi_details = "Avahi daemon is active and running."
+
     # Dynamic FFmpeg capability discovery
     ffmpeg_bin = get_effective_ffmpeg_path()
     supported_filters = []
@@ -517,6 +530,7 @@ def get_system_capabilities():
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
         "alsa": {"available": alsa_available, "details": alsa_details},
         "decklink": {"available": decklink_available, "details": decklink_details},
+        "avahi": {"available": avahi_available, "details": avahi_details},
         "ffmpeg": {
             "filters": supported_filters,
             "encoders": supported_encoders,
@@ -707,10 +721,30 @@ async def get_decklink_formats(device: str):
 
 
 @app.get("/ndi/sources")
-async def get_ndi_sources():
+async def get_ndi_sources(build_id: Optional[int] = None):
     import re
-    ffmpeg_bin = get_effective_ffmpeg_path()
+    import os
+    from database.models import FfmpegBuild
+    from database.db import SessionLocal
+
+    # 1. Resolve ffmpeg binary
+    ffmpeg_bin = None
+    if build_id is not None:
+        db = SessionLocal()
+        try:
+            build = db.query(FfmpegBuild).filter(FfmpegBuild.id == build_id, FfmpegBuild.status == 'ready').first()
+            if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+                ffmpeg_bin = build.ffmpeg_binary
+        except Exception as e:
+            logger.warning(f"Error querying ffmpeg build {build_id} from DB: {e}")
+        finally:
+            db.close()
+
+    if not ffmpeg_bin:
+        ffmpeg_bin = get_effective_ffmpeg_path()
+
     sources = []
+    logger.info(f"Scanning NDI sources using binary: {ffmpeg_bin} (build_id query param: {build_id})")
     try:
         proc = await asyncio.create_subprocess_exec(
             ffmpeg_bin, "-f", "libndi_newtek", "-find_sources", "1", "-i", "dummy",
@@ -718,21 +752,30 @@ async def get_ndi_sources():
             stderr=asyncio.subprocess.PIPE
         )
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
             output = stdout.decode('utf-8', errors='replace') + stderr.decode('utf-8', errors='replace')
         except asyncio.TimeoutExpired:
+            logger.warning("NDI sources scan timed out. Killing subprocess.")
             proc.kill()
             stdout, stderr = await proc.communicate()
             output = stdout.decode('utf-8', errors='replace') + stderr.decode('utf-8', errors='replace')
-            
+
+        logger.info(f"NDI scan finished with return code {proc.returncode}")
+        logger.info(f"NDI scan raw output:\n{output}")
+
         for line in output.splitlines():
-            match = re.search(r"Found NDI source:\s*'([^']+)'", line)
-            if match:
-                sources.append(match.group(1))
+            if "[libndi_newtek" in line:
+                quotes = re.findall(r"'([^']+)'", line)
+                if quotes:
+                    name = quotes[0]
+                    if name not in sources:
+                        sources.append(name)
+                        logger.info(f"Detected NDI source: {name}")
     except Exception as e:
         logger.error(f"Error scanning NDI sources: {e}")
-        
+
     return {"sources": sources}
+
 
 
 
@@ -1133,6 +1176,38 @@ async def upload_sdk(sdk_type: str = File(...), file: UploadFile = File(...)):
             except OSError:
                 pass
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/system/patches")
+def get_patches():
+    """List all NDI/compilation patches available in the system."""
+    return patch_manager.list_patches()
+
+@app.post("/system/patches/upload")
+async def upload_patch(
+    file: UploadFile = File(...),
+    display_name: str = Form(...),
+    ffmpeg_version_major: str = Form(...)
+):
+    """Upload a custom compilation patch with metadata."""
+    content = await file.read()
+    result = patch_manager.upload_patch(
+        file_content=content,
+        original_filename=file.filename,
+        display_name=display_name,
+        ffmpeg_version_major=ffmpeg_version_major
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
+
+@app.delete("/system/patches/{filename}")
+def delete_patch(filename: str):
+    """Delete a custom patch."""
+    result = patch_manager.delete_patch(filename)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    return result
 
 
 @app.get("/builds/{build_id}")

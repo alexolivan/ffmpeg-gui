@@ -52,12 +52,16 @@ class BuildManager:
             "gcc": {"type": "required", "description": "Compilador de código C/C++"},
             "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo"},
             "clang": {"type": "optional", "description": "Compilador LLVM/Clang (requerido para filtros CUDA)"},
+            "avahi-daemon": {"type": "optional", "description": "Servicio de descubrimiento mDNS/DNS-SD (requerido para runtime de NDI)"},
         }
         
         results = {}
         for name, info in core_deps.items():
+            installed = shutil.which(name) is not None
+            if name == "avahi-daemon" and not installed:
+                installed = os.path.exists("/usr/sbin/avahi-daemon")
             results[name] = {
-                "installed": shutil.which(name) is not None,
+                "installed": installed,
                 "type": info["type"],
                 "description": info["description"]
             }
@@ -458,23 +462,38 @@ class BuildManager:
                 
                 # Apply dynamic NDI patch
                 await log_callback("━━━ APPLYING NDI COMMUNITY PATCH ━━━\n")
-                custom_patch_url = sdk_paths.get("ndi_patch_url")
-                patch_url = custom_patch_url
-                if not patch_url:
-                    # Resolve pre-validated patch url based on ffmpeg version major
-                    if ffmpeg_version.startswith("6."):
-                        patch_url = "https://raw.githubusercontent.com/aur-archive/ffmpeg-ndi/master/ffmpeg-6.0-ndi.patch"
-                    elif ffmpeg_version.startswith("5."):
-                        patch_url = "https://raw.githubusercontent.com/aur-archive/ffmpeg-ndi/master/ffmpeg-5.0-ndi.patch"
-                    else:
-                        patch_url = "https://raw.githubusercontent.com/aur-archive/ffmpeg-ndi/master/ffmpeg-6.0-ndi.patch"
+                custom_patch_file = sdk_paths.get("ndi_patch_file")
+                if os.path.basename(self.workspace_root) == "backend":
+                    system_patches_dir = os.path.join(self.workspace_root, "patches")
+                    user_patches_dir = os.path.join(self.workspace_root, "data", "patches")
+                else:
+                    system_patches_dir = os.path.join(self.workspace_root, "backend", "patches")
+                    user_patches_dir = os.path.join(self.workspace_root, "backend", "data", "patches")
                 
-                await log_callback(f"NDI Patch URL: {patch_url}\n")
+                if custom_patch_file:
+                    # Look in user uploads first, fallback to system
+                    local_patch_path = os.path.join(user_patches_dir, custom_patch_file)
+                    if not os.path.exists(local_patch_path):
+                        local_patch_path = os.path.join(system_patches_dir, custom_patch_file)
+                    await log_callback(f"Using custom NDI patch: {custom_patch_file}\n")
+                else:
+                    if ffmpeg_version.startswith("7."):
+                        default_patch_name = "system_ffmpeg_7.patch"
+                    elif ffmpeg_version.startswith("6."):
+                        default_patch_name = "system_ffmpeg_6.patch"
+                    else:
+                        default_patch_name = "system_ffmpeg_7.patch"
+                    
+                    local_patch_path = os.path.join(system_patches_dir, default_patch_name)
+                    await log_callback(f"Using system default NDI patch: {default_patch_name}\n")
+                
+                if not os.path.exists(local_patch_path):
+                    raise ValueError(f"NDI patch file not found: {local_patch_path}")
+                
                 patch_file = os.path.join(src_path, "ndi.patch")
                 try:
-                    import urllib.request
-                    urllib.request.urlretrieve(patch_url, patch_file)
-                    await log_callback("Downloaded patch. Checking application status...\n")
+                    shutil.copy2(local_patch_path, patch_file)
+                    await log_callback("Loaded local patch. Checking application status...\n")
                     
                     # 1. Check if the patch can be applied cleanly (means not applied yet)
                     proc_check = await asyncio.create_subprocess_exec(

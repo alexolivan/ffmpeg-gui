@@ -281,6 +281,13 @@ export const VIDEO_CODECS: CodecDefinition[] = [
     category: 'software',
     params: [],
   },
+  {
+    id: 'wrapped_avframe',
+    label: 'Wrapped AVFrame (NDI Native) [wrapped_avframe]',
+    type: 'video',
+    category: 'software',
+    params: [],
+  },
   // ── HW Accelerated ──
   {
     id: 'h264_vaapi',
@@ -662,6 +669,7 @@ export interface SystemCapabilities {
   v4l2: { available: boolean; details: string };
   alsa: { available: boolean; details: string };
   decklink: { available: boolean; details: string };
+  avahi: { available: boolean; details: string };
   ffmpeg?: {
     filters: string[];
     decoders: string[];

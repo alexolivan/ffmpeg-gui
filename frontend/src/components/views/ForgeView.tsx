@@ -332,7 +332,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                     "libx265": "libx265-dev",
                     "libssl": "libssl-dev",
                     "libva": "libva-dev",
-                    "libdrm": "libdrm-dev"
+                    "libdrm": "libdrm-dev",
+                    "avahi-daemon": "avahi-daemon avahi-utils"
                   },
                   fedora: {
                     "cmake": "cmake",
@@ -345,7 +346,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                     "libx265": "x265-devel",
                     "libssl": "openssl-devel",
                     "libva": "libva-devel",
-                    "libdrm": "libdrm-devel"
+                    "libdrm": "libdrm-devel",
+                    "avahi-daemon": "avahi"
                   },
                   arch: {
                     "cmake": "cmake",
@@ -358,7 +360,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                     "libx265": "x265",
                     "libssl": "openssl",
                     "libva": "libva",
-                    "libdrm": "libdrm"
+                    "libdrm": "libdrm",
+                    "avahi-daemon": "avahi"
                   }
                 };
 
