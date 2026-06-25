@@ -52,12 +52,16 @@ class BuildManager:
             "gcc": {"type": "required", "description": "Compilador de código C/C++"},
             "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo"},
             "clang": {"type": "optional", "description": "Compilador LLVM/Clang (requerido para filtros CUDA)"},
+            "avahi-daemon": {"type": "optional", "description": "Servicio de descubrimiento mDNS/DNS-SD (requerido para runtime de NDI)"},
         }
         
         results = {}
         for name, info in core_deps.items():
+            installed = shutil.which(name) is not None
+            if name == "avahi-daemon" and not installed:
+                installed = os.path.exists("/usr/sbin/avahi-daemon")
             results[name] = {
-                "installed": shutil.which(name) is not None,
+                "installed": installed,
                 "type": info["type"],
                 "description": info["description"]
             }
