@@ -107,6 +107,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   const [manualNdiMode, setManualNdiMode] = React.useState(false);
   const [scanResult, setScanResult] = React.useState<{ success: boolean; count: number; error?: string } | null>(null);
 
+  const displayedNdiSources = React.useMemo(() => {
+    const list = [...ndiSources];
+    if (config.name && config.type === 'ndi' && !list.includes(config.name) && config.name !== '__manual__') {
+      list.unshift(config.name);
+    }
+    return list;
+  }, [ndiSources, config.name, config.type]);
+
   const scanNdi = async () => {
     setScanningNdi(true);
     setScanResult(null);
@@ -418,7 +426,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 }}
               >
                 <option value="">-- Select NDI Source --</option>
-                {ndiSources.map(s => (
+                {displayedNdiSources.map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
                 <option value="__manual__">📝 Manual input...</option>
