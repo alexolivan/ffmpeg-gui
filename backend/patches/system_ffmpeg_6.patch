@@ -89,3 +89,15 @@ index 22323a0a44..5ffd97fca7 100644
 -- 
 2.35.1
 
+diff --git a/libavdevice/libndi_newtek_dec.c b/libavdevice/libndi_newtek_dec.c
+index 28e0467..40c5843 100644
+--- a/libavdevice/libndi_newtek_dec.c
++++ b/libavdevice/libndi_newtek_dec.c
+@@ -292,5 +292,5 @@ static int ndi_read_header(AVFormatContext *avctx)
+ {
+     int ret;
+-    NDIlib_recv_create_v3_t recv_create_desc;
++    NDIlib_recv_create_v3_t recv_create_desc = { 0 };
+     const NDIlib_tally_t tally_state = { .on_program = true, .on_preview = false };
+
+
