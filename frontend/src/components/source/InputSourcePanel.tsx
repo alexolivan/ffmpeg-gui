@@ -111,12 +111,6 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       if (res.ok) {
         const data = await res.json();
         setNdiSources(data.sources || []);
-        if (data.sources && data.sources.length > 0) {
-          update({ name: data.sources[0] });
-          setManualNdiMode(false);
-        } else {
-          setManualNdiMode(true);
-        }
       }
     } catch (err) {
       console.error("Failed to scan NDI sources", err);
@@ -428,18 +422,16 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   value={config.name || ''}
                   onChange={e => update({ name: e.target.value })}
                 />
-                {ndiSources.length > 0 && (
-                  <button
-                    type="button"
-                    className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
-                    onClick={() => {
-                      setManualNdiMode(false);
-                      update({ name: ndiSources[0] || '' });
-                    }}
-                  >
-                    List
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                  onClick={() => {
+                    setManualNdiMode(false);
+                    update({ name: ndiSources[0] || '' });
+                  }}
+                >
+                  List
+                </button>
               </div>
             )}
             <button
