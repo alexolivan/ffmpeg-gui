@@ -681,6 +681,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 onChange={handleInput1Change}
                 systemCapabilities={systemCapabilities}
                 onSyncAlsaAudio={handleSyncAlsaAudio}
+                ffmpegBuildId={config.ffmpeg_build_id}
               />
             </div>
 
@@ -714,6 +715,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   allowedTypes={AUDIO_ALLOWED_TYPES}
                   onChange={handleInput2Change}
                   systemCapabilities={systemCapabilities}
+                  ffmpegBuildId={config.ffmpeg_build_id}
                 />
               </div>
             )}

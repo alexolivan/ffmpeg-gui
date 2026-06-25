@@ -35,6 +35,7 @@ interface InputSourcePanelProps {
   onChange: (config: InputSourceConfig) => void;
   systemCapabilities?: SystemCapabilities;
   onSyncAlsaAudio?: (alsaDevice: string) => void;
+  ffmpegBuildId?: number | null;
 }
 
 const ALL_SOURCE_TYPES = [
@@ -61,6 +62,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   onChange,
   systemCapabilities,
   onSyncAlsaAudio,
+  ffmpegBuildId,
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
@@ -109,7 +111,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
     setScanningNdi(true);
     setScanResult(null);
     try {
-      const res = await fetch('/ndi/sources');
+      const buildParam = ffmpegBuildId ? `?build_id=${ffmpegBuildId}` : '';
+      const res = await fetch(`/ndi/sources${buildParam}`);
       if (res.ok) {
         const data = await res.json();
         const sourcesList = data.sources || [];

@@ -721,10 +721,30 @@ async def get_decklink_formats(device: str):
 
 
 @app.get("/ndi/sources")
-async def get_ndi_sources():
+async def get_ndi_sources(build_id: Optional[int] = None):
     import re
-    ffmpeg_bin = get_effective_ffmpeg_path()
+    import os
+    from database.models import FfmpegBuild
+    from database.db import SessionLocal
+
+    # 1. Resolve ffmpeg binary
+    ffmpeg_bin = None
+    if build_id is not None:
+        db = SessionLocal()
+        try:
+            build = db.query(FfmpegBuild).filter(FfmpegBuild.id == build_id, FfmpegBuild.status == 'ready').first()
+            if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+                ffmpeg_bin = build.ffmpeg_binary
+        except Exception as e:
+            logger.warning(f"Error querying ffmpeg build {build_id} from DB: {e}")
+        finally:
+            db.close()
+
+    if not ffmpeg_bin:
+        ffmpeg_bin = get_effective_ffmpeg_path()
+
     sources = []
+    logger.info(f"Scanning NDI sources using binary: {ffmpeg_bin} (build_id query param: {build_id})")
     try:
         proc = await asyncio.create_subprocess_exec(
             ffmpeg_bin, "-f", "libndi_newtek", "-find_sources", "1", "-i", "dummy",
@@ -732,30 +752,30 @@ async def get_ndi_sources():
             stderr=asyncio.subprocess.PIPE
         )
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
             output = stdout.decode('utf-8', errors='replace') + stderr.decode('utf-8', errors='replace')
         except asyncio.TimeoutExpired:
+            logger.warning("NDI sources scan timed out. Killing subprocess.")
             proc.kill()
             stdout, stderr = await proc.communicate()
             output = stdout.decode('utf-8', errors='replace') + stderr.decode('utf-8', errors='replace')
-            
+
+        logger.info(f"NDI scan finished with return code {proc.returncode}")
+        logger.info(f"NDI scan raw output:\n{output}")
+
         for line in output.splitlines():
-            line_clean = re.sub(r'^\[libndi_newtek(?:\s+@\s+[^\]]+)?\]\s*', '', line).strip()
-            match = re.match(r"^'([^']+)'(?:\s+'([^']+)')?$", line_clean)
-            if match:
-                name = match.group(1)
-                if name not in sources:
-                    sources.append(name)
-            else:
-                match_old = re.search(r"Found NDI source:\s*'([^']+)'", line)
-                if match_old:
-                    name = match_old.group(1)
+            if "[libndi_newtek" in line:
+                quotes = re.findall(r"'([^']+)'", line)
+                if quotes:
+                    name = quotes[0]
                     if name not in sources:
                         sources.append(name)
+                        logger.info(f"Detected NDI source: {name}")
     except Exception as e:
         logger.error(f"Error scanning NDI sources: {e}")
-        
+
     return {"sources": sources}
+
 
 
 
