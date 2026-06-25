@@ -740,9 +740,18 @@ async def get_ndi_sources():
             output = stdout.decode('utf-8', errors='replace') + stderr.decode('utf-8', errors='replace')
             
         for line in output.splitlines():
-            match = re.search(r"Found NDI source:\s*'([^']+)'", line)
+            line_clean = re.sub(r'^\[libndi_newtek(?:\s+@\s+[^\]]+)?\]\s*', '', line).strip()
+            match = re.match(r"^'([^']+)'(?:\s+'([^']+)')?$", line_clean)
             if match:
-                sources.append(match.group(1))
+                name = match.group(1)
+                if name not in sources:
+                    sources.append(name)
+            else:
+                match_old = re.search(r"Found NDI source:\s*'([^']+)'", line)
+                if match_old:
+                    name = match_old.group(1)
+                    if name not in sources:
+                        sources.append(name)
     except Exception as e:
         logger.error(f"Error scanning NDI sources: {e}")
         

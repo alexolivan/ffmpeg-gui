@@ -37,9 +37,14 @@ class TestNDIScan(unittest.TestCase):
         # Create a mock process
         mock_proc = MagicMock()
         
-        # Define mock communicate coroutine
+        # Define mock communicate coroutine returning both formats and duplicates
         async def mock_communicate():
-            return b"", b"[libndi_newtek @ 0x560] Found NDI source: 'DESKTOP-1234 (Stream 1)'\n[libndi_newtek] Found NDI source: 'LAPTOP-ABCD (OBS)'"
+            return b"", (
+                b"[libndi_newtek @ 0x560] Found NDI source: 'DESKTOP-1234 (Stream 1)'\n"
+                b"[libndi_newtek] Found NDI source: 'LAPTOP-ABCD (OBS)'\n"
+                b"[libndi_newtek @ 0x5629402] \t'TEST1 (LA-XARXA-TX3)'\t'192.168.99.11:5961'\n"
+                b"[libndi_newtek @ 0x5629402] \t'TEST1 (LA-XARXA-TX3)'\t'192.168.99.11:5961'\n"
+            )
             
         mock_proc.communicate = mock_communicate
         
@@ -52,7 +57,7 @@ class TestNDIScan(unittest.TestCase):
         # Run async function using asyncio
         res = asyncio.run(get_ndi_sources())
         
-        self.assertEqual(res["sources"], ["DESKTOP-1234 (Stream 1)", "LAPTOP-ABCD (OBS)"])
+        self.assertEqual(res["sources"], ["DESKTOP-1234 (Stream 1)", "LAPTOP-ABCD (OBS)", "TEST1 (LA-XARXA-TX3)"])
 
 
 if __name__ == '__main__':
