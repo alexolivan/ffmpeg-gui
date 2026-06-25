@@ -259,7 +259,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="space-y-4">
               <div className="flex justify-between py-2 border-b border-white/5">
                 <span className="text-xs text-text-secondary">Host OS & Arch</span>
-                <span className="text-xs font-mono font-bold text-white">Linux x86_64</span>
+                <span className="text-xs font-mono font-bold text-white">
+                  {systemTelemetry.host_os_arch || 'Linux x86_64'}
+                </span>
               </div>
               <div className="flex justify-between py-2 border-b border-white/5">
                 <span className="text-xs text-text-secondary">Active Profiles</span>
@@ -267,9 +269,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   {builds.filter(b => b.status === 'ready').length}
                 </span>
               </div>
-              <div className="flex justify-between py-2">
+              <div className="flex justify-between py-2 border-b border-white/5">
+                <span className="text-xs text-text-secondary">Frontend Version</span>
+                <span className="text-xs font-mono font-bold text-brand-lime text-right">
+                  v{import.meta.env.VITE_APP_VERSION || '1.0.0'}
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-white/5">
                 <span className="text-xs text-text-secondary">Backend API Version</span>
-                <span className="text-xs font-mono font-bold text-brand-lime text-right">v1.2.0-stable</span>
+                <span className="text-xs font-mono font-bold text-brand-lime text-right">
+                  v{systemTelemetry.backend_version || '1.0.0'}
+                </span>
+              </div>
+              <div className="flex justify-between py-2">
+                <span className="text-xs text-text-secondary">Database Schema</span>
+                <span className="text-xs font-mono font-bold text-brand-lime text-right">
+                  v{systemTelemetry.schema_version || '1.0.0'}
+                </span>
               </div>
             </div>
           </div>
