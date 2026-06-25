@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from .models import Base
-from database.version import __schema_version__
+from .version import __schema_version__
 
 logger = logging.getLogger("database")
 

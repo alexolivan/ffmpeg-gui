@@ -1,11 +1,15 @@
-import datetime
 import os
 import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import datetime
 import tempfile
 import unittest
 from sqlalchemy import create_engine, text
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import database.db
+from database.version import __schema_version__
 
 class TestDatabaseVersion(unittest.TestCase):
     def setUp(self):
@@ -20,7 +24,6 @@ class TestDatabaseVersion(unittest.TestCase):
                 pass
 
     def test_schema_version_is_initialized(self):
-        import database.db
         orig_db_path = database.db.DB_PATH
         orig_engine = database.db.engine
         
@@ -35,7 +38,6 @@ class TestDatabaseVersion(unittest.TestCase):
                 res = conn.execute(text("SELECT version FROM schema_info ORDER BY id DESC LIMIT 1"))
                 row = res.fetchone()
                 
-            from database.version import __schema_version__
             self.assertIsNotNone(row)
             self.assertEqual(row[0], __schema_version__)
         finally:
