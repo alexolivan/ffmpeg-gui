@@ -14,7 +14,7 @@ class TestSystemCapabilities(unittest.TestCase):
         response = self.client.get("/system/capabilities")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        for key in ["vaapi", "nvenc", "v4l2", "alsa", "decklink"]:
+        for key in ["vaapi", "nvenc", "v4l2", "alsa", "decklink", "avahi"]:
             self.assertIn(key, data)
             self.assertIn("available", data[key])
             self.assertIn("details", data[key])

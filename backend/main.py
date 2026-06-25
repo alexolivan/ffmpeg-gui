@@ -477,6 +477,17 @@ def get_system_capabilities():
     decklink_available = len(decklink_nodes) > 0
     decklink_details = f"Detected DeckLink card nodes: {', '.join(decklink_nodes)}" if decklink_available else "No physical DeckLink cards detected"
 
+    # Avahi
+    avahi_installed = os.path.exists("/usr/sbin/avahi-daemon") or shutil.which("avahi-daemon") is not None
+    avahi_running = os.path.exists("/var/run/avahi-daemon/socket")
+    avahi_available = avahi_installed and avahi_running
+    if not avahi_installed:
+        avahi_details = "Avahi daemon is not installed. Install avahi-daemon."
+    elif not avahi_running:
+        avahi_details = "Avahi daemon is installed but not running. Start avahi-daemon service."
+    else:
+        avahi_details = "Avahi daemon is active and running."
+
     # Dynamic FFmpeg capability discovery
     ffmpeg_bin = get_effective_ffmpeg_path()
     supported_filters = []
@@ -519,6 +530,7 @@ def get_system_capabilities():
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
         "alsa": {"available": alsa_available, "details": alsa_details},
         "decklink": {"available": decklink_available, "details": decklink_details},
+        "avahi": {"available": avahi_available, "details": avahi_details},
         "ffmpeg": {
             "filters": supported_filters,
             "encoders": supported_encoders,
