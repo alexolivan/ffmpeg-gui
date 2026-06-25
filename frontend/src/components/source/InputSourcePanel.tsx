@@ -63,9 +63,15 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   onSyncAlsaAudio,
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
-  const filteredSourceTypes = decklinkAvailable
-    ? ALL_SOURCE_TYPES
-    : ALL_SOURCE_TYPES.filter(t => t.value !== 'decklink');
+  const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
+
+  let filteredSourceTypes = ALL_SOURCE_TYPES;
+  if (!decklinkAvailable) {
+    filteredSourceTypes = filteredSourceTypes.filter(t => t.value !== 'decklink');
+  }
+  if (!avahiAvailable) {
+    filteredSourceTypes = filteredSourceTypes.filter(t => t.value !== 'ndi');
+  }
 
   const types = allowedTypes
     ? filteredSourceTypes.filter(t => allowedTypes.includes(t.value))

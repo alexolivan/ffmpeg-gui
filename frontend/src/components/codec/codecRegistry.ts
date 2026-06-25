@@ -669,6 +669,7 @@ export interface SystemCapabilities {
   v4l2: { available: boolean; details: string };
   alsa: { available: boolean; details: string };
   decklink: { available: boolean; details: string };
+  avahi: { available: boolean; details: string };
   ffmpeg?: {
     filters: string[];
     decoders: string[];

@@ -68,9 +68,15 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   systemCapabilities,
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
-  const filteredOutputTypes = decklinkAvailable
-    ? OUTPUT_TYPES
-    : OUTPUT_TYPES.filter(t => t.value !== 'decklink');
+  const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
+
+  let filteredOutputTypes = OUTPUT_TYPES;
+  if (!decklinkAvailable) {
+    filteredOutputTypes = filteredOutputTypes.filter(t => t.value !== 'decklink');
+  }
+  if (!avahiAvailable) {
+    filteredOutputTypes = filteredOutputTypes.filter(t => t.value !== 'ndi');
+  }
 
   const availableTypes = filteredOutputTypes.filter(t => {
     if (t.requiresVideo && !hasVideo) return false;
