@@ -103,17 +103,24 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   const [ndiSources, setNdiSources] = React.useState<string[]>([]);
   const [scanningNdi, setScanningNdi] = React.useState(false);
   const [manualNdiMode, setManualNdiMode] = React.useState(false);
+  const [scanResult, setScanResult] = React.useState<{ success: boolean; count: number; error?: string } | null>(null);
 
   const scanNdi = async () => {
     setScanningNdi(true);
+    setScanResult(null);
     try {
       const res = await fetch('/ndi/sources');
       if (res.ok) {
         const data = await res.json();
-        setNdiSources(data.sources || []);
+        const sourcesList = data.sources || [];
+        setNdiSources(sourcesList);
+        setScanResult({ success: true, count: sourcesList.length });
+      } else {
+        setScanResult({ success: false, count: 0, error: "Failed to scan" });
       }
     } catch (err) {
       console.error("Failed to scan NDI sources", err);
+      setScanResult({ success: false, count: 0, error: String(err) });
     } finally {
       setScanningNdi(false);
     }
@@ -443,6 +450,33 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               {scanningNdi ? "Scanning..." : "Scan"}
             </button>
           </div>
+          
+          {/* NDI Scan Feedback and Helper Tips */}
+          {scanningNdi && (
+            <p className="text-[10px] text-brand-orange animate-pulse font-bold mt-1.5">
+              🔍 Buscando fuentes NDI activas en la red local...
+            </p>
+          )}
+          {!scanningNdi && scanResult && (
+            <div className="space-y-1 mt-1.5">
+              <p className={`text-[10px] font-bold ${scanResult.success && scanResult.count > 0 ? 'text-brand-lime' : 'text-brand-orange'}`}>
+                {scanResult.success 
+                  ? (scanResult.count > 0 
+                    ? `✓ Se encontraron ${scanResult.count} fuentes NDI en la red.` 
+                    : '⚠️ No se detectó ninguna fuente NDI activa.')
+                  : '❌ Error de comunicación al escanear fuentes NDI.'}
+              </p>
+              {scanResult.success && scanResult.count > 0 && manualNdiMode && (
+                <button
+                  type="button"
+                  onClick={() => setManualNdiMode(false)}
+                  className="text-[9px] text-brand-lime underline hover:text-brand-lime/80 block font-bold cursor-pointer text-left"
+                >
+                  👉 Hacer clic aquí para ver la lista y seleccionar una fuente detectada.
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
