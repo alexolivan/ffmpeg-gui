@@ -1,9 +1,17 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
 import datetime
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Boolean
+from sqlalchemy.orm import DeclarativeBase, relationship
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
+
+
+class SchemaInfo(Base):
+    __tablename__ = 'schema_info'
+
+    id = Column(Integer, primary_key=True)
+    version = Column(String, nullable=False)
+    applied_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
 class FfmpegBuild(Base):
