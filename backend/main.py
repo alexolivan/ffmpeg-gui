@@ -918,18 +918,21 @@ async def telemetry_broadcast_loop():
 async def auto_start_services():
     await asyncio.sleep(2)
     logger.info("Watchdog / Auto-start: Initializing service startup checks...")
+    service_ids = []
     with SessionLocal() as db:
         from database.models import MediaProcess
         services = db.query(MediaProcess).filter(
             MediaProcess.type == 'service',
             MediaProcess.auto_start == True
         ).all()
-        for service in services:
-            logger.info(f"Auto-starting service: {service.name} (ID: {service.id})")
-            try:
-                asyncio.create_task(process_manager.start_process(service.id))
-            except Exception as e:
-                logger.error(f"Failed to auto-start service {service.id}: {e}")
+        service_ids = [service.id for service in services]
+        
+    for s_id in service_ids:
+        logger.info(f"Auto-starting service with ID: {s_id}")
+        try:
+            await process_manager.start_process(s_id)
+        except Exception as e:
+            logger.error(f"Failed to auto-start service {s_id}: {e}")
 
 # Global LCD Manager instance
 lcd_manager = None
