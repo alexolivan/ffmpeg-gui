@@ -252,5 +252,33 @@ class TestCommandGenerator(unittest.TestCase):
         cmd_5 = self.pm._build_ffmpeg_cmd(proc_5, "ffmpeg")
         self.assertNotIn("-re", cmd_5)
 
+    def test_non_hwdec_input_sanitization(self):
+        # Create a mock with stale hwaccel config on a lavfi_video input
+        proc = MagicMock()
+        proc.id = 201
+        proc.type = "service"
+        proc.input_config = {
+            'input1': {
+                'type': 'lavfi_video',
+                'pattern': 'testsrc',
+                'hwaccel': 'cuda',
+                'frames_destination': 'vram'
+            }
+        }
+        proc.codec_config = {'vcodec': 'libx264', 'acodec': 'aac'}
+        # Even with advanced.hwaccel set, it should be ignored for lavfi
+        proc.filter_config = {'advanced': {'hwaccel': 'cuda'}}
+        proc.output_config = {'type': 'file', 'path': 'output.mp4'}
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        # Assert no -hwaccel cuda or -hwaccel_output_format cuda is in the command
+        self.assertNotIn("-hwaccel", cmd_str)
+        self.assertNotIn("cuda", cmd)  # should not have cuda in the input parameters
+        # Assert preview filter chain does not contain hwdownload or format=nv12
+        self.assertIn("fps=1,scale=480:-1", cmd_str)
+        self.assertNotIn("hwdownload", cmd_str)
+
 if __name__ == '__main__':
     unittest.main()

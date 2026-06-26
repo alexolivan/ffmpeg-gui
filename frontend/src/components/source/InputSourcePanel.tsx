@@ -291,13 +291,19 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         value={config.type}
         onChange={e => {
           const newType = e.target.value;
+          const isHwSupported = ['file', 'srt', 'udp', 'rtp', 'rtmp', 'hls'].includes(newType);
           update({
             type: newType,
             path: '', host: '', port: '', mode: 'listener', device: '', name: '',
             pattern: newType === 'lavfi_video' ? 'testsrc' : newType === 'lavfi_audio' ? 'sine' : '',
             size: newType === 'lavfi_video' ? '1920x1080' : undefined,
             rate: newType === 'lavfi_video' ? '25' : undefined,
-            frequency: newType === 'lavfi_audio' ? 1000 : undefined
+            frequency: newType === 'lavfi_audio' ? 1000 : undefined,
+            ...(!isHwSupported ? {
+              hwaccel: 'none',
+              hwaccel_output_format: '',
+              frames_destination: 'cpu'
+            } : {})
           });
         }}
       >

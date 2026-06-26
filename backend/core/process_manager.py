@@ -188,14 +188,18 @@ class ProcessManager:
             cmd += ["-threads", str(int(threads))]
 
         # Hardware acceleration (legacy fallback)
-        has_input_level_hwdec = False
-        if is_new_format:
-            p_hw = input_cfg.get('input1', {}).get('hwaccel', 'none')
-            s_hw = input_cfg.get('input2', {}).get('hwaccel', 'none')
-            if (p_hw and p_hw != 'none') or (s_hw and s_hw != 'none'):
-                has_input_level_hwdec = True
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+        is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
-        if not has_input_level_hwdec:
+        has_input_level_hwdec = False
+        if is_hw_supported:
+            if is_new_format:
+                p_hw = input_cfg.get('input1', {}).get('hwaccel', 'none')
+                s_hw = input_cfg.get('input2', {}).get('hwaccel', 'none')
+                if (p_hw and p_hw != 'none') or (s_hw and s_hw != 'none'):
+                    has_input_level_hwdec = True
+
+        if is_hw_supported and not has_input_level_hwdec:
             hwaccel = advanced.get('hwaccel', 'none')
             if hwaccel and hwaccel != 'none':
                 cmd += ["-hwaccel", hwaccel]
@@ -400,23 +404,28 @@ class ProcessManager:
             else:
                 from core.filter_graph import FilterGraphBuilder
                 
+                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+                is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
+
                 frames_destination = 'cpu'
-                if is_new_format:
-                    frames_destination = input_cfg['input1'].get('frames_destination', 'cpu')
-                else:
-                    frames_destination = input_cfg.get('frames_destination', 'cpu')
+                if is_hw_supported:
+                    if is_new_format:
+                        frames_destination = input_cfg['input1'].get('frames_destination', 'cpu')
+                    else:
+                        frames_destination = input_cfg.get('frames_destination', 'cpu')
                     
                 hwaccel = 'none'
-                if is_new_format:
-                    hwaccel = input_cfg['input1'].get('hwaccel', 'none')
-                else:
-                    hwaccel = input_cfg.get('hwaccel', 'none')
+                if is_hw_supported:
+                    if is_new_format:
+                        hwaccel = input_cfg['input1'].get('hwaccel', 'none')
+                    else:
+                        hwaccel = input_cfg.get('hwaccel', 'none')
                 
-                if hwaccel == 'none':
+                if is_hw_supported and hwaccel == 'none':
                     hwaccel = advanced.get('hwaccel', 'none')
 
                 is_vram = (frames_destination == 'vram')
-                if hwaccel == 'none':
+                if hwaccel == 'none' or not is_hw_supported:
                     is_vram = False
                     
                 vf_str, remains_vram = FilterGraphBuilder.build_video_filters(
@@ -533,8 +542,12 @@ class ProcessManager:
         """Append a single -i input to the command."""
         input_type = input_cfg.get('type')
         
-        # Input-specific hardware acceleration
-        hwaccel = input_cfg.get('hwaccel', 'none')
+        # Input-specific hardware acceleration (only for supported compressed streams)
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+        hwaccel = 'none'
+        if input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
+            hwaccel = input_cfg.get('hwaccel', 'none')
+            
         if hwaccel and hwaccel != 'none':
             cmd += ["-hwaccel", hwaccel]
             hwaccel_out = input_cfg.get('hwaccel_output_format', '')
