@@ -16,6 +16,7 @@ class ProcessManager:
         self.log_buffers: Dict[int, collections.deque] = {}
         self.restart_counts: Dict[int, int] = {}
         self.pending_restarts: Dict[int, asyncio.Task] = {}
+        self.srt_has_had_activity: Dict[int, bool] = {}
         self.db_session_factory = db_session_factory
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
@@ -53,6 +54,7 @@ class ProcessManager:
             }
             if not is_restart:
                 self.restart_counts.pop(process_id, None)
+            self.srt_has_had_activity[process_id] = False
             
             pending = self.pending_restarts.pop(process_id, None)
             if pending:
@@ -1048,6 +1050,7 @@ class ProcessManager:
             
             last_ffprobe_check = datetime.utcnow()
             last_activity_check = datetime.utcnow()
+            watchdog_start_time = datetime.utcnow()
             
             while proc.returncode is None:
                 # non-blocking call to compute CPU usage since last call
@@ -1063,6 +1066,30 @@ class ProcessManager:
                         media_proc.cpu_usage = int(cpu)
                         media_proc.ram_usage = int(mem)
                         session.commit()
+                        
+                        # Parse bitrate and fps safely to check for activity
+                        import re
+                        def parse_val(s):
+                            if not s:
+                                return 0.0
+                            nums = re.findall(r"[\d.]+", s)
+                            if not nums:
+                                return 0.0
+                            try:
+                                return float(nums[0])
+                            except ValueError:
+                                return 0.0
+
+                        b_val = parse_val(media_proc.bitrate)
+                        f_val = parse_val(media_proc.fps)
+                        is_active = (b_val > 0.0)
+
+                        if is_active:
+                            self.srt_has_had_activity[process_id] = True
+                            self.restart_counts[process_id] = 0
+                        elif (datetime.utcnow() - watchdog_start_time).total_seconds() > 60:
+                            # Reset restart counts if running successfully for over 60s
+                            self.restart_counts[process_id] = 0
                         
                         # Active stream check (UDP, RTP, SRT)
                         if media_proc.type == 'service' and media_proc.watchdog_enabled:
@@ -1118,15 +1145,13 @@ class ProcessManager:
                                         if inp_type == 'srt' and inp.get('mode', 'listener') == 'listener':
                                             if (now - last_activity_check).total_seconds() > 30:
                                                 last_activity_check = now
-                                                bitrate_str = (media_proc.bitrate or "0").lower()
-                                                fps_str = (media_proc.fps or "0")
-                                                if "0" in bitrate_str or fps_str == "0" or not bitrate_str:
-                                                    self.logger.warning("Watchdog: SRT listener stream has no bitrate/fps activity. Restarting service.")
+                                                if self.srt_has_had_activity.get(process_id, False) and b_val == 0.0:
+                                                    self.logger.warning("Watchdog: SRT listener stream lost traffic activity. Restarting service.")
                                                     from database.models import ProcessLog
                                                     log = ProcessLog(
                                                         process_id=process_id,
                                                         level='ERROR',
-                                                        message="Watchdog: SRT listener has no incoming data stream activity. Restarting service."
+                                                        message="Watchdog: SRT listener has lost incoming data stream activity. Restarting service."
                                                     )
                                                     session.add(log)
                                                     session.commit()
@@ -1229,7 +1254,8 @@ class ProcessManager:
                             session.add(limit_log)
                             session.commit()
             
-            # Clean up memory buffer
+            # Clean up memory buffer and tracking flags
+            self.srt_has_had_activity.pop(process_id, None)
             if process_id in self.log_buffers:
                 del self.log_buffers[process_id]
         
