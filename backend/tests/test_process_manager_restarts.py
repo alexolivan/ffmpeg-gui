@@ -276,3 +276,54 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
         finally:
             self.db.delete(media_proc)
             self.db.commit()
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_unexpected_exit_code_zero_triggers_restart(self, mock_exec):
+        # 1. Create a mocked process that exits with code 0 unexpectedly
+        mock_proc = MagicMock()
+        mock_proc.pid = 99911
+        mock_proc.returncode = 0
+        mock_proc.stdin = MagicMock()
+
+        async def mock_wait():
+            return 0
+        mock_proc.wait = mock_wait
+
+        mock_proc.stderr = MagicMock()
+        async def mock_read(n):
+            return b""
+        mock_proc.stderr.read = mock_read
+
+        media_proc = MediaProcess(
+            name="Test Exit Code 0 Service",
+            type="service",
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/test_out.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="running",
+            watchdog_enabled=True,
+            watchdog_retries=3
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        self.manager.processes[media_proc.id] = mock_proc
+
+        try:
+            with patch("psutil.Process") as mock_psutil:
+                # Raise NoSuchProcess to simulate the process exiting immediately
+                import psutil
+                mock_psutil.side_effect = psutil.NoSuchProcess(pid=99911)
+                
+                await self.manager._watchdog(media_proc.id, mock_proc)
+
+            # Check that the database status is set to 'error' (indicating it will restart),
+            # NOT 'stopped' (which would abort the restart)
+            self.db.refresh(media_proc)
+            self.assertEqual(media_proc.status, "error")
+            self.assertIn(media_proc.id, self.manager.pending_restarts)
+
+        finally:
+            self.db.delete(media_proc)
+            self.db.commit()

@@ -1189,10 +1189,21 @@ class ProcessManager:
                     if media_proc.type == 'batch':
                         media_proc.status = 'finished' if exit_code == 0 else 'error'
                     else: # service
-                        if exit_code != 0:
+                        # Check if watchdog will attempt to restart this service
+                        will_restart = False
+                        if was_unexpected and media_proc.watchdog_enabled:
+                            retries = media_proc.watchdog_retries
+                            current_restarts = self.restart_counts.get(process_id, 0)
+                            if retries == -1 or current_restarts < retries:
+                                will_restart = True
+                        
+                        if will_restart:
                             media_proc.status = 'error'
                         else:
-                            media_proc.status = 'stopped'
+                            if exit_code != 0:
+                                media_proc.status = 'error'
+                            else:
+                                media_proc.status = 'stopped'
                     
                     media_proc.pid = None
                     media_proc.last_stop = datetime.utcnow()
