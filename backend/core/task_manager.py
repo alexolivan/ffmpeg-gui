@@ -415,7 +415,7 @@ class TaskManager:
             preview_vf = "fps=1,scale=480:-1"
             try:
                 if is_vram:
-                    preview_vf = f"hwdownload,format=nv12,fps=1,scale=480:-1"
+                    preview_vf = "fps=1,hwdownload,format=nv12,scale=480:-1"
             except NameError:
                 pass
                 
