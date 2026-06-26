@@ -178,5 +178,79 @@ class TestCommandGenerator(unittest.TestCase):
         # Check scale_npp (VRAM filter) and then hwdownload & format=nv12 (download to CPU for libx264)
         self.assertIn("-vf scale_npp=1280:720,hwdownload,format=nv12", cmd_str)
 
+    def test_realtime_flag_configurations(self):
+        # Case 1: network input, manual realtime=True (Always ON) -> should include -re
+        proc_1 = MagicMock()
+        proc_1.id = 101
+        proc_1.type = "service"
+        proc_1.input_config = {
+            'type': 'srt',
+            'host': '127.0.0.1',
+            'port': '9999'
+        }
+        proc_1.codec_config = {'vcodec': 'copy', 'acodec': 'copy'}
+        proc_1.filter_config = {'advanced': {'realtime': True}}
+        proc_1.output_config = {'type': 'file', 'path': 'output.mp4'}
+        cmd_1 = self.pm._build_ffmpeg_cmd(proc_1, "ffmpeg")
+        self.assertIn("-re", cmd_1)
+
+        # Case 2: network input, manual realtime=False (Always OFF) -> should NOT include -re
+        proc_2 = MagicMock()
+        proc_2.id = 102
+        proc_2.type = "service"
+        proc_2.input_config = {
+            'type': 'srt',
+            'host': '127.0.0.1',
+            'port': '9999'
+        }
+        proc_2.codec_config = {'vcodec': 'copy', 'acodec': 'copy'}
+        proc_2.filter_config = {'advanced': {'realtime': False}}
+        proc_2.output_config = {'type': 'file', 'path': 'output.mp4'}
+        cmd_2 = self.pm._build_ffmpeg_cmd(proc_2, "ffmpeg")
+        self.assertNotIn("-re", cmd_2)
+
+        # Case 3: network input, auto realtime=None -> should NOT include -re
+        proc_3 = MagicMock()
+        proc_3.id = 103
+        proc_3.type = "service"
+        proc_3.input_config = {
+            'type': 'srt',
+            'host': '127.0.0.1',
+            'port': '9999'
+        }
+        proc_3.codec_config = {'vcodec': 'copy', 'acodec': 'copy'}
+        proc_3.filter_config = {'advanced': {'realtime': None}}
+        proc_3.output_config = {'type': 'file', 'path': 'output.mp4'}
+        cmd_3 = self.pm._build_ffmpeg_cmd(proc_3, "ffmpeg")
+        self.assertNotIn("-re", cmd_3)
+
+        # Case 4: self-paced input (file), auto realtime=None -> should include -re
+        proc_4 = MagicMock()
+        proc_4.id = 104
+        proc_4.type = "service"
+        proc_4.input_config = {
+            'type': 'file',
+            'path': 'input.mp4'
+        }
+        proc_4.codec_config = {'vcodec': 'copy', 'acodec': 'copy'}
+        proc_4.filter_config = {'advanced': {'realtime': None}}
+        proc_4.output_config = {'type': 'file', 'path': 'output.mp4'}
+        cmd_4 = self.pm._build_ffmpeg_cmd(proc_4, "ffmpeg")
+        self.assertIn("-re", cmd_4)
+
+        # Case 5: self-paced input (file), manual realtime=False -> should NOT include -re
+        proc_5 = MagicMock()
+        proc_5.id = 105
+        proc_5.type = "service"
+        proc_5.input_config = {
+            'type': 'file',
+            'path': 'input.mp4'
+        }
+        proc_5.codec_config = {'vcodec': 'copy', 'acodec': 'copy'}
+        proc_5.filter_config = {'advanced': {'realtime': False}}
+        proc_5.output_config = {'type': 'file', 'path': 'output.mp4'}
+        cmd_5 = self.pm._build_ffmpeg_cmd(proc_5, "ffmpeg")
+        self.assertNotIn("-re", cmd_5)
+
 if __name__ == '__main__':
     unittest.main()

@@ -226,11 +226,6 @@ class ProcessManager:
         if realtime is None:
             # Auto-enable for services with self-paced inputs
             realtime = is_service and primary_input_type in _SELF_PACED_INPUTS
-        
-        # Force disable -re for network inputs to prevent lag and timeout
-        if primary_input_type not in _SELF_PACED_INPUTS:
-            realtime = False
-            
         if realtime:
             cmd += ["-re"]
 
