@@ -57,7 +57,7 @@ class ProcessManager:
             self.srt_has_had_activity[process_id] = False
             
             pending = self.pending_restarts.pop(process_id, None)
-            if pending:
+            if pending and pending != asyncio.current_task():
                 pending.cancel()
 
             # Determine which FFmpeg binary to use

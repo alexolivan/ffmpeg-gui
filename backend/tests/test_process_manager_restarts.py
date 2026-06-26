@@ -327,3 +327,53 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
         finally:
             self.db.delete(media_proc)
             self.db.commit()
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_start_process_does_not_self_cancel(self, mock_exec):
+        # Create a test media process in DB
+        media_proc = MediaProcess(
+            name="Test Self Cancel Service",
+            type="service",
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/test_sc.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="running",
+            watchdog_enabled=True,
+            watchdog_retries=3
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 99912
+        mock_proc.returncode = None
+        mock_proc.stdin = MagicMock()
+        
+        async def mock_create(*args, **kwargs):
+            return mock_proc
+        mock_exec.side_effect = mock_create
+
+        try:
+            # We place the current task in pending_restarts to simulate start_process being called
+            # from within the delayed restart task
+            current_task = asyncio.current_task()
+            self.manager.pending_restarts[media_proc.id] = current_task
+
+            # If the bug was present, start_process would call current_task.cancel(),
+            # raising CancelledError at the first await point inside start_process.
+            # But with the fix, it should run completely without raising CancelledError!
+            await self.manager.start_process(media_proc.id, is_restart=True)
+            
+            # Clean up the watchdog and log reader tasks that were spawned
+            proc = self.manager.processes.get(media_proc.id)
+            if proc:
+                proc.returncode = 0
+            
+            # Ensure it popped the current task from pending_restarts without cancelling it
+            self.assertNotIn(media_proc.id, self.manager.pending_restarts)
+            self.assertFalse(current_task.cancelled())
+
+        finally:
+            self.db.delete(media_proc)
+            self.db.commit()
