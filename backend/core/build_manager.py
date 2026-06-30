@@ -415,7 +415,7 @@ class BuildManager:
             ]
             # Automatically enable libopus if available on the system
             dep_check = self.check_dependencies()
-            if dep_check.get("libopus", {}).get("installed"):
+            if dep_check.get("dependencies", {}).get("libopus", {}).get("installed"):
                 config_flags.append("--enable-libopus")
 
             if options.get("libsrt"):
