@@ -937,6 +937,77 @@ async def auto_start_services():
 # Global LCD Manager instance
 lcd_manager = None
 
+def sanitize_process_config_data(input_config: dict, filter_config: dict) -> bool:
+    """
+    Sanitize input_config and filter_config for non-decodable inputs.
+    Mutates dicts in-place. Returns True if any changes were made.
+    """
+    _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+    is_dirty = False
+    
+    if not input_config:
+        return is_dirty
+        
+    # Check input1 / input2 or flat config
+    if 'input1' in input_config:
+        inp1 = input_config['input1']
+        if inp1.get('type') in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
+            if inp1.get('hwaccel') != 'none' or inp1.get('frames_destination') != 'cpu' or inp1.get('hwaccel_output_format') != '':
+                inp1['hwaccel'] = 'none'
+                inp1['frames_destination'] = 'cpu'
+                inp1['hwaccel_output_format'] = ''
+                is_dirty = True
+        if input_config.get('use_secondary_input') and 'input2' in input_config:
+            inp2 = input_config['input2']
+            if inp2.get('type') in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
+                if inp2.get('hwaccel') != 'none' or inp2.get('frames_destination') != 'cpu' or inp2.get('hwaccel_output_format') != '':
+                    inp2['hwaccel'] = 'none'
+                    inp2['frames_destination'] = 'cpu'
+                    inp2['hwaccel_output_format'] = ''
+                    is_dirty = True
+    else:
+        if input_config.get('type') in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
+            if input_config.get('hwaccel') != 'none' or input_config.get('frames_destination') != 'cpu' or input_config.get('hwaccel_output_format') != '':
+                input_config['hwaccel'] = 'none'
+                input_config['frames_destination'] = 'cpu'
+                input_config['hwaccel_output_format'] = ''
+                is_dirty = True
+
+    # Check global/advanced hwaccel if primary input is unsupported
+    primary_input_type = (
+        input_config['input1'].get('type', '') if 'input1' in input_config
+        else input_config.get('type', '')
+    )
+    if primary_input_type in _HWACCEL_UNSUPPORTED_INPUT_TYPES and filter_config:
+        advanced = filter_config.get('advanced', {})
+        if advanced.get('hwaccel') and advanced.get('hwaccel') != 'none':
+            advanced['hwaccel'] = 'none'
+            advanced['hwaccel_output_format'] = ''
+            filter_config['advanced'] = advanced
+            is_dirty = True
+
+    return is_dirty
+
+def sanitize_database_processes(db: Session):
+    """Scan all processes in the database and fix invalid GPU/VRAM configs."""
+    from sqlalchemy.orm.attributes import flag_modified
+    import copy
+    processes = db.query(MediaProcess).all()
+    updated_count = 0
+    for p in processes:
+        input_cfg = copy.deepcopy(p.input_config) if p.input_config else {}
+        filter_cfg = copy.deepcopy(p.filter_config) if p.filter_config else {}
+        if sanitize_process_config_data(input_cfg, filter_cfg):
+            p.input_config = input_cfg
+            p.filter_config = filter_cfg
+            flag_modified(p, "input_config")
+            flag_modified(p, "filter_config")
+            updated_count += 1
+            
+    if updated_count > 0:
+        db.commit()
+        logger.info(f"Sanitized {updated_count} process configurations in database with inconsistent GPU settings.")
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Startup: Checking and cleaning up stale build profiles, processes and tasks...")
@@ -947,6 +1018,12 @@ async def startup_event():
 
     try:
         with SessionLocal() as db:
+            # Clean up stale DB configurations on startup
+            try:
+                sanitize_database_processes(db)
+            except Exception as e:
+                logger.error(f"Failed to sanitize database processes on startup: {e}")
+
             stale_builds = db.query(FfmpegBuild).filter(FfmpegBuild.status == "building").all()
             for build in stale_builds:
                 build.status = "failed"
@@ -1535,13 +1612,18 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         if default_build:
             build_id = default_build.id
 
+    # Sanitize configs on creation
+    input_cfg = dict(proc_in.input_config)
+    filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
+    sanitize_process_config_data(input_cfg, filter_cfg)
+
     db_proc = MediaProcess(
         name=proc_in.name,
         type=proc_in.type,
-        input_config=proc_in.input_config,
+        input_config=input_cfg,
         output_config=proc_in.output_config,
         codec_config=proc_in.codec_config,
-        filter_config=proc_in.filter_config,
+        filter_config=filter_cfg if proc_in.filter_config is not None else None,
         ffmpeg_build_id=build_id,
         auto_start=proc_in.auto_start,
         watchdog_enabled=proc_in.watchdog_enabled,
@@ -1555,13 +1637,18 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
 
 @app.post("/processes/preview-cmd")
 def preview_command(proc_in: ProcessCreate, db: Session = Depends(get_db)):
+    # Sanitize configs for preview
+    input_cfg = dict(proc_in.input_config)
+    filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
+    sanitize_process_config_data(input_cfg, filter_cfg)
+
     db_proc = MediaProcess(
         name=proc_in.name,
         type=proc_in.type,
-        input_config=proc_in.input_config,
+        input_config=input_cfg,
         output_config=proc_in.output_config,
         codec_config=proc_in.codec_config,
-        filter_config=proc_in.filter_config,
+        filter_config=filter_cfg if proc_in.filter_config is not None else None,
         ffmpeg_build_id=proc_in.ffmpeg_build_id,
     )
     ffmpeg_bin = process_manager.ffmpeg_path
@@ -1580,10 +1667,24 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
         raise HTTPException(status_code=404, detail="Process not found")
 
     if proc_in.name is not None: db_proc.name = proc_in.name
-    if proc_in.input_config is not None: db_proc.input_config = proc_in.input_config
+    
+    # Handle config sanitization on update
+    import copy
+    from sqlalchemy.orm.attributes import flag_modified
+    input_cfg = copy.deepcopy(proc_in.input_config) if proc_in.input_config is not None else copy.deepcopy(db_proc.input_config)
+    filter_cfg = copy.deepcopy(proc_in.filter_config) if proc_in.filter_config is not None else copy.deepcopy(db_proc.filter_config)
+    
+    if input_cfg:
+        sanitize_process_config_data(input_cfg, filter_cfg or {})
+        db_proc.input_config = input_cfg
+        flag_modified(db_proc, "input_config")
+        
+    if filter_cfg is not None:
+        db_proc.filter_config = filter_cfg
+        flag_modified(db_proc, "filter_config")
+
     if proc_in.output_config is not None: db_proc.output_config = proc_in.output_config
     if proc_in.codec_config is not None: db_proc.codec_config = proc_in.codec_config
-    if proc_in.filter_config is not None: db_proc.filter_config = proc_in.filter_config
     if proc_in.ffmpeg_build_id is not None: db_proc.ffmpeg_build_id = proc_in.ffmpeg_build_id
     if proc_in.auto_start is not None: db_proc.auto_start = proc_in.auto_start
     if proc_in.watchdog_enabled is not None: db_proc.watchdog_enabled = proc_in.watchdog_enabled

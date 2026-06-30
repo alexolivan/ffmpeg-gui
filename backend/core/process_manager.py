@@ -1103,8 +1103,8 @@ class ProcessManager:
                             # Reset restart counts if running successfully for over 60s
                             self.restart_counts[process_id] = 0
                         
-                        # Active stream check (UDP, RTP, SRT)
-                        if media_proc.type == 'service' and media_proc.watchdog_enabled:
+                        # Active stream check (UDP, RTP)
+                        if media_proc.type == 'service' and media_proc.watchdog_enabled and not is_active:
                             now = datetime.utcnow()
                             if (now - last_ffprobe_check).total_seconds() > 30:
                                 last_ffprobe_check = now
@@ -1119,15 +1119,12 @@ class ProcessManager:
                                 
                                 for inp in inputs_to_check:
                                     inp_type = inp.get('type')
-                                    if inp_type in ('udp', 'rtp', 'srt'):
+                                    if inp_type in ('udp', 'rtp'):
                                         url = None
                                         if inp_type == 'udp':
                                             url = f"udp://{inp.get('host', '')}:{inp.get('port', '1234')}"
                                         elif inp_type == 'rtp':
                                             url = f"rtp://{inp.get('host', '')}:{inp.get('port', '5004')}"
-                                        elif inp_type == 'srt':
-                                            if inp.get('mode', 'listener') == 'caller':
-                                                url = f"srt://{inp.get('host', '')}:{inp.get('port', '9000')}?mode=caller"
                                         
                                         if url:
                                             # Find build-specific ffprobe

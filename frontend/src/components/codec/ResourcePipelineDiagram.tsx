@@ -5,31 +5,39 @@ interface ResourcePipelineDiagramProps {
   isVram: boolean;
   codecId: string;
   hasCpuFilters: boolean;
+  inputType?: string;
 }
 
 export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(({
   hwaccel,
-  isVram,
+  isVram: initialIsVram,
   codecId,
   hasCpuFilters,
+  inputType,
 }) => {
+  const unsupportedHwdec = ['lavfi_video', 'lavfi_audio', 'alsa'];
+  const isHwSupported = inputType ? !unsupportedHwdec.includes(inputType) : true;
+  const isVram = isHwSupported ? initialIsVram : false;
+
   // Determine Decode Resource
   let decodeResource = 'CPU 💻';
   let decodeDetails = 'Software Decode';
   let isDecodeGPU = false;
 
-  if (hwaccel === 'cuda') {
-    decodeResource = 'GPU 🎮';
-    decodeDetails = 'NVIDIA CUDA';
-    isDecodeGPU = true;
-  } else if (hwaccel === 'vaapi') {
-    decodeResource = 'GPU 🎮';
-    decodeDetails = 'Intel/AMD VAAPI';
-    isDecodeGPU = true;
-  } else if (hwaccel === 'qsv') {
-    decodeResource = 'GPU 🎮';
-    decodeDetails = 'Intel QSV';
-    isDecodeGPU = true;
+  if (isHwSupported) {
+    if (hwaccel === 'cuda') {
+      decodeResource = 'GPU 🎮';
+      decodeDetails = 'NVIDIA CUDA';
+      isDecodeGPU = true;
+    } else if (hwaccel === 'vaapi') {
+      decodeResource = 'GPU 🎮';
+      decodeDetails = 'Intel/AMD VAAPI';
+      isDecodeGPU = true;
+    } else if (hwaccel === 'qsv') {
+      decodeResource = 'GPU 🎮';
+      decodeDetails = 'Intel QSV';
+      isDecodeGPU = true;
+    }
   }
 
   // Determine Filter Resource

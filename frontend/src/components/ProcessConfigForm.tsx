@@ -570,6 +570,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           }
           codecId={config.video_codec_id}
           hasCpuFilters={!!(config.filters.overlays && config.filters.overlays.length > 0)}
+          inputType={config.input1.type}
         />
       )}
 
