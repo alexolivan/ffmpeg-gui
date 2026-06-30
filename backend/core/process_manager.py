@@ -750,9 +750,9 @@ class ProcessManager:
             cmd += ["-profile:a", params['profile:a']]
         elif acodec == 'libopus':
             if params.get('application'):
-                cmd += ["-application", params['application']]
+                cmd += ["-application:a", params['application']]
             if params.get('vbr'):
-                cmd += ["-vbr", params['vbr']]
+                cmd += ["-vbr:a", params['vbr']]
 
     def _append_video_codec_params_indexed(self, cmd: list, vcodec: str, params: dict, idx: int, bitrate: str):
         """Append video codec-specific parameters to the command for a specific stream index."""

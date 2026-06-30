@@ -83,7 +83,8 @@ class BuildManager:
             "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
             "libssl": {"pkg": "openssl", "type": "optional", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
             "libva": {"pkg": "libva", "type": "optional", "description": "Aceleración de decodificación/codificación VAAPI"},
-            "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"}
+            "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
+            "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"}
         }
 
         has_pkg_config = results.get("pkg-config", {}).get("installed", False)
@@ -412,6 +413,11 @@ class BuildManager:
                 "--enable-libx264",
                 "--enable-libx265",
             ]
+            # Automatically enable libopus if available on the system
+            dep_check = self.check_dependencies()
+            if dep_check.get("libopus", {}).get("installed"):
+                config_flags.append("--enable-libopus")
+
             if options.get("libsrt"):
                 config_flags.append("--enable-libsrt")
             if options.get("vaapi"):
