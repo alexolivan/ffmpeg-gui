@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-30
+
+### Added
+- Implemented WebRTC / WHIP (WebRTC HTTP Ingestion Protocol) output destination support. Users can now stream feeds directly to WebRTC-compliant endpoints (like MediaMTX).
+- Added automatic `libcurl` pre-flight dependency checks and configure flags to build custom FFmpeg binaries with WebRTC/WHIP networking support.
+- Added a "Recommended Broadcast Recipe" advisory card system in `DestinationPanel` for all output types (UDP, SRT, RTMP, WHIP, NDI, DeckLink) showing standard-compliant, optimal video/audio codec combinations.
+
 ## [1.2.5] - 2026-06-30
 
 ### Fixed

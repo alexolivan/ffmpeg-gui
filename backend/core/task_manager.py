@@ -746,6 +746,8 @@ class TaskManager:
             append_mpegts_options(cmd, output_cfg)
         elif output_type == 'rtmp':
             cmd += ["-f", "flv", output_cfg.get('url', '')]
+        elif output_type == 'whip':
+            cmd += ["-f", "whip", output_cfg.get('url', '')]
         elif output_type == 'ndi':
             name = output_cfg.get('path', 'FFMPEG-OUTPUT')
             cmd += ["-f", "libndi_newtek", "-ndi_name", name, "output.ndi"]

@@ -334,7 +334,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                     "libva": "libva-dev",
                     "libdrm": "libdrm-dev",
                     "avahi-daemon": "avahi-daemon avahi-utils",
-                    "libopus": "libopus-dev"
+                    "libopus": "libopus-dev",
+                    "libcurl": "libcurl4-openssl-dev"
                   },
                   fedora: {
                     "cmake": "cmake",
@@ -349,7 +350,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                     "libva": "libva-devel",
                     "libdrm": "libdrm-devel",
                     "avahi-daemon": "avahi",
-                    "libopus": "opus-devel"
+                    "libopus": "opus-devel",
+                    "libcurl": "libcurl-devel"
                   },
                   arch: {
                     "cmake": "cmake",
@@ -364,7 +366,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                     "libva": "libva",
                     "libdrm": "libdrm",
                     "avahi-daemon": "avahi",
-                    "libopus": "opus"
+                    "libopus": "opus",
+                    "libcurl": "curl"
                   }
                 };
 

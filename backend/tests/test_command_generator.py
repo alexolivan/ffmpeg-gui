@@ -280,5 +280,22 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("fps=1,scale=480:-1", cmd_str)
         self.assertNotIn("hwdownload", cmd_str)
 
+    def test_whip_output_command_generation(self):
+        proc = MagicMock()
+        proc.id = 301
+        proc.type = "service"
+        proc.input_config = {'type': 'lavfi_video', 'pattern': 'testsrc'}
+        proc.codec_config = {'vcodec': 'libx264', 'acodec': 'aac'}
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'whip',
+            'url': 'http://localhost:8889/mystream/whip'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f whip http://localhost:8889/mystream/whip", cmd_str)
+
 if __name__ == '__main__':
     unittest.main()

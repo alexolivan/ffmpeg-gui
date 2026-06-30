@@ -45,6 +45,7 @@ const OUTPUT_TYPES = [
   { value: 'udp', label: 'UDP Multicast (MPEG-TS)', requiresVideo: false },
   { value: 'srt', label: 'SRT Stream', requiresVideo: false },
   { value: 'rtmp', label: 'RTMP / RTMPS Push', requiresVideo: true },
+  { value: 'whip', label: 'WHIP Push (WebRTC)', requiresVideo: false },
   { value: 'ndi', label: 'NDI Output', requiresVideo: true },
   { value: 'decklink', label: 'Blackmagic Decklink Output', requiresVideo: true },
   { value: 'file', label: 'Local Recording', requiresVideo: false },
@@ -826,6 +827,99 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           />
         </div>
       )}
+
+      {config.type === 'whip' && (
+        <div className="space-y-1.5 animate-in fade-in duration-200">
+          <label htmlFor="dest-whip-url" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">WHIP EndPoint (WebRTC)</label>
+          <input
+            type="text"
+            id="dest-whip-url"
+            name="url"
+            placeholder="WHIP Ingestion URL (e.g. http://mediamtx:8889/mystream/whip)"
+            className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+            value={config.url || ''}
+            onChange={e => update({ url: e.target.value })}
+          />
+        </div>
+      )}
+
+      {/* ── Recommended Broadcast Recipe Card ── */}
+      {renderBroadcastRecipe(config.type)}
+    </div>
+  );
+};
+
+const renderBroadcastRecipe = (type: string) => {
+  const recipes: Record<string, { title: string; video: string; audio: string; details: string; container: string }> = {
+    udp: {
+      title: "UDP Multicast (MPEG-TS)",
+      video: "H.264 (AVC) / H.265 (HEVC)",
+      audio: "MP2 (MPEG-2 Audio) / AAC-LC",
+      container: "MPEG-TS",
+      details: "Ideal para cabeceras y decodificadores locales en redes LAN. Utiliza códecs estándar y un tamaño de paquete (pkt_size) de 1316 para alineación óptima de red."
+    },
+    srt: {
+      title: "SRT Stream (Low Latency WAN)",
+      video: "H.265 (HEVC) / H.264 (AVC)",
+      audio: "Opus (libopus) / AAC",
+      container: "MPEG-TS",
+      details: "Recomendado para enlaces WAN inestables de contribución punto a punto. La combinación de HEVC con Opus ofrece máxima eficiencia y bajísima latencia."
+    },
+    rtmp: {
+      title: "RTMP / RTMPS Ingest",
+      video: "H.264 (AVC)",
+      audio: "AAC-LC",
+      container: "FLV (Autogestionado)",
+      details: "Estándar de facto para ingesta en redes sociales (YouTube, Twitch, Facebook). No admite HEVC u Opus en la mayoría de plataformas tradicionales."
+    },
+    whip: {
+      title: "WHIP Push (WebRTC Live Ingest)",
+      video: "H.264 (AVC) — zero-latency preset",
+      audio: "Opus (libopus)",
+      container: "WebRTC Payload",
+      details: "Ideal para monitorización interactiva sub-segundo en MediaMTX o Janus. Requiere obligatoriamente codificación en tiempo real sin búfer (tune: zerolatency)."
+    },
+    ndi: {
+      title: "NDI Output (Studio IP LAN)",
+      video: "SpeedHQ (Interno)",
+      audio: "PCM Sin Compresión",
+      container: "NDI Stream",
+      details: "Excelente para producción local y mezcladores software (vMix, OBS). El codificador SpeedHQ y audio raw se gestionan automáticamente."
+    },
+    decklink: {
+      title: "Blackmagic DeckLink (Physical SDI/HDMI)",
+      video: "rawvideo (UYVY 4:2:2 sin compresión)",
+      audio: "pcm_s16le (PCM 16-bit)",
+      container: "Dispositivo físico",
+      details: "Salida de hardware directa para monitores profesionales o matrices SDI. Los códecs deben ser configurados estrictamente sin compresión en la pestaña de códecs."
+    }
+  };
+
+  const recipe = recipes[type];
+  if (!recipe) return null;
+
+  return (
+    <div className="mt-4 p-3 bg-brand-orange/5 border border-brand-orange/15 rounded-xl text-[10px] space-y-1.5 animate-in fade-in duration-200">
+      <div className="flex items-center gap-1.5 font-bold text-brand-orange">
+        <span>💡 Receta Broadcast Recomendada (Best Practices)</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-text-secondary">
+        <div>
+          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">Códec de Vídeo</span>
+          <span className="text-white/85 font-mono">{recipe.video}</span>
+        </div>
+        <div>
+          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">Códec de Audio</span>
+          <span className="text-white/85 font-mono">{recipe.audio}</span>
+        </div>
+        <div className="col-span-2">
+          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">Contenedor / Muxer</span>
+          <span className="text-white/85 font-mono">{recipe.container}</span>
+        </div>
+      </div>
+      <div className="text-[10px] text-text-secondary border-t border-white/5 pt-1.5 leading-relaxed">
+        {recipe.details}
+      </div>
     </div>
   );
 };

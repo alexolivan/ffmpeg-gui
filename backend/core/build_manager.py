@@ -82,9 +82,9 @@ class BuildManager:
             "libx264": {"pkg": "x264", "type": "required", "description": "Biblioteca para codificación H.264/AVC (libx264)"},
             "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
             "libssl": {"pkg": "openssl", "type": "optional", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
-            "libva": {"pkg": "libva", "type": "optional", "description": "Aceleración de decodificación/codificación VAAPI"},
             "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
-            "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"}
+            "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"},
+            "libcurl": {"pkg": "libcurl", "type": "optional", "description": "Biblioteca Curl para protocolos HTTP/WHIP (libcurl)"}
         }
 
         has_pkg_config = results.get("pkg-config", {}).get("installed", False)
@@ -417,6 +417,10 @@ class BuildManager:
             dep_check = self.check_dependencies()
             if dep_check.get("dependencies", {}).get("libopus", {}).get("installed"):
                 config_flags.append("--enable-libopus")
+
+            # Automatically enable libcurl if available on the system
+            if dep_check.get("dependencies", {}).get("libcurl", {}).get("installed"):
+                config_flags.append("--enable-libcurl")
 
             if options.get("libsrt"):
                 config_flags.append("--enable-libsrt")
