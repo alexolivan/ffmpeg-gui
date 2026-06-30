@@ -60,6 +60,14 @@ const CONTAINERS = [
   { value: 'ts', label: 'MPEG-TS' },
 ];
 
+const destinationCache: {
+  decklinkDevices: string[] | null;
+  decklinkFormats: Record<string, any[]>;
+} = {
+  decklinkDevices: null,
+  decklinkFormats: {},
+};
+
 const DestinationPanel: React.FC<DestinationPanelProps> = ({
   config,
   hasVideo,
@@ -95,16 +103,30 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   React.useEffect(() => {
     if (config.type !== 'decklink') return;
     let active = true;
+
+    if (destinationCache.decklinkDevices !== null) {
+      setDevices(destinationCache.decklinkDevices);
+      if (destinationCache.decklinkDevices.length > 0) {
+        const found = destinationCache.decklinkDevices.includes(config.device || '');
+        if (!found && config.device) {
+          setManualDeviceMode(true);
+        }
+      }
+      return;
+    }
+
     const fetchDevices = async () => {
       setLoadingDevices(true);
       try {
         const res = await fetch('/decklink/devices');
         if (!res.ok) throw new Error("Failed to fetch");
         const data = await res.json();
+        const outputs = data.outputs || [];
+        destinationCache.decklinkDevices = outputs;
         if (active) {
-          setDevices(data.outputs || []);
-          if (data.outputs && data.outputs.length > 0) {
-            const found = data.outputs.includes(config.device || '');
+          setDevices(outputs);
+          if (outputs.length > 0) {
+            const found = outputs.includes(config.device || '');
             if (!found && config.device) {
               setManualDeviceMode(true);
             }
@@ -129,14 +151,23 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       return;
     }
     let active = true;
+
+    const cacheKey = config.device;
+    if (destinationCache.decklinkFormats[cacheKey] !== undefined) {
+      setFormats(destinationCache.decklinkFormats[cacheKey]);
+      return;
+    }
+
     const fetchFormats = async () => {
       setLoadingFormats(true);
       try {
         const res = await fetch(`/decklink/formats?device=${encodeURIComponent(config.device || '')}`);
         if (!res.ok) throw new Error("Failed to fetch formats");
         const data = await res.json();
+        const formatsList = data || [];
+        destinationCache.decklinkFormats[cacheKey] = formatsList;
         if (active) {
-          setFormats(data || []);
+          setFormats(formatsList);
         }
       } catch (err) {
         console.error("Error fetching formats:", err);

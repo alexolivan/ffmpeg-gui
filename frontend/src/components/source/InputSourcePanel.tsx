@@ -54,6 +54,20 @@ const ALL_SOURCE_TYPES = [
   { value: 'hls', label: 'HLS Stream' },
 ];
 
+const deviceCache: {
+  decklinkDevices: string[] | null;
+  decklinkFormats: Record<string, any[]>;
+  v4l2Devices: any[] | null;
+  v4l2Formats: Record<string, any[]>;
+  alsaDevices: any[] | null;
+} = {
+  decklinkDevices: null,
+  decklinkFormats: {},
+  v4l2Devices: null,
+  v4l2Formats: {},
+  alsaDevices: null,
+};
+
 const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   label,
   accentColor,
@@ -140,16 +154,30 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   React.useEffect(() => {
     if (config.type !== 'decklink') return;
     let active = true;
+
+    if (deviceCache.decklinkDevices !== null) {
+      setDevices(deviceCache.decklinkDevices);
+      if (deviceCache.decklinkDevices.length > 0) {
+        const found = deviceCache.decklinkDevices.includes(config.device || '');
+        if (!found && config.device) {
+          setManualDeviceMode(true);
+        }
+      }
+      return;
+    }
+
     const fetchDevices = async () => {
       setLoadingDevices(true);
       try {
         const res = await fetch('/decklink/devices');
         if (!res.ok) throw new Error("Failed to fetch");
         const data = await res.json();
+        const inputs = data.inputs || [];
+        deviceCache.decklinkDevices = inputs;
         if (active) {
-          setDevices(data.inputs || []);
-          if (data.inputs && data.inputs.length > 0) {
-            const found = data.inputs.includes(config.device || '');
+          setDevices(inputs);
+          if (inputs.length > 0) {
+            const found = inputs.includes(config.device || '');
             if (!found && config.device) {
               setManualDeviceMode(true);
             }
@@ -171,14 +199,23 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       return;
     }
     let active = true;
+
+    const cacheKey = config.device;
+    if (deviceCache.decklinkFormats[cacheKey] !== undefined) {
+      setFormats(deviceCache.decklinkFormats[cacheKey]);
+      return;
+    }
+
     const fetchFormats = async () => {
       setLoadingFormats(true);
       try {
         const res = await fetch(`/decklink/formats?device=${encodeURIComponent(config.device || '')}`);
         if (!res.ok) throw new Error("Failed to fetch formats");
         const data = await res.json();
+        const formatsList = data || [];
+        deviceCache.decklinkFormats[cacheKey] = formatsList;
         if (active) {
-          setFormats(data || []);
+          setFormats(formatsList);
         }
       } catch (err) {
         console.error("Error fetching formats:", err);
@@ -195,16 +232,30 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   React.useEffect(() => {
     if (config.type !== 'v4l2') return;
     let active = true;
+
+    if (deviceCache.v4l2Devices !== null) {
+      setV4l2Devices(deviceCache.v4l2Devices);
+      if (deviceCache.v4l2Devices.length > 0) {
+        const found = deviceCache.v4l2Devices.some((d: any) => d.device === config.device);
+        if (!found && config.device) {
+          setManualV4l2Mode(true);
+        }
+      }
+      return;
+    }
+
     const fetchV4l2 = async () => {
       setLoadingV4l2Devices(true);
       try {
         const res = await fetch('/v4l2/devices');
         if (!res.ok) throw new Error("Failed to fetch V4L2 devices");
         const data = await res.json();
+        const devicesList = data || [];
+        deviceCache.v4l2Devices = devicesList;
         if (active) {
-          setV4l2Devices(data || []);
-          if (data && data.length > 0) {
-            const found = data.some((d: any) => d.device === config.device);
+          setV4l2Devices(devicesList);
+          if (devicesList.length > 0) {
+            const found = devicesList.some((d: any) => d.device === config.device);
             if (!found && config.device) {
               setManualV4l2Mode(true);
             }
@@ -227,14 +278,23 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       return;
     }
     let active = true;
+
+    const cacheKey = config.device;
+    if (deviceCache.v4l2Formats[cacheKey] !== undefined) {
+      setV4l2Formats(deviceCache.v4l2Formats[cacheKey]);
+      return;
+    }
+
     const fetchV4l2Formats = async () => {
       setLoadingV4l2Formats(true);
       try {
         const res = await fetch(`/v4l2/formats?device=${encodeURIComponent(config.device || '')}`);
         if (!res.ok) throw new Error("Failed to fetch V4L2 formats");
         const data = await res.json();
+        const formatsList = data || [];
+        deviceCache.v4l2Formats[cacheKey] = formatsList;
         if (active) {
-          setV4l2Formats(data || []);
+          setV4l2Formats(formatsList);
         }
       } catch (err) {
         console.error("Error fetching V4L2 formats:", err);
@@ -251,16 +311,30 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   React.useEffect(() => {
     if (config.type !== 'alsa') return;
     let active = true;
+
+    if (deviceCache.alsaDevices !== null) {
+      setAlsaDevices(deviceCache.alsaDevices);
+      if (deviceCache.alsaDevices.length > 0) {
+        const found = deviceCache.alsaDevices.some((d: any) => d.device === config.device);
+        if (!found && config.device) {
+          setManualAlsaMode(true);
+        }
+      }
+      return;
+    }
+
     const fetchAlsa = async () => {
       setLoadingAlsaDevices(true);
       try {
         const res = await fetch('/alsa/devices');
         if (!res.ok) throw new Error("Failed to fetch ALSA devices");
         const data = await res.json();
+        const devicesList = data || [];
+        deviceCache.alsaDevices = devicesList;
         if (active) {
-          setAlsaDevices(data || []);
-          if (data && data.length > 0) {
-            const found = data.some((d: any) => d.device === config.device);
+          setAlsaDevices(devicesList);
+          if (devicesList.length > 0) {
+            const found = devicesList.some((d: any) => d.device === config.device);
             if (!found && config.device) {
               setManualAlsaMode(true);
             }
