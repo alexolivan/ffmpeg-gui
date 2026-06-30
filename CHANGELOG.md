@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-06-30
+
+### Added
+- Integrated `libopus` dependency validation in pre-flight environment checks. If `libopus` headers are missing, the GUI now suggests the correct package installation commands (`libopus-dev` for Debian/Ubuntu, `opus-devel` for Fedora/RHEL, and `opus` for Arch Linux) under the environment overview.
+
 ## [1.2.3] - 2026-06-30
 
 ### Fixed
