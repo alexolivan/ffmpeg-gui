@@ -498,6 +498,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           <div className="flex-[3]">
             <input
               type="text"
+              id="process-name"
+              name="name"
               className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium"
               placeholder={isTask ? "Task name (e.g. Daily Transcode of Stream)" : "Service name (e.g. Primary Encoder Node-01)"}
               value={config.name}
@@ -507,6 +509,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           <div className="w-[140px] flex-shrink-0">
             <input
               type="text"
+              id="process-alias"
+              name="alias"
               maxLength={12}
               className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium text-brand-lime placeholder-white/20"
               placeholder="LCD Alias"
@@ -522,6 +526,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         <div className="flex gap-2 items-center">
           {availableBuilds.length > 0 && (
             <select
+              id="process-build"
+              name="ffmpeg_build_id"
               className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-orange transition-all truncate"
               value={config.ffmpeg_build_id ?? ''}
               onChange={e => handleBuildChange(e.target.value ? Number(e.target.value) : null)}
@@ -536,9 +542,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           )}
           {/* Stream toggles */}
           <div className="flex items-center gap-3 bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/10 flex-shrink-0">
-            <label className="flex items-center gap-1.5 cursor-pointer">
+            <label htmlFor="process-has-video" className="flex items-center gap-1.5 cursor-pointer">
               <input
-                type="checkbox" checked={config.has_video}
+                type="checkbox" id="process-has-video" name="has_video" checked={config.has_video}
                 onChange={e => handleHasVideoChange(e.target.checked)}
                 className="w-3.5 h-3.5 accent-brand-orange"
               />
@@ -547,9 +553,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
               </span>
             </label>
             <span className="w-px h-3 bg-white/10" />
-            <label className="flex items-center gap-1.5 cursor-pointer">
+            <label htmlFor="process-has-audio" className="flex items-center gap-1.5 cursor-pointer">
               <input
-                type="checkbox" checked={config.has_audio}
+                type="checkbox" id="process-has-audio" name="has_audio" checked={config.has_audio}
                 onChange={e => handleHasAudioChange(e.target.checked)}
                 className="w-3.5 h-3.5 accent-blue-400"
               />
@@ -685,15 +691,18 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 systemCapabilities={systemCapabilities}
                 onSyncAlsaAudio={handleSyncAlsaAudio}
                 ffmpegBuildId={config.ffmpeg_build_id}
+                idPrefix="input1"
               />
             </div>
 
             {/* Toggle: Use secondary input */}
             {config.has_video && config.has_audio && (
               <div className="flex items-center gap-3 px-2">
-                <label className="flex items-center gap-3 cursor-pointer group">
+                <label htmlFor="process-use-secondary-input" className="flex items-center gap-3 cursor-pointer group">
                   <input
                     type="checkbox"
+                    id="process-use-secondary-input"
+                    name="use_secondary_input"
                     checked={config.use_secondary_input}
                     onChange={e => handleUseSecondaryInputChange(e.target.checked)}
                     className="w-4 h-4 accent-brand-lime"
@@ -719,6 +728,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   onChange={handleInput2Change}
                   systemCapabilities={systemCapabilities}
                   ffmpegBuildId={config.ffmpeg_build_id}
+                  idPrefix="input2"
                 />
               </div>
             )}

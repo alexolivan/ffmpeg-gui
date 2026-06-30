@@ -217,10 +217,12 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 mb-0.5">
         <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-        <h4 className="text-purple-400 font-bold text-xs uppercase tracking-wider">Destination</h4>
+        <label htmlFor="dest-type" className="text-purple-400 font-bold text-xs uppercase tracking-wider cursor-pointer">Destination</label>
       </div>
 
       <select
+        id="dest-type"
+        name="type"
         className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-purple-400 transition-all"
         value={config.type}
         onChange={e => update({
@@ -242,17 +244,23 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Host / Multicast IP</label>
+              <label htmlFor={`dest-${config.type}-host`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Host / Multicast IP</label>
               <input
-                type="text" placeholder="e.g. 239.0.0.1 or 127.0.0.1"
+                type="text"
+                id={`dest-${config.type}-host`}
+                name="host"
+                placeholder="e.g. 239.0.0.1 or 127.0.0.1"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.host || ''} onChange={e => update({ host: e.target.value })}
               />
             </div>
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
+              <label htmlFor={`dest-${config.type}-port`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
               <input
-                type="text" placeholder="1234"
+                type="text"
+                id={`dest-${config.type}-port`}
+                name="port"
+                placeholder="1234"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.port || ''} onChange={e => update({ port: e.target.value })}
               />
@@ -267,63 +275,84 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[9px] text-text-secondary font-bold block mb-0.5">Constant Muxrate (bps)</label>
+                  <label htmlFor="dest-udp-muxrate" className="text-[9px] text-text-secondary font-bold block mb-0.5">Constant Muxrate (bps)</label>
                   <input
-                    type="text" placeholder="e.g. 5000000 (5 Mbps)"
+                    type="text"
+                    id="dest-udp-muxrate"
+                    name="muxrate"
+                    placeholder="e.g. 5000000 (5 Mbps)"
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                     value={config.muxrate || ''} onChange={e => update({ muxrate: e.target.value })}
                   />
                 </div>
 
                 <div>
-                  <label className="text-[9px] text-text-secondary font-bold block mb-0.5">Socket Packet Size (pkt_size)</label>
+                  <label htmlFor="dest-udp-pkt-size" className="text-[9px] text-text-secondary font-bold block mb-0.5">Socket Packet Size (pkt_size)</label>
                   <input
-                    type="number" placeholder="1316" min={188} max={65535}
+                    type="number"
+                    id="dest-udp-pkt-size"
+                    name="pkt_size"
+                    placeholder="1316" min={188} max={65535}
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                     value={config.pkt_size || 1316} onChange={e => update({ pkt_size: Number(e.target.value) })}
                   />
                 </div>
 
                 <div>
-                  <label className="text-[9px] text-text-secondary font-bold block mb-0.5">Service Provider</label>
+                  <label htmlFor="dest-udp-service-provider" className="text-[9px] text-text-secondary font-bold block mb-0.5">Service Provider</label>
                   <input
-                    type="text" placeholder="e.g. Antigravity Broadcast"
+                    type="text"
+                    id="dest-udp-service-provider"
+                    name="service_provider"
+                    placeholder="e.g. Antigravity Broadcast"
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                     value={config.service_provider || ''} onChange={e => update({ service_provider: e.target.value })}
                   />
                 </div>
 
                 <div>
-                  <label className="text-[9px] text-text-secondary font-bold block mb-0.5">Service Name</label>
+                  <label htmlFor="dest-udp-service-name" className="text-[9px] text-text-secondary font-bold block mb-0.5">Service Name</label>
                   <input
-                    type="text" placeholder="e.g. Main HD Channel"
+                    type="text"
+                    id="dest-udp-service-name"
+                    name="service_name"
+                    placeholder="e.g. Main HD Channel"
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                     value={config.service_name || ''} onChange={e => update({ service_name: e.target.value })}
                   />
                 </div>
 
                 <div>
-                  <label className="text-[9px] text-text-secondary font-bold block mb-0.5">Transport Stream ID (HEX/DEC)</label>
+                  <label htmlFor="dest-udp-ts-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">Transport Stream ID (HEX/DEC)</label>
                   <input
-                    type="text" placeholder="e.g. 0x0001 or 1"
+                    type="text"
+                    id="dest-udp-ts-id"
+                    name="transport_stream_id"
+                    placeholder="e.g. 0x0001 or 1"
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                     value={config.transport_stream_id || ''} onChange={e => update({ transport_stream_id: e.target.value })}
                   />
                 </div>
 
                 <div>
-                  <label className="text-[9px] text-text-secondary font-bold block mb-0.5">Original Network ID (HEX/DEC)</label>
+                  <label htmlFor="dest-udp-net-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">Original Network ID (HEX/DEC)</label>
                   <input
-                    type="text" placeholder="e.g. 0x20fa or 8442"
+                    type="text"
+                    id="dest-udp-net-id"
+                    name="original_network_id"
+                    placeholder="e.g. 0x20fa or 8442"
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                     value={config.original_network_id || ''} onChange={e => update({ original_network_id: e.target.value })}
                   />
                 </div>
 
                 <div className="col-span-2">
-                  <label className="text-[9px] text-text-secondary font-bold block mb-0.5">Service ID (HEX/DEC)</label>
+                  <label htmlFor="dest-udp-service-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">Service ID (HEX/DEC)</label>
                   <input
-                    type="text" placeholder="e.g. 0x0001 or 1"
+                    type="text"
+                    id="dest-udp-service-id"
+                    name="service_id"
+                    placeholder="e.g. 0x0001 or 1"
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                     value={config.service_id || ''} onChange={e => update({ service_id: e.target.value })}
                   />
@@ -338,8 +367,10 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div className="col-span-2">
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">SRT Connection Mode</label>
+              <label htmlFor="dest-srt-mode" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">SRT Connection Mode</label>
               <select
+                id="dest-srt-mode"
+                name="mode"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.mode || 'caller'}
                 onChange={e => {
@@ -357,11 +388,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
 
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              <label htmlFor="dest-srt-host" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
                 {config.mode === 'listener' ? 'Bind Interface / Host' : 'Remote Host / IP'}
               </label>
               <input
                 type="text"
+                id="dest-srt-host"
+                name="host"
                 placeholder={config.mode === 'listener' ? "0.0.0.0 (all interfaces)" : "e.g. 52.210.205.135"}
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.host || ''}
@@ -370,9 +403,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
 
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
+              <label htmlFor="dest-srt-port" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
               <input
                 type="text"
+                id="dest-srt-port"
+                name="port"
                 placeholder="9000"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.port || ''}
@@ -381,9 +416,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
 
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Latency (ms)</label>
+              <label htmlFor="dest-srt-latency" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Latency (ms)</label>
               <input
                 type="number"
+                id="dest-srt-latency"
+                name="latency"
                 placeholder="200"
                 min={20}
                 max={8000}
@@ -394,9 +431,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
 
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Stream ID (Optional)</label>
+              <label htmlFor="dest-srt-streamid" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Stream ID (Optional)</label>
               <input
                 type="text"
+                id="dest-srt-streamid"
+                name="streamid"
                 placeholder="e.g. output_stream_1"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.streamid || ''}
@@ -426,6 +465,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {config.type === 'rtmp' && (
         <input
           type="text"
+          id="dest-rtmp-url"
+          name="url"
           placeholder="RTMP URL (rtmp://server/live/key)"
           className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
           value={config.url || ''} onChange={e => update({ url: e.target.value })}
@@ -435,9 +476,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {config.type === 'ndi' && (
         <div className="space-y-2">
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">NDI Output Connection Name</label>
+            <label htmlFor="dest-ndi-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">NDI Output Connection Name</label>
             <input
               type="text"
+              id="dest-ndi-path"
+              name="path"
               placeholder="e.g. MY-ENCODER-OUT"
               className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
               value={config.path || ''} onChange={e => update({ path: e.target.value })}
@@ -465,7 +508,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
           </div>
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo DeckLink de Salida</label>
+            <label htmlFor="dest-decklink-device" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo DeckLink de Salida</label>
             {loadingDevices ? (
               <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos...</div>
             ) : devices.length === 0 ? (
@@ -473,6 +516,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron tarjetas de salida DeckLink.</div>
                 <input
                   type="text"
+                  id="dest-decklink-device"
+                  name="device"
                   placeholder="Nombre del dispositivo (ej: DeckLink Mini Monitor)"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
@@ -484,6 +529,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 <div className="flex gap-1.5">
                   {!manualDeviceMode ? (
                     <select
+                      id="dest-decklink-device"
+                      name="device"
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                       value={config.device || ''}
                       onChange={e => {
@@ -505,6 +552,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     <div className="flex w-full gap-1.5">
                       <input
                         type="text"
+                        id="dest-decklink-device"
+                        name="device"
                         placeholder="Nombre del dispositivo"
                         className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                         value={config.device || ''}
@@ -528,11 +577,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           </div>
 
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato de Salida (format_code)</label>
+            <label htmlFor="dest-decklink-format-code" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato de Salida (format_code)</label>
             {manualDeviceMode ? (
               <div className="grid grid-cols-3 gap-2">
                 <input
                   type="text"
+                  id="dest-decklink-format-code"
+                  name="format_code"
                   placeholder="Formato (ej: Hp25)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.format_code || ''}
@@ -540,6 +591,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 />
                 <input
                   type="text"
+                  id="dest-decklink-video-size"
+                  name="video_size"
                   placeholder="Resolución (ej: 1920x1080)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.video_size || ''}
@@ -547,6 +600,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 />
                 <input
                   type="text"
+                  id="dest-decklink-framerate"
+                  name="framerate"
                   placeholder="FPS (ej: 25)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.framerate || ''}
@@ -559,6 +614,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               <div className="grid grid-cols-3 gap-2">
                 <input
                   type="text"
+                  id="dest-decklink-format-code"
+                  name="format_code"
                   placeholder="Formato (ej: Hp25) - No detectados"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.format_code || ''}
@@ -566,6 +623,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 />
                 <input
                   type="text"
+                  id="dest-decklink-video-size"
+                  name="video_size"
                   placeholder="Resolución (ej: 1920x1080)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.video_size || ''}
@@ -573,6 +632,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 />
                 <input
                   type="text"
+                  id="dest-decklink-framerate"
+                  name="framerate"
                   placeholder="FPS (ej: 25)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.framerate || ''}
@@ -582,6 +643,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             ) : (
               <div className="space-y-1.5">
                 <select
+                  id="dest-decklink-format-code"
+                  name="format_code"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.format_code || ''}
                   onChange={e => handleFormatChange(e.target.value)}
@@ -610,11 +673,15 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="grid grid-cols-3 gap-2">
           <input
             type="text"
+            id="dest-file-path"
+            name="path"
             placeholder="Output file path"
             className="col-span-2 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.path || ''} onChange={e => update({ path: e.target.value })}
           />
           <select
+            id="dest-file-container"
+            name="container"
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.container || 'mp4'}
             onChange={e => update({ container: e.target.value })}
@@ -629,22 +696,34 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {config.type === 'icecast' && (
         <div className="grid grid-cols-2 gap-2">
           <input
-            type="text" placeholder="Icecast Host"
+            type="text"
+            id="dest-icecast-host"
+            name="host"
+            placeholder="Icecast Host"
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.host || ''} onChange={e => update({ host: e.target.value })}
           />
           <input
-            type="text" placeholder="Port (default: 8000)"
+            type="text"
+            id="dest-icecast-port"
+            name="port"
+            placeholder="Port (default: 8000)"
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.port || ''} onChange={e => update({ port: e.target.value })}
           />
           <input
-            type="text" placeholder="Mount point (e.g. /live)"
+            type="text"
+            id="dest-icecast-mount"
+            name="icecast_mount"
+            placeholder="Mount point (e.g. /live)"
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.icecast_mount || ''} onChange={e => update({ icecast_mount: e.target.value })}
           />
           <input
-            type="password" placeholder="Source password"
+            type="password"
+            id="dest-icecast-password"
+            name="icecast_password"
+            placeholder="Source password"
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.icecast_password || ''} onChange={e => update({ icecast_password: e.target.value })}
           />
@@ -655,8 +734,10 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">HLS Ingest Method</label>
+              <label htmlFor="dest-hls-method" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">HLS Ingest Method</label>
               <select
+                id="dest-hls-method"
+                name="hls_method"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.hls_method || 'local'}
                 onChange={e => update({ hls_method: e.target.value })}
@@ -668,18 +749,24 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <div>
-                <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Segment (s)</label>
+                <label htmlFor="dest-hls-time" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Segment (s)</label>
                 <input
-                  type="number" min={1} max={60}
+                  type="number"
+                  id="dest-hls-time"
+                  name="hls_time"
+                  min={1} max={60}
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.hls_time ?? 2}
                   onChange={e => update({ hls_time: Number(e.target.value) })}
                 />
               </div>
               <div>
-                <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">List Size</label>
+                <label htmlFor="dest-hls-list-size" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">List Size</label>
                 <input
-                  type="number" min={2} max={100}
+                  type="number"
+                  id="dest-hls-list-size"
+                  name="hls_list_size"
+                  min={2} max={100}
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.hls_list_size ?? 5}
                   onChange={e => update({ hls_list_size: Number(e.target.value) })}
@@ -689,11 +776,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           </div>
 
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+            <label htmlFor="dest-hls-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
               {config.hls_method === 'local' ? 'Output Playlist File Path' : 'Remote Ingest URL'}
             </label>
             <input
               type="text"
+              id="dest-hls-path"
+              name="path"
               placeholder={config.hls_method === 'local' ? 'e.g. /var/www/html/live/stream.m3u8' : 'e.g. http://ingest.server/live/stream.m3u8'}
               className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
               value={config.path || ''}
@@ -705,6 +794,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             <div className="flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5">
               <input
                 type="checkbox" id="hls-delete-chk"
+                name="hls_delete_segments"
                 className="w-3.5 h-3.5 accent-purple-400"
                 checked={config.hls_delete_segments ?? true}
                 onChange={e => update({ hls_delete_segments: e.target.checked })}
@@ -717,8 +807,10 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
           {(config.hls_method === 'PUT' || config.hls_method === 'POST') && (
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Custom HTTP Headers (Optional)</label>
+              <label htmlFor="dest-hls-headers" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Custom HTTP Headers (Optional)</label>
               <textarea
+                id="dest-hls-headers"
+                name="headers"
                 placeholder="e.g. Authorization: Bearer token123&#10;X-Custom-Header: value"
                 rows={2}
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono resize-none"
