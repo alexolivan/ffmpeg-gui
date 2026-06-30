@@ -652,111 +652,107 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       <div className="flex-1 overflow-y-auto pr-3 space-y-4 min-h-0 custom-scrollbar">
 
         {/* ═══ INPUTS SECTION ═══ */}
-        {activeSection === 'inputs' && (
-          <div className="space-y-4 animate-in fade-in duration-300">
-            {/* Input 1 (Primary) */}
-            <div className="glass-card p-4 !rounded-2xl">
+        <div className={`space-y-4 animate-in fade-in duration-300 ${activeSection === 'inputs' ? '' : 'hidden'}`}>
+          {/* Input 1 (Primary) */}
+          <div className="glass-card p-4 !rounded-2xl">
+            <InputSourcePanel
+              label={
+                config.use_secondary_input
+                  ? "Input 1 — Video Source"
+                  : config.has_video && !config.has_audio
+                  ? "Input 1 — Video Source"
+                  : !config.has_video && config.has_audio
+                  ? "Input 1 — Audio Source"
+                  : "Primary Source (Audio & Video)"
+              }
+              accentColor="var(--accent-lime)"
+              config={config.input1}
+              allowedTypes={
+                !config.has_audio && config.has_video
+                  ? VIDEO_ALLOWED_TYPES
+                  : config.has_video && !config.has_audio
+                  ? VIDEO_ALLOWED_TYPES
+                  : config.use_secondary_input
+                  ? VIDEO_ALLOWED_TYPES
+                  : !config.has_video && config.has_audio
+                  ? AUDIO_ALLOWED_TYPES
+                  : undefined
+              }
+              onChange={handleInput1Change}
+              systemCapabilities={systemCapabilities}
+              onSyncAlsaAudio={handleSyncAlsaAudio}
+              ffmpegBuildId={config.ffmpeg_build_id}
+            />
+          </div>
+
+          {/* Toggle: Use secondary input */}
+          {config.has_video && config.has_audio && (
+            <div className="flex items-center gap-3 px-2">
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={config.use_secondary_input}
+                  onChange={e => handleUseSecondaryInputChange(e.target.checked)}
+                  className="w-4 h-4 accent-brand-lime"
+                />
+                <span className="text-xs font-bold uppercase tracking-wider text-text-secondary group-hover:text-white transition-colors">
+                  Use separate source for Input 2
+                </span>
+              </label>
+              <span className="text-[10px] text-white/20 italic">
+                (e.g. video from SDI + audio from network)
+              </span>
+            </div>
+          )}
+
+          {/* Input 2 (Secondary) */}
+          {config.use_secondary_input && (
+            <div className="glass-card p-4 !rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
               <InputSourcePanel
-                label={
-                  config.use_secondary_input
-                    ? "Input 1 — Video Source"
-                    : config.has_video && !config.has_audio
-                    ? "Input 1 — Video Source"
-                    : !config.has_video && config.has_audio
-                    ? "Input 1 — Audio Source"
-                    : "Primary Source (Audio & Video)"
-                }
-                accentColor="var(--accent-lime)"
-                config={config.input1}
-                allowedTypes={
-                  !config.has_audio && config.has_video
-                    ? VIDEO_ALLOWED_TYPES
-                    : config.has_video && !config.has_audio
-                    ? VIDEO_ALLOWED_TYPES
-                    : config.use_secondary_input
-                    ? VIDEO_ALLOWED_TYPES
-                    : !config.has_video && config.has_audio
-                    ? AUDIO_ALLOWED_TYPES
-                    : undefined
-                }
-                onChange={handleInput1Change}
+                label="Input 2 — Audio Source"
+                accentColor="#60a5fa"
+                config={config.input2}
+                allowedTypes={AUDIO_ALLOWED_TYPES}
+                onChange={handleInput2Change}
                 systemCapabilities={systemCapabilities}
-                onSyncAlsaAudio={handleSyncAlsaAudio}
                 ffmpegBuildId={config.ffmpeg_build_id}
               />
             </div>
-
-            {/* Toggle: Use secondary input */}
-            {config.has_video && config.has_audio && (
-              <div className="flex items-center gap-3 px-2">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={config.use_secondary_input}
-                    onChange={e => handleUseSecondaryInputChange(e.target.checked)}
-                    className="w-4 h-4 accent-brand-lime"
-                  />
-                  <span className="text-xs font-bold uppercase tracking-wider text-text-secondary group-hover:text-white transition-colors">
-                    Use separate source for Input 2
-                  </span>
-                </label>
-                <span className="text-[10px] text-white/20 italic">
-                  (e.g. video from SDI + audio from network)
-                </span>
-              </div>
-            )}
-
-            {/* Input 2 (Secondary) */}
-            {config.use_secondary_input && (
-              <div className="glass-card p-4 !rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
-                <InputSourcePanel
-                  label="Input 2 — Audio Source"
-                  accentColor="#60a5fa"
-                  config={config.input2}
-                  allowedTypes={AUDIO_ALLOWED_TYPES}
-                  onChange={handleInput2Change}
-                  systemCapabilities={systemCapabilities}
-                  ffmpegBuildId={config.ffmpeg_build_id}
-                />
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
         {/* ═══ ENCODING SECTION ═══ */}
-        {activeSection === 'encoding' && (
-          <div className="space-y-4 animate-in fade-in duration-300">
-            {config.has_video && (
-              <div className="glass-card p-4 !rounded-2xl">
-                <VideoCodecPanel
-                  codecId={config.video_codec_id}
-                  params={config.video_codec_params}
-                  buildOptions={selectedBuildOptions}
-                  systemCapabilities={systemCapabilities}
-                  onChange={handleVideoCodecChange}
-                />
-              </div>
-            )}
-            {config.has_audio && (
-              <div className="glass-card p-4 !rounded-2xl">
-                <AudioCodecPanel
-                  codecId={config.audio_codec_id}
-                  params={config.audio_codec_params}
-                  buildOptions={selectedBuildOptions}
-                  onChange={handleAudioCodecChange}
-                />
-              </div>
-            )}
-            {!config.has_video && !config.has_audio && (
-              <div className="text-center py-12 text-text-secondary text-sm italic">
-                Enable at least one stream (Video or Audio) to configure encoding.
-              </div>
-            )}
-          </div>
-        )}
+        <div className={`space-y-4 animate-in fade-in duration-300 ${activeSection === 'encoding' ? '' : 'hidden'}`}>
+          {config.has_video && (
+            <div className="glass-card p-4 !rounded-2xl">
+              <VideoCodecPanel
+                codecId={config.video_codec_id}
+                params={config.video_codec_params}
+                buildOptions={selectedBuildOptions}
+                systemCapabilities={systemCapabilities}
+                onChange={handleVideoCodecChange}
+              />
+            </div>
+          )}
+          {config.has_audio && (
+            <div className="glass-card p-4 !rounded-2xl">
+              <AudioCodecPanel
+                codecId={config.audio_codec_id}
+                params={config.audio_codec_params}
+                buildOptions={selectedBuildOptions}
+                onChange={handleAudioCodecChange}
+              />
+            </div>
+          )}
+          {!config.has_video && !config.has_audio && (
+            <div className="text-center py-12 text-text-secondary text-sm italic">
+              Enable at least one stream (Video or Audio) to configure encoding.
+            </div>
+          )}
+        </div>
 
         {/* ═══ FILTERS SECTION ═══ */}
-        {activeSection === 'filters' && (
+        <div className={activeSection === 'filters' ? '' : 'hidden'}>
           <FiltersFormSection
             hasVideo={config.has_video}
             hasAudio={config.has_audio}
@@ -779,58 +775,54 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             systemCapabilities={systemCapabilities}
             onChange={handleFiltersChange}
           />
-        )}
+        </div>
 
         {/* ═══ OUTPUT SECTION ═══ */}
-        {activeSection === 'output' && (
-          <div className="animate-in fade-in duration-300">
-            <div className="glass-card p-4 !rounded-2xl">
-              <DestinationPanel
-                config={config.output}
-                hasVideo={config.has_video}
-                hasAudio={config.has_audio}
-                onChange={handleOutputChange}
-                systemCapabilities={systemCapabilities}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* ═══ SYSTEM & WATCHDOG SECTION ═══ */}
-        {activeSection === 'system' && (
-          <div className="space-y-4 animate-in fade-in duration-300">
-            {isTask ? (
-              <SchedulingFormSection
-                schedule_type={config.schedule_type}
-                schedule_cron={config.schedule_cron}
-                schedule_datetime={config.schedule_datetime}
-                duration_type={config.duration_type}
-                duration_seconds={config.duration_seconds}
-                duration_end_time={config.duration_end_time}
-                retry_max={config.retry_max}
-                retry_delay={config.retry_delay}
-                onChange={handleLifecycleOrSchedulingChange}
-              />
-            ) : (
-              <LifecycleFormSection
-                auto_start={config.auto_start}
-                watchdog_enabled={config.watchdog_enabled}
-                watchdog_retries={config.watchdog_retries}
-                onChange={handleLifecycleOrSchedulingChange}
-              />
-            )}
-
-            <AdvancedFlagsFormSection
-              inputType={config.input1.type}
-              realtime={config.filters.advanced.realtime}
-              stream_loop={config.filters.advanced.stream_loop}
-              threads={config.filters.advanced.threads}
-              probesize={config.filters.advanced.probesize}
-              thread_queue_size={config.filters.advanced.thread_queue_size}
-              onChange={handleAdvancedFlagsChange}
+        <div className={activeSection === 'output' ? '' : 'hidden'}>
+          <div className="glass-card p-4 !rounded-2xl">
+            <DestinationPanel
+              config={config.output}
+              hasVideo={config.has_video}
+              hasAudio={config.has_audio}
+              onChange={handleOutputChange}
+              systemCapabilities={systemCapabilities}
             />
           </div>
-        )}
+        </div>
+
+        {/* ═══ SYSTEM & WATCHDOG SECTION ═══ */}
+        <div className={`space-y-4 animate-in fade-in duration-300 ${activeSection === 'system' ? '' : 'hidden'}`}>
+          {isTask ? (
+            <SchedulingFormSection
+              schedule_type={config.schedule_type}
+              schedule_cron={config.schedule_cron}
+              schedule_datetime={config.schedule_datetime}
+              duration_type={config.duration_type}
+              duration_seconds={config.duration_seconds}
+              duration_end_time={config.duration_end_time}
+              retry_max={config.retry_max}
+              retry_delay={config.retry_delay}
+              onChange={handleLifecycleOrSchedulingChange}
+            />
+          ) : (
+            <LifecycleFormSection
+              auto_start={config.auto_start}
+              watchdog_enabled={config.watchdog_enabled}
+              watchdog_retries={config.watchdog_retries}
+              onChange={handleLifecycleOrSchedulingChange}
+            />
+          )}
+
+          <AdvancedFlagsFormSection
+            inputType={config.input1.type}
+            realtime={config.filters.advanced.realtime}
+            stream_loop={config.filters.advanced.stream_loop}
+            threads={config.filters.advanced.threads}
+            probesize={config.filters.advanced.probesize}
+            thread_queue_size={config.filters.advanced.thread_queue_size}
+            onChange={handleAdvancedFlagsChange}
+          />
+        </div>
       </div>
 
       {/* ── Sticky footer ── */}
