@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { BuildProfile } from '../components/BuildProfileCard';
 import type { BuildFormData } from '../components/BuildFormModal';
 
@@ -34,7 +34,7 @@ export function useBuilds(activeView: string) {
     }
   };
 
-  const fetchDeps = async () => {
+  const fetchDeps = useCallback(async () => {
     setCheckStatus('loading');
     try {
       const res = await fetch(`${API}/builds/check`);
@@ -44,7 +44,7 @@ export function useBuilds(activeView: string) {
     } catch {
       setCheckStatus('error');
     }
-  };
+  }, []);
 
   const fetchCapabilities = async () => {
     try {
