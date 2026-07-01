@@ -66,6 +66,7 @@ function App() {
     handleDeleteBuild,
     handleImportRecipeChange,
     handleExportRecipe,
+    fetchDeps,
   } = useBuilds(activeView);
 
   const {
@@ -269,6 +270,7 @@ function App() {
             importRecipeRef={importRecipeRef}
             refreshBuilds={refreshBuilds}
             refreshDiskInfo={refreshDiskInfo}
+            refreshDeps={fetchDeps}
           />
         )}
       </main>

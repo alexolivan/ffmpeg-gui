@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import BuildProfileCard from '../BuildProfileCard';
 import type { BuildProfile } from '../BuildProfileCard';
 import BuildFormModal from '../BuildFormModal';
@@ -8,7 +8,8 @@ import {
   PlusIcon, 
   GearIcon, 
   ToolsIcon, 
-  ClipboardIcon 
+  ClipboardIcon,
+  RefreshIcon
 } from '../Icons';
 
 const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string>> = {
@@ -114,6 +115,7 @@ interface ForgeViewProps {
   importRecipeRef: React.RefObject<HTMLInputElement | null>;
   refreshBuilds: () => Promise<void>;
   refreshDiskInfo: () => Promise<void>;
+  refreshDeps: () => Promise<void>;
 }
 
 export const ForgeView: React.FC<ForgeViewProps> = ({
@@ -147,7 +149,14 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   importRecipeRef,
   refreshBuilds,
   refreshDiskInfo,
+  refreshDeps,
 }) => {
+  useEffect(() => {
+    if (showEnvModal) {
+      refreshDeps();
+    }
+  }, [showEnvModal, refreshDeps]);
+
   const fallbackCopy = (text: string) => {
     const textArea = document.createElement("textarea");
     textArea.value = text;
@@ -315,6 +324,16 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
           <div className="glass-card w-full max-w-2xl p-6 relative border border-white/10 flex flex-col max-h-[85vh] overflow-hidden">
             
+            {/* Refresh button */}
+            <button 
+              onClick={refreshDeps}
+              disabled={checkStatus === 'loading'}
+              className="absolute top-5 right-15 w-8 h-8 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white transition-colors disabled:opacity-50"
+              title="Recargar dependencias"
+            >
+              <RefreshIcon size={14} className={checkStatus === 'loading' ? 'animate-spin text-brand-orange' : ''} />
+            </button>
+
             {/* Close button */}
             <button 
               onClick={() => setShowEnvModal(false)}
