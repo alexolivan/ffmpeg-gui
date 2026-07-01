@@ -247,6 +247,7 @@ function App() {
             setShowEnvModal={setShowEnvModal}
             selectedLinuxDistro={selectedLinuxDistro}
             setSelectedLinuxDistro={setSelectedLinuxDistro}
+            systemTelemetry={systemTelemetry}
             validationResult={validationResult}
             setValidationResult={setValidationResult}
             terminalBuild={terminalBuild}

@@ -11,6 +11,78 @@ import {
   ClipboardIcon 
 } from '../Icons';
 
+const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string>> = {
+  debian: {
+    "cmake": "cmake",
+    "git": "git",
+    "make": "make",
+    "gcc": "gcc build-essential",
+    "pkg-config": "pkg-config",
+    "yasm/nasm": "yasm nasm",
+    "libx264": "libx264-dev",
+    "libx265": "libx265-dev",
+    "libssl": "libssl-dev",
+    "libva": "libva-dev",
+    "libdrm": "libdrm-dev",
+    "avahi-daemon": "avahi-daemon avahi-utils",
+    "libopus": "libopus-dev",
+    "libcurl": "libcurl4-openssl-dev",
+    "vainfo": "vainfo",
+    "nvidia-cuda-dev": "nvidia-cuda-dev",
+    "clang": "clang"
+  },
+  fedora: {
+    "cmake": "cmake",
+    "git": "git",
+    "make": "make",
+    "gcc": "gcc gcc-c++",
+    "pkg-config": "pkgconfig",
+    "yasm/nasm": "yasm nasm",
+    "libx264": "x264-devel",
+    "libx265": "x265-devel",
+    "libssl": "openssl-devel",
+    "libva": "libva-devel",
+    "libdrm": "libdrm-devel",
+    "avahi-daemon": "avahi",
+    "libopus": "opus-devel",
+    "libcurl": "libcurl-devel",
+    "vainfo": "vainfo",
+    "nvidia-cuda-dev": "cuda-toolkit",
+    "clang": "clang"
+  },
+  arch: {
+    "cmake": "cmake",
+    "git": "git",
+    "make": "make",
+    "gcc": "gcc",
+    "pkg-config": "pkgconf",
+    "yasm/nasm": "yasm nasm",
+    "libx264": "x264",
+    "libx265": "x265",
+    "libssl": "openssl",
+    "libva": "libva",
+    "libdrm": "libdrm",
+    "avahi-daemon": "avahi",
+    "libopus": "opus",
+    "libcurl": "curl",
+    "vainfo": "vainfo",
+    "nvidia-cuda-dev": "cuda",
+    "clang": "clang"
+  }
+};
+
+const getSingleInstallCommand = (depName: string, distro: 'debian' | 'fedora' | 'arch') => {
+  const pkgName = packageMapping[distro]?.[depName] || depName;
+  if (distro === 'debian') {
+    return `sudo apt install -y ${pkgName}`;
+  } else if (distro === 'fedora') {
+    return `sudo dnf install -y ${pkgName}`;
+  } else if (distro === 'arch') {
+    return `sudo pacman -S --needed --noconfirm ${pkgName}`;
+  }
+  return '';
+};
+
 interface ForgeViewProps {
   builds: BuildProfile[];
   diskInfo: any;
@@ -20,6 +92,7 @@ interface ForgeViewProps {
   setShowEnvModal: (show: boolean) => void;
   selectedLinuxDistro: 'debian' | 'fedora' | 'arch';
   setSelectedLinuxDistro: (distro: 'debian' | 'fedora' | 'arch') => void;
+  systemTelemetry: any;
   validationResult: { buildId: number; output: string } | null;
   setValidationResult: (res: { buildId: number; output: string } | null) => void;
   terminalBuild: { id: number; name: string } | null;
@@ -52,6 +125,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   setShowEnvModal,
   selectedLinuxDistro,
   setSelectedLinuxDistro,
+  systemTelemetry,
   validationResult,
   setValidationResult,
   terminalBuild,
@@ -256,6 +330,21 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
               FFmpeg Forge necesita compiladores de bajo nivel y bibliotecas externas de codecs para generar un binario robusto optimizado.
             </p>
 
+            <div className="flex items-center justify-between pb-4 border-b border-white/5 mb-6">
+              <span className="text-xs font-bold text-white/70 uppercase tracking-wider">Distribución de Linux</span>
+              <div className="flex gap-2">
+                {(['debian', 'fedora', 'arch'] as const).map(distro => (
+                  <button
+                    key={distro}
+                    onClick={() => setSelectedLinuxDistro(distro)}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase transition-all ${selectedLinuxDistro === distro ? 'bg-brand-orange text-black font-black' : 'bg-white/5 text-text-secondary hover:text-white'}`}
+                  >
+                    {distro === 'debian' ? 'Debian/Ubuntu' : distro === 'fedora' ? 'Fedora/RedHat' : 'Arch Linux'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex-1 overflow-y-auto space-y-6 pr-1 custom-scrollbar min-h-0">
               
               {/* Required Deps Section */}
@@ -265,14 +354,39 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                   {Object.entries(buildDeps?.dependencies || {})
                     .filter(([, info]: any) => info.type === 'required')
                     .map(([name, info]: any) => (
-                      <div key={name} className="flex items-center justify-between p-3 bg-white/2 border border-white/5 rounded-xl">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold text-white/95">{name}</span>
-                          <span className="text-[10px] text-text-secondary mt-0.5">{info.description}</span>
+                      <div key={name} className="flex flex-col p-3 bg-white/2 border border-white/5 rounded-xl gap-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-white/95">{name}</span>
+                            <span className="text-[10px] text-text-secondary mt-0.5">{info.description}</span>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black ${info.installed ? 'bg-brand-lime/10 text-brand-lime' : 'bg-red-500/10 text-red-400'}`}>
+                            {info.installed ? 'INSTALADO' : 'AUSENTE'}
+                          </span>
                         </div>
-                        <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black ${info.installed ? 'bg-brand-lime/10 text-brand-lime' : 'bg-red-500/10 text-red-400'}`}>
-                          {info.installed ? 'INSTALADO' : 'AUSENTE'}
-                        </span>
+                        {!info.installed && (
+                          <div className="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-1.5 pl-2.5 gap-2 mt-1">
+                            <code className="font-mono text-[9px] text-white/80 select-all break-all">
+                              {getSingleInstallCommand(name, selectedLinuxDistro)}
+                            </code>
+                            <button
+                              onClick={() => {
+                                const cmd = getSingleInstallCommand(name, selectedLinuxDistro);
+                                if (navigator.clipboard && navigator.clipboard.writeText) {
+                                  navigator.clipboard.writeText(cmd)
+                                    .then(() => alert("Comando copiado al portapapeles con éxito."))
+                                    .catch(() => fallbackCopy(cmd));
+                                } else {
+                                  fallbackCopy(cmd);
+                                }
+                              }}
+                              className="p-1 bg-white/5 hover:bg-white/10 rounded text-text-secondary hover:text-white transition-all shrink-0 flex items-center justify-center"
+                              title="Copiar comando de instalación"
+                            >
+                              <ClipboardIcon size={10} />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                 </div>
@@ -285,14 +399,39 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                   {Object.entries(buildDeps?.dependencies || {})
                     .filter(([, info]: any) => info.type === 'optional')
                     .map(([name, info]: any) => (
-                      <div key={name} className="flex items-center justify-between p-3 bg-white/2 border border-white/5 rounded-xl">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold text-white/95">{name}</span>
-                          <span className="text-[10px] text-text-secondary mt-0.5">{info.description}</span>
+                      <div key={name} className="flex flex-col p-3 bg-white/2 border border-white/5 rounded-xl gap-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-white/95">{name}</span>
+                            <span className="text-[10px] text-text-secondary mt-0.5">{info.description}</span>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black ${info.installed ? 'bg-brand-lime/10 text-brand-lime' : 'bg-brand-orange/10 text-brand-orange'}`}>
+                            {info.installed ? 'INSTALADO' : 'NO INSTALADO'}
+                          </span>
                         </div>
-                        <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black ${info.installed ? 'bg-brand-lime/10 text-brand-lime' : 'bg-brand-orange/10 text-brand-orange'}`}>
-                          {info.installed ? 'INSTALADO' : 'NO INSTALADO'}
-                        </span>
+                        {!info.installed && (
+                          <div className="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-1.5 pl-2.5 gap-2 mt-1">
+                            <code className="font-mono text-[9px] text-white/80 select-all break-all">
+                              {getSingleInstallCommand(name, selectedLinuxDistro)}
+                            </code>
+                            <button
+                              onClick={() => {
+                                const cmd = getSingleInstallCommand(name, selectedLinuxDistro);
+                                if (navigator.clipboard && navigator.clipboard.writeText) {
+                                  navigator.clipboard.writeText(cmd)
+                                    .then(() => alert("Comando copiado al portapapeles con éxito."))
+                                    .catch(() => fallbackCopy(cmd));
+                                } else {
+                                  fallbackCopy(cmd);
+                                }
+                              }}
+                              className="p-1 bg-white/5 hover:bg-white/10 rounded text-text-secondary hover:text-white transition-all shrink-0 flex items-center justify-center"
+                              title="Copiar comando de instalación"
+                            >
+                              <ClipboardIcon size={10} />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                 </div>
@@ -300,6 +439,9 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 
               {/* Command Generator */}
               {(() => {
+                // Implement NVIDIA GPU presence check
+                const hasNvidia = !!(systemTelemetry?.capabilities?.nvenc?.available || (systemTelemetry?.gpu?.vendor && systemTelemetry.gpu.vendor.toLowerCase().includes('nvidia')));
+
                 // Gather names of missing dependencies
                 const missingRequired = Object.entries(buildDeps?.dependencies || {})
                   .filter(([, info]: any) => info.type === 'required' && !info.installed)
@@ -309,7 +451,11 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                   .filter(([, info]: any) => info.type === 'optional' && !info.installed)
                   .map(([name]) => name);
 
-                const allMissing = [...missingRequired, ...missingOptional];
+                let allMissing = [...missingRequired, ...missingOptional];
+
+                if (!hasNvidia) {
+                  allMissing = allMissing.filter(dep => dep !== 'clang' && dep !== 'nvidia-cuda-dev');
+                }
 
                 if (allMissing.length === 0) {
                   return (
@@ -318,61 +464,6 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                     </div>
                   );
                 }
-
-                // Dynamic command mapping
-                const packageMapping: Record<string, Record<string, string>> = {
-                  debian: {
-                    "cmake": "cmake",
-                    "git": "git",
-                    "make": "make",
-                    "gcc": "gcc build-essential",
-                    "pkg-config": "pkg-config",
-                    "yasm/nasm": "yasm nasm",
-                    "libx264": "libx264-dev",
-                    "libx265": "libx265-dev",
-                    "libssl": "libssl-dev",
-                    "libva": "libva-dev",
-                    "libdrm": "libdrm-dev",
-                    "avahi-daemon": "avahi-daemon avahi-utils",
-                    "libopus": "libopus-dev",
-                    "libcurl": "libcurl4-openssl-dev",
-                    "vainfo": "vainfo"
-                  },
-                  fedora: {
-                    "cmake": "cmake",
-                    "git": "git",
-                    "make": "make",
-                    "gcc": "gcc gcc-c++",
-                    "pkg-config": "pkgconfig",
-                    "yasm/nasm": "yasm nasm",
-                    "libx264": "x264-devel",
-                    "libx265": "x265-devel",
-                    "libssl": "openssl-devel",
-                    "libva": "libva-devel",
-                    "libdrm": "libdrm-devel",
-                    "avahi-daemon": "avahi",
-                    "libopus": "opus-devel",
-                    "libcurl": "libcurl-devel",
-                    "vainfo": "vainfo"
-                  },
-                  arch: {
-                    "cmake": "cmake",
-                    "git": "git",
-                    "make": "make",
-                    "gcc": "gcc",
-                    "pkg-config": "pkgconf",
-                    "yasm/nasm": "yasm nasm",
-                    "libx264": "x264",
-                    "libx265": "x265",
-                    "libssl": "openssl",
-                    "libva": "libva",
-                    "libdrm": "libdrm",
-                    "avahi-daemon": "avahi",
-                    "libopus": "opus",
-                    "libcurl": "curl",
-                    "vainfo": "vainfo"
-                  }
-                };
 
                 const distroPkgs = packageMapping[selectedLinuxDistro] || {};
                 const targetPkgs = allMissing.map(dep => distroPkgs[dep] || dep).join(' ');
@@ -392,17 +483,6 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                       <span className="text-[10px] font-black uppercase text-brand-orange tracking-wider flex items-center gap-1">
                         <ToolsIcon size={12} /> Comando de Instalación Sugerido
                       </span>
-                      <div className="flex gap-2">
-                        {(['debian', 'fedora', 'arch'] as const).map(distro => (
-                          <button
-                            key={distro}
-                            onClick={() => setSelectedLinuxDistro(distro)}
-                            className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all ${selectedLinuxDistro === distro ? 'bg-brand-orange text-black font-black' : 'bg-white/5 text-text-secondary hover:text-white'}`}
-                          >
-                            {distro === 'debian' ? 'Debian/Ubuntu' : distro === 'fedora' ? 'Fedora/RedHat' : 'Arch Linux'}
-                          </button>
-                        ))}
-                      </div>
                     </div>
                     
                     <div className="relative bg-black/60 border border-white/10 rounded-xl p-3 flex items-center justify-between gap-3">
@@ -425,6 +505,11 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                         <ClipboardIcon size={14} />
                       </button>
                     </div>
+                    {!hasNvidia && (
+                      <p className="text-[9px] text-brand-orange mt-2">
+                        * Las dependencias opcionales de NVIDIA (clang, nvidia-cuda-dev) han sido excluidas de este comando sugerido al no detectarse una GPU NVIDIA en este host.
+                      </p>
+                    )}
                     <p className="text-[9px] text-text-secondary leading-tight">
                       Este comando instalará exactamente las dependencias del sistema que se detectan ausentes ({allMissing.join(', ')}).
                     </p>

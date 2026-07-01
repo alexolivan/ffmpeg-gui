@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-01
+
+### Added
+- Implemented copyable command snippets next to missing or uninstalled dependencies in both Required and Optional lists.
+- Added `nvidia-cuda-dev` and `clang` packages to mapping configurations for Debian/Ubuntu, Fedora/RedHat, and Arch Linux.
+- Added automatic GPU vendor and telemetry capability checks to filter out NVIDIA-specific optional dependencies from the aggregated installation command when no NVIDIA GPU is detected.
+
+### Changed
+- Relocated the Linux distribution selector buttons (Debian/Ubuntu, Fedora/RedHat, Arch Linux) to the top of the environment/dependency detail view to serve as a view-wide setting.
+
 ## [1.4.2] - 2026-07-01
 
 ### Added
