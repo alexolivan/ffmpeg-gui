@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Relocated the Linux distribution selector buttons (Debian/Ubuntu, Fedora/RedHat, Arch Linux) to the top of the environment/dependency detail view to serve as a view-wide setting.
-- Compacted layout spacing in Dashboard and Services views for 1080p density optimization.
+- Compacted layout spacing in Dashboard, Services, and Scheduled Tasks views for 1080p density optimization.
 
 ## [1.4.2] - 2026-07-01
 
