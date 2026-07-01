@@ -1151,23 +1151,22 @@ class ProcessManager:
                                                 session.commit()
                                                 proc.kill()
                                                 break
-                                        
-                                        # SRT listener fallback check (check if bitrate or fps has activity)
-                                        if inp_type == 'srt' and inp.get('mode', 'listener') == 'listener':
-                                            if (now - last_activity_check).total_seconds() > 30:
-                                                last_activity_check = now
-                                                if self.srt_has_had_activity.get(process_id, False) and b_val == 0.0:
-                                                    self.logger.warning("Watchdog: SRT listener stream lost traffic activity. Restarting service.")
-                                                    from database.models import ProcessLog
-                                                    log = ProcessLog(
-                                                        process_id=process_id,
-                                                        level='ERROR',
-                                                        message="Watchdog: SRT listener has lost incoming data stream activity. Restarting service."
-                                                    )
-                                                    session.add(log)
-                                                    session.commit()
-                                                    proc.kill()
-                                                    break
+                                    # SRT listener fallback check (check if bitrate or fps has activity)
+                                    if inp_type == 'srt' and inp.get('mode', 'listener') == 'listener':
+                                        if (now - last_activity_check).total_seconds() > 30:
+                                            last_activity_check = now
+                                            if self.srt_has_had_activity.get(process_id, False) and b_val == 0.0:
+                                                self.logger.warning("Watchdog: SRT listener stream lost traffic activity. Restarting service.")
+                                                from database.models import ProcessLog
+                                                log = ProcessLog(
+                                                    process_id=process_id,
+                                                    level='ERROR',
+                                                    message="Watchdog: SRT listener has lost incoming data stream activity. Restarting service."
+                                                )
+                                                session.add(log)
+                                                session.commit()
+                                                proc.kill()
+                                                break
                 
                 await asyncio.sleep(2)
         except psutil.NoSuchProcess:
