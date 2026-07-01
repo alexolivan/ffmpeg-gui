@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Relocated the Linux distribution selector buttons (Debian/Ubuntu, Fedora/RedHat, Arch Linux) to the top of the environment/dependency detail view to serve as a view-wide setting.
 - Compacted layout spacing in Dashboard, Services, and Scheduled Tasks views for 1080p density optimization.
 
+### Fixed
+- Fixed an infinite network request loop on dependency modal open by wrapping `fetchDeps` in a stable `useCallback` hook.
+
 ## [1.4.2] - 2026-07-01
 
 ### Added
