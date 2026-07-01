@@ -403,6 +403,73 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
 
+def parse_vainfo_capabilities() -> dict:
+    """Run vainfo and parse supported profiles and entrypoints for hardware acceleration capabilities."""
+    import shutil
+    import subprocess
+    import re
+    
+    caps = {
+        "decoders": [],
+        "encoders": []
+    }
+    
+    vainfo_bin = shutil.which("vainfo")
+    if not vainfo_bin:
+        return caps
+        
+    try:
+        env = os.environ.copy()
+        env["DISPLAY"] = ""
+        env["XDG_RUNTIME_DIR"] = ""
+        
+        res = subprocess.run(
+            [vainfo_bin],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3,
+            env=env
+        )
+        output = (res.stdout or "") + "\n" + (res.stderr or "")
+        
+        pattern = re.compile(r"^\s*(VAProfile[a-zA-Z0-9_]+)\s*:\s*(VAEntrypoint[a-zA-Z0-9_]+)", re.MULTILINE)
+        for match in pattern.finditer(output):
+            profile = match.group(1)
+            entrypoint = match.group(2)
+            
+            profile_lower = profile.lower()
+            codec_name = None
+            
+            if "h264" in profile_lower or "avc" in profile_lower:
+                codec_name = "h264"
+            elif "hevc" in profile_lower or "h265" in profile_lower:
+                codec_name = "hevc"
+            elif "vp9" in profile_lower:
+                codec_name = "vp9"
+            elif "vp8" in profile_lower:
+                codec_name = "vp8"
+            elif "mpeg2" in profile_lower:
+                codec_name = "mpeg2"
+            elif "jpeg" in profile_lower:
+                codec_name = "mjpeg"
+            elif "av1" in profile_lower:
+                codec_name = "av1"
+                
+            if codec_name:
+                entry_lower = entrypoint.lower()
+                if "enc" in entry_lower:
+                    if codec_name not in caps["encoders"]:
+                        caps["encoders"].append(codec_name)
+                elif "vld" in entry_lower:
+                    if codec_name not in caps["decoders"]:
+                        caps["decoders"].append(codec_name)
+    except Exception as e:
+        logger.warning(f"Failed to parse vainfo: {e}")
+        
+    return caps
+
+
 @app.get("/system/capabilities")
 def get_system_capabilities():
     """Detect host system hardware capabilities (VAAPI, NVENC, V4L2, ALSA, DeckLink)."""
@@ -527,8 +594,18 @@ def get_system_capabilities():
         except Exception as e:
             logger.warning(f"Error querying active ffmpeg binary capabilities at {ffmpeg_bin}: {e}")
 
+    # VA-API codecs dynamic discovery
+    vaapi_caps = parse_vainfo_capabilities()
+    vainfo_installed = shutil.which("vainfo") is not None
+
     return {
-        "vaapi": {"available": vaapi_available, "details": vaapi_details},
+        "vaapi": {
+            "available": vaapi_available,
+            "details": vaapi_details,
+            "encoders": vaapi_caps["encoders"],
+            "decoders": vaapi_caps["decoders"],
+            "vainfo_installed": vainfo_installed
+        },
         "nvenc": {"available": nvenc_available, "details": nvenc_details},
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
         "alsa": {"available": alsa_available, "details": alsa_details},

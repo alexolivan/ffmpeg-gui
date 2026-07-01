@@ -664,7 +664,13 @@ export const AUDIO_CODECS: CodecDefinition[] = [
  * A codec with requiresBuildOption is hidden unless the build has that option enabled.
  */
 export interface SystemCapabilities {
-  vaapi: { available: boolean; details: string };
+  vaapi: {
+    available: boolean;
+    details: string;
+    encoders?: string[];
+    decoders?: string[];
+    vainfo_installed?: boolean;
+  };
   nvenc: { available: boolean; details: string };
   v4l2: { available: boolean; details: string };
   alsa: { available: boolean; details: string };

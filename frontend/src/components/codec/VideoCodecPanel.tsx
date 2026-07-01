@@ -96,6 +96,29 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
             💡 Required for professional live playout over NDI networks.
           </span>
         )}
+
+        {/* VA-API Hardware Incompatibility Warnings */}
+        {selected?.category === 'hw_vaapi' && systemCapabilities?.vaapi?.available && systemCapabilities.vaapi.vainfo_installed === false && (
+          <div className="mt-2 p-2 bg-brand-orange/10 border border-brand-orange/20 rounded-lg text-[10px] text-brand-orange/90 leading-normal">
+            <strong>⚠️ Diagnóstico VA-API limitado:</strong> El comando <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code> no está instalado en el servidor. Instálalo (<code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">apt install vainfo</code>) para validar si tu GPU soporta este códec.
+          </div>
+        )}
+
+        {codecId === 'hevc_vaapi' && systemCapabilities?.vaapi?.vainfo_installed && systemCapabilities.vaapi.encoders && !systemCapabilities.vaapi.encoders.includes('hevc') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación HEVC por hardware</strong> vía VA-API (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona <strong>H.264 — VAAPI</strong> o un códec por software.</p>
+          </div>
+        )}
+
+        {codecId === 'h264_vaapi' && systemCapabilities?.vaapi?.vainfo_installed && systemCapabilities.vaapi.encoders && !systemCapabilities.vaapi.encoders.includes('h264') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación H.264 por hardware</strong> vía VA-API (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona un códec por software.</p>
+          </div>
+        )}
       </div>
 
       {/* Codec Parameters */}

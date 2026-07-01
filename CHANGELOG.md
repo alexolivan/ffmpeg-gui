@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-01
+
+### Added
+- Implemented real-time hardware compatibility checking for VA-API codecs: The system dynamically parses `vainfo` profiles (finding specific hardware encoders/decoders) and renders a warning block in `VideoCodecPanel` if the selected hardware codec is not supported by the host's active GPU (e.g. attempting HEVC encoding on a GPU that only supports H.264).
+
 ## [1.3.1] - 2026-07-01
 
 ### Added
