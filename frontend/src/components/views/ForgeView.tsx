@@ -27,7 +27,6 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libdrm": "libdrm-dev",
     "avahi-daemon": "avahi-daemon avahi-utils",
     "libopus": "libopus-dev",
-    "libcurl": "libcurl4-openssl-dev",
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "nvidia-cuda-dev",
     "clang": "clang"
@@ -46,7 +45,6 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libdrm": "libdrm-devel",
     "avahi-daemon": "avahi",
     "libopus": "opus-devel",
-    "libcurl": "libcurl-devel",
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "cuda-toolkit",
     "clang": "clang"
@@ -65,7 +63,6 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libdrm": "libdrm",
     "avahi-daemon": "avahi",
     "libopus": "opus",
-    "libcurl": "curl",
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "cuda",
     "clang": "clang"

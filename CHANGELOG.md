@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Resolved a race condition where aborting a build allowed starting a rebuild immediately before the previous compilation background task and subprocesses finished cleaning up, causing log file contamination and git checkout errors.
 
+### Removed
+- Cleaned up residual `libcurl` references and package mappings from the frontend.
+
 ## [1.5.1] - 2026-07-01
 
 ### Fixed
