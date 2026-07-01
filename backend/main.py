@@ -1526,47 +1526,52 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
 
     async def _run_compile():
         try:
-            result = await build_manager.run_build(
-                build_id=build_id,
-                ffmpeg_version=build.ffmpeg_version,
-                srt_version=build.srt_version,
-                options=build.build_options,
-                sdk_paths=build.sdk_paths,
-                sources_cleaned=clean or build.sources_cleaned,
-                log_callback=_log_callback,
-                auto_clean=build.auto_clean or False,
-            )
-            # Persist results to DB
-            with SessionLocal() as session:
-                db_build = session.query(FfmpegBuild).get(build_id)
-                if result.get("success"):
-                    db_build.status = "ready"
-                    db_build.ffmpeg_binary = result.get("ffmpeg_binary")
-                    db_build.ffprobe_binary = result.get("ffprobe_binary")
-                    db_build.ffmpeg_version_output = result.get("version_output")
-                    db_build.disk_usage_mb = result.get("disk_usage_mb")
-                    db_build.built_at = datetime.datetime.utcnow()
-                    db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
-                    if result.get("sdk_paths"):
-                        # SQLAlchemy flag mutation for JSON fields
-                        from sqlalchemy.orm.attributes import flag_modified
-                        db_build.sdk_paths = result.get("sdk_paths")
-                        flag_modified(db_build, "sdk_paths")
-                else:
-                    db_build.status = "failed"
-                    db_build.build_log_summary = result.get("error", "Unknown error")
-                session.commit()
-        except Exception as e:
-            logger.error(f"Build {build_id} failed with exception: {str(e)}")
-            await _log_callback(f"\nFATAL ERROR: {str(e)}\n")
-            with SessionLocal() as session:
-                db_build = session.query(FfmpegBuild).get(build_id)
-                if db_build:
-                    db_build.status = "failed"
-                    db_build.build_log_summary = str(e)
+            try:
+                result = await build_manager.run_build(
+                    build_id=build_id,
+                    ffmpeg_version=build.ffmpeg_version,
+                    srt_version=build.srt_version,
+                    options=build.build_options,
+                    sdk_paths=build.sdk_paths,
+                    sources_cleaned=clean or build.sources_cleaned,
+                    log_callback=_log_callback,
+                    auto_clean=build.auto_clean or False,
+                )
+                # Persist results to DB
+                with SessionLocal() as session:
+                    db_build = session.query(FfmpegBuild).get(build_id)
+                    if result.get("success"):
+                        db_build.status = "ready"
+                        db_build.ffmpeg_binary = result.get("ffmpeg_binary")
+                        db_build.ffprobe_binary = result.get("ffprobe_binary")
+                        db_build.ffmpeg_version_output = result.get("version_output")
+                        db_build.disk_usage_mb = result.get("disk_usage_mb")
+                        db_build.built_at = datetime.datetime.utcnow()
+                        db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
+                        if result.get("sdk_paths"):
+                            # SQLAlchemy flag mutation for JSON fields
+                            from sqlalchemy.orm.attributes import flag_modified
+                            db_build.sdk_paths = result.get("sdk_paths")
+                            flag_modified(db_build, "sdk_paths")
+                    else:
+                        db_build.status = "failed"
+                        db_build.build_log_summary = result.get("error", "Unknown error")
                     session.commit()
+            except Exception as e:
+                logger.error(f"Build {build_id} failed with exception: {str(e)}")
+                await _log_callback(f"\nFATAL ERROR: {str(e)}\n")
+                with SessionLocal() as session:
+                    db_build = session.query(FfmpegBuild).get(build_id)
+                    if db_build:
+                        db_build.status = "failed"
+                        db_build.build_log_summary = str(e)
+                        session.commit()
+        finally:
+            if build_manager.current_task == asyncio.current_task():
+                build_manager.current_task = None
 
-    background_tasks.add_task(_run_compile)
+    task = asyncio.create_task(_run_compile())
+    build_manager.current_task = task
     return {"status": "ok", "message": "Compilation started"}
 
 @app.post("/builds/{build_id}/stop")

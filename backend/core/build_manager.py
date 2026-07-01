@@ -26,6 +26,7 @@ class BuildManager:
         self.active_build_id = None
         self.logger = logging.getLogger("BuildManager")
         self.current_process = None
+        self.current_task = None
 
     # ── Path helpers ──────────────────────────────────────────────
 
@@ -660,8 +661,12 @@ class BuildManager:
                     self.current_process.kill()
                 except Exception:
                     pass
-            self.is_building = False
-            self.active_build_id = None
+
+            if self.current_task:
+                try:
+                    await self.current_task
+                except Exception:
+                    pass
             return True
         return False
 
