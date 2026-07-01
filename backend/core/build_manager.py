@@ -53,6 +53,7 @@ class BuildManager:
             "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo"},
             "clang": {"type": "optional", "description": "Compilador LLVM/Clang (requerido para filtros CUDA)"},
             "avahi-daemon": {"type": "optional", "description": "Servicio de descubrimiento mDNS/DNS-SD (requerido para runtime de NDI)"},
+            "vainfo": {"type": "optional", "description": "Herramienta de diagnóstico para aceleración de vídeo VA-API (vainfo)"},
         }
         
         results = {}
