@@ -233,7 +233,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             )}
 
-            {Object.entries(systemTelemetry.capabilities || {}).map(([key, value]: [string, any]) => (
+            {Object.entries(systemTelemetry.capabilities || {})
+              .filter(([key]) => key !== 'ffmpeg')
+              .map(([key, value]: [string, any]) => (
               <div key={key} className="flex flex-col gap-1 p-3 bg-white/2 border border-white/5 rounded-xl">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-xs uppercase text-white font-mono">{key}</span>
