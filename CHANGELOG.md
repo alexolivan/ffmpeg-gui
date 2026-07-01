@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-07-01
+
+### Added
+- Added stale git lock file cleanup (`index.lock`) before repository updates in `BuildManager`.
+
+### Changed
+- Configured non-interactive git environment variables for all subprocesses spawned by `BuildManager`.
+- Configured build subprocesses to run in a separate process group (`preexec_fn=os.setsid`) and updated `stop_build` to terminate the entire process group.
+
+### Fixed
+- Fixed a critical indentation bug in `ProcessManager._watchdog` that prevented SRT listener data activity checks from running and caused watchdog tests to hang.
+
 ## [1.4.1] - 2026-07-01
 
 ### Fixed
