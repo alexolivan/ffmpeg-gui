@@ -286,6 +286,7 @@ class BuildManager:
                     await log_callback(
                         f"SRT sources exist, checking out tag {srt_version}...\n"
                     )
+                    self._clear_stale_git_locks(srt_src)
                     await self._run_logged_cmd(
                         ["git", "fetch", "--tags"], log_callback, cwd=srt_src
                     )
@@ -336,6 +337,7 @@ class BuildManager:
                     )
                 else:
                     await log_callback("Fetching updates for nv-codec-headers...\n")
+                    self._clear_stale_git_locks(nv_src)
                     await self._run_logged_cmd(
                         ["git", "fetch", "--tags"], log_callback, cwd=nv_src
                     )
@@ -397,6 +399,7 @@ class BuildManager:
                     ["make", "clean"], log_callback, cwd=ffmpeg_src,
                     ignore_errors=True,
                 )
+                self._clear_stale_git_locks(ffmpeg_src)
                 await self._run_logged_cmd(
                     ["git", "fetch", "--tags"], log_callback, cwd=ffmpeg_src
                 )
@@ -650,9 +653,18 @@ class BuildManager:
     # ── Stop running build ────────────────────────────────────────
 
     async def stop_build(self) -> bool:
-        """Kill the currently running build subprocess."""
+        """Kill the currently running build subprocess and its process group."""
         if self.current_process:
-            self.current_process.kill()
+            import signal
+            try:
+                pgid = os.getpgid(self.current_process.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception as e:
+                self.logger.error(f"Failed to killpg process group: {e}")
+                try:
+                    self.current_process.kill()
+                except Exception:
+                    pass
             self.is_building = False
             self.active_build_id = None
             return True
@@ -660,16 +672,36 @@ class BuildManager:
 
     # ── Internal helpers ──────────────────────────────────────────
 
+    def _clear_stale_git_locks(self, repo_path: str):
+        """Remove any stale git lock files from a repository directory."""
+        if not os.path.exists(repo_path):
+            return
+        lock_file = os.path.join(repo_path, ".git", "index.lock")
+        if os.path.exists(lock_file):
+            self.logger.warning(f"Found stale git index lock at {lock_file}, removing it.")
+            try:
+                os.remove(lock_file)
+            except Exception as e:
+                self.logger.error(f"Failed to remove stale git lock {lock_file}: {e}")
+
     async def _run_logged_cmd(self, cmd, log_callback, cwd=None, env=None,
                               ignore_errors=False):
         """Execute a command, streaming stdout lines to the log callback."""
         await log_callback(f"▶ {shlex.join(cmd)}\n")
+        custom_env = os.environ.copy()
+        if env:
+            custom_env.update(env)
+        custom_env["GIT_TERMINAL_PROMPT"] = "0"
+        custom_env["GIT_ASKPASS"] = "true"
+        custom_env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+
         self.current_process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=cwd,
-            env=env,
+            env=custom_env,
+            preexec_fn=os.setsid,
         )
 
         while True:
@@ -687,10 +719,16 @@ class BuildManager:
 
     async def _get_command_output(self, cmd) -> str:
         """Run a command and return its full stdout as a string."""
+        custom_env = os.environ.copy()
+        custom_env["GIT_TERMINAL_PROMPT"] = "0"
+        custom_env["GIT_ASKPASS"] = "true"
+        custom_env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            env=custom_env,
         )
         stdout, _ = await proc.communicate()
         return stdout.decode().strip()
