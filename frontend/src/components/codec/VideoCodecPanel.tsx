@@ -12,6 +12,7 @@ interface VideoCodecPanelProps {
   params: Record<string, string | number | boolean>;
   buildOptions?: Record<string, boolean>;
   systemCapabilities?: SystemCapabilities;
+  outputType?: string;
   onChange: (codecId: string, params: Record<string, string | number | boolean>) => void;
 }
 
@@ -20,11 +21,12 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
   params,
   buildOptions,
   systemCapabilities,
+  outputType,
   onChange,
 }) => {
   const available = React.useMemo(() => {
-    return getAvailableVideoCodecs(buildOptions, systemCapabilities);
-  }, [buildOptions, systemCapabilities]);
+    return getAvailableVideoCodecs(buildOptions, systemCapabilities, outputType);
+  }, [buildOptions, systemCapabilities, outputType]);
   const selected = available.find(c => c.id === codecId) || available[0];
 
   // Auto-heal selected codec if the current one becomes unavailable
