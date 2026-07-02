@@ -93,6 +93,74 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   const [previewCmd, setPreviewCmd] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [systemCapabilities, setSystemCapabilities] = useState<SystemCapabilities | undefined>();
+  const [existingConfigs, setExistingConfigs] = useState<any[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/processes')
+        .then(r => r.ok ? r.json() : [])
+        .then(data => data.map((x: any) => ({ ...x, is_task: false }))),
+      fetch('/tasks')
+        .then(r => r.ok ? r.json() : [])
+        .then(data => data.map((x: any) => ({ ...x, is_task: true })))
+    ]).then(([procs, tsks]) => {
+      setExistingConfigs([...procs, ...tsks]);
+    }).catch(() => {});
+  }, []);
+
+  const getNextAvailablePort = (basePort: number): string => {
+    let port = basePort;
+    const used = new Set<number>();
+    for (const item of existingConfigs) {
+      if (initialConfig) {
+        const isSelfTask = !!isTask === !!item.is_task;
+        if (isSelfTask) {
+          if (initialConfig.id !== undefined && initialConfig.id !== null && item.id === initialConfig.id) continue;
+          if (initialConfig.name && item.name === initialConfig.name) continue;
+        }
+      }
+      const out = item.output_config;
+      if (out && ['udp', 'srt', 'rtp'].includes(out.type)) {
+        const p = Number(out.port);
+        if (p && !isNaN(p)) used.add(p);
+      }
+    }
+    while (used.has(port)) {
+      port++;
+    }
+    return String(port);
+  };
+
+  const checkPortCollision = (portStr: string, hostStr: string): any | null => {
+    const port = Number(portStr);
+    if (!port || isNaN(port)) return null;
+    const host = (hostStr || '').trim() || '127.0.0.1';
+
+    for (const item of existingConfigs) {
+      if (initialConfig) {
+        const isSelfTask = !!isTask === !!item.is_task;
+        if (isSelfTask) {
+          if (initialConfig.id !== undefined && initialConfig.id !== null && item.id === initialConfig.id) continue;
+          if (initialConfig.name && item.name === initialConfig.name) continue;
+        }
+      }
+      const out = item.output_config;
+      if (out && ['udp', 'srt', 'rtp'].includes(out.type)) {
+        const itemPort = Number(out.port);
+        const itemHost = (out.host || '').trim() || '127.0.0.1';
+        if (itemPort === port) {
+          if (host === '0.0.0.0' || itemHost === '0.0.0.0' || host === itemHost) {
+            return item;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  // Temporary references to satisfy unused local checks in intermediate Task 1 commit
+  void getNextAvailablePort;
+  void checkPortCollision;
 
   const defaultVideoCodec = VIDEO_CODECS[0];
   const defaultAudioCodec = AUDIO_CODECS[0];
