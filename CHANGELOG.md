@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.6.0] - 2026-07-02
 
 ### Added
-- Added static compilation support for `libdatachannel` (version selector populated via remote git tags from GitHub) to enable native WebRTC WHIP muxing in FFmpeg.
+- Added support for native WebRTC WHIP muxing in FFmpeg via OpenSSL backend configuration flag (`--enable-openssl`).
 - Added `libvpx` to the optional pre-flight dependency checker, with auto-detection that automatically appends `--enable-libvpx` to compile options to enable VP8/VP9.
 - Added validation constraints to abort compiling WHIP options if an FFmpeg version older than 8.0 is selected.
 - Expanded `vainfo` telemetry parser to extract the GPU driver version, libva library version, and VA-API version.
