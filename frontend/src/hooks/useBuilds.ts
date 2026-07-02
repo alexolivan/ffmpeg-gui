@@ -95,7 +95,6 @@ export function useBuilds(activeView: string) {
         `¿Deseas realizar una compilación limpia (Clean Compile)?\n\nEsto eliminará las fuentes temporales previas y volverá a descargar y compilar todo de cero, lo cual es muy recomendable para solucionar problemas de dependencias.`
       );
     }
-    setTerminalBuild({ id, name: build?.name || `Build #${id}` });
     try {
       const url = clean ? `${API}/builds/${id}/compile?clean=true` : `${API}/builds/${id}/compile`;
       const res = await fetch(url, { method: 'POST' });
@@ -106,7 +105,8 @@ export function useBuilds(activeView: string) {
           console.error("Server returned error:", res.status);
           alert("Error al iniciar la compilación. Revisa la consola o los logs del servidor.");
         }
-        setTerminalBuild(null);
+      } else {
+        setTerminalBuild({ id, name: build?.name || `Build #${id}` });
       }
       refreshBuilds();
     } catch (err) {
