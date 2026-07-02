@@ -481,11 +481,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                           <option key={tag} value={tag}>{tag}</option>
                         ))}
                       </select>
-                      {buildDeps?.dependencies?.libssl?.installed === false && (
-                        <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[9px] p-1.5 rounded-lg leading-snug font-bold">
-                          ⚠️ Falta libssl (OpenSSL). Habilita el paquete de desarrollo en el sistema.
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -499,13 +494,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                   {options.whip && (
                     <div className="space-y-1.5 mt-1 animate-in slide-in-from-top-2 duration-300">
                       <p className="text-[10px] text-text-secondary leading-snug">
-                        Habilita el muxer nativo de WHIP para streaming en tiempo real. Esta opción requiere que OpenSSL esté instalado en el sistema.
+                        Habilita el muxer nativo de WHIP para streaming en tiempo real.
                       </p>
-                      {buildDeps?.dependencies?.libssl?.installed === false && (
-                        <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[9px] p-1.5 rounded-lg leading-snug font-bold">
-                          ⚠️ Falta libssl (OpenSSL). Habilita el paquete de desarrollo en el sistema para poder compilar.
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>

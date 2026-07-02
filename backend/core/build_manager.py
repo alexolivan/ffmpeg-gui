@@ -83,7 +83,7 @@ class BuildManager:
         libs = {
             "libx264": {"pkg": "x264", "type": "required", "description": "Biblioteca para codificación H.264/AVC (libx264)"},
             "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
-            "libssl": {"pkg": "openssl", "type": "optional", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
+            "libssl": {"pkg": "openssl", "type": "required", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
             "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
             "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"},
             "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)"}
@@ -247,12 +247,6 @@ class BuildManager:
                         return {"success": False, "error": f"WHIP requires FFmpeg 8.0 or newer (selected: {ffmpeg_version})"}
                 except ValueError:
                     pass
-
-            # Verify OpenSSL (libssl-dev) is installed
-            dep_check = self.check_dependencies()
-            if not dep_check.get("dependencies", {}).get("libssl", {}).get("installed"):
-                await log_callback("ERROR: WHIP compilation requires OpenSSL (libssl-dev / openssl-devel) to be installed.\n")
-                return {"success": False, "error": "WHIP compilation requires OpenSSL to be installed."}
 
         self.is_building = True
         self.active_build_id = build_id
@@ -435,6 +429,7 @@ class BuildManager:
                 "--enable-nonfree",
                 "--enable-libx264",
                 "--enable-libx265",
+                "--enable-openssl",
             ]
             # Automatically enable libopus if available on the system
             dep_check = self.check_dependencies()
@@ -447,8 +442,6 @@ class BuildManager:
 
             if options.get("libsrt"):
                 config_flags.append("--enable-libsrt")
-            if options.get("whip"):
-                config_flags.append("--enable-openssl")
             if options.get("vaapi"):
                 config_flags.append("--enable-vaapi")
 

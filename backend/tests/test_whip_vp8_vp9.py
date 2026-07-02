@@ -58,7 +58,7 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
         # Mock dependency checker to report libssl and libvpx as installed
         mock_check_deps.return_value = {
             "dependencies": {
-                "libssl": {"pkg": "openssl", "type": "optional", "installed": True, "description": "OpenSSL"},
+                "libssl": {"pkg": "openssl", "type": "required", "installed": True, "description": "OpenSSL"},
                 "libvpx": {"pkg": "vpx", "type": "optional", "installed": True, "description": "VP8/VP9"},
                 "libopus": {"pkg": "opus", "type": "optional", "installed": False, "description": "Opus"}
             }
@@ -78,35 +78,7 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(res["success"])
         self.assertIn("requires FFmpeg 8.0 or newer", res["error"])
 
-        # 2. Validation test: OpenSSL missing should fail validation if whip option is selected
-        mock_check_deps.return_value = {
-            "dependencies": {
-                "libssl": {"pkg": "openssl", "type": "optional", "installed": False, "description": "OpenSSL"},
-                "libvpx": {"pkg": "vpx", "type": "optional", "installed": True, "description": "VP8/VP9"}
-            }
-        }
-        res = await build_manager.run_build(
-            build_id=9999,
-            ffmpeg_version="n8.1.1",
-            srt_version=None,
-            options={"whip": True},
-            sdk_paths={},
-            sources_cleaned=False,
-            log_callback=log_callback
-        )
-        self.assertFalse(res["success"])
-        self.assertIn("requires OpenSSL", res["error"])
-
-        # Restore OpenSSL to installed status for compile success test
-        mock_check_deps.return_value = {
-            "dependencies": {
-                "libssl": {"pkg": "openssl", "type": "optional", "installed": True, "description": "OpenSSL"},
-                "libvpx": {"pkg": "vpx", "type": "optional", "installed": True, "description": "VP8/VP9"},
-                "libopus": {"pkg": "opus", "type": "optional", "installed": False, "description": "Opus"}
-            }
-        }
-
-        # 3. Validation test: FFmpeg version >= 8.0 should pass validation and configure with openssl & vpx
+        # 2. Validation test: FFmpeg version >= 8.0 should pass validation and configure with openssl & vpx
         with patch.object(build_manager, "get_src_path", return_value="/tmp/dummy_src"), \
              patch.object(build_manager, "get_install_path", return_value="/tmp/dummy_install"), \
              patch("os.makedirs"), \
