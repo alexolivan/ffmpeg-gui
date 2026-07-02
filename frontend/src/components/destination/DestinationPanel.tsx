@@ -861,9 +861,9 @@ const renderBroadcastRecipe = (type: string) => {
     srt: {
       title: "SRT Stream (Low Latency WAN)",
       video: "H.265 (HEVC) / H.264 (AVC)",
-      audio: "Opus (libopus) / AAC",
+      audio: "Opus (libopus) / AAC / MP2",
       container: "MPEG-TS",
-      details: "Recomendado para enlaces WAN inestables de contribución punto a punto. La combinación de HEVC con Opus ofrece máxima eficiencia y bajísima latencia."
+      details: "Recomendado para enlaces WAN inestables de contribución punto a punto. La combinación de HEVC con Opus o MP2 ofrece excelente eficiencia y tolerancia a pérdidas."
     },
     rtmp: {
       title: "RTMP / RTMPS Ingest",
@@ -874,10 +874,10 @@ const renderBroadcastRecipe = (type: string) => {
     },
     whip: {
       title: "WHIP Push (WebRTC Live Ingest)",
-      video: "H.264 (AVC) — zero-latency preset",
+      video: "H.264 (AVC) / VP8 / VP9 — zero-latency settings",
       audio: "Opus (libopus)",
       container: "WebRTC Payload",
-      details: "Ideal para monitorización interactiva sub-segundo en MediaMTX o Janus. Requiere obligatoriamente codificación en tiempo real sin búfer (tune: zerolatency)."
+      details: "Ideal para monitorización interactiva sub-segundo en MediaMTX o Janus. Se admiten códecs H.264, VP8 y VP9 (hardware y software). Requiere obligatoriamente tune: zerolatency."
     },
     ndi: {
       title: "NDI Output (Studio IP LAN)",
@@ -888,10 +888,38 @@ const renderBroadcastRecipe = (type: string) => {
     },
     decklink: {
       title: "Blackmagic DeckLink (Physical SDI/HDMI)",
-      video: "rawvideo (UYVY 4:2:2 sin compresión)",
-      audio: "pcm_s16le (PCM 16-bit)",
+      video: "rawvideo (UYVY 4:2:2 sin compresión) / v210",
+      audio: "pcm_s16le / pcm_s24le (PCM)",
       container: "Dispositivo físico",
       details: "Salida de hardware directa para monitores profesionales o matrices SDI. Los códecs deben ser configurados estrictamente sin compresión en la pestaña de códecs."
+    },
+    file: {
+      title: "Grabación Local (Archivo)",
+      video: "ProRes (edición) / H.264 / H.265 (distribución)",
+      audio: "PCM (16/24-bit) / AAC-LC",
+      container: "MP4 / MKV / MOV / TS",
+      details: "Muxer universal para volcado a disco local. Elige ProRes para flujos de edición sin pérdidas o H.264/H.265 para distribución final y compacta."
+    },
+    hls: {
+      title: "HLS Live Streaming (HTTP Live)",
+      video: "H.264 (AVC) / H.265 (HEVC)",
+      audio: "AAC-LC / Opus",
+      container: "HLS (.m3u8 + segmentos)",
+      details: "Ideal para distribución masiva web. Genera playlists (.m3u8) y segmentos indexados. Requiere códecs con amplio soporte en navegadores móviles."
+    },
+    icecast: {
+      title: "Icecast2 (Audio Streaming)",
+      video: "Ninguno (Solo Audio)",
+      audio: "MP3 / AAC / Opus",
+      container: "ADTS / Ogg / MP3 Stream",
+      details: "Destinado a radio por internet o streaming de audio puro. Permite ingesta remota hacia servidores Icecast2."
+    },
+    rtp: {
+      title: "RTP Session Stream",
+      video: "H.264 (AVC)",
+      audio: "AAC / Opus / PCM",
+      container: "RTP Session",
+      details: "Flujo unicast directo sin contenedor de transporte pesado, comúnmente utilizado para contribuciones de bajísima latencia o integraciones con sistemas legacy."
     }
   };
 
