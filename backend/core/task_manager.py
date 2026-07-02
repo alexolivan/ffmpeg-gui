@@ -824,7 +824,8 @@ class TaskManager:
                 session.commit()
 
     async def _log_reader(self, execution_id: int, proc):
-        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s).*speed=\s*([\d.]+x)")
+        # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs)
+        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         buffer = bytearray()
         
         while True:

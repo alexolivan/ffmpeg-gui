@@ -958,8 +958,8 @@ class ProcessManager:
 
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process):
         import re
-        # Regex for ffmpeg status line
-        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s).*speed=\s*([\d.]+x)")
+        # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs)
+        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         
         buffer = bytearray()
         while True:
@@ -1067,11 +1067,15 @@ class ProcessManager:
             watchdog_start_time = datetime.utcnow()
             
             while proc.returncode is None:
-                # non-blocking call to compute CPU usage since last call
-                cpu_raw = p.cpu_percent(interval=None)
-                num_cores = psutil.cpu_count() or 1
-                cpu = cpu_raw / num_cores
-                mem = p.memory_info().rss / (1024 * 1024)  # MB
+                try:
+                    # non-blocking call to compute CPU usage since last call
+                    cpu_raw = p.cpu_percent(interval=None)
+                    num_cores = psutil.cpu_count() or 1
+                    cpu = cpu_raw / num_cores
+                    mem = p.memory_info().rss / (1024 * 1024)  # MB
+                except Exception as e:
+                    self.logger.error(f"Watchdog failed to get psutil metrics for process {process_id} (PID {proc.pid}): {e}")
+                    cpu, mem = 0, 0
                 
                 with self.db_session_factory() as session:
                     from database.models import MediaProcess
