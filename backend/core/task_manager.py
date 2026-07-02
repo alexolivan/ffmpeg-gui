@@ -850,20 +850,23 @@ class TaskManager:
     def _handle_log_line(self, execution_id: int, msg: str, status_re):
         self.last_activity[execution_id] = datetime.utcnow()
         level = "ERROR" if any(kw in msg.lower() for kw in ["error", "failed", "invalid"]) else "INFO"
-        with self.db_session_factory() as session:
-            match = status_re.search(msg)
-            if match:
-                fps, bitrate, speed = match.groups()
-                execution = session.query(TaskExecution).get(execution_id)
-                if execution:
-                    execution.fps = fps
-                    execution.bitrate = bitrate
-                    execution.speed = speed
-                    session.commit()
-            
-            log = TaskExecutionLog(execution_id=execution_id, level=level, message=msg)
-            session.add(log)
-            session.commit()
+        try:
+            with self.db_session_factory() as session:
+                match = status_re.search(msg)
+                if match:
+                    fps, bitrate, speed = match.groups()
+                    execution = session.query(TaskExecution).get(execution_id)
+                    if execution:
+                        execution.fps = fps
+                        execution.bitrate = bitrate
+                        execution.speed = speed
+                        session.commit()
+                
+                log = TaskExecutionLog(execution_id=execution_id, level=level, message=msg)
+                session.add(log)
+                session.commit()
+        except Exception as e:
+            self.logger.error(f"Failed to write log line/stats to DB for execution {execution_id}: {e}")
 
     async def _watchdog(self, execution_id: int, proc, limit_sec):
         start_time = datetime.utcnow()
@@ -896,12 +899,15 @@ class TaskManager:
                 except Exception:
                     cpu, mem = 0, 0
                 
-                with self.db_session_factory() as session:
-                    execution = session.query(TaskExecution).get(execution_id)
-                    if execution:
-                        execution.cpu_usage = cpu
-                        execution.ram_usage = mem
-                        session.commit()
+                try:
+                    with self.db_session_factory() as session:
+                        execution = session.query(TaskExecution).get(execution_id)
+                        if execution:
+                            execution.cpu_usage = cpu
+                            execution.ram_usage = mem
+                            session.commit()
+                except Exception as e:
+                    self.logger.error(f"Watchdog failed to update task metrics in DB for execution {execution_id}: {e}")
 
                 await asyncio.sleep(1)
         except Exception:

@@ -1077,100 +1077,103 @@ class ProcessManager:
                     self.logger.error(f"Watchdog failed to get psutil metrics for process {process_id} (PID {proc.pid}): {e}")
                     cpu, mem = 0, 0
                 
-                with self.db_session_factory() as session:
-                    from database.models import MediaProcess
-                    media_proc = session.query(MediaProcess).get(process_id)
-                    if media_proc:
-                        media_proc.cpu_usage = int(cpu)
-                        media_proc.ram_usage = int(mem)
-                        session.commit()
-                        
-                        # Parse bitrate and fps safely to check for activity
-                        import re
-                        def parse_val(s):
-                            if not s:
-                                return 0.0
-                            nums = re.findall(r"[\d.]+", s)
-                            if not nums:
-                                return 0.0
-                            try:
-                                return float(nums[0])
-                            except ValueError:
-                                return 0.0
-
-                        b_val = parse_val(media_proc.bitrate)
-                        f_val = parse_val(media_proc.fps)
-                        is_active = (b_val > 0.0)
-
-                        if is_active:
-                            self.srt_has_had_activity[process_id] = True
-                            self.restart_counts[process_id] = 0
-                        elif (datetime.utcnow() - watchdog_start_time).total_seconds() > 60:
-                            # Reset restart counts if running successfully for over 60s
-                            self.restart_counts[process_id] = 0
-                        
-                        # Active stream check (UDP, RTP)
-                        if media_proc.type == 'service' and media_proc.watchdog_enabled and not is_active:
-                            now = datetime.utcnow()
-                            if (now - last_ffprobe_check).total_seconds() > 30:
-                                last_ffprobe_check = now
-                                input_cfg = media_proc.input_config
-                                inputs_to_check = []
-                                if 'input1' in input_cfg:
-                                    inputs_to_check.append(input_cfg['input1'])
-                                    if input_cfg.get('use_secondary_input') and 'input2' in input_cfg:
-                                        inputs_to_check.append(input_cfg['input2'])
-                                else:
-                                    inputs_to_check.append(input_cfg)
-                                
-                                for inp in inputs_to_check:
-                                    inp_type = inp.get('type')
-                                    if inp_type in ('udp', 'rtp'):
-                                        url = None
-                                        if inp_type == 'udp':
-                                            url = f"udp://{inp.get('host', '')}:{inp.get('port', '1234')}"
-                                        elif inp_type == 'rtp':
-                                            url = f"rtp://{inp.get('host', '')}:{inp.get('port', '5004')}"
-                                        
-                                        if url:
-                                            # Find build-specific ffprobe
-                                            ffprobe_bin = "ffprobe"
-                                            if media_proc.ffmpeg_build_id:
-                                                from database.models import FfmpegBuild
-                                                build = session.query(FfmpegBuild).get(media_proc.ffmpeg_build_id)
-                                                if build and build.ffprobe_binary and os.path.exists(build.ffprobe_binary):
-                                                    ffprobe_bin = build.ffprobe_binary
+                try:
+                    with self.db_session_factory() as session:
+                        from database.models import MediaProcess
+                        media_proc = session.query(MediaProcess).get(process_id)
+                        if media_proc:
+                            media_proc.cpu_usage = int(cpu)
+                            media_proc.ram_usage = int(mem)
+                            session.commit()
+                            
+                            # Parse bitrate and fps safely to check for activity
+                            import re
+                            def parse_val(s):
+                                if not s:
+                                    return 0.0
+                                nums = re.findall(r"[\d.]+", s)
+                                if not nums:
+                                    return 0.0
+                                try:
+                                    return float(nums[0])
+                                except ValueError:
+                                    return 0.0
+    
+                            b_val = parse_val(media_proc.bitrate)
+                            f_val = parse_val(media_proc.fps)
+                            is_active = (b_val > 0.0)
+    
+                            if is_active:
+                                self.srt_has_had_activity[process_id] = True
+                                self.restart_counts[process_id] = 0
+                            elif (datetime.utcnow() - watchdog_start_time).total_seconds() > 60:
+                                # Reset restart counts if running successfully for over 60s
+                                self.restart_counts[process_id] = 0
+                            
+                            # Active stream check (UDP, RTP)
+                            if media_proc.type == 'service' and media_proc.watchdog_enabled and not is_active:
+                                now = datetime.utcnow()
+                                if (now - last_ffprobe_check).total_seconds() > 30:
+                                    last_ffprobe_check = now
+                                    input_cfg = media_proc.input_config
+                                    inputs_to_check = []
+                                    if 'input1' in input_cfg:
+                                        inputs_to_check.append(input_cfg['input1'])
+                                        if input_cfg.get('use_secondary_input') and 'input2' in input_cfg:
+                                            inputs_to_check.append(input_cfg['input2'])
+                                    else:
+                                        inputs_to_check.append(input_cfg)
+                                    
+                                    for inp in inputs_to_check:
+                                        inp_type = inp.get('type')
+                                        if inp_type in ('udp', 'rtp'):
+                                            url = None
+                                            if inp_type == 'udp':
+                                                url = f"udp://{inp.get('host', '')}:{inp.get('port', '1234')}"
+                                            elif inp_type == 'rtp':
+                                                url = f"rtp://{inp.get('host', '')}:{inp.get('port', '5004')}"
                                             
-                                            self.logger.info(f"Watchdog probing network stream: {url}")
-                                            alive = await self._probe_url(url, ffprobe_bin)
-                                            if not alive:
-                                                self.logger.warning(f"Watchdog probe failed for: {url}")
-                                                from database.models import ProcessLog
-                                                log = ProcessLog(
-                                                    process_id=process_id,
-                                                    level='ERROR',
-                                                    message=f"Watchdog: Active probe failed for network input: {url}."
-                                                )
-                                                session.add(log)
-                                                session.commit()
-                                                proc.kill()
-                                                break
-                                    # SRT listener fallback check (check if bitrate or fps has activity)
-                                    if inp_type == 'srt' and inp.get('mode', 'listener') == 'listener':
-                                        if (now - last_activity_check).total_seconds() > 30:
-                                            last_activity_check = now
-                                            if self.srt_has_had_activity.get(process_id, False) and b_val == 0.0:
-                                                self.logger.warning("Watchdog: SRT listener stream lost traffic activity. Restarting service.")
-                                                from database.models import ProcessLog
-                                                log = ProcessLog(
-                                                    process_id=process_id,
-                                                    level='ERROR',
-                                                    message="Watchdog: SRT listener has lost incoming data stream activity. Restarting service."
-                                                )
-                                                session.add(log)
-                                                session.commit()
-                                                proc.kill()
-                                                break
+                                            if url:
+                                                # Find build-specific ffprobe
+                                                ffprobe_bin = "ffprobe"
+                                                if media_proc.ffmpeg_build_id:
+                                                    from database.models import FfmpegBuild
+                                                    build = session.query(FfmpegBuild).get(media_proc.ffmpeg_build_id)
+                                                    if build and build.ffprobe_binary and os.path.exists(build.ffprobe_binary):
+                                                        ffprobe_bin = build.ffprobe_binary
+                                                
+                                                self.logger.info(f"Watchdog probing network stream: {url}")
+                                                alive = await self._probe_url(url, ffprobe_bin)
+                                                if not alive:
+                                                    self.logger.warning(f"Watchdog probe failed for: {url}")
+                                                    from database.models import ProcessLog
+                                                    log = ProcessLog(
+                                                        process_id=process_id,
+                                                        level='ERROR',
+                                                        message=f"Watchdog: Active probe failed for network input: {url}."
+                                                    )
+                                                    session.add(log)
+                                                    session.commit()
+                                                    proc.kill()
+                                                    break
+                                        # SRT listener fallback check (check if bitrate or fps has activity)
+                                        if inp_type == 'srt' and inp.get('mode', 'listener') == 'listener':
+                                            if (now - last_activity_check).total_seconds() > 30:
+                                                last_activity_check = now
+                                                if self.srt_has_had_activity.get(process_id, False) and b_val == 0.0:
+                                                    self.logger.warning("Watchdog: SRT listener stream lost traffic activity. Restarting service.")
+                                                    from database.models import ProcessLog
+                                                    log = ProcessLog(
+                                                        process_id=process_id,
+                                                        level='ERROR',
+                                                        message="Watchdog: SRT listener has lost incoming data stream activity. Restarting service."
+                                                    )
+                                                    session.add(log)
+                                                    session.commit()
+                                                    proc.kill()
+                                                    break
+                except Exception as e:
+                    self.logger.error(f"Watchdog database error for process {process_id}: {e}")
                 
                 await asyncio.sleep(2)
         except psutil.NoSuchProcess:
