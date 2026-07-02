@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-07-02
+
+### Added
+- Added static compilation support for `libdatachannel` (version selector populated via remote git tags from GitHub) to enable native WebRTC WHIP muxing in FFmpeg.
+- Added `libvpx` to the optional pre-flight dependency checker, with auto-detection that automatically appends `--enable-libvpx` to compile options to enable VP8/VP9.
+- Added validation constraints to abort compiling WHIP options if an FFmpeg version older than 8.0 is selected.
+- Expanded `vainfo` telemetry parser to extract the GPU driver version, libva library version, and VA-API version.
+- Display detailed VA-API driver info and hardware codec capabilities in the Dashboard UI.
+- Registered `vp8_vaapi` and `vp9_vaapi` hardware video codecs with dynamic GPU compatibility warnings.
+
 ## [1.5.2] - 2026-07-01
 
 ### Fixed
