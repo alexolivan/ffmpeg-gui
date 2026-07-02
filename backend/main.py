@@ -921,9 +921,13 @@ async def telemetry_broadcast_loop():
     psutil.cpu_percent(interval=None)
     while True:
         try:
+            processes_data = []
+            exec_data = []
+            task_stats = {}
+            
             with SessionLocal() as db:
                 processes = db.query(MediaProcess).all()
-                data = [
+                processes_data = [
                     {
                         "id": p.id,
                         "name": p.name,
@@ -965,26 +969,6 @@ async def telemetry_broadcast_loop():
                     } for ex in active_executions
                 ]
                 
-                # Gather global host system metrics
-                sys_cpu = psutil.cpu_percent(interval=None)
-                sys_ram = psutil.virtual_memory()
-                gpu_stats = await asyncio.to_thread(gpu_sensor.get_stats)
-                
-                global lcd_manager
-                system_data = {
-                    "cpu": sys_cpu,
-                    "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
-                    "ram_total": int(sys_ram.total / (1024 * 1024)), # MB
-                    "gpu": gpu_stats,
-                    "host_os_arch": f"{platform.system()} {platform.machine()}",
-                    "backend_version": backend_version,
-                    "schema_version": schema_version,
-                    "lcd": {
-                        "connected": lcd_manager is not None and lcd_manager._running,
-                        "port": lcd_manager.port if lcd_manager else None
-                    }
-                }
-
                 # Task statistics
                 scheduled_count = db.query(ScheduledTask).filter(
                     ScheduledTask.is_active == True,
@@ -999,17 +983,39 @@ async def telemetry_broadcast_loop():
                     TaskExecution.status == "running"
                 ).count()
                 
-                await manager.broadcast({
-                    "type": "telemetry",
-                    "data": data,
-                    "task_executions": exec_data,
-                    "system": system_data,
-                    "task_stats": {
-                        "active": active_exec_count,
-                        "scheduled": scheduled_count,
-                        "inactive": inactive_count
-                    }
-                })
+                task_stats = {
+                    "active": active_exec_count,
+                    "scheduled": scheduled_count,
+                    "inactive": inactive_count
+                }
+            
+            # Gather global host system metrics (outside database session block)
+            sys_cpu = psutil.cpu_percent(interval=None)
+            sys_ram = psutil.virtual_memory()
+            gpu_stats = await asyncio.to_thread(gpu_sensor.get_stats)
+            
+            global lcd_manager
+            system_data = {
+                "cpu": sys_cpu,
+                "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
+                "ram_total": int(sys_ram.total / (1024 * 1024)), # MB
+                "gpu": gpu_stats,
+                "host_os_arch": f"{platform.system()} {platform.machine()}",
+                "backend_version": backend_version,
+                "schema_version": schema_version,
+                "lcd": {
+                    "connected": lcd_manager is not None and lcd_manager._running,
+                    "port": lcd_manager.port if lcd_manager else None
+                }
+            }
+
+            await manager.broadcast({
+                "type": "telemetry",
+                "data": processes_data,
+                "task_executions": exec_data,
+                "system": system_data,
+                "task_stats": task_stats
+            })
         except Exception as e:
             logger.exception(f"Error in telemetry broadcast loop: {e}")
         await asyncio.sleep(1)
