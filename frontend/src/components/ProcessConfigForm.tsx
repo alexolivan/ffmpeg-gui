@@ -159,7 +159,6 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   };
 
   // Temporary references to satisfy unused local checks in intermediate Task 1 commit
-  void getNextAvailablePort;
   void checkPortCollision;
 
   const defaultVideoCodec = VIDEO_CODECS[0];
@@ -182,7 +181,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         has_video: inputCfg.has_video !== false,
         has_audio: inputCfg.has_audio !== false,
         use_secondary_input: !!inputCfg.use_secondary_input,
-        input1: inputCfg.input1 || { type: 'srt', host: '', port: '9000', mode: 'listener' },
+        input1: inputCfg.input1 || { type: 'srt', host: '', port: getNextAvailablePort(9000), mode: 'listener' },
         input2: inputCfg.input2 || { type: 'file', path: '' },
         video_codec_id: vCodecDef.id,
         video_codec_params: { ...getDefaultParams(vCodecDef), ...(codecCfg.video_params || {}) },
@@ -209,7 +208,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           aresample: !!filterCfg.aresample,
           overlays: filterCfg.overlays || [],
         },
-        output: outputCfg || { type: 'udp', host: '239.0.0.1', port: '1234' },
+        output: Object.keys(outputCfg).length > 0 ? outputCfg : { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
         auto_start: !!initialConfig.auto_start,
         watchdog_enabled: !!initialConfig.watchdog_enabled,
         watchdog_retries: initialConfig.watchdog_retries ?? 5,
@@ -230,7 +229,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       has_video: true,
       has_audio: true,
       use_secondary_input: false,
-      input1: { type: 'srt', host: '', port: '9000', mode: 'listener' },
+      input1: { type: 'srt', host: '', port: getNextAvailablePort(9000), mode: 'listener' },
       input2: { type: 'file', path: '' },
       video_codec_id: defaultVideoCodec.id,
       video_codec_params: getDefaultParams(defaultVideoCodec),
@@ -250,7 +249,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         aresample: false,
         overlays: [],
       },
-      output: { type: 'udp', host: '239.0.0.1', port: '1234' },
+      output: { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
       auto_start: false,
       watchdog_enabled: false,
       watchdog_retries: 5,
@@ -266,6 +265,29 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   };
 
   const [config, setConfig] = useState<ProcessConfig>(getInitialState);
+
+  useEffect(() => {
+    if (!initialConfig && existingConfigs.length > 0) {
+      setConfig(prev => {
+        const newOutputPort = getNextAvailablePort(1234);
+        const newInput1Port = getNextAvailablePort(9000);
+        let updated = false;
+        const patch: Partial<ProcessConfig> = {};
+        if (prev.output && prev.output.type === 'udp' && prev.output.port === '1234') {
+          patch.output = { ...prev.output, port: newOutputPort };
+          updated = true;
+        }
+        if (prev.input1 && prev.input1.type === 'srt' && prev.input1.port === '9000') {
+          patch.input1 = { ...prev.input1, port: newInput1Port };
+          updated = true;
+        }
+        if (updated) {
+          return { ...prev, ...patch };
+        }
+        return prev;
+      });
+    }
+  }, [existingConfigs, initialConfig]);
 
   useEffect(() => {
     fetch('/builds')
@@ -470,6 +492,28 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       return;
     }
 
+    // Apply default properties when output type changes
+    const finalOutput = { ...output };
+    if (newType === 'udp' || newType === 'rtp') {
+      finalOutput.host = '127.0.0.1';
+      finalOutput.port = getNextAvailablePort(1234);
+    } else if (newType === 'srt') {
+      finalOutput.host = '127.0.0.1';
+      finalOutput.port = getNextAvailablePort(9000);
+      finalOutput.mode = 'caller';
+    } else if (newType === 'ndi') {
+      finalOutput.path = 'FFmpeg_Stream';
+      (finalOutput as any).name = 'FFmpeg_Stream';
+    } else if (newType === 'file') {
+      finalOutput.path = '/var/tmp/output.ts';
+    } else if (newType === 'icecast') {
+      finalOutput.url = 'http://localhost:8000/stream.mp3';
+    } else if (newType === 'rtmp') {
+      finalOutput.url = 'rtmp://localhost/live/app';
+    } else if (newType === 'whip') {
+      finalOutput.url = 'http://localhost:8080/whip';
+    }
+
     // Check codec compatibility
     const availableVideo = getAvailableVideoCodecs(selectedBuildOptions, systemCapabilities, newType);
     const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType);
@@ -493,7 +537,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
 
       // User accepted: update output and auto-heal codecs
       setConfig(prev => {
-        const patch: Partial<ProcessConfig> = { ...prev, output };
+        const patch: Partial<ProcessConfig> = { ...prev, output: finalOutput };
         if (videoIncompatible && availableVideo.length > 0) {
           patch.video_codec_id = availableVideo[0].id;
           patch.video_codec_params = getDefaultParams(availableVideo[0]);
@@ -505,9 +549,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         return patch as ProcessConfig;
       });
     } else {
-      setConfig(prev => ({ ...prev, output }));
+      setConfig(prev => ({ ...prev, output: finalOutput }));
     }
-  }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities]);
+  }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort]);
 
   const handleLifecycleOrSchedulingChange = useCallback((updates: any) => {
     setConfig(prev => ({
