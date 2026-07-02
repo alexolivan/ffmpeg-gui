@@ -40,6 +40,51 @@ export interface CodecDefinition {
   params: CodecParam[];
 }
 
+// ── Output Compatibility whitelists ──────────────────────────────
+
+export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: string[] }> = {
+  udp: {
+    video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
+    audio: ['aac', 'libmp3lame', 'libopus', 'mp2', 'copy']
+  },
+  srt: {
+    video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
+    audio: ['aac', 'libmp3lame', 'libopus', 'mp2', 'copy']
+  },
+  rtmp: {
+    video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'copy'],
+    audio: ['aac', 'libmp3lame', 'copy']
+  },
+  whip: {
+    video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'copy'],
+    audio: ['libopus', 'copy']
+  },
+  ndi: {
+    video: ['wrapped_avframe'],
+    audio: ['pcm_s16le', 'pcm_s24le']
+  },
+  decklink: {
+    video: ['rawvideo', 'v210'],
+    audio: ['pcm_s16le', 'pcm_s24le']
+  },
+  file: {
+    video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'prores_ks', 'dnxhd', 'rawvideo', 'v210', 'copy'],
+    audio: ['aac', 'libmp3lame', 'libopus', 'pcm_s16le', 'pcm_s24le', 'copy']
+  },
+  rtp: {
+    video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'copy'],
+    audio: ['aac', 'libmp3lame', 'libopus', 'pcm_s16le', 'pcm_s24le', 'copy']
+  },
+  hls: {
+    video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
+    audio: ['aac', 'libmp3lame', 'libopus', 'copy']
+  },
+  icecast: {
+    video: [],
+    audio: ['aac', 'libmp3lame', 'libopus']
+  }
+};
+
 // ── Video Codecs ─────────────────────────────────────────────────
 
 const PRESETS_X264: CodecParamOption[] = [
@@ -287,6 +332,42 @@ export const VIDEO_CODECS: CodecDefinition[] = [
     type: 'video',
     category: 'software',
     params: [],
+  },
+  {
+    id: 'libvpx',
+    label: 'VP8 (libvpx) — Software',
+    type: 'video',
+    category: 'software',
+    requiresBuildOption: 'libvpx',
+    params: [
+      {
+        key: 'bitrate', label: 'Bitrate', type: 'text',
+        default: '2000k',
+        hint: 'Target video bitrate (e.g. 2000k)'
+      },
+      {
+        key: 'g', label: 'GOP size', type: 'number',
+        default: 30, min: 1, max: 300, step: 1
+      }
+    ]
+  },
+  {
+    id: 'libvpx-vp9',
+    label: 'VP9 (libvpx-vp9) — Software',
+    type: 'video',
+    category: 'software',
+    requiresBuildOption: 'libvpx',
+    params: [
+      {
+        key: 'bitrate', label: 'Bitrate', type: 'text',
+        default: '1500k',
+        hint: 'Target video bitrate (e.g. 1500k)'
+      },
+      {
+        key: 'g', label: 'GOP size', type: 'number',
+        default: 30, min: 1, max: 300, step: 1
+      }
+    ]
   },
   // ── HW Accelerated ──
   {
@@ -655,6 +736,24 @@ export const AUDIO_CODECS: CodecDefinition[] = [
     ],
   },
   {
+    id: 'mp2',
+    label: 'MPEG-2 Audio (MP2)',
+    type: 'audio',
+    category: 'software',
+    params: [
+      {
+        key: 'b:a', label: 'Bitrate', type: 'select',
+        options: [
+          { value: '128k', label: '128 kbps' },
+          { value: '192k', label: '192 kbps' },
+          { value: '256k', label: '256 kbps' },
+          { value: '384k', label: '384 kbps' }
+        ],
+        default: '192k'
+      }
+    ]
+  },
+  {
     id: 'pcm_s16le',
     label: 'PCM 16-bit (Uncompressed)',
     type: 'audio',
@@ -741,7 +840,8 @@ export interface SystemCapabilities {
 
 export function getAvailableVideoCodecs(
   buildOptions?: Record<string, boolean>,
-  systemCapabilities?: SystemCapabilities
+  systemCapabilities?: SystemCapabilities,
+  outputType?: string
 ): CodecDefinition[] {
   let codecs = VIDEO_CODECS;
   if (!buildOptions) {
@@ -767,12 +867,33 @@ export function getAvailableVideoCodecs(
     });
   }
 
+  if (outputType && OUTPUT_COMPATIBLE_CODECS[outputType]) {
+    const allowed = OUTPUT_COMPATIBLE_CODECS[outputType].video;
+    codecs = codecs.filter(c => allowed.includes(c.id));
+  }
+
   return codecs;
 }
 
-export function getAvailableAudioCodecs(_buildOptions?: Record<string, boolean>): CodecDefinition[] {
-  // All audio codecs are software-based, no HW filtering needed
-  return AUDIO_CODECS;
+export function getAvailableAudioCodecs(
+  buildOptions?: Record<string, boolean>,
+  outputType?: string
+): CodecDefinition[] {
+  let codecs = AUDIO_CODECS;
+  
+  if (buildOptions) {
+    codecs = AUDIO_CODECS.filter(c => {
+      if (!c.requiresBuildOption) return true;
+      return buildOptions[c.requiresBuildOption] === true;
+    });
+  }
+
+  if (outputType && OUTPUT_COMPATIBLE_CODECS[outputType]) {
+    const allowed = OUTPUT_COMPATIBLE_CODECS[outputType].audio;
+    codecs = codecs.filter(c => allowed.includes(c.id));
+  }
+
+  return codecs;
 }
 
 /**
