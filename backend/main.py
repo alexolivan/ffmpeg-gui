@@ -136,7 +136,6 @@ class BuildCreate(BaseModel):
     name: str
     ffmpeg_version: str
     srt_version: Optional[str] = None
-    datachannel_version: Optional[str] = None
     build_options: dict
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = False
@@ -145,7 +144,6 @@ class BuildUpdate(BaseModel):
     name: Optional[str] = None
     ffmpeg_version: Optional[str] = None
     srt_version: Optional[str] = None
-    datachannel_version: Optional[str] = None
     build_options: Optional[dict] = None
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = None
@@ -1314,12 +1312,6 @@ async def get_srt_tags():
     tags = await build_manager.fetch_available_tags("srt")
     return {"tags": tags}
 
-@app.get("/builds/tags/datachannel")
-async def get_datachannel_tags():
-    """List available LibDataChannel git tags from the remote repository."""
-    tags = await build_manager.fetch_available_tags("datachannel")
-    return {"tags": tags}
-
 @app.get("/builds/tags/nvenc")
 async def get_nvenc_tags():
     """List available nv-codec-headers git tags from the remote repository."""
@@ -1425,7 +1417,6 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         name=data.name,
         ffmpeg_version=data.ffmpeg_version,
         srt_version=data.srt_version,
-        datachannel_version=data.datachannel_version,
         build_options=data.build_options,
         sdk_paths=data.sdk_paths,
         auto_clean=data.auto_clean or False,
@@ -1468,8 +1459,6 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
         build.ffmpeg_version = data.ffmpeg_version
     if data.srt_version is not None:
         build.srt_version = data.srt_version
-    if data.datachannel_version is not None:
-        build.datachannel_version = data.datachannel_version
     if data.build_options is not None:
         build.build_options = data.build_options
     if data.sdk_paths is not None:
@@ -1564,7 +1553,6 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                     build_id=build_id,
                     ffmpeg_version=build.ffmpeg_version,
                     srt_version=build.srt_version,
-                    datachannel_version=build.datachannel_version,
                     options=build.build_options,
                     sdk_paths=build.sdk_paths,
                     sources_cleaned=clean or build.sources_cleaned,
@@ -2082,7 +2070,6 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "name": build.name,
         "ffmpeg_version": build.ffmpeg_version,
         "srt_version": build.srt_version,
-        "datachannel_version": build.datachannel_version,
         "build_options": build.build_options,
         "sdk_paths": build.sdk_paths,
         "install_path": build.install_path,

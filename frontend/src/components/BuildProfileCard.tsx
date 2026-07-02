@@ -4,7 +4,6 @@ interface BuildProfile {
   name: string
   ffmpeg_version: string
   srt_version: string | null
-  datachannel_version: string | null
   build_options: Record<string, boolean>
   sdk_paths: Record<string, string> | null
   status: string

@@ -12,7 +12,6 @@ export interface BuildFormData {
   name: string
   ffmpeg_version: string
   srt_version: string | null
-  datachannel_version: string | null
   build_options: Record<string, boolean>
   sdk_paths: Record<string, string>
   auto_clean: boolean
@@ -24,7 +23,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [name, setName] = useState(editBuild?.name || '')
   const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || '')
   const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || '')
-  const [datachannelVersion, setDatachannelVersion] = useState(editBuild?.datachannel_version || '')
   const [autoClean, setAutoClean] = useState(editBuild?.auto_clean || false)
   const [activeTab, setActiveTab] = useState<'general' | 'gpu' | 'sdks'>('general')
 
@@ -47,7 +45,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
 
   const [ffmpegTags, setFfmpegTags] = useState<string[]>([])
   const [srtTags, setSrtTags] = useState<string[]>([])
-  const [datachannelTags, setDatachannelTags] = useState<string[]>([])
   const [nvencTags, setNvencTags] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -117,29 +114,21 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   useEffect(() => {
     const fetchTags = async () => {
       try {
-        const [ffRes, srtRes, nvencRes, dcRes] = await Promise.all([
+        const [ffRes, srtRes, nvencRes] = await Promise.all([
           fetch(`${API_BASE}/builds/tags/ffmpeg`),
           fetch(`${API_BASE}/builds/tags/srt`),
           fetch(`${API_BASE}/builds/tags/nvenc`),
-          fetch(`${API_BASE}/builds/tags/datachannel`),
         ])
         const ffData = await ffRes.json()
         const srtData = await srtRes.json()
         const nvencData = await nvencRes.json()
-        const dcData = await dcRes.json()
         setFfmpegTags(ffData.tags || [])
         setSrtTags(srtData.tags || [])
         setNvencTags(nvencData.tags || [])
-        setDatachannelTags(dcData.tags || [])
 
         if (!isEditing) {
           if (ffData.tags?.length > 0 && !ffmpegVersion) setFfmpegVersion(ffData.tags[0])
           if (srtData.tags?.length > 0 && !srtVersion) setSrtVersion(srtData.tags[0])
-          if (dcData.tags?.length > 0 && !datachannelVersion) {
-            setDatachannelVersion(dcData.tags[0])
-          } else if (!datachannelVersion) {
-            setDatachannelVersion('v0.24.5')
-          }
         }
 
         if (nvencData.tags?.length > 0) {
@@ -273,7 +262,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
       name: name.trim(),
       ffmpeg_version: ffmpegVersion,
       srt_version: options.libsrt ? srtVersion || null : null,
-      datachannel_version: options.whip ? datachannelVersion || null : null,
       build_options: options,
       sdk_paths: finalSdkPaths,
       auto_clean: autoClean,
@@ -502,31 +490,20 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                   )}
                 </div>
 
-                {/* WebRTC WHIP - libdatachannel */}
+                {/* WebRTC WHIP */}
                 <div className={`p-2.5 bg-white/5 rounded-lg border ${options.whip ? 'border-brand-orange/40' : 'border-white/5'} transition-all`}>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold">WebRTC WHIP (libdatachannel)</span>
+                    <span className="text-xs font-bold">WebRTC WHIP Support</span>
                     <input type="checkbox" className="w-3.5 h-3.5 accent-brand-orange" checked={options.whip} onChange={e => setOptions({...options, whip: e.target.checked})} />
                   </div>
                   {options.whip && (
                     <div className="space-y-1.5 mt-1 animate-in slide-in-from-top-2 duration-300">
-                      <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">Elegir Versión de libdatachannel</label>
-                      <select
-                        className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none"
-                        value={datachannelVersion || ''}
-                        onChange={e => setDatachannelVersion(e.target.value)}
-                      >
-                        {datachannelTags.length === 0 ? (
-                          <option value="v0.24.5">v0.24.5 (Default Fallback)</option>
-                        ) : (
-                          datachannelTags.map(tag => (
-                            <option key={tag} value={tag}>{tag}</option>
-                          ))
-                        )}
-                      </select>
+                      <p className="text-[10px] text-text-secondary leading-snug">
+                        Habilita el muxer nativo de WHIP para streaming en tiempo real. Esta opción requiere que OpenSSL esté instalado en el sistema.
+                      </p>
                       {buildDeps?.dependencies?.libssl?.installed === false && (
                         <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[9px] p-1.5 rounded-lg leading-snug font-bold">
-                          ⚠️ Falta libssl (OpenSSL). Habilita el paquete de desarrollo en el sistema.
+                          ⚠️ Falta libssl (OpenSSL). Habilita el paquete de desarrollo en el sistema para poder compilar.
                         </div>
                       )}
                     </div>

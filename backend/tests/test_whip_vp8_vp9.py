@@ -25,22 +25,12 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
         self.db.commit()
         self.db.close()
 
-    @patch("main.build_manager.fetch_available_tags", new_callable=AsyncMock)
-    def test_get_datachannel_tags_endpoint(self, mock_fetch_tags):
-        mock_fetch_tags.return_value = ["v0.24.5", "v0.24.4", "v0.24.0"]
-        response = self.client.get("/builds/tags/datachannel")
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data["tags"], ["v0.24.5", "v0.24.4", "v0.24.0"])
-        mock_fetch_tags.assert_called_once_with("datachannel")
-
-    def test_create_build_with_datachannel_version(self):
-        # Create a build profile with whip and datachannel_version
+    def test_create_build_with_whip_option(self):
+        # Create a build profile with whip and libvpx enabled
         payload = {
             "name": "Test WHIP VP8/VP9 Profile",
             "ffmpeg_version": "n8.1.1",
             "srt_version": "v1.5.3",
-            "datachannel_version": "v0.24.5",
             "build_options": {"whip": True, "libsrt": True},
             "sdk_paths": {},
             "auto_clean": False
@@ -48,13 +38,12 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
         response = self.client.post("/builds", json=payload)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["datachannel_version"], "v0.24.5")
+        self.assertTrue(data["build_options"].get("whip"))
         
         # Verify it was persisted to database
         db_build = self.db.query(FfmpegBuild).filter_by(name=payload["name"]).first()
         self.assertIsNotNone(db_build)
         self.test_builds.append(db_build)
-        self.assertEqual(db_build.datachannel_version, "v0.24.5")
         self.assertTrue(db_build.build_options.get("whip"))
 
     @patch("subprocess.run")
@@ -66,9 +55,10 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
         mock_proc.stdout = "ffmpeg version 8.1.1"
         mock_sub_run.return_value = mock_proc
 
-        # Mock dependency checker to report libvpx as installed
+        # Mock dependency checker to report libssl and libvpx as installed
         mock_check_deps.return_value = {
             "dependencies": {
+                "libssl": {"pkg": "openssl", "type": "optional", "installed": True, "description": "OpenSSL"},
                 "libvpx": {"pkg": "vpx", "type": "optional", "installed": True, "description": "VP8/VP9"},
                 "libopus": {"pkg": "opus", "type": "optional", "installed": False, "description": "Opus"}
             }
@@ -80,7 +70,6 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
             build_id=9999,
             ffmpeg_version="n7.1.3",
             srt_version=None,
-            datachannel_version="v0.24.5",
             options={"whip": True},
             sdk_paths={},
             sources_cleaned=False,
@@ -89,8 +78,35 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(res["success"])
         self.assertIn("requires FFmpeg 8.0 or newer", res["error"])
 
-        # 2. Validation test: FFmpeg version >= 8.0 should pass validation and configure with whip & vpx
-        # We'll mock the internal helper methods of run_build so we don't do real compilation
+        # 2. Validation test: OpenSSL missing should fail validation if whip option is selected
+        mock_check_deps.return_value = {
+            "dependencies": {
+                "libssl": {"pkg": "openssl", "type": "optional", "installed": False, "description": "OpenSSL"},
+                "libvpx": {"pkg": "vpx", "type": "optional", "installed": True, "description": "VP8/VP9"}
+            }
+        }
+        res = await build_manager.run_build(
+            build_id=9999,
+            ffmpeg_version="n8.1.1",
+            srt_version=None,
+            options={"whip": True},
+            sdk_paths={},
+            sources_cleaned=False,
+            log_callback=log_callback
+        )
+        self.assertFalse(res["success"])
+        self.assertIn("requires OpenSSL", res["error"])
+
+        # Restore OpenSSL to installed status for compile success test
+        mock_check_deps.return_value = {
+            "dependencies": {
+                "libssl": {"pkg": "openssl", "type": "optional", "installed": True, "description": "OpenSSL"},
+                "libvpx": {"pkg": "vpx", "type": "optional", "installed": True, "description": "VP8/VP9"},
+                "libopus": {"pkg": "opus", "type": "optional", "installed": False, "description": "Opus"}
+            }
+        }
+
+        # 3. Validation test: FFmpeg version >= 8.0 should pass validation and configure with openssl & vpx
         with patch.object(build_manager, "get_src_path", return_value="/tmp/dummy_src"), \
              patch.object(build_manager, "get_install_path", return_value="/tmp/dummy_install"), \
              patch("os.makedirs"), \
@@ -112,15 +128,15 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
                  build_id=9999,
                  ffmpeg_version="n8.1.1",
                  srt_version=None,
-                 datachannel_version="v0.24.5",
                  options={"whip": True},
                  sdk_paths={},
                  sources_cleaned=False,
                  log_callback=log_callback
              )
+             
              # The mock compilation should finish successfully
              self.assertTrue(res["success"])
-             self.assertIn("--enable-libdatachannel", configure_options)
+             self.assertIn("--enable-openssl", configure_options)
              self.assertIn("--enable-libvpx", configure_options)
              self.assertNotIn("--enable-libopus", configure_options)
 
