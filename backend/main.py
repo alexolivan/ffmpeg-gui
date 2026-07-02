@@ -136,6 +136,7 @@ class BuildCreate(BaseModel):
     name: str
     ffmpeg_version: str
     srt_version: Optional[str] = None
+    datachannel_version: Optional[str] = None
     build_options: dict
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = False
@@ -144,6 +145,7 @@ class BuildUpdate(BaseModel):
     name: Optional[str] = None
     ffmpeg_version: Optional[str] = None
     srt_version: Optional[str] = None
+    datachannel_version: Optional[str] = None
     build_options: Optional[dict] = None
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = None
@@ -411,7 +413,10 @@ def parse_vainfo_capabilities() -> dict:
     
     caps = {
         "decoders": [],
-        "encoders": []
+        "encoders": [],
+        "vaapi_version": None,
+        "libva_version": None,
+        "driver_version": None
     }
     
     vainfo_bin = shutil.which("vainfo")
@@ -433,6 +438,22 @@ def parse_vainfo_capabilities() -> dict:
         )
         output = (res.stdout or "") + "\n" + (res.stderr or "")
         
+        # Parse version info
+        va_api_match = re.search(r"VA-API version\s*:\s*([0-9.]+)", output, re.IGNORECASE)
+        if not va_api_match:
+            # Fallback to search in lines like "libva info: VA-API version 1.22.0"
+            va_api_match = re.search(r"VA-API version\s*([0-9.]+)", output, re.IGNORECASE)
+        if va_api_match:
+            caps["vaapi_version"] = va_api_match.group(1)
+
+        libva_match = re.search(r"libva\s*([0-9.]+)", output, re.IGNORECASE)
+        if libva_match:
+            caps["libva_version"] = libva_match.group(1)
+
+        driver_match = re.search(r"Driver version\s*:\s*([^\n]+)", output, re.IGNORECASE)
+        if driver_match:
+            caps["driver_version"] = driver_match.group(1).strip()
+            
         pattern = re.compile(r"^\s*(VAProfile[a-zA-Z0-9_]+)\s*:\s*(VAEntrypoint[a-zA-Z0-9_]+)", re.MULTILINE)
         for match in pattern.finditer(output):
             profile = match.group(1)
@@ -604,7 +625,10 @@ def get_system_capabilities():
             "details": vaapi_details,
             "encoders": vaapi_caps["encoders"],
             "decoders": vaapi_caps["decoders"],
-            "vainfo_installed": vainfo_installed
+            "vainfo_installed": vainfo_installed,
+            "vaapi_version": vaapi_caps["vaapi_version"],
+            "libva_version": vaapi_caps["libva_version"],
+            "driver_version": vaapi_caps["driver_version"]
         },
         "nvenc": {"available": nvenc_available, "details": nvenc_details},
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
@@ -1290,6 +1314,12 @@ async def get_srt_tags():
     tags = await build_manager.fetch_available_tags("srt")
     return {"tags": tags}
 
+@app.get("/builds/tags/datachannel")
+async def get_datachannel_tags():
+    """List available LibDataChannel git tags from the remote repository."""
+    tags = await build_manager.fetch_available_tags("datachannel")
+    return {"tags": tags}
+
 @app.get("/builds/tags/nvenc")
 async def get_nvenc_tags():
     """List available nv-codec-headers git tags from the remote repository."""
@@ -1395,6 +1425,7 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         name=data.name,
         ffmpeg_version=data.ffmpeg_version,
         srt_version=data.srt_version,
+        datachannel_version=data.datachannel_version,
         build_options=data.build_options,
         sdk_paths=data.sdk_paths,
         auto_clean=data.auto_clean or False,
@@ -1437,6 +1468,8 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
         build.ffmpeg_version = data.ffmpeg_version
     if data.srt_version is not None:
         build.srt_version = data.srt_version
+    if data.datachannel_version is not None:
+        build.datachannel_version = data.datachannel_version
     if data.build_options is not None:
         build.build_options = data.build_options
     if data.sdk_paths is not None:
@@ -1531,6 +1564,7 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                     build_id=build_id,
                     ffmpeg_version=build.ffmpeg_version,
                     srt_version=build.srt_version,
+                    datachannel_version=build.datachannel_version,
                     options=build.build_options,
                     sdk_paths=build.sdk_paths,
                     sources_cleaned=clean or build.sources_cleaned,
@@ -2048,6 +2082,7 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "name": build.name,
         "ffmpeg_version": build.ffmpeg_version,
         "srt_version": build.srt_version,
+        "datachannel_version": build.datachannel_version,
         "build_options": build.build_options,
         "sdk_paths": build.sdk_paths,
         "install_path": build.install_path,

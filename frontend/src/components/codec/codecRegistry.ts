@@ -355,6 +355,62 @@ export const VIDEO_CODECS: CodecDefinition[] = [
     ],
   },
   {
+    id: 'vp8_vaapi',
+    label: 'VP8 — VAAPI',
+    type: 'video',
+    category: 'hw_vaapi',
+    requiresBuildOption: 'vaapi',
+    params: [
+      {
+        key: 'rc_mode', label: 'Rate Control', type: 'select',
+        options: [
+          { value: 'CQP', label: 'CQP (Constant QP)' },
+          { value: 'CBR', label: 'CBR (Constant Bitrate)' },
+          { value: 'VBR', label: 'VBR (Variable Bitrate)' },
+        ],
+        default: 'CQP',
+      },
+      { key: 'bitrate', label: 'Bitrate', type: 'text', default: '3000k' },
+      {
+        key: 'qp', label: 'QP Value', type: 'number',
+        default: 25, min: 0, max: 52, step: 1,
+        showWhen: { param: 'rc_mode', value: 'CQP' },
+      },
+      {
+        key: 'g', label: 'GOP Size', type: 'number',
+        default: 50, min: 1, max: 600, step: 1,
+      },
+    ],
+  },
+  {
+    id: 'vp9_vaapi',
+    label: 'VP9 — VAAPI',
+    type: 'video',
+    category: 'hw_vaapi',
+    requiresBuildOption: 'vaapi',
+    params: [
+      {
+        key: 'rc_mode', label: 'Rate Control', type: 'select',
+        options: [
+          { value: 'CQP', label: 'CQP (Constant QP)' },
+          { value: 'CBR', label: 'CBR (Constant Bitrate)' },
+          { value: 'VBR', label: 'VBR (Variable Bitrate)' },
+        ],
+        default: 'CQP',
+      },
+      { key: 'bitrate', label: 'Bitrate', type: 'text', default: '3000k' },
+      {
+        key: 'qp', label: 'QP Value', type: 'number',
+        default: 25, min: 0, max: 52, step: 1,
+        showWhen: { param: 'rc_mode', value: 'CQP' },
+      },
+      {
+        key: 'g', label: 'GOP Size', type: 'number',
+        default: 50, min: 1, max: 600, step: 1,
+      },
+    ],
+  },
+  {
     id: 'h264_qsv',
     label: 'H.264 — Intel QSV',
     type: 'video',

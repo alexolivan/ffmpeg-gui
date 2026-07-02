@@ -36,7 +36,13 @@ class TestSystemCapabilities(unittest.TestCase):
         # Test case 1: vainfo not installed
         mock_which.return_value = None
         res = parse_vainfo_capabilities()
-        self.assertEqual(res, {"decoders": [], "encoders": []})
+        self.assertEqual(res, {
+            "decoders": [], 
+            "encoders": [],
+            "vaapi_version": None,
+            "libva_version": None,
+            "driver_version": None
+        })
         
         # Test case 2: vainfo is installed and returns profiles
         mock_which.return_value = "/usr/bin/vainfo"
@@ -44,6 +50,9 @@ class TestSystemCapabilities(unittest.TestCase):
         mock_process = MagicMock()
         mock_process.returncode = 0
         mock_process.stdout = """
+libva info: VA-API version 1.22.0
+vainfo: VA-API version: 1.22 (libva 2.22.0)
+vainfo: Driver version: Intel iHD driver for Intel(R) Gen Graphics - 25.2.3 ()
 vainfo: Supported profile and entrypoints
       VAProfileMPEG2Simple            :	VAEntrypointVLD
       VAProfileH264High               :	VAEntrypointVLD
@@ -59,6 +68,9 @@ vainfo: Supported profile and entrypoints
         self.assertIn("h264", res["decoders"])
         self.assertIn("hevc", res["decoders"])
         self.assertNotIn("hevc", res["encoders"])
+        self.assertEqual(res["vaapi_version"], "1.22")
+        self.assertEqual(res["libva_version"], "2.22.0")
+        self.assertEqual(res["driver_version"], "Intel iHD driver for Intel(R) Gen Graphics - 25.2.3 ()")
 
 if __name__ == "__main__":
     unittest.main()

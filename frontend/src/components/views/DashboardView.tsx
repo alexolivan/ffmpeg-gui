@@ -248,6 +248,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </span>
                 </div>
                 <p className="text-[10px] text-text-secondary mt-1">{value.details}</p>
+                {key === 'vaapi' && value.available && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
+                    {value.driver_version && (
+                      <div><span className="text-white/60">Driver:</span> {value.driver_version}</div>
+                    )}
+                    {value.vaapi_version && (
+                      <div><span className="text-white/60">VA-API:</span> v{value.vaapi_version} (libva {value.libva_version || 'N/A'})</div>
+                    )}
+                    {value.encoders && value.encoders.length > 0 && (
+                      <div><span className="text-white/60">Coders HW:</span> {value.encoders.join(', ')}</div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

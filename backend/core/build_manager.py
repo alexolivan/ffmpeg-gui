@@ -18,6 +18,7 @@ class BuildManager:
 
     FFMPEG_GIT_URL = "https://git.ffmpeg.org/ffmpeg.git"
     SRT_GIT_URL = "https://github.com/Haivision/srt.git"
+    DATACHANNEL_GIT_URL = "https://github.com/paullouisageneau/libdatachannel.git"
 
     def __init__(self, builds_root: str):
         self.builds_root = os.path.abspath(builds_root)
@@ -85,7 +86,8 @@ class BuildManager:
             "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
             "libssl": {"pkg": "openssl", "type": "optional", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
             "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
-            "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"}
+            "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"},
+            "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)"}
         }
 
         has_pkg_config = results.get("pkg-config", {}).get("installed", False)
@@ -146,6 +148,8 @@ class BuildManager:
             url = self.FFMPEG_GIT_URL
         elif repo == "srt":
             url = self.SRT_GIT_URL
+        elif repo == "datachannel":
+            url = self.DATACHANNEL_GIT_URL
         elif repo in ["nvenc", "nvenc_headers"]:
             url = "https://github.com/FFmpeg/nv-codec-headers.git"
         else:
@@ -224,9 +228,10 @@ class BuildManager:
     # ── Build execution ───────────────────────────────────────────
 
     async def run_build(self, build_id: int, ffmpeg_version: str,
-                        srt_version: str | None, options: dict,
-                        sdk_paths: dict | None, sources_cleaned: bool,
-                        log_callback, auto_clean: bool = False) -> dict:
+                        srt_version: str | None, datachannel_version: str | None,
+                        options: dict, sdk_paths: dict | None,
+                        sources_cleaned: bool, log_callback,
+                        auto_clean: bool = False) -> dict:
         """Execute the full build pipeline for a profile.
 
         Returns a dict with build results (binary paths, version output, etc.)
@@ -234,6 +239,18 @@ class BuildManager:
         if self.is_building:
             await log_callback("ERROR: Build already in progress\n")
             return {"success": False, "error": "Build already in progress"}
+
+        # Validation for WHIP/libdatachannel requirement (FFmpeg 8.0+)
+        if options.get("whip"):
+            ver_str = ffmpeg_version.lstrip("n")
+            if ver_str and ver_str[0].isdigit():
+                try:
+                    major_ver = int(ver_str.split(".")[0])
+                    if major_ver < 8:
+                        await log_callback(f"ERROR: WHIP (libdatachannel) requires FFmpeg 8.0 or newer (selected: {ffmpeg_version})\n")
+                        return {"success": False, "error": f"WHIP (libdatachannel) requires FFmpeg 8.0 or newer (selected: {ffmpeg_version})"}
+                except ValueError:
+                    pass
 
         self.is_building = True
         self.active_build_id = build_id
@@ -370,6 +387,70 @@ class BuildManager:
                 )
                 await log_callback("━━━ NVIDIA HEADERS COMPLETE ━━━\n\n")
 
+            # ── 1.7 LibDataChannel (if enabled) ───────────────────
+            if options.get("whip") and datachannel_version:
+                await log_callback("━━━ STAGE 1.7: LIBDATACHANNEL BUILD ━━━\n")
+                datachannel_src = os.path.join(src_path, "datachannel")
+
+                if not os.path.exists(datachannel_src) or sources_cleaned:
+                    if os.path.exists(datachannel_src):
+                        shutil.rmtree(datachannel_src)
+                    await log_callback(
+                        f"Cloning LibDataChannel and checking out tag {datachannel_version}...\n"
+                    )
+                    await self._run_logged_cmd(
+                        ["git", "clone", self.DATACHANNEL_GIT_URL, datachannel_src],
+                        log_callback,
+                    )
+                    await self._run_logged_cmd(
+                        ["git", "checkout", datachannel_version],
+                        log_callback,
+                        cwd=datachannel_src,
+                    )
+                else:
+                    await log_callback(
+                        f"DataChannel sources exist, checking out tag {datachannel_version}...\n"
+                    )
+                    self._clear_stale_git_locks(datachannel_src)
+                    await self._run_logged_cmd(
+                        ["git", "fetch", "--tags"], log_callback, cwd=datachannel_src
+                    )
+                    await self._run_logged_cmd(
+                        ["git", "checkout", datachannel_version],
+                        log_callback,
+                        cwd=datachannel_src,
+                    )
+
+                # Initialize submodules recursively for media/juice/sctp support
+                await log_callback("Initializing libdatachannel git submodules...\n")
+                await self._run_logged_cmd(
+                    ["git", "submodule", "update", "--init", "--recursive", "--depth", "1"],
+                    log_callback,
+                    cwd=datachannel_src,
+                )
+
+                datachannel_build_dir = os.path.join(datachannel_src, "build")
+                os.makedirs(datachannel_build_dir, exist_ok=True)
+
+                await self._run_logged_cmd(
+                    [
+                        "cmake", "..",
+                        f"-DCMAKE_INSTALL_PREFIX={install_path}",
+                        "-DBUILD_SHARED_LIBS=OFF",
+                        "-DNO_EXAMPLES=ON",
+                        "-DNO_TESTS=ON",
+                    ],
+                    log_callback,
+                    cwd=datachannel_build_dir,
+                )
+                await self._run_logged_cmd(
+                    ["make", "-j4"], log_callback, cwd=datachannel_build_dir
+                )
+                await self._run_logged_cmd(
+                    ["make", "install"], log_callback, cwd=datachannel_build_dir
+                )
+                await log_callback("━━━ LIBDATACHANNEL BUILD COMPLETE ━━━\n\n")
+
             # ── 2. FFmpeg ─────────────────────────────────────────
             await log_callback("━━━ STAGE 2: FFMPEG BUILD ━━━\n")
             ffmpeg_src = os.path.join(src_path, "ffmpeg")
@@ -422,8 +503,14 @@ class BuildManager:
             if dep_check.get("dependencies", {}).get("libopus", {}).get("installed"):
                 config_flags.append("--enable-libopus")
 
+            # Automatically enable libvpx if available on the system
+            if dep_check.get("dependencies", {}).get("libvpx", {}).get("installed"):
+                config_flags.append("--enable-libvpx")
+
             if options.get("libsrt"):
                 config_flags.append("--enable-libsrt")
+            if options.get("whip"):
+                config_flags.append("--enable-libdatachannel")
             if options.get("vaapi"):
                 config_flags.append("--enable-vaapi")
 

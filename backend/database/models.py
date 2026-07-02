@@ -29,6 +29,7 @@ class FfmpegBuild(Base):
     # Git tag versions selected by the user
     ffmpeg_version = Column(String, nullable=False)
     srt_version = Column(String, nullable=True)
+    datachannel_version = Column(String, nullable=True)
 
     # Build configuration (JSON for future extensibility)
     build_options = Column(JSON, nullable=False)

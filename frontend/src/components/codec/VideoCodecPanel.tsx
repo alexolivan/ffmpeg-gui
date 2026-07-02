@@ -119,6 +119,22 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
             <p>El proceso fallará al arrancar. Selecciona un códec por software.</p>
           </div>
         )}
+
+        {codecId === 'vp8_vaapi' && systemCapabilities?.vaapi?.vainfo_installed && systemCapabilities.vaapi.encoders && !systemCapabilities.vaapi.encoders.includes('vp8') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación VP8 por hardware</strong> vía VA-API (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona un códec por software.</p>
+          </div>
+        )}
+
+        {codecId === 'vp9_vaapi' && systemCapabilities?.vaapi?.vainfo_installed && systemCapabilities.vaapi.encoders && !systemCapabilities.vaapi.encoders.includes('vp9') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación VP9 por hardware</strong> vía VA-API (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona un códec por software.</p>
+          </div>
+        )}
       </div>
 
       {/* Codec Parameters */}
