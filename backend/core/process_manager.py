@@ -30,6 +30,8 @@ class ProcessManager:
 
     async def start_process(self, process_id: int, is_restart: bool = False):
         cleanup_rogue_processes(process_id=process_id)
+        
+        # 1. Fetch config and prepare snap in a quick database transaction
         with self.db_session_factory() as session:
             from database.models import MediaProcess, FfmpegBuild, ProcessLog
             media_proc = session.query(MediaProcess).get(process_id)
@@ -69,32 +71,43 @@ class ProcessManager:
                     self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
 
             cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
-            self.logger.info(f"Starting FFMPEG for {media_proc.name}: {shlex.join(cmd)}")
+            proc_name = media_proc.name
+            session.commit()  # Save changes and release write lock immediately!
             
-            try:
-                self.log_buffers[process_id] = collections.deque(maxlen=100)
-                sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    stdin=asyncio.subprocess.PIPE,
-                    env=sub_env
-                )
-                self.processes[process_id] = proc
-                media_proc.pid = proc.pid
-                media_proc.status = 'running'
-                media_proc.last_start = datetime.utcnow()
-                session.commit()
-                
-                # Start watchdog and log reader tasks
-                asyncio.create_task(self._log_reader(process_id, proc))
-                asyncio.create_task(self._watchdog(process_id, proc))
-                
-            except Exception as e:
-                self.logger.exception(f"Failed to start process {process_id}")
-                media_proc.status = 'error'
-                session.commit()
+        # 2. Spawn subprocess (outside of any database session locks)
+        self.logger.info(f"Starting FFMPEG for {proc_name}: {shlex.join(cmd)}")
+        try:
+            self.log_buffers[process_id] = collections.deque(maxlen=100)
+            sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.PIPE,
+                env=sub_env
+            )
+            self.processes[process_id] = proc
+            
+            # 3. Update PID and status in a second short database transaction
+            with self.db_session_factory() as session:
+                media_proc = session.query(MediaProcess).get(process_id)
+                if media_proc:
+                    media_proc.pid = proc.pid
+                    media_proc.status = 'running'
+                    media_proc.last_start = datetime.utcnow()
+                    session.commit()
+            
+            # Start watchdog and log reader tasks
+            asyncio.create_task(self._log_reader(process_id, proc))
+            asyncio.create_task(self._watchdog(process_id, proc))
+            
+        except Exception as e:
+            self.logger.exception(f"Failed to start process {process_id}")
+            with self.db_session_factory() as session:
+                media_proc = session.query(MediaProcess).get(process_id)
+                if media_proc:
+                    media_proc.status = 'error'
+                    session.commit()
 
     async def stop_process(self, process_id: int, graceful: bool = True):
         pending = self.pending_restarts.pop(process_id, None)
