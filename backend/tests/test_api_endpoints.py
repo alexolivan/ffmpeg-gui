@@ -524,5 +524,87 @@ class TestTaskAPI(unittest.TestCase):
         # 5. Clean up
         self.client.delete(f"/processes/{proc_id}")
 
+    def test_database_and_api_config_sanitization(self):
+        # 1. Test database startup sanitization
+        from database.models import MediaProcess
+        from main import sanitize_database_processes
+        
+        dirty_proc = MediaProcess(
+            name="Dirty Process Test",
+            type="service",
+            input_config={
+                "input1": {
+                    "type": "lavfi_video",
+                    "pattern": "testsrc",
+                    "hwaccel": "cuda",
+                    "frames_destination": "vram"
+                }
+            },
+            output_config={"type": "file", "path": "out.mp4"},
+            codec_config={"vcodec": "libx264"},
+            filter_config={"advanced": {"hwaccel": "cuda"}},
+            status="stopped"
+        )
+        self.db.add(dirty_proc)
+        self.db.commit()
+        proc_id = dirty_proc.id
+
+        # Run database sanitization
+        sanitize_database_processes(self.db)
+        self.db.refresh(dirty_proc)
+
+        # Verify dirty configs were repaired/sanitized in DB
+        self.assertEqual(dirty_proc.input_config["input1"]["hwaccel"], "none")
+        self.assertEqual(dirty_proc.input_config["input1"]["frames_destination"], "cpu")
+        self.assertEqual(dirty_proc.filter_config["advanced"]["hwaccel"], "none")
+
+        # Clean up database test process
+        self.db.delete(dirty_proc)
+        self.db.commit()
+
+        # 2. Test API level sanitization on creation (POST)
+        payload = {
+            "name": "API Sanitization Test",
+            "type": "service",
+            "input_config": {
+                "input1": {
+                    "type": "lavfi_video",
+                    "pattern": "testsrc",
+                    "hwaccel": "cuda",
+                    "frames_destination": "vram"
+                }
+            },
+            "output_config": {"type": "file", "path": "/tmp/api_sanit_out.mp4"},
+            "codec_config": {"vcodec": "libx264"},
+            "filter_config": {"advanced": {"hwaccel": "cuda"}}
+        }
+        res = self.client.post("/processes", json=payload)
+        self.assertEqual(res.status_code, 200)
+        api_proc_id = res.json()["id"]
+
+        # Verify returned JSON config is sanitized
+        self.assertEqual(res.json()["input_config"]["input1"]["hwaccel"], "none")
+        self.assertEqual(res.json()["input_config"]["input1"]["frames_destination"], "cpu")
+        self.assertEqual(res.json()["filter_config"]["advanced"]["hwaccel"], "none")
+
+        # 3. Test API level sanitization on update (PUT)
+        update_payload = {
+            "input_config": {
+                "input1": {
+                    "type": "lavfi_video",
+                    "pattern": "testsrc",
+                    "hwaccel": "cuda",
+                    "frames_destination": "vram"
+                }
+            }
+        }
+        res = self.client.put(f"/processes/{api_proc_id}", json=update_payload)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["input_config"]["input1"]["hwaccel"], "none")
+        self.assertEqual(res.json()["input_config"]["input1"]["frames_destination"], "cpu")
+
+        # Clean up API test process
+        self.client.delete(f"/processes/{api_proc_id}")
+
 if __name__ == "__main__":
     unittest.main()

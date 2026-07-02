@@ -53,7 +53,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <>
-      <header className="flex justify-between items-center mb-6">
+      <header className="flex justify-between items-center mb-4">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">DASHBOARD</h1>
           <p className="text-xs text-text-secondary">Monitoring and controlling FFMPEG nodes</p>
@@ -81,9 +81,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
         {/* Column 1: Process Management & load */}
-        <div className="space-y-8">
-          <div className="glass-card p-8 border-brand-lime/10">
-            <h3 className="text-xl font-black mb-6">SYSTEM STATS</h3>
+        <div className="space-y-4">
+          <div className="glass-card p-4 md:p-5 border-brand-lime/10">
+            <h3 className="text-xl font-black mb-3">SYSTEM STATS</h3>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
                 <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Active Services</div>
@@ -117,10 +117,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             </div>
 
-            <h4 className="text-xs font-black uppercase text-text-secondary tracking-wider mb-4">Node Resources Load</h4>
-            <div className="space-y-4">
+            <h4 className="text-xs font-black uppercase text-text-secondary tracking-wider mb-2">Node Resources Load</h4>
+            <div className="space-y-2.5">
               <div>
-                <div className="flex justify-between text-xs mb-1">
+                <div className="flex justify-between text-xs mb-0.5">
                   <span className="text-text-secondary">System CPU Load</span>
                   <span className="text-brand-lime font-mono font-bold">
                     {systemTelemetry.cpu}%
@@ -134,7 +134,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </div>
               <div>
-                <div className="flex justify-between text-xs mb-1">
+                <div className="flex justify-between text-xs mb-0.5">
                   <span className="text-text-secondary">System Memory Usage</span>
                   <span className="text-brand-orange font-mono font-bold">
                     {systemTelemetry.ram_used} MB / {systemTelemetry.ram_total || 16384} MB
@@ -155,7 +155,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               {systemTelemetry.gpu && systemTelemetry.gpu.vendor && systemTelemetry.gpu.vendor !== 'none' ? (
                 <>
                   <div className="pt-2 border-t border-white/5">
-                    <div className="flex justify-between text-xs mb-1">
+                    <div className="flex justify-between text-xs mb-0.5">
                       <span className="text-text-secondary flex items-center gap-1.5">
                         GPU Load 
                         <span className="text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">
@@ -174,7 +174,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
                   </div>
                   <div>
-                    <div className="flex justify-between text-xs mb-1">
+                    <div className="flex justify-between text-xs mb-0.5">
                       <span className="text-text-secondary">VRAM Usage</span>
                       <span className="text-blue-400 font-mono font-bold">
                         {systemTelemetry.gpu.vram_used} MB / {systemTelemetry.gpu.vram_total} MB
@@ -205,15 +205,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Column 2: Hardware Capabilities Detection */}
-        <div className="glass-card p-8 border-brand-orange/10">
-          <h3 className="text-xl font-black mb-6">HARDWARE & PERIPHERALS</h3>
-          <p className="text-xs text-text-secondary mb-8 leading-relaxed">
+        <div className="glass-card p-4 md:p-5 border-brand-orange/10">
+          <h3 className="text-xl font-black mb-3">HARDWARE & PERIPHERALS</h3>
+          <p className="text-xs text-text-secondary mb-4 leading-relaxed">
             Real-time introspection of host media acceleration capabilities, sound servers, and capture hardware devices.
           </p>
-          <div className="space-y-6">
+          <div className="space-y-2">
             {/* LCD Status Item */}
             {systemTelemetry.lcd && (
-              <div className="flex flex-col gap-1 p-3 bg-white/2 border border-white/5 rounded-xl">
+              <div className="flex flex-col gap-1 p-2 bg-white/2 border border-white/5 rounded-xl">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-xs uppercase text-white font-mono">LCD PANEL</span>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
@@ -233,8 +233,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             )}
 
-            {Object.entries(systemTelemetry.capabilities || {}).map(([key, value]: [string, any]) => (
-              <div key={key} className="flex flex-col gap-1 p-3 bg-white/2 border border-white/5 rounded-xl">
+            {Object.entries(systemTelemetry.capabilities || {})
+              .filter(([key]) => key !== 'ffmpeg')
+              .map(([key, value]: [string, any]) => (
+              <div key={key} className="flex flex-col gap-1 p-2 bg-white/2 border border-white/5 rounded-xl">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-xs uppercase text-white font-mono">{key}</span>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
@@ -246,16 +248,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </span>
                 </div>
                 <p className="text-[10px] text-text-secondary mt-1">{value.details}</p>
+                {key === 'vaapi' && value.available && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
+                    {value.driver_version && (
+                      <div><span className="text-white/60">Driver:</span> {value.driver_version}</div>
+                    )}
+                    {value.vaapi_version && (
+                      <div><span className="text-white/60">VA-API:</span> v{value.vaapi_version} (libva {value.libva_version || 'N/A'})</div>
+                    )}
+                    {value.encoders && value.encoders.length > 0 && (
+                      <div><span className="text-white/60">Coders HW:</span> {value.encoders.join(', ')}</div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
 
         {/* Column 3: System Info & Scheduler status */}
-        <div className="space-y-8">
+        <div className="space-y-4">
           {/* System Info */}
-          <div className="glass-card p-8 border-white/5">
-            <h3 className="text-xl font-black mb-6">SYSTEM INFO</h3>
+          <div className="glass-card p-4 md:p-5 border-white/5">
+            <h3 className="text-xl font-black mb-3">SYSTEM INFO</h3>
             <div className="space-y-4">
               <div className="flex justify-between py-2 border-b border-white/5">
                 <span className="text-xs text-text-secondary">Host OS & Arch</span>
@@ -291,7 +306,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {/* Scheduler status banner */}
-          <div className="glass-card p-8 border-purple-500/10 bg-purple-500/2">
+          <div className="glass-card p-4 md:p-5 border-purple-500/10 bg-purple-500/2">
             <div className="flex items-center gap-3 mb-4">
               <span className="text-2xl">📅</span>
               <h3 className="text-lg font-black text-white/90">SCHEDULER STATUS</h3>

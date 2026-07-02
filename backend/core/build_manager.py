@@ -26,6 +26,7 @@ class BuildManager:
         self.active_build_id = None
         self.logger = logging.getLogger("BuildManager")
         self.current_process = None
+        self.current_task = None
 
     # ── Path helpers ──────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ class BuildManager:
             "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo"},
             "clang": {"type": "optional", "description": "Compilador LLVM/Clang (requerido para filtros CUDA)"},
             "avahi-daemon": {"type": "optional", "description": "Servicio de descubrimiento mDNS/DNS-SD (requerido para runtime de NDI)"},
+            "vainfo": {"type": "optional", "description": "Herramienta de diagnóstico para aceleración de vídeo VA-API (vainfo)"},
         }
         
         results = {}
@@ -81,9 +83,10 @@ class BuildManager:
         libs = {
             "libx264": {"pkg": "x264", "type": "required", "description": "Biblioteca para codificación H.264/AVC (libx264)"},
             "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
-            "libssl": {"pkg": "openssl", "type": "optional", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
-            "libva": {"pkg": "libva", "type": "optional", "description": "Aceleración de decodificación/codificación VAAPI"},
-            "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"}
+            "libssl": {"pkg": "openssl", "type": "required", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
+            "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
+            "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"},
+            "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)"}
         }
 
         has_pkg_config = results.get("pkg-config", {}).get("installed", False)
@@ -233,6 +236,18 @@ class BuildManager:
             await log_callback("ERROR: Build already in progress\n")
             return {"success": False, "error": "Build already in progress"}
 
+        # Validation for WHIP requirement (FFmpeg 8.0+)
+        if options.get("whip"):
+            ver_str = ffmpeg_version.lstrip("n")
+            if ver_str and ver_str[0].isdigit():
+                try:
+                    major_ver = int(ver_str.split(".")[0])
+                    if major_ver < 8:
+                        await log_callback(f"ERROR: WHIP requires FFmpeg 8.0 or newer (selected: {ffmpeg_version})\n")
+                        return {"success": False, "error": f"WHIP requires FFmpeg 8.0 or newer (selected: {ffmpeg_version})"}
+                except ValueError:
+                    pass
+
         self.is_building = True
         self.active_build_id = build_id
         result = {"success": False}
@@ -284,6 +299,7 @@ class BuildManager:
                     await log_callback(
                         f"SRT sources exist, checking out tag {srt_version}...\n"
                     )
+                    self._clear_stale_git_locks(srt_src)
                     await self._run_logged_cmd(
                         ["git", "fetch", "--tags"], log_callback, cwd=srt_src
                     )
@@ -334,6 +350,7 @@ class BuildManager:
                     )
                 else:
                     await log_callback("Fetching updates for nv-codec-headers...\n")
+                    self._clear_stale_git_locks(nv_src)
                     await self._run_logged_cmd(
                         ["git", "fetch", "--tags"], log_callback, cwd=nv_src
                     )
@@ -395,6 +412,7 @@ class BuildManager:
                     ["make", "clean"], log_callback, cwd=ffmpeg_src,
                     ignore_errors=True,
                 )
+                self._clear_stale_git_locks(ffmpeg_src)
                 await self._run_logged_cmd(
                     ["git", "fetch", "--tags"], log_callback, cwd=ffmpeg_src
                 )
@@ -411,7 +429,17 @@ class BuildManager:
                 "--enable-nonfree",
                 "--enable-libx264",
                 "--enable-libx265",
+                "--enable-openssl",
             ]
+            # Automatically enable libopus if available on the system
+            dep_check = self.check_dependencies()
+            if dep_check.get("dependencies", {}).get("libopus", {}).get("installed"):
+                config_flags.append("--enable-libopus")
+
+            # Automatically enable libvpx if available on the system
+            if dep_check.get("dependencies", {}).get("libvpx", {}).get("installed"):
+                config_flags.append("--enable-libvpx")
+
             if options.get("libsrt"):
                 config_flags.append("--enable-libsrt")
             if options.get("vaapi"):
@@ -639,26 +667,59 @@ class BuildManager:
     # ── Stop running build ────────────────────────────────────────
 
     async def stop_build(self) -> bool:
-        """Kill the currently running build subprocess."""
+        """Kill the currently running build subprocess and its process group."""
         if self.current_process:
-            self.current_process.kill()
-            self.is_building = False
-            self.active_build_id = None
+            import signal
+            try:
+                pgid = os.getpgid(self.current_process.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception as e:
+                self.logger.error(f"Failed to killpg process group: {e}")
+                try:
+                    self.current_process.kill()
+                except Exception:
+                    pass
+
+            if self.current_task:
+                try:
+                    await self.current_task
+                except Exception:
+                    pass
             return True
         return False
 
     # ── Internal helpers ──────────────────────────────────────────
 
+    def _clear_stale_git_locks(self, repo_path: str):
+        """Remove any stale git lock files from a repository directory."""
+        if not os.path.exists(repo_path):
+            return
+        lock_file = os.path.join(repo_path, ".git", "index.lock")
+        if os.path.exists(lock_file):
+            self.logger.warning(f"Found stale git index lock at {lock_file}, removing it.")
+            try:
+                os.remove(lock_file)
+            except Exception as e:
+                self.logger.error(f"Failed to remove stale git lock {lock_file}: {e}")
+
     async def _run_logged_cmd(self, cmd, log_callback, cwd=None, env=None,
                               ignore_errors=False):
         """Execute a command, streaming stdout lines to the log callback."""
         await log_callback(f"▶ {shlex.join(cmd)}\n")
+        custom_env = os.environ.copy()
+        if env:
+            custom_env.update(env)
+        custom_env["GIT_TERMINAL_PROMPT"] = "0"
+        custom_env["GIT_ASKPASS"] = "true"
+        custom_env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+
         self.current_process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=cwd,
-            env=env,
+            env=custom_env,
+            preexec_fn=os.setsid,
         )
 
         while True:
@@ -676,10 +737,16 @@ class BuildManager:
 
     async def _get_command_output(self, cmd) -> str:
         """Run a command and return its full stdout as a string."""
+        custom_env = os.environ.copy()
+        custom_env["GIT_TERMINAL_PROMPT"] = "0"
+        custom_env["GIT_ASKPASS"] = "true"
+        custom_env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            env=custom_env,
         )
         stdout, _ = await proc.communicate()
         return stdout.decode().strip()

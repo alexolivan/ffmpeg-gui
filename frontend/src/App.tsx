@@ -66,6 +66,7 @@ function App() {
     handleDeleteBuild,
     handleImportRecipeChange,
     handleExportRecipe,
+    fetchDeps,
   } = useBuilds(activeView);
 
   const {
@@ -247,6 +248,7 @@ function App() {
             setShowEnvModal={setShowEnvModal}
             selectedLinuxDistro={selectedLinuxDistro}
             setSelectedLinuxDistro={setSelectedLinuxDistro}
+            systemTelemetry={systemTelemetry}
             validationResult={validationResult}
             setValidationResult={setValidationResult}
             terminalBuild={terminalBuild}
@@ -268,6 +270,7 @@ function App() {
             importRecipeRef={importRecipeRef}
             refreshBuilds={refreshBuilds}
             refreshDiskInfo={refreshDiskInfo}
+            refreshDeps={fetchDeps}
           />
         )}
       </main>

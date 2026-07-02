@@ -45,7 +45,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 }) => {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="flex justify-between items-center mb-6">
+      <header className="flex justify-between items-center mb-4">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">SERVICES</h1>
           <p className="text-xs text-text-secondary">Continuous media streaming and processing node instances</p>
@@ -69,11 +69,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
       </header>
 
-      <div className="space-y-8">
+      <div className="space-y-4">
         {/* Active Running Services */}
-        <div className="glass-card p-8">
-          <h3 className="text-xl font-black mb-6">ACTIVE SERVICES (RUNNING)</h3>
-          <div className="space-y-6">
+        <div className="glass-card p-4 md:p-5">
+          <h3 className="text-xl font-black mb-3">ACTIVE SERVICES (RUNNING)</h3>
+          <div className="space-y-2.5">
             {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length === 0 ? (
               <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
                 No running services
@@ -81,7 +81,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             ) : (
               telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').map(proc => (
                 <div key={proc.id} onClick={() => onSelectedProcess(proc)}
-                  className="flex items-center justify-between p-4 bg-brand-lime/5 rounded-2xl border border-brand-lime/10 cursor-pointer hover:bg-brand-lime/10 transition-colors">
+                  className="flex items-center justify-between p-3 bg-brand-lime/5 rounded-xl border border-brand-lime/10 cursor-pointer hover:bg-brand-lime/10 transition-colors">
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-brand-lime animate-pulse"></span>
@@ -109,7 +109,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-text-secondary space-y-1">
+                    <div className="text-xs text-text-secondary space-y-0.5">
                       <p className="truncate">
                         Input: <code className="text-white font-mono">{formatInputDesc(proc.input_config)}</code>
                       </p>
@@ -117,7 +117,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         Output: <code className="text-white font-mono">{formatOutputDesc(proc.output_config)}</code>
                       </p>
                     </div>
-                    <div className="flex gap-4 mt-2 text-xs text-text-secondary flex-wrap items-center">
+                    <div className="flex gap-4 mt-1 text-xs text-text-secondary flex-wrap items-center">
                       <span>PID: <strong className="text-white font-mono">{proc.pid || 'N/A'}</strong></span>
                       <span className="text-white/10 select-none">|</span>
                       <span>CPU: <strong className="text-white">{proc.cpu || 0}%</strong></span>
@@ -200,9 +200,9 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
 
         {/* Inactive Configured Services */}
-        <div className="glass-card p-8">
-          <h3 className="text-xl font-black mb-6 text-white/50">CONFIGURED SERVICES (INACTIVE)</h3>
-          <div className="space-y-6">
+        <div className="glass-card p-4 md:p-5">
+          <h3 className="text-xl font-black mb-3 text-white/50">CONFIGURED SERVICES (INACTIVE)</h3>
+          <div className="space-y-2.5">
             {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length === 0 ? (
               <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
                 No inactive services
@@ -211,7 +211,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
               telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').map(proc => {
                 return (
                   <div key={proc.id} onClick={() => onSelectedProcess(proc)}
-                    className="flex items-center justify-between p-4 bg-white/2 opacity-75 hover:opacity-100 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">
+                    className="flex items-center justify-between p-3 bg-white/2 opacity-75 hover:opacity-100 rounded-xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-white/20"></span>
@@ -234,7 +234,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="text-xs text-text-secondary space-y-1 mt-1.5">
+                      <div className="text-xs text-text-secondary space-y-0.5 mt-0.5">
                         <p className="truncate">
                           Input: <code className="text-white font-mono">{formatInputDesc(proc.input_config)}</code>
                         </p>

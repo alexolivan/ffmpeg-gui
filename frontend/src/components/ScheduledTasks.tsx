@@ -280,10 +280,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const runningExecutions = taskExecutions.length;
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
       {/* HEADER */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-4">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-white uppercase mb-0.5">
             Task Scheduling
@@ -317,22 +317,22 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       </header>
 
       {/* METRIC CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <div className="glass-card p-6 bg-white/5 border-white/5 flex flex-col justify-between">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        <div className="glass-card py-3 px-4 bg-white/5 border-white/5 flex flex-col justify-between">
           <span className="text-xs uppercase font-bold tracking-wider text-text-secondary">Total Tasks</span>
-          <span className="text-4xl font-black text-white mt-4">{totalTasks}</span>
+          <span className="text-2xl font-black text-white mt-1">{totalTasks}</span>
         </div>
-        <div className="glass-card p-6 bg-white/5 border-white/5 flex flex-col justify-between">
+        <div className="glass-card py-3 px-4 bg-white/5 border-white/5 flex flex-col justify-between">
           <span className="text-xs uppercase font-bold tracking-wider text-text-secondary">Active Timers</span>
-          <span className="text-4xl font-black text-brand-orange mt-4">{activeTasks}</span>
+          <span className="text-2xl font-black text-brand-orange mt-1">{activeTasks}</span>
         </div>
-        <div className="glass-card p-6 bg-white/5 border-white/5 flex flex-col justify-between">
+        <div className="glass-card py-3 px-4 bg-white/5 border-white/5 flex flex-col justify-between">
           <span className="text-xs uppercase font-bold tracking-wider text-text-secondary">Recurring Cron</span>
-          <span className="text-4xl font-black text-brand-blue mt-4">{recurringTasks}</span>
+          <span className="text-2xl font-black text-brand-blue mt-1">{recurringTasks}</span>
         </div>
-        <div className="glass-card p-6 bg-white/5 border-white/5 flex flex-col justify-between">
+        <div className="glass-card py-3 px-4 bg-white/5 border-white/5 flex flex-col justify-between">
           <span className="text-xs uppercase font-bold tracking-wider text-text-secondary">Active Executions</span>
-          <span className="text-4xl font-black text-brand-lime mt-4 flex items-center gap-3">
+          <span className="text-2xl font-black text-brand-lime mt-1 flex items-center gap-3">
             {runningExecutions}
             {runningExecutions > 0 && <span className="w-2.5 h-2.5 rounded-full bg-brand-lime animate-pulse"></span>}
           </span>
@@ -341,8 +341,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
       {/* ACTIVE RUNNING EXECUTIONS ROW */}
       {taskExecutions.length > 0 && (
-        <div className="glass-card p-6 bg-brand-lime/5 border-brand-lime/20 animate-in fade-in slide-in-from-top-2 duration-300">
-          <h3 className="text-sm font-black uppercase text-brand-lime tracking-widest mb-4 flex items-center gap-2">
+        <div className="glass-card p-4 bg-brand-lime/5 border-brand-lime/20 animate-in fade-in slide-in-from-top-2 duration-300">
+          <h3 className="text-sm font-black uppercase text-brand-lime tracking-widest mb-2.5 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-brand-lime animate-ping"></span>
             Realtime Execution Monitor
           </h3>
@@ -351,14 +351,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               <div 
                 key={exec.id} 
                 onClick={() => setViewingLogsExecutionId(exec.id)}
-                className="flex flex-col md:flex-row md:items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5 gap-4 cursor-pointer hover:bg-white/10 transition-colors"
+                className="flex flex-col md:flex-row md:items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 gap-4 cursor-pointer hover:bg-white/10 transition-colors"
               >
                 <div>
                   <div className="flex items-center gap-3">
                     <span className="font-bold text-white">{exec.task_name}</span>
                     <span className="text-xs font-mono text-white/40">#run-{exec.id}</span>
                   </div>
-                  <div className="flex gap-4 mt-2 text-xs text-text-secondary flex-wrap items-center">
+                  <div className="flex gap-4 mt-1 text-xs text-text-secondary flex-wrap items-center">
                     <span>PID: <strong className="text-white font-mono">{exec.pid || 'N/A'}</strong></span>
                     <span className="text-white/10 select-none">|</span>
                     <span>CPU: <strong className="text-white">{exec.cpu}%</strong></span>
@@ -395,8 +395,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       )}
 
       {/* TASKS LIST */}
-      <div className="glass-card p-6 md:p-8 bg-white/5 border-white/5">
-        <h2 className="text-xl font-bold mb-6">Task Job Configurations</h2>
+      <div className="glass-card p-4 md:p-5 bg-white/5 border-white/5">
+        <h2 className="text-xl font-bold mb-3">Task Job Configurations</h2>
         
         {loading ? (
           <div className="py-20 text-center text-text-secondary animate-pulse">Loading task configurations...</div>
@@ -409,8 +409,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         ) : (
           <div className="divide-y divide-white/5">
             {tasks.map(task => (
-              <div key={task.id} className="py-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-white/[0.01] transition-all px-2">
-                <div className="flex-1 space-y-1.5 min-w-0">
+              <div key={task.id} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-white/[0.01] transition-all px-2">
+                <div className="flex-1 space-y-0.5 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h3 className="font-bold text-lg text-white truncate">
                       {task.name}

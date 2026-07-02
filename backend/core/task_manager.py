@@ -97,14 +97,18 @@ class TaskManager:
             cmd += ["-threads", str(int(threads))]
 
         # Hardware acceleration (legacy fallback)
-        has_input_level_hwdec = False
-        if is_new_format:
-            p_hw = input_cfg.get('input1', {}).get('hwaccel', 'none')
-            s_hw = input_cfg.get('input2', {}).get('hwaccel', 'none')
-            if (p_hw and p_hw != 'none') or (s_hw and s_hw != 'none'):
-                has_input_level_hwdec = True
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+        is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
-        if not has_input_level_hwdec:
+        has_input_level_hwdec = False
+        if is_hw_supported:
+            if is_new_format:
+                p_hw = input_cfg.get('input1', {}).get('hwaccel', 'none')
+                s_hw = input_cfg.get('input2', {}).get('hwaccel', 'none')
+                if (p_hw and p_hw != 'none') or (s_hw and s_hw != 'none'):
+                    has_input_level_hwdec = True
+
+        if is_hw_supported and not has_input_level_hwdec:
             hwaccel = advanced.get('hwaccel', 'none')
             if hwaccel and hwaccel != 'none':
                 cmd += ["-hwaccel", hwaccel]
@@ -297,23 +301,28 @@ class TaskManager:
             else:
                 from core.filter_graph import FilterGraphBuilder
                 
+                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+                is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
+
                 frames_destination = 'cpu'
-                if is_new_format:
-                    frames_destination = input_cfg['input1'].get('frames_destination', 'cpu')
-                else:
-                    frames_destination = input_cfg.get('frames_destination', 'cpu')
+                if is_hw_supported:
+                    if is_new_format:
+                        frames_destination = input_cfg['input1'].get('frames_destination', 'cpu')
+                    else:
+                        frames_destination = input_cfg.get('frames_destination', 'cpu')
                     
                 hwaccel = 'none'
-                if is_new_format:
-                    hwaccel = input_cfg['input1'].get('hwaccel', 'none')
-                else:
-                    hwaccel = input_cfg.get('hwaccel', 'none')
+                if is_hw_supported:
+                    if is_new_format:
+                        hwaccel = input_cfg['input1'].get('hwaccel', 'none')
+                    else:
+                        hwaccel = input_cfg.get('hwaccel', 'none')
                 
-                if hwaccel == 'none':
+                if is_hw_supported and hwaccel == 'none':
                     hwaccel = advanced.get('hwaccel', 'none')
 
                 is_vram = (frames_destination == 'vram')
-                if hwaccel == 'none':
+                if hwaccel == 'none' or not is_hw_supported:
                     is_vram = False
                     
                 vf_str, remains_vram = FilterGraphBuilder.build_video_filters(
@@ -415,7 +424,7 @@ class TaskManager:
             preview_vf = "fps=1,scale=480:-1"
             try:
                 if is_vram:
-                    preview_vf = f"hwdownload,format=nv12,fps=1,scale=480:-1"
+                    preview_vf = "fps=1,hwdownload,format=nv12,scale=480:-1"
             except NameError:
                 pass
                 
@@ -436,8 +445,12 @@ class TaskManager:
     def _append_input(self, cmd: list, input_cfg: dict):
         input_type = input_cfg.get('type')
         
-        # Input-specific hardware acceleration
-        hwaccel = input_cfg.get('hwaccel', 'none')
+        # Input-specific hardware acceleration (only for supported compressed streams)
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+        hwaccel = 'none'
+        if input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
+            hwaccel = input_cfg.get('hwaccel', 'none')
+            
         if hwaccel and hwaccel != 'none':
             cmd += ["-hwaccel", hwaccel]
             hwaccel_out = input_cfg.get('hwaccel_output_format', '')
@@ -733,6 +746,8 @@ class TaskManager:
             append_mpegts_options(cmd, output_cfg)
         elif output_type == 'rtmp':
             cmd += ["-f", "flv", output_cfg.get('url', '')]
+        elif output_type == 'whip':
+            cmd += ["-f", "whip", output_cfg.get('url', '')]
         elif output_type == 'ndi':
             name = output_cfg.get('path', 'FFMPEG-OUTPUT')
             cmd += ["-f", "libndi_newtek", "-ndi_name", name, "output.ndi"]

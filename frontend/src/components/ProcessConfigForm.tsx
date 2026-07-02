@@ -3,7 +3,7 @@ import InputSourcePanel from './source/InputSourcePanel';
 import type { InputSourceConfig } from './source/InputSourcePanel';
 import VideoCodecPanel from './codec/VideoCodecPanel';
 import AudioCodecPanel from './codec/AudioCodecPanel';
-import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS } from './codec/codecRegistry';
+import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS, getAvailableVideoCodecs, getAvailableAudioCodecs } from './codec/codecRegistry';
 import type { SystemCapabilities } from './codec/codecRegistry';
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
@@ -82,15 +82,150 @@ interface ProcessConfigFormProps {
   onSaveAs?: (config: any) => void;
   initialConfig?: any;
   isTask?: boolean;
+  validationErrors?: Record<string, string>;
 }
 
-const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit, onSaveAs, initialConfig, isTask = false }) => {
+const EMPTY_ARRAY: any[] = [];
+
+const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
+  onCancel,
+  onSubmit,
+  onSaveAs,
+  initialConfig,
+  isTask = false,
+  validationErrors: propsValidationErrors,
+}) => {
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
   const [selectedBuildOptions, setSelectedBuildOptions] = useState<Record<string, boolean> | undefined>();
   const [activeSection, setActiveSection] = useState<string>('system');
   const [previewCmd, setPreviewCmd] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [systemCapabilities, setSystemCapabilities] = useState<SystemCapabilities | undefined>();
+  const [existingConfigs, setExistingConfigs] = useState<any[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/processes')
+        .then(r => r.ok ? r.json() : [])
+        .then(data => data.map((x: any) => ({ ...x, is_task: false }))),
+      fetch('/tasks')
+        .then(r => r.ok ? r.json() : [])
+        .then(data => data.map((x: any) => ({ ...x, is_task: true })))
+    ]).then(([procs, tsks]) => {
+      setExistingConfigs([...procs, ...tsks]);
+    }).catch(() => {});
+  }, []);
+
+  const getNextAvailablePort = (basePort: number): string => {
+    let port = basePort;
+    const used = new Set<number>();
+    for (const item of existingConfigs) {
+      if (initialConfig) {
+        const isSelfTask = !!isTask === !!item.is_task;
+        if (isSelfTask) {
+          if (initialConfig.id !== undefined && initialConfig.id !== null && item.id === initialConfig.id) continue;
+          if (initialConfig.name && item.name === initialConfig.name) continue;
+        }
+      }
+      const out = item.output_config;
+      if (out && ['udp', 'srt', 'rtp'].includes(out.type)) {
+        const p = Number(out.port);
+        if (p && !isNaN(p)) used.add(p);
+      }
+    }
+    while (used.has(port)) {
+      port++;
+    }
+    return String(port);
+  };
+
+  const checkPortCollision = (portStr: string, hostStr: string): any | null => {
+    const port = Number(portStr);
+    if (!port || isNaN(port)) return null;
+    const host = (hostStr || '').trim() || '127.0.0.1';
+
+    for (const item of existingConfigs) {
+      if (initialConfig) {
+        const isSelfTask = !!isTask === !!item.is_task;
+        if (isSelfTask) {
+          if (initialConfig.id !== undefined && initialConfig.id !== null && item.id === initialConfig.id) continue;
+          if (initialConfig.name && item.name === initialConfig.name) continue;
+        }
+      }
+      const out = item.output_config;
+      if (out && ['udp', 'srt', 'rtp'].includes(out.type)) {
+        const itemPort = Number(out.port);
+        const itemHost = (out.host || '').trim() || '127.0.0.1';
+        if (itemPort === port) {
+          if (host === '0.0.0.0' || itemHost === '0.0.0.0' || host === itemHost) {
+            return item;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  const validateConfig = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    // 1. General name is required
+    if (!config.name.trim()) {
+      errors.name = 'General name is required';
+    }
+
+    // 2. Output validations based on type
+    const out = config.output;
+    if (out.type === 'udp' || out.type === 'rtp' || out.type === 'srt') {
+      if (!(out.host || '').trim()) {
+        errors.host = 'Host is required';
+      }
+      const portVal = (out.port || '').trim();
+      if (!portVal) {
+        errors.port = 'Port is required';
+      } else {
+        const portNum = Number(portVal);
+        if (isNaN(portNum) || !Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+          errors.port = 'Port must be an integer between 1 and 65535';
+        } else {
+          const collision = checkPortCollision(portVal, out.host || '');
+          if (collision) {
+            errors.port = `Port collision: port ${portVal} is already in use by active configuration "${collision.name}"`;
+          }
+        }
+      }
+    } else if (out.type === 'rtmp' || out.type === 'whip') {
+      if (!(out.url || '').trim()) {
+        errors.url = 'Stream URL is required';
+      }
+    } else if (out.type === 'hls') {
+      if (!(out.path || '').trim()) {
+        errors.path = 'HLS path or ingest URL is required';
+      }
+    } else if (out.type === 'icecast') {
+      if (!(out.host || '').trim()) {
+        errors.host = 'Icecast server host/URL is required';
+      }
+      if (!(out.icecast_mount || '').trim()) {
+        errors.icecast_mount = 'Icecast mountpoint is required';
+      }
+    } else if (out.type === 'file') {
+      if (!(out.path || '').trim()) {
+        errors.path = 'Output file path is required';
+      }
+    } else if (out.type === 'ndi') {
+      if (!(out.path || '').trim()) {
+        errors.path = 'NDI name/path is required';
+      }
+    } else if (out.type === 'decklink') {
+      if (!(out.device || '').trim()) {
+        errors.device = 'DeckLink device is required';
+      }
+    }
+
+    setLocalValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const defaultVideoCodec = VIDEO_CODECS[0];
   const defaultAudioCodec = AUDIO_CODECS[0];
@@ -112,7 +247,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         has_video: inputCfg.has_video !== false,
         has_audio: inputCfg.has_audio !== false,
         use_secondary_input: !!inputCfg.use_secondary_input,
-        input1: inputCfg.input1 || { type: 'srt', host: '', port: '9000', mode: 'listener' },
+        input1: inputCfg.input1 || { type: 'srt', host: '', port: getNextAvailablePort(9000), mode: 'listener' },
         input2: inputCfg.input2 || { type: 'file', path: '' },
         video_codec_id: vCodecDef.id,
         video_codec_params: { ...getDefaultParams(vCodecDef), ...(codecCfg.video_params || {}) },
@@ -139,7 +274,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           aresample: !!filterCfg.aresample,
           overlays: filterCfg.overlays || [],
         },
-        output: outputCfg || { type: 'udp', host: '239.0.0.1', port: '1234' },
+        output: Object.keys(outputCfg).length > 0 ? outputCfg : { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
         auto_start: !!initialConfig.auto_start,
         watchdog_enabled: !!initialConfig.watchdog_enabled,
         watchdog_retries: initialConfig.watchdog_retries ?? 5,
@@ -160,7 +295,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
       has_video: true,
       has_audio: true,
       use_secondary_input: false,
-      input1: { type: 'srt', host: '', port: '9000', mode: 'listener' },
+      input1: { type: 'srt', host: '', port: getNextAvailablePort(9000), mode: 'listener' },
       input2: { type: 'file', path: '' },
       video_codec_id: defaultVideoCodec.id,
       video_codec_params: getDefaultParams(defaultVideoCodec),
@@ -180,7 +315,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         aresample: false,
         overlays: [],
       },
-      output: { type: 'udp', host: '239.0.0.1', port: '1234' },
+      output: { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
       auto_start: false,
       watchdog_enabled: false,
       watchdog_retries: 5,
@@ -196,6 +331,35 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   };
 
   const [config, setConfig] = useState<ProcessConfig>(getInitialState);
+  const [localValidationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  const validationErrors = { ...propsValidationErrors, ...localValidationErrors };
+
+  useEffect(() => {
+    setLocalValidationErrors({});
+  }, [config.output.type]);
+
+  useEffect(() => {
+    if (!initialConfig && existingConfigs.length > 0) {
+      setConfig(prev => {
+        const newOutputPort = getNextAvailablePort(1234);
+        const newInput1Port = getNextAvailablePort(9000);
+        let updated = false;
+        const patch: Partial<ProcessConfig> = {};
+        if (prev.output && prev.output.type === 'udp' && prev.output.port === '1234') {
+          patch.output = { ...prev.output, port: newOutputPort };
+          updated = true;
+        }
+        if (prev.input1 && prev.input1.type === 'srt' && prev.input1.port === '9000') {
+          patch.input1 = { ...prev.input1, port: newInput1Port };
+          updated = true;
+        }
+        if (updated) {
+          return { ...prev, ...patch };
+        }
+        return prev;
+      });
+    }
+  }, [existingConfigs, initialConfig]);
 
   useEffect(() => {
     fetch('/builds')
@@ -307,11 +471,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   };
 
   const handleSubmit = () => {
+    if (!validateConfig()) return;
     onSubmit(createPayload());
   };
 
   const handleSaveAs = () => {
     if (!onSaveAs) return;
+    if (!validateConfig()) return;
     const payload = createPayload();
     payload.name = `${config.name} (Copy)`;
     if (payload.alias) {
@@ -321,6 +487,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   };
 
   const handlePreview = async () => {
+    if (!validateConfig()) return;
     setIsPreviewing(true);
     const previewUrl = isTask ? '/tasks/preview-cmd' : '/processes/preview-cmd';
     const payload = {
@@ -392,8 +559,74 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   }, []);
 
   const handleOutputChange = useCallback((output: OutputConfig) => {
-    setConfig(prev => ({ ...prev, output }));
-  }, []);
+    const oldType = config.output.type;
+    const newType = output.type;
+
+    if (oldType === newType) {
+      setConfig(prev => ({ ...prev, output }));
+      return;
+    }
+
+    // Apply default properties when output type changes
+    const finalOutput = { ...output };
+    if (newType === 'udp' || newType === 'rtp') {
+      finalOutput.host = '127.0.0.1';
+      finalOutput.port = getNextAvailablePort(1234);
+    } else if (newType === 'srt') {
+      finalOutput.host = '127.0.0.1';
+      finalOutput.port = getNextAvailablePort(9000);
+      finalOutput.mode = 'caller';
+    } else if (newType === 'ndi') {
+      finalOutput.path = 'FFmpeg_Stream';
+      (finalOutput as any).name = 'FFmpeg_Stream';
+    } else if (newType === 'file') {
+      finalOutput.path = '/var/tmp/output.ts';
+    } else if (newType === 'icecast') {
+      finalOutput.url = 'http://localhost:8000/stream.mp3';
+    } else if (newType === 'rtmp') {
+      finalOutput.url = 'rtmp://localhost/live/app';
+    } else if (newType === 'whip') {
+      finalOutput.url = 'http://localhost:8080/whip';
+    }
+
+    // Check codec compatibility
+    const availableVideo = getAvailableVideoCodecs(selectedBuildOptions, systemCapabilities, newType);
+    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType);
+
+    const videoIncompatible = config.has_video && !availableVideo.some(c => c.id === config.video_codec_id);
+    const audioIncompatible = config.has_audio && !availableAudio.some(c => c.id === config.audio_codec_id);
+
+    if (videoIncompatible || audioIncompatible) {
+      const videoMsg = videoIncompatible 
+        ? `\n- El códec de vídeo actual (${config.video_codec_id}) se cambiará a ${availableVideo[0]?.label || 'H.264'}.` 
+        : '';
+      const audioMsg = audioIncompatible 
+        ? `\n- El códec de audio actual (${config.audio_codec_id}) se cambiará a ${availableAudio[0]?.label || 'AAC'}.` 
+        : '';
+
+      const proceed = window.confirm(
+        `El cambio de tipo de salida a ${newType.toUpperCase()} requiere reconfigurar los códecs:${videoMsg}${audioMsg}\n\n¿Deseas continuar?`
+      );
+
+      if (!proceed) return;
+
+      // User accepted: update output and auto-heal codecs
+      setConfig(prev => {
+        const patch: Partial<ProcessConfig> = { ...prev, output: finalOutput };
+        if (videoIncompatible && availableVideo.length > 0) {
+          patch.video_codec_id = availableVideo[0].id;
+          patch.video_codec_params = getDefaultParams(availableVideo[0]);
+        }
+        if (audioIncompatible && availableAudio.length > 0) {
+          patch.audio_codec_id = availableAudio[0].id;
+          patch.audio_codec_params = getDefaultParams(availableAudio[0]);
+        }
+        return patch as ProcessConfig;
+      });
+    } else {
+      setConfig(prev => ({ ...prev, output: finalOutput }));
+    }
+  }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort]);
 
   const handleLifecycleOrSchedulingChange = useCallback((updates: any) => {
     setConfig(prev => ({
@@ -488,15 +721,41 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
     { id: 'filters', label: 'Filters', icon: <KnobsIcon size={14} /> },
   ];
 
+  const hasErrors = Object.keys(validationErrors).length > 0;
+
   return (
     <div className="flex flex-col h-full max-h-[85vh]">
+      {hasErrors && (
+        <div className="flex-shrink-0 mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl text-xs text-red-300 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-start gap-2.5">
+            <span className="text-sm mt-0.5 text-red-400">
+              <ShieldIcon size={14} />
+            </span>
+            <div>
+              <strong className="block mb-1 font-bold text-red-200">Existen errores de validación en el formulario:</strong>
+              <ul className="list-disc pl-4 space-y-0.5 text-red-400/90 font-medium">
+                {Object.entries(validationErrors).map(([key, msg]) => (
+                  <li key={key}>{msg}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Header: Name + Build ── */}
       <div className="space-y-2 mb-2.5 flex-shrink-0">
         <div className="flex gap-2">
           <div className="flex-[3]">
             <input
               type="text"
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium"
+              id="process-name"
+              name="name"
+              className={`w-full bg-white/5 border rounded-lg p-2 outline-none transition-all text-xs font-medium ${
+                validationErrors.name
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10 focus:border-brand-lime'
+              }`}
               placeholder={isTask ? "Task name (e.g. Daily Transcode of Stream)" : "Service name (e.g. Primary Encoder Node-01)"}
               value={config.name}
               onChange={e => setConfig({ ...config, name: e.target.value })}
@@ -505,6 +764,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           <div className="w-[140px] flex-shrink-0">
             <input
               type="text"
+              id="process-alias"
+              name="alias"
               maxLength={12}
               className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium text-brand-lime placeholder-white/20"
               placeholder="LCD Alias"
@@ -520,6 +781,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         <div className="flex gap-2 items-center">
           {availableBuilds.length > 0 && (
             <select
+              id="process-build"
+              name="ffmpeg_build_id"
               className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-orange transition-all truncate"
               value={config.ffmpeg_build_id ?? ''}
               onChange={e => handleBuildChange(e.target.value ? Number(e.target.value) : null)}
@@ -534,9 +797,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           )}
           {/* Stream toggles */}
           <div className="flex items-center gap-3 bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/10 flex-shrink-0">
-            <label className="flex items-center gap-1.5 cursor-pointer">
+            <label htmlFor="process-has-video" className="flex items-center gap-1.5 cursor-pointer">
               <input
-                type="checkbox" checked={config.has_video}
+                type="checkbox" id="process-has-video" name="has_video" checked={config.has_video}
                 onChange={e => handleHasVideoChange(e.target.checked)}
                 className="w-3.5 h-3.5 accent-brand-orange"
               />
@@ -545,9 +808,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
               </span>
             </label>
             <span className="w-px h-3 bg-white/10" />
-            <label className="flex items-center gap-1.5 cursor-pointer">
+            <label htmlFor="process-has-audio" className="flex items-center gap-1.5 cursor-pointer">
               <input
-                type="checkbox" checked={config.has_audio}
+                type="checkbox" id="process-has-audio" name="has_audio" checked={config.has_audio}
                 onChange={e => handleHasAudioChange(e.target.checked)}
                 className="w-3.5 h-3.5 accent-blue-400"
               />
@@ -570,6 +833,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
           }
           codecId={config.video_codec_id}
           hasCpuFilters={!!(config.filters.overlays && config.filters.overlays.length > 0)}
+          inputType={config.input1.type}
         />
       )}
 
@@ -682,15 +946,18 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 systemCapabilities={systemCapabilities}
                 onSyncAlsaAudio={handleSyncAlsaAudio}
                 ffmpegBuildId={config.ffmpeg_build_id}
+                idPrefix="input1"
               />
             </div>
 
             {/* Toggle: Use secondary input */}
             {config.has_video && config.has_audio && (
               <div className="flex items-center gap-3 px-2">
-                <label className="flex items-center gap-3 cursor-pointer group">
+                <label htmlFor="process-use-secondary-input" className="flex items-center gap-3 cursor-pointer group">
                   <input
                     type="checkbox"
+                    id="process-use-secondary-input"
+                    name="use_secondary_input"
                     checked={config.use_secondary_input}
                     onChange={e => handleUseSecondaryInputChange(e.target.checked)}
                     className="w-4 h-4 accent-brand-lime"
@@ -716,6 +983,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   onChange={handleInput2Change}
                   systemCapabilities={systemCapabilities}
                   ffmpegBuildId={config.ffmpeg_build_id}
+                  idPrefix="input2"
                 />
               </div>
             )}
@@ -732,6 +1000,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   params={config.video_codec_params}
                   buildOptions={selectedBuildOptions}
                   systemCapabilities={systemCapabilities}
+                  outputType={config.output.type}
                   onChange={handleVideoCodecChange}
                 />
               </div>
@@ -742,6 +1011,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   codecId={config.audio_codec_id}
                   params={config.audio_codec_params}
                   buildOptions={selectedBuildOptions}
+                  outputType={config.output.type}
                   onChange={handleAudioCodecChange}
                 />
               </div>
@@ -768,7 +1038,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
             compressor={config.filters.compressor}
             volume={config.filters.volume}
             aresample={config.filters.aresample}
-            overlays={config.filters.overlays || []}
+            overlays={config.filters.overlays || EMPTY_ARRAY}
             hwaccel={config.input1.hwaccel || 'none'}
             isVram={
               config.input1.hwaccel_output_format !== '' &&
@@ -790,6 +1060,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 hasAudio={config.has_audio}
                 onChange={handleOutputChange}
                 systemCapabilities={systemCapabilities}
+                validationErrors={validationErrors}
               />
             </div>
           </div>
@@ -849,15 +1120,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
         </button>
         <button
           onClick={handleSubmit}
-          disabled={!config.name.trim()}
-          className="flex-1 py-2 bg-brand-lime text-black rounded-lg font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs shadow-xl shadow-brand-lime/20 disabled:opacity-30 disabled:hover:scale-100"
+          className="flex-1 py-2 bg-brand-lime text-black rounded-lg font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs shadow-xl shadow-brand-lime/20"
         >
           {initialConfig ? 'Save Changes' : (isTask ? 'Create Task' : 'Deploy Service')}
         </button>
         {initialConfig && onSaveAs && (
           <button
             onClick={handleSaveAs}
-            disabled={!config.name.trim()}
             className="flex-1 py-2 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-lg font-bold hover:bg-brand-orange/30 transition-all uppercase tracking-widest text-xs"
           >
             Save as New

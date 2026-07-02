@@ -16,6 +16,7 @@ class ProcessManager:
         self.log_buffers: Dict[int, collections.deque] = {}
         self.restart_counts: Dict[int, int] = {}
         self.pending_restarts: Dict[int, asyncio.Task] = {}
+        self.srt_has_had_activity: Dict[int, bool] = {}
         self.db_session_factory = db_session_factory
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
@@ -53,9 +54,10 @@ class ProcessManager:
             }
             if not is_restart:
                 self.restart_counts.pop(process_id, None)
+            self.srt_has_had_activity[process_id] = False
             
             pending = self.pending_restarts.pop(process_id, None)
-            if pending:
+            if pending and pending != asyncio.current_task():
                 pending.cancel()
 
             # Determine which FFmpeg binary to use
@@ -186,14 +188,18 @@ class ProcessManager:
             cmd += ["-threads", str(int(threads))]
 
         # Hardware acceleration (legacy fallback)
-        has_input_level_hwdec = False
-        if is_new_format:
-            p_hw = input_cfg.get('input1', {}).get('hwaccel', 'none')
-            s_hw = input_cfg.get('input2', {}).get('hwaccel', 'none')
-            if (p_hw and p_hw != 'none') or (s_hw and s_hw != 'none'):
-                has_input_level_hwdec = True
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+        is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
-        if not has_input_level_hwdec:
+        has_input_level_hwdec = False
+        if is_hw_supported:
+            if is_new_format:
+                p_hw = input_cfg.get('input1', {}).get('hwaccel', 'none')
+                s_hw = input_cfg.get('input2', {}).get('hwaccel', 'none')
+                if (p_hw and p_hw != 'none') or (s_hw and s_hw != 'none'):
+                    has_input_level_hwdec = True
+
+        if is_hw_supported and not has_input_level_hwdec:
             hwaccel = advanced.get('hwaccel', 'none')
             if hwaccel and hwaccel != 'none':
                 cmd += ["-hwaccel", hwaccel]
@@ -398,23 +404,28 @@ class ProcessManager:
             else:
                 from core.filter_graph import FilterGraphBuilder
                 
+                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+                is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
+
                 frames_destination = 'cpu'
-                if is_new_format:
-                    frames_destination = input_cfg['input1'].get('frames_destination', 'cpu')
-                else:
-                    frames_destination = input_cfg.get('frames_destination', 'cpu')
+                if is_hw_supported:
+                    if is_new_format:
+                        frames_destination = input_cfg['input1'].get('frames_destination', 'cpu')
+                    else:
+                        frames_destination = input_cfg.get('frames_destination', 'cpu')
                     
                 hwaccel = 'none'
-                if is_new_format:
-                    hwaccel = input_cfg['input1'].get('hwaccel', 'none')
-                else:
-                    hwaccel = input_cfg.get('hwaccel', 'none')
+                if is_hw_supported:
+                    if is_new_format:
+                        hwaccel = input_cfg['input1'].get('hwaccel', 'none')
+                    else:
+                        hwaccel = input_cfg.get('hwaccel', 'none')
                 
-                if hwaccel == 'none':
+                if is_hw_supported and hwaccel == 'none':
                     hwaccel = advanced.get('hwaccel', 'none')
 
                 is_vram = (frames_destination == 'vram')
-                if hwaccel == 'none':
+                if hwaccel == 'none' or not is_hw_supported:
                     is_vram = False
                     
                 vf_str, remains_vram = FilterGraphBuilder.build_video_filters(
@@ -510,11 +521,10 @@ class ProcessManager:
             os.makedirs(previews_dir, exist_ok=True)
             preview_path = os.path.join(previews_dir, f"preview_{media_proc.id}.jpg")
             
-            # If the decoded frames are in VRAM, download them to system memory first
             preview_vf = "fps=1,scale=480:-1"
             try:
                 if is_vram:
-                    preview_vf = "hwdownload,format=nv12,fps=1,scale=480:-1"
+                    preview_vf = "fps=1,hwdownload,format=nv12,scale=480:-1"
             except NameError:
                 pass
                 
@@ -532,8 +542,12 @@ class ProcessManager:
         """Append a single -i input to the command."""
         input_type = input_cfg.get('type')
         
-        # Input-specific hardware acceleration
-        hwaccel = input_cfg.get('hwaccel', 'none')
+        # Input-specific hardware acceleration (only for supported compressed streams)
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+        hwaccel = 'none'
+        if input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
+            hwaccel = input_cfg.get('hwaccel', 'none')
+            
         if hwaccel and hwaccel != 'none':
             cmd += ["-hwaccel", hwaccel]
             hwaccel_out = input_cfg.get('hwaccel_output_format', '')
@@ -736,9 +750,9 @@ class ProcessManager:
             cmd += ["-profile:a", params['profile:a']]
         elif acodec == 'libopus':
             if params.get('application'):
-                cmd += ["-application", params['application']]
+                cmd += ["-application:a", params['application']]
             if params.get('vbr'):
-                cmd += ["-vbr", params['vbr']]
+                cmd += ["-vbr:a", params['vbr']]
 
     def _append_video_codec_params_indexed(self, cmd: list, vcodec: str, params: dict, idx: int, bitrate: str):
         """Append video codec-specific parameters to the command for a specific stream index."""
@@ -882,6 +896,8 @@ class ProcessManager:
             append_mpegts_options(cmd, output_cfg)
         elif output_type == 'rtmp':
             cmd += ["-f", "flv", output_cfg.get('url', '')]
+        elif output_type == 'whip':
+            cmd += ["-f", "whip", output_cfg.get('url', '')]
         elif output_type == 'ndi':
             name = output_cfg.get('path', 'FFMPEG-OUTPUT')
             cmd += ["-f", "libndi_newtek", name]
@@ -1048,6 +1064,7 @@ class ProcessManager:
             
             last_ffprobe_check = datetime.utcnow()
             last_activity_check = datetime.utcnow()
+            watchdog_start_time = datetime.utcnow()
             
             while proc.returncode is None:
                 # non-blocking call to compute CPU usage since last call
@@ -1064,8 +1081,32 @@ class ProcessManager:
                         media_proc.ram_usage = int(mem)
                         session.commit()
                         
-                        # Active stream check (UDP, RTP, SRT)
-                        if media_proc.type == 'service' and media_proc.watchdog_enabled:
+                        # Parse bitrate and fps safely to check for activity
+                        import re
+                        def parse_val(s):
+                            if not s:
+                                return 0.0
+                            nums = re.findall(r"[\d.]+", s)
+                            if not nums:
+                                return 0.0
+                            try:
+                                return float(nums[0])
+                            except ValueError:
+                                return 0.0
+
+                        b_val = parse_val(media_proc.bitrate)
+                        f_val = parse_val(media_proc.fps)
+                        is_active = (b_val > 0.0)
+
+                        if is_active:
+                            self.srt_has_had_activity[process_id] = True
+                            self.restart_counts[process_id] = 0
+                        elif (datetime.utcnow() - watchdog_start_time).total_seconds() > 60:
+                            # Reset restart counts if running successfully for over 60s
+                            self.restart_counts[process_id] = 0
+                        
+                        # Active stream check (UDP, RTP)
+                        if media_proc.type == 'service' and media_proc.watchdog_enabled and not is_active:
                             now = datetime.utcnow()
                             if (now - last_ffprobe_check).total_seconds() > 30:
                                 last_ffprobe_check = now
@@ -1080,15 +1121,12 @@ class ProcessManager:
                                 
                                 for inp in inputs_to_check:
                                     inp_type = inp.get('type')
-                                    if inp_type in ('udp', 'rtp', 'srt'):
+                                    if inp_type in ('udp', 'rtp'):
                                         url = None
                                         if inp_type == 'udp':
                                             url = f"udp://{inp.get('host', '')}:{inp.get('port', '1234')}"
                                         elif inp_type == 'rtp':
                                             url = f"rtp://{inp.get('host', '')}:{inp.get('port', '5004')}"
-                                        elif inp_type == 'srt':
-                                            if inp.get('mode', 'listener') == 'caller':
-                                                url = f"srt://{inp.get('host', '')}:{inp.get('port', '9000')}?mode=caller"
                                         
                                         if url:
                                             # Find build-specific ffprobe
@@ -1113,25 +1151,22 @@ class ProcessManager:
                                                 session.commit()
                                                 proc.kill()
                                                 break
-                                        
-                                        # SRT listener fallback check (check if bitrate or fps has activity)
-                                        if inp_type == 'srt' and inp.get('mode', 'listener') == 'listener':
-                                            if (now - last_activity_check).total_seconds() > 30:
-                                                last_activity_check = now
-                                                bitrate_str = (media_proc.bitrate or "0").lower()
-                                                fps_str = (media_proc.fps or "0")
-                                                if "0" in bitrate_str or fps_str == "0" or not bitrate_str:
-                                                    self.logger.warning("Watchdog: SRT listener stream has no bitrate/fps activity. Restarting service.")
-                                                    from database.models import ProcessLog
-                                                    log = ProcessLog(
-                                                        process_id=process_id,
-                                                        level='ERROR',
-                                                        message="Watchdog: SRT listener has no incoming data stream activity. Restarting service."
-                                                    )
-                                                    session.add(log)
-                                                    session.commit()
-                                                    proc.kill()
-                                                    break
+                                    # SRT listener fallback check (check if bitrate or fps has activity)
+                                    if inp_type == 'srt' and inp.get('mode', 'listener') == 'listener':
+                                        if (now - last_activity_check).total_seconds() > 30:
+                                            last_activity_check = now
+                                            if self.srt_has_had_activity.get(process_id, False) and b_val == 0.0:
+                                                self.logger.warning("Watchdog: SRT listener stream lost traffic activity. Restarting service.")
+                                                from database.models import ProcessLog
+                                                log = ProcessLog(
+                                                    process_id=process_id,
+                                                    level='ERROR',
+                                                    message="Watchdog: SRT listener has lost incoming data stream activity. Restarting service."
+                                                )
+                                                session.add(log)
+                                                session.commit()
+                                                proc.kill()
+                                                break
                 
                 await asyncio.sleep(2)
         except psutil.NoSuchProcess:
@@ -1164,10 +1199,21 @@ class ProcessManager:
                     if media_proc.type == 'batch':
                         media_proc.status = 'finished' if exit_code == 0 else 'error'
                     else: # service
-                        if exit_code != 0:
+                        # Check if watchdog will attempt to restart this service
+                        will_restart = False
+                        if was_unexpected and media_proc.watchdog_enabled:
+                            retries = media_proc.watchdog_retries
+                            current_restarts = self.restart_counts.get(process_id, 0)
+                            if retries == -1 or current_restarts < retries:
+                                will_restart = True
+                        
+                        if will_restart:
                             media_proc.status = 'error'
                         else:
-                            media_proc.status = 'stopped'
+                            if exit_code != 0:
+                                media_proc.status = 'error'
+                            else:
+                                media_proc.status = 'stopped'
                     
                     media_proc.pid = None
                     media_proc.last_stop = datetime.utcnow()
@@ -1229,7 +1275,8 @@ class ProcessManager:
                             session.add(limit_log)
                             session.commit()
             
-            # Clean up memory buffer
+            # Clean up memory buffer and tracking flags
+            self.srt_has_had_activity.pop(process_id, None)
             if process_id in self.log_buffers:
                 del self.log_buffers[process_id]
         

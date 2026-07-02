@@ -1,6 +1,7 @@
 import unittest
 import asyncio
-from unittest.mock import patch, MagicMock
+from datetime import datetime, timedelta
+from unittest.mock import patch, MagicMock, PropertyMock
 from database.db import SessionLocal, init_db
 from database.models import MediaProcess
 from core.process_manager import ProcessManager
@@ -158,6 +159,220 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
             self.db.refresh(media_proc)
             self.assertEqual(media_proc.pid, 99999)
             self.assertEqual(media_proc.status, "running")
+
+        finally:
+            self.db.delete(media_proc)
+            self.db.commit()
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_srt_listener_watchdog_resilience(self, mock_exec):
+        class StubProcess:
+            def __init__(self):
+                self.pid = 12345
+                self.returncode = None
+                self.stdin = MagicMock()
+                self.stderr = MagicMock()
+                self.kill_called = False
+
+                async def mock_read(n):
+                    return b""
+                self.stderr.read = mock_read
+
+            def kill(self):
+                self.kill_called = True
+                self.returncode = -9
+
+            async def wait(self):
+                return self.returncode
+
+        stub_proc = StubProcess()
+
+        # Create a test media process in DB configured as SRT listener
+        media_proc = MediaProcess(
+            name="SRT Listener Process",
+            type="service",
+            input_config={"type": "srt", "mode": "listener", "host": "127.0.0.1", "port": "9999"},
+            output_config={"type": "file", "path": "/tmp/test_srt_out.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="running",
+            watchdog_enabled=True,
+            watchdog_retries=3,
+            bitrate="0.0kbits/s",
+            fps="0"
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        self.manager.processes[media_proc.id] = stub_proc
+        self.manager.restart_counts[media_proc.id] = 2
+
+        try:
+            with patch("psutil.Process") as mock_psutil:
+                mock_p = MagicMock()
+                mock_p.cpu_percent.return_value = 5.0
+                mock_p.memory_info.return_value.rss = 100 * 1024 * 1024
+                mock_psutil.return_value = mock_p
+
+                sleep_count = 0
+                async def mock_sleep(delay):
+                    nonlocal sleep_count
+                    sleep_count += 1
+                    if sleep_count == 1:
+                        # Initially, no traffic, flag should be False
+                        self.assertFalse(self.manager.srt_has_had_activity.get(media_proc.id))
+                        # Simulate traffic starts
+                        db_sess = SessionLocal()
+                        mp = db_sess.query(MediaProcess).get(media_proc.id)
+                        mp.bitrate = "1200.0kbits/s"
+                        mp.fps = "25.0"
+                        db_sess.commit()
+                        db_sess.close()
+                    elif sleep_count == 2:
+                        # Traffic was detected, srt_has_had_activity should be True, restart_counts should reset to 0
+                        self.assertTrue(self.manager.srt_has_had_activity.get(media_proc.id))
+                        self.assertEqual(self.manager.restart_counts.get(media_proc.id), 0)
+                        # Simulate traffic stops (client disconnected)
+                        db_sess = SessionLocal()
+                        mp = db_sess.query(MediaProcess).get(media_proc.id)
+                        mp.bitrate = "0.0kbits/s"
+                        mp.fps = "0"
+                        db_sess.commit()
+                        db_sess.close()
+                    elif sleep_count >= 3:
+                        # Let loop continue, mock_utcnow will return timedelta > 30s to trigger check
+                        pass
+
+                from datetime import timedelta
+                time_points = [
+                    datetime.utcnow(),
+                    datetime.utcnow(),
+                    datetime.utcnow(),
+                    # Loop 1
+                    datetime.utcnow(),
+                    # Loop 2
+                    datetime.utcnow(),
+                    # Loop 3 (simulate 35 seconds later)
+                    datetime.utcnow() + timedelta(seconds=35),
+                    # Loop 4 (simulate 70 seconds later)
+                    datetime.utcnow() + timedelta(seconds=70),
+                ]
+                time_iter = iter(time_points)
+                def mock_utcnow():
+                    try:
+                        return next(time_iter)
+                    except StopIteration:
+                        return datetime.utcnow() + timedelta(seconds=100)
+
+                with patch("core.process_manager.datetime") as mock_dt, patch("asyncio.sleep", side_effect=mock_sleep):
+                    mock_dt.utcnow = mock_utcnow
+                    mock_dt.fromisoformat = datetime.fromisoformat
+                    
+                    await self.manager._watchdog(media_proc.id, stub_proc)
+                
+                # Check if stub_proc.kill() was called (which means watchdog successfully killed it due to disconnection)
+                self.assertTrue(stub_proc.kill_called)
+
+        finally:
+            self.db.delete(media_proc)
+            self.db.commit()
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_unexpected_exit_code_zero_triggers_restart(self, mock_exec):
+        # 1. Create a mocked process that exits with code 0 unexpectedly
+        mock_proc = MagicMock()
+        mock_proc.pid = 99911
+        mock_proc.returncode = 0
+        mock_proc.stdin = MagicMock()
+
+        async def mock_wait():
+            return 0
+        mock_proc.wait = mock_wait
+
+        mock_proc.stderr = MagicMock()
+        async def mock_read(n):
+            return b""
+        mock_proc.stderr.read = mock_read
+
+        media_proc = MediaProcess(
+            name="Test Exit Code 0 Service",
+            type="service",
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/test_out.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="running",
+            watchdog_enabled=True,
+            watchdog_retries=3
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        self.manager.processes[media_proc.id] = mock_proc
+
+        try:
+            with patch("psutil.Process") as mock_psutil:
+                # Raise NoSuchProcess to simulate the process exiting immediately
+                import psutil
+                mock_psutil.side_effect = psutil.NoSuchProcess(pid=99911)
+                
+                await self.manager._watchdog(media_proc.id, mock_proc)
+
+            # Check that the database status is set to 'error' (indicating it will restart),
+            # NOT 'stopped' (which would abort the restart)
+            self.db.refresh(media_proc)
+            self.assertEqual(media_proc.status, "error")
+            self.assertIn(media_proc.id, self.manager.pending_restarts)
+
+        finally:
+            self.db.delete(media_proc)
+            self.db.commit()
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_start_process_does_not_self_cancel(self, mock_exec):
+        # Create a test media process in DB
+        media_proc = MediaProcess(
+            name="Test Self Cancel Service",
+            type="service",
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/test_sc.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="running",
+            watchdog_enabled=True,
+            watchdog_retries=3
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 99912
+        mock_proc.returncode = None
+        mock_proc.stdin = MagicMock()
+        
+        async def mock_create(*args, **kwargs):
+            return mock_proc
+        mock_exec.side_effect = mock_create
+
+        try:
+            # We place the current task in pending_restarts to simulate start_process being called
+            # from within the delayed restart task
+            current_task = asyncio.current_task()
+            self.manager.pending_restarts[media_proc.id] = current_task
+
+            # If the bug was present, start_process would call current_task.cancel(),
+            # raising CancelledError at the first await point inside start_process.
+            # But with the fix, it should run completely without raising CancelledError!
+            await self.manager.start_process(media_proc.id, is_restart=True)
+            
+            # Clean up the watchdog and log reader tasks that were spawned
+            proc = self.manager.processes.get(media_proc.id)
+            if proc:
+                proc.returncode = 0
+            
+            # Ensure it popped the current task from pending_restarts without cancelling it
+            self.assertNotIn(media_proc.id, self.manager.pending_restarts)
+            self.assertFalse(current_task.cancelled())
 
         finally:
             self.db.delete(media_proc)

@@ -36,6 +36,7 @@ interface InputSourcePanelProps {
   systemCapabilities?: SystemCapabilities;
   onSyncAlsaAudio?: (alsaDevice: string) => void;
   ffmpegBuildId?: number | null;
+  idPrefix?: string;
 }
 
 const ALL_SOURCE_TYPES = [
@@ -54,6 +55,20 @@ const ALL_SOURCE_TYPES = [
   { value: 'hls', label: 'HLS Stream' },
 ];
 
+const deviceCache: {
+  decklinkDevices: string[] | null;
+  decklinkFormats: Record<string, any[]>;
+  v4l2Devices: any[] | null;
+  v4l2Formats: Record<string, any[]>;
+  alsaDevices: any[] | null;
+} = {
+  decklinkDevices: null,
+  decklinkFormats: {},
+  v4l2Devices: null,
+  v4l2Formats: {},
+  alsaDevices: null,
+};
+
 const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   label,
   accentColor,
@@ -63,6 +78,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   systemCapabilities,
   onSyncAlsaAudio,
   ffmpegBuildId,
+  idPrefix = 'input',
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
@@ -140,16 +156,30 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   React.useEffect(() => {
     if (config.type !== 'decklink') return;
     let active = true;
+
+    if (deviceCache.decklinkDevices !== null) {
+      setDevices(deviceCache.decklinkDevices);
+      if (deviceCache.decklinkDevices.length > 0) {
+        const found = deviceCache.decklinkDevices.includes(config.device || '');
+        if (!found && config.device) {
+          setManualDeviceMode(true);
+        }
+      }
+      return;
+    }
+
     const fetchDevices = async () => {
       setLoadingDevices(true);
       try {
         const res = await fetch('/decklink/devices');
         if (!res.ok) throw new Error("Failed to fetch");
         const data = await res.json();
+        const inputs = data.inputs || [];
+        deviceCache.decklinkDevices = inputs;
         if (active) {
-          setDevices(data.inputs || []);
-          if (data.inputs && data.inputs.length > 0) {
-            const found = data.inputs.includes(config.device || '');
+          setDevices(inputs);
+          if (inputs.length > 0) {
+            const found = inputs.includes(config.device || '');
             if (!found && config.device) {
               setManualDeviceMode(true);
             }
@@ -171,14 +201,23 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       return;
     }
     let active = true;
+
+    const cacheKey = config.device;
+    if (deviceCache.decklinkFormats[cacheKey] !== undefined) {
+      setFormats(deviceCache.decklinkFormats[cacheKey]);
+      return;
+    }
+
     const fetchFormats = async () => {
       setLoadingFormats(true);
       try {
         const res = await fetch(`/decklink/formats?device=${encodeURIComponent(config.device || '')}`);
         if (!res.ok) throw new Error("Failed to fetch formats");
         const data = await res.json();
+        const formatsList = data || [];
+        deviceCache.decklinkFormats[cacheKey] = formatsList;
         if (active) {
-          setFormats(data || []);
+          setFormats(formatsList);
         }
       } catch (err) {
         console.error("Error fetching formats:", err);
@@ -195,16 +234,30 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   React.useEffect(() => {
     if (config.type !== 'v4l2') return;
     let active = true;
+
+    if (deviceCache.v4l2Devices !== null) {
+      setV4l2Devices(deviceCache.v4l2Devices);
+      if (deviceCache.v4l2Devices.length > 0) {
+        const found = deviceCache.v4l2Devices.some((d: any) => d.device === config.device);
+        if (!found && config.device) {
+          setManualV4l2Mode(true);
+        }
+      }
+      return;
+    }
+
     const fetchV4l2 = async () => {
       setLoadingV4l2Devices(true);
       try {
         const res = await fetch('/v4l2/devices');
         if (!res.ok) throw new Error("Failed to fetch V4L2 devices");
         const data = await res.json();
+        const devicesList = data || [];
+        deviceCache.v4l2Devices = devicesList;
         if (active) {
-          setV4l2Devices(data || []);
-          if (data && data.length > 0) {
-            const found = data.some((d: any) => d.device === config.device);
+          setV4l2Devices(devicesList);
+          if (devicesList.length > 0) {
+            const found = devicesList.some((d: any) => d.device === config.device);
             if (!found && config.device) {
               setManualV4l2Mode(true);
             }
@@ -227,14 +280,23 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       return;
     }
     let active = true;
+
+    const cacheKey = config.device;
+    if (deviceCache.v4l2Formats[cacheKey] !== undefined) {
+      setV4l2Formats(deviceCache.v4l2Formats[cacheKey]);
+      return;
+    }
+
     const fetchV4l2Formats = async () => {
       setLoadingV4l2Formats(true);
       try {
         const res = await fetch(`/v4l2/formats?device=${encodeURIComponent(config.device || '')}`);
         if (!res.ok) throw new Error("Failed to fetch V4L2 formats");
         const data = await res.json();
+        const formatsList = data || [];
+        deviceCache.v4l2Formats[cacheKey] = formatsList;
         if (active) {
-          setV4l2Formats(data || []);
+          setV4l2Formats(formatsList);
         }
       } catch (err) {
         console.error("Error fetching V4L2 formats:", err);
@@ -251,16 +313,30 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   React.useEffect(() => {
     if (config.type !== 'alsa') return;
     let active = true;
+
+    if (deviceCache.alsaDevices !== null) {
+      setAlsaDevices(deviceCache.alsaDevices);
+      if (deviceCache.alsaDevices.length > 0) {
+        const found = deviceCache.alsaDevices.some((d: any) => d.device === config.device);
+        if (!found && config.device) {
+          setManualAlsaMode(true);
+        }
+      }
+      return;
+    }
+
     const fetchAlsa = async () => {
       setLoadingAlsaDevices(true);
       try {
         const res = await fetch('/alsa/devices');
         if (!res.ok) throw new Error("Failed to fetch ALSA devices");
         const data = await res.json();
+        const devicesList = data || [];
+        deviceCache.alsaDevices = devicesList;
         if (active) {
-          setAlsaDevices(data || []);
-          if (data && data.length > 0) {
-            const found = data.some((d: any) => d.device === config.device);
+          setAlsaDevices(devicesList);
+          if (devicesList.length > 0) {
+            const found = devicesList.some((d: any) => d.device === config.device);
             if (!found && config.device) {
               setManualAlsaMode(true);
             }
@@ -281,23 +357,31 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 mb-0.5">
         <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: accentColor }} />
-        <h4 className="font-bold text-[10px] uppercase tracking-wider" style={{ color: accentColor }}>
+        <label htmlFor={`${idPrefix}-type`} className="font-bold text-[10px] uppercase tracking-wider cursor-pointer" style={{ color: accentColor }}>
           {label}
-        </h4>
+        </label>
       </div>
 
       <select
+        id={`${idPrefix}-type`}
+        name="type"
         className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none transition-all"
         value={config.type}
         onChange={e => {
           const newType = e.target.value;
+          const isHwSupported = ['file', 'srt', 'udp', 'rtp', 'rtmp', 'hls'].includes(newType);
           update({
             type: newType,
             path: '', host: '', port: '', mode: 'listener', device: '', name: '',
             pattern: newType === 'lavfi_video' ? 'testsrc' : newType === 'lavfi_audio' ? 'sine' : '',
             size: newType === 'lavfi_video' ? '1920x1080' : undefined,
             rate: newType === 'lavfi_video' ? '25' : undefined,
-            frequency: newType === 'lavfi_audio' ? 1000 : undefined
+            frequency: newType === 'lavfi_audio' ? 1000 : undefined,
+            ...(!isHwSupported ? {
+              hwaccel: 'none',
+              hwaccel_output_format: '',
+              frames_destination: 'cpu'
+            } : {})
           });
         }}
       >
@@ -310,6 +394,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {(config.type === 'file' || config.type === 'http_audio' || config.type === 'rtmp' || config.type === 'hls') && (
         <input
           type="text"
+          id={`${idPrefix}-path`}
+          name="path"
           placeholder={config.type === 'file' ? "Absolute path to file" : "Stream URL (e.g. rtmp://... or http://...)"}
           className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
           value={config.path || ''}
@@ -321,8 +407,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div className="col-span-2">
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">SRT Connection Mode</label>
+              <label htmlFor={`${idPrefix}-srt-mode`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">SRT Connection Mode</label>
               <select
+                id={`${idPrefix}-srt-mode`}
+                name="mode"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.mode || 'listener'}
                 onChange={e => {
@@ -340,11 +428,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             </div>
 
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              <label htmlFor={`${idPrefix}-host`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
                 {config.mode === 'listener' ? 'Bind Interface / Host' : 'Remote Host / IP'}
               </label>
               <input
                 type="text"
+                id={`${idPrefix}-host`}
+                name="host"
                 placeholder={config.mode === 'listener' ? "0.0.0.0 (all interfaces)" : "e.g. 52.210.205.135"}
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.host || ''}
@@ -353,9 +443,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             </div>
 
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
+              <label htmlFor={`${idPrefix}-port`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
               <input
                 type="text"
+                id={`${idPrefix}-port`}
+                name="port"
                 placeholder="9000"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.port || ''}
@@ -364,9 +456,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             </div>
 
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Latency (ms)</label>
+              <label htmlFor={`${idPrefix}-latency`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Latency (ms)</label>
               <input
                 type="number"
+                id={`${idPrefix}-latency`}
+                name="latency"
                 placeholder="200"
                 min={20}
                 max={8000}
@@ -377,9 +471,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             </div>
 
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Stream ID (Optional)</label>
+              <label htmlFor={`${idPrefix}-streamid`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Stream ID (Optional)</label>
               <input
                 type="text"
+                id={`${idPrefix}-streamid`}
+                name="streamid"
                 placeholder="e.g. input_stream_1"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.streamid || ''}
@@ -408,12 +504,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
       {config.type === 'ndi' && (
         <div className="space-y-1.5">
-          <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+          <label htmlFor={`${idPrefix}-ndi-name`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
             NDI Source Name
           </label>
           <div className="flex gap-1.5">
             {!manualNdiMode ? (
               <select
+                id={`${idPrefix}-ndi-name`}
+                name="name"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.name || ''}
                 onChange={e => {
@@ -435,6 +533,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               <div className="flex w-full gap-1.5">
                 <input
                   type="text"
+                  id={`${idPrefix}-ndi-name`}
+                  name="name"
                   placeholder="NDI Source Name (e.g. MY-PC (OBS))"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.name || ''}
@@ -494,12 +594,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'udp' && (
         <div className="grid grid-cols-2 gap-2">
           <input
-            type="text" placeholder="Multicast / Host"
+            type="text"
+            id={`${idPrefix}-udp-host`}
+            name="host"
+            placeholder="Multicast / Host"
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.host || ''} onChange={e => update({ host: e.target.value })}
           />
           <input
-            type="text" placeholder="Port"
+            type="text"
+            id={`${idPrefix}-udp-port`}
+            name="port"
+            placeholder="Port"
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.port || ''} onChange={e => update({ port: e.target.value })}
           />
@@ -509,12 +615,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'rtp' && (
         <div className="grid grid-cols-2 gap-2">
           <input
-            type="text" placeholder="Host"
+            type="text"
+            id={`${idPrefix}-rtp-host`}
+            name="host"
+            placeholder="Host"
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.host || ''} onChange={e => update({ host: e.target.value })}
           />
           <input
-            type="text" placeholder="Port"
+            type="text"
+            id={`${idPrefix}-rtp-port`}
+            name="port"
+            placeholder="Port"
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.port || ''} onChange={e => update({ port: e.target.value })}
           />
@@ -524,7 +636,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'decklink' && (
         <div className="space-y-2">
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo DeckLink</label>
+            <label htmlFor={`${idPrefix}-decklink-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo DeckLink</label>
             {loadingDevices ? (
               <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos...</div>
             ) : devices.length === 0 ? (
@@ -532,6 +644,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron tarjetas de captura DeckLink.</div>
                 <input
                   type="text"
+                  id={`${idPrefix}-decklink-device`}
+                  name="device"
                   placeholder="Nombre del dispositivo (ej: DeckLink Mini Recorder)"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
@@ -546,6 +660,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 <div className="flex gap-1.5">
                   {!manualDeviceMode ? (
                     <select
+                      id={`${idPrefix}-decklink-device`}
+                      name="device"
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                       value={config.device || ''}
                       onChange={e => {
@@ -568,6 +684,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <div className="flex w-full gap-1.5">
                         <input
                           type="text"
+                          id={`${idPrefix}-decklink-device`}
+                          name="device"
                           placeholder="Nombre del dispositivo"
                           className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                           value={config.device || ''}
@@ -595,8 +713,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
 
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Conector de Video (video_input)</label>
+            <label htmlFor={`${idPrefix}-decklink-video-input`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Conector de Video (video_input)</label>
             <select
+              id={`${idPrefix}-decklink-video-input`}
+              name="video_input"
               className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
               value={config.video_input || ''}
               onChange={e => update({ video_input: e.target.value })}
@@ -612,8 +732,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
 
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Conector de Audio (audio_input)</label>
+            <label htmlFor={`${idPrefix}-decklink-audio-input`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Conector de Audio (audio_input)</label>
             <select
+              id={`${idPrefix}-decklink-audio-input`}
+              name="audio_input"
               className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
               value={config.audio_input || ''}
               onChange={e => update({ audio_input: e.target.value })}
@@ -626,10 +748,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
 
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato de Entrada (format_code)</label>
+            <label htmlFor={`${idPrefix}-decklink-format-code`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato de Entrada (format_code)</label>
             {manualDeviceMode ? (
               <input
                 type="text"
+                id={`${idPrefix}-decklink-format-code`}
+                name="format_code"
                 placeholder="Código de formato (ej: hp50)"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.format_code || ''}
@@ -640,6 +764,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             ) : formats.length === 0 ? (
               <input
                 type="text"
+                id={`${idPrefix}-decklink-format-code`}
+                name="format_code"
                 placeholder="Código de formato (ej: hp50) - No se detectaron formatos"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.format_code || ''}
@@ -647,6 +773,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               />
             ) : (
               <select
+                id={`${idPrefix}-decklink-format-code`}
+                name="format_code"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.format_code || ''}
                 onChange={e => update({ format_code: e.target.value })}
@@ -666,7 +794,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'alsa' && (
         <div className="space-y-2">
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo ALSA</label>
+            <label htmlFor={`${idPrefix}-alsa-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo ALSA</label>
             {loadingAlsaDevices ? (
               <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos ALSA...</div>
             ) : alsaDevices.length === 0 ? (
@@ -674,6 +802,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron tarjetas de sonido ALSA.</div>
                 <input
                   type="text"
+                  id={`${idPrefix}-alsa-device`}
+                  name="device"
                   placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
@@ -688,6 +818,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 <div className="flex gap-1.5">
                   {!manualAlsaMode ? (
                     <select
+                      id={`${idPrefix}-alsa-device`}
+                      name="device"
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                       value={config.device || ''}
                       onChange={e => {
@@ -710,6 +842,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <div className="flex w-full gap-1.5">
                         <input
                           type="text"
+                          id={`${idPrefix}-alsa-device`}
+                          name="device"
                           placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
                           className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                           value={config.device || ''}
@@ -741,7 +875,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'v4l2' && (
         <div className="space-y-2">
           <div>
-            <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo V4L2</label>
+            <label htmlFor={`${idPrefix}-v4l2-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo V4L2</label>
             {loadingV4l2Devices ? (
               <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos V4L2...</div>
             ) : v4l2Devices.length === 0 ? (
@@ -749,6 +883,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron dispositivos V4L2.</div>
                 <input
                   type="text"
+                  id={`${idPrefix}-v4l2-device`}
+                  name="device"
                   placeholder="Ruta del dispositivo (ej: /dev/video0)"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
@@ -763,6 +899,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 <div className="flex gap-1.5">
                   {!manualV4l2Mode ? (
                     <select
+                      id={`${idPrefix}-v4l2-device`}
+                      name="device"
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                       value={config.device || ''}
                       onChange={e => {
@@ -813,13 +951,15 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
           {!manualV4l2Mode && config.device && (
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato y Resolución</label>
+              <label htmlFor={`${idPrefix}-v4l2-format`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato y Resolución</label>
               {loadingV4l2Formats ? (
                 <div className="text-[10px] text-text-secondary animate-pulse">Cargando formatos...</div>
               ) : v4l2Formats.length === 0 ? (
                 <div className="text-[10px] text-text-secondary italic">No se detectaron formatos.</div>
               ) : (
                 <select
+                  id={`${idPrefix}-v4l2-format`}
+                  name="pixel_format"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.pixel_format && config.size ? `${config.pixel_format}|${config.size}` : ''}
                   onChange={e => {
@@ -881,6 +1021,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'lavfi_video' && (
         <div className="space-y-2">
           <select
+            id={`${idPrefix}-lavfi-video-pattern`}
+            name="pattern"
             className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.pattern || 'testsrc'}
             onChange={e => update({ pattern: e.target.value })}
@@ -892,8 +1034,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </select>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Resolution (size)</label>
+              <label htmlFor={`${idPrefix}-lavfi-video-size`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Resolution (size)</label>
               <select
+                id={`${idPrefix}-lavfi-video-size`}
+                name="size"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.size || '1920x1080'}
                 onChange={e => update({ size: e.target.value })}
@@ -906,8 +1050,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               </select>
             </div>
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Framerate (rate)</label>
+              <label htmlFor={`${idPrefix}-lavfi-video-rate`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Framerate (rate)</label>
               <select
+                id={`${idPrefix}-lavfi-video-rate`}
+                name="rate"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.rate || '25'}
                 onChange={e => update({ rate: e.target.value })}
@@ -928,6 +1074,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'lavfi_audio' && (
         <div className="space-y-2">
           <select
+            id={`${idPrefix}-lavfi-audio-pattern`}
+            name="pattern"
             className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.pattern || 'sine'}
             onChange={e => update({ pattern: e.target.value })}
@@ -939,9 +1087,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </select>
           {(config.pattern === 'sine' || !config.pattern) && (
             <div>
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Frequency (Hz)</label>
+              <label htmlFor={`${idPrefix}-lavfi-audio-frequency`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Frequency (Hz)</label>
               <input
                 type="number"
+                id={`${idPrefix}-lavfi-audio-frequency`}
+                name="frequency"
                 placeholder="1000"
                 min={20}
                 max={20000}
@@ -958,11 +1108,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         <div className="space-y-1.5 pt-2 border-t border-white/5 animate-in fade-in duration-300">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-            <h4 className="text-brand-lime font-bold text-[10px] uppercase tracking-wider">Hardware Decoding (Input)</h4>
+            <label htmlFor={`${idPrefix}-hwaccel`} className="text-brand-lime font-bold text-[10px] uppercase tracking-wider cursor-pointer">Hardware Decoding (Input)</label>
             <span className="text-[9px] text-white/20 italic ml-auto">-hwaccel</span>
           </div>
 
           <select
+            id={`${idPrefix}-hwaccel`}
+            name="hwaccel"
             className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none transition-all focus:border-brand-lime"
             value={config.hwaccel || 'none'}
             onChange={e => {
@@ -992,10 +1144,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
           {config.hwaccel && config.hwaccel !== 'none' && (
             <div className="mt-1.5 animate-in fade-in duration-200">
-              <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              <label htmlFor={`${idPrefix}-hwaccel-output-format`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
                 Decoded Frames Destination
               </label>
               <select
+                id={`${idPrefix}-hwaccel-output-format`}
+                name="hwaccel_output_format"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                 value={config.hwaccel_output_format || 'system'}
                 onChange={e => {

@@ -12,6 +12,7 @@ interface VideoCodecPanelProps {
   params: Record<string, string | number | boolean>;
   buildOptions?: Record<string, boolean>;
   systemCapabilities?: SystemCapabilities;
+  outputType?: string;
   onChange: (codecId: string, params: Record<string, string | number | boolean>) => void;
 }
 
@@ -20,11 +21,12 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
   params,
   buildOptions,
   systemCapabilities,
+  outputType,
   onChange,
 }) => {
   const available = React.useMemo(() => {
-    return getAvailableVideoCodecs(buildOptions, systemCapabilities);
-  }, [buildOptions, systemCapabilities]);
+    return getAvailableVideoCodecs(buildOptions, systemCapabilities, outputType);
+  }, [buildOptions, systemCapabilities, outputType]);
   const selected = available.find(c => c.id === codecId) || available[0];
 
   // Auto-heal selected codec if the current one becomes unavailable
@@ -95,6 +97,45 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
           <span className="text-[9px] text-brand-lime block px-1">
             💡 Required for professional live playout over NDI networks.
           </span>
+        )}
+
+        {/* VA-API Hardware Incompatibility Warnings */}
+        {selected?.category === 'hw_vaapi' && systemCapabilities?.vaapi?.available && systemCapabilities.vaapi.vainfo_installed === false && (
+          <div className="mt-2 p-2 bg-brand-orange/10 border border-brand-orange/20 rounded-lg text-[10px] text-brand-orange/90 leading-normal">
+            <strong>⚠️ Diagnóstico VA-API limitado:</strong> El comando <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code> no está instalado en el servidor. Instálalo (<code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">apt install vainfo</code>) para validar si tu GPU soporta este códec.
+          </div>
+        )}
+
+        {codecId === 'hevc_vaapi' && systemCapabilities?.vaapi?.vainfo_installed && systemCapabilities.vaapi.encoders && !systemCapabilities.vaapi.encoders.includes('hevc') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación HEVC por hardware</strong> vía VA-API (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona <strong>H.264 — VAAPI</strong> o un códec por software.</p>
+          </div>
+        )}
+
+        {codecId === 'h264_vaapi' && systemCapabilities?.vaapi?.vainfo_installed && systemCapabilities.vaapi.encoders && !systemCapabilities.vaapi.encoders.includes('h264') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación H.264 por hardware</strong> vía VA-API (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona un códec por software.</p>
+          </div>
+        )}
+
+        {codecId === 'vp8_vaapi' && systemCapabilities?.vaapi?.vainfo_installed && systemCapabilities.vaapi.encoders && !systemCapabilities.vaapi.encoders.includes('vp8') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación VP8 por hardware</strong> vía VA-API (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona un códec por software.</p>
+          </div>
+        )}
+
+        {codecId === 'vp9_vaapi' && systemCapabilities?.vaapi?.vainfo_installed && systemCapabilities.vaapi.encoders && !systemCapabilities.vaapi.encoders.includes('vp9') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación VP9 por hardware</strong> vía VA-API (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">vainfo</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona un códec por software.</p>
+          </div>
         )}
       </div>
 

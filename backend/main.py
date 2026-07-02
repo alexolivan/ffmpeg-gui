@@ -403,6 +403,92 @@ async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid image: {str(e)}")
 
+def parse_vainfo_capabilities() -> dict:
+    """Run vainfo and parse supported profiles and entrypoints for hardware acceleration capabilities."""
+    import shutil
+    import subprocess
+    import re
+    
+    caps = {
+        "decoders": [],
+        "encoders": [],
+        "vaapi_version": None,
+        "libva_version": None,
+        "driver_version": None
+    }
+    
+    vainfo_bin = shutil.which("vainfo")
+    if not vainfo_bin:
+        return caps
+        
+    try:
+        env = os.environ.copy()
+        env["DISPLAY"] = ""
+        env["XDG_RUNTIME_DIR"] = ""
+        
+        res = subprocess.run(
+            [vainfo_bin],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=3,
+            env=env
+        )
+        output = (res.stdout or "") + "\n" + (res.stderr or "")
+        
+        # Parse version info
+        va_api_match = re.search(r"VA-API version\s*:\s*([0-9.]+)", output, re.IGNORECASE)
+        if not va_api_match:
+            # Fallback to search in lines like "libva info: VA-API version 1.22.0"
+            va_api_match = re.search(r"VA-API version\s*([0-9.]+)", output, re.IGNORECASE)
+        if va_api_match:
+            caps["vaapi_version"] = va_api_match.group(1)
+
+        libva_match = re.search(r"libva\s*([0-9.]+)", output, re.IGNORECASE)
+        if libva_match:
+            caps["libva_version"] = libva_match.group(1)
+
+        driver_match = re.search(r"Driver version\s*:\s*([^\n]+)", output, re.IGNORECASE)
+        if driver_match:
+            caps["driver_version"] = driver_match.group(1).strip()
+            
+        pattern = re.compile(r"^\s*(VAProfile[a-zA-Z0-9_]+)\s*:\s*(VAEntrypoint[a-zA-Z0-9_]+)", re.MULTILINE)
+        for match in pattern.finditer(output):
+            profile = match.group(1)
+            entrypoint = match.group(2)
+            
+            profile_lower = profile.lower()
+            codec_name = None
+            
+            if "h264" in profile_lower or "avc" in profile_lower:
+                codec_name = "h264"
+            elif "hevc" in profile_lower or "h265" in profile_lower:
+                codec_name = "hevc"
+            elif "vp9" in profile_lower:
+                codec_name = "vp9"
+            elif "vp8" in profile_lower:
+                codec_name = "vp8"
+            elif "mpeg2" in profile_lower:
+                codec_name = "mpeg2"
+            elif "jpeg" in profile_lower:
+                codec_name = "mjpeg"
+            elif "av1" in profile_lower:
+                codec_name = "av1"
+                
+            if codec_name:
+                entry_lower = entrypoint.lower()
+                if "enc" in entry_lower:
+                    if codec_name not in caps["encoders"]:
+                        caps["encoders"].append(codec_name)
+                elif "vld" in entry_lower:
+                    if codec_name not in caps["decoders"]:
+                        caps["decoders"].append(codec_name)
+    except Exception as e:
+        logger.warning(f"Failed to parse vainfo: {e}")
+        
+    return caps
+
+
 @app.get("/system/capabilities")
 def get_system_capabilities():
     """Detect host system hardware capabilities (VAAPI, NVENC, V4L2, ALSA, DeckLink)."""
@@ -527,8 +613,21 @@ def get_system_capabilities():
         except Exception as e:
             logger.warning(f"Error querying active ffmpeg binary capabilities at {ffmpeg_bin}: {e}")
 
+    # VA-API codecs dynamic discovery
+    vaapi_caps = parse_vainfo_capabilities()
+    vainfo_installed = shutil.which("vainfo") is not None
+
     return {
-        "vaapi": {"available": vaapi_available, "details": vaapi_details},
+        "vaapi": {
+            "available": vaapi_available,
+            "details": vaapi_details,
+            "encoders": vaapi_caps["encoders"],
+            "decoders": vaapi_caps["decoders"],
+            "vainfo_installed": vainfo_installed,
+            "vaapi_version": vaapi_caps["vaapi_version"],
+            "libva_version": vaapi_caps["libva_version"],
+            "driver_version": vaapi_caps["driver_version"]
+        },
         "nvenc": {"available": nvenc_available, "details": nvenc_details},
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
         "alsa": {"available": alsa_available, "details": alsa_details},
@@ -918,21 +1017,95 @@ async def telemetry_broadcast_loop():
 async def auto_start_services():
     await asyncio.sleep(2)
     logger.info("Watchdog / Auto-start: Initializing service startup checks...")
+    service_ids = []
     with SessionLocal() as db:
         from database.models import MediaProcess
         services = db.query(MediaProcess).filter(
             MediaProcess.type == 'service',
             MediaProcess.auto_start == True
         ).all()
-        for service in services:
-            logger.info(f"Auto-starting service: {service.name} (ID: {service.id})")
-            try:
-                asyncio.create_task(process_manager.start_process(service.id))
-            except Exception as e:
-                logger.error(f"Failed to auto-start service {service.id}: {e}")
+        service_ids = [service.id for service in services]
+        
+    for s_id in service_ids:
+        logger.info(f"Auto-starting service with ID: {s_id}")
+        try:
+            await process_manager.start_process(s_id)
+        except Exception as e:
+            logger.error(f"Failed to auto-start service {s_id}: {e}")
 
 # Global LCD Manager instance
 lcd_manager = None
+
+def sanitize_process_config_data(input_config: dict, filter_config: dict) -> bool:
+    """
+    Sanitize input_config and filter_config for non-decodable inputs.
+    Mutates dicts in-place. Returns True if any changes were made.
+    """
+    _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+    is_dirty = False
+    
+    if not input_config:
+        return is_dirty
+        
+    # Check input1 / input2 or flat config
+    if 'input1' in input_config:
+        inp1 = input_config['input1']
+        if inp1.get('type') in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
+            if inp1.get('hwaccel') != 'none' or inp1.get('frames_destination') != 'cpu' or inp1.get('hwaccel_output_format') != '':
+                inp1['hwaccel'] = 'none'
+                inp1['frames_destination'] = 'cpu'
+                inp1['hwaccel_output_format'] = ''
+                is_dirty = True
+        if input_config.get('use_secondary_input') and 'input2' in input_config:
+            inp2 = input_config['input2']
+            if inp2.get('type') in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
+                if inp2.get('hwaccel') != 'none' or inp2.get('frames_destination') != 'cpu' or inp2.get('hwaccel_output_format') != '':
+                    inp2['hwaccel'] = 'none'
+                    inp2['frames_destination'] = 'cpu'
+                    inp2['hwaccel_output_format'] = ''
+                    is_dirty = True
+    else:
+        if input_config.get('type') in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
+            if input_config.get('hwaccel') != 'none' or input_config.get('frames_destination') != 'cpu' or input_config.get('hwaccel_output_format') != '':
+                input_config['hwaccel'] = 'none'
+                input_config['frames_destination'] = 'cpu'
+                input_config['hwaccel_output_format'] = ''
+                is_dirty = True
+
+    # Check global/advanced hwaccel if primary input is unsupported
+    primary_input_type = (
+        input_config['input1'].get('type', '') if 'input1' in input_config
+        else input_config.get('type', '')
+    )
+    if primary_input_type in _HWACCEL_UNSUPPORTED_INPUT_TYPES and filter_config:
+        advanced = filter_config.get('advanced', {})
+        if advanced.get('hwaccel') and advanced.get('hwaccel') != 'none':
+            advanced['hwaccel'] = 'none'
+            advanced['hwaccel_output_format'] = ''
+            filter_config['advanced'] = advanced
+            is_dirty = True
+
+    return is_dirty
+
+def sanitize_database_processes(db: Session):
+    """Scan all processes in the database and fix invalid GPU/VRAM configs."""
+    from sqlalchemy.orm.attributes import flag_modified
+    import copy
+    processes = db.query(MediaProcess).all()
+    updated_count = 0
+    for p in processes:
+        input_cfg = copy.deepcopy(p.input_config) if p.input_config else {}
+        filter_cfg = copy.deepcopy(p.filter_config) if p.filter_config else {}
+        if sanitize_process_config_data(input_cfg, filter_cfg):
+            p.input_config = input_cfg
+            p.filter_config = filter_cfg
+            flag_modified(p, "input_config")
+            flag_modified(p, "filter_config")
+            updated_count += 1
+            
+    if updated_count > 0:
+        db.commit()
+        logger.info(f"Sanitized {updated_count} process configurations in database with inconsistent GPU settings.")
 
 @app.on_event("startup")
 async def startup_event():
@@ -944,6 +1117,12 @@ async def startup_event():
 
     try:
         with SessionLocal() as db:
+            # Clean up stale DB configurations on startup
+            try:
+                sanitize_database_processes(db)
+            except Exception as e:
+                logger.error(f"Failed to sanitize database processes on startup: {e}")
+
             stale_builds = db.query(FfmpegBuild).filter(FfmpegBuild.status == "building").all()
             for build in stale_builds:
                 build.status = "failed"
@@ -1369,47 +1548,52 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
 
     async def _run_compile():
         try:
-            result = await build_manager.run_build(
-                build_id=build_id,
-                ffmpeg_version=build.ffmpeg_version,
-                srt_version=build.srt_version,
-                options=build.build_options,
-                sdk_paths=build.sdk_paths,
-                sources_cleaned=clean or build.sources_cleaned,
-                log_callback=_log_callback,
-                auto_clean=build.auto_clean or False,
-            )
-            # Persist results to DB
-            with SessionLocal() as session:
-                db_build = session.query(FfmpegBuild).get(build_id)
-                if result.get("success"):
-                    db_build.status = "ready"
-                    db_build.ffmpeg_binary = result.get("ffmpeg_binary")
-                    db_build.ffprobe_binary = result.get("ffprobe_binary")
-                    db_build.ffmpeg_version_output = result.get("version_output")
-                    db_build.disk_usage_mb = result.get("disk_usage_mb")
-                    db_build.built_at = datetime.datetime.utcnow()
-                    db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
-                    if result.get("sdk_paths"):
-                        # SQLAlchemy flag mutation for JSON fields
-                        from sqlalchemy.orm.attributes import flag_modified
-                        db_build.sdk_paths = result.get("sdk_paths")
-                        flag_modified(db_build, "sdk_paths")
-                else:
-                    db_build.status = "failed"
-                    db_build.build_log_summary = result.get("error", "Unknown error")
-                session.commit()
-        except Exception as e:
-            logger.error(f"Build {build_id} failed with exception: {str(e)}")
-            await _log_callback(f"\nFATAL ERROR: {str(e)}\n")
-            with SessionLocal() as session:
-                db_build = session.query(FfmpegBuild).get(build_id)
-                if db_build:
-                    db_build.status = "failed"
-                    db_build.build_log_summary = str(e)
+            try:
+                result = await build_manager.run_build(
+                    build_id=build_id,
+                    ffmpeg_version=build.ffmpeg_version,
+                    srt_version=build.srt_version,
+                    options=build.build_options,
+                    sdk_paths=build.sdk_paths,
+                    sources_cleaned=clean or build.sources_cleaned,
+                    log_callback=_log_callback,
+                    auto_clean=build.auto_clean or False,
+                )
+                # Persist results to DB
+                with SessionLocal() as session:
+                    db_build = session.query(FfmpegBuild).get(build_id)
+                    if result.get("success"):
+                        db_build.status = "ready"
+                        db_build.ffmpeg_binary = result.get("ffmpeg_binary")
+                        db_build.ffprobe_binary = result.get("ffprobe_binary")
+                        db_build.ffmpeg_version_output = result.get("version_output")
+                        db_build.disk_usage_mb = result.get("disk_usage_mb")
+                        db_build.built_at = datetime.datetime.utcnow()
+                        db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
+                        if result.get("sdk_paths"):
+                            # SQLAlchemy flag mutation for JSON fields
+                            from sqlalchemy.orm.attributes import flag_modified
+                            db_build.sdk_paths = result.get("sdk_paths")
+                            flag_modified(db_build, "sdk_paths")
+                    else:
+                        db_build.status = "failed"
+                        db_build.build_log_summary = result.get("error", "Unknown error")
                     session.commit()
+            except Exception as e:
+                logger.error(f"Build {build_id} failed with exception: {str(e)}")
+                await _log_callback(f"\nFATAL ERROR: {str(e)}\n")
+                with SessionLocal() as session:
+                    db_build = session.query(FfmpegBuild).get(build_id)
+                    if db_build:
+                        db_build.status = "failed"
+                        db_build.build_log_summary = str(e)
+                        session.commit()
+        finally:
+            if build_manager.current_task == asyncio.current_task():
+                build_manager.current_task = None
 
-    background_tasks.add_task(_run_compile)
+    task = asyncio.create_task(_run_compile())
+    build_manager.current_task = task
     return {"status": "ok", "message": "Compilation started"}
 
 @app.post("/builds/{build_id}/stop")
@@ -1532,13 +1716,18 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         if default_build:
             build_id = default_build.id
 
+    # Sanitize configs on creation
+    input_cfg = dict(proc_in.input_config)
+    filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
+    sanitize_process_config_data(input_cfg, filter_cfg)
+
     db_proc = MediaProcess(
         name=proc_in.name,
         type=proc_in.type,
-        input_config=proc_in.input_config,
+        input_config=input_cfg,
         output_config=proc_in.output_config,
         codec_config=proc_in.codec_config,
-        filter_config=proc_in.filter_config,
+        filter_config=filter_cfg if proc_in.filter_config is not None else None,
         ffmpeg_build_id=build_id,
         auto_start=proc_in.auto_start,
         watchdog_enabled=proc_in.watchdog_enabled,
@@ -1552,13 +1741,18 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
 
 @app.post("/processes/preview-cmd")
 def preview_command(proc_in: ProcessCreate, db: Session = Depends(get_db)):
+    # Sanitize configs for preview
+    input_cfg = dict(proc_in.input_config)
+    filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
+    sanitize_process_config_data(input_cfg, filter_cfg)
+
     db_proc = MediaProcess(
         name=proc_in.name,
         type=proc_in.type,
-        input_config=proc_in.input_config,
+        input_config=input_cfg,
         output_config=proc_in.output_config,
         codec_config=proc_in.codec_config,
-        filter_config=proc_in.filter_config,
+        filter_config=filter_cfg if proc_in.filter_config is not None else None,
         ffmpeg_build_id=proc_in.ffmpeg_build_id,
     )
     ffmpeg_bin = process_manager.ffmpeg_path
@@ -1577,10 +1771,24 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
         raise HTTPException(status_code=404, detail="Process not found")
 
     if proc_in.name is not None: db_proc.name = proc_in.name
-    if proc_in.input_config is not None: db_proc.input_config = proc_in.input_config
+    
+    # Handle config sanitization on update
+    import copy
+    from sqlalchemy.orm.attributes import flag_modified
+    input_cfg = copy.deepcopy(proc_in.input_config) if proc_in.input_config is not None else copy.deepcopy(db_proc.input_config)
+    filter_cfg = copy.deepcopy(proc_in.filter_config) if proc_in.filter_config is not None else copy.deepcopy(db_proc.filter_config)
+    
+    if input_cfg:
+        sanitize_process_config_data(input_cfg, filter_cfg or {})
+        db_proc.input_config = input_cfg
+        flag_modified(db_proc, "input_config")
+        
+    if filter_cfg is not None:
+        db_proc.filter_config = filter_cfg
+        flag_modified(db_proc, "filter_config")
+
     if proc_in.output_config is not None: db_proc.output_config = proc_in.output_config
     if proc_in.codec_config is not None: db_proc.codec_config = proc_in.codec_config
-    if proc_in.filter_config is not None: db_proc.filter_config = proc_in.filter_config
     if proc_in.ffmpeg_build_id is not None: db_proc.ffmpeg_build_id = proc_in.ffmpeg_build_id
     if proc_in.auto_start is not None: db_proc.auto_start = proc_in.auto_start
     if proc_in.watchdog_enabled is not None: db_proc.watchdog_enabled = proc_in.watchdog_enabled

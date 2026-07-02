@@ -10,6 +10,7 @@ interface AudioCodecPanelProps {
   codecId: string;
   params: Record<string, string | number | boolean>;
   buildOptions?: Record<string, boolean>;
+  outputType?: string;
   onChange: (codecId: string, params: Record<string, string | number | boolean>) => void;
 }
 
@@ -17,9 +18,12 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
   codecId,
   params,
   buildOptions,
+  outputType,
   onChange,
 }) => {
-  const available = getAvailableAudioCodecs(buildOptions);
+  const available = React.useMemo(() => {
+    return getAvailableAudioCodecs(buildOptions, outputType);
+  }, [buildOptions, outputType]);
   const selected = available.find(c => c.id === codecId) || available[0];
 
   const handleCodecChange = (newCodecId: string) => {
