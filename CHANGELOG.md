@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added client-side port collision checking helper functions and active configuration loading to ProcessConfigForm.
 - Initialize dynamic default ports and properties when switching output types in ProcessConfigForm.
 - Dynamic port allocation for SRT/UDP/RTP inputs/outputs in initial state using getNextAvailablePort.
+- Implemented full client-side validations, error state alerts, and blocked invalid form submissions in ProcessConfigForm.
 
 ## [1.7.0] - 2026-07-02
 

@@ -93,7 +93,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   onSaveAs,
   initialConfig,
   isTask = false,
-  validationErrors,
+  validationErrors: propsValidationErrors,
 }) => {
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
   const [selectedBuildOptions, setSelectedBuildOptions] = useState<Record<string, boolean> | undefined>();
@@ -166,8 +166,66 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     return null;
   };
 
-  // Temporary references to satisfy unused local checks in intermediate Task 1 commit
-  void checkPortCollision;
+  const validateConfig = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    // 1. General name is required
+    if (!config.name.trim()) {
+      errors.name = 'General name is required';
+    }
+
+    // 2. Output validations based on type
+    const out = config.output;
+    if (out.type === 'udp' || out.type === 'rtp' || out.type === 'srt') {
+      if (!(out.host || '').trim()) {
+        errors.host = 'Host is required';
+      }
+      const portVal = (out.port || '').trim();
+      if (!portVal) {
+        errors.port = 'Port is required';
+      } else {
+        const portNum = Number(portVal);
+        if (isNaN(portNum) || !Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+          errors.port = 'Port must be an integer between 1 and 65535';
+        } else {
+          const collision = checkPortCollision(portVal, out.host || '');
+          if (collision) {
+            errors.port = `Port collision: port ${portVal} is already in use by active configuration "${collision.name}"`;
+          }
+        }
+      }
+    } else if (out.type === 'rtmp' || out.type === 'whip') {
+      if (!(out.url || '').trim()) {
+        errors.url = 'Stream URL is required';
+      }
+    } else if (out.type === 'hls') {
+      if (!(out.path || '').trim()) {
+        errors.path = 'HLS path or ingest URL is required';
+      }
+    } else if (out.type === 'icecast') {
+      if (!(out.host || '').trim()) {
+        errors.host = 'Icecast server host/URL is required';
+      }
+      if (!(out.icecast_mount || '').trim()) {
+        errors.icecast_mount = 'Icecast mountpoint is required';
+      }
+    } else if (out.type === 'file') {
+      if (!(out.path || '').trim()) {
+        errors.path = 'Output file path is required';
+      }
+    } else if (out.type === 'ndi') {
+      if (!(out.path || '').trim()) {
+        errors.path = 'NDI name/path is required';
+      }
+    } else if (out.type === 'decklink') {
+      if (!(out.device || '').trim()) {
+        errors.device = 'DeckLink device is required';
+      }
+    }
+
+    setLocalValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const defaultVideoCodec = VIDEO_CODECS[0];
   const defaultAudioCodec = AUDIO_CODECS[0];
@@ -273,6 +331,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   };
 
   const [config, setConfig] = useState<ProcessConfig>(getInitialState);
+  const [localValidationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  const validationErrors = { ...propsValidationErrors, ...localValidationErrors };
+
+  useEffect(() => {
+    setLocalValidationErrors({});
+  }, [config.output.type]);
 
   useEffect(() => {
     if (!initialConfig && existingConfigs.length > 0) {
@@ -407,11 +471,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   };
 
   const handleSubmit = () => {
+    if (!validateConfig()) return;
     onSubmit(createPayload());
   };
 
   const handleSaveAs = () => {
     if (!onSaveAs) return;
+    if (!validateConfig()) return;
     const payload = createPayload();
     payload.name = `${config.name} (Copy)`;
     if (payload.alias) {
@@ -421,6 +487,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   };
 
   const handlePreview = async () => {
+    if (!validateConfig()) return;
     setIsPreviewing(true);
     const previewUrl = isTask ? '/tasks/preview-cmd' : '/processes/preview-cmd';
     const payload = {
@@ -654,8 +721,28 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     { id: 'filters', label: 'Filters', icon: <KnobsIcon size={14} /> },
   ];
 
+  const hasErrors = Object.keys(validationErrors).length > 0;
+
   return (
     <div className="flex flex-col h-full max-h-[85vh]">
+      {hasErrors && (
+        <div className="flex-shrink-0 mb-3 p-3 bg-red-500/10 border border-red-500/20 rounded-2xl text-xs text-red-300 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-start gap-2.5">
+            <span className="text-sm mt-0.5 text-red-400">
+              <ShieldIcon size={14} />
+            </span>
+            <div>
+              <strong className="block mb-1 font-bold text-red-200">Existen errores de validación en el formulario:</strong>
+              <ul className="list-disc pl-4 space-y-0.5 text-red-400/90 font-medium">
+                {Object.entries(validationErrors).map(([key, msg]) => (
+                  <li key={key}>{msg}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Header: Name + Build ── */}
       <div className="space-y-2 mb-2.5 flex-shrink-0">
         <div className="flex gap-2">
@@ -664,7 +751,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
               type="text"
               id="process-name"
               name="name"
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium"
+              className={`w-full bg-white/5 border rounded-lg p-2 outline-none transition-all text-xs font-medium ${
+                validationErrors.name
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10 focus:border-brand-lime'
+              }`}
               placeholder={isTask ? "Task name (e.g. Daily Transcode of Stream)" : "Service name (e.g. Primary Encoder Node-01)"}
               value={config.name}
               onChange={e => setConfig({ ...config, name: e.target.value })}
@@ -1029,15 +1120,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         </button>
         <button
           onClick={handleSubmit}
-          disabled={!config.name.trim()}
-          className="flex-1 py-2 bg-brand-lime text-black rounded-lg font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs shadow-xl shadow-brand-lime/20 disabled:opacity-30 disabled:hover:scale-100"
+          className="flex-1 py-2 bg-brand-lime text-black rounded-lg font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs shadow-xl shadow-brand-lime/20"
         >
           {initialConfig ? 'Save Changes' : (isTask ? 'Create Task' : 'Deploy Service')}
         </button>
         {initialConfig && onSaveAs && (
           <button
             onClick={handleSaveAs}
-            disabled={!config.name.trim()}
             className="flex-1 py-2 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-lg font-bold hover:bg-brand-orange/30 transition-all uppercase tracking-widest text-xs"
           >
             Save as New
