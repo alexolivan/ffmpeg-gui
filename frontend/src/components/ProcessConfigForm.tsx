@@ -3,7 +3,7 @@ import InputSourcePanel from './source/InputSourcePanel';
 import type { InputSourceConfig } from './source/InputSourcePanel';
 import VideoCodecPanel from './codec/VideoCodecPanel';
 import AudioCodecPanel from './codec/AudioCodecPanel';
-import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS } from './codec/codecRegistry';
+import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS, getAvailableVideoCodecs, getAvailableAudioCodecs } from './codec/codecRegistry';
 import type { SystemCapabilities } from './codec/codecRegistry';
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
@@ -394,8 +394,52 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
   }, []);
 
   const handleOutputChange = useCallback((output: OutputConfig) => {
-    setConfig(prev => ({ ...prev, output }));
-  }, []);
+    const oldType = config.output.type;
+    const newType = output.type;
+
+    if (oldType === newType) {
+      setConfig(prev => ({ ...prev, output }));
+      return;
+    }
+
+    // Check codec compatibility
+    const availableVideo = getAvailableVideoCodecs(selectedBuildOptions, systemCapabilities, newType);
+    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType);
+
+    const videoIncompatible = config.has_video && !availableVideo.some(c => c.id === config.video_codec_id);
+    const audioIncompatible = config.has_audio && !availableAudio.some(c => c.id === config.audio_codec_id);
+
+    if (videoIncompatible || audioIncompatible) {
+      const videoMsg = videoIncompatible 
+        ? `\n- El códec de vídeo actual (${config.video_codec_id}) se cambiará a ${availableVideo[0]?.label || 'H.264'}.` 
+        : '';
+      const audioMsg = audioIncompatible 
+        ? `\n- El códec de audio actual (${config.audio_codec_id}) se cambiará a ${availableAudio[0]?.label || 'AAC'}.` 
+        : '';
+
+      const proceed = window.confirm(
+        `El cambio de tipo de salida a ${newType.toUpperCase()} requiere reconfigurar los códecs:${videoMsg}${audioMsg}\n\n¿Deseas continuar?`
+      );
+
+      if (!proceed) return;
+
+      // User accepted: update output and auto-heal codecs
+      setConfig(prev => {
+        const patch: Partial<ProcessConfig> = { ...prev, output };
+        if (videoIncompatible && availableVideo.length > 0) {
+          patch.video_codec_id = availableVideo[0].id;
+          patch.video_codec_params = getDefaultParams(availableVideo[0]);
+        }
+        if (audioIncompatible && availableAudio.length > 0) {
+          patch.audio_codec_id = availableAudio[0].id;
+          patch.audio_codec_params = getDefaultParams(availableAudio[0]);
+        }
+        return patch as ProcessConfig;
+      });
+    } else {
+      setConfig(prev => ({ ...prev, output }));
+    }
+  }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities]);
 
   const handleLifecycleOrSchedulingChange = useCallback((updates: any) => {
     setConfig(prev => ({
@@ -745,6 +789,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   params={config.video_codec_params}
                   buildOptions={selectedBuildOptions}
                   systemCapabilities={systemCapabilities}
+                  outputType={config.output.type}
                   onChange={handleVideoCodecChange}
                 />
               </div>
@@ -755,6 +800,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                   codecId={config.audio_codec_id}
                   params={config.audio_codec_params}
                   buildOptions={selectedBuildOptions}
+                  outputType={config.output.type}
                   onChange={handleAudioCodecChange}
                 />
               </div>
