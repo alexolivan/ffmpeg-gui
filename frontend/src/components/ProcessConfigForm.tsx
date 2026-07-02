@@ -82,11 +82,19 @@ interface ProcessConfigFormProps {
   onSaveAs?: (config: any) => void;
   initialConfig?: any;
   isTask?: boolean;
+  validationErrors?: Record<string, string>;
 }
 
 const EMPTY_ARRAY: any[] = [];
 
-const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmit, onSaveAs, initialConfig, isTask = false }) => {
+const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
+  onCancel,
+  onSubmit,
+  onSaveAs,
+  initialConfig,
+  isTask = false,
+  validationErrors,
+}) => {
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
   const [selectedBuildOptions, setSelectedBuildOptions] = useState<Record<string, boolean> | undefined>();
   const [activeSection, setActiveSection] = useState<string>('system');
@@ -961,6 +969,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({ onCancel, onSubmi
                 hasAudio={config.has_audio}
                 onChange={handleOutputChange}
                 systemCapabilities={systemCapabilities}
+                validationErrors={validationErrors}
               />
             </div>
           </div>

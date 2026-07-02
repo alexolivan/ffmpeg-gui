@@ -39,6 +39,7 @@ interface DestinationPanelProps {
   hasAudio: boolean;
   onChange: (config: OutputConfig) => void;
   systemCapabilities?: SystemCapabilities;
+  validationErrors?: Record<string, string>;
 }
 
 const OUTPUT_TYPES = [
@@ -75,6 +76,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   hasAudio,
   onChange,
   systemCapabilities,
+  validationErrors,
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
@@ -245,26 +247,44 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label htmlFor={`dest-${config.type}-host`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Host / Multicast IP</label>
+              <label htmlFor={`dest-${config.type}-host`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                Host / Multicast IP<span className="text-red-500 ml-0.5">*</span>
+              </label>
               <input
                 type="text"
                 id={`dest-${config.type}-host`}
                 name="host"
                 placeholder="e.g. 239.0.0.1 or 127.0.0.1"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                  validationErrors?.host
+                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                    : 'border-white/10'
+                }`}
                 value={config.host || ''} onChange={e => update({ host: e.target.value })}
               />
+              {validationErrors?.host && (
+                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.host}</span>
+              )}
             </div>
             <div>
-              <label htmlFor={`dest-${config.type}-port`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
+              <label htmlFor={`dest-${config.type}-port`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                Port<span className="text-red-500 ml-0.5">*</span>
+              </label>
               <input
                 type="text"
                 id={`dest-${config.type}-port`}
                 name="port"
                 placeholder="1234"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+                  validationErrors?.port
+                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                    : 'border-white/10'
+                }`}
                 value={config.port || ''} onChange={e => update({ port: e.target.value })}
               />
+              {validationErrors?.port && (
+                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.port}</span>
+              )}
             </div>
           </div>
 
@@ -390,30 +410,47 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
             <div>
               <label htmlFor="dest-srt-host" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                {config.mode === 'listener' ? 'Bind Interface / Host' : 'Remote Host / IP'}
+                {config.mode === 'listener' ? 'Bind Interface / Host' : 'Host / IP'}
+                <span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
                 type="text"
                 id="dest-srt-host"
                 name="host"
                 placeholder={config.mode === 'listener' ? "0.0.0.0 (all interfaces)" : "e.g. 52.210.205.135"}
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                  validationErrors?.host
+                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                    : 'border-white/10'
+                }`}
                 value={config.host || ''}
                 onChange={e => update({ host: e.target.value })}
               />
+              {validationErrors?.host && (
+                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.host}</span>
+              )}
             </div>
 
             <div>
-              <label htmlFor="dest-srt-port" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
+              <label htmlFor="dest-srt-port" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                Port<span className="text-red-500 ml-0.5">*</span>
+              </label>
               <input
                 type="text"
                 id="dest-srt-port"
                 name="port"
                 placeholder="9000"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+                  validationErrors?.port
+                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                    : 'border-white/10'
+                }`}
                 value={config.port || ''}
                 onChange={e => update({ port: e.target.value })}
               />
+              {validationErrors?.port && (
+                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.port}</span>
+              )}
             </div>
 
             <div>
@@ -464,28 +501,49 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       )}
 
       {config.type === 'rtmp' && (
-        <input
-          type="text"
-          id="dest-rtmp-url"
-          name="url"
-          placeholder="RTMP URL (rtmp://server/live/key)"
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-          value={config.url || ''} onChange={e => update({ url: e.target.value })}
-        />
+        <div className="space-y-1.5">
+          <label htmlFor="dest-rtmp-url" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+            Stream URL<span className="text-red-500 ml-0.5">*</span>
+          </label>
+          <input
+            type="text"
+            id="dest-rtmp-url"
+            name="url"
+            placeholder="RTMP URL (rtmp://server/live/key)"
+            className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+              validationErrors?.url
+                ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                : 'border-white/10'
+            }`}
+            value={config.url || ''} onChange={e => update({ url: e.target.value })}
+          />
+          {validationErrors?.url && (
+            <span className="text-[10px] text-red-400 block mt-1">{validationErrors.url}</span>
+          )}
+        </div>
       )}
 
       {config.type === 'ndi' && (
         <div className="space-y-2">
           <div>
-            <label htmlFor="dest-ndi-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">NDI Output Connection Name</label>
+            <label htmlFor="dest-ndi-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              Stream Name<span className="text-red-500 ml-0.5">*</span>
+            </label>
             <input
               type="text"
               id="dest-ndi-path"
               name="path"
               placeholder="e.g. MY-ENCODER-OUT"
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+                validationErrors?.path
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10'
+              }`}
               value={config.path || ''} onChange={e => update({ path: e.target.value })}
             />
+            {validationErrors?.path && (
+              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
+            )}
           </div>
           <div className="p-2 bg-purple-500/10 border border-purple-500/20 rounded-lg text-[10px] text-purple-300 space-y-0.5">
             <div className="flex items-center gap-1 font-bold">
@@ -509,7 +567,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
           </div>
           <div>
-            <label htmlFor="dest-decklink-device" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo DeckLink de Salida</label>
+            <label htmlFor="dest-decklink-device" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              Device Name / Index<span className="text-red-500 ml-0.5">*</span>
+            </label>
             {loadingDevices ? (
               <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos...</div>
             ) : devices.length === 0 ? (
@@ -520,10 +580,17 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   id="dest-decklink-device"
                   name="device"
                   placeholder="Nombre del dispositivo (ej: DeckLink Mini Monitor)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                  className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                    validationErrors?.device
+                      ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                      : 'border-white/10'
+                  }`}
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
+                {validationErrors?.device && (
+                  <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
+                )}
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -532,7 +599,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     <select
                       id="dest-decklink-device"
                       name="device"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                      className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none ${
+                        validationErrors?.device
+                          ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                          : 'border-white/10'
+                      }`}
                       value={config.device || ''}
                       onChange={e => {
                         if (e.target.value === '__manual__') {
@@ -556,7 +627,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         id="dest-decklink-device"
                         name="device"
                         placeholder="Nombre del dispositivo"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                        className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                          validationErrors?.device
+                            ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                            : 'border-white/10'
+                        }`}
                         value={config.device || ''}
                         onChange={e => update({ device: e.target.value })}
                       />
@@ -573,6 +648,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     </div>
                   )}
                 </div>
+                {validationErrors?.device && (
+                  <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
+                )}
               </div>
             )}
           </div>
@@ -671,63 +749,130 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       )}
 
       {config.type === 'file' && (
-        <div className="grid grid-cols-3 gap-2">
-          <input
-            type="text"
-            id="dest-file-path"
-            name="path"
-            placeholder="Output file path"
-            className="col-span-2 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-            value={config.path || ''} onChange={e => update({ path: e.target.value })}
-          />
-          <select
-            id="dest-file-container"
-            name="container"
-            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-            value={config.container || 'mp4'}
-            onChange={e => update({ container: e.target.value })}
-          >
-            {CONTAINERS.map(c => (
-              <option key={c.value} value={c.value}>{c.label}</option>
-            ))}
-          </select>
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-2">
+              <label htmlFor="dest-file-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                Path / Filename<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                id="dest-file-path"
+                name="path"
+                placeholder="Output file path"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                  validationErrors?.path
+                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                    : 'border-white/10'
+                }`}
+                value={config.path || ''} onChange={e => update({ path: e.target.value })}
+              />
+              {validationErrors?.path && (
+                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
+              )}
+            </div>
+            <div>
+              <label htmlFor="dest-file-container" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                Container
+              </label>
+              <select
+                id="dest-file-container"
+                name="container"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                value={config.container || 'mp4'}
+                onChange={e => update({ container: e.target.value })}
+              >
+                {CONTAINERS.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       )}
 
       {config.type === 'icecast' && (
         <div className="grid grid-cols-2 gap-2">
-          <input
-            type="text"
-            id="dest-icecast-host"
-            name="host"
-            placeholder="Icecast Host"
-            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-            value={config.host || ''} onChange={e => update({ host: e.target.value })}
-          />
-          <input
-            type="text"
-            id="dest-icecast-port"
-            name="port"
-            placeholder="Port (default: 8000)"
-            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-            value={config.port || ''} onChange={e => update({ port: e.target.value })}
-          />
-          <input
-            type="text"
-            id="dest-icecast-mount"
-            name="icecast_mount"
-            placeholder="Mount point (e.g. /live)"
-            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-            value={config.icecast_mount || ''} onChange={e => update({ icecast_mount: e.target.value })}
-          />
-          <input
-            type="password"
-            id="dest-icecast-password"
-            name="icecast_password"
-            placeholder="Source password"
-            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-            value={config.icecast_password || ''} onChange={e => update({ icecast_password: e.target.value })}
-          />
+          <div>
+            <label htmlFor="dest-icecast-host" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              Server URL<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              type="text"
+              id="dest-icecast-host"
+              name="host"
+              placeholder="Icecast Host"
+              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                validationErrors?.host
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10'
+              }`}
+              value={config.host || ''} onChange={e => update({ host: e.target.value })}
+            />
+            {validationErrors?.host && (
+              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.host}</span>
+            )}
+          </div>
+          <div>
+            <label htmlFor="dest-icecast-port" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              Port
+            </label>
+            <input
+              type="text"
+              id="dest-icecast-port"
+              name="port"
+              placeholder="Port (default: 8000)"
+              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                validationErrors?.port
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10'
+              }`}
+              value={config.port || ''} onChange={e => update({ port: e.target.value })}
+            />
+            {validationErrors?.port && (
+              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.port}</span>
+            )}
+          </div>
+          <div>
+            <label htmlFor="dest-icecast-mount" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              Mountpoint URL<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              type="text"
+              id="dest-icecast-mount"
+              name="icecast_mount"
+              placeholder="Mount point (e.g. /live)"
+              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                validationErrors?.icecast_mount
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10'
+              }`}
+              value={config.icecast_mount || ''} onChange={e => update({ icecast_mount: e.target.value })}
+            />
+            {validationErrors?.icecast_mount && (
+              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.icecast_mount}</span>
+            )}
+          </div>
+          <div>
+            <label htmlFor="dest-icecast-password" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              Source Password
+            </label>
+            <input
+              type="password"
+              id="dest-icecast-password"
+              name="icecast_password"
+              placeholder="Source password"
+              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                validationErrors?.icecast_password
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10'
+              }`}
+              value={config.icecast_password || ''} onChange={e => update({ icecast_password: e.target.value })}
+            />
+            {validationErrors?.icecast_password && (
+              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.icecast_password}</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -778,17 +923,25 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
           <div>
             <label htmlFor="dest-hls-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              {config.hls_method === 'local' ? 'Output Playlist File Path' : 'Remote Ingest URL'}
+              {config.hls_method === 'local' ? 'Path / Filename' : 'Stream URL'}
+              <span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               type="text"
               id="dest-hls-path"
               name="path"
               placeholder={config.hls_method === 'local' ? 'e.g. /var/www/html/live/stream.m3u8' : 'e.g. http://ingest.server/live/stream.m3u8'}
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                validationErrors?.path
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10'
+              }`}
               value={config.path || ''}
               onChange={e => update({ path: e.target.value })}
             />
+            {validationErrors?.path && (
+              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
+            )}
           </div>
 
           {config.hls_method === 'local' && (
@@ -830,16 +983,25 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'whip' && (
         <div className="space-y-1.5 animate-in fade-in duration-200">
-          <label htmlFor="dest-whip-url" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">WHIP EndPoint (WebRTC)</label>
+          <label htmlFor="dest-whip-url" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+            Stream URL<span className="text-red-500 ml-0.5">*</span>
+          </label>
           <input
             type="text"
             id="dest-whip-url"
             name="url"
             placeholder="WHIP Ingestion URL (e.g. http://mediamtx:8889/mystream/whip)"
-            className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+            className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+              validationErrors?.url
+                ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                : 'border-white/10'
+            }`}
             value={config.url || ''}
             onChange={e => update({ url: e.target.value })}
           />
+          {validationErrors?.url && (
+            <span className="text-[10px] text-red-400 block mt-1">{validationErrors.url}</span>
+          )}
         </div>
       )}
 
