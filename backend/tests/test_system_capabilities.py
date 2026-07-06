@@ -72,5 +72,62 @@ vainfo: Supported profile and entrypoints
         self.assertEqual(res["libva_version"], "2.22.0")
         self.assertEqual(res["driver_version"], "Intel iHD driver for Intel(R) Gen Graphics - 25.2.3 ()")
 
+    @patch("shutil.which")
+    @patch("subprocess.run")
+    def test_parse_nvenc_capabilities(self, mock_run, mock_which):
+        from main import parse_nvenc_capabilities, get_nvidia_codec_caps
+        
+        # Test case 1: nvidia-smi not installed
+        mock_which.return_value = None
+        res = parse_nvenc_capabilities()
+        self.assertEqual(res["gpu_name"], None)
+        
+        # Test case 2: nvidia-smi is installed and returns XML
+        mock_which.return_value = "/usr/bin/nvidia-smi"
+        
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.stdout = """<?xml version="1.0" ?>
+<nvidia_smi_log>
+	<driver_version>550.163.01</driver_version>
+	<cuda_version>12.4</cuda_version>
+	<gpu id="00000000:01:00.0">
+		<product_name>Quadro P2000</product_name>
+		<product_architecture>Pascal</product_architecture>
+	</gpu>
+</nvidia_smi_log>
+"""
+        mock_process.stderr = ""
+        mock_run.return_value = mock_process
+        
+        res = parse_nvenc_capabilities()
+        self.assertEqual(res["gpu_name"], "Quadro P2000")
+        self.assertEqual(res["gpu_arch"], "Pascal")
+        self.assertEqual(res["driver_version"], "550.163.01")
+        self.assertEqual(res["cuda_version"], "12.4")
+        
+        # Test get_nvidia_codec_caps for Pascal GPU
+        encs, decs = get_nvidia_codec_caps(
+            res["gpu_name"],
+            res["gpu_arch"],
+            ["h264_nvenc", "hevc_nvenc", "av1_nvenc"],
+            ["h264_cuvid", "hevc_cuvid", "vp9_cuvid", "av1_cuvid"]
+        )
+        self.assertIn("h264", encs)
+        self.assertIn("hevc", encs)
+        self.assertNotIn("av1", encs)  # Pascal does not support AV1 encoding
+        self.assertIn("vp9", decs)     # Pascal supports VP9 decode
+        self.assertNotIn("av1", decs)  # Pascal does not support AV1 decode
+
+        # Test get_nvidia_codec_caps for Ada GPU (e.g. RTX 4090)
+        encs_ada, decs_ada = get_nvidia_codec_caps(
+            "RTX 4090",
+            "Ada Lovelace",
+            ["h264_nvenc", "hevc_nvenc", "av1_nvenc"],
+            ["h264_cuvid", "hevc_cuvid", "vp9_cuvid", "av1_cuvid"]
+        )
+        self.assertIn("av1", encs_ada)  # Ada supports AV1 encoding
+        self.assertIn("av1", decs_ada)  # Ada supports AV1 decoding
+
 if __name__ == "__main__":
     unittest.main()

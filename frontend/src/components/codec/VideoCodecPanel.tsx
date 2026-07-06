@@ -137,6 +137,23 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
             <p>El proceso fallará al arrancar. Selecciona un códec por software.</p>
           </div>
         )}
+
+        {/* NVENC Hardware Incompatibility Warnings */}
+        {codecId === 'hevc_nvenc' && systemCapabilities?.nvenc?.available && systemCapabilities.nvenc.encoders && !systemCapabilities.nvenc.encoders.includes('hevc') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación HEVC por hardware</strong> vía NVENC (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">nvidia-smi</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona <strong>H.264 — NVENC</strong> o un códec por software.</p>
+          </div>
+        )}
+
+        {codecId === 'h264_nvenc' && systemCapabilities?.nvenc?.available && systemCapabilities.nvenc.encoders && !systemCapabilities.nvenc.encoders.includes('h264') && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-[10px] text-red-400 leading-normal space-y-1">
+            <strong>❌ Hardware no compatible detectado:</strong>
+            <p>Tu tarjeta gráfica <strong>no soporta codificación H.264 por hardware</strong> vía NVENC (verificado mediante <code className="text-white bg-white/10 px-1 rounded font-mono text-[9px]">nvidia-smi</code>).</p>
+            <p>El proceso fallará al arrancar. Selecciona un códec por software.</p>
+          </div>
+        )}
       </div>
 
       {/* Codec Parameters */}

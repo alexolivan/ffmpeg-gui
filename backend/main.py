@@ -489,6 +489,108 @@ def parse_vainfo_capabilities() -> dict:
     return caps
 
 
+def parse_nvenc_capabilities() -> dict:
+    """Run nvidia-smi -q -x and parse driver, CUDA, and GPU hardware generations."""
+    import shutil
+    import subprocess
+    import xml.etree.ElementTree as ET
+    
+    caps = {
+        "gpu_name": None,
+        "gpu_arch": None,
+        "driver_version": None,
+        "cuda_version": None,
+        "encoders": [],
+        "decoders": []
+    }
+    
+    nvsmi_bin = shutil.which("nvidia-smi")
+    if not nvsmi_bin:
+        return caps
+        
+    try:
+        res = subprocess.run(
+            [nvsmi_bin, "-q", "-x"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=2
+        )
+        if res.returncode == 0:
+            root = ET.fromstring(res.stdout)
+            
+            driver_el = root.find("driver_version")
+            if driver_el is not None:
+                caps["driver_version"] = driver_el.text.strip()
+                
+            cuda_el = root.find("cuda_version")
+            if cuda_el is not None:
+                caps["cuda_version"] = cuda_el.text.strip()
+                
+            gpu_el = root.find("gpu")
+            if gpu_el is not None:
+                prod_el = gpu_el.find("product_name")
+                if prod_el is not None:
+                    caps["gpu_name"] = prod_el.text.strip()
+                arch_el = gpu_el.find("product_architecture")
+                if arch_el is not None:
+                    caps["gpu_arch"] = arch_el.text.strip()
+    except Exception as e:
+        logger.warning(f"Failed to parse nvidia-smi XML: {e}")
+        
+    return caps
+
+
+def get_nvidia_codec_caps(gpu_name: str, gpu_arch: str, ffmpeg_encoders: list, ffmpeg_decoders: list) -> tuple:
+    encoders = []
+    decoders = []
+    
+    if not gpu_name:
+        return encoders, decoders
+        
+    name = gpu_name.lower()
+    arch = (gpu_arch or "").lower()
+    
+    # Base H.264/HEVC support (Kepler/Maxwell onwards)
+    if "h264_nvenc" in ffmpeg_encoders:
+        encoders.append("h264")
+    if "hevc_nvenc" in ffmpeg_encoders:
+        encoders.append("hevc")
+        
+    if "h264_cuvid" in ffmpeg_decoders:
+        decoders.append("h264")
+    if "hevc_cuvid" in ffmpeg_decoders:
+        decoders.append("hevc")
+    if "mjpeg_cuvid" in ffmpeg_decoders:
+        decoders.append("mjpeg")
+        
+    # VP9 Decode support (Pascal onwards)
+    is_pascal_or_newer = "pascal" in arch or "volta" in arch or "turing" in arch or "ampere" in arch or "ada" in arch or "hopper" in arch or "blackwell" in arch
+    if not gpu_arch:
+        is_pascal_or_newer = any(x in name for x in ["gtx 10", "rtx", "quadro p", "quadro rtx", "tesla p", "tesla t", "tesla v", "volta", "turing", "ampere", "ada", "grace", "blackwell", "a10", "a16", "a2", "a30", "a40", "l4"])
+    if is_pascal_or_newer:
+        if "vp9_cuvid" in ffmpeg_decoders:
+            decoders.append("vp9")
+            
+    # AV1 Decode support (Ampere onwards)
+    is_ampere_or_newer = "ampere" in arch or "ada" in arch or "hopper" in arch or "blackwell" in arch
+    if not gpu_arch:
+        is_ampere_or_newer = any(x in name for x in ["rtx 30", "rtx 40", "rtx a", "rtx 6000", "tesla a", "ada", "l4", "l40", "blackwell", "grace", "a10", "a16", "a2", "a30", "a40"])
+    if is_ampere_or_newer:
+        if "av1_cuvid" in ffmpeg_decoders:
+            decoders.append("av1")
+            
+    # AV1 Encode support (Ada Lovelace onwards)
+    is_ada_or_newer = "ada" in arch or "blackwell" in arch
+    if not gpu_arch:
+        is_ada_or_newer = any(x in name for x in ["rtx 40", "rtx 6000 ada", "l4", "l40", "blackwell", "ada"])
+    if is_ada_or_newer:
+        if "av1_nvenc" in ffmpeg_encoders:
+            encoders.append("av1")
+            
+    return encoders, decoders
+
+
 @app.get("/system/capabilities")
 def get_system_capabilities():
     """Detect host system hardware capabilities (VAAPI, NVENC, V4L2, ALSA, DeckLink)."""
@@ -617,6 +719,19 @@ def get_system_capabilities():
     vaapi_caps = parse_vainfo_capabilities()
     vainfo_installed = shutil.which("vainfo") is not None
 
+    # NVENC codecs dynamic discovery
+    nvenc_caps = parse_nvenc_capabilities()
+    if nvenc_available:
+        gpu_name = nvenc_caps["gpu_name"] or "Generic NVIDIA GPU"
+        nv_encs, nv_decs = get_nvidia_codec_caps(
+            gpu_name,
+            nvenc_caps["gpu_arch"],
+            supported_encoders,
+            supported_decoders
+        )
+        nvenc_caps["encoders"] = nv_encs
+        nvenc_caps["decoders"] = nv_decs
+
     return {
         "vaapi": {
             "available": vaapi_available,
@@ -628,7 +743,16 @@ def get_system_capabilities():
             "libva_version": vaapi_caps["libva_version"],
             "driver_version": vaapi_caps["driver_version"]
         },
-        "nvenc": {"available": nvenc_available, "details": nvenc_details},
+        "nvenc": {
+            "available": nvenc_available,
+            "details": nvenc_details,
+            "gpu_name": nvenc_caps["gpu_name"],
+            "gpu_arch": nvenc_caps["gpu_arch"],
+            "driver_version": nvenc_caps["driver_version"],
+            "cuda_version": nvenc_caps["cuda_version"],
+            "encoders": nvenc_caps["encoders"],
+            "decoders": nvenc_caps["decoders"]
+        },
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
         "alsa": {"available": alsa_available, "details": alsa_details},
         "decklink": {"available": decklink_available, "details": decklink_details},

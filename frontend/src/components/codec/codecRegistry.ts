@@ -826,7 +826,16 @@ export interface SystemCapabilities {
     decoders?: string[];
     vainfo_installed?: boolean;
   };
-  nvenc: { available: boolean; details: string };
+  nvenc: {
+    available: boolean;
+    details: string;
+    gpu_name?: string;
+    gpu_arch?: string;
+    driver_version?: string;
+    cuda_version?: string;
+    encoders?: string[];
+    decoders?: string[];
+  };
   v4l2: { available: boolean; details: string };
   alsa: { available: boolean; details: string };
   decklink: { available: boolean; details: string };

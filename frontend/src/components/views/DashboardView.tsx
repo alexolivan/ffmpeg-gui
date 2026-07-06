@@ -261,6 +261,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     )}
                   </div>
                 )}
+                {key === 'nvenc' && value.available && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
+                    {value.gpu_name && (
+                      <div><span className="text-white/60">GPU:</span> {value.gpu_name}{value.gpu_arch ? ` (${value.gpu_arch})` : ''}</div>
+                    )}
+                    {value.driver_version && (
+                      <div><span className="text-white/60">Driver:</span> {value.driver_version}</div>
+                    )}
+                    {value.cuda_version && (
+                      <div><span className="text-white/60">CUDA:</span> v{value.cuda_version}</div>
+                    )}
+                    {value.encoders && value.encoders.length > 0 && (
+                      <div><span className="text-white/60">Coders HW:</span> {value.encoders.join(', ')}</div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
