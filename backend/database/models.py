@@ -81,6 +81,7 @@ class MediaProcess(Base):
     auto_start = Column(Boolean, default=False)
     watchdog_enabled = Column(Boolean, default=False)
     watchdog_retries = Column(Integer, default=5)
+    restart_count = Column(Integer, default=0)
     last_started_config = Column(JSON, nullable=True)
 
     # Real-time Stats

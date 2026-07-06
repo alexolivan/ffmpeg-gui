@@ -15,7 +15,7 @@ DATABASE_URL = f"sqlite:///{DB_PATH}"
 PREVIEWS_DIR = os.environ.get("PREVIEWS_DIR", "/tmp/ffmpeg-gui-previews")
 
 engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
+    DATABASE_URL, connect_args={"check_same_thread": False, "timeout": 10}
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -37,6 +37,8 @@ def init_db():
                 conn.execute(text("ALTER TABLE media_processes ADD COLUMN last_started_config JSON DEFAULT NULL"))
             if "alias" not in columns:
                 conn.execute(text("ALTER TABLE media_processes ADD COLUMN alias TEXT DEFAULT NULL"))
+            if "restart_count" not in columns:
+                conn.execute(text("ALTER TABLE media_processes ADD COLUMN restart_count INTEGER DEFAULT 0"))
                 
             # Migración para la tabla scheduled_tasks
             result = conn.execute(text("PRAGMA table_info(scheduled_tasks)"))

@@ -29,6 +29,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<any | null>(null);
   const [viewingLogsExecutionId, setViewingLogsExecutionId] = useState<number | null>(null);
   const [logs, setLogs] = useState<any[]>([]);
+  const [taskTriggerPending, setTaskTriggerPending] = useState<Record<number, boolean>>({});
+  const [execStopPending, setExecStopPending] = useState<Record<number, boolean>>({});
 
   // Logs autoscroll reference
   const logsContainerRef = useRef<HTMLDivElement>(null);
@@ -145,23 +147,37 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   };
 
   const handleTriggerTask = async (taskId: number) => {
+    setTaskTriggerPending(prev => ({ ...prev, [taskId]: true }));
     try {
       const r = await fetch(`${API}/tasks/${taskId}/trigger`, { method: 'POST' });
       if (r.ok) {
         fetchTasks();
         alert('Execution triggered successfully!');
       }
-    } catch {}
+    } catch {} finally {
+      setTaskTriggerPending(prev => {
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
+    }
   };
 
   const handleStopExecution = async (execId: number) => {
+    setExecStopPending(prev => ({ ...prev, [execId]: true }));
     try {
       const r = await fetch(`${API}/tasks/executions/${execId}/stop`, { method: 'POST' });
       if (r.ok) {
         alert('Task execution stop signal sent.');
         fetchTasks();
       }
-    } catch {}
+    } catch {} finally {
+      setExecStopPending(prev => {
+        const next = { ...prev };
+        delete next[execId];
+        return next;
+      });
+    }
   };
 
   const handleExportTask = async (task: any) => {
@@ -379,13 +395,17 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     CLI LOGS
                   </button>
                   <button 
+                    disabled={execStopPending[exec.id]}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleStopExecution(exec.id);
                     }}
-                    className="pill-button bg-red-500 text-white font-bold hover:bg-red-600 text-xs py-1.5 px-4"
+                    className="pill-button bg-red-500 text-white font-bold hover:bg-red-600 text-xs py-1.5 px-4 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center"
                   >
-                    ABORT
+                    {execStopPending[exec.id] && (
+                      <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-1.5" />
+                    )}
+                    {execStopPending[exec.id] ? 'ABORTING...' : 'ABORT'}
                   </button>
                 </div>
               </div>
@@ -476,46 +496,57 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   ) : null}
 
                   <button 
+                    disabled={taskTriggerPending[task.id]}
                     onClick={() => viewTaskDetails(task.id)}
-                    className="pill-button bg-white/5 hover:bg-white/10 text-white text-xs py-2 px-4 border border-white/5"
+                    className="pill-button bg-white/5 hover:bg-white/10 text-white text-xs py-2 px-4 border border-white/5 disabled:opacity-50 disabled:pointer-events-none"
                   >
                     RUN HISTORY
                   </button>
                   
                   <button 
+                    disabled={taskTriggerPending[task.id]}
                     onClick={() => handleTriggerTask(task.id)}
-                    className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1"
+                    className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
                   >
-                    <LightningIcon size={12} /> RUN NOW
+                    {taskTriggerPending[task.id] ? (
+                      <span className="w-3 h-3 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
+                    ) : (
+                      <LightningIcon size={12} />
+                    )}
+                    {taskTriggerPending[task.id] ? 'TRIGGERING...' : 'RUN NOW'}
                   </button>
                   
                   <button 
+                    disabled={taskTriggerPending[task.id]}
                     onClick={() => handleCloneTask(task)}
-                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                     title="Clone Task"
                   >
                     <ClipboardIcon size={16} />
                   </button>
 
                   <button 
+                    disabled={taskTriggerPending[task.id]}
                     onClick={() => handleExportTask(task)}
-                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                     title="Export Task"
                   >
                     <ExportIcon size={16} />
                   </button>
 
                   <button 
+                    disabled={taskTriggerPending[task.id]}
                     onClick={() => handleEditClick(task)}
-                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                     title="Edit Task"
                   >
                     <PencilIcon size={16} />
                   </button>
 
                   <button 
+                    disabled={taskTriggerPending[task.id]}
                     onClick={() => handleDeleteTask(task.id)}
-                    className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105"
+                    className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                     title="Delete Task"
                   >
                     <TrashIcon size={16} />

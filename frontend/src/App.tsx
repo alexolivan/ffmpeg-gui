@@ -88,6 +88,7 @@ function App() {
     handleCloneProcess,
     handleRestartService,
     handleImportFileChange,
+    actionPending,
   } = useProcesses();
 
   useEffect(() => {
@@ -200,6 +201,7 @@ function App() {
         {activeView === 'services' && (
           <ServicesView
             telemetry={telemetry}
+            actionPending={actionPending}
             onEditProcess={setEditingProcess}
             onCloneProcess={handleCloneProcess}
             onStartService={handleStartService}
@@ -378,6 +380,7 @@ function App() {
         <ProcessPreviewModal
           selectedProcess={selectedProcess}
           telemetry={telemetry}
+          actionPending={actionPending}
           logs={logs}
           onClose={() => setSelectedProcess(null)}
           onEditProcess={setEditingProcess}

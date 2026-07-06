@@ -30,6 +30,8 @@ class ProcessManager:
 
     async def start_process(self, process_id: int, is_restart: bool = False):
         cleanup_rogue_processes(process_id=process_id)
+        
+        # 1. Fetch config and prepare snap in a quick database transaction
         with self.db_session_factory() as session:
             from database.models import MediaProcess, FfmpegBuild, ProcessLog
             media_proc = session.query(MediaProcess).get(process_id)
@@ -54,6 +56,7 @@ class ProcessManager:
             }
             if not is_restart:
                 self.restart_counts.pop(process_id, None)
+                media_proc.restart_count = 0
             self.srt_has_had_activity[process_id] = False
             
             pending = self.pending_restarts.pop(process_id, None)
@@ -69,32 +72,43 @@ class ProcessManager:
                     self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
 
             cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
-            self.logger.info(f"Starting FFMPEG for {media_proc.name}: {shlex.join(cmd)}")
+            proc_name = media_proc.name
+            session.commit()  # Save changes and release write lock immediately!
             
-            try:
-                self.log_buffers[process_id] = collections.deque(maxlen=100)
-                sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    stdin=asyncio.subprocess.PIPE,
-                    env=sub_env
-                )
-                self.processes[process_id] = proc
-                media_proc.pid = proc.pid
-                media_proc.status = 'running'
-                media_proc.last_start = datetime.utcnow()
-                session.commit()
-                
-                # Start watchdog and log reader tasks
-                asyncio.create_task(self._log_reader(process_id, proc))
-                asyncio.create_task(self._watchdog(process_id, proc))
-                
-            except Exception as e:
-                self.logger.exception(f"Failed to start process {process_id}")
-                media_proc.status = 'error'
-                session.commit()
+        # 2. Spawn subprocess (outside of any database session locks)
+        self.logger.info(f"Starting FFMPEG for {proc_name}: {shlex.join(cmd)}")
+        try:
+            self.log_buffers[process_id] = collections.deque(maxlen=100)
+            sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.PIPE,
+                env=sub_env
+            )
+            self.processes[process_id] = proc
+            
+            # 3. Update PID and status in a second short database transaction
+            with self.db_session_factory() as session:
+                media_proc = session.query(MediaProcess).get(process_id)
+                if media_proc:
+                    media_proc.pid = proc.pid
+                    media_proc.status = 'running'
+                    media_proc.last_start = datetime.utcnow()
+                    session.commit()
+            
+            # Start watchdog and log reader tasks
+            asyncio.create_task(self._log_reader(process_id, proc))
+            asyncio.create_task(self._watchdog(process_id, proc))
+            
+        except Exception as e:
+            self.logger.exception(f"Failed to start process {process_id}")
+            with self.db_session_factory() as session:
+                media_proc = session.query(MediaProcess).get(process_id)
+                if media_proc:
+                    media_proc.status = 'error'
+                    session.commit()
 
     async def stop_process(self, process_id: int, graceful: bool = True):
         pending = self.pending_restarts.pop(process_id, None)
@@ -154,6 +168,7 @@ class ProcessManager:
                 media_proc.bitrate = "0 kb/s"
                 media_proc.speed = "0x"
                 media_proc.last_stop = datetime.utcnow()
+                media_proc.restart_count = 0
                 session.commit()
 
     def _build_ffmpeg_cmd(self, media_proc, ffmpeg_bin):
@@ -958,8 +973,8 @@ class ProcessManager:
 
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process):
         import re
-        # Regex for ffmpeg status line
-        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s).*speed=\s*([\d.]+x)")
+        # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs)
+        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         
         buffer = bytearray()
         while True:
@@ -1067,106 +1082,122 @@ class ProcessManager:
             watchdog_start_time = datetime.utcnow()
             
             while proc.returncode is None:
-                # non-blocking call to compute CPU usage since last call
-                cpu_raw = p.cpu_percent(interval=None)
-                num_cores = psutil.cpu_count() or 1
-                cpu = cpu_raw / num_cores
-                mem = p.memory_info().rss / (1024 * 1024)  # MB
+                try:
+                    # non-blocking call to compute CPU usage since last call
+                    cpu_raw = p.cpu_percent(interval=None)
+                    num_cores = psutil.cpu_count() or 1
+                    cpu = cpu_raw / num_cores
+                    mem = p.memory_info().rss / (1024 * 1024)  # MB
+                except Exception as e:
+                    self.logger.error(f"Watchdog failed to get psutil metrics for process {process_id} (PID {proc.pid}): {e}")
+                    cpu, mem = 0, 0
                 
-                with self.db_session_factory() as session:
-                    from database.models import MediaProcess
-                    media_proc = session.query(MediaProcess).get(process_id)
-                    if media_proc:
-                        media_proc.cpu_usage = int(cpu)
-                        media_proc.ram_usage = int(mem)
-                        session.commit()
-                        
-                        # Parse bitrate and fps safely to check for activity
-                        import re
-                        def parse_val(s):
-                            if not s:
-                                return 0.0
-                            nums = re.findall(r"[\d.]+", s)
-                            if not nums:
-                                return 0.0
-                            try:
-                                return float(nums[0])
-                            except ValueError:
-                                return 0.0
-
-                        b_val = parse_val(media_proc.bitrate)
-                        f_val = parse_val(media_proc.fps)
-                        is_active = (b_val > 0.0)
-
-                        if is_active:
-                            self.srt_has_had_activity[process_id] = True
-                            self.restart_counts[process_id] = 0
-                        elif (datetime.utcnow() - watchdog_start_time).total_seconds() > 60:
-                            # Reset restart counts if running successfully for over 60s
-                            self.restart_counts[process_id] = 0
-                        
-                        # Active stream check (UDP, RTP)
-                        if media_proc.type == 'service' and media_proc.watchdog_enabled and not is_active:
-                            now = datetime.utcnow()
-                            if (now - last_ffprobe_check).total_seconds() > 30:
-                                last_ffprobe_check = now
-                                input_cfg = media_proc.input_config
-                                inputs_to_check = []
-                                if 'input1' in input_cfg:
-                                    inputs_to_check.append(input_cfg['input1'])
-                                    if input_cfg.get('use_secondary_input') and 'input2' in input_cfg:
-                                        inputs_to_check.append(input_cfg['input2'])
-                                else:
-                                    inputs_to_check.append(input_cfg)
-                                
-                                for inp in inputs_to_check:
-                                    inp_type = inp.get('type')
-                                    if inp_type in ('udp', 'rtp'):
-                                        url = None
-                                        if inp_type == 'udp':
-                                            url = f"udp://{inp.get('host', '')}:{inp.get('port', '1234')}"
-                                        elif inp_type == 'rtp':
-                                            url = f"rtp://{inp.get('host', '')}:{inp.get('port', '5004')}"
-                                        
-                                        if url:
-                                            # Find build-specific ffprobe
-                                            ffprobe_bin = "ffprobe"
-                                            if media_proc.ffmpeg_build_id:
-                                                from database.models import FfmpegBuild
-                                                build = session.query(FfmpegBuild).get(media_proc.ffmpeg_build_id)
-                                                if build and build.ffprobe_binary and os.path.exists(build.ffprobe_binary):
-                                                    ffprobe_bin = build.ffprobe_binary
+                try:
+                    with self.db_session_factory() as session:
+                        from database.models import MediaProcess
+                        media_proc = session.query(MediaProcess).get(process_id)
+                        if media_proc:
+                            media_proc.cpu_usage = int(cpu)
+                            media_proc.ram_usage = int(mem)
+                            session.commit()
+                            
+                            # Parse bitrate and fps safely to check for activity
+                            import re
+                            def parse_val(s):
+                                if not s:
+                                    return 0.0
+                                nums = re.findall(r"[\d.]+", s)
+                                if not nums:
+                                    return 0.0
+                                try:
+                                    return float(nums[0])
+                                except ValueError:
+                                    return 0.0
+    
+                            b_val = parse_val(media_proc.bitrate)
+                            f_val = parse_val(media_proc.fps)
+                            is_active = (b_val > 0.0)
+    
+                            reset_db_count = False
+                            if is_active:
+                                self.srt_has_had_activity[process_id] = True
+                                if self.restart_counts.get(process_id, 0) > 0:
+                                    self.restart_counts[process_id] = 0
+                                    reset_db_count = True
+                            elif (datetime.utcnow() - watchdog_start_time).total_seconds() > 60:
+                                # Reset restart counts if running successfully for over 60s
+                                if self.restart_counts.get(process_id, 0) > 0:
+                                    self.restart_counts[process_id] = 0
+                                    reset_db_count = True
+                            
+                            if reset_db_count:
+                                media_proc.restart_count = 0
+                                session.commit()
+                            
+                            # Active stream check (UDP, RTP)
+                            if media_proc.type == 'service' and media_proc.watchdog_enabled and not is_active:
+                                now = datetime.utcnow()
+                                if (now - last_ffprobe_check).total_seconds() > 30:
+                                    last_ffprobe_check = now
+                                    input_cfg = media_proc.input_config
+                                    inputs_to_check = []
+                                    if 'input1' in input_cfg:
+                                        inputs_to_check.append(input_cfg['input1'])
+                                        if input_cfg.get('use_secondary_input') and 'input2' in input_cfg:
+                                            inputs_to_check.append(input_cfg['input2'])
+                                    else:
+                                        inputs_to_check.append(input_cfg)
+                                    
+                                    for inp in inputs_to_check:
+                                        inp_type = inp.get('type')
+                                        if inp_type in ('udp', 'rtp'):
+                                            url = None
+                                            if inp_type == 'udp':
+                                                url = f"udp://{inp.get('host', '')}:{inp.get('port', '1234')}"
+                                            elif inp_type == 'rtp':
+                                                url = f"rtp://{inp.get('host', '')}:{inp.get('port', '5004')}"
                                             
-                                            self.logger.info(f"Watchdog probing network stream: {url}")
-                                            alive = await self._probe_url(url, ffprobe_bin)
-                                            if not alive:
-                                                self.logger.warning(f"Watchdog probe failed for: {url}")
-                                                from database.models import ProcessLog
-                                                log = ProcessLog(
-                                                    process_id=process_id,
-                                                    level='ERROR',
-                                                    message=f"Watchdog: Active probe failed for network input: {url}."
-                                                )
-                                                session.add(log)
-                                                session.commit()
-                                                proc.kill()
-                                                break
-                                    # SRT listener fallback check (check if bitrate or fps has activity)
-                                    if inp_type == 'srt' and inp.get('mode', 'listener') == 'listener':
-                                        if (now - last_activity_check).total_seconds() > 30:
-                                            last_activity_check = now
-                                            if self.srt_has_had_activity.get(process_id, False) and b_val == 0.0:
-                                                self.logger.warning("Watchdog: SRT listener stream lost traffic activity. Restarting service.")
-                                                from database.models import ProcessLog
-                                                log = ProcessLog(
-                                                    process_id=process_id,
-                                                    level='ERROR',
-                                                    message="Watchdog: SRT listener has lost incoming data stream activity. Restarting service."
-                                                )
-                                                session.add(log)
-                                                session.commit()
-                                                proc.kill()
-                                                break
+                                            if url:
+                                                # Find build-specific ffprobe
+                                                ffprobe_bin = "ffprobe"
+                                                if media_proc.ffmpeg_build_id:
+                                                    from database.models import FfmpegBuild
+                                                    build = session.query(FfmpegBuild).get(media_proc.ffmpeg_build_id)
+                                                    if build and build.ffprobe_binary and os.path.exists(build.ffprobe_binary):
+                                                        ffprobe_bin = build.ffprobe_binary
+                                                
+                                                self.logger.info(f"Watchdog probing network stream: {url}")
+                                                alive = await self._probe_url(url, ffprobe_bin)
+                                                if not alive:
+                                                    self.logger.warning(f"Watchdog probe failed for: {url}")
+                                                    from database.models import ProcessLog
+                                                    log = ProcessLog(
+                                                        process_id=process_id,
+                                                        level='ERROR',
+                                                        message=f"Watchdog: Active probe failed for network input: {url}."
+                                                    )
+                                                    session.add(log)
+                                                    session.commit()
+                                                    proc.kill()
+                                                    break
+                                        # SRT listener fallback check (check if bitrate or fps has activity)
+                                        if inp_type == 'srt' and inp.get('mode', 'listener') == 'listener':
+                                            if (now - last_activity_check).total_seconds() > 30:
+                                                last_activity_check = now
+                                                if self.srt_has_had_activity.get(process_id, False) and b_val == 0.0:
+                                                    self.logger.warning("Watchdog: SRT listener stream lost traffic activity. Restarting service.")
+                                                    from database.models import ProcessLog
+                                                    log = ProcessLog(
+                                                        process_id=process_id,
+                                                        level='ERROR',
+                                                        message="Watchdog: SRT listener has lost incoming data stream activity. Restarting service."
+                                                    )
+                                                    session.add(log)
+                                                    session.commit()
+                                                    proc.kill()
+                                                    break
+                except Exception as e:
+                    self.logger.error(f"Watchdog database error for process {process_id}: {e}")
                 
                 await asyncio.sleep(2)
         except psutil.NoSuchProcess:
@@ -1249,6 +1280,7 @@ class ProcessManager:
                         current_restarts = self.restart_counts.get(process_id, 0)
                         if retries == -1 or current_restarts < retries:
                             self.restart_counts[process_id] = current_restarts + 1
+                            media_proc.restart_count = self.restart_counts[process_id]
                             self.logger.info(f"Watchdog: unexpectedly exited. Scheduling restart attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'}...")
                             restart_log = ProcessLog(
                                 process_id=process_id,

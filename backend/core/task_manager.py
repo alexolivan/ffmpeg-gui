@@ -24,6 +24,8 @@ class TaskManager:
 
     async def start_execution(self, execution_id: int):
         cleanup_rogue_processes(execution_id=execution_id)
+        
+        # 1. Fetch task and calculate limits in a quick database transaction
         with self.db_session_factory() as session:
             execution = session.query(TaskExecution).get(execution_id)
             if not execution:
@@ -42,7 +44,6 @@ class TaskManager:
             execution.duration_limit_seconds = limit_sec
             execution.started_at = datetime.utcnow()
             execution.status = 'running'
-            session.commit()
 
             # Command building
             ffmpeg_bin = self._detect_ffmpeg()
@@ -52,30 +53,41 @@ class TaskManager:
                     ffmpeg_bin = build.ffmpeg_binary
 
             cmd = self._build_ffmpeg_cmd(task, ffmpeg_bin, limit_sec, execution_id=execution_id)
-            self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
+            session.commit()  # Release write locks immediately before slow spawn!
             
-            try:
-                sub_env = {**os.environ, "FFMPEG_GUI_EXECUTION_ID": str(execution_id)}
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    stdin=asyncio.subprocess.PIPE,
-                    env=sub_env
-                )
-                self.running_processes[execution_id] = proc
-                self.last_activity[execution_id] = datetime.utcnow()
-                execution.pid = proc.pid
-                session.commit()
-                
-                asyncio.create_task(self._log_reader(execution_id, proc))
-                asyncio.create_task(self._watchdog(execution_id, proc, limit_sec))
-            except Exception as e:
-                self.logger.exception(f"Failed to start task execution {execution_id}")
-                execution.status = 'error'
-                execution.error_message = str(e)
-                execution.stopped_at = datetime.utcnow()
-                session.commit()
+        # 2. Spawn subprocess (outside database session)
+        self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
+        try:
+            sub_env = {**os.environ, "FFMPEG_GUI_EXECUTION_ID": str(execution_id)}
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.PIPE,
+                env=sub_env
+            )
+            self.running_processes[execution_id] = proc
+            self.last_activity[execution_id] = datetime.utcnow()
+            
+            # 3. Update execution PID and status in a second short transaction
+            with self.db_session_factory() as session:
+                execution = session.query(TaskExecution).get(execution_id)
+                if execution:
+                    execution.pid = proc.pid
+                    session.commit()
+            
+            asyncio.create_task(self._log_reader(execution_id, proc))
+            asyncio.create_task(self._watchdog(execution_id, proc, limit_sec))
+            
+        except Exception as e:
+            self.logger.exception(f"Failed to start task execution {execution_id}")
+            with self.db_session_factory() as session:
+                execution = session.query(TaskExecution).get(execution_id)
+                if execution:
+                    execution.status = 'error'
+                    execution.error_message = str(e)
+                    execution.stopped_at = datetime.utcnow()
+                    session.commit()
 
     def _build_ffmpeg_cmd(self, task, ffmpeg_bin, limit_sec, execution_id=None):
         cmd = [ffmpeg_bin, "-hide_banner", "-y"]
@@ -824,7 +836,8 @@ class TaskManager:
                 session.commit()
 
     async def _log_reader(self, execution_id: int, proc):
-        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s).*speed=\s*([\d.]+x)")
+        # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs)
+        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         buffer = bytearray()
         
         while True:
@@ -849,20 +862,23 @@ class TaskManager:
     def _handle_log_line(self, execution_id: int, msg: str, status_re):
         self.last_activity[execution_id] = datetime.utcnow()
         level = "ERROR" if any(kw in msg.lower() for kw in ["error", "failed", "invalid"]) else "INFO"
-        with self.db_session_factory() as session:
-            match = status_re.search(msg)
-            if match:
-                fps, bitrate, speed = match.groups()
-                execution = session.query(TaskExecution).get(execution_id)
-                if execution:
-                    execution.fps = fps
-                    execution.bitrate = bitrate
-                    execution.speed = speed
-                    session.commit()
-            
-            log = TaskExecutionLog(execution_id=execution_id, level=level, message=msg)
-            session.add(log)
-            session.commit()
+        try:
+            with self.db_session_factory() as session:
+                match = status_re.search(msg)
+                if match:
+                    fps, bitrate, speed = match.groups()
+                    execution = session.query(TaskExecution).get(execution_id)
+                    if execution:
+                        execution.fps = fps
+                        execution.bitrate = bitrate
+                        execution.speed = speed
+                        session.commit()
+                
+                log = TaskExecutionLog(execution_id=execution_id, level=level, message=msg)
+                session.add(log)
+                session.commit()
+        except Exception as e:
+            self.logger.error(f"Failed to write log line/stats to DB for execution {execution_id}: {e}")
 
     async def _watchdog(self, execution_id: int, proc, limit_sec):
         start_time = datetime.utcnow()
@@ -895,12 +911,15 @@ class TaskManager:
                 except Exception:
                     cpu, mem = 0, 0
                 
-                with self.db_session_factory() as session:
-                    execution = session.query(TaskExecution).get(execution_id)
-                    if execution:
-                        execution.cpu_usage = cpu
-                        execution.ram_usage = mem
-                        session.commit()
+                try:
+                    with self.db_session_factory() as session:
+                        execution = session.query(TaskExecution).get(execution_id)
+                        if execution:
+                            execution.cpu_usage = cpu
+                            execution.ram_usage = mem
+                            session.commit()
+                except Exception as e:
+                    self.logger.error(f"Watchdog failed to update task metrics in DB for execution {execution_id}: {e}")
 
                 await asyncio.sleep(1)
         except Exception:
