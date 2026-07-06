@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-07-06
+
+### Changed
+- Relocated the transcode pipeline flow diagram (`ResourcePipelineDiagram`) to the General/System tab contents in `ProcessConfigForm.tsx` to keep it structured and clean.
+- Wrapped scheduling, lifecycle, and advanced flags components in a responsive 2-column grid layout inside the General/System tab contents.
+
 ## [1.10.0] - 2026-07-06
 
 ### Added
