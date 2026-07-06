@@ -949,6 +949,9 @@ async def telemetry_broadcast_loop():
                         "watchdog_enabled": p.watchdog_enabled,
                         "watchdog_retries": p.watchdog_retries,
                         "pending_changes": p.pending_changes,
+                        "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
+                        "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
+                        "restart_count": p.restart_count,
                     } for p in processes
                 ]
 
@@ -1708,6 +1711,9 @@ def list_processes(db: Session = Depends(get_db)):
             "watchdog_enabled": p.watchdog_enabled,
             "watchdog_retries": p.watchdog_retries,
             "pending_changes": p.pending_changes,
+            "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
+            "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
+            "restart_count": p.restart_count,
         } for p in processes
     ]
 

@@ -29,6 +29,24 @@ interface ServicesViewProps {
   API: string;
 }
 
+const formatUptime = (lastStartStr: string | null): string => {
+  if (!lastStartStr) return 'N/A';
+  const start = new Date(lastStartStr);
+  const diffMs = Date.now() - start.getTime();
+  if (diffMs <= 0) return '0s';
+  
+  const diffSecs = Math.floor(diffMs / 1000);
+  const days = Math.floor(diffSecs / 86400);
+  const hours = Math.floor((diffSecs % 86400) / 3600);
+  const mins = Math.floor((diffSecs % 3600) / 60);
+  const secs = diffSecs % 60;
+  
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+};
+
 export const ServicesView: React.FC<ServicesViewProps> = ({
   telemetry,
   onEditProcess,
@@ -108,6 +126,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           <ShieldIcon size={10} /> WATCHDOG
                         </span>
                       )}
+                      {proc.watchdog_enabled && proc.restart_count > 0 && (
+                        <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1" title={`Watchdog rescued this service ${proc.restart_count} times`}>
+                          ⚠️ RESCUED {proc.restart_count}/{proc.watchdog_retries === -1 ? '∞' : proc.watchdog_retries}
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-text-secondary space-y-0.5">
                       <p className="truncate">
@@ -119,6 +142,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     </div>
                     <div className="flex gap-4 mt-1 text-xs text-text-secondary flex-wrap items-center">
                       <span>PID: <strong className="text-white font-mono">{proc.pid || 'N/A'}</strong></span>
+                      <span className="text-white/10 select-none">|</span>
+                      <span>Uptime: <strong className="text-white font-mono">{formatUptime(proc.last_start)}</strong></span>
                       <span className="text-white/10 select-none">|</span>
                       <span>CPU: <strong className="text-white">{proc.cpu || 0}%</strong></span>
                       <span>RAM: <strong className="text-white">{proc.ram || 0} MB</strong></span>
@@ -241,6 +266,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         <p className="truncate">
                           Output: <code className="text-white font-mono">{formatOutputDesc(proc.output_config)}</code>
                         </p>
+                        {proc.last_stop && (
+                          <p className="text-[10px] text-text-secondary/60 mt-1">
+                            Last active: {new Date(proc.last_stop).toLocaleString()}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-4 items-center">

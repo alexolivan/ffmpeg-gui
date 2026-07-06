@@ -56,6 +56,7 @@ class ProcessManager:
             }
             if not is_restart:
                 self.restart_counts.pop(process_id, None)
+                media_proc.restart_count = 0
             self.srt_has_had_activity[process_id] = False
             
             pending = self.pending_restarts.pop(process_id, None)
@@ -167,6 +168,7 @@ class ProcessManager:
                 media_proc.bitrate = "0 kb/s"
                 media_proc.speed = "0x"
                 media_proc.last_stop = datetime.utcnow()
+                media_proc.restart_count = 0
                 session.commit()
 
     def _build_ffmpeg_cmd(self, media_proc, ffmpeg_bin):
@@ -1116,12 +1118,21 @@ class ProcessManager:
                             f_val = parse_val(media_proc.fps)
                             is_active = (b_val > 0.0)
     
+                            reset_db_count = False
                             if is_active:
                                 self.srt_has_had_activity[process_id] = True
-                                self.restart_counts[process_id] = 0
+                                if self.restart_counts.get(process_id, 0) > 0:
+                                    self.restart_counts[process_id] = 0
+                                    reset_db_count = True
                             elif (datetime.utcnow() - watchdog_start_time).total_seconds() > 60:
                                 # Reset restart counts if running successfully for over 60s
-                                self.restart_counts[process_id] = 0
+                                if self.restart_counts.get(process_id, 0) > 0:
+                                    self.restart_counts[process_id] = 0
+                                    reset_db_count = True
+                            
+                            if reset_db_count:
+                                media_proc.restart_count = 0
+                                session.commit()
                             
                             # Active stream check (UDP, RTP)
                             if media_proc.type == 'service' and media_proc.watchdog_enabled and not is_active:
@@ -1269,6 +1280,7 @@ class ProcessManager:
                         current_restarts = self.restart_counts.get(process_id, 0)
                         if retries == -1 or current_restarts < retries:
                             self.restart_counts[process_id] = current_restarts + 1
+                            media_proc.restart_count = self.restart_counts[process_id]
                             self.logger.info(f"Watchdog: unexpectedly exited. Scheduling restart attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'}...")
                             restart_log = ProcessLog(
                                 process_id=process_id,
