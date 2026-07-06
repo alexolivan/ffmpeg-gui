@@ -4,17 +4,23 @@ interface ResourcePipelineDiagramProps {
   hwaccel: string;
   isVram: boolean;
   codecId: string;
+  audioCodecId?: string;
   hasCpuFilters: boolean;
   inputType?: string;
+  outputType?: string;
+  filters?: any;
+  hasVideo?: boolean;
+  hasAudio?: boolean;
 }
 
-export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(({
-  hwaccel,
-  isVram: initialIsVram,
-  codecId,
-  hasCpuFilters,
-  inputType,
-}) => {
+export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>((props) => {
+  const {
+    hwaccel,
+    isVram: initialIsVram,
+    codecId,
+    hasCpuFilters,
+    inputType,
+  } = props;
   const unsupportedHwdec = ['lavfi_video', 'lavfi_audio', 'alsa'];
   const isHwSupported = inputType ? !unsupportedHwdec.includes(inputType) : true;
   const isVram = isHwSupported ? initialIsVram : false;
