@@ -16,6 +16,7 @@ import {
 
 interface ServicesViewProps {
   telemetry: any[];
+  actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
   onEditProcess: (proc: any) => void;
   onCloneProcess: (proc: any) => void;
   onStartService: (procId: number) => void;
@@ -49,6 +50,7 @@ const formatUptime = (lastStartStr: string | null): string => {
 
 export const ServicesView: React.FC<ServicesViewProps> = ({
   telemetry,
+  actionPending,
   onEditProcess,
   onCloneProcess,
   onStartService,
@@ -155,26 +157,29 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                   <div className="flex items-center gap-4">
                     <div className="flex gap-2">
                       <button
+                        disabled={!!actionPending[proc.id]}
                         onClick={(e) => {
                           e.stopPropagation();
                           onEditProcess(proc);
                         }}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                         title="Edit Service Settings"
                       >
                         <PencilIcon size={16} />
                       </button>
                       <button
+                        disabled={!!actionPending[proc.id]}
                         onClick={(e) => {
                           e.stopPropagation();
                           onCloneProcess(proc);
                         }}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                         title="Clone Service"
                       >
                         <ClipboardIcon size={16} />
                       </button>
                       <button
+                        disabled={!!actionPending[proc.id]}
                         onClick={(e) => {
                           e.stopPropagation();
                           fetch(`${API}/processes/${proc.id}/export`)
@@ -187,34 +192,42 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                               a.click()
                             })
                         }}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                         title="Export Service"
                       >
                         <ExportIcon size={16} />
                       </button>
                       <button
+                        disabled={!!actionPending[proc.id]}
                         onClick={(e) => {
                           e.stopPropagation();
                           onRestartService(proc.id, proc.name);
                         }}
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
-                          proc.pending_changes
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none ${
+                          actionPending[proc.id] === 'restarting'
+                            ? "bg-blue-500/20 border border-blue-500 text-blue-400"
+                            : proc.pending_changes
                             ? "bg-brand-orange/20 hover:bg-brand-orange/30 border border-brand-orange text-brand-orange animate-pulse"
                             : "bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400"
                         }`}
                         title={proc.pending_changes ? "Restart service to apply new configuration" : "Restart Service"}
                       >
-                        <RefreshIcon size={16} />
+                        <RefreshIcon size={16} className={actionPending[proc.id] === 'restarting' ? 'animate-spin' : ''} />
                       </button>
                       <button
+                        disabled={!!actionPending[proc.id]}
                         onClick={(e) => {
                           e.stopPropagation();
                           onStopService(proc.id);
                         }}
-                        className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105"
+                        className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                         title="Stop Service"
                       >
-                        <StopIcon size={16} />
+                        {actionPending[proc.id] === 'stopping' ? (
+                          <RefreshIcon size={16} className="animate-spin text-brand-orange" />
+                        ) : (
+                          <StopIcon size={16} />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -276,36 +289,44 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     <div className="flex gap-4 items-center">
                       <div className="flex gap-2">
                         <button
+                          disabled={!!actionPending[proc.id]}
                           onClick={(e) => {
                             e.stopPropagation();
                             onStartService(proc.id);
                           }}
-                          className="w-9 h-9 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center border border-brand-lime/20 text-brand-lime transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center border border-brand-lime/20 text-brand-lime transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                           title="Start Service"
                         >
-                          <PlayIcon size={16} />
+                          {actionPending[proc.id] === 'starting' ? (
+                            <RefreshIcon size={16} className="animate-spin text-brand-lime" />
+                          ) : (
+                            <PlayIcon size={16} />
+                          )}
                         </button>
                         <button
+                          disabled={!!actionPending[proc.id]}
                           onClick={(e) => {
                             e.stopPropagation();
                             onEditProcess(proc);
                           }}
-                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                           title="Edit Service Settings"
                         >
                           <PencilIcon size={16} />
                         </button>
                         <button
+                          disabled={!!actionPending[proc.id]}
                           onClick={(e) => {
                             e.stopPropagation();
                             onCloneProcess(proc);
                           }}
-                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                           title="Clone Service"
                         >
                           <ClipboardIcon size={16} />
                         </button>
                         <button
+                          disabled={!!actionPending[proc.id]}
                           onClick={(e) => {
                             e.stopPropagation();
                             fetch(`${API}/processes/${proc.id}/export`)
@@ -318,17 +339,18 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                                 a.click()
                               })
                           }}
-                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                           title="Export Service"
                         >
                           <ExportIcon size={16} />
                         </button>
                         <button
+                          disabled={!!actionPending[proc.id]}
                           onClick={(e) => {
                             e.stopPropagation();
                             onDeleteProcess(proc);
                           }}
-                          className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105"
+                          className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                           title="Delete Service"
                         >
                           <TrashIcon size={16} />

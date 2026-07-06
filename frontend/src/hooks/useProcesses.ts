@@ -84,20 +84,36 @@ export function useProcesses() {
     }
   };
 
+  const [actionPending, setActionPending] = useState<Record<number, 'starting' | 'stopping' | 'restarting'>>({});
+
   const handleStartService = async (procId: number) => {
     setLogs([]);
+    setActionPending(prev => ({ ...prev, [procId]: 'starting' }));
     try {
       await fetch(`${API}/processes/${procId}/start`, { method: 'POST' });
     } catch (err) {
       console.error("Error starting process:", err);
+    } finally {
+      setActionPending(prev => {
+        const next = { ...prev };
+        delete next[procId];
+        return next;
+      });
     }
   };
 
   const handleStopService = async (procId: number) => {
+    setActionPending(prev => ({ ...prev, [procId]: 'stopping' }));
     try {
       await fetch(`${API}/processes/${procId}/stop`, { method: 'POST' });
     } catch (err) {
       console.error("Error stopping process:", err);
+    } finally {
+      setActionPending(prev => {
+        const next = { ...prev };
+        delete next[procId];
+        return next;
+      });
     }
   };
 
@@ -135,11 +151,18 @@ export function useProcesses() {
     );
     if (!isConfirmed) return;
 
+    setActionPending(prev => ({ ...prev, [procId]: 'restarting' }));
     try {
       setLogs([]);
       await fetch(`${API}/processes/${procId}/restart`, { method: 'POST' });
     } catch (err) {
       console.error("Error restarting process:", err);
+    } finally {
+      setActionPending(prev => {
+        const next = { ...prev };
+        delete next[procId];
+        return next;
+      });
     }
   };
 
@@ -192,5 +215,6 @@ export function useProcesses() {
     handleCloneProcess,
     handleRestartService,
     handleImportFileChange,
+    actionPending,
   };
 }

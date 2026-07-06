@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 interface ProcessPreviewModalProps {
   selectedProcess: any;
   telemetry: any[];
+  actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
   logs: any[];
   onClose: () => void;
   onEditProcess: (proc: any) => void;
@@ -16,6 +17,7 @@ interface ProcessPreviewModalProps {
 export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
   selectedProcess,
   telemetry,
+  actionPending,
   logs,
   onClose,
   onEditProcess,
@@ -241,48 +243,62 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
           </div>
           <div className="flex gap-3">
             <button 
+              disabled={!!actionPending[currentProcess.id]}
               onClick={() => {
                 onEditProcess(currentProcess);
                 onClose();
               }}
-              className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-2 px-6 border border-blue-500/25"
+              className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-2 px-6 border border-blue-500/25 disabled:opacity-50 disabled:pointer-events-none"
             >
               EDIT CONFIG
             </button>
             <button 
+              disabled={!!actionPending[currentProcess.id]}
               onClick={() => {
                 onCloneProcess(currentProcess);
                 onClose();
               }}
-              className="pill-button bg-white/10 hover:bg-white/15 text-xs py-2 px-6"
+              className="pill-button bg-white/10 hover:bg-white/15 text-xs py-2 px-6 disabled:opacity-50 disabled:pointer-events-none"
             >
               CLONE SERVICE
             </button>
             {currentProcess.status === 'running' ? (
               <>
                 <button 
+                  disabled={!!actionPending[currentProcess.id]}
                   onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
-                  className={`pill-button hover:scale-[1.02] text-black text-xs font-black py-2 px-6 transition-all ${
+                  className={`pill-button hover:scale-[1.02] text-black text-xs font-black py-2 px-6 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center ${
                     currentProcess.pending_changes
                       ? 'bg-brand-orange shadow-xl shadow-brand-orange/20'
                       : 'bg-brand-lime shadow-xl shadow-brand-lime/20'
                   }`}
                 >
-                  RESTART SERVICE
+                  {actionPending[currentProcess.id] === 'restarting' && (
+                    <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin inline-block" />
+                  )}
+                  {actionPending[currentProcess.id] === 'restarting' ? 'RESTARTING...' : 'RESTART SERVICE'}
                 </button>
                 <button 
+                  disabled={!!actionPending[currentProcess.id]}
                   onClick={() => onStopService(currentProcess.id)}
-                  className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-2 px-6"
+                  className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-2 px-6 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center"
                 >
-                  STOP SERVICE
+                  {actionPending[currentProcess.id] === 'stopping' && (
+                    <span className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" />
+                  )}
+                  {actionPending[currentProcess.id] === 'stopping' ? 'STOPPING...' : 'STOP SERVICE'}
                 </button>
               </>
             ) : (
               <button 
+                disabled={!!actionPending[currentProcess.id]}
                 onClick={() => onStartService(currentProcess.id)}
-                className="pill-button bg-brand-lime hover:scale-[1.02] text-black text-xs font-black py-2 px-6"
+                className="pill-button bg-brand-lime hover:scale-[1.02] text-black text-xs font-black py-2 px-6 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center"
               >
-                START SERVICE
+                {actionPending[currentProcess.id] === 'starting' && (
+                  <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin inline-block" />
+                )}
+                {actionPending[currentProcess.id] === 'starting' ? 'STARTING...' : 'START SERVICE'}
               </button>
             )}
             <button 
