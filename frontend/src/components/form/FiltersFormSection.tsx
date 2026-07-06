@@ -39,6 +39,10 @@ interface FiltersFormSectionProps {
   hwaccel?: string;
   isVram?: boolean;
   systemCapabilities?: any;
+
+  // Codec constraint tracking
+  videoCodecId?: string;
+  audioCodecId?: string;
 }
 
 export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
@@ -58,8 +62,13 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   hwaccel = 'none',
   isVram = false,
   systemCapabilities = null,
+  videoCodecId,
+  audioCodecId,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'video' | 'audio' | 'overlays'>('video');
+
+  const isVideoCopy = videoCodecId === 'copy';
+  const isAudioCopy = audioCodecId === 'copy';
 
   if (!hasVideo && !hasAudio) {
     return (
@@ -167,6 +176,12 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
       {/* SUB-TAB: Video Settings */}
       {activeSubTab === 'video' && hasVideo && (
         <div className="glass-card p-2.5 !rounded-lg space-y-2">
+          {isVideoCopy && (
+            <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
+              ⚠️ Video codec is set to 'copy'. Video filters and scaling are disabled because the stream is copied directly without re-encoding.
+            </div>
+          )}
+
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
             <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Video Filters</h4>
@@ -178,9 +193,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               <input
                 type="text"
                 placeholder="e.g. 1920:1080 or -1:720"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                 value={scale}
                 onChange={e => onChange({ scale: e.target.value })}
+                disabled={isVideoCopy}
               />
             </div>
             <div>
@@ -188,19 +204,21 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               <input
                 type="text"
                 placeholder="e.g. 25, 29.97, 50"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                 value={framerate}
                 onChange={e => onChange({ framerate: e.target.value })}
+                disabled={isVideoCopy}
               />
             </div>
             <div className="col-span-2 flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5">
               <input
                 type="checkbox" id="deinterlace-chk"
-                className="w-3.5 h-3.5 accent-brand-lime cursor-pointer"
+                className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
                 checked={deinterlace}
                 onChange={e => onChange({ deinterlace: e.target.checked })}
+                disabled={isVideoCopy}
               />
-              <label htmlFor="deinterlace-chk" className="text-xs font-semibold cursor-pointer select-none">
+              <label htmlFor="deinterlace-chk" className={`text-xs font-semibold cursor-pointer select-none ${isVideoCopy ? 'opacity-35 cursor-not-allowed' : ''}`}>
                 Enable Deinterlacing (YADIF / QSV VPP / CUDA yadif)
               </label>
             </div>
@@ -229,6 +247,12 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
       {/* SUB-TAB: Audio Settings */}
       {activeSubTab === 'audio' && hasAudio && (
         <div className="glass-card p-2.5 !rounded-lg space-y-2">
+          {isAudioCopy && (
+            <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
+              ⚠️ Audio codec is set to 'copy'. Audio filters and DSP settings are disabled because the stream is copied directly without re-encoding.
+            </div>
+          )}
+
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
             <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Audio DSP & Levels</h4>
@@ -240,9 +264,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               <input
                 type="text"
                 placeholder="e.g. 1.0 (no change), 1.5 (+50%), 0.5 (-50%), -10dB"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                 value={volume}
                 onChange={e => onChange({ volume: e.target.value })}
+                disabled={isAudioCopy}
               />
             </div>
 
@@ -250,11 +275,12 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               <div className="flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5 h-[28px]">
                 <input
                   type="checkbox" id="compressor-chk"
-                  className="w-3.5 h-3.5 accent-brand-lime cursor-pointer"
+                  className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
                   checked={compressor}
                   onChange={e => onChange({ compressor: e.target.checked })}
+                  disabled={isAudioCopy}
                 />
-                <label htmlFor="compressor-chk" className="text-[11px] font-semibold cursor-pointer select-none">
+                <label htmlFor="compressor-chk" className={`text-[11px] font-semibold cursor-pointer select-none ${isAudioCopy ? 'opacity-35 cursor-not-allowed' : ''}`}>
                   Enable Compand Dynamic Limiter
                 </label>
               </div>
@@ -265,9 +291,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               <input
                 type="text"
                 placeholder="Cutoff frequency, e.g. 80"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                 value={highpass}
                 onChange={e => onChange({ highpass: e.target.value })}
+                disabled={isAudioCopy}
               />
             </div>
 
@@ -276,9 +303,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               <input
                 type="text"
                 placeholder="Cutoff frequency, e.g. 15000"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                 value={lowpass}
                 onChange={e => onChange({ lowpass: e.target.value })}
+                disabled={isAudioCopy}
               />
             </div>
 
@@ -287,11 +315,12 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 <div className="flex items-center gap-1.5">
                   <input
                     type="checkbox" id="eq-chk"
-                    className="w-3.5 h-3.5 accent-brand-lime cursor-pointer"
+                    className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
                     checked={equalizer.enabled || false}
                     onChange={e => onChange({ equalizer: { ...equalizer, enabled: e.target.checked } })}
+                    disabled={isAudioCopy}
                   />
-                  <label htmlFor="eq-chk" className="text-[11px] font-bold uppercase tracking-wider text-text-secondary select-none cursor-pointer">
+                  <label htmlFor="eq-chk" className={`text-[11px] font-bold uppercase tracking-wider text-text-secondary select-none cursor-pointer ${isAudioCopy ? 'opacity-35 cursor-not-allowed' : ''}`}>
                     5-Band Graphic Equalizer
                   </label>
                 </div>
@@ -308,12 +337,13 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                         min="-20"
                         max="20"
                         step="1"
-                        className="h-16 w-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none orientation-vertical cursor-ns-resize"
+                        className="h-16 w-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none orientation-vertical cursor-ns-resize disabled:opacity-35 disabled:cursor-not-allowed"
                         style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' } as any}
                         value={bandsObj[band]}
                         onChange={e => updateEqBand(band, Number(e.target.value))}
+                        disabled={isAudioCopy}
                       />
-                      <span className={`text-[9px] font-bold ${bandsObj[band] > 0 ? 'text-brand-lime' : bandsObj[band] < 0 ? 'text-brand-orange' : 'text-text-secondary'}`}>
+                      <span className={`text-[9px] font-bold ${bandsObj[band] > 0 ? 'text-brand-lime' : bandsObj[band] < 0 ? 'text-brand-orange' : 'text-text-secondary'} ${isAudioCopy ? 'opacity-35' : ''}`}>
                         {bandsObj[band] > 0 ? `+${bandsObj[band]}` : bandsObj[band]}dB
                       </span>
                     </div>
@@ -325,11 +355,12 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
             <div className="col-span-2 flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5">
               <input
                 type="checkbox" id="aresample-chk"
-                className="w-3.5 h-3.5 accent-brand-lime cursor-pointer"
+                className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed"
                 checked={aresample}
                 onChange={e => onChange({ aresample: e.target.checked })}
+                disabled={isAudioCopy}
               />
-              <label htmlFor="aresample-chk" className="text-[11px] font-semibold cursor-pointer select-none">
+              <label htmlFor="aresample-chk" className={`text-[11px] font-semibold cursor-pointer select-none ${isAudioCopy ? 'opacity-35 cursor-not-allowed' : ''}`}>
                 Enable Audio Resampling Sync (aresample=async=1)
               </label>
             </div>
@@ -340,6 +371,12 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
       {/* SUB-TAB: Overlays */}
       {activeSubTab === 'overlays' && hasVideo && (
         <div className="glass-card p-2.5 !rounded-lg space-y-2">
+          {isVideoCopy && (
+            <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
+              ⚠️ Video codec is set to 'copy'. Overlays cannot be applied because the stream is copied directly without re-encoding.
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
@@ -349,15 +386,17 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
             <div className="flex gap-2">
               <button
                 type="button"
+                disabled={isVideoCopy}
                 onClick={() => addOverlay('text')}
-                className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all"
+                className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all disabled:opacity-35 disabled:cursor-not-allowed"
               >
                 + Text Overlay
               </button>
               <button
                 type="button"
+                disabled={isVideoCopy}
                 onClick={() => addOverlay('image')}
-                className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all"
+                className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all disabled:opacity-35 disabled:cursor-not-allowed"
               >
                 + Image Overlay
               </button>
@@ -389,26 +428,27 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        disabled={idx === 0}
+                        disabled={isVideoCopy || idx === 0}
                         onClick={() => moveOverlay(idx, 'up')}
-                        className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 rounded text-xs transition-all shrink-0 cursor-pointer"
+                        className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all shrink-0 cursor-pointer"
                         title="Move layer up"
                       >
                         ▲
                       </button>
                       <button
                         type="button"
-                        disabled={idx === overlays.length - 1}
+                        disabled={isVideoCopy || idx === overlays.length - 1}
                         onClick={() => moveOverlay(idx, 'down')}
-                        className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 rounded text-xs transition-all shrink-0 cursor-pointer"
+                        className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all shrink-0 cursor-pointer"
                         title="Move layer down"
                       >
                         ▼
                       </button>
                       <button
                         type="button"
+                        disabled={isVideoCopy}
                         onClick={() => removeOverlay(idx)}
-                        className="p-1 bg-white/5 hover:bg-red-500 hover:text-white rounded text-xs transition-all shrink-0 ml-1 cursor-pointer"
+                        className="p-1 bg-white/5 hover:bg-red-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all shrink-0 ml-1 cursor-pointer"
                         title="Remove overlay"
                       >
                         ✕
@@ -423,27 +463,30 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                         <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Text String</label>
                         <input
                           type="text"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none disabled:opacity-35 disabled:cursor-not-allowed"
                           value={overlay.text || ''}
                           onChange={e => updateOverlayItem(idx, { text: e.target.value })}
+                          disabled={isVideoCopy}
                         />
                       </div>
                       <div>
                         <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Font Size</label>
                         <input
                           type="text"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                           value={overlay.fontsize || '24'}
                           onChange={e => updateOverlayItem(idx, { fontsize: e.target.value })}
+                          disabled={isVideoCopy}
                         />
                       </div>
                       <div>
                         <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Font Color</label>
                         <input
                           type="text"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                           value={overlay.fontcolor || 'white'}
                           onChange={e => updateOverlayItem(idx, { fontcolor: e.target.value })}
+                          disabled={isVideoCopy}
                         />
                       </div>
                     </div>
@@ -453,9 +496,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       <input
                         type="text"
                         placeholder="e.g. /home/user/watermark.png"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                         value={overlay.path || ''}
                         onChange={e => updateOverlayItem(idx, { path: e.target.value })}
+                        disabled={isVideoCopy}
                       />
                     </div>
                   )}
@@ -467,9 +511,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       <input
                         type="text"
                         placeholder="e.g. 10 or main_w-w-10"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                         value={overlay.x || '10'}
                         onChange={e => updateOverlayItem(idx, { x: e.target.value })}
+                        disabled={isVideoCopy}
                       />
                     </div>
                     <div>
@@ -477,9 +522,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       <input
                         type="text"
                         placeholder="e.g. 10 or main_h-h-10"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono"
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
                         value={overlay.y || '10'}
                         onChange={e => updateOverlayItem(idx, { y: e.target.value })}
+                        disabled={isVideoCopy}
                       />
                     </div>
                   </div>

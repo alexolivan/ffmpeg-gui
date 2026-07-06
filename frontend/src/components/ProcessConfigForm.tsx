@@ -533,19 +533,45 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   }, []);
 
   const handleVideoCodecChange = useCallback((id: string, params: Record<string, string | number | boolean>) => {
-    setConfig(prev => ({
-      ...prev,
-      video_codec_id: id,
-      video_codec_params: params,
-    }));
+    setConfig(prev => {
+      const filters = id === 'copy'
+        ? {
+            ...prev.filters,
+            scale: '',
+            deinterlace: false,
+            framerate: '',
+            overlays: []
+          }
+        : prev.filters;
+      return {
+        ...prev,
+        video_codec_id: id,
+        video_codec_params: params,
+        filters,
+      };
+    });
   }, []);
 
   const handleAudioCodecChange = useCallback((id: string, params: Record<string, string | number | boolean>) => {
-    setConfig(prev => ({
-      ...prev,
-      audio_codec_id: id,
-      audio_codec_params: params,
-    }));
+    setConfig(prev => {
+      const filters = id === 'copy'
+        ? {
+            ...prev.filters,
+            highpass: '',
+            lowpass: '',
+            equalizer: { enabled: false },
+            compressor: false,
+            volume: '',
+            aresample: false
+          }
+        : prev.filters;
+      return {
+        ...prev,
+        audio_codec_id: id,
+        audio_codec_params: params,
+        filters,
+      };
+    });
   }, []);
 
   const handleFiltersChange = useCallback((updates: any) => {
@@ -822,20 +848,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         </div>
       </div>
 
-      {/* ── Persistent Transcode Flow Diagram ── */}
-      {config.has_video && (
-        <ResourcePipelineDiagram
-          hwaccel={config.input1.hwaccel || 'none'}
-          isVram={
-            config.input1.hwaccel_output_format !== '' &&
-            config.input1.hwaccel_output_format !== 'system' &&
-            config.input1.hwaccel_output_format !== undefined
-          }
-          codecId={config.video_codec_id}
-          hasCpuFilters={!!(config.filters.overlays && config.filters.overlays.length > 0)}
-          inputType={config.input1.type}
-        />
-      )}
+
 
       {/* ── Section tabs ── */}
       <div className="flex gap-1 mb-2 flex-shrink-0 border-b border-white/5 pb-2">
@@ -1047,6 +1060,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             }
             systemCapabilities={systemCapabilities}
             onChange={handleFiltersChange}
+            videoCodecId={config.video_codec_id}
+            audioCodecId={config.audio_codec_id}
           />
         )}
 
@@ -1069,36 +1084,58 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         {/* ═══ SYSTEM & WATCHDOG SECTION ═══ */}
         {activeSection === 'system' && (
           <div className="space-y-4 animate-in fade-in duration-300">
-            {isTask ? (
-              <SchedulingFormSection
-                schedule_type={config.schedule_type}
-                schedule_cron={config.schedule_cron}
-                schedule_datetime={config.schedule_datetime}
-                duration_type={config.duration_type}
-                duration_seconds={config.duration_seconds}
-                duration_end_time={config.duration_end_time}
-                retry_max={config.retry_max}
-                retry_delay={config.retry_delay}
-                onChange={handleLifecycleOrSchedulingChange}
-              />
-            ) : (
-              <LifecycleFormSection
-                auto_start={config.auto_start}
-                watchdog_enabled={config.watchdog_enabled}
-                watchdog_retries={config.watchdog_retries}
-                onChange={handleLifecycleOrSchedulingChange}
+            {/* ── Transcode Flow Diagram in General Section ── */}
+            {(config.has_video || config.has_audio) && (
+              <ResourcePipelineDiagram
+                hwaccel={config.input1.hwaccel || 'none'}
+                isVram={
+                  config.input1.hwaccel_output_format !== '' &&
+                  config.input1.hwaccel_output_format !== 'system' &&
+                  config.input1.hwaccel_output_format !== undefined
+                }
+                codecId={config.video_codec_id}
+                audioCodecId={config.audio_codec_id}
+                hasCpuFilters={!!(config.filters.overlays && config.filters.overlays.length > 0)}
+                inputType={config.input1.type}
+                outputType={config.output.type}
+                filters={config.filters}
+                hasVideo={config.has_video}
+                hasAudio={config.has_audio}
               />
             )}
 
-            <AdvancedFlagsFormSection
-              inputType={config.input1.type}
-              realtime={config.filters.advanced.realtime}
-              stream_loop={config.filters.advanced.stream_loop}
-              threads={config.filters.advanced.threads}
-              probesize={config.filters.advanced.probesize}
-              thread_queue_size={config.filters.advanced.thread_queue_size}
-              onChange={handleAdvancedFlagsChange}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {isTask ? (
+                <SchedulingFormSection
+                  schedule_type={config.schedule_type}
+                  schedule_cron={config.schedule_cron}
+                  schedule_datetime={config.schedule_datetime}
+                  duration_type={config.duration_type}
+                  duration_seconds={config.duration_seconds}
+                  duration_end_time={config.duration_end_time}
+                  retry_max={config.retry_max}
+                  retry_delay={config.retry_delay}
+                  onChange={handleLifecycleOrSchedulingChange}
+                />
+              ) : (
+                <LifecycleFormSection
+                  auto_start={config.auto_start}
+                  watchdog_enabled={config.watchdog_enabled}
+                  watchdog_retries={config.watchdog_retries}
+                  onChange={handleLifecycleOrSchedulingChange}
+                />
+              )}
+
+              <AdvancedFlagsFormSection
+                inputType={config.input1.type}
+                realtime={config.filters.advanced.realtime}
+                stream_loop={config.filters.advanced.stream_loop}
+                threads={config.filters.advanced.threads}
+                probesize={config.filters.advanced.probesize}
+                thread_queue_size={config.filters.advanced.thread_queue_size}
+                onChange={handleAdvancedFlagsChange}
+              />
+            </div>
           </div>
         )}
       </div>
