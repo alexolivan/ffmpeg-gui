@@ -554,50 +554,54 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
           {/* Card 1: Input Level & Clean Filters */}
           <div className="glass-card p-3 rounded-lg border border-white/5 space-y-2">
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-              <h5 className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
-                Input Level & Clean Filters
-              </h5>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+                <h5 className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
+                  Input Level & Clean Filters
+                </h5>
+              </div>
+              {(volume !== '' || highpass !== '' || lowpass !== '') && (
+                <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">ACTIVE</span>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Volume Slider */}
               <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <label className="text-[9px] uppercase font-bold text-text-secondary">Input Gain</label>
-                  <span className="text-[10px] font-mono font-bold text-brand-lime">
-                    {parseVolumeToDb(volume) > 0 ? `+${parseVolumeToDb(volume)}` : parseVolumeToDb(volume)} dB
-                  </span>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox" id="vol-enable-chk"
+                    className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35"
+                    checked={volume !== ''}
+                    onChange={e => onChange({ volume: e.target.checked ? '0dB' : '' })}
+                    disabled={isAudioCopy}
+                  />
+                  <label htmlFor="vol-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
+                    Input Gain{volume !== '' ? `: ${parseVolumeToDb(volume) > 0 ? `+${parseVolumeToDb(volume)}` : parseVolumeToDb(volume)} dB` : ''}
+                  </label>
                 </div>
                 <input
                   type="range" min="-20" max="20" step="0.5"
-                  className="w-full h-1.5 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer"
-                  value={parseVolumeToDb(volume)}
+                  className="w-full h-1.5 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                  value={volume !== '' ? parseVolumeToDb(volume) : 0}
                   onChange={e => onChange({ volume: `${e.target.value}dB` })}
-                  disabled={isAudioCopy}
+                  disabled={isAudioCopy || volume === ''}
                 />
               </div>
 
               {/* Highpass Slider */}
               <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox" id="hp-enable-chk"
-                      className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35"
-                      checked={highpass !== ''}
-                      onChange={e => onChange({ highpass: e.target.checked ? '80' : '' })}
-                      disabled={isAudioCopy}
-                    />
-                    <label htmlFor="hp-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
-                      Highpass Filter
-                    </label>
-                  </div>
-                  {highpass !== '' && (
-                    <span className="text-[10px] font-mono font-bold text-brand-lime">
-                      {highpass} Hz
-                    </span>
-                  )}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox" id="hp-enable-chk"
+                    className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35"
+                    checked={highpass !== ''}
+                    onChange={e => onChange({ highpass: e.target.checked ? '80' : '' })}
+                    disabled={isAudioCopy}
+                  />
+                  <label htmlFor="hp-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
+                    Highpass{highpass !== '' ? `: ${highpass} Hz` : ''}
+                  </label>
                 </div>
                 <input
                   type="range" min="20" max="500" step="5"
@@ -610,24 +614,17 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
               {/* Lowpass Slider */}
               <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox" id="lp-enable-chk"
-                      className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35"
-                      checked={lowpass !== ''}
-                      onChange={e => onChange({ lowpass: e.target.checked ? '12000' : '' })}
-                      disabled={isAudioCopy}
-                    />
-                    <label htmlFor="lp-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
-                      Lowpass Filter
-                    </label>
-                  </div>
-                  {lowpass !== '' && (
-                    <span className="text-[10px] font-mono font-bold text-brand-lime">
-                      {parseInt(lowpass) >= 1000 ? `${parseInt(lowpass)/1000}k` : lowpass} Hz
-                    </span>
-                  )}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox" id="lp-enable-chk"
+                    className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35"
+                    checked={lowpass !== ''}
+                    onChange={e => onChange({ lowpass: e.target.checked ? '12000' : '' })}
+                    disabled={isAudioCopy}
+                  />
+                  <label htmlFor="lp-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
+                    Lowpass{lowpass !== '' ? `: ${parseInt(lowpass) >= 1000 ? `${parseInt(lowpass)/1000}k` : lowpass} Hz` : ''}
+                  </label>
                 </div>
                 <input
                   type="range" min="1000" max="20000" step="100"
