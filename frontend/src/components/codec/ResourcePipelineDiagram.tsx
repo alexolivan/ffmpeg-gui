@@ -11,9 +11,29 @@ export interface FiltersConfig {
     enabled?: boolean;
     bands?: Record<string, number>;
   };
-  compressor?: boolean;
+  compressor?: {
+    enabled?: boolean;
+    attack?: number;
+    release?: number;
+    gate?: number;
+    gate_ratio?: number;
+    threshold?: number;
+    ratio?: number;
+    gain?: number;
+  };
+  limiter?: {
+    enabled?: boolean;
+    ceiling?: number;
+    release?: number;
+  };
   volume?: string;
-  aresample?: boolean;
+  aresample?: {
+    enabled?: boolean;
+    mode?: 'basic' | 'advanced';
+    osr?: string;
+    min_comp?: number;
+    min_hard_comp?: number;
+  };
 }
 
 interface ResourcePipelineDiagramProps {

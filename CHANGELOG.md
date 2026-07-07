@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-07-07
+
+### Added
+- Integrated ISO 10-Band Graphic Equalizer with vertical sliders and real-time SVG logarithmic frequency response curve visualization.
+- Implemented Compand dynamic compressor/noise gate with 2D SVG plot mapping transfer function coordinates (-100 to 0 dBFS) over colored VU-meter zones (Gate, Linear, Compression).
+- Added final Peak Output Brickwall Limiter (`alimiter`) to prevent audio clipping.
+- Structured audio signal path ordering: Highpass/Lowpass -> Gain -> EQ -> Compand -> Limiter -> Sync.
+- Introduced frame rate synchronization parameter (`-fps_mode` / `-vsync`) supporting Auto, CFR, VFR, and Passthrough based on FFmpeg version.
+- Relocated Audio / Video Sync (`aresample`) configuration to the Video Filters tab, conditioned on the presence of an audio stream.
+
 ## [1.11.0] - 2026-07-06
 
 ### Changed

@@ -133,27 +133,96 @@ class FilterGraphBuilder:
     @staticmethod
     def build_audio_filters(filter_cfg: dict) -> str:
         """
-        Compiles the audio filters into a single FFmpeg filter chain string.
+        Compiles the audio filters into a single FFmpeg filter chain string,
+        following the professional audio signal chain order.
         """
         af = []
-        # 1. Paso filters
+        
+        # 1. Paso filters (Highpass / Lowpass)
         if filter_cfg.get('highpass'):
             af.append(f"highpass=f={filter_cfg['highpass']}")
         if filter_cfg.get('lowpass'):
             af.append(f"lowpass=f={filter_cfg['lowpass']}")
-        # 2. Equalization
+            
+        # 2. Input Volume / Gain
+        volume = filter_cfg.get('volume')
+        if volume:
+            vol_str = str(volume)
+            # If volume is a simple number (float/int), append 'dB' suffix
+            if vol_str.replace('.', '', 1).replace('-', '', 1).isdigit():
+                vol_str = f"{vol_str}dB"
+            af.append(f"volume={vol_str}")
+            
+        # 3. Equalization (10-Band ISO Graphic EQ)
         eq = filter_cfg.get('equalizer', {})
         if eq.get('enabled') and eq.get('bands'):
-            for band, gain in eq['bands'].items():
-                af.append(f"equalizer=f={band}:width_type=o:width=2:g={gain}")
-        # 3. Dynamics (compand)
-        if filter_cfg.get('compressor'):
-            af.append("compand=0.3|0.3:1|1:-90/-60|-60/-40|-40/-20|-20/-10|0/-5")
-        # 4. Volume
-        if filter_cfg.get('volume'):
-            af.append(f"volume={filter_cfg['volume']}")
-        # 5. Sync/Resampling
-        if filter_cfg.get('aresample'):
-            af.append("aresample=async=1")
+            iso_bands = ["31.5", "63", "125", "250", "500", "1000", "2000", "4000", "8000", "16000"]
+            for band in iso_bands:
+                gain = eq['bands'].get(band, 0)
+                if gain != 0:
+                    # width_type=o, width=1 means 1-octave bandwidth peaking filter
+                    af.append(f"equalizer=f={band}:width_type=o:width=1:g={gain}")
+                    
+        # 4. Dynamics (compand)
+        comp = filter_cfg.get('compressor')
+        if isinstance(comp, dict) and comp.get('enabled'):
+            attack = comp.get('attack', 0.3)
+            release = comp.get('release', 0.3)
+            gate = comp.get('gate', -60)
+            gate_ratio = comp.get('gate_ratio', 4)
+            threshold = comp.get('threshold', -30)
+            ratio = comp.get('ratio', 4)
+            gain = comp.get('gain', 0)
             
+            y_gate = gate
+            y_thresh = threshold
+            # Output at 0dBFS before gain
+            y_zero = threshold + (0 - threshold) / ratio
+            
+            # Point 10dB below gate for expansion slope
+            x_exp = gate - 10
+            y_exp = gate - 10 * gate_ratio
+            
+            # Apply makeup gain to all nodes, clipping at 0dBFS ceiling
+            y_exp_g = min(0.0, y_exp + gain)
+            y_gate_g = min(0.0, y_gate + gain)
+            y_thresh_g = min(0.0, y_thresh + gain)
+            y_zero_g = min(0.0, y_zero + gain)
+            
+            # Format points string. Silence node (-900/-900) remains unchanged
+            points_str = f"-900/-900|{x_exp}/{y_exp_g:.2f}|{gate}/{y_gate_g:.2f}|{threshold}/{y_thresh_g:.2f}|0/{y_zero_g:.2f}"
+            af.append(f"compand=attacks={attack}:decays={release}:points={points_str}")
+        elif comp is True:
+            # Fallback legacy compressor
+            af.append("compand=attacks=0.3:decays=0.3:points=-900/-900|-70/-110|-60/-60|-30/-30|0/-15")
+            
+        # 5. Output Brickwall Limiter
+        limiter = filter_cfg.get('limiter', {})
+        if limiter.get('enabled'):
+            ceiling = limiter.get('ceiling', -0.1)
+            rel_ms = limiter.get('release', 50)
+            af.append(f"alimiter=limit={ceiling}dB:release={rel_ms}")
+            
+        # 6. Audio Resampling / Sync
+        aresample = filter_cfg.get('aresample')
+        if aresample:
+            if isinstance(aresample, dict) and aresample.get('enabled'):
+                mode = aresample.get('mode', 'basic')
+                if mode == 'basic':
+                    af.append("aresample=async=1")
+                elif mode == 'advanced':
+                    params = ["async=1"]
+                    osr = aresample.get('osr')
+                    if osr:
+                        params.append(f"osr={osr}")
+                    min_comp = aresample.get('min_comp')
+                    if min_comp is not None:
+                        params.append(f"min_comp={min_comp}")
+                    min_hard_comp = aresample.get('min_hard_comp')
+                    if min_hard_comp is not None:
+                        params.append(f"min_hard_comp={min_hard_comp}")
+                    af.append(f"aresample={':'.join(params)}")
+            elif aresample is True:
+                af.append("aresample=async=1")
+                
         return ",".join(af) if af else ""

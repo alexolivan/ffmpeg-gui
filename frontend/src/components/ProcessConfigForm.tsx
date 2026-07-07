@@ -54,9 +54,29 @@ interface ProcessConfig {
       enabled?: boolean;
       bands?: Record<string, number>;
     };
-    compressor?: boolean;
+    compressor?: {
+      enabled?: boolean;
+      attack?: number;
+      release?: number;
+      gate?: number;
+      gate_ratio?: number;
+      threshold?: number;
+      ratio?: number;
+      gain?: number;
+    };
+    limiter?: {
+      enabled?: boolean;
+      ceiling?: number;
+      release?: number;
+    };
     volume?: string;
-    aresample?: boolean;
+    aresample?: {
+      enabled?: boolean;
+      mode?: 'basic' | 'advanced';
+      osr?: string;
+      min_comp?: number;
+      min_hard_comp?: number;
+    };
     overlays?: any[];
   };
 
@@ -268,10 +288,66 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
           },
           highpass: filterCfg.highpass || '',
           lowpass: filterCfg.lowpass || '',
-          equalizer: filterCfg.equalizer || { enabled: false, bands: { '60': 0, '230': 0, '910': 0, '4000': 0, '14000': 0 } },
-          compressor: !!filterCfg.compressor,
+          equalizer: filterCfg.equalizer ? {
+            enabled: !!filterCfg.equalizer.enabled,
+            bands: {
+              '31.5': filterCfg.equalizer.bands?.['31.5'] ?? 0,
+              '63': filterCfg.equalizer.bands?.['63'] ?? 0,
+              '125': filterCfg.equalizer.bands?.['125'] ?? 0,
+              '250': filterCfg.equalizer.bands?.['250'] ?? 0,
+              '500': filterCfg.equalizer.bands?.['500'] ?? 0,
+              '1000': filterCfg.equalizer.bands?.['1000'] ?? 0,
+              '2000': filterCfg.equalizer.bands?.['2000'] ?? 0,
+              '4000': filterCfg.equalizer.bands?.['4000'] ?? 0,
+              '8000': filterCfg.equalizer.bands?.['8000'] ?? 0,
+              '16000': filterCfg.equalizer.bands?.['16000'] ?? 0,
+            }
+          } : {
+            enabled: false,
+            bands: { '31.5': 0, '63': 0, '125': 0, '250': 0, '500': 0, '1000': 0, '2000': 0, '4000': 0, '8000': 0, '16000': 0 }
+          },
+          compressor: typeof filterCfg.compressor === 'object' ? {
+            enabled: !!filterCfg.compressor.enabled,
+            attack: filterCfg.compressor.attack ?? 0.3,
+            release: filterCfg.compressor.release ?? 0.3,
+            gate: filterCfg.compressor.gate ?? -60,
+            gate_ratio: filterCfg.compressor.gate_ratio ?? 4,
+            threshold: filterCfg.compressor.threshold ?? -30,
+            ratio: filterCfg.compressor.ratio ?? 4,
+            gain: filterCfg.compressor.gain ?? 0,
+          } : {
+            enabled: !!filterCfg.compressor,
+            attack: 0.3,
+            release: 0.3,
+            gate: -60,
+            gate_ratio: 4,
+            threshold: -30,
+            ratio: 4,
+            gain: 0,
+          },
+          limiter: filterCfg.limiter ? {
+            enabled: !!filterCfg.limiter.enabled,
+            ceiling: filterCfg.limiter.ceiling ?? -0.1,
+            release: filterCfg.limiter.release ?? 50,
+          } : {
+            enabled: false,
+            ceiling: -0.1,
+            release: 50,
+          },
           volume: filterCfg.volume || '',
-          aresample: !!filterCfg.aresample,
+          aresample: typeof filterCfg.aresample === 'object' ? {
+            enabled: !!filterCfg.aresample.enabled,
+            mode: filterCfg.aresample.mode || 'basic',
+            osr: filterCfg.aresample.osr || '',
+            min_comp: filterCfg.aresample.min_comp ?? 0.01,
+            min_hard_comp: filterCfg.aresample.min_hard_comp ?? 0.1,
+          } : {
+            enabled: !!filterCfg.aresample,
+            mode: 'basic',
+            osr: '',
+            min_comp: 0.01,
+            min_hard_comp: 0.1,
+          },
           overlays: filterCfg.overlays || [],
         },
         output: Object.keys(outputCfg).length > 0 ? outputCfg : { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
@@ -309,10 +385,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         },
         highpass: '',
         lowpass: '',
-        equalizer: { enabled: false, bands: { '60': 0, '230': 0, '910': 0, '4000': 0, '14000': 0 } },
-        compressor: false,
+        equalizer: { enabled: false, bands: { '31.5': 0, '63': 0, '125': 0, '250': 0, '500': 0, '1000': 0, '2000': 0, '4000': 0, '8000': 0, '16000': 0 } },
+        compressor: { enabled: false, attack: 0.3, release: 0.3, gate: -60, gate_ratio: 4, threshold: -30, ratio: 4, gain: 0 },
+        limiter: { enabled: false, ceiling: -0.1, release: 50 },
         volume: '',
-        aresample: false,
+        aresample: { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1 },
         overlays: [],
       },
       output: { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
@@ -446,9 +523,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         highpass: config.filters.highpass || null,
         lowpass: config.filters.lowpass || null,
         equalizer: config.filters.equalizer || null,
-        compressor: config.filters.compressor || false,
+        compressor: config.filters.compressor || null,
+        limiter: config.filters.limiter || null,
         volume: config.filters.volume || null,
-        aresample: config.filters.aresample || false,
+        aresample: config.filters.aresample || null,
         overlays: config.filters.overlays || [],
       },
       ...(isTask ? {
@@ -559,10 +637,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             ...prev.filters,
             highpass: '',
             lowpass: '',
-            equalizer: { enabled: false },
-            compressor: false,
+            equalizer: { enabled: false, bands: { '31.5': 0, '63': 0, '125': 0, '250': 0, '500': 0, '1000': 0, '2000': 0, '4000': 0, '8000': 0, '16000': 0 } },
+            compressor: { enabled: false, attack: 0.3, release: 0.3, gate: -60, gate_ratio: 4, threshold: -30, ratio: 4, gain: 0 },
+            limiter: { enabled: false, ceiling: -0.1, release: 50 },
             volume: '',
-            aresample: false
+            aresample: { enabled: false, mode: 'basic' as 'basic' | 'advanced', osr: '', min_comp: 0.01, min_hard_comp: 0.1 }
           }
         : prev.filters;
       return {
@@ -1049,6 +1128,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             lowpass={config.filters.lowpass}
             equalizer={config.filters.equalizer}
             compressor={config.filters.compressor}
+            limiter={config.filters.limiter}
             volume={config.filters.volume}
             aresample={config.filters.aresample}
             overlays={config.filters.overlays || EMPTY_ARRAY}

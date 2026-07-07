@@ -157,9 +157,9 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
       </div>
 
       {/* Codec Parameters */}
-      {selected?.params && selected.params.length > 0 && (
+      {codecId !== 'copy' && (
         <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-white/5">
-          {selected.params.map(param =>
+          {selected?.params && selected.params.map(param =>
             isParamVisible(param, params) ? (
               <ParamControl
                 key={param.key}
@@ -169,6 +169,21 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
               />
             ) : null,
           )}
+          <div>
+            <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">
+              Frame Sync Mode (fps_mode)
+            </label>
+            <select
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono text-white"
+              value={String(params['fps_mode'] ?? 'auto')}
+              onChange={e => handleParamChange('fps_mode', e.target.value)}
+            >
+              <option value="auto">Auto (Recomendado)</option>
+              <option value="cfr">Constant Frame Rate (CFR)</option>
+              <option value="vfr">Variable Frame Rate (VFR)</option>
+              <option value="passthrough">Passthrough</option>
+            </select>
+          </div>
         </div>
       )}
     </div>
