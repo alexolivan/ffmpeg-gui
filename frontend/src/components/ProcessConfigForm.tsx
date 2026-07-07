@@ -1128,6 +1128,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             lowpass={config.filters.lowpass}
             equalizer={config.filters.equalizer}
             compressor={config.filters.compressor}
+            limiter={config.filters.limiter}
             volume={config.filters.volume}
             aresample={config.filters.aresample}
             overlays={config.filters.overlays || EMPTY_ARRAY}

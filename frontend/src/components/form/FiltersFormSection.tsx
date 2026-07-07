@@ -225,6 +225,88 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
     return `M ${points.join(' L ')}`;
   };
 
+  const parseVolumeToDb = (volStr: string): number => {
+    if (!volStr) return 0;
+    const clean = volStr.toLowerCase().replace('volume=', '').trim();
+    if (clean.endsWith('db')) {
+      return parseFloat(clean.replace('db', '')) || 0;
+    }
+    const factor = parseFloat(clean);
+    if (!isNaN(factor) && factor > 0) {
+      return Math.round(20 * Math.log10(factor) * 10) / 10;
+    }
+    return 0;
+  };
+
+  const applyCompPreset = (presetName: string) => {
+    if (presetName === 'vocal') {
+      onChange({
+        compressor: {
+          enabled: true,
+          attack: 0.1,
+          release: 0.3,
+          gate: -50,
+          gate_ratio: 3,
+          threshold: -24,
+          ratio: 3,
+          gain: 4
+        }
+      });
+    } else if (presetName === 'broadcast') {
+      onChange({
+        compressor: {
+          enabled: true,
+          attack: 0.05,
+          release: 0.3,
+          gate: -55,
+          gate_ratio: 4,
+          threshold: -18,
+          ratio: 5,
+          gain: 8
+        }
+      });
+    } else if (presetName === 'gate_only') {
+      onChange({
+        compressor: {
+          enabled: true,
+          attack: 0.01,
+          release: 0.1,
+          gate: -45,
+          gate_ratio: 8,
+          threshold: 0,
+          ratio: 1,
+          gain: 0
+        }
+      });
+    } else if (presetName === 'limiter') {
+      onChange({
+        compressor: {
+          enabled: true,
+          attack: 0.01,
+          release: 0.1,
+          gate: -60,
+          gate_ratio: 1,
+          threshold: -3,
+          ratio: 20,
+          gain: 0
+        }
+      });
+    } else if (presetName === 'flat') {
+      onChange({
+        compressor: {
+          enabled: true,
+          attack: 0.3,
+          release: 0.3,
+          gate: -60,
+          gate_ratio: 1,
+          threshold: 0,
+          ratio: 1,
+          gain: 0
+        }
+      });
+    }
+  };
+
   // Overlay management
   const addOverlay = (type: 'text' | 'image') => {
     const newItem: OverlayItem = {
@@ -478,38 +560,81 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 Input Level & Clean Filters
               </h5>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="text-[9px] uppercase font-bold text-text-secondary block mb-0.5">Input Gain (Volume)</label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* Volume Slider */}
+              <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[9px] uppercase font-bold text-text-secondary">Input Gain</label>
+                  <span className="text-[10px] font-mono font-bold text-brand-lime">
+                    {parseVolumeToDb(volume) > 0 ? `+${parseVolumeToDb(volume)}` : parseVolumeToDb(volume)} dB
+                  </span>
+                </div>
                 <input
-                  type="text"
-                  placeholder="e.g. 0dB, +3dB, -6dB, 1.2"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono text-white disabled:opacity-35 disabled:cursor-not-allowed"
-                  value={volume}
-                  onChange={e => onChange({ volume: e.target.value })}
+                  type="range" min="-20" max="20" step="0.5"
+                  className="w-full h-1.5 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer"
+                  value={parseVolumeToDb(volume)}
+                  onChange={e => onChange({ volume: `${e.target.value}dB` })}
                   disabled={isAudioCopy}
                 />
               </div>
-              <div>
-                <label className="text-[9px] uppercase font-bold text-text-secondary block mb-0.5">Highpass Filter (Hz)</label>
+
+              {/* Highpass Slider */}
+              <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox" id="hp-enable-chk"
+                      className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35"
+                      checked={highpass !== ''}
+                      onChange={e => onChange({ highpass: e.target.checked ? '80' : '' })}
+                      disabled={isAudioCopy}
+                    />
+                    <label htmlFor="hp-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
+                      Highpass Filter
+                    </label>
+                  </div>
+                  {highpass !== '' && (
+                    <span className="text-[10px] font-mono font-bold text-brand-lime">
+                      {highpass} Hz
+                    </span>
+                  )}
+                </div>
                 <input
-                  type="text"
-                  placeholder="Cutoff frequency, e.g. 80"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono text-white disabled:opacity-35 disabled:cursor-not-allowed"
-                  value={highpass}
+                  type="range" min="20" max="500" step="5"
+                  className="w-full h-1.5 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                  value={highpass !== '' ? parseInt(highpass) : 80}
                   onChange={e => onChange({ highpass: e.target.value })}
-                  disabled={isAudioCopy}
+                  disabled={isAudioCopy || highpass === ''}
                 />
               </div>
-              <div>
-                <label className="text-[9px] uppercase font-bold text-text-secondary block mb-0.5">Lowpass Filter (Hz)</label>
+
+              {/* Lowpass Slider */}
+              <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox" id="lp-enable-chk"
+                      className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35"
+                      checked={lowpass !== ''}
+                      onChange={e => onChange({ lowpass: e.target.checked ? '12000' : '' })}
+                      disabled={isAudioCopy}
+                    />
+                    <label htmlFor="lp-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
+                      Lowpass Filter
+                    </label>
+                  </div>
+                  {lowpass !== '' && (
+                    <span className="text-[10px] font-mono font-bold text-brand-lime">
+                      {parseInt(lowpass) >= 1000 ? `${parseInt(lowpass)/1000}k` : lowpass} Hz
+                    </span>
+                  )}
+                </div>
                 <input
-                  type="text"
-                  placeholder="Cutoff frequency, e.g. 15000"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono text-white disabled:opacity-35 disabled:cursor-not-allowed"
-                  value={lowpass}
+                  type="range" min="1000" max="20000" step="100"
+                  className="w-full h-1.5 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                  value={lowpass !== '' ? parseInt(lowpass) : 12000}
                   onChange={e => onChange({ lowpass: e.target.value })}
-                  disabled={isAudioCopy}
+                  disabled={isAudioCopy || lowpass === ''}
                 />
               </div>
             </div>
@@ -619,7 +744,23 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   Dynamics Compressor & Noise Gate (Compand)
                 </label>
               </div>
-              {compressor?.enabled && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">ACTIVE</span>}
+              {compressor?.enabled && (
+                <div className="flex items-center gap-2">
+                  <select
+                    className="bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-[9px] outline-none text-white font-semibold cursor-pointer"
+                    onChange={e => applyCompPreset(e.target.value)}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Presets...</option>
+                    <option value="flat">Bypass / Flat</option>
+                    <option value="vocal">Vocal / Speech</option>
+                    <option value="broadcast">Radio Broadcast</option>
+                    <option value="gate_only">Noise Gate Only</option>
+                    <option value="limiter">Peak Limiting</option>
+                  </select>
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">ACTIVE</span>
+                </div>
+              )}
             </div>
 
             {compressor?.enabled && (
