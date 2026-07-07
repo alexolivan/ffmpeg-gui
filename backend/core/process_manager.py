@@ -339,6 +339,8 @@ class ProcessManager:
             hls_delete = output_cfg.get('hls_delete_segments', True)
             headers = output_cfg.get('headers', '')
             
+            self._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
+            
             cmd += ["-f", "hls"]
             cmd += ["-hls_time", str(hls_time)]
             cmd += ["-hls_list_size", str(hls_list_size)]
@@ -525,6 +527,7 @@ class ProcessManager:
                     self._append_audio_codec_params(cmd, acodec, audio_params)
 
             # ── Output ──
+            self._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
             self._append_output(cmd, output_cfg, codec_cfg)
             
         # ── Secondary Preview Output ──
@@ -552,6 +555,39 @@ class ProcessManager:
             ]
 
         return cmd
+
+    def _append_fps_mode(self, cmd: list, codec_cfg: dict, output_cfg: dict, filter_cfg: dict, ffmpeg_bin: str):
+        """Append the correct -fps_mode or -vsync option based on version and target mode."""
+        video_params = codec_cfg.get('video_params', {})
+        fps_mode = video_params.get('fps_mode', 'auto')
+        
+        from utils.process_utils import get_ffmpeg_version
+        version = get_ffmpeg_version(ffmpeg_bin)
+        
+        # Resolve 'auto' mode
+        if fps_mode == 'auto':
+            output_type = output_cfg.get('type')
+            live_outputs = {'rtmp', 'srt', 'udp', 'hls', 'whip', 'icecast', 'decklink', 'ndi'}
+            has_target_rate = bool(filter_cfg.get('framerate') or output_cfg.get('framerate'))
+            if output_type in live_outputs and has_target_rate:
+                resolved_mode = 'cfr'
+            else:
+                resolved_mode = 'auto'
+        else:
+            resolved_mode = fps_mode
+            
+        if version >= 5.1:
+            if resolved_mode != 'auto':
+                cmd += ["-fps_mode", resolved_mode]
+        else:
+            # Map resolved_mode to vsync values:
+            vsync_map = {
+                "passthrough": "0",
+                "cfr": "1",
+                "vfr": "2"
+            }
+            if resolved_mode in vsync_map:
+                cmd += ["-vsync", vsync_map[resolved_mode]]
 
     def _append_input(self, cmd: list, input_cfg: dict):
         """Append a single -i input to the command."""
