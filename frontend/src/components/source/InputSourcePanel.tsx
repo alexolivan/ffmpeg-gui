@@ -87,9 +87,6 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   if (!decklinkAvailable) {
     filteredSourceTypes = filteredSourceTypes.filter(t => t.value !== 'decklink');
   }
-  if (!avahiAvailable) {
-    filteredSourceTypes = filteredSourceTypes.filter(t => t.value !== 'ndi');
-  }
 
   const types = allowedTypes
     ? filteredSourceTypes.filter(t => allowedTypes.includes(t.value))
@@ -504,6 +501,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
       {config.type === 'ndi' && (
         <div className="space-y-1.5">
+          {!avahiAvailable && (
+            <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-2.5 rounded-lg leading-relaxed font-bold mb-2 flex flex-col gap-1">
+              <div>⚠️ NDI requires Avahi.</div>
+              <div>Please run <code className="font-mono text-[10px] bg-black/40 px-1 py-0.5 rounded select-all">sudo systemctl enable --now avahi-daemon</code> to start it.</div>
+            </div>
+          )}
           <label htmlFor={`${idPrefix}-ndi-name`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
             NDI Source Name
           </label>

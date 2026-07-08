@@ -1012,8 +1012,8 @@ class ProcessManager:
 
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process):
         import re
-        # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs)
-        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
+        # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
+        status_re = re.compile(r"(?:fps=\s*([\d.]+).*?)?bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         
         buffer = bytearray()
         while True:
@@ -1059,7 +1059,7 @@ class ProcessManager:
                 from database.models import MediaProcess
                 media_proc = session.query(MediaProcess).get(process_id)
                 if media_proc:
-                    media_proc.fps = fps
+                    media_proc.fps = fps if fps is not None else "N/A"
                     media_proc.bitrate = bitrate
                     media_proc.speed = speed
                     session.commit()

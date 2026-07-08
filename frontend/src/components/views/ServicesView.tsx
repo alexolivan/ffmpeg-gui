@@ -252,7 +252,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     className="flex items-center justify-between p-3 bg-white/2 opacity-75 hover:opacity-100 rounded-xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full bg-white/20"></span>
+                        <span className={`w-2.5 h-2.5 rounded-full ${proc.status === 'error' ? 'bg-red-500' : 'bg-white/20'}`}></span>
                         <span className="font-bold text-white/80">
                           {proc.name}
                           {proc.alias && (
@@ -269,6 +269,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         {proc.watchdog_enabled && (
                           <span className="text-[9px] bg-purple-500/20 text-purple-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Monitored by system watchdog">
                             <ShieldIcon size={10} /> WATCHDOG
+                          </span>
+                        )}
+                        {proc.status === 'error' && (
+                          <span className="text-[9px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title={proc.watchdog_enabled && proc.restart_count ? `Watchdog retried ${proc.restart_count}/${proc.watchdog_retries} times before stopping` : "Process exited with error / stopped abnormally"}>
+                            ⚠ ABNORMAL END {proc.watchdog_enabled && proc.restart_count > 0 && `(${proc.restart_count}/${proc.watchdog_retries})`}
                           </span>
                         )}
                       </div>

@@ -129,5 +129,38 @@ vainfo: Supported profile and entrypoints
         self.assertIn("av1", encs_ada)  # Ada supports AV1 encoding
         self.assertIn("av1", decs_ada)  # Ada supports AV1 decoding
 
+    def test_get_system_capabilities_alsa_cards(self):
+        from main import get_system_capabilities
+        import os
+        import builtins
+        
+        original_exists = os.path.exists
+        original_open = builtins.open
+        
+        def exists_side_effect(path):
+            if path == "/proc/asound/cards":
+                return True
+            return original_exists(path)
+            
+        def open_side_effect(file, *args, **kwargs):
+            if file == "/proc/asound/cards":
+                mock_file = MagicMock()
+                mock_file.__enter__.return_value = [
+                    " 0 [Intel          ]: HDA-Intel - HDA Intel\n",
+                    "                      HDA Intel at 0xf0000000 irq 69\n",
+                    " 1 [NVidia         ]: HDA-Intel - HDA Nvidia\n",
+                    "                      HDA Nvidia at 0xf7080000 irq 17\n",
+                    " 0 [Intel          ]: duplicate entry check\n"
+                ]
+                return mock_file
+            return original_open(file, *args, **kwargs)
+            
+        with patch("main.os.path.exists", side_effect=exists_side_effect), \
+             patch("builtins.open", side_effect=open_side_effect):
+            caps = get_system_capabilities()
+            
+        self.assertIn("alsa", caps)
+        self.assertEqual(caps["alsa"]["cards"], ["Intel", "NVidia"])
+
 if __name__ == "__main__":
     unittest.main()

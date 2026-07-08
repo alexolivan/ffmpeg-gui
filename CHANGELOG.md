@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] (Frontend) / [1.11.0] (Backend) - 2026-07-08
+
+### Added
+- Filtered out `avahi` from hardware capability cards on the Dashboard.
+- Displayed unique, sorted ALSA sound cards under the ALSA capability card when ALSA is active.
+- Made the NDI input/output options visible regardless of Avahi daemon availability, adding a warning banner with systemd activation instructions if Avahi is offline.
+- Parsed `/proc/asound/cards` inside the capability detection function to extract a list of unique, sorted sound card names and exposed them via the `/system/capabilities` endpoint.
+- Added red color-coding to inactive service status bullets and a detailed "ABNORMAL END" warning badge showing watchdog retry counts when a transcoding service halts with errors.
+- Updated FFmpeg log telemetry parser to support optional `fps` fields, resolving the issue where speed, bitrate, and telemetry would show up as 0 for audio-only streams (such as ALSA or Icecast outputs).
+
 ## [1.13.2] - 2026-07-08
 
 ### Added
