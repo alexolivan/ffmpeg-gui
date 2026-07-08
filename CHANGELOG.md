@@ -36,12 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Structured audio signal path ordering: Highpass/Lowpass -> Gain -> EQ -> Compand -> Limiter -> Sync.
 - Introduced frame rate synchronization parameter (`-fps_mode` / `-vsync`) supporting Auto, CFR, VFR, and Passthrough based on FFmpeg version.
 - Relocated Audio / Video Sync (`aresample`) configuration to the Video Filters tab, conditioned on the presence of an audio stream.
+- Filtered out `avahi` from hardware capability cards on the Dashboard.
+- Displayed unique, sorted ALSA sound cards under the ALSA capability card when ALSA is active.
+- Made the NDI input option visible regardless of Avahi daemon availability, adding a warning banner with systemd activation instructions if Avahi is offline.
+- Made the NDI output option visible regardless of Avahi daemon availability, adding the same warning banner.
 
 ## [1.11.0] - 2026-07-06
 
 ### Changed
 - Relocated the transcode pipeline flow diagram (`ResourcePipelineDiagram`) to the General/System tab contents in `ProcessConfigForm.tsx` to keep it structured and clean.
 - Wrapped scheduling, lifecycle, and advanced flags components in a responsive 2-column grid layout inside the General/System tab contents.
+- Parsed `/proc/asound/cards` inside the capability detection function to extract a list of unique, sorted sound card names and exposed them via the `/system/capabilities` endpoint.
 
 ## [1.10.0] - 2026-07-06
 
