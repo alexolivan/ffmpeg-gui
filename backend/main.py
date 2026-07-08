@@ -661,6 +661,20 @@ def get_system_capabilities():
     # ALSA
     alsa_available = os.path.exists("/proc/asound/cards") or os.path.exists("/dev/snd")
     alsa_details = "ALSA sound card node(s) present" if alsa_available else "No ALSA interface found"
+    alsa_cards = []
+    if os.path.exists("/proc/asound/cards"):
+        try:
+            with open("/proc/asound/cards", "r") as f:
+                for line in f:
+                    import re
+                    match = re.match(r"^\s*\d+\s*\[([^\]]+)\]", line)
+                    if match:
+                        card_name = match.group(1).strip()
+                        if card_name not in alsa_cards:
+                            alsa_cards.append(card_name)
+            alsa_cards.sort()
+        except Exception as e:
+            logger.warning(f"Error parsing /proc/asound/cards: {e}")
 
     # DeckLink
     import glob
@@ -754,7 +768,7 @@ def get_system_capabilities():
             "decoders": nvenc_caps["decoders"]
         },
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
-        "alsa": {"available": alsa_available, "details": alsa_details},
+        "alsa": {"available": alsa_available, "details": alsa_details, "cards": alsa_cards},
         "decklink": {"available": decklink_available, "details": decklink_details},
         "avahi": {"available": avahi_available, "details": avahi_details},
         "ffmpeg": {
