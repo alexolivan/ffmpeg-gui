@@ -1059,7 +1059,7 @@ class ProcessManager:
                 from database.models import MediaProcess
                 media_proc = session.query(MediaProcess).get(process_id)
                 if media_proc:
-                    media_proc.fps = fps if fps is not None else "0"
+                    media_proc.fps = fps if fps is not None else "N/A"
                     media_proc.bitrate = bitrate
                     media_proc.speed = speed
                     session.commit()

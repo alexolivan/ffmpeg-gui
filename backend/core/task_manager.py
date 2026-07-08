@@ -869,7 +869,7 @@ class TaskManager:
                     fps, bitrate, speed = match.groups()
                     execution = session.query(TaskExecution).get(execution_id)
                     if execution:
-                        execution.fps = fps if fps is not None else "0"
+                        execution.fps = fps if fps is not None else "N/A"
                         execution.bitrate = bitrate
                         execution.speed = speed
                         session.commit()

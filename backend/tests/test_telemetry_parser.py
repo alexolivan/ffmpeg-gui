@@ -91,6 +91,6 @@ class TestTelemetryParser(unittest.TestCase):
         self.process_manager._handle_log_msg(self.proc.id, log_line, status_re)
         
         self.db.refresh(self.proc)
-        self.assertEqual(self.proc.fps, "0")
+        self.assertEqual(self.proc.fps, "N/A")
         self.assertEqual(self.proc.bitrate, "128.0kbits/s")
         self.assertEqual(self.proc.speed, "47.2x")
