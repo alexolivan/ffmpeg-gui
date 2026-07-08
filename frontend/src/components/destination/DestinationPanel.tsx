@@ -66,9 +66,11 @@ const CONTAINERS = [
 const destinationCache: {
   decklinkDevices: string[] | null;
   decklinkFormats: Record<string, any[]>;
+  alsaPlaybackDevices?: any[] | null;
 } = {
   decklinkDevices: null,
   decklinkFormats: {},
+  alsaPlaybackDevices: null,
 };
 
 const DestinationPanel: React.FC<DestinationPanelProps> = ({
@@ -92,8 +94,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
   const availableTypes = filteredOutputTypes.filter(t => {
     if (t.requiresVideo && !hasVideo) return false;
-    if (t.value === 'icecast' && (!hasAudio || hasVideo)) return false;
-    if (t.value === 'alsa' && (!hasAudio || hasVideo)) return false;
+    if (t.value === 'icecast' && !hasAudio) return false;
+    if (t.value === 'alsa' && !hasAudio) return false;
     return true;
   });
 
@@ -104,6 +106,10 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   const [devices, setDevices] = React.useState<string[]>([]);
   const [loadingDevices, setLoadingDevices] = React.useState(false);
   const [manualDeviceMode, setManualDeviceMode] = React.useState(false);
+
+  const [alsaDevices, setAlsaDevices] = React.useState<any[]>([]);
+  const [loadingAlsaDevices, setLoadingAlsaDevices] = React.useState(false);
+  const [manualAlsaMode, setManualAlsaMode] = React.useState(false);
 
   React.useEffect(() => {
     if (config.type !== 'decklink') return;
@@ -184,6 +190,48 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     fetchFormats();
     return () => { active = false; };
   }, [config.type, config.device, manualDeviceMode]);
+
+  React.useEffect(() => {
+    if (config.type !== 'alsa') return;
+    let active = true;
+
+    if (destinationCache.alsaPlaybackDevices !== undefined && destinationCache.alsaPlaybackDevices !== null) {
+      setAlsaDevices(destinationCache.alsaPlaybackDevices);
+      if (destinationCache.alsaPlaybackDevices.length > 0) {
+        const found = destinationCache.alsaPlaybackDevices.some((d: any) => d.device === config.device);
+        if (!found && config.device && config.device !== 'default') {
+          setManualAlsaMode(true);
+        }
+      }
+      return;
+    }
+
+    const fetchAlsaPlayback = async () => {
+      setLoadingAlsaDevices(true);
+      try {
+        const res = await fetch('/alsa/playback-devices');
+        if (!res.ok) throw new Error("Failed to fetch ALSA playback devices");
+        const data = await res.json();
+        const devicesList = data || [];
+        destinationCache.alsaPlaybackDevices = devicesList;
+        if (active) {
+          setAlsaDevices(devicesList);
+          if (devicesList.length > 0) {
+            const found = devicesList.some((d: any) => d.device === config.device);
+            if (!found && config.device && config.device !== 'default') {
+              setManualAlsaMode(true);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching ALSA playback devices:", err);
+      } finally {
+        if (active) setLoadingAlsaDevices(false);
+      }
+    };
+    fetchAlsaPlayback();
+    return () => { active = false; };
+  }, [config.type]);
 
   const parseFormatDescription = (desc: string) => {
     const resMatch = desc.match(/(\d+)x(\d+)/);
@@ -1010,23 +1058,84 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {config.type === 'alsa' && (
         <div className="space-y-1.5 animate-in fade-in duration-200">
           <label htmlFor="dest-alsa-device" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-            ALSA Device Name / Path<span className="text-red-500 ml-0.5">*</span>
+            ALSA Playout Device<span className="text-red-500 ml-0.5">*</span>
           </label>
-          <input
-            type="text"
-            id="dest-alsa-device"
-            name="device"
-            placeholder="e.g. default, hw:0,0, sysdefault"
-            className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
-              validationErrors?.device
-                ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                : 'border-white/10'
-            }`}
-            value={config.device || ''}
-            onChange={e => update({ device: e.target.value })}
-          />
-          {validationErrors?.device && (
-            <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
+          {loadingAlsaDevices ? (
+            <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos ALSA...</div>
+          ) : alsaDevices.length === 0 ? (
+            <div className="space-y-1.5">
+              <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron dispositivos de salida ALSA.</div>
+              <input
+                type="text"
+                id="dest-alsa-device"
+                name="device"
+                placeholder="default, hw:0,0, sysdefault"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+                  validationErrors?.device ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
+                }`}
+                value={config.device || ''}
+                onChange={e => update({ device: e.target.value })}
+              />
+              <p className="text-[9px] text-text-secondary">
+                Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code> o <code className="text-brand-orange font-mono">default</code>.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {!manualAlsaMode ? (
+                <select
+                  id="dest-alsa-device"
+                  name="device"
+                  className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none focus:border-purple-400 transition-all ${
+                    validationErrors?.device ? 'border-red-500/50 bg-red-500/5' : 'border-white/10'
+                  }`}
+                  value={config.device || ''}
+                  onChange={e => {
+                    if (e.target.value === '__manual__') {
+                      setManualAlsaMode(true);
+                      update({ device: '' });
+                    } else {
+                      update({ device: e.target.value });
+                    }
+                  }}
+                >
+                  <option value="default">Default Device (default)</option>
+                  {alsaDevices.map(d => (
+                    <option key={d.device} value={d.device}>{d.name} ({d.device})</option>
+                  ))}
+                  <option value="__manual__">📝 Entrada manual...</option>
+                </select>
+              ) : (
+                <div className="flex flex-col w-full gap-1.5">
+                  <div className="flex w-full gap-1.5">
+                    <input
+                      type="text"
+                      id="dest-alsa-device"
+                      name="device"
+                      placeholder="default, hw:0,0"
+                      className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+                        validationErrors?.device ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
+                      }`}
+                      value={config.device || ''}
+                      onChange={e => update({ device: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
+                      onClick={() => {
+                        setManualAlsaMode(false);
+                        update({ device: 'default' });
+                      }}
+                    >
+                      Lista
+                    </button>
+                  </div>
+                </div>
+              )}
+              {validationErrors?.device && (
+                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
+              )}
+            </div>
           )}
         </div>
       )}

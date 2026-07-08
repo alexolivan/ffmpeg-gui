@@ -214,6 +214,22 @@ async def get_alsa_devices() -> List[dict]:
         logger.error(f"Error querying ALSA devices: {e}")
         return []
 
+async def get_alsa_playback_devices() -> List[dict]:
+    if not shutil.which("aplay"):
+        return []
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "aplay", "-l",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+        return parse_arecord_output(stdout.decode('utf-8', errors='replace'))
+    except Exception as e:
+        logger.error(f"Error querying ALSA playback devices: {e}")
+        return []
+
+
 async def get_v4l2_formats(device: str, ffmpeg_binary: str = "ffmpeg") -> List[dict]:
     if not re.match(r"^/dev/video\d+$", device):
         return []

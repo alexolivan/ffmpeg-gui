@@ -595,8 +595,34 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   };
 
   const handleInput1Change = useCallback((input1: InputSourceConfig) => {
-    setConfig(prev => ({ ...prev, input1 }));
-  }, []);
+    const isPureAudio = input1.type === 'alsa' || input1.type === 'lavfi_audio' || input1.type === 'http_audio';
+    if (isPureAudio && config.has_video) {
+      const label = input1.type === 'http_audio' 
+        ? 'Icecast/HTTP Audio' 
+        : input1.type === 'lavfi_audio' 
+        ? 'Generador de audio' 
+        : 'ALSA';
+      const proceed = window.confirm(
+        `La entrada seleccionada (${label}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
+      );
+      if (!proceed) return;
+    }
+
+    setConfig(prev => {
+      let finalHasVideo = prev.has_video;
+      let finalHasAudio = prev.has_audio;
+      if (isPureAudio) {
+        finalHasVideo = false;
+        finalHasAudio = true;
+      }
+      return {
+        ...prev,
+        input1,
+        has_video: finalHasVideo,
+        has_audio: finalHasAudio,
+      };
+    });
+  }, [config.has_video]);
 
   const handleInput2Change = useCallback((input2: InputSourceConfig) => {
     setConfig(prev => ({ ...prev, input2 }));
@@ -670,6 +696,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   const handleOutputChange = useCallback((output: OutputConfig) => {
     const oldType = config.output.type;
     const newType = output.type;
+
+    if (oldType !== newType && (newType === 'icecast' || newType === 'alsa') && config.has_video) {
+      const proceed = window.confirm(
+        `La salida seleccionada (${newType === 'icecast' ? 'Icecast' : 'ALSA'}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
+      );
+      if (!proceed) return;
+    }
 
     if (oldType === newType) {
       setConfig(prev => ({ ...prev, output }));
@@ -851,6 +884,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
   const hasErrors = Object.keys(validationErrors).length > 0;
 
+  const isAudioLocked = 
+    config.output.type === 'icecast' || 
+    config.output.type === 'alsa' || 
+    config.input1.type === 'alsa' || 
+    config.input1.type === 'lavfi_audio' || 
+    config.input1.type === 'http_audio';
+
   return (
     <div className="flex flex-col h-full max-h-[85vh]">
       {hasErrors && (
@@ -925,11 +965,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
           )}
           {/* Stream toggles */}
           <div className="flex items-center gap-3 bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/10 flex-shrink-0">
-            <label htmlFor="process-has-video" className={`flex items-center gap-1.5 ${(config.output.type === 'icecast' || config.output.type === 'alsa') ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'}`}>
+            <label htmlFor="process-has-video" className={`flex items-center gap-1.5 ${isAudioLocked ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'}`}>
               <input
                 type="checkbox" id="process-has-video" name="has_video" checked={config.has_video}
                 onChange={e => handleHasVideoChange(e.target.checked)}
-                disabled={config.output.type === 'icecast' || config.output.type === 'alsa'}
+                disabled={isAudioLocked}
                 className="w-3.5 h-3.5 accent-brand-orange disabled:opacity-35"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_video ? 'text-brand-orange' : 'text-text-secondary'}`}>
@@ -937,11 +977,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
               </span>
             </label>
             <span className="w-px h-3 bg-white/10" />
-            <label htmlFor="process-has-audio" className={`flex items-center gap-1.5 ${(config.output.type === 'icecast' || config.output.type === 'alsa') ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'}`}>
+            <label htmlFor="process-has-audio" className={`flex items-center gap-1.5 ${isAudioLocked ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'}`}>
               <input
                 type="checkbox" id="process-has-audio" name="has_audio" checked={config.has_audio}
                 onChange={e => handleHasAudioChange(e.target.checked)}
-                disabled={config.output.type === 'icecast' || config.output.type === 'alsa'}
+                disabled={isAudioLocked}
                 className="w-3.5 h-3.5 accent-blue-400 disabled:opacity-35"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_audio ? 'text-blue-400' : 'text-text-secondary'}`}>

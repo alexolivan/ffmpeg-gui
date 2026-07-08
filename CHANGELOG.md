@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] - 2026-07-08
+
+### Added
+- Implemented ALSA playout device automatic listing (using `aplay -l` in the backend and exposing `/alsa/playback-devices` route).
+- Added dynamic ALSA playout devices dropdown selector in Destination panel with custom manual input fallback.
+- Added interactive warning confirmation prompts when switching to an audio-only input or output when video is active, auto-disabling the video stream.
+- Locked and disabled stream type checkboxes (Video / Audio) when pure-audio inputs (ALSA capture, HTTP audio stream, or audio generator) are active.
+
 ## [1.13.0] - 2026-07-08
 
 ### Added
