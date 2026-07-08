@@ -61,7 +61,7 @@ class TestTelemetryParser(unittest.TestCase):
         # Log line from a DeckLink output with bitrate=N/A
         log_line = "frame=  123 fps= 25.4 q=-0.0 size=N/A time=00:00:04.92 bitrate=N/A speed=1.00x"
         
-        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
+        status_re = re.compile(r"(?:fps=\s*([\d.]+).*?)?bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         self.process_manager._handle_log_msg(self.proc.id, log_line, status_re)
         
         # Refresh from database
@@ -74,7 +74,7 @@ class TestTelemetryParser(unittest.TestCase):
         # Log line from NDI or DeckLink task with bitrate=N/A
         log_line = "frame=  456 fps= 50 q=-0.0 size=N/A time=00:00:10.00 bitrate=N/A speed=2.1x"
         
-        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
+        status_re = re.compile(r"(?:fps=\s*([\d.]+).*?)?bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         self.task_manager._handle_log_line(self.exec.id, log_line, status_re)
         
         # Refresh from database
@@ -82,3 +82,15 @@ class TestTelemetryParser(unittest.TestCase):
         self.assertEqual(self.exec.fps, "50")
         self.assertEqual(self.exec.bitrate, "N/A")
         self.assertEqual(self.exec.speed, "2.1x")
+
+    def test_process_manager_handles_audio_only_telemetry(self):
+        # Log line from an audio-only ALSA or Icecast transcoding output
+        log_line = "size=    258kB time=00:00:16.51 bitrate= 128.0kbits/s speed=47.2x"
+        
+        status_re = re.compile(r"(?:fps=\s*([\d.]+).*?)?bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
+        self.process_manager._handle_log_msg(self.proc.id, log_line, status_re)
+        
+        self.db.refresh(self.proc)
+        self.assertEqual(self.proc.fps, "0")
+        self.assertEqual(self.proc.bitrate, "128.0kbits/s")
+        self.assertEqual(self.proc.speed, "47.2x")

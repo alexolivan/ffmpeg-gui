@@ -836,8 +836,8 @@ class TaskManager:
                 session.commit()
 
     async def _log_reader(self, execution_id: int, proc):
-        # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs)
-        status_re = re.compile(r"fps=\s*([\d.]+).*bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
+        # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
+        status_re = re.compile(r"(?:fps=\s*([\d.]+).*?)?bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         buffer = bytearray()
         
         while True:
@@ -869,7 +869,7 @@ class TaskManager:
                     fps, bitrate, speed = match.groups()
                     execution = session.query(TaskExecution).get(execution_id)
                     if execution:
-                        execution.fps = fps
+                        execution.fps = fps if fps is not None else "0"
                         execution.bitrate = bitrate
                         execution.speed = speed
                         session.commit()
