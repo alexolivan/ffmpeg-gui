@@ -978,6 +978,9 @@ class ProcessManager:
             password = output_cfg.get('icecast_password', 'hackme')
             cmd += ["-f", "ogg", "-content_type", "application/ogg",
                     f"icecast://source:{password}@{host}:{port}{mount}"]
+        elif output_type == 'alsa':
+            device = output_cfg.get('device', 'default')
+            cmd += ["-f", "alsa", device]
         elif output_type == 'hls':
             path = output_cfg.get('path', '')
             method = output_cfg.get('hls_method', 'local')

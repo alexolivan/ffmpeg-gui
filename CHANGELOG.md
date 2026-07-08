@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-07-08
+
+### Added
+- Integrated ALSA physical soundcard playout (`-f alsa`) support.
+- Implemented automatic Audio-Only coercion and interface locking when selecting ALSA or Icecast outputs (automatically disabling the video streams option).
+- Created tab state auto-healing redirecting active sub-tabs from video/overlays to audio when video streams are turned off.
+- Hid the Transcode GPU/CPU flow diagram inside the General/System section when the stream is in audio-only mode.
+
 ## [1.12.0] - 2026-07-07
 
 ### Added

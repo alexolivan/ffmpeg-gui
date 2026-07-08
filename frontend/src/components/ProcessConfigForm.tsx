@@ -241,6 +241,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       if (!(out.device || '').trim()) {
         errors.device = 'DeckLink device is required';
       }
+    } else if (out.type === 'alsa') {
+      if (!(out.device || '').trim()) {
+        errors.device = 'ALSA device is required';
+      }
     }
 
     setLocalValidationErrors(errors);
@@ -674,6 +678,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
     // Apply default properties when output type changes
     const finalOutput = { ...output };
+    let finalHasVideo = config.has_video;
+    let finalHasAudio = config.has_audio;
+
     if (newType === 'udp' || newType === 'rtp') {
       finalOutput.host = '127.0.0.1';
       finalOutput.port = getNextAvailablePort(1234);
@@ -688,6 +695,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       finalOutput.path = '/var/tmp/output.ts';
     } else if (newType === 'icecast') {
       finalOutput.url = 'http://localhost:8000/stream.mp3';
+      finalHasVideo = false;
+      finalHasAudio = true;
+    } else if (newType === 'alsa') {
+      finalOutput.device = 'default';
+      finalHasVideo = false;
+      finalHasAudio = true;
     } else if (newType === 'rtmp') {
       finalOutput.url = 'rtmp://localhost/live/app';
     } else if (newType === 'whip') {
@@ -698,8 +711,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     const availableVideo = getAvailableVideoCodecs(selectedBuildOptions, systemCapabilities, newType);
     const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType);
 
-    const videoIncompatible = config.has_video && !availableVideo.some(c => c.id === config.video_codec_id);
-    const audioIncompatible = config.has_audio && !availableAudio.some(c => c.id === config.audio_codec_id);
+    const videoIncompatible = finalHasVideo && !availableVideo.some(c => c.id === config.video_codec_id);
+    const audioIncompatible = finalHasAudio && !availableAudio.some(c => c.id === config.audio_codec_id);
 
     if (videoIncompatible || audioIncompatible) {
       const videoMsg = videoIncompatible 
@@ -717,7 +730,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
       // User accepted: update output and auto-heal codecs
       setConfig(prev => {
-        const patch: Partial<ProcessConfig> = { ...prev, output: finalOutput };
+        const patch: Partial<ProcessConfig> = { 
+          ...prev, 
+          output: finalOutput,
+          has_video: finalHasVideo,
+          has_audio: finalHasAudio
+        };
         if (videoIncompatible && availableVideo.length > 0) {
           patch.video_codec_id = availableVideo[0].id;
           patch.video_codec_params = getDefaultParams(availableVideo[0]);
@@ -729,7 +747,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         return patch as ProcessConfig;
       });
     } else {
-      setConfig(prev => ({ ...prev, output: finalOutput }));
+      setConfig(prev => ({ 
+        ...prev, 
+        output: finalOutput,
+        has_video: finalHasVideo,
+        has_audio: finalHasAudio
+      }));
     }
   }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort]);
 
@@ -902,22 +925,24 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
           )}
           {/* Stream toggles */}
           <div className="flex items-center gap-3 bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/10 flex-shrink-0">
-            <label htmlFor="process-has-video" className="flex items-center gap-1.5 cursor-pointer">
+            <label htmlFor="process-has-video" className={`flex items-center gap-1.5 ${(config.output.type === 'icecast' || config.output.type === 'alsa') ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'}`}>
               <input
                 type="checkbox" id="process-has-video" name="has_video" checked={config.has_video}
                 onChange={e => handleHasVideoChange(e.target.checked)}
-                className="w-3.5 h-3.5 accent-brand-orange"
+                disabled={config.output.type === 'icecast' || config.output.type === 'alsa'}
+                className="w-3.5 h-3.5 accent-brand-orange disabled:opacity-35"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_video ? 'text-brand-orange' : 'text-text-secondary'}`}>
                 Video
               </span>
             </label>
             <span className="w-px h-3 bg-white/10" />
-            <label htmlFor="process-has-audio" className="flex items-center gap-1.5 cursor-pointer">
+            <label htmlFor="process-has-audio" className={`flex items-center gap-1.5 ${(config.output.type === 'icecast' || config.output.type === 'alsa') ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'}`}>
               <input
                 type="checkbox" id="process-has-audio" name="has_audio" checked={config.has_audio}
                 onChange={e => handleHasAudioChange(e.target.checked)}
-                className="w-3.5 h-3.5 accent-blue-400"
+                disabled={config.output.type === 'icecast' || config.output.type === 'alsa'}
+                className="w-3.5 h-3.5 accent-blue-400 disabled:opacity-35"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_audio ? 'text-blue-400' : 'text-text-secondary'}`}>
                 Audio
@@ -1165,7 +1190,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         {activeSection === 'system' && (
           <div className="space-y-4 animate-in fade-in duration-300">
             {/* ── Transcode Flow Diagram in General Section ── */}
-            {(config.has_video || config.has_audio) && (
+            {config.has_video && (
               <ResourcePipelineDiagram
                 hwaccel={config.input1.hwaccel || 'none'}
                 isVram={

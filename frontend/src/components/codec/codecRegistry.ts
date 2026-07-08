@@ -82,6 +82,10 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   icecast: {
     video: [],
     audio: ['aac', 'libmp3lame', 'libopus']
+  },
+  alsa: {
+    video: [],
+    audio: ['pcm_s16le', 'pcm_s24le', 'copy']
   }
 };
 

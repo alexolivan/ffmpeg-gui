@@ -51,6 +51,7 @@ const OUTPUT_TYPES = [
   { value: 'decklink', label: 'Blackmagic Decklink Output', requiresVideo: true },
   { value: 'file', label: 'Local Recording', requiresVideo: false },
   { value: 'icecast', label: 'Icecast2 (Audio Stream)', requiresVideo: false },
+  { value: 'alsa', label: 'ALSA Audio Device', requiresVideo: false },
   { value: 'rtp', label: 'RTP Stream', requiresVideo: false },
   { value: 'hls', label: 'HLS Live Streaming', requiresVideo: false },
 ];
@@ -92,6 +93,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   const availableTypes = filteredOutputTypes.filter(t => {
     if (t.requiresVideo && !hasVideo) return false;
     if (t.value === 'icecast' && (!hasAudio || hasVideo)) return false;
+    if (t.value === 'alsa' && (!hasAudio || hasVideo)) return false;
     return true;
   });
 
@@ -1005,6 +1007,30 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         </div>
       )}
 
+      {config.type === 'alsa' && (
+        <div className="space-y-1.5 animate-in fade-in duration-200">
+          <label htmlFor="dest-alsa-device" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+            ALSA Device Name / Path<span className="text-red-500 ml-0.5">*</span>
+          </label>
+          <input
+            type="text"
+            id="dest-alsa-device"
+            name="device"
+            placeholder="e.g. default, hw:0,0, sysdefault"
+            className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+              validationErrors?.device
+                ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                : 'border-white/10'
+            }`}
+            value={config.device || ''}
+            onChange={e => update({ device: e.target.value })}
+          />
+          {validationErrors?.device && (
+            <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
+          )}
+        </div>
+      )}
+
       {/* ── Recommended Broadcast Recipe Card ── */}
       {renderBroadcastRecipe(config.type)}
     </div>
@@ -1075,6 +1101,13 @@ const renderBroadcastRecipe = (type: string) => {
       audio: "MP3 / AAC / Opus",
       container: "ADTS / Ogg / MP3 Stream",
       details: "Destinado a radio por internet o streaming de audio puro. Permite ingesta remota hacia servidores Icecast2."
+    },
+    alsa: {
+      title: "ALSA Audio Playout (Dispositivo de Sonido)",
+      video: "Ninguno (Solo Audio)",
+      audio: "PCM (16/24-bit)",
+      container: "Dispositivo de audio ALSA",
+      details: "Salida directa hacia dispositivos de hardware Linux/ALSA (por ejemplo, tarjetas de sonido analógicas, digitales o interfaces virtuales)."
     },
     rtp: {
       title: "RTP Session Stream",

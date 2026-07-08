@@ -42,6 +42,9 @@ docs/*.png
 docs/*.md
 docs/*.txt
 
+# Ignore temporary screenshots
+screenshots/tmp/
+
 # Agent rule files and tool configs
 .agents/
 .antigravityignore

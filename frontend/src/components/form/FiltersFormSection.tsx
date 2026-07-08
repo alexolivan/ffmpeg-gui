@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface OverlayItem {
   id: string; // client-side unique id
@@ -87,6 +87,14 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   audioCodecId,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'video' | 'audio' | 'overlays'>(hasVideo ? 'video' : 'audio');
+
+  useEffect(() => {
+    if (!hasVideo && (activeSubTab === 'video' || activeSubTab === 'overlays')) {
+      setActiveSubTab('audio');
+    } else if (!hasAudio && activeSubTab === 'audio') {
+      setActiveSubTab('video');
+    }
+  }, [hasVideo, hasAudio, activeSubTab]);
 
   const isVideoCopy = videoCodecId === 'copy';
   const isAudioCopy = audioCodecId === 'copy';
