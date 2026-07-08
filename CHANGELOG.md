@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.2] - 2026-07-08
+
+### Added
+- Re-enabled full user control on Video/Audio checkboxes (removed rigid lockouts/disables).
+- Implemented an interactive warning handler in `handleHasVideoChange`: when enabling video on an audio-only stream, the user can accept to shift the ALSA/Icecast input to INPUT 2 (Secondary Audio Source) and reset INPUT 1 / output to video-compatible defaults.
+
+## [1.13.1] - 2026-07-08
+
+### Added
+- Implemented ALSA playout device automatic listing (using `aplay -l` in the backend and exposing `/alsa/playback-devices` route).
+- Added dynamic ALSA playout devices dropdown selector in Destination panel with custom manual input fallback.
+- Added interactive warning confirmation prompts when switching to an audio-only input or output when video is active, auto-disabling the video stream.
+- Locked and disabled stream type checkboxes (Video / Audio) when pure-audio inputs (ALSA capture, HTTP audio stream, or audio generator) are active.
+
+## [1.13.0] - 2026-07-08
+
+### Added
+- Integrated ALSA physical soundcard playout (`-f alsa`) support.
+- Implemented automatic Audio-Only coercion and interface locking when selecting ALSA or Icecast outputs (automatically disabling the video streams option).
+- Created tab state auto-healing redirecting active sub-tabs from video/overlays to audio when video streams are turned off.
+- Hid the Transcode GPU/CPU flow diagram inside the General/System section when the stream is in audio-only mode.
+
 ## [1.12.0] - 2026-07-07
 
 ### Added

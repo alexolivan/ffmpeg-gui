@@ -297,5 +297,22 @@ class TestCommandGenerator(unittest.TestCase):
 
         self.assertIn("-f whip http://localhost:8889/mystream/whip", cmd_str)
 
+    def test_alsa_output_command_generation(self):
+        proc = MagicMock()
+        proc.id = 302
+        proc.type = "service"
+        proc.input_config = {'type': 'lavfi_audio', 'has_video': False, 'has_audio': True}
+        proc.codec_config = {'vcodec': 'none', 'acodec': 'pcm_s16le'}
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'alsa',
+            'device': 'hw:0,0'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f alsa hw:0,0", cmd_str)
+
 if __name__ == '__main__':
     unittest.main()

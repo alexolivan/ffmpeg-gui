@@ -241,6 +241,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       if (!(out.device || '').trim()) {
         errors.device = 'DeckLink device is required';
       }
+    } else if (out.type === 'alsa') {
+      if (!(out.device || '').trim()) {
+        errors.device = 'ALSA device is required';
+      }
     }
 
     setLocalValidationErrors(errors);
@@ -591,8 +595,34 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   };
 
   const handleInput1Change = useCallback((input1: InputSourceConfig) => {
-    setConfig(prev => ({ ...prev, input1 }));
-  }, []);
+    const isPureAudio = input1.type === 'alsa' || input1.type === 'lavfi_audio' || input1.type === 'http_audio';
+    if (isPureAudio && config.has_video) {
+      const label = input1.type === 'http_audio' 
+        ? 'Icecast/HTTP Audio' 
+        : input1.type === 'lavfi_audio' 
+        ? 'Generador de audio' 
+        : 'ALSA';
+      const proceed = window.confirm(
+        `La entrada seleccionada (${label}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
+      );
+      if (!proceed) return;
+    }
+
+    setConfig(prev => {
+      let finalHasVideo = prev.has_video;
+      let finalHasAudio = prev.has_audio;
+      if (isPureAudio) {
+        finalHasVideo = false;
+        finalHasAudio = true;
+      }
+      return {
+        ...prev,
+        input1,
+        has_video: finalHasVideo,
+        has_audio: finalHasAudio,
+      };
+    });
+  }, [config.has_video]);
 
   const handleInput2Change = useCallback((input2: InputSourceConfig) => {
     setConfig(prev => ({ ...prev, input2 }));
@@ -667,6 +697,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     const oldType = config.output.type;
     const newType = output.type;
 
+    if (oldType !== newType && (newType === 'icecast' || newType === 'alsa') && config.has_video) {
+      const proceed = window.confirm(
+        `La salida seleccionada (${newType === 'icecast' ? 'Icecast' : 'ALSA'}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
+      );
+      if (!proceed) return;
+    }
+
     if (oldType === newType) {
       setConfig(prev => ({ ...prev, output }));
       return;
@@ -674,6 +711,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
     // Apply default properties when output type changes
     const finalOutput = { ...output };
+    let finalHasVideo = config.has_video;
+    let finalHasAudio = config.has_audio;
+
     if (newType === 'udp' || newType === 'rtp') {
       finalOutput.host = '127.0.0.1';
       finalOutput.port = getNextAvailablePort(1234);
@@ -688,6 +728,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       finalOutput.path = '/var/tmp/output.ts';
     } else if (newType === 'icecast') {
       finalOutput.url = 'http://localhost:8000/stream.mp3';
+      finalHasVideo = false;
+      finalHasAudio = true;
+    } else if (newType === 'alsa') {
+      finalOutput.device = 'default';
+      finalHasVideo = false;
+      finalHasAudio = true;
     } else if (newType === 'rtmp') {
       finalOutput.url = 'rtmp://localhost/live/app';
     } else if (newType === 'whip') {
@@ -698,8 +744,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     const availableVideo = getAvailableVideoCodecs(selectedBuildOptions, systemCapabilities, newType);
     const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType);
 
-    const videoIncompatible = config.has_video && !availableVideo.some(c => c.id === config.video_codec_id);
-    const audioIncompatible = config.has_audio && !availableAudio.some(c => c.id === config.audio_codec_id);
+    const videoIncompatible = finalHasVideo && !availableVideo.some(c => c.id === config.video_codec_id);
+    const audioIncompatible = finalHasAudio && !availableAudio.some(c => c.id === config.audio_codec_id);
 
     if (videoIncompatible || audioIncompatible) {
       const videoMsg = videoIncompatible 
@@ -717,7 +763,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
       // User accepted: update output and auto-heal codecs
       setConfig(prev => {
-        const patch: Partial<ProcessConfig> = { ...prev, output: finalOutput };
+        const patch: Partial<ProcessConfig> = { 
+          ...prev, 
+          output: finalOutput,
+          has_video: finalHasVideo,
+          has_audio: finalHasAudio
+        };
         if (videoIncompatible && availableVideo.length > 0) {
           patch.video_codec_id = availableVideo[0].id;
           patch.video_codec_params = getDefaultParams(availableVideo[0]);
@@ -729,7 +780,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         return patch as ProcessConfig;
       });
     } else {
-      setConfig(prev => ({ ...prev, output: finalOutput }));
+      setConfig(prev => ({ 
+        ...prev, 
+        output: finalOutput,
+        has_video: finalHasVideo,
+        has_audio: finalHasAudio
+      }));
     }
   }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort]);
 
@@ -754,6 +810,55 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   }, []);
 
   const handleHasVideoChange = useCallback((val: boolean) => {
+    const isPureAudioInput = config.input1.type === 'alsa' || config.input1.type === 'lavfi_audio' || config.input1.type === 'http_audio';
+    const isPureAudioOutput = config.output.type === 'icecast' || config.output.type === 'alsa';
+
+    if (val && (isPureAudioInput || isPureAudioOutput)) {
+      const proceed = window.confirm(
+        `Has activado el flujo de vídeo, pero la entrada/salida actuales son de solo audio.\n\n` +
+        `Al continuar:\n` +
+        `- Si la entrada es de solo audio, se moverá a Entrada Secundaria (INPUT 2) y la Entrada Principal (INPUT 1) se restablecerá a un archivo.\n` +
+        `- Si la salida es de solo audio, se cambiará a UDP Multicast.\n\n` +
+        `¿Deseas reconfigurar la entrada/salida para habilitar el vídeo?`
+      );
+      if (!proceed) return;
+
+      setConfig(prev => {
+        let nextInput1 = { ...prev.input1 };
+        let nextInput2 = { ...prev.input2 };
+        let nextSecondary = prev.use_secondary_input;
+        let nextOutput = { ...prev.output };
+
+        if (isPureAudioInput) {
+          nextSecondary = true;
+          nextInput2.type = prev.input1.type;
+          nextInput2.device = (prev.input1 as any).device || '';
+          nextInput2.path = prev.input1.path || '';
+          (nextInput2 as any).url = (prev.input1 as any).url || '';
+
+          // Reset input1 to file
+          nextInput1.type = 'file';
+          nextInput1.path = '/var/tmp/input.mp4';
+        }
+
+        if (isPureAudioOutput) {
+          nextOutput.type = 'udp';
+          nextOutput.host = '127.0.0.1';
+          nextOutput.port = getNextAvailablePort(1234);
+        }
+
+        return {
+          ...prev,
+          has_video: true,
+          use_secondary_input: nextSecondary,
+          input1: nextInput1,
+          input2: nextInput2,
+          output: nextOutput
+        };
+      });
+      return;
+    }
+
     setConfig(prev => {
       const nextSecondary = val && prev.has_audio ? prev.use_secondary_input : false;
       let nextInput1 = prev.input1;
@@ -773,7 +878,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         input1: nextInput1
       };
     });
-  }, []);
+  }, [config.input1, config.output, config.has_video, config.has_audio, getNextAvailablePort]);
 
   const handleHasAudioChange = useCallback((val: boolean) => {
     setConfig(prev => {
@@ -827,6 +932,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   ];
 
   const hasErrors = Object.keys(validationErrors).length > 0;
+
 
   return (
     <div className="flex flex-col h-full max-h-[85vh]">
@@ -1165,7 +1271,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         {activeSection === 'system' && (
           <div className="space-y-4 animate-in fade-in duration-300">
             {/* ── Transcode Flow Diagram in General Section ── */}
-            {(config.has_video || config.has_audio) && (
+            {config.has_video && (
               <ResourcePipelineDiagram
                 hwaccel={config.input1.hwaccel || 'none'}
                 isVram={

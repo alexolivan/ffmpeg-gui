@@ -19,7 +19,7 @@ from core.build_manager import BuildManager
 from core.sdk_manager import SdkManager
 from core.patch_manager import PatchManager
 from utils.gpu_sensor import GPUSensor
-from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats
+from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
 import logging
 import asyncio
@@ -800,6 +800,12 @@ async def get_v4l2_formats_route(device: str):
 @app.get("/alsa/devices")
 async def get_alsa_devices_route():
     return await get_alsa_devices()
+
+
+@app.get("/alsa/playback-devices")
+async def get_alsa_playback_devices_route():
+    return await get_alsa_playback_devices()
+
 
 
 @app.get("/decklink/devices")
