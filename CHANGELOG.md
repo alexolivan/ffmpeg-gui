@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Displayed unique, sorted ALSA sound cards under the ALSA capability card when ALSA is active.
 - Made the NDI input/output options visible regardless of Avahi daemon availability, adding a warning banner with systemd activation instructions if Avahi is offline.
 - Parsed `/proc/asound/cards` inside the capability detection function to extract a list of unique, sorted sound card names and exposed them via the `/system/capabilities` endpoint.
+- Added red color-coding to inactive service status bullets and a detailed "ABNORMAL END" warning badge showing watchdog retry counts when a transcoding service halts with errors.
 
 ## [1.13.2] - 2026-07-08
 
