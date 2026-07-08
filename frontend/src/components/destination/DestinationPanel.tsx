@@ -88,9 +88,6 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   if (!decklinkAvailable) {
     filteredOutputTypes = filteredOutputTypes.filter(t => t.value !== 'decklink');
   }
-  if (!avahiAvailable) {
-    filteredOutputTypes = filteredOutputTypes.filter(t => t.value !== 'ndi');
-  }
 
   const availableTypes = filteredOutputTypes.filter(t => {
     if (t.requiresVideo && !hasVideo) return false;
@@ -575,6 +572,12 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'ndi' && (
         <div className="space-y-2">
+          {!avahiAvailable && (
+            <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-2.5 rounded-lg leading-relaxed font-bold mb-2 flex flex-col gap-1">
+              <div>⚠️ NDI requires Avahi.</div>
+              <div>Please run <code className="font-mono text-[10px] bg-black/40 px-1 py-0.5 rounded select-all">sudo systemctl enable --now avahi-daemon</code> to start it.</div>
+            </div>
+          )}
           <div>
             <label htmlFor="dest-ndi-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
               Stream Name<span className="text-red-500 ml-0.5">*</span>
