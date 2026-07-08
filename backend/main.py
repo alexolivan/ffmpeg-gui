@@ -664,14 +664,14 @@ def get_system_capabilities():
     alsa_cards = []
     if os.path.exists("/proc/asound/cards"):
         try:
+            import re
             with open("/proc/asound/cards", "r") as f:
                 for line in f:
-                    import re
                     match = re.match(r"^\s*\d+\s*\[([^\]]+)\]", line)
                     if match:
-                        card_name = match.group(1).strip()
-                        if card_name not in alsa_cards:
-                            alsa_cards.append(card_name)
+                         card_name = match.group(1).strip()
+                         if card_name not in alsa_cards:
+                             alsa_cards.append(card_name)
             alsa_cards.sort()
         except Exception as e:
             logger.warning(f"Error parsing /proc/asound/cards: {e}")
