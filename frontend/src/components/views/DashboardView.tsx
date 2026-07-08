@@ -234,7 +234,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
 
             {Object.entries(systemTelemetry.capabilities || {})
-              .filter(([key]) => key !== 'ffmpeg')
+              .filter(([key]) => key !== 'ffmpeg' && key !== 'avahi')
               .map(([key, value]: [string, any]) => (
               <div key={key} className="flex flex-col gap-1 p-2 bg-white/2 border border-white/5 rounded-xl">
                 <div className="flex items-center justify-between">
@@ -275,6 +275,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {value.encoders && value.encoders.length > 0 && (
                       <div><span className="text-white/60">Coders HW:</span> {value.encoders.join(', ')}</div>
                     )}
+                  </div>
+                )}
+                {key === 'alsa' && value.available && value.cards && value.cards.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
+                    <div><span className="text-white/60">Cards:</span> {value.cards.join(', ')}</div>
                   </div>
                 )}
               </div>
