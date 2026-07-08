@@ -810,6 +810,55 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   }, []);
 
   const handleHasVideoChange = useCallback((val: boolean) => {
+    const isPureAudioInput = config.input1.type === 'alsa' || config.input1.type === 'lavfi_audio' || config.input1.type === 'http_audio';
+    const isPureAudioOutput = config.output.type === 'icecast' || config.output.type === 'alsa';
+
+    if (val && (isPureAudioInput || isPureAudioOutput)) {
+      const proceed = window.confirm(
+        `Has activado el flujo de vídeo, pero la entrada/salida actuales son de solo audio.\n\n` +
+        `Al continuar:\n` +
+        `- Si la entrada es de solo audio, se moverá a Entrada Secundaria (INPUT 2) y la Entrada Principal (INPUT 1) se restablecerá a un archivo.\n` +
+        `- Si la salida es de solo audio, se cambiará a UDP Multicast.\n\n` +
+        `¿Deseas reconfigurar la entrada/salida para habilitar el vídeo?`
+      );
+      if (!proceed) return;
+
+      setConfig(prev => {
+        let nextInput1 = { ...prev.input1 };
+        let nextInput2 = { ...prev.input2 };
+        let nextSecondary = prev.use_secondary_input;
+        let nextOutput = { ...prev.output };
+
+        if (isPureAudioInput) {
+          nextSecondary = true;
+          nextInput2.type = prev.input1.type;
+          nextInput2.device = (prev.input1 as any).device || '';
+          nextInput2.path = prev.input1.path || '';
+          (nextInput2 as any).url = (prev.input1 as any).url || '';
+
+          // Reset input1 to file
+          nextInput1.type = 'file';
+          nextInput1.path = '/var/tmp/input.mp4';
+        }
+
+        if (isPureAudioOutput) {
+          nextOutput.type = 'udp';
+          nextOutput.host = '127.0.0.1';
+          nextOutput.port = getNextAvailablePort(1234);
+        }
+
+        return {
+          ...prev,
+          has_video: true,
+          use_secondary_input: nextSecondary,
+          input1: nextInput1,
+          input2: nextInput2,
+          output: nextOutput
+        };
+      });
+      return;
+    }
+
     setConfig(prev => {
       const nextSecondary = val && prev.has_audio ? prev.use_secondary_input : false;
       let nextInput1 = prev.input1;
@@ -829,7 +878,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         input1: nextInput1
       };
     });
-  }, []);
+  }, [config.input1, config.output, config.has_video, config.has_audio, getNextAvailablePort]);
 
   const handleHasAudioChange = useCallback((val: boolean) => {
     setConfig(prev => {
@@ -884,12 +933,6 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
   const hasErrors = Object.keys(validationErrors).length > 0;
 
-  const isAudioLocked = 
-    config.output.type === 'icecast' || 
-    config.output.type === 'alsa' || 
-    config.input1.type === 'alsa' || 
-    config.input1.type === 'lavfi_audio' || 
-    config.input1.type === 'http_audio';
 
   return (
     <div className="flex flex-col h-full max-h-[85vh]">
@@ -965,24 +1008,22 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
           )}
           {/* Stream toggles */}
           <div className="flex items-center gap-3 bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/10 flex-shrink-0">
-            <label htmlFor="process-has-video" className={`flex items-center gap-1.5 ${isAudioLocked ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'}`}>
+            <label htmlFor="process-has-video" className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox" id="process-has-video" name="has_video" checked={config.has_video}
                 onChange={e => handleHasVideoChange(e.target.checked)}
-                disabled={isAudioLocked}
-                className="w-3.5 h-3.5 accent-brand-orange disabled:opacity-35"
+                className="w-3.5 h-3.5 accent-brand-orange"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_video ? 'text-brand-orange' : 'text-text-secondary'}`}>
                 Video
               </span>
             </label>
             <span className="w-px h-3 bg-white/10" />
-            <label htmlFor="process-has-audio" className={`flex items-center gap-1.5 ${isAudioLocked ? 'cursor-not-allowed opacity-45' : 'cursor-pointer'}`}>
+            <label htmlFor="process-has-audio" className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox" id="process-has-audio" name="has_audio" checked={config.has_audio}
                 onChange={e => handleHasAudioChange(e.target.checked)}
-                disabled={isAudioLocked}
-                className="w-3.5 h-3.5 accent-blue-400 disabled:opacity-35"
+                className="w-3.5 h-3.5 accent-blue-400"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_audio ? 'text-blue-400' : 'text-text-secondary'}`}>
                 Audio

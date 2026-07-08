@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.2] - 2026-07-08
+
+### Added
+- Re-enabled full user control on Video/Audio checkboxes (removed rigid lockouts/disables).
+- Implemented an interactive warning handler in `handleHasVideoChange`: when enabling video on an audio-only stream, the user can accept to shift the ALSA/Icecast input to INPUT 2 (Secondary Audio Source) and reset INPUT 1 / output to video-compatible defaults.
+
 ## [1.13.1] - 2026-07-08
 
 ### Added
