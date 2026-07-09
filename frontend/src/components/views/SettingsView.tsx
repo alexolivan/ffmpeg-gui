@@ -30,18 +30,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setPasswordSuccess,
   API,
 }) => {
-  const [activeTab, setActiveTab] = useState<'branding' | 'lcd' | 'security'>('branding');
+  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'security'>('general');
   const [nodeName, setNodeName] = useState(settings.node_name || '');
   const [logoText, setLogoText] = useState(settings.logo_text || '');
   const [lcdAlias, setLcdAlias] = useState(settings.lcd_alias || 'NODE-01');
+  const [guiPort, setGuiPort] = useState(settings.gui_port || 8000);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
 
   useEffect(() => {
     setNodeName(settings.node_name || '');
     setLogoText(settings.logo_text || '');
     setLcdAlias(settings.lcd_alias || 'NODE-01');
-  }, [settings.node_name, settings.logo_text, settings.lcd_alias]);
+    setGuiPort(settings.gui_port || 8000);
+  }, [settings.node_name, settings.logo_text, settings.lcd_alias, settings.gui_port]);
 
   const [lcdEnabled, setLcdEnabled] = useState(settings.lcd_enabled || false);
   const [lcdPort, setLcdPort] = useState(settings.lcd_port || '/dev/ttyACM0');
@@ -81,11 +85,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings.lcd_led3_profile
   ]);
 
-  // Auto-scan on component mount
-  useEffect(() => {
-    handleProbe();
-  }, []);
-
   const handleProbe = async () => {
     setIsProbing(true);
     setProbeResults([]);
@@ -102,10 +101,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  // Auto-scan on component mount
+  useEffect(() => {
+    handleProbe();
+  }, []);
+
   const hasChanges = 
     nodeName !== (settings.node_name || '') || 
     logoText !== (settings.logo_text || '') ||
     lcdAlias !== (settings.lcd_alias || 'NODE-01') ||
+    Number(guiPort) !== Number(settings.gui_port || 8000) ||
     lcdEnabled !== (settings.lcd_enabled || false) ||
     lcdPort !== (settings.lcd_port || '/dev/ttyACM0') ||
     lcdModel !== (settings.lcd_model || 'cfa635') ||
@@ -139,6 +144,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         node_name: nodeName,
         logo_text: logoText,
         lcd_alias: lcdAlias,
+        gui_port: Number(guiPort),
         lcd_enabled: lcdEnabled,
         lcd_port: lcdPort,
         lcd_model: lcdModel,
@@ -177,6 +183,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const handleConfirmRestart = async () => {
+    setShowRestartConfirm(false);
+    setIsRestarting(true);
+    try {
+      await fetch(`${API}/settings/restart`, { method: 'POST' });
+      // Start polling the new port after 3 seconds
+      setTimeout(pollNewPort, 3000);
+    } catch (err) {
+      console.error(err);
+      setIsRestarting(false);
+      alert("Failed to trigger panel restart.");
+    }
+  };
+  
+  const pollNewPort = () => {
+    const targetPort = settings.gui_port || 8000;
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    const url = `${protocol}//${hostname}:${targetPort}/settings`;
+    
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          clearInterval(interval);
+          // Redirect browser to the new port address
+          window.location.href = `${protocol}//${hostname}:${targetPort}/`;
+        }
+      } catch {
+        // Keep polling
+      }
+    }, 1500);
+  };
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl flex flex-col h-[82vh]">
       {/* Header */}
@@ -199,6 +239,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
           </div>
           <button
+            onClick={() => setShowRestartConfirm(true)}
+            className="border border-red-500/30 text-red-400 bg-red-500/10 hover:bg-red-500/20 active:scale-95 pill-button font-black text-xs py-2 px-4 transition-all uppercase tracking-widest cursor-pointer"
+          >
+            Restart Panel
+          </button>
+          <button
             onClick={handleSaveAll}
             disabled={isSaving || !hasChanges}
             className={`pill-button font-black text-xs py-2.5 px-6 transition-all uppercase tracking-widest ${
@@ -216,15 +262,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="flex gap-1 mb-3 shrink-0 border-b border-white/5 pb-2">
         <button
           type="button"
-          onClick={() => setActiveTab('branding')}
+          onClick={() => setActiveTab('general')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-            activeTab === 'branding'
+            activeTab === 'general'
               ? 'bg-white/10 text-white'
               : 'text-text-secondary hover:bg-white/5 hover:text-white/70'
           }`}
         >
           <GearIcon size={14} />
-          Node & Branding
+          General
         </button>
         <button
           type="button"
@@ -254,73 +300,107 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Tab content wrapper (Scrollable area) */}
       <div className="flex-1 overflow-y-auto pr-2 min-h-0 custom-scrollbar space-y-3 pb-4">
-        
-        {/* TAB 1: Node & Branding */}
-        {activeTab === 'branding' && (
-          <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
-            <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-              <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Branding & Node Identity</h4>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Station Name</label>
-                  <input 
-                    type="text" 
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all"
-                    value={nodeName}
-                    onChange={e => setNodeName(e.target.value)}
-                    placeholder="e.g. Primary Transcode Node"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Logo Abbreviation</label>
-                  <input 
-                    type="text" 
-                    maxLength={3}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all uppercase font-bold tracking-widest text-brand-lime"
-                    value={logoText}
-                    onChange={e => setLogoText(e.target.value.toUpperCase())}
-                    placeholder="e.g. FFG"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">LCD / Node Alias</label>
-                  <input 
-                    type="text" 
-                    maxLength={12}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono"
-                    value={lcdAlias}
-                    onChange={e => {
-                      const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
-                      setLcdAlias(val);
-                    }}
-                    placeholder="e.g. NODE-01"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-xl p-4 hover:border-brand-lime transition-all relative group cursor-pointer h-full min-h-[140px] bg-white/[0.01]">
-                <label className="absolute inset-0 cursor-pointer flex flex-col items-center justify-center w-full h-full z-10">
-                  <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-                </label>
-                {settings.logo_path ? (
-                  <div className="relative w-20 h-20 flex items-center justify-center">
-                    <img src={`${API}${settings.logo_path}`} alt="Custom Logo" className="max-w-full max-h-full object-contain" />
-                  </div>
-                ) : (
-                  <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                    <span className="text-white font-black text-lg uppercase tracking-wider">{logoText || 'FF'}</span>
-                  </div>
-                )}
-                <div className="text-[9px] uppercase font-bold text-text-secondary mt-2.5 text-center tracking-wider">
-                  {settings.logo_path ? 'Click to change logo' : 'Upload custom logo'}
-                </div>
-              </div>
+        {settings.restart_required && (
+          <div className="bg-brand-orange/10 border border-brand-orange/30 text-brand-orange rounded-xl p-3.5 text-xs flex items-center gap-3 animate-in fade-in duration-300">
+            <span className="text-lg">⚠️</span>
+            <div className="flex-1">
+              <span className="font-bold uppercase tracking-wider block mb-0.5 text-[10px]">Restart Required</span>
+              <span>A restart is required to apply the new GUI Port configuration. Click the 'Restart Panel' button to apply.</span>
             </div>
           </div>
+        )}
+        
+        {/* TAB 1: General */}
+        {activeTab === 'general' && (
+          <>
+            <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
+              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Branding & Node Identity</h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Station Name</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all"
+                      value={nodeName}
+                      onChange={e => setNodeName(e.target.value)}
+                      placeholder="e.g. Primary Transcode Node"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Logo Abbreviation</label>
+                    <input 
+                      type="text" 
+                      maxLength={3}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all uppercase font-bold tracking-widest text-brand-lime"
+                      value={logoText}
+                      onChange={e => setLogoText(e.target.value.toUpperCase())}
+                      placeholder="e.g. FFG"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">LCD / Node Alias</label>
+                    <input 
+                      type="text" 
+                      maxLength={12}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono"
+                      value={lcdAlias}
+                      onChange={e => {
+                        const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
+                        setLcdAlias(val);
+                      }}
+                      placeholder="e.g. NODE-01"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-xl p-4 hover:border-brand-lime transition-all relative group cursor-pointer h-full min-h-[140px] bg-white/[0.01]">
+                  <label className="absolute inset-0 cursor-pointer flex flex-col items-center justify-center w-full h-full z-10">
+                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  </label>
+                  {settings.logo_path ? (
+                    <div className="relative w-20 h-20 flex items-center justify-center">
+                      <img src={`${API}${settings.logo_path}`} alt="Custom Logo" className="max-w-full max-h-full object-contain" />
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+                      <span className="text-white font-black text-lg uppercase tracking-wider">{logoText || 'FF'}</span>
+                    </div>
+                  )}
+                  <div className="text-[9px] uppercase font-bold text-text-secondary mt-2.5 text-center tracking-wider">
+                    {settings.logo_path ? 'Click to change logo' : 'Upload custom logo'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: Network Settings */}
+            <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
+              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Network Settings</h4>
+              </div>
+              
+              <div className="max-w-xs space-y-1">
+                <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">GUI Listen Port</label>
+                <input 
+                  type="number" 
+                  min={1}
+                  max={65535}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono"
+                  value={guiPort}
+                  onChange={e => setGuiPort(Number(e.target.value))}
+                />
+                <p className="text-[9px] text-text-secondary leading-tight italic mt-1">
+                  The network port on which this dashboard listens for connection requests.
+                </p>
+              </div>
+            </div>
+          </>
         )}
 
         {/* TAB 2: LCD Integration */}
@@ -590,6 +670,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
       </div>
+
+      {showRestartConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
+          <div className="glass-card w-full max-w-md p-6 border-red-500/20 shadow-2xl space-y-4 relative">
+            <h3 className="text-base font-bold text-red-400 tracking-wide uppercase flex items-center gap-2">
+              ⚠️ Confirm Restart
+            </h3>
+            <p className="text-xs text-text-secondary leading-relaxed">
+              Are you sure you want to restart the panel? This will temporarily interrupt connectivity to the GUI. If you changed the port, you will be redirected to the new port address.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowRestartConfirm(false)}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer border border-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmRestart}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-red-600/20"
+              >
+                Confirm Restart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isRestarting && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 z-[60] animate-in fade-in duration-300">
+          <div className="flex flex-col items-center space-y-4 text-center">
+            <div className="relative w-12 h-12">
+              <div className="absolute inset-0 rounded-full border-4 border-brand-lime/20"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-brand-lime border-t-transparent animate-spin"></div>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white uppercase tracking-wider">Restarting panel...</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Reconnecting to port <span className="font-mono text-brand-lime font-bold">{settings.gui_port || 8000}</span>...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
