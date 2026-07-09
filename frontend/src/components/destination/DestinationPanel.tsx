@@ -283,7 +283,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           mode: 'caller', latency: 200,
           container: 'mp4', icecast_mount: '', icecast_password: '',
           hls_method: 'local', hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
-          hls_abr_enabled: false, hls_stream_name: 'stream', variants: [],
+          hls_abr_enabled: false, hls_stream_name: '', variants: [],
         })}
       >
         {availableTypes.map(t => (
@@ -979,14 +979,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
           <div>
             <label htmlFor="dest-hls-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              {config.hls_method === 'local' ? 'Path / Filename' : 'Stream URL'}
+              {config.hls_method === 'local' ? 'Directory / Target Path' : 'Server Ingest URL'}
               <span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               type="text"
               id="dest-hls-path"
               name="path"
-              placeholder={config.hls_method === 'local' ? 'e.g. /var/www/html/live/stream.m3u8' : 'e.g. http://ingest.server/live/stream.m3u8'}
+              placeholder={config.hls_method === 'local' ? 'e.g. /var/www/html/live/' : 'e.g. http://ingest.server/live/'}
               className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
                 validationErrors?.path
                   ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
