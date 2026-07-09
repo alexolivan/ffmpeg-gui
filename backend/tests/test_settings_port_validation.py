@@ -68,3 +68,44 @@ def test_process_gui_port_conflict():
         finally:
             if os.path.exists(scratch_config_path):
                 os.remove(scratch_config_path)
+
+
+def test_settings_endpoints():
+    scratch_config_path = "backend/tests/scratch_config.conf"
+    with patch.dict(os.environ, {"CONFIG_FILE_PATH": scratch_config_path, "ACTIVE_PORT": "8000"}):
+        with open(scratch_config_path, "w") as f:
+            f.write("[server]\nport = 8000\n")
+            
+        try:
+            from fastapi.testclient import TestClient
+            from main import app
+            client = TestClient(app)
+            
+            # Test GET /settings with active port matching config port
+            response = client.get("/settings")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["gui_port"] == 8000
+            assert data["restart_required"] is False
+            
+            # Test GET /settings with active port different from config port
+            with open(scratch_config_path, "w") as f:
+                f.write("[server]\nport = 8500\n")
+                
+            response = client.get("/settings")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["gui_port"] == 8500
+            assert data["restart_required"] is True
+            
+            # Test POST /settings/restart
+            with patch("main.execute_system_restart") as mock_restart:
+                response = client.post("/settings/restart")
+                assert response.status_code == 200
+                data = response.json()
+                assert data["status"] == "ok"
+                assert "restarting" in data["message"].lower()
+                
+        finally:
+            if os.path.exists(scratch_config_path):
+                os.remove(scratch_config_path)

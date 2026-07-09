@@ -239,6 +239,30 @@ class LoginRequest(BaseModel):
 
 # ── System Settings & Auth ────────────────────────────────────────
 
+def make_settings_response(settings):
+    config_path = os.environ.get("CONFIG_FILE_PATH")
+    active_port = int(os.environ.get("ACTIVE_PORT", 8000))
+    gui_port = active_port
+    restart_required = False
+
+    if config_path and os.path.exists(config_path):
+        try:
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            if "server" in config and "port" in config["server"]:
+                gui_port = int(config["server"]["port"])
+                if gui_port != active_port:
+                    restart_required = True
+        except Exception as e:
+            logger.error(f"Error reading port from config file: {e}")
+
+    res = {c.name: getattr(settings, c.name) for c in settings.__table__.columns}
+    res["gui_port"] = gui_port
+    res["restart_required"] = restart_required
+    return res
+
+
 @app.get("/settings")
 def get_settings(db: Session = Depends(get_db)):
     from database.models import SystemSettings
@@ -280,7 +304,7 @@ def get_settings(db: Session = Depends(get_db)):
         db.commit()
         db.refresh(settings)
         
-    return settings
+    return make_settings_response(settings)
 
 
 def is_port_in_use_by_os(port: int, host: str = "0.0.0.0") -> bool:
@@ -470,7 +494,22 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             if settings_in.lcd_led3_profile is not None:
                 lcd_manager.lcd_led3_profile = settings_in.lcd_led3_profile
 
-    return settings
+    return make_settings_response(settings)
+
+
+def execute_system_restart():
+    import time
+    import os
+    time.sleep(2.5) # Wait 2.5s to let the API response flush completely
+    logger.warning("Restart triggered from Web UI. Terminating process now...")
+    os._exit(0)
+
+
+@app.post("/settings/restart")
+def restart_panel(background_tasks: BackgroundTasks):
+    background_tasks.add_task(execute_system_restart)
+    return {"status": "ok", "message": "Panel is restarting"}
+
 
 @app.post("/login")
 def login(req: LoginRequest, db: Session = Depends(get_db)):
