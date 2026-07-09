@@ -22,6 +22,8 @@ export interface OutputConfig {
   hls_list_size?: number;
   hls_delete_segments?: boolean;
   headers?: string;
+  hls_abr_enabled?: boolean;
+  hls_stream_name?: string;
   variants?: HlsVariant[];
   muxrate?: string;
   service_provider?: string;
@@ -40,6 +42,7 @@ interface DestinationPanelProps {
   onChange: (config: OutputConfig) => void;
   systemCapabilities?: SystemCapabilities;
   validationErrors?: Record<string, string>;
+  validationWarnings?: Record<string, string>;
 }
 
 const OUTPUT_TYPES = [
@@ -80,6 +83,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   onChange,
   systemCapabilities,
   validationErrors,
+  validationWarnings,
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
@@ -281,6 +285,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           mode: 'caller', latency: 200,
           container: 'mp4', icecast_mount: '', icecast_password: '',
           hls_method: 'local', hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
+          hls_abr_enabled: false, hls_stream_name: '', variants: [],
         })}
       >
         {availableTypes.map(t => (
@@ -816,12 +821,17 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
                   validationErrors?.path
                     ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
+                    : validationWarnings?.path
+                      ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
+                      : 'border-white/10'
                 }`}
                 value={config.path || ''} onChange={e => update({ path: e.target.value })}
               />
               {validationErrors?.path && (
                 <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
+              )}
+              {validationWarnings?.path && !validationErrors?.path && (
+                <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
               )}
             </div>
             <div>
@@ -976,18 +986,20 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
           <div>
             <label htmlFor="dest-hls-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              {config.hls_method === 'local' ? 'Path / Filename' : 'Stream URL'}
+              {config.hls_method === 'local' ? 'Directory / Target Path' : 'Server Ingest URL'}
               <span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               type="text"
               id="dest-hls-path"
               name="path"
-              placeholder={config.hls_method === 'local' ? 'e.g. /var/www/html/live/stream.m3u8' : 'e.g. http://ingest.server/live/stream.m3u8'}
+              placeholder={config.hls_method === 'local' ? 'e.g. /var/www/html/live/' : 'e.g. http://ingest.server/live/'}
               className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
                 validationErrors?.path
                   ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                  : 'border-white/10'
+                  : validationWarnings?.path
+                    ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
+                    : 'border-white/10'
               }`}
               value={config.path || ''}
               onChange={e => update({ path: e.target.value })}
@@ -995,6 +1007,55 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             {validationErrors?.path && (
               <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
             )}
+            {validationWarnings?.path && !validationErrors?.path && (
+              <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="dest-hls-stream-name" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              Stream Name<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              type="text"
+              id="dest-hls-stream-name"
+              name="hls_stream_name"
+              placeholder="e.g. stream"
+              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                validationErrors?.hls_stream_name
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10'
+              }`}
+              value={config.hls_stream_name ?? 'stream'}
+              onChange={e => update({ hls_stream_name: e.target.value.replace(/\.m3u8$/, '') })}
+              required
+            />
+            <span className="text-[10px] text-white/40 block mt-0.5">
+              Se añadirá la extensión .m3u8 automáticamente
+            </span>
+            {validationErrors?.hls_stream_name && (
+              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.hls_stream_name}</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5">
+            <input
+              type="checkbox"
+              id="hls-abr-enabled-chk"
+              name="hls_abr_enabled"
+              className="w-3.5 h-3.5 accent-purple-400"
+              checked={config.hls_abr_enabled ?? false}
+              onChange={e => {
+                const checked = e.target.checked;
+                update({
+                  hls_abr_enabled: checked,
+                  variants: checked ? (config.variants || []) : [],
+                });
+              }}
+            />
+            <label htmlFor="hls-abr-enabled-chk" className="text-xs font-medium cursor-pointer">
+              Habilitar Adaptive Bitrate (ABR)
+            </label>
           </div>
 
           {config.hls_method === 'local' && (
@@ -1027,10 +1088,12 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
           )}
 
-          <HlsVariantsForm
-            variants={config.variants || []}
-            onChange={variants => update({ variants })}
-          />
+          {config.hls_abr_enabled && (
+            <HlsVariantsForm
+              variants={config.variants || []}
+              onChange={variants => update({ variants })}
+            />
+          )}
         </div>
       )}
 

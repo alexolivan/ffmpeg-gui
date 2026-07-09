@@ -280,9 +280,35 @@ class ProcessManager:
 
         if is_abr:
             # ── HLS ABR processing ──
+            from core.filter_graph import FilterGraphBuilder
+
+            # Determine is_vram and hwaccel exactly as in the single-stream flow
+            _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+            is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
+
+            frames_destination = 'cpu'
+            if is_hw_supported:
+                if is_new_format:
+                    frames_destination = input_cfg['input1'].get('frames_destination', 'cpu')
+                else:
+                    frames_destination = input_cfg.get('frames_destination', 'cpu')
+                
+            hwaccel = 'none'
+            if is_hw_supported:
+                if is_new_format:
+                    hwaccel = input_cfg['input1'].get('hwaccel', 'none')
+                else:
+                    hwaccel = input_cfg.get('hwaccel', 'none')
+            
+            if is_hw_supported and hwaccel == 'none':
+                hwaccel = advanced.get('hwaccel', 'none')
+
+            is_vram = (frames_destination == 'vram')
+            if hwaccel == 'none' or not is_hw_supported:
+                is_vram = False
+
             vcodec = codec_cfg.get('vcodec', 'libx264')
             video_params = codec_cfg.get('video_params', {})
-            hwaccel = advanced.get('hwaccel', 'none')
             
             # Video variant scale and mapping
             if not has_video:
@@ -291,23 +317,26 @@ class ProcessManager:
                 for idx, v in enumerate(variants):
                     cmd += ["-map", "0:v"]
                     
-                    # Video filters
-                    scale_filter = "scale"
-                    if hwaccel == 'vaapi':
-                        scale_filter = "scale_vaapi"
-                    elif hwaccel in ('cuda', 'npp'):
-                        scale_filter = "scale_npp"
-                        
-                    vf_list = []
-                    if filter_cfg.get('deinterlace'):
-                        vf_list.append("yadif")
-                    vf_list.append(f"{scale_filter}={v['resolution']}")
-                    if filter_cfg.get('framerate'):
-                        vf_list.append(f"fps={filter_cfg['framerate']}")
+                    v_filter_cfg = {**filter_cfg, 'scale': v['resolution'].replace(':', 'x')}
+                    vf_str, remains_vram = FilterGraphBuilder.build_video_filters(
+                        input_cfg, v_filter_cfg, is_vram, hwaccel
+                    )
                     
-                    if vcodec in ('h264_vaapi', 'hevc_vaapi') and hwaccel != 'vaapi':
+                    vf_list = []
+                    if vf_str:
+                        vf_list.append(vf_str)
+                        
+                    # Check CPU/software encoder
+                    if remains_vram and vcodec in ('libx264', 'libx265', 'rawvideo', 'wrapped_avframe'):
+                        vf_list.append("hwdownload")
+                        vf_list.append("format=nv12")
+                        remains_vram = False
+                        
+                    # Check HW/GPU encoder
+                    if not remains_vram and vcodec in ('h264_vaapi', 'hevc_vaapi', 'h264_qsv', 'hevc_qsv', 'h264_nvenc', 'hevc_nvenc'):
                         vf_list.append("format=nv12")
                         vf_list.append("hwupload")
+                        remains_vram = True
                         
                     cmd += [f"-filter:v:{idx}", ",".join(vf_list)]
                     cmd += [f"-c:v:{idx}", vcodec]
@@ -329,6 +358,11 @@ class ProcessManager:
                 for idx, audio_bitrate in enumerate(unique_audios):
                     cmd += ["-map", f"{audio_map_idx}:a"]
                     cmd += [f"-c:a:{idx}", acodec]
+                    
+                    af_str = FilterGraphBuilder.build_audio_filters(filter_cfg)
+                    if af_str:
+                        cmd += [f"-filter:a:{idx}", af_str]
+                        
                     self._append_audio_codec_params_indexed(cmd, acodec, audio_params, idx, audio_bitrate)
 
             # Output Muxer ABR
@@ -345,7 +379,11 @@ class ProcessManager:
             cmd += ["-hls_time", str(hls_time)]
             cmd += ["-hls_list_size", str(hls_list_size)]
             
-            cmd += ["-master_pl_name", "master.m3u8"]
+            hls_stream_name = output_cfg.get('hls_stream_name', 'stream')
+            if hls_stream_name.endswith('.m3u8'):
+                hls_stream_name = hls_stream_name[:-5]
+                
+            cmd += ["-master_pl_name", f"{hls_stream_name}.m3u8"]
             
             # Map stream configs to index mappings
             unique_audios = list(dict.fromkeys([v['audio_bitrate'] for v in variants if v.get('audio_bitrate')]))
@@ -366,13 +404,16 @@ class ProcessManager:
                     
             cmd += ["-var_stream_map", " ".join(stream_maps)]
             
-            if path.endswith('.m3u8'):
-                base_path = path[:-5]
-                segment_pattern = f"{base_path}_%v_%03d.ts"
-                variant_playlist = f"{base_path}_%v.m3u8"
+            if path.startswith('http://') or path.startswith('https://'):
+                base_url = path.rstrip('/')
+                variant_playlist = f"{base_url}/{hls_stream_name}_%v.m3u8"
+                segment_pattern = f"{base_url}/{hls_stream_name}_%v_%03d.ts"
             else:
-                segment_pattern = f"{path}_%v_%03d.ts"
-                variant_playlist = f"{path}_%v.m3u8"
+                base_dir = path
+                if base_dir.endswith('.m3u8'):
+                    base_dir = os.path.dirname(base_dir)
+                variant_playlist = os.path.join(base_dir, f"{hls_stream_name}_%v.m3u8")
+                segment_pattern = os.path.join(base_dir, f"{hls_stream_name}_%v_%03d.ts")
                 
             if method in ('PUT', 'POST'):
                 cmd += ["-method", method]
@@ -533,7 +574,6 @@ class ProcessManager:
         # ── Secondary Preview Output ──
         is_service = getattr(media_proc, 'type', 'service') == 'service'
         if is_service and has_video:
-            import os
             from database.db import PREVIEWS_DIR
             previews_dir = PREVIEWS_DIR
             os.makedirs(previews_dir, exist_ok=True)

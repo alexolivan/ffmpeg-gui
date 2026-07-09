@@ -186,8 +186,40 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     return null;
   };
 
+  const checkFilePathCollision = (pathStr: string): any | null => {
+    const cleanPath = (pathStr || '').trim().replace(/\/+$/, '');
+    if (!cleanPath) return null;
+
+    for (const item of existingConfigs) {
+      if (initialConfig) {
+        const isSelfTask = !!isTask === !!item.is_task;
+        if (isSelfTask) {
+          if (initialConfig.id !== undefined && initialConfig.id !== null && item.id === initialConfig.id) continue;
+          if (initialConfig.name && item.name === initialConfig.name) continue;
+        }
+      }
+      const out = item.output_config;
+      if (out) {
+        let itemPath = '';
+        if (out.type === 'file') {
+          itemPath = (out.path || '').trim();
+        } else if (out.type === 'hls' && out.hls_method === 'local') {
+          const hName = out.hls_stream_name || 'stream';
+          const p = (out.path || '').trim().replace(/\/+$/, '');
+          itemPath = p ? `${p}/${hName}.m3u8` : `${hName}.m3u8`;
+        }
+
+        if (itemPath && itemPath.replace(/\/+$/, '') === cleanPath) {
+          return item;
+        }
+      }
+    }
+    return null;
+  };
+
   const validateConfig = (): boolean => {
     const errors: Record<string, string> = {};
+    const warnings: Record<string, string> = {};
 
     // 1. General name is required
     if (!config.name.trim()) {
@@ -219,8 +251,22 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         errors.url = 'Stream URL is required';
       }
     } else if (out.type === 'hls') {
-      if (!(out.path || '').trim()) {
-        errors.path = 'HLS path or ingest URL is required';
+      const hPath = (out.path || '').trim();
+      const hName = (out.hls_stream_name || '').trim();
+      if (!hPath) {
+        errors.path = 'HLS directory path or ingest URL is required';
+      }
+      if (!hName) {
+        errors.hls_stream_name = 'Stream Name is required';
+      }
+
+      if (hPath && hName && out.hls_method === 'local') {
+        const cleanHlsPath = hPath.replace(/\/+$/, '');
+        const finalHlsPlaylist = cleanHlsPath ? `${cleanHlsPath}/${hName}.m3u8` : `${hName}.m3u8`;
+        const collision = checkFilePathCollision(finalHlsPlaylist);
+        if (collision) {
+          warnings.path = `HLS playlist path collision: already in use by active configuration "${collision.name}"`;
+        }
       }
     } else if (out.type === 'icecast') {
       if (!(out.host || '').trim()) {
@@ -230,8 +276,14 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         errors.icecast_mount = 'Icecast mountpoint is required';
       }
     } else if (out.type === 'file') {
-      if (!(out.path || '').trim()) {
+      const fPath = (out.path || '').trim();
+      if (!fPath) {
         errors.path = 'Output file path is required';
+      } else {
+        const collision = checkFilePathCollision(fPath);
+        if (collision) {
+          warnings.path = `Output file path collision: already in use by active configuration "${collision.name}"`;
+        }
       }
     } else if (out.type === 'ndi') {
       if (!(out.path || '').trim()) {
@@ -248,6 +300,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     }
 
     setLocalValidationErrors(errors);
+    setLocalValidationWarnings(warnings);
     return Object.keys(errors).length === 0;
   };
 
@@ -413,10 +466,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
   const [config, setConfig] = useState<ProcessConfig>(getInitialState);
   const [localValidationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  const [localValidationWarnings, setLocalValidationWarnings] = useState<Record<string, string>>({});
   const validationErrors = { ...propsValidationErrors, ...localValidationErrors };
 
   useEffect(() => {
     setLocalValidationErrors({});
+    setLocalValidationWarnings({});
   }, [config.output.type]);
 
   useEffect(() => {
@@ -722,22 +777,28 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       finalOutput.port = getNextAvailablePort(9000);
       finalOutput.mode = 'caller';
     } else if (newType === 'ndi') {
-      finalOutput.path = 'FFmpeg_Stream';
-      (finalOutput as any).name = 'FFmpeg_Stream';
+      finalOutput.path = '';
+      (finalOutput as any).name = '';
     } else if (newType === 'file') {
-      finalOutput.path = '/var/tmp/output.ts';
+      finalOutput.path = '';
+    } else if (newType === 'hls') {
+      finalOutput.path = '';
+      (finalOutput as any).hls_stream_name = '';
     } else if (newType === 'icecast') {
-      finalOutput.url = 'http://localhost:8000/stream.mp3';
+      finalOutput.url = '';
+      finalOutput.host = '';
+      finalOutput.icecast_mount = '';
+      finalOutput.icecast_password = '';
       finalHasVideo = false;
       finalHasAudio = true;
     } else if (newType === 'alsa') {
-      finalOutput.device = 'default';
+      finalOutput.device = '';
       finalHasVideo = false;
       finalHasAudio = true;
     } else if (newType === 'rtmp') {
-      finalOutput.url = 'rtmp://localhost/live/app';
+      finalOutput.url = '';
     } else if (newType === 'whip') {
-      finalOutput.url = 'http://localhost:8080/whip';
+      finalOutput.url = '';
     }
 
     // Check codec compatibility
@@ -1262,6 +1323,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                 onChange={handleOutputChange}
                 systemCapabilities={systemCapabilities}
                 validationErrors={validationErrors}
+                validationWarnings={localValidationWarnings}
               />
             </div>
           </div>
