@@ -58,6 +58,11 @@ def main():
     if database:
         os.environ["DATABASE_PATH"] = os.path.abspath(database)
 
+    if config_path and os.path.exists(config_path):
+        os.environ["CONFIG_FILE_PATH"] = os.path.abspath(config_path)
+
+    os.environ["ACTIVE_PORT"] = str(port)
+
     # 4. Configurar logging
     log_config = uvicorn.config.LOGGING_CONFIG
     # Desactivar logs de acceso por defecto de uvicorn (los gestiona el middleware custom)
