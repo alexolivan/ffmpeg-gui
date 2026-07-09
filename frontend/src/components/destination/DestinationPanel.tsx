@@ -42,6 +42,7 @@ interface DestinationPanelProps {
   onChange: (config: OutputConfig) => void;
   systemCapabilities?: SystemCapabilities;
   validationErrors?: Record<string, string>;
+  validationWarnings?: Record<string, string>;
 }
 
 const OUTPUT_TYPES = [
@@ -82,6 +83,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   onChange,
   systemCapabilities,
   validationErrors,
+  validationWarnings,
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
@@ -819,12 +821,17 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
                   validationErrors?.path
                     ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
+                    : validationWarnings?.path
+                      ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
+                      : 'border-white/10'
                 }`}
                 value={config.path || ''} onChange={e => update({ path: e.target.value })}
               />
               {validationErrors?.path && (
                 <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
+              )}
+              {validationWarnings?.path && !validationErrors?.path && (
+                <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
               )}
             </div>
             <div>
@@ -990,13 +997,18 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
                 validationErrors?.path
                   ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                  : 'border-white/10'
+                  : validationWarnings?.path
+                    ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
+                    : 'border-white/10'
               }`}
               value={config.path || ''}
               onChange={e => update({ path: e.target.value })}
             />
             {validationErrors?.path && (
               <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
+            )}
+            {validationWarnings?.path && !validationErrors?.path && (
+              <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
             )}
           </div>
 

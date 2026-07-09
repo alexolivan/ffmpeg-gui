@@ -219,6 +219,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
   const validateConfig = (): boolean => {
     const errors: Record<string, string> = {};
+    const warnings: Record<string, string> = {};
 
     // 1. General name is required
     if (!config.name.trim()) {
@@ -264,7 +265,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         const finalHlsPlaylist = cleanHlsPath ? `${cleanHlsPath}/${hName}.m3u8` : `${hName}.m3u8`;
         const collision = checkFilePathCollision(finalHlsPlaylist);
         if (collision) {
-          errors.path = `HLS playlist path collision: already in use by active configuration "${collision.name}"`;
+          warnings.path = `HLS playlist path collision: already in use by active configuration "${collision.name}"`;
         }
       }
     } else if (out.type === 'icecast') {
@@ -281,7 +282,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       } else {
         const collision = checkFilePathCollision(fPath);
         if (collision) {
-          errors.path = `Output file path collision: already in use by active configuration "${collision.name}"`;
+          warnings.path = `Output file path collision: already in use by active configuration "${collision.name}"`;
         }
       }
     } else if (out.type === 'ndi') {
@@ -299,6 +300,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     }
 
     setLocalValidationErrors(errors);
+    setLocalValidationWarnings(warnings);
     return Object.keys(errors).length === 0;
   };
 
@@ -464,10 +466,12 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
   const [config, setConfig] = useState<ProcessConfig>(getInitialState);
   const [localValidationErrors, setLocalValidationErrors] = useState<Record<string, string>>({});
+  const [localValidationWarnings, setLocalValidationWarnings] = useState<Record<string, string>>({});
   const validationErrors = { ...propsValidationErrors, ...localValidationErrors };
 
   useEffect(() => {
     setLocalValidationErrors({});
+    setLocalValidationWarnings({});
   }, [config.output.type]);
 
   useEffect(() => {
@@ -1319,6 +1323,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                 onChange={handleOutputChange}
                 systemCapabilities={systemCapabilities}
                 validationErrors={validationErrors}
+                validationWarnings={localValidationWarnings}
               />
             </div>
           </div>
