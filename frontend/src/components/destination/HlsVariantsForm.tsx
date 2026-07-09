@@ -23,6 +23,10 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
   const [videoBitrate, setVideoBitrate] = useState('');
   const [audioBitrate, setAudioBitrate] = useState('');
 
+  const [resError, setResError] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+  const [audioError, setAudioError] = useState(false);
+
   const addVariant = (v: HlsVariant) => {
     if (!v.resolution || !v.video_bitrate || !v.audio_bitrate) return;
     onChange([...variants, v]);
@@ -44,10 +48,35 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
 
   const handleAddCustom = (e: React.FormEvent) => {
     e.preventDefault();
+
+    let processedVideoBitrate = videoBitrate.trim();
+    if (/^\d+$/.test(processedVideoBitrate)) {
+      processedVideoBitrate += 'k';
+    }
+
+    let processedAudioBitrate = audioBitrate.trim();
+    if (/^\d+$/.test(processedAudioBitrate)) {
+      processedAudioBitrate += 'k';
+    }
+
+    const trimmedRes = resolution.trim();
+
+    const isResInvalid = !/^\d+:\d+$/.test(trimmedRes);
+    const isVideoInvalid = !/^\d+[kM]$/.test(processedVideoBitrate);
+    const isAudioInvalid = !/^\d+[kM]$/.test(processedAudioBitrate);
+
+    setResError(isResInvalid);
+    setVideoError(isVideoInvalid);
+    setAudioError(isAudioInvalid);
+
+    if (isResInvalid || isVideoInvalid || isAudioInvalid) {
+      return;
+    }
+
     addVariant({
-      resolution,
-      video_bitrate: videoBitrate.endsWith('k') ? videoBitrate : `${videoBitrate}k`,
-      audio_bitrate: audioBitrate.endsWith('k') ? audioBitrate : `${audioBitrate}k`
+      resolution: trimmedRes,
+      video_bitrate: processedVideoBitrate,
+      audio_bitrate: processedAudioBitrate
     });
     setResolution('');
     setVideoBitrate('');
@@ -132,25 +161,40 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
           <input
             type="text"
             placeholder="e.g. 1920:1080"
-            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none text-white focus:border-purple-400/50 transition-colors"
+            className={`bg-white/5 border rounded-lg p-1.5 text-xs outline-none text-white focus:border-purple-400/50 transition-colors ${
+              resError ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
+            }`}
             value={resolution}
-            onChange={e => setResolution(e.target.value)}
+            onChange={e => {
+              setResolution(e.target.value);
+              setResError(false);
+            }}
             required
           />
           <input
             type="text"
             placeholder="Video (e.g. 4500k)"
-            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none text-white focus:border-purple-400/50 transition-colors"
+            className={`bg-white/5 border rounded-lg p-1.5 text-xs outline-none text-white focus:border-purple-400/50 transition-colors ${
+              videoError ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
+            }`}
             value={videoBitrate}
-            onChange={e => setVideoBitrate(e.target.value)}
+            onChange={e => {
+              setVideoBitrate(e.target.value);
+              setVideoError(false);
+            }}
             required
           />
           <input
             type="text"
             placeholder="Audio (e.g. 128k)"
-            className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none text-white focus:border-purple-400/50 transition-colors"
+            className={`bg-white/5 border rounded-lg p-1.5 text-xs outline-none text-white focus:border-purple-400/50 transition-colors ${
+              audioError ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
+            }`}
             value={audioBitrate}
-            onChange={e => setAudioBitrate(e.target.value)}
+            onChange={e => {
+              setAudioBitrate(e.target.value);
+              setAudioError(false);
+            }}
             required
           />
         </div>
