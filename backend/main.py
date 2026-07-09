@@ -231,6 +231,7 @@ class SettingsUpdate(BaseModel):
     lcd_led1_profile: Optional[str] = None
     lcd_led2_profile: Optional[str] = None
     lcd_led3_profile: Optional[str] = None
+    gui_port: Optional[int] = None
 
 class LoginRequest(BaseModel):
     password: str
@@ -281,8 +282,77 @@ def get_settings(db: Session = Depends(get_db)):
         
     return settings
 
+
+def is_port_in_use_by_os(port: int, host: str = "0.0.0.0") -> bool:
+    import socket
+    active_port = int(os.environ.get("ACTIVE_PORT", 8000))
+    if port == active_port:
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+            return False
+        except socket.error:
+            return True
+
+
+def is_port_allocated_in_db(port: int, db: Session) -> bool:
+    from database.models import MediaProcess
+    processes = db.query(MediaProcess).all()
+    port_str = str(port)
+
+    def extract_ports(cfg):
+        ports = []
+        if not cfg:
+            return ports
+        if isinstance(cfg, list):
+            for item in cfg:
+                if isinstance(item, dict) and "port" in item:
+                    try:
+                        ports.append(str(item["port"]))
+                    except (ValueError, TypeError):
+                        pass
+        elif isinstance(cfg, dict):
+            if "port" in cfg:
+                try:
+                    ports.append(str(cfg["port"]))
+                except (ValueError, TypeError):
+                    pass
+            for key in ["input1", "input2"]:
+                if key in cfg and isinstance(cfg[key], dict) and "port" in cfg[key]:
+                    try:
+                        ports.append(str(cfg[key]["port"]))
+                    except (ValueError, TypeError):
+                        pass
+        return ports
+
+    for p in processes:
+        if port_str in extract_ports(p.input_config) or port_str in extract_ports(p.output_config):
+            return True
+    return False
+
+
 @app.post("/settings")
 def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
+    if settings_in.gui_port is not None:
+        if settings_in.gui_port < 1 or settings_in.gui_port > 65535:
+            raise HTTPException(status_code=400, detail="Port must be between 1 and 65535.")
+        if is_port_allocated_in_db(settings_in.gui_port, db):
+            raise HTTPException(status_code=400, detail=f"Port {settings_in.gui_port} is already configured in one of the media processes.")
+        if is_port_in_use_by_os(settings_in.gui_port):
+            raise HTTPException(status_code=400, detail=f"Port {settings_in.gui_port} is already in use on the system.")
+            
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if config_path and os.path.exists(config_path):
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            if "server" not in config:
+                config["server"] = {}
+            config["server"]["port"] = str(settings_in.gui_port)
+            with open(config_path, "w") as f:
+                config.write(f)
+
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()
     if not settings:
