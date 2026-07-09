@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.15.0] (Frontend) / [1.13.0] (Backend) - 2026-07-09
+## [1.15.0] (Frontend) / [1.14.0] (Backend) - 2026-07-09
 
 ### Added
 - Added checkbox to enable Adaptive Bitrate (ABR) for HLS streaming in DestinationPanel.
@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - (Backend) Implemented dynamic naming of master playlist, variant playlists, and TS segment pattern for HLS ABR based on configured `hls_stream_name` and destination path.
 - (Backend) Added support for `audio_volume` parameter in `FilterGraphBuilder` to handle raw multiplier/factor volume adjustments.
 - (Backend) Add `gui_port` settings update with validation for port range, OS usage, and DB conflicts.
+- (Backend) Added bidirectional validation for FFmpeg process ports to block usage of ports reserved by the GUI web panel.
 
 ### Fixed
 - (Backend) Updated HLS ABR preview command API tests to validate filter integrations, overlays, and audio/video scaling assertions.

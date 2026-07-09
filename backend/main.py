@@ -332,6 +332,49 @@ def is_port_allocated_in_db(port: int, db: Session) -> bool:
     return False
 
 
+def check_media_process_port_conflicts(input_config: dict, output_config: list):
+    gui_ports = set()
+    gui_ports.add(int(os.environ.get("ACTIVE_PORT", 8000)))
+    
+    config_path = os.environ.get("CONFIG_FILE_PATH")
+    if config_path and os.path.exists(config_path):
+        try:
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            if "server" in config and "port" in config["server"]:
+                gui_ports.add(int(config["server"]["port"]))
+        except Exception:
+            pass
+
+    def extract_ports(cfg):
+        ports = []
+        if not cfg:
+            return ports
+        if isinstance(cfg, list):
+            for item in cfg:
+                if isinstance(item, dict) and "port" in item:
+                    try: ports.append(int(item["port"]))
+                    except (ValueError, TypeError): pass
+        elif isinstance(cfg, dict):
+            if "port" in cfg:
+                try: ports.append(int(cfg["port"]))
+                except (ValueError, TypeError): pass
+            for key in ["input1", "input2"]:
+                if key in cfg and isinstance(cfg[key], dict) and "port" in cfg[key]:
+                    try: ports.append(int(cfg[key]["port"]))
+                    except (ValueError, TypeError): pass
+        return ports
+
+    process_ports = extract_ports(input_config) + extract_ports(output_config)
+    for p in process_ports:
+        if p in gui_ports:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Port {p} is reserved for the GUI web panel."
+            )
+
+
 @app.post("/settings")
 def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.gui_port is not None:
@@ -1947,6 +1990,9 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
     sanitize_process_config_data(input_cfg, filter_cfg)
 
+    # Check for port conflicts with GUI
+    check_media_process_port_conflicts(input_cfg, proc_in.output_config)
+
     db_proc = MediaProcess(
         name=proc_in.name,
         type=proc_in.type,
@@ -2012,6 +2058,9 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if filter_cfg is not None:
         db_proc.filter_config = filter_cfg
         flag_modified(db_proc, "filter_config")
+
+    output_cfg = proc_in.output_config if proc_in.output_config is not None else db_proc.output_config
+    check_media_process_port_conflicts(input_cfg, output_cfg)
 
     if proc_in.output_config is not None: db_proc.output_config = proc_in.output_config
     if proc_in.codec_config is not None: db_proc.codec_config = proc_in.codec_config
