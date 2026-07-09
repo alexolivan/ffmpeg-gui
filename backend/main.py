@@ -231,12 +231,37 @@ class SettingsUpdate(BaseModel):
     lcd_led1_profile: Optional[str] = None
     lcd_led2_profile: Optional[str] = None
     lcd_led3_profile: Optional[str] = None
+    gui_port: Optional[int] = None
 
 class LoginRequest(BaseModel):
     password: str
 
 
 # ── System Settings & Auth ────────────────────────────────────────
+
+def make_settings_response(settings):
+    config_path = os.environ.get("CONFIG_FILE_PATH")
+    active_port = int(os.environ.get("ACTIVE_PORT", 8000))
+    gui_port = active_port
+    restart_required = False
+
+    if config_path and os.path.exists(config_path):
+        try:
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            if "server" in config and "port" in config["server"]:
+                gui_port = int(config["server"]["port"])
+                if gui_port != active_port:
+                    restart_required = True
+        except Exception as e:
+            logger.error(f"Error reading port from config file: {e}")
+
+    res = {c.name: getattr(settings, c.name) for c in settings.__table__.columns}
+    res["gui_port"] = gui_port
+    res["restart_required"] = restart_required
+    return res
+
 
 @app.get("/settings")
 def get_settings(db: Session = Depends(get_db)):
@@ -279,10 +304,122 @@ def get_settings(db: Session = Depends(get_db)):
         db.commit()
         db.refresh(settings)
         
-    return settings
+    return make_settings_response(settings)
+
+
+def is_port_in_use_by_os(port: int, host: str = "0.0.0.0") -> bool:
+    import socket
+    active_port = int(os.environ.get("ACTIVE_PORT", 8000))
+    if port == active_port:
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+            return False
+        except socket.error:
+            return True
+
+
+def is_port_allocated_in_db(port: int, db: Session) -> bool:
+    from database.models import MediaProcess
+    processes = db.query(MediaProcess).all()
+    port_str = str(port)
+
+    def extract_ports(cfg):
+        ports = []
+        if not cfg:
+            return ports
+        if isinstance(cfg, list):
+            for item in cfg:
+                if isinstance(item, dict) and "port" in item:
+                    try:
+                        ports.append(str(item["port"]))
+                    except (ValueError, TypeError):
+                        pass
+        elif isinstance(cfg, dict):
+            if "port" in cfg:
+                try:
+                    ports.append(str(cfg["port"]))
+                except (ValueError, TypeError):
+                    pass
+            for key in ["input1", "input2"]:
+                if key in cfg and isinstance(cfg[key], dict) and "port" in cfg[key]:
+                    try:
+                        ports.append(str(cfg[key]["port"]))
+                    except (ValueError, TypeError):
+                        pass
+        return ports
+
+    for p in processes:
+        if port_str in extract_ports(p.input_config) or port_str in extract_ports(p.output_config):
+            return True
+    return False
+
+
+def check_media_process_port_conflicts(input_config: dict, output_config: list):
+    gui_ports = set()
+    gui_ports.add(int(os.environ.get("ACTIVE_PORT", 8000)))
+    
+    config_path = os.environ.get("CONFIG_FILE_PATH")
+    if config_path and os.path.exists(config_path):
+        try:
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            if "server" in config and "port" in config["server"]:
+                gui_ports.add(int(config["server"]["port"]))
+        except Exception:
+            pass
+
+    def extract_ports(cfg):
+        ports = []
+        if not cfg:
+            return ports
+        if isinstance(cfg, list):
+            for item in cfg:
+                if isinstance(item, dict) and "port" in item:
+                    try: ports.append(int(item["port"]))
+                    except (ValueError, TypeError): pass
+        elif isinstance(cfg, dict):
+            if "port" in cfg:
+                try: ports.append(int(cfg["port"]))
+                except (ValueError, TypeError): pass
+            for key in ["input1", "input2"]:
+                if key in cfg and isinstance(cfg[key], dict) and "port" in cfg[key]:
+                    try: ports.append(int(cfg[key]["port"]))
+                    except (ValueError, TypeError): pass
+        return ports
+
+    process_ports = extract_ports(input_config) + extract_ports(output_config)
+    for p in process_ports:
+        if p in gui_ports:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Port {p} is reserved for the GUI web panel."
+            )
+
 
 @app.post("/settings")
 def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
+    if settings_in.gui_port is not None:
+        if settings_in.gui_port < 1 or settings_in.gui_port > 65535:
+            raise HTTPException(status_code=400, detail="Port must be between 1 and 65535.")
+        if is_port_allocated_in_db(settings_in.gui_port, db):
+            raise HTTPException(status_code=400, detail=f"Port {settings_in.gui_port} is already configured in one of the media processes.")
+        if is_port_in_use_by_os(settings_in.gui_port):
+            raise HTTPException(status_code=400, detail=f"Port {settings_in.gui_port} is already in use on the system.")
+            
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if config_path and os.path.exists(config_path):
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            if "server" not in config:
+                config["server"] = {}
+            config["server"]["port"] = str(settings_in.gui_port)
+            with open(config_path, "w") as f:
+                config.write(f)
+
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()
     if not settings:
@@ -357,7 +494,22 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             if settings_in.lcd_led3_profile is not None:
                 lcd_manager.lcd_led3_profile = settings_in.lcd_led3_profile
 
-    return settings
+    return make_settings_response(settings)
+
+
+def execute_system_restart():
+    import time
+    import os
+    time.sleep(2.5) # Wait 2.5s to let the API response flush completely
+    logger.warning("Restart triggered from Web UI. Terminating process now...")
+    os._exit(0)
+
+
+@app.post("/settings/restart")
+def restart_panel(background_tasks: BackgroundTasks):
+    background_tasks.add_task(execute_system_restart)
+    return {"status": "ok", "message": "Panel is restarting"}
+
 
 @app.post("/login")
 def login(req: LoginRequest, db: Session = Depends(get_db)):
@@ -1877,6 +2029,9 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
     sanitize_process_config_data(input_cfg, filter_cfg)
 
+    # Check for port conflicts with GUI
+    check_media_process_port_conflicts(input_cfg, proc_in.output_config)
+
     db_proc = MediaProcess(
         name=proc_in.name,
         type=proc_in.type,
@@ -1942,6 +2097,9 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if filter_cfg is not None:
         db_proc.filter_config = filter_cfg
         flag_modified(db_proc, "filter_config")
+
+    output_cfg = proc_in.output_config if proc_in.output_config is not None else db_proc.output_config
+    check_media_process_port_conflicts(input_cfg, output_cfg)
 
     if proc_in.output_config is not None: db_proc.output_config = proc_in.output_config
     if proc_in.codec_config is not None: db_proc.codec_config = proc_in.codec_config
