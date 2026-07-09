@@ -146,11 +146,15 @@ class FilterGraphBuilder:
             
         # 2. Input Volume / Gain
         volume = filter_cfg.get('volume')
+        audio_volume = filter_cfg.get('audio_volume')
         if volume:
             vol_str = str(volume)
             # If volume is a simple number (float/int), append 'dB' suffix
             if vol_str.replace('.', '', 1).replace('-', '', 1).isdigit():
                 vol_str = f"{vol_str}dB"
+            af.append(f"volume={vol_str}")
+        elif audio_volume:
+            vol_str = str(audio_volume)
             af.append(f"volume={vol_str}")
             
         # 3. Equalization (10-Band ISO Graphic EQ)
