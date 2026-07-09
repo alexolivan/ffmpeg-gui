@@ -305,7 +305,7 @@ class TestTaskAPI(unittest.TestCase):
         self.assertIn("-f hls", cmd)
         self.assertIn("-hls_time 4", cmd)
         self.assertIn("-hls_list_size 10", cmd)
-        self.assertIn("-master_pl_name master.m3u8", cmd)
+        self.assertIn("-master_pl_name stream.m3u8", cmd)
         self.assertIn("v:0,a:0 v:1,a:0 v:2,a:1", cmd)
         self.assertIn("-hls_segment_filename /var/www/hls/stream_%v_%03d.ts", cmd)
         self.assertIn("/var/www/hls/stream_%v.m3u8", cmd)
