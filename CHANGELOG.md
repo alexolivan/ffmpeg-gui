@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.16.0] (Frontend) / [1.17.0] (Backend) - 2026-07-10
 
 ### Added
+- (Frontend) Added a dedicated "Storage" tab in SettingsView with full CRUD capabilities.
+- (Frontend) Grouped storage configurations by type (build, media, hls, logs, sdk, preview) with default indicators, directory path validation, and premium space utilization bars.
+- (Frontend) Enabled inline editing for storage properties and path testing.
 - (Backend) Integrated storage usage telemetry into the broadcast loop: queries configured database storages and calculates space metrics using `shutil.disk_usage` (with grace handling for file/permission errors).
 - (Backend) Expanded telemetry test coverage in `backend/tests/test_version_info.py`.
 

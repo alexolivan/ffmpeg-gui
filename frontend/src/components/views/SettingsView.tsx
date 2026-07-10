@@ -1,5 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldIcon, GearIcon, SlidersIcon } from '../Icons';
+import { ShieldIcon, GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon } from '../Icons';
+
+const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
+
+const formatGB = (bytes: number): string => {
+  if (!bytes) return '0 GB';
+  const gb = bytes / (1024 * 1024 * 1024);
+  if (gb >= 1000) {
+    return `${(gb / 1024).toFixed(2)} TB`;
+  }
+  return `${gb.toFixed(2)} GB`;
+};
+
+const getProgressBarColorClass = (percent: number): string => {
+  if (percent < 75) return 'bg-brand-lime';
+  if (percent <= 90) return 'bg-brand-orange';
+  return 'bg-red-500';
+};
 
 interface SettingsViewProps {
   settings: any;
@@ -30,7 +47,173 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setPasswordSuccess,
   API,
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'security'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security'>('general');
+
+  const [storages, setStorages] = useState<any[]>([]);
+  const [isLoadingStorages, setIsLoadingStorages] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newType, setNewType] = useState('media');
+  const [newPath, setNewPath] = useState('');
+  const [addValidationError, setAddValidationError] = useState('');
+  const [addValidationSuccess, setAddValidationSuccess] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+  const [isAddingValidating, setIsAddingValidating] = useState(false);
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPath, setEditPath] = useState('');
+  const [editValidationError, setEditValidationError] = useState('');
+  const [editValidationSuccess, setEditValidationSuccess] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isEditValidating, setIsEditValidating] = useState(false);
+
+  const fetchStorages = async () => {
+    setIsLoadingStorages(true);
+    try {
+      const res = await fetch(`${API}/settings/storages`);
+      if (res.ok) {
+        const data = await res.json();
+        setStorages(data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching storages:', err);
+    } finally {
+      setIsLoadingStorages(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStorages();
+  }, [API]);
+
+  const handleValidatePath = async (path: string, isEdit: boolean) => {
+    if (isEdit) {
+      setIsEditValidating(true);
+      setEditValidationError('');
+      setEditValidationSuccess('');
+    } else {
+      setIsAddingValidating(true);
+      setAddValidationError('');
+      setAddValidationSuccess('');
+    }
+
+    try {
+      const res = await fetch(`${API}/settings/storages/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (isEdit) {
+          setEditValidationSuccess('✓ Path is valid and writeable');
+        } else {
+          setAddValidationSuccess('✓ Path is valid and writeable');
+        }
+      } else {
+        const errMsg = data.detail || 'Validation failed';
+        if (isEdit) {
+          setEditValidationError(`⚠️ ${errMsg}`);
+        } else {
+          setAddValidationError(`⚠️ ${errMsg}`);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      if (isEdit) {
+        setEditValidationError('⚠️ Failed to contact validation server');
+      } else {
+        setAddValidationError('⚠️ Failed to contact validation server');
+      }
+    } finally {
+      if (isEdit) {
+        setIsEditValidating(false);
+      } else {
+        setIsAddingValidating(false);
+      }
+    }
+  };
+
+  const handleDeleteStorage = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this storage configuration?')) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/settings/storages/${id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Storage configuration deleted successfully.');
+        fetchStorages();
+      } else {
+        alert(`Failed to delete storage: ${data.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('An error occurred while deleting storage.');
+    }
+  };
+
+  const handleSaveEdit = async (id: number) => {
+    if (!editName.trim() || !editPath.trim()) {
+      setEditValidationError('⚠️ Name and Path are required');
+      return;
+    }
+    setIsSavingEdit(true);
+    setEditValidationError('');
+    setEditValidationSuccess('');
+    try {
+      const res = await fetch(`${API}/settings/storages/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName, path: editPath }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEditingId(null);
+        fetchStorages();
+      } else {
+        setEditValidationError(`⚠️ ${data.detail || 'Failed to update storage'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      setEditValidationError('⚠️ Error updating storage');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleAddStorage = async () => {
+    if (!newName.trim() || !newPath.trim()) {
+      setAddValidationError('⚠️ Name and Path are required');
+      return;
+    }
+    setIsAdding(true);
+    setAddValidationError('');
+    setAddValidationSuccess('');
+    try {
+      const res = await fetch(`${API}/settings/storages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, type: newType, path: newPath }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNewName('');
+        setNewPath('');
+        fetchStorages();
+      } else {
+        setAddValidationError(`⚠️ ${data.detail || 'Failed to add storage'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      setAddValidationError('⚠️ Error adding storage');
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
   const [nodeName, setNodeName] = useState(settings.node_name || '');
   const [logoText, setLogoText] = useState(settings.logo_text || '');
   const [lcdAlias, setLcdAlias] = useState(settings.lcd_alias || 'NODE-01');
@@ -283,6 +466,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <SlidersIcon size={14} />
           LCD Display
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('storage')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+            activeTab === 'storage'
+              ? 'bg-white/10 text-white'
+              : 'text-text-secondary hover:bg-white/5 hover:text-white/70'
+          }`}
+        >
+          <ServerIcon size={14} />
+          Storage
         </button>
         <button
           type="button"
@@ -629,6 +824,268 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* TAB 4: Storage Drives */}
+        {activeTab === 'storage' && (() => {
+          const storagesByType = STORAGE_TYPES.reduce((acc, type) => {
+            acc[type] = storages.filter(s => s.type === type);
+            return acc;
+          }, {} as Record<string, any[]>);
+          return (
+            <div className="space-y-4 animate-in fade-in duration-300">
+              {/* Add Storage Form */}
+              <div className="glass-card p-4 !rounded-2xl space-y-4">
+                <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Add Storage Drive</h4>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Storage Name</label>
+                    <input
+                      type="text"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white"
+                      value={newName}
+                      onChange={e => setNewName(e.target.value)}
+                      placeholder="e.g. Fast SSD Media Storage"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Storage Type</label>
+                    <select
+                      value={newType}
+                      onChange={e => setNewType(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white"
+                    >
+                      <option value="build" className="bg-black text-white">build (FFmpeg Build Cache)</option>
+                      <option value="media" className="bg-black text-white">media (Input Videos/Music)</option>
+                      <option value="hls" className="bg-black text-white">hls (HLS Output Segments)</option>
+                      <option value="logs" className="bg-black text-white">logs (FFmpeg/System Logs)</option>
+                      <option value="sdk" className="bg-black text-white">sdk (DeckLink/NDI SDKs)</option>
+                      <option value="preview" className="bg-black text-white">preview (Snapshot Thumbnails)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Absolute Directory Path</label>
+                    <input
+                      type="text"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono text-white"
+                      value={newPath}
+                      onChange={e => setNewPath(e.target.value)}
+                      placeholder="e.g. /mnt/storage/media"
+                    />
+                  </div>
+                </div>
+
+                {addValidationError && (
+                  <p className="text-[10px] text-red-500 font-bold mt-1">{addValidationError}</p>
+                )}
+                {addValidationSuccess && (
+                  <p className="text-[10px] text-brand-lime font-bold mt-1">{addValidationSuccess}</p>
+                )}
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={isAddingValidating || !newPath.trim()}
+                    onClick={() => handleValidatePath(newPath, false)}
+                    className={`px-4 py-2 bg-white/10 border border-white/10 rounded-lg hover:bg-white/20 font-bold text-xs uppercase tracking-wider transition-all text-white cursor-pointer ${
+                      (!newPath.trim() || isAddingValidating) ? 'opacity-40 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    {isAddingValidating ? 'Validating...' : 'Validate Path'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isAdding || !newName.trim() || !newPath.trim()}
+                    onClick={handleAddStorage}
+                    className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
+                      newName.trim() && newPath.trim() && !isAdding
+                        ? 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] cursor-pointer'
+                        : 'bg-white/5 text-white/40 cursor-not-allowed border border-white/5'
+                    }`}
+                  >
+                    {isAdding ? 'Saving...' : 'Save Storage'}
+                  </button>
+                </div>
+              </div>
+
+              {/* List of Configured Storages */}
+              <div className="space-y-4">
+                {isLoadingStorages ? (
+                  <div className="flex justify-center items-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-lime" />
+                  </div>
+                ) : (
+                  STORAGE_TYPES.map(type => {
+                    const typeStorages = storagesByType[type] || [];
+                    return (
+                      <div key={type} className="glass-card p-4 !rounded-2xl space-y-3">
+                        <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
+                            <h4 className="text-white font-bold text-xs uppercase tracking-wider">{type} STorage Drives</h4>
+                          </div>
+                          <span className="text-[10px] font-mono text-text-secondary bg-white/5 px-2 py-0.5 rounded">
+                            {typeStorages.length} configured
+                          </span>
+                        </div>
+
+                        {typeStorages.length === 0 ? (
+                          <div className="py-4 text-center text-xs text-text-secondary italic">
+                            No storage drives registered for this category.
+                          </div>
+                        ) : (
+                          <div className="space-y-3 divide-y divide-white/5">
+                            {typeStorages.map((s, idx) => {
+                              const isEditing = editingId === s.id;
+                              const usedPercent = s.percent !== undefined ? s.percent : 0;
+                              const barColorClass = getProgressBarColorClass(usedPercent);
+
+                              return (
+                                <div key={s.id} className={`pt-3 ${idx === 0 ? '!pt-0' : ''}`}>
+                                  {isEditing ? (
+                                    /* Inline Edit Mode */
+                                    <div className="space-y-3">
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                          <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">Storage Name</label>
+                                          <input
+                                            type="text"
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white"
+                                            value={editName}
+                                            onChange={e => setEditName(e.target.value)}
+                                          />
+                                        </div>
+                                        <div className="space-y-1">
+                                          <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">Directory Path</label>
+                                          <input
+                                            type="text"
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono text-white"
+                                            value={editPath}
+                                            onChange={e => setEditPath(e.target.value)}
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {editValidationError && (
+                                        <p className="text-[10px] text-red-500 font-bold mt-1">{editValidationError}</p>
+                                      )}
+                                      {editValidationSuccess && (
+                                        <p className="text-[10px] text-brand-lime font-bold mt-1">{editValidationSuccess}</p>
+                                      )}
+
+                                      <div className="flex justify-end gap-2 pt-1">
+                                        <button
+                                          type="button"
+                                          disabled={isEditValidating || !editPath.trim()}
+                                          onClick={() => handleValidatePath(editPath, true)}
+                                          className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all text-white cursor-pointer"
+                                        >
+                                          {isEditValidating ? 'Validating...' : 'Validate Path'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingId(null)}
+                                          className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all text-text-secondary cursor-pointer"
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={isSavingEdit}
+                                          onClick={() => handleSaveEdit(s.id)}
+                                          className="px-4 py-1.5 bg-brand-lime text-black rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                                        >
+                                          {isSavingEdit ? 'Saving...' : 'Save'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    /* Standard Display Mode */
+                                    <div className="space-y-2.5">
+                                      <div className="flex items-start justify-between">
+                                        <div className="space-y-1 pr-4 min-w-0 flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-bold text-sm text-white truncate max-w-[240px]" title={s.name}>
+                                              {s.name}
+                                            </span>
+                                            <span className="text-[9px] font-black uppercase bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded tracking-wider">
+                                              {s.type}
+                                            </span>
+                                            {s.is_default && (
+                                              <span className="text-[9px] font-black uppercase bg-brand-lime text-black px-1.5 py-0.5 rounded tracking-widest">
+                                                DEFAULT
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="text-xs font-mono text-text-secondary truncate block" title={s.path}>
+                                            {s.path}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex gap-2 shrink-0">
+                                          <button
+                                            type="button"
+                                            disabled={s.is_default}
+                                            onClick={() => {
+                                              setEditingId(s.id);
+                                              setEditName(s.name);
+                                              setEditPath(s.path);
+                                              setEditValidationError('');
+                                              setEditValidationSuccess('');
+                                            }}
+                                            className={`p-1.5 rounded bg-white/5 border border-white/5 hover:bg-white/10 transition-all text-white cursor-pointer ${
+                                              s.is_default ? 'opacity-30 cursor-not-allowed' : ''
+                                            }`}
+                                            title={s.is_default ? 'Cannot edit default storage' : 'Edit Storage'}
+                                          >
+                                            <PencilIcon size={12} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={s.is_default}
+                                            onClick={() => handleDeleteStorage(s.id)}
+                                            className={`p-1.5 rounded bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all text-red-400 cursor-pointer ${
+                                              s.is_default ? 'opacity-30 cursor-not-allowed' : ''
+                                            }`}
+                                            title={s.is_default ? 'Cannot delete default storage' : 'Delete Storage'}
+                                          >
+                                            <TrashIcon size={12} />
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Space Utilization Details */}
+                                      <div className="space-y-1">
+                                        <div className="flex justify-between items-center text-[10px] font-bold text-text-secondary">
+                                          <span>Space Utilization</span>
+                                          <span className="font-mono text-white">
+                                            {formatGB(s.used)} / {formatGB(s.total)} ({usedPercent}%)
+                                          </span>
+                                        </div>
+                                        <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden border border-white/5">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-500 ${barColorClass}`}
+                                            style={{ width: `${Math.min(usedPercent, 100)}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* TAB 3: Security & Access */}
         {activeTab === 'security' && (
