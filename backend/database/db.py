@@ -97,6 +97,42 @@ def init_db():
                             text("INSERT INTO schema_info (version, applied_at) VALUES (:version, datetime('now'))"),
                             {"version": __schema_version__}
                         )
+        
+        # Seed default storages if the table is empty
+        from database.models import Storage
+        db = SessionLocal()
+        try:
+            if db.query(Storage).count() == 0:
+                default_storages = [
+                    Storage(
+                        name="Default Build Storage",
+                        path=os.path.abspath("ffmpeg_builds"),
+                        type="build",
+                        is_default=True
+                    ),
+                    Storage(
+                        name="Default Media Storage",
+                        path=os.path.abspath("data/uploads"),
+                        type="media",
+                        is_default=True
+                    ),
+                    Storage(
+                        name="Default SDK Storage",
+                        path=os.path.abspath("data/sdks"),
+                        type="sdk",
+                        is_default=True
+                    ),
+                    Storage(
+                        name="Default Preview Storage",
+                        path=os.path.abspath("/tmp/ffmpeg-gui-previews"),
+                        type="preview",
+                        is_default=True
+                    )
+                ]
+                db.add_all(default_storages)
+                db.commit()
+        finally:
+            db.close()
     except Exception as e:
         logger.exception(f"Database initialization failed: {e}")
         raise e
