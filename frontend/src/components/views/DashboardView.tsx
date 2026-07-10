@@ -201,6 +201,53 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               )}
             </div>
+
+            {systemTelemetry.storages && systemTelemetry.storages.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-white/5">
+                <h4 className="text-xs font-black uppercase text-text-secondary tracking-wider mb-2">
+                  STORAGE CAPACITIES
+                </h4>
+                <div
+                  className={`space-y-2.5 ${
+                    systemTelemetry.storages.length > 4 ? 'max-h-48 overflow-y-auto pr-1' : ''
+                  }`}
+                >
+                  {systemTelemetry.storages.map((storage: any) => {
+                    const percent = storage.percent !== undefined ? storage.percent : 0;
+                    const freeGb = storage.free_gb !== undefined ? storage.free_gb : 0;
+                    return (
+                      <div key={storage.id || storage.name} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-white font-bold truncate max-w-[120px]" title={storage.name}>
+                              {storage.name}
+                            </span>
+                            <span className="text-[8px] font-black uppercase bg-brand-orange/20 text-brand-orange px-1.5 py-0.5 rounded tracking-wider shrink-0">
+                              {storage.type}
+                            </span>
+                          </div>
+                          <span className="text-text-secondary font-mono text-[10px] shrink-0">
+                            {percent}% ({freeGb} GB free)
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-500 ${
+                              percent < 75
+                                ? 'bg-brand-lime'
+                                : percent <= 90
+                                ? 'bg-brand-orange'
+                                : 'bg-red-500 animate-pulse'
+                            }`}
+                            style={{ width: `${Math.min(100, percent)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

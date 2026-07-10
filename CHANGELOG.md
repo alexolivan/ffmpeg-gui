@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.16.0] (Frontend) / [1.17.0] (Backend) - 2026-07-10
+## [1.17.0] (Frontend) / [1.17.0] (Backend) - 2026-07-10
 
 ### Added
+- (Frontend) Integrated dynamic **Storage Capacities** subsection inside the System Stats card on the Dashboard, rendering utilization bars and metadata for each configured storage.
 - (Frontend) Added a dedicated "Storage" tab in SettingsView with full CRUD capabilities.
 - (Frontend) Grouped storage configurations by type (build, media, hls, logs, sdk, preview) with default indicators, directory path validation, and premium space utilization bars.
 - (Frontend) Enabled inline editing for storage properties and path testing.

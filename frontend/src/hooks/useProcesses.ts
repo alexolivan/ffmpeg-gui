@@ -12,7 +12,8 @@ export function useProcesses() {
     memory_total_mb: 0,
     net_sent_kb: 0,
     net_recv_kb: 0,
-    uptime_seconds: 0
+    uptime_seconds: 0,
+    storages: []
   });
   const [taskStats, setTaskStats] = useState<any>({
     active_count: 0,
@@ -38,7 +39,10 @@ export function useProcesses() {
           setTaskExecutions(msg.task_executions);
         }
         if (msg.system) {
-          setSystemTelemetry(msg.system);
+          setSystemTelemetry({
+            ...msg.system,
+            storages: msg.storages || []
+          });
         }
         if (msg.task_stats) {
           setTaskStats(msg.task_stats);
