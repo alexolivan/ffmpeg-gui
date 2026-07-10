@@ -1232,6 +1232,7 @@ async def telemetry_broadcast_loop():
             processes_data = []
             exec_data = []
             task_stats = {}
+            storages_data = []
             
             with SessionLocal() as db:
                 processes = db.query(MediaProcess).all()
@@ -1299,6 +1300,33 @@ async def telemetry_broadcast_loop():
                     "scheduled": scheduled_count,
                     "inactive": inactive_count
                 }
+
+                # Query all configured storages
+                storages = db.query(Storage).all()
+                for s in storages:
+                    try:
+                        usage = shutil.disk_usage(s.path)
+                        total = usage.total
+                        used = usage.used
+                        free = usage.free
+                        percent = round((used / total) * 100, 2) if total > 0 else 0.0
+                    except (FileNotFoundError, PermissionError):
+                        total = 0
+                        used = 0
+                        free = 0
+                        percent = 0.0
+                    
+                    storages_data.append({
+                        "id": s.id,
+                        "name": s.name,
+                        "type": s.type,
+                        "path": s.path,
+                        "is_default": s.is_default,
+                        "total_gb": round(total / (1024 ** 3), 2),
+                        "used_gb": round(used / (1024 ** 3), 2),
+                        "free_gb": round(free / (1024 ** 3), 2),
+                        "percent": percent
+                    })
             
             # Gather global host system metrics (outside database session block)
             sys_cpu = psutil.cpu_percent(interval=None)
@@ -1325,7 +1353,8 @@ async def telemetry_broadcast_loop():
                 "data": processes_data,
                 "task_executions": exec_data,
                 "system": system_data,
-                "task_stats": task_stats
+                "task_stats": task_stats,
+                "storages": storages_data
             })
         except Exception as e:
             logger.exception(f"Error in telemetry broadcast loop: {e}")
