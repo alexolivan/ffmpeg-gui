@@ -33,6 +33,8 @@ export interface OutputConfig {
   service_id?: string;
   pkt_size?: number;
   streamid?: string;
+  storage_id?: number | null;
+  relative_path?: string;
 }
 
 interface DestinationPanelProps {
@@ -43,6 +45,7 @@ interface DestinationPanelProps {
   systemCapabilities?: SystemCapabilities;
   validationErrors?: Record<string, string>;
   validationWarnings?: Record<string, string>;
+  storages?: any[];
 }
 
 const OUTPUT_TYPES = [
@@ -84,6 +87,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   systemCapabilities,
   validationErrors,
   validationWarnings,
+  storages = [],
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
@@ -809,30 +813,46 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {config.type === 'file' && (
         <div className="space-y-2">
           <div className="grid grid-cols-3 gap-2">
-            <div className="col-span-2">
-              <label htmlFor="dest-file-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                Path / Filename<span className="text-red-500 ml-0.5">*</span>
+            <div>
+              <label htmlFor="dest-file-storage" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                Media Storage<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <select
+                id="dest-file-storage"
+                name="storage_id"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none focus:border-purple-400 ${
+                  validationErrors?.storage_id || validationErrors?.path
+                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                    : 'border-white/10'
+                }`}
+                value={config.storage_id || ''}
+                onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
+              >
+                <option value="">-- Select Storage --</option>
+                {storages.filter((s: any) => s.type === 'media').map((s: any) => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="dest-file-relative-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                Relative Path / Filename<span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
                 type="text"
-                id="dest-file-path"
-                name="path"
-                placeholder="Output file path"
-                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                  validationErrors?.path
+                id="dest-file-relative-path"
+                name="relative_path"
+                placeholder="e.g. movies/clip.mp4"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 focus:border-purple-400 ${
+                  validationErrors?.relative_path || validationErrors?.path
                     ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
                     : validationWarnings?.path
                       ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
                       : 'border-white/10'
                 }`}
-                value={config.path || ''} onChange={e => update({ path: e.target.value })}
+                value={config.relative_path || ''}
+                onChange={e => update({ relative_path: e.target.value })}
               />
-              {validationErrors?.path && (
-                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
-              )}
-              {validationWarnings?.path && !validationErrors?.path && (
-                <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
-              )}
             </div>
             <div>
               <label htmlFor="dest-file-container" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
@@ -841,7 +861,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               <select
                 id="dest-file-container"
                 name="container"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-purple-400"
                 value={config.container || 'mp4'}
                 onChange={e => update({ container: e.target.value })}
               >
@@ -851,6 +871,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               </select>
             </div>
           </div>
+          {(validationErrors?.storage_id || validationErrors?.relative_path || validationErrors?.path) && (
+            <span className="text-[10px] text-red-400 block mt-1">
+              {validationErrors.storage_id || validationErrors.relative_path || validationErrors.path}
+            </span>
+          )}
+          {validationWarnings?.path && !(validationErrors?.storage_id || validationErrors?.relative_path || validationErrors?.path) && (
+            <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
+          )}
         </div>
       )}
 
@@ -941,13 +969,18 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'hls' && (
         <div className="space-y-2">
+          {storages.filter((s: any) => s.type === 'hls').length === 0 && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-2.5 rounded-lg text-xs leading-relaxed font-bold mb-2">
+              ⚠️ No HLS storages configured. Please configure at least one storage of type "HLS" in Settings to use local HLS output.
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label htmlFor="dest-hls-method" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">HLS Ingest Method</label>
               <select
                 id="dest-hls-method"
                 name="hls_method"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-purple-400"
                 value={config.hls_method || 'local'}
                 onChange={e => update({ hls_method: e.target.value })}
               >
@@ -984,33 +1017,87 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
           </div>
 
-          <div>
-            <label htmlFor="dest-hls-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              {config.hls_method === 'local' ? 'Directory / Target Path' : 'Server Ingest URL'}
-              <span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              id="dest-hls-path"
-              name="path"
-              placeholder={config.hls_method === 'local' ? 'e.g. /var/www/html/live/' : 'e.g. http://ingest.server/live/'}
-              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                validationErrors?.path
-                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                  : validationWarnings?.path
-                    ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
+          {config.hls_method === 'local' ? (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label htmlFor="dest-hls-storage" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                  HLS Storage<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <select
+                  id="dest-hls-storage"
+                  name="storage_id"
+                  className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none focus:border-purple-400 ${
+                    validationErrors?.storage_id || validationErrors?.path
+                      ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                      : 'border-white/10'
+                  }`}
+                  value={config.storage_id || ''}
+                  onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
+                  disabled={storages.filter((s: any) => s.type === 'hls').length === 0}
+                >
+                  <option value="">-- Select Storage --</option>
+                  {storages.filter((s: any) => s.type === 'hls').map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="dest-hls-relative-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                  Relative Path / Directory<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="dest-hls-relative-path"
+                  name="relative_path"
+                  placeholder="e.g. live/stream"
+                  className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 focus:border-purple-400 ${
+                    validationErrors?.relative_path || validationErrors?.path
+                      ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                      : validationWarnings?.path
+                        ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
+                        : 'border-white/10'
+                  }`}
+                  value={config.relative_path || ''}
+                  onChange={e => update({ relative_path: e.target.value })}
+                  disabled={storages.filter((s: any) => s.type === 'hls').length === 0}
+                />
+              </div>
+              {(validationErrors?.storage_id || validationErrors?.relative_path || validationErrors?.path) && (
+                <div className="col-span-2">
+                  <span className="text-[10px] text-red-400 block mt-1">
+                    {validationErrors.storage_id || validationErrors.relative_path || validationErrors.path}
+                  </span>
+                </div>
+              )}
+              {validationWarnings?.path && !(validationErrors?.storage_id || validationErrors?.relative_path || validationErrors?.path) && (
+                <div className="col-span-2">
+                  <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label htmlFor="dest-hls-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                Server Ingest URL<span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                id="dest-hls-path"
+                name="path"
+                placeholder="e.g. http://ingest.server/live/"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 focus:border-purple-400 ${
+                  validationErrors?.path
+                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
                     : 'border-white/10'
-              }`}
-              value={config.path || ''}
-              onChange={e => update({ path: e.target.value })}
-            />
-            {validationErrors?.path && (
-              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
-            )}
-            {validationWarnings?.path && !validationErrors?.path && (
-              <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
-            )}
-          </div>
+                }`}
+                value={config.path || ''}
+                onChange={e => update({ path: e.target.value })}
+              />
+              {validationErrors?.path && (
+                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
+              )}
+            </div>
+          )}
 
           <div>
             <label htmlFor="dest-hls-stream-name" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">

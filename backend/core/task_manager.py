@@ -5,6 +5,7 @@ import os
 import shlex
 from datetime import datetime
 import re
+from typing import Optional
 from database.models import ScheduledTask, TaskExecution, TaskExecutionLog, FfmpegBuild
 from utils.process_utils import cleanup_rogue_processes
 
@@ -52,6 +53,21 @@ class TaskManager:
                 if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
                     ffmpeg_bin = build.ffmpeg_binary
 
+            # Resolve and validate paths before starting
+            import copy
+            val_input = copy.deepcopy(task.input_config)
+            val_output = copy.deepcopy(task.output_config)
+            val_filter = copy.deepcopy(task.filter_config or {})
+            self._resolve_config_paths(val_input, val_output, val_filter)
+            try:
+                self._validate_paths(val_input, val_output, val_filter)
+            except Exception as val_err:
+                execution.status = 'error'
+                execution.error_message = str(val_err)
+                execution.stopped_at = datetime.utcnow()
+                session.commit()
+                raise val_err
+
             cmd = self._build_ffmpeg_cmd(task, ffmpeg_bin, limit_sec, execution_id=execution_id)
             session.commit()  # Release write locks immediately before slow spawn!
             
@@ -89,12 +105,109 @@ class TaskManager:
                     execution.stopped_at = datetime.utcnow()
                     session.commit()
 
+    def _resolve_storage_path(self, storage_id: Optional[int], relative_path: Optional[str]) -> Optional[str]:
+        if not storage_id:
+            return None
+        with self.db_session_factory() as session:
+            from database.models import Storage
+            storage = session.query(Storage).get(storage_id)
+            if storage and storage.path:
+                return os.path.join(storage.path, relative_path or '')
+        return None
+
+    def _resolve_config_paths(self, input_cfg: dict, output_cfg: dict, filter_cfg: dict):
+        # Resolve input_cfg paths
+        if 'input1' in input_cfg:
+            for key in ['input1', 'input2']:
+                if key in input_cfg and isinstance(input_cfg[key], dict):
+                    inp = input_cfg[key]
+                    if inp.get('storage_id'):
+                        resolved = self._resolve_storage_path(inp.get('storage_id'), inp.get('relative_path'))
+                        if resolved:
+                            inp['path'] = resolved
+        else:
+            if input_cfg.get('storage_id'):
+                resolved = self._resolve_storage_path(input_cfg.get('storage_id'), input_cfg.get('relative_path'))
+                if resolved:
+                    input_cfg['path'] = resolved
+
+        # Resolve output_cfg paths
+        if output_cfg.get('storage_id'):
+            resolved = self._resolve_storage_path(output_cfg.get('storage_id'), output_cfg.get('relative_path'))
+            if resolved:
+                output_cfg['path'] = resolved
+
+        # Resolve filter_cfg overlays paths
+        overlays = filter_cfg.get('overlays', [])
+        for overlay in overlays:
+            if isinstance(overlay, dict) and overlay.get('storage_id'):
+                resolved = self._resolve_storage_path(overlay.get('storage_id'), overlay.get('relative_path'))
+                if resolved:
+                    overlay['path'] = resolved
+
+    def _validate_paths(self, input_cfg: dict, output_cfg: dict, filter_cfg: dict):
+        inputs = []
+        if 'input1' in input_cfg:
+            inputs.append(input_cfg['input1'])
+            if input_cfg.get('use_secondary_input') and 'input2' in input_cfg:
+                inputs.append(input_cfg['input2'])
+        else:
+            inputs.append(input_cfg)
+
+        for inp in inputs:
+            if inp.get('type') == 'file':
+                path = inp.get('path')
+                if not path:
+                    raise ValueError("Input file path is required")
+                if not os.path.exists(path):
+                    raise FileNotFoundError(f"Input file does not exist: {path}")
+
+        out_type = output_cfg.get('type')
+        if out_type == 'file':
+            path = output_cfg.get('path')
+            if not path:
+                raise ValueError("Output file path is required")
+            out_dir = os.path.dirname(os.path.abspath(path))
+            if not os.path.exists(out_dir):
+                try:
+                    os.makedirs(out_dir, exist_ok=True)
+                except Exception as e:
+                    raise ValueError(f"Output directory does not exist and cannot be created: {out_dir}. Error: {e}")
+            if not os.access(out_dir, os.W_OK):
+                raise PermissionError(f"Output directory is not writeable: {out_dir}")
+        elif out_type == 'hls' and output_cfg.get('hls_method', 'local') == 'local':
+            path = output_cfg.get('path')
+            if not path:
+                raise ValueError("HLS directory path is required")
+            out_dir = os.path.abspath(path)
+            if not os.path.exists(out_dir):
+                try:
+                    os.makedirs(out_dir, exist_ok=True)
+                except Exception as e:
+                    raise ValueError(f"HLS output directory does not exist and cannot be created: {out_dir}. Error: {e}")
+            if not os.access(out_dir, os.W_OK):
+                raise PermissionError(f"HLS output directory is not writeable: {out_dir}")
+
+        overlays = filter_cfg.get('overlays', [])
+        for overlay in overlays:
+            if isinstance(overlay, dict) and overlay.get('type') == 'image':
+                path = overlay.get('path')
+                if not path:
+                    raise ValueError("Overlay image path is required")
+                if not os.path.exists(path):
+                    raise FileNotFoundError(f"Overlay image does not exist: {path}")
+
     def _build_ffmpeg_cmd(self, task, ffmpeg_bin, limit_sec, execution_id=None):
         cmd = [ffmpeg_bin, "-hide_banner", "-y"]
         
-        input_cfg = task.input_config
+        import copy
+        from typing import Optional
+        input_cfg = copy.deepcopy(task.input_config)
         codec_cfg = task.codec_config
-        filter_cfg = task.filter_config or {}
+        filter_cfg = copy.deepcopy(task.filter_config or {})
+        output_cfg = copy.deepcopy(task.output_config)
+        
+        self._resolve_config_paths(input_cfg, output_cfg, filter_cfg)
         advanced = filter_cfg.get('advanced', {})
 
         is_new_format = 'input1' in input_cfg

@@ -43,9 +43,20 @@ class PreviewManager:
             else:
                 active_input = input_config
 
+            # Resolve storage path if storage_id is present
+            path = active_input.get('path')
+            storage_id = active_input.get('storage_id')
+            if storage_id:
+                from database.db import SessionLocal
+                from database.models import Storage
+                with SessionLocal() as session:
+                    storage = session.query(Storage).get(storage_id)
+                    if storage and storage.path:
+                        path = os.path.join(storage.path, active_input.get('relative_path', ''))
+            
             input_type = active_input.get('type')
             if input_type == 'file':
-                cmd += ["-re", "-i", active_input.get('path')]
+                cmd += ["-re", "-i", path]
             elif input_type == 'srt':
                 cmd += ["-i", f"srt://{active_input.get('host')}:{active_input.get('port')}?mode={active_input.get('mode', 'listener')}"]
             elif input_type == 'udp':

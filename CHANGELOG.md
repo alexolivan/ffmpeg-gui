@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] (Frontend) / [1.19.0] (Backend) - 2026-07-10
+
+### Added
+- (Frontend) Replaced absolute path inputs in `InputSourcePanel`, `DestinationPanel` (for local recording and local HLS), and `FiltersFormSection` (for overlays) with Storage Selector Dropdowns and Relative Path text inputs.
+- (Frontend) Added a warning banner in `DestinationPanel` next to HLS outputs when no HLS storages are configured, and disabled the Deploy/Save buttons in `ProcessConfigForm` to prevent invalid configurations.
+- (Backend) Implemented dynamic storage path lookup and resolution in `ProcessManager`, `TaskManager`, and `PreviewManager` using the storage ID and relative path.
+- (Backend) Integrated input file existence and output directory writability validations in `ProcessManager` and `TaskManager` to verify paths prior to process spawning.
+
 ## [1.18.0] (Frontend) / [1.18.0] (Backend) - 2026-07-10
 
 ### Added

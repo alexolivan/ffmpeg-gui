@@ -5,6 +5,8 @@ interface OverlayItem {
   type: 'text' | 'image';
   text?: string;
   path?: string;
+  storage_id?: number | null;
+  relative_path?: string;
   x: string;
   y: string;
   fontsize?: string;
@@ -63,6 +65,7 @@ interface FiltersFormSectionProps {
   // Codec constraint tracking
   videoCodecId?: string;
   audioCodecId?: string;
+  storages?: any[];
 }
 
 export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
@@ -85,6 +88,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   systemCapabilities = null,
   videoCodecId,
   audioCodecId,
+  storages = [],
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'video' | 'audio' | 'overlays'>(hasVideo ? 'video' : 'audio');
 
@@ -1106,16 +1110,32 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div>
-                      <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Image File Path</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. /home/user/watermark.png"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
-                        value={overlay.path || ''}
-                        onChange={e => updateOverlayItem(idx, { path: e.target.value })}
-                        disabled={isVideoCopy}
-                      />
+                    <div className="grid grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Media Storage</label>
+                        <select
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
+                          value={overlay.storage_id || ''}
+                          onChange={e => updateOverlayItem(idx, { storage_id: e.target.value ? Number(e.target.value) : null })}
+                          disabled={isVideoCopy}
+                        >
+                          <option value="">-- Select Storage --</option>
+                          {storages.filter((s: any) => s.type === 'media').map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Relative Path</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. images/watermark.png"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
+                          value={overlay.relative_path || ''}
+                          onChange={e => updateOverlayItem(idx, { relative_path: e.target.value })}
+                          disabled={isVideoCopy}
+                        />
+                      </div>
                     </div>
                   )}
 

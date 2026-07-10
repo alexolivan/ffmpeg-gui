@@ -24,6 +24,8 @@ export interface InputSourceConfig {
   hwaccel_output_format?: string;
   streamid?: string;
   frames_destination?: string;
+  storage_id?: number | null;
+  relative_path?: string;
 }
 
 interface InputSourcePanelProps {
@@ -37,6 +39,7 @@ interface InputSourcePanelProps {
   onSyncAlsaAudio?: (alsaDevice: string) => void;
   ffmpegBuildId?: number | null;
   idPrefix?: string;
+  storages?: any[];
 }
 
 const ALL_SOURCE_TYPES = [
@@ -79,6 +82,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   onSyncAlsaAudio,
   ffmpegBuildId,
   idPrefix = 'input',
+  storages = [],
 }) => {
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
@@ -388,17 +392,47 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       </select>
 
       {/* ── Type-specific fields ── */}
-      {(config.type === 'file' || config.type === 'http_audio' || config.type === 'rtmp' || config.type === 'hls') && (
+      {config.type === 'file' ? (
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label htmlFor={`${idPrefix}-storage`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Media Storage</label>
+            <select
+              id={`${idPrefix}-storage`}
+              name="storage_id"
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime"
+              value={config.storage_id || ''}
+              onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
+            >
+              <option value="">-- Select Storage --</option>
+              {storages.filter((s: any) => s.type === 'media').map((s: any) => (
+                <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor={`${idPrefix}-relative-path`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Relative Path</label>
+            <input
+              type="text"
+              id={`${idPrefix}-relative-path`}
+              name="relative_path"
+              placeholder="e.g. movies/clip.mp4"
+              className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime"
+              value={config.relative_path || ''}
+              onChange={e => update({ relative_path: e.target.value })}
+            />
+          </div>
+        </div>
+      ) : (config.type === 'http_audio' || config.type === 'rtmp' || config.type === 'hls') ? (
         <input
           type="text"
           id={`${idPrefix}-path`}
           name="path"
-          placeholder={config.type === 'file' ? "Absolute path to file" : "Stream URL (e.g. rtmp://... or http://...)"}
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+          placeholder="Stream URL (e.g. rtmp://... or http://...)"
+          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime"
           value={config.path || ''}
           onChange={e => update({ path: e.target.value })}
         />
-      )}
+      ) : null}
 
       {config.type === 'srt' && (
         <div className="space-y-2">

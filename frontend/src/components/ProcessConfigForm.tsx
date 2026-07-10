@@ -122,8 +122,14 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [systemCapabilities, setSystemCapabilities] = useState<SystemCapabilities | undefined>();
   const [existingConfigs, setExistingConfigs] = useState<any[]>([]);
+  const [storages, setStorages] = useState<any[]>([]);
 
   useEffect(() => {
+    fetch('/api/settings/storages')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setStorages(data))
+      .catch(() => {});
+
     Promise.all([
       fetch('/processes')
         .then(r => r.ok ? r.json() : [])
@@ -1206,6 +1212,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                 onSyncAlsaAudio={handleSyncAlsaAudio}
                 ffmpegBuildId={config.ffmpeg_build_id}
                 idPrefix="input1"
+                storages={storages}
               />
             </div>
 
@@ -1243,6 +1250,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                   systemCapabilities={systemCapabilities}
                   ffmpegBuildId={config.ffmpeg_build_id}
                   idPrefix="input2"
+                  storages={storages}
                 />
               </div>
             )}
@@ -1309,6 +1317,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             onChange={handleFiltersChange}
             videoCodecId={config.video_codec_id}
             audioCodecId={config.audio_codec_id}
+            storages={storages}
           />
         )}
 
@@ -1324,6 +1333,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                 systemCapabilities={systemCapabilities}
                 validationErrors={validationErrors}
                 validationWarnings={localValidationWarnings}
+                storages={storages}
               />
             </div>
           </div>
@@ -1405,14 +1415,24 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         </button>
         <button
           onClick={handleSubmit}
-          className="flex-1 py-2 bg-brand-lime text-black rounded-lg font-black hover:scale-[1.02] active:scale-[0.98] transition-all uppercase tracking-widest text-xs shadow-xl shadow-brand-lime/20"
+          disabled={config.output.type === 'hls' && config.output.hls_method === 'local' && storages.filter((s: any) => s.type === 'hls').length === 0}
+          className={`flex-1 py-2 rounded-lg font-black transition-all uppercase tracking-widest text-xs shadow-xl ${
+            config.output.type === 'hls' && config.output.hls_method === 'local' && storages.filter((s: any) => s.type === 'hls').length === 0
+              ? 'bg-neutral-800 text-neutral-550 cursor-not-allowed border border-neutral-700/50 shadow-none opacity-50'
+              : 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] shadow-brand-lime/20'
+          }`}
         >
           {initialConfig ? 'Save Changes' : (isTask ? 'Create Task' : 'Deploy Service')}
         </button>
         {initialConfig && onSaveAs && (
           <button
             onClick={handleSaveAs}
-            className="flex-1 py-2 bg-brand-orange/20 text-brand-orange border border-brand-orange/30 rounded-lg font-bold hover:bg-brand-orange/30 transition-all uppercase tracking-widest text-xs"
+            disabled={config.output.type === 'hls' && config.output.hls_method === 'local' && storages.filter((s: any) => s.type === 'hls').length === 0}
+            className={`flex-1 py-2 rounded-lg font-bold transition-all uppercase tracking-widest text-xs ${
+              config.output.type === 'hls' && config.output.hls_method === 'local' && storages.filter((s: any) => s.type === 'hls').length === 0
+                ? 'bg-neutral-800 text-neutral-550 cursor-not-allowed border border-neutral-700/50 opacity-50'
+                : 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 hover:bg-brand-orange/30'
+            }`}
           >
             Save as New
           </button>
