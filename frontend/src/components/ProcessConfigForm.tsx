@@ -125,7 +125,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   const [storages, setStorages] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('/api/settings/storages')
+    fetch('/settings/storages')
       .then(r => r.ok ? r.json() : [])
       .then(data => setStorages(data))
       .catch(() => {});

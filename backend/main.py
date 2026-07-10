@@ -2916,7 +2916,7 @@ def get_disk_stats(path: str) -> dict:
             "percent": 0.0
         }
 
-@app.get("/api/settings/storages")
+@app.get("/settings/storages")
 def get_storages(db: Session = Depends(get_db)):
     storages = db.query(Storage).all()
     results = []
@@ -2937,7 +2937,7 @@ def get_storages(db: Session = Depends(get_db)):
         })
     return results
 
-@app.post("/api/settings/storages")
+@app.post("/settings/storages")
 def create_storage(storage_in: StorageCreate, db: Session = Depends(get_db)):
     valid_types = {'build', 'media', 'hls', 'logs', 'sdk', 'preview'}
     if storage_in.type not in valid_types:
@@ -2969,7 +2969,7 @@ def create_storage(storage_in: StorageCreate, db: Session = Depends(get_db)):
     db.refresh(db_storage)
     return db_storage
 
-@app.put("/api/settings/storages/{id}")
+@app.put("/settings/storages/{id}")
 def update_storage(id: int, storage_in: StorageUpdate, db: Session = Depends(get_db)):
     db_storage = db.query(Storage).filter(Storage.id == id).first()
     if not db_storage:
@@ -3004,7 +3004,7 @@ def update_storage(id: int, storage_in: StorageUpdate, db: Session = Depends(get
     db.refresh(db_storage)
     return db_storage
 
-@app.delete("/api/settings/storages/{id}")
+@app.delete("/settings/storages/{id}")
 def delete_storage(id: int, db: Session = Depends(get_db)):
     db_storage = db.query(Storage).filter(Storage.id == id).first()
     if not db_storage:
@@ -3021,7 +3021,7 @@ def delete_storage(id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "deleted", "id": id}
 
-@app.post("/api/settings/storages/test")
+@app.post("/settings/storages/test")
 def test_storage_path(test_in: StorageTest, db: Session = Depends(get_db)):
     abs_path = os.path.abspath(test_in.path)
     

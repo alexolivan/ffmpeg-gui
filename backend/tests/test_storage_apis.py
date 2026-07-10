@@ -66,7 +66,7 @@ class TestStorageAPIs(unittest.TestCase):
 
     def test_get_storages(self):
         # Fetch default seeded storages
-        res = self.client.get("/api/settings/storages")
+        res = self.client.get("/settings/storages")
         self.assertEqual(res.status_code, 200)
         data = res.json()
         
@@ -99,7 +99,7 @@ class TestStorageAPIs(unittest.TestCase):
             "path": test_path,
             "type": "media"
         }
-        res = self.client.post("/api/settings/storages", json=payload)
+        res = self.client.post("/settings/storages", json=payload)
         self.assertEqual(res.status_code, 200)
         data = res.json()
         
@@ -111,8 +111,8 @@ class TestStorageAPIs(unittest.TestCase):
         # Verify the path was created
         self.assertTrue(os.path.exists(test_path))
         
-        # Verify it shows up in GET /api/settings/storages
-        res_get = self.client.get("/api/settings/storages")
+        # Verify it shows up in GET /settings/storages
+        res_get = self.client.get("/settings/storages")
         self.assertEqual(res_get.status_code, 200)
         storages = res_get.json()
         self.assertEqual(len(storages), 5)
@@ -126,7 +126,7 @@ class TestStorageAPIs(unittest.TestCase):
             "path": test_path,
             "type": "invalid_type"
         }
-        res = self.client.post("/api/settings/storages", json=payload)
+        res = self.client.post("/settings/storages", json=payload)
         # Should raise HTTP 422 (Pydantic validation if constrained, or HTTP 400 if validation is custom)
         # Our endpoint explicitly returns HTTP 400 for invalid types
         self.assertEqual(res.status_code, 400)
@@ -141,7 +141,7 @@ class TestStorageAPIs(unittest.TestCase):
             "path": invalid_path,
             "type": "logs"
         }
-        res = self.client.post("/api/settings/storages", json=payload)
+        res = self.client.post("/settings/storages", json=payload)
         self.assertEqual(res.status_code, 400)
 
     def test_create_storage_duplicate_type_and_path(self):
@@ -151,7 +151,7 @@ class TestStorageAPIs(unittest.TestCase):
             "path": test_path,
             "type": "build"
         }
-        res1 = self.client.post("/api/settings/storages", json=payload)
+        res1 = self.client.post("/settings/storages", json=payload)
         self.assertEqual(res1.status_code, 200)
         
         # Try to create another storage with the same type and path
@@ -160,7 +160,7 @@ class TestStorageAPIs(unittest.TestCase):
             "path": test_path,
             "type": "build"
         }
-        res2 = self.client.post("/api/settings/storages", json=payload_dup)
+        res2 = self.client.post("/settings/storages", json=payload_dup)
         self.assertEqual(res2.status_code, 400)
 
     def test_update_storage_success(self):
@@ -173,7 +173,7 @@ class TestStorageAPIs(unittest.TestCase):
             "path": test_path_1,
             "type": "sdk"
         }
-        res = self.client.post("/api/settings/storages", json=payload)
+        res = self.client.post("/settings/storages", json=payload)
         self.assertEqual(res.status_code, 200)
         storage_id = res.json()["id"]
         
@@ -182,7 +182,7 @@ class TestStorageAPIs(unittest.TestCase):
             "name": "Storage Updated",
             "path": test_path_2
         }
-        res_put = self.client.put(f"/api/settings/storages/{storage_id}", json=update_payload)
+        res_put = self.client.put(f"/settings/storages/{storage_id}", json=update_payload)
         self.assertEqual(res_put.status_code, 200)
         data = res_put.json()
         
@@ -192,14 +192,14 @@ class TestStorageAPIs(unittest.TestCase):
 
     def test_update_storage_default_restricted(self):
         # Fetch default storages to get a default id
-        res = self.client.get("/api/settings/storages")
+        res = self.client.get("/settings/storages")
         default_storage_id = res.json()[0]["id"]
         
         update_payload = {
             "name": "Trying to update default",
             "path": "/tmp/new_default_path"
         }
-        res_put = self.client.put(f"/api/settings/storages/{default_storage_id}", json=update_payload)
+        res_put = self.client.put(f"/settings/storages/{default_storage_id}", json=update_payload)
         self.assertEqual(res_put.status_code, 400)
         self.assertEqual(res_put.json()["detail"], "Cannot edit a default storage")
 
@@ -210,12 +210,12 @@ class TestStorageAPIs(unittest.TestCase):
             "path": test_path,
             "type": "hls"
         }
-        res = self.client.post("/api/settings/storages", json=payload)
+        res = self.client.post("/settings/storages", json=payload)
         self.assertEqual(res.status_code, 200)
         storage_id = res.json()["id"]
         
         # Delete
-        res_del = self.client.delete(f"/api/settings/storages/{storage_id}")
+        res_del = self.client.delete(f"/settings/storages/{storage_id}")
         self.assertEqual(res_del.status_code, 200)
         self.assertEqual(res_del.json()["status"], "deleted")
         
@@ -226,10 +226,10 @@ class TestStorageAPIs(unittest.TestCase):
 
     def test_delete_storage_default_restricted(self):
         # Fetch default storages to get a default id
-        res = self.client.get("/api/settings/storages")
+        res = self.client.get("/settings/storages")
         default_storage_id = res.json()[0]["id"]
         
-        res_del = self.client.delete(f"/api/settings/storages/{default_storage_id}")
+        res_del = self.client.delete(f"/settings/storages/{default_storage_id}")
         self.assertEqual(res_del.status_code, 400)
         self.assertEqual(res_del.json()["detail"], "Cannot delete default storages")
 
@@ -241,7 +241,7 @@ class TestStorageAPIs(unittest.TestCase):
             "path": test_path,
             "type": "build"
         }
-        res = self.client.post("/api/settings/storages", json=payload)
+        res = self.client.post("/settings/storages", json=payload)
         self.assertEqual(res.status_code, 200)
         storage_id = res.json()["id"]
         
@@ -260,7 +260,7 @@ class TestStorageAPIs(unittest.TestCase):
         self.db.commit()
         
         # Try to delete the storage
-        res_del = self.client.delete(f"/api/settings/storages/{storage_id}")
+        res_del = self.client.delete(f"/settings/storages/{storage_id}")
         self.assertEqual(res_del.status_code, 400)
         self.assertEqual(res_del.json()["detail"], "Cannot delete storage: it is currently in use by build profile(s).")
         
@@ -273,7 +273,7 @@ class TestStorageAPIs(unittest.TestCase):
         
         # Test valid path
         payload = {"path": test_path}
-        res = self.client.post("/api/settings/storages/test", json=payload)
+        res = self.client.post("/settings/storages/test", json=payload)
         self.assertEqual(res.status_code, 200)
         data = res.json()
         
@@ -290,19 +290,19 @@ class TestStorageAPIs(unittest.TestCase):
         # Test invalid path
         invalid_path = "/sys/kernel/restricted_nonexistent_directory_test_abc"
         payload_invalid = {"path": invalid_path}
-        res_invalid = self.client.post("/api/settings/storages/test", json=payload_invalid)
+        res_invalid = self.client.post("/settings/storages/test", json=payload_invalid)
         self.assertEqual(res_invalid.status_code, 400)
 
     def test_build_storage_creation_and_migration(self):
         # Create storage 1
         path1 = os.path.join(self.temp_dir, "build_storage_1")
-        res1 = self.client.post("/api/settings/storages", json={"name": "BS 1", "path": path1, "type": "build"})
+        res1 = self.client.post("/settings/storages", json={"name": "BS 1", "path": path1, "type": "build"})
         self.assertEqual(res1.status_code, 200)
         storage1_id = res1.json()["id"]
 
         # Create storage 2
         path2 = os.path.join(self.temp_dir, "build_storage_2")
-        res2 = self.client.post("/api/settings/storages", json={"name": "BS 2", "path": path2, "type": "build"})
+        res2 = self.client.post("/settings/storages", json={"name": "BS 2", "path": path2, "type": "build"})
         self.assertEqual(res2.status_code, 200)
         storage2_id = res2.json()["id"]
 

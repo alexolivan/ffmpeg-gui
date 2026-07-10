@@ -94,7 +94,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
 
   const fetchStorages = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/settings/storages`)
+      const res = await fetch(`${API_BASE}/settings/storages`)
       const data = await res.json()
       const buildStorages = data.filter((s: any) => s.type === 'build')
       setStorages(buildStorages)
