@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from typing import List, Optional
 from database.db import init_db, get_db, SessionLocal
-from database.models import FfmpegBuild, MediaProcess, ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog
+from database.models import FfmpegBuild, MediaProcess, ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
 from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
@@ -235,6 +235,18 @@ class SettingsUpdate(BaseModel):
 
 class LoginRequest(BaseModel):
     password: str
+
+class StorageCreate(BaseModel):
+    name: str
+    path: str
+    type: str  # 'build', 'media', 'hls', 'logs', 'sdk', 'preview'
+
+class StorageUpdate(BaseModel):
+    name: str
+    path: str
+
+class StorageTest(BaseModel):
+    path: str
 
 
 # ── System Settings & Auth ────────────────────────────────────────
@@ -2801,6 +2813,159 @@ def get_execution_logs(execution_id: int, db: Session = Depends(get_db)):
         } for l in logs
     ]
 
+# ── Storage Settings API ──────────────────────────────────────────
+
+def get_disk_stats(path: str) -> dict:
+    try:
+        abs_path = os.path.abspath(path)
+        usage = shutil.disk_usage(abs_path)
+        total = usage.total
+        used = usage.used
+        free = usage.free
+        percent = round((used / total) * 100, 2) if total > 0 else 0.0
+        return {
+            "total": total,
+            "used": used,
+            "free": free,
+            "percent": percent
+        }
+    except (FileNotFoundError, PermissionError, OSError):
+        return {
+            "total": 0,
+            "used": 0,
+            "free": 0,
+            "percent": 0.0
+        }
+
+@app.get("/api/settings/storages")
+def get_storages(db: Session = Depends(get_db)):
+    storages = db.query(Storage).all()
+    results = []
+    for s in storages:
+        stats = get_disk_stats(s.path)
+        results.append({
+            "id": s.id,
+            "name": s.name,
+            "path": s.path,
+            "type": s.type,
+            "is_default": s.is_default,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "total": stats["total"],
+            "used": stats["used"],
+            "free": stats["free"],
+            "percent": stats["percent"],
+            "stats": stats
+        })
+    return results
+
+@app.post("/api/settings/storages")
+def create_storage(storage_in: StorageCreate, db: Session = Depends(get_db)):
+    valid_types = {'build', 'media', 'hls', 'logs', 'sdk', 'preview'}
+    if storage_in.type not in valid_types:
+        raise HTTPException(status_code=400, detail="Invalid storage type. Must be one of build, media, hls, logs, sdk, preview.")
+        
+    abs_path = os.path.abspath(storage_in.path)
+    
+    if not os.path.exists(abs_path):
+        try:
+            os.makedirs(abs_path, exist_ok=True)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to create storage path: {str(e)}")
+            
+    if not os.access(abs_path, os.R_OK | os.W_OK):
+        raise HTTPException(status_code=400, detail="Storage path is not readable and writeable.")
+        
+    existing = db.query(Storage).filter(Storage.type == storage_in.type, Storage.path == abs_path).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="A storage with the same type and path already exists.")
+        
+    db_storage = Storage(
+        name=storage_in.name,
+        path=abs_path,
+        type=storage_in.type,
+        is_default=False
+    )
+    db.add(db_storage)
+    db.commit()
+    db.refresh(db_storage)
+    return db_storage
+
+@app.put("/api/settings/storages/{id}")
+def update_storage(id: int, storage_in: StorageUpdate, db: Session = Depends(get_db)):
+    db_storage = db.query(Storage).filter(Storage.id == id).first()
+    if not db_storage:
+        raise HTTPException(status_code=404, detail="Storage not found")
+        
+    if db_storage.is_default:
+        raise HTTPException(status_code=400, detail="Cannot edit a default storage")
+        
+    new_abs_path = os.path.abspath(storage_in.path)
+    if db_storage.path != new_abs_path:
+        if not os.path.exists(new_abs_path):
+            try:
+                os.makedirs(new_abs_path, exist_ok=True)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to create storage path: {str(e)}")
+                
+        if not os.access(new_abs_path, os.R_OK | os.W_OK):
+            raise HTTPException(status_code=400, detail="Storage path is not readable and writeable.")
+            
+        existing = db.query(Storage).filter(
+            Storage.type == db_storage.type,
+            Storage.path == new_abs_path,
+            Storage.id != id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="A storage with the same type and path already exists.")
+            
+        db_storage.path = new_abs_path
+        
+    db_storage.name = storage_in.name
+    db.commit()
+    db.refresh(db_storage)
+    return db_storage
+
+@app.delete("/api/settings/storages/{id}")
+def delete_storage(id: int, db: Session = Depends(get_db)):
+    db_storage = db.query(Storage).filter(Storage.id == id).first()
+    if not db_storage:
+        raise HTTPException(status_code=404, detail="Storage not found")
+        
+    if db_storage.is_default:
+        raise HTTPException(status_code=400, detail="Cannot delete default storages")
+        
+    in_use = db.query(FfmpegBuild).filter(FfmpegBuild.storage_id == id).first()
+    if in_use:
+        raise HTTPException(status_code=400, detail="Cannot delete storage: it is currently in use by build profile(s).")
+        
+    db.delete(db_storage)
+    db.commit()
+    return {"status": "deleted", "id": id}
+
+@app.post("/api/settings/storages/test")
+def test_storage_path(test_in: StorageTest, db: Session = Depends(get_db)):
+    abs_path = os.path.abspath(test_in.path)
+    
+    if not os.path.exists(abs_path):
+        try:
+            os.makedirs(abs_path, exist_ok=True)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to create storage path: {str(e)}")
+            
+    if not os.access(abs_path, os.R_OK | os.W_OK):
+        raise HTTPException(status_code=400, detail="Storage path is not readable and writeable.")
+        
+    stats = get_disk_stats(abs_path)
+    return {
+        "path": abs_path,
+        "valid": True,
+        "total": stats["total"],
+        "used": stats["used"],
+        "free": stats["free"],
+        "percent": stats["percent"],
+        "stats": stats
+    }
+
 # Mounting static files and SPA fallback
 FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", "../frontend/dist")
 os.makedirs(os.path.join(FRONTEND_DIST_DIR, "assets"), exist_ok=True)
@@ -2808,7 +2973,7 @@ app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST_DIR, "asse
 
 @app.get("/{catchall:path}")
 def serve_spa(catchall: str):
-    api_prefixes = ["ws", "settings", "login", "builds", "processes", "tasks", "sdks", "uploads", "system", "decklink"]
+    api_prefixes = ["api", "ws", "settings", "login", "builds", "processes", "tasks", "sdks", "uploads", "system", "decklink"]
     first_part = catchall.split("/")[0] if catchall else ""
     if first_part in api_prefixes:
         raise HTTPException(status_code=404, detail="Not Found")
