@@ -292,3 +292,75 @@ class TestStorageAPIs(unittest.TestCase):
         payload_invalid = {"path": invalid_path}
         res_invalid = self.client.post("/api/settings/storages/test", json=payload_invalid)
         self.assertEqual(res_invalid.status_code, 400)
+
+    def test_build_storage_creation_and_migration(self):
+        # Create storage 1
+        path1 = os.path.join(self.temp_dir, "build_storage_1")
+        res1 = self.client.post("/api/settings/storages", json={"name": "BS 1", "path": path1, "type": "build"})
+        self.assertEqual(res1.status_code, 200)
+        storage1_id = res1.json()["id"]
+
+        # Create storage 2
+        path2 = os.path.join(self.temp_dir, "build_storage_2")
+        res2 = self.client.post("/api/settings/storages", json={"name": "BS 2", "path": path2, "type": "build"})
+        self.assertEqual(res2.status_code, 200)
+        storage2_id = res2.json()["id"]
+
+        # Create a build profile with storage1_id
+        build_payload = {
+            "name": "Storage Test Build Profile",
+            "ffmpeg_version": "n8.1.1",
+            "srt_version": "v1.5.3",
+            "build_options": {"whip": True},
+            "sdk_paths": {},
+            "auto_clean": False,
+            "storage_id": storage1_id
+        }
+        res_build = self.client.post("/builds", json=build_payload)
+        self.assertEqual(res_build.status_code, 200)
+        build_id = res_build.json()["id"]
+        
+        # Verify the build database record has storage_id set and correct install path
+        from database.models import FfmpegBuild
+        db_build = self.db.query(FfmpegBuild).get(build_id)
+        self.assertEqual(db_build.storage_id, storage1_id)
+        self.assertTrue(db_build.install_path.startswith(os.path.abspath(path1)))
+
+        # Simulate compiling has finished and binaries exist at path1
+        # Create a dummy folder and files at path1/[build_id]/install/bin/ffmpeg
+        dummy_bin_dir = os.path.join(path1, str(build_id), "install", "bin")
+        os.makedirs(dummy_bin_dir, exist_ok=True)
+        ffmpeg_file = os.path.join(dummy_bin_dir, "ffmpeg")
+        ffprobe_file = os.path.join(dummy_bin_dir, "ffprobe")
+        with open(ffmpeg_file, "w") as f:
+            f.write("dummy ffmpeg")
+        with open(ffprobe_file, "w") as f:
+            f.write("dummy ffprobe")
+
+        # Update build's binary paths in db
+        db_build.ffmpeg_binary = ffmpeg_file
+        db_build.ffprobe_binary = ffprobe_file
+        self.db.commit()
+
+        # Update the build to use storage2_id
+        update_payload = {
+            "storage_id": storage2_id
+        }
+        res_update = self.client.put(f"/builds/{build_id}", json=update_payload)
+        self.assertEqual(res_update.status_code, 200)
+        
+        # Refresh from DB and verify update
+        self.db.refresh(db_build)
+        self.assertEqual(db_build.storage_id, storage2_id)
+        
+        # Check that physical directory has been moved from path1 to path2
+        old_dir = os.path.join(path1, str(build_id))
+        new_dir = os.path.join(path2, str(build_id))
+        self.assertFalse(os.path.exists(old_dir))
+        self.assertTrue(os.path.exists(new_dir))
+        
+        # Verify that database binary paths are updated to point to path2
+        self.assertTrue(db_build.ffmpeg_binary.startswith(os.path.abspath(path2)))
+        self.assertTrue(db_build.ffprobe_binary.startswith(os.path.abspath(path2)))
+        self.assertTrue(os.path.exists(db_build.ffmpeg_binary))
+        self.assertTrue(os.path.exists(db_build.ffprobe_binary))

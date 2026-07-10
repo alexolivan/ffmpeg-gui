@@ -139,6 +139,7 @@ class BuildCreate(BaseModel):
     build_options: dict
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = False
+    storage_id: Optional[int] = None
 
 class BuildUpdate(BaseModel):
     name: Optional[str] = None
@@ -147,6 +148,7 @@ class BuildUpdate(BaseModel):
     build_options: Optional[dict] = None
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = None
+    storage_id: Optional[int] = None
 
 class ProcessCreate(BaseModel):
     name: str
@@ -1539,7 +1541,10 @@ async def websocket_build(websocket: WebSocket, build_id: int):
     await websocket.accept()
     
     # Send existing logs from file if it exists
-    log_file_path = os.path.join(build_manager.get_build_path(build_id), "build.log")
+    with SessionLocal() as db_session:
+        build = db_session.query(FfmpegBuild).get(build_id)
+        storage_path = build.storage.path if build and build.storage else None
+    log_file_path = os.path.join(build_manager.get_build_path(build_id, builds_root=storage_path), "build.log")
     if os.path.exists(log_file_path):
         try:
             with open(log_file_path, "r", errors="replace") as f:
@@ -1759,6 +1764,11 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="A build with this name already exists")
 
+    if data.storage_id is not None:
+        storage = db.query(Storage).get(data.storage_id)
+        if not storage or storage.type != "build":
+            raise HTTPException(status_code=400, detail="Invalid storage selected for build")
+
     build = FfmpegBuild(
         name=data.name,
         ffmpeg_version=data.ffmpeg_version,
@@ -1768,13 +1778,15 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         auto_clean=data.auto_clean or False,
         install_path="",  # Will be set after we have the ID
         status="pending",
+        storage_id=data.storage_id,
     )
     db.add(build)
     db.commit()
     db.refresh(build)
 
     # Set install_path now that we have the ID
-    build.install_path = build_manager.get_install_path(build.id)
+    storage_path = build.storage.path if build.storage else None
+    build.install_path = build_manager.get_install_path(build.id, builds_root=storage_path)
     # If this is the first build, make it default
     other_builds = db.query(FfmpegBuild).filter(FfmpegBuild.id != build.id).count()
     if other_builds == 0:
@@ -1792,6 +1804,29 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Build profile not found")
     if build.status == "building":
         raise HTTPException(status_code=409, detail="Cannot modify a build in progress")
+
+    if data.storage_id is not None and data.storage_id != build.storage_id:
+        if build.status == "building":
+            raise HTTPException(status_code=409, detail="Cannot modify a build in progress")
+        new_storage = db.query(Storage).get(data.storage_id)
+        if not new_storage or new_storage.type != "build":
+            raise HTTPException(status_code=400, detail="Invalid storage selected for build")
+        old_storage_path = build.storage.path if build.storage else build_manager.builds_root
+        new_storage_path = new_storage.path
+        old_build_dir = os.path.join(old_storage_path, str(build_id))
+        new_build_dir = os.path.join(new_storage_path, str(build_id))
+        if os.path.exists(old_build_dir):
+            try:
+                os.makedirs(new_storage_path, exist_ok=True)
+                shutil.move(old_build_dir, new_build_dir)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to move build directory: {str(e)}")
+        build.storage_id = data.storage_id
+        build.install_path = build_manager.get_install_path(build_id, builds_root=new_storage_path)
+        if build.ffmpeg_binary:
+            build.ffmpeg_binary = os.path.join(build.install_path, "bin", "ffmpeg")
+        if build.ffprobe_binary:
+            build.ffprobe_binary = os.path.join(build.install_path, "bin", "ffprobe")
 
     if data.name is not None:
         # Check uniqueness
@@ -1836,7 +1871,8 @@ def delete_build(build_id: int, db: Session = Depends(get_db)):
         )
 
     # Remove from filesystem
-    build_manager.delete_build(build_id)
+    storage_path = build.storage.path if build.storage else None
+    build_manager.delete_build(build_id, builds_root=storage_path)
     # Remove from DB
     db.delete(build)
     db.commit()
@@ -1862,8 +1898,10 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
         build.sources_cleaned = False
     db.commit()
 
+    storage_path = build.storage.path if build.storage else None
+
     # Prepare log file path
-    build_path = build_manager.get_build_path(build_id)
+    build_path = build_manager.get_build_path(build_id, builds_root=storage_path)
     os.makedirs(build_path, exist_ok=True)
     log_file_path = os.path.join(build_path, "build.log")
 
@@ -1904,6 +1942,7 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                     sources_cleaned=clean or build.sources_cleaned,
                     log_callback=_log_callback,
                     auto_clean=build.auto_clean or False,
+                    builds_root=storage_path,
                 )
                 # Persist results to DB
                 with SessionLocal() as session:
@@ -1996,7 +2035,8 @@ def clean_build_sources(build_id: int, db: Session = Depends(get_db)):
     if build.status == "building":
         raise HTTPException(status_code=409, detail="Cannot clean during compilation")
 
-    result = build_manager.clean_sources(build_id)
+    storage_path = build.storage.path if build.storage else None
+    result = build_manager.clean_sources(build_id, builds_root=storage_path)
     if result.get("cleaned"):
         build.sources_cleaned = True
         build.disk_usage_mb = result.get("disk_usage_mb")
@@ -2320,6 +2360,7 @@ def export_build_recipe(build_id: int, db: Session = Depends(get_db)):
             "build_options": build.build_options,
             "sdk_paths": build.sdk_paths,
             "auto_clean": build.auto_clean,
+            "storage_id": build.storage_id,
         }
     }
 
@@ -2368,6 +2409,12 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
         name = f"{base_name}-Imported-{counter}"
         counter += 1
         
+    recipe_storage_id = recipe.get("storage_id")
+    if recipe_storage_id is not None:
+        storage = db.query(Storage).get(recipe_storage_id)
+        if not storage or storage.type != "build":
+            raise HTTPException(status_code=400, detail="Invalid storage selected for build")
+
     db_build = FfmpegBuild(
         name=name,
         ffmpeg_version=recipe.get("ffmpeg_version", "6.0"),
@@ -2377,12 +2424,14 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
         auto_clean=recipe.get("auto_clean", False),
         status="pending",
         install_path="",
+        storage_id=recipe_storage_id,
     )
     db.add(db_build)
     db.commit()
     db.refresh(db_build)
     
-    db_build.install_path = build_manager.get_install_path(db_build.id)
+    storage_path = db_build.storage.path if db_build.storage else None
+    db_build.install_path = build_manager.get_install_path(db_build.id, builds_root=storage_path)
     db.commit()
     db.refresh(db_build)
     
@@ -2439,6 +2488,7 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "ffmpeg_version_output": build.ffmpeg_version_output,
         "created_at": build.created_at.isoformat() if build.created_at else None,
         "built_at": build.built_at.isoformat() if build.built_at else None,
+        "storage_id": build.storage_id,
     }
 
 

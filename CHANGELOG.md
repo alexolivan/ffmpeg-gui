@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] (Frontend) / [1.18.0] (Backend) - 2026-07-10
+
+### Added
+- (Frontend) Added a dropdown selector "Build Storage" inside the build profile create/edit form in `BuildFormModal.tsx`.
+- (Frontend) Fetches the list of build-type storages from `/api/settings/storages` to populate the dropdown.
+- (Frontend) Sends the selected `storage_id` on create/edit requests.
+- (Backend) Updated path helpers `get_build_path`, `get_src_path`, `get_install_path`, and `get_disk_usage` in `BuildManager` to accept an optional `builds_root: str = None` argument.
+- (Backend) Updated `run_build`, `clean_sources`, and `delete_build` in `BuildManager` to accept `builds_root: str = None` and pass it to any internal path helper calls.
+- (Backend) Updated `BuildCreate` and `BuildUpdate` Pydantic schemas to accept `storage_id: Optional[int]`.
+- (Backend) Fetch and pass the storage path from the DB for the build profile: `storage_path = build.storage.path if build.storage else None` in compile, delete, and clean endpoints.
+- (Backend) In `PUT /builds/{build_id}`, physically migrate the build directory using `shutil.move()` when the `storage_id` is updated, updating the DB record and absolute paths of compiled binaries accordingly.
+- (Backend) Added integration test case `test_build_storage_creation_and_migration` in `backend/tests/test_storage_apis.py`.
+
 ## [1.17.0] (Frontend) / [1.17.0] (Backend) - 2026-07-10
 
 ### Added

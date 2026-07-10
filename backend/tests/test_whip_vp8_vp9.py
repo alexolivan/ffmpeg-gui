@@ -47,16 +47,14 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(db_build.build_options.get("whip"))
 
     @patch("subprocess.run")
-    @patch("main.build_manager.check_dependencies")
-    @patch("main.build_manager._run_logged_cmd", new_callable=AsyncMock)
-    async def test_build_manager_validation_and_flags(self, mock_run_cmd, mock_check_deps, mock_sub_run):
+    async def test_build_manager_validation_and_flags(self, mock_sub_run):
         # Mock subprocess.run for ffmpeg -version check
         mock_proc = MagicMock()
         mock_proc.stdout = "ffmpeg version 8.1.1"
         mock_sub_run.return_value = mock_proc
 
         # Mock dependency checker to report libssl and libvpx as installed
-        mock_check_deps.return_value = {
+        mock_check_deps_val = {
             "dependencies": {
                 "libssl": {"pkg": "openssl", "type": "required", "installed": True, "description": "OpenSSL"},
                 "libvpx": {"pkg": "vpx", "type": "optional", "installed": True, "description": "VP8/VP9"},
@@ -66,17 +64,18 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
 
         # 1. Validation test: FFmpeg version < 8.0 should fail validation if whip option is selected
         log_callback = AsyncMock()
-        res = await build_manager.run_build(
-            build_id=9999,
-            ffmpeg_version="n7.1.3",
-            srt_version=None,
-            options={"whip": True},
-            sdk_paths={},
-            sources_cleaned=False,
-            log_callback=log_callback
-        )
-        self.assertFalse(res["success"])
-        self.assertIn("requires FFmpeg 8.0 or newer", res["error"])
+        with patch.object(build_manager, "check_dependencies", return_value=mock_check_deps_val):
+            res = await build_manager.run_build(
+                build_id=9999,
+                ffmpeg_version="n7.1.3",
+                srt_version=None,
+                options={"whip": True},
+                sdk_paths={},
+                sources_cleaned=False,
+                log_callback=log_callback
+            )
+            self.assertFalse(res["success"])
+            self.assertIn("requires FFmpeg 8.0 or newer", res["error"])
 
         # 2. Validation test: FFmpeg version >= 8.0 should pass validation and configure with openssl & vpx
         with patch.object(build_manager, "get_src_path", return_value="/tmp/dummy_src"), \
@@ -84,7 +83,8 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
              patch("os.makedirs"), \
              patch("shutil.rmtree"), \
              patch("os.path.exists", return_value=True), \
-             patch.object(build_manager, "get_disk_usage", return_value=123):
+             patch.object(build_manager, "get_disk_usage", return_value=123), \
+             patch.object(build_manager, "check_dependencies", return_value=mock_check_deps_val):
              
              # Mock _run_logged_cmd to capture configure options
              configure_options = []
@@ -94,23 +94,22 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
                      configure_options = args
                  return MagicMock(returncode=0)
              
-             build_manager._run_logged_cmd = mock_cmd
-             
-             res = await build_manager.run_build(
-                 build_id=9999,
-                 ffmpeg_version="n8.1.1",
-                 srt_version=None,
-                 options={"whip": True},
-                 sdk_paths={},
-                 sources_cleaned=False,
-                 log_callback=log_callback
-             )
-             
-             # The mock compilation should finish successfully
-             self.assertTrue(res["success"])
-             self.assertIn("--enable-openssl", configure_options)
-             self.assertIn("--enable-libvpx", configure_options)
-             self.assertNotIn("--enable-libopus", configure_options)
+             with patch.object(build_manager, "_run_logged_cmd", new=mock_cmd):
+                 res = await build_manager.run_build(
+                     build_id=9999,
+                     ffmpeg_version="n8.1.1",
+                     srt_version=None,
+                     options={"whip": True},
+                     sdk_paths={},
+                     sources_cleaned=False,
+                     log_callback=log_callback
+                 )
+                 
+                 # The mock compilation should finish successfully
+                 self.assertTrue(res["success"])
+                 self.assertIn("--enable-openssl", configure_options)
+                 self.assertIn("--enable-libvpx", configure_options)
+                 self.assertNotIn("--enable-libopus", configure_options)
 
 if __name__ == "__main__":
     unittest.main()

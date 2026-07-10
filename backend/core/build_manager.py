@@ -30,14 +30,15 @@ class BuildManager:
 
     # ── Path helpers ──────────────────────────────────────────────
 
-    def get_build_path(self, build_id: int) -> str:
-        return os.path.join(self.builds_root, str(build_id))
+    def get_build_path(self, build_id: int, builds_root: str = None) -> str:
+        root = os.path.abspath(builds_root) if builds_root else self.builds_root
+        return os.path.join(root, str(build_id))
 
-    def get_src_path(self, build_id: int) -> str:
-        return os.path.join(self.get_build_path(build_id), "src")
+    def get_src_path(self, build_id: int, builds_root: str = None) -> str:
+        return os.path.join(self.get_build_path(build_id, builds_root), "src")
 
-    def get_install_path(self, build_id: int) -> str:
-        return os.path.join(self.get_build_path(build_id), "install")
+    def get_install_path(self, build_id: int, builds_root: str = None) -> str:
+        return os.path.join(self.get_build_path(build_id, builds_root), "install")
 
     # ── System dependency pre-flight ──────────────────────────────
 
@@ -208,9 +209,9 @@ class BuildManager:
             "path": self.builds_root,
         }
 
-    def get_disk_usage(self, build_id: int) -> int:
+    def get_disk_usage(self, build_id: int, builds_root: str = None) -> int:
         """Calculate disk usage in MB for a specific build."""
-        build_path = self.get_build_path(build_id)
+        build_path = self.get_build_path(build_id, builds_root)
         if not os.path.exists(build_path):
             return 0
 
@@ -227,7 +228,7 @@ class BuildManager:
     async def run_build(self, build_id: int, ffmpeg_version: str,
                         srt_version: str | None, options: dict,
                         sdk_paths: dict | None, sources_cleaned: bool,
-                        log_callback, auto_clean: bool = False) -> dict:
+                        log_callback, auto_clean: bool = False, builds_root: str = None) -> dict:
         """Execute the full build pipeline for a profile.
 
         Returns a dict with build results (binary paths, version output, etc.)
@@ -253,8 +254,8 @@ class BuildManager:
         result = {"success": False}
 
         try:
-            src_path = self.get_src_path(build_id)
-            install_path = self.get_install_path(build_id)
+            src_path = self.get_src_path(build_id, builds_root)
+            install_path = self.get_install_path(build_id, builds_root)
             os.makedirs(src_path, exist_ok=True)
             os.makedirs(install_path, exist_ok=True)
 
@@ -607,7 +608,7 @@ class BuildManager:
             if auto_clean and os.path.exists(src_path):
                 await log_callback("\n━━━ AUTO-CLEAN ENABLED ━━━\n")
                 await log_callback("Cleaning temporary build sources to save space...\n")
-                self.clean_sources(build_id)
+                self.clean_sources(build_id, builds_root)
                 await log_callback("Sources cleaned successfully.\n")
 
             result = {
@@ -615,7 +616,7 @@ class BuildManager:
                 "ffmpeg_binary": ffmpeg_bin if os.path.isfile(ffmpeg_bin) else None,
                 "ffprobe_binary": ffprobe_bin if os.path.isfile(ffprobe_bin) else None,
                 "version_output": version_output,
-                "disk_usage_mb": self.get_disk_usage(build_id),
+                "disk_usage_mb": self.get_disk_usage(build_id, builds_root),
                 "sdk_paths": sdk_paths,
             }
 
@@ -644,21 +645,21 @@ class BuildManager:
 
     # ── Source cleanup ────────────────────────────────────────────
 
-    def clean_sources(self, build_id: int) -> dict:
+    def clean_sources(self, build_id: int, builds_root: str = None) -> dict:
         """Remove source directories, keeping only compiled binaries+libs."""
-        src_path = self.get_src_path(build_id)
+        src_path = self.get_src_path(build_id, builds_root)
         if not os.path.exists(src_path):
             return {"cleaned": False, "reason": "Sources already removed"}
 
         shutil.rmtree(src_path)
-        disk_usage = self.get_disk_usage(build_id)
+        disk_usage = self.get_disk_usage(build_id, builds_root)
         return {"cleaned": True, "disk_usage_mb": disk_usage}
 
     # ── Build deletion ────────────────────────────────────────────
 
-    def delete_build(self, build_id: int) -> bool:
+    def delete_build(self, build_id: int, builds_root: str = None) -> bool:
         """Remove the entire build directory from disk."""
-        build_path = self.get_build_path(build_id)
+        build_path = self.get_build_path(build_id, builds_root)
         if os.path.exists(build_path):
             shutil.rmtree(build_path)
             return True

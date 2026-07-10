@@ -15,6 +15,7 @@ export interface BuildFormData {
   build_options: Record<string, boolean>
   sdk_paths: Record<string, string>
   auto_clean: boolean
+  storage_id: number | null
 }
 
 const API_BASE = '';
@@ -25,6 +26,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || '')
   const [autoClean, setAutoClean] = useState(editBuild?.auto_clean || false)
   const [activeTab, setActiveTab] = useState<'general' | 'gpu' | 'sdks'>('general')
+  const [storages, setStorages] = useState<{ id: number; name: string; path: string; type: string }[]>([])
+  const [storageId, setStorageId] = useState<number | null>(editBuild?.storage_id || null)
 
   const [options, setOptions] = useState(editBuild?.build_options || { 
     libsrt: true, 
@@ -89,6 +92,17 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     }
   }
 
+  const fetchStorages = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/settings/storages`)
+      const data = await res.json()
+      const buildStorages = data.filter((s: any) => s.type === 'build')
+      setStorages(buildStorages)
+    } catch (err) {
+      console.error('Failed to fetch build storages:', err)
+    }
+  }
+
   // Fetch Tags and SDKs
   const fetchSdks = async (sdkType: 'decklink' | 'ndi') => {
     try {
@@ -148,6 +162,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     fetchSdks('decklink')
     fetchSdks('ndi')
     fetchPatches()
+    fetchStorages()
   }, [])
 
   // File Upload logic using raw XMLHttpRequest for progress tracking
@@ -265,6 +280,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
       build_options: options,
       sdk_paths: finalSdkPaths,
       auto_clean: autoClean,
+      storage_id: storageId,
     })
     setIsSubmitting(false)
   }
@@ -356,6 +372,23 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Build Storage Selector */}
+              <div>
+                <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">Build Storage</label>
+                <select
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none"
+                  value={storageId || ''}
+                  onChange={e => setStorageId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="" className="text-black">Default (Default Build Storage)</option>
+                  {storages.map(s => (
+                    <option key={s.id} value={s.id} className="text-black">
+                      {s.name} ({s.path})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Auto Clean Option */}

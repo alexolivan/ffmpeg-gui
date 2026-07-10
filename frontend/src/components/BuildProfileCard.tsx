@@ -15,6 +15,7 @@ interface BuildProfile {
   ffmpeg_version_output: string | null
   created_at: string | null
   built_at: string | null
+  storage_id: number | null
 }
 
 interface BuildProfileCardProps {
