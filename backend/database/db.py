@@ -51,6 +51,8 @@ def init_db():
             build_columns = [row[1] for row in result.fetchall()]
             if "auto_clean" not in build_columns:
                 conn.execute(text("ALTER TABLE ffmpeg_builds ADD COLUMN auto_clean BOOLEAN DEFAULT 0"))
+            if "storage_id" not in build_columns:
+                conn.execute(text("ALTER TABLE ffmpeg_builds ADD COLUMN storage_id INTEGER REFERENCES storages(id) NULL"))
                 
             # Migración para la tabla system_settings
             result = conn.execute(text("PRAGMA table_info(system_settings)"))

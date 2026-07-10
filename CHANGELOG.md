@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] (Frontend) / [1.15.0] (Backend) - 2026-07-10
+
+### Added
+- (Backend) Defined `Storage` database model to represent storage configurations ('build', 'media', 'hls', 'logs', 'sdk', 'preview').
+- (Backend) Added a `storage_id` foreign key relation in `FfmpegBuild` model.
+- (Backend) Implemented database migration inside `init_db()` to automatically create `storages` table and add `storage_id` column to `ffmpeg_builds` if missing.
+- (Backend) Bumped database schema version to `1.2.0`.
+
 ## [1.16.0] (Frontend) / [1.14.0] (Backend) - 2026-07-09
 
 ### Added

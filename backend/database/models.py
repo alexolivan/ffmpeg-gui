@@ -56,6 +56,9 @@ class FfmpegBuild(Base):
     # Reverse relationship to processes using this build
     processes = relationship("MediaProcess", back_populates="ffmpeg_build")
 
+    storage_id = Column(Integer, ForeignKey('storages.id'), nullable=True)
+    storage = relationship("Storage", back_populates="builds")
+
 
 class MediaProcess(Base):
     __tablename__ = 'media_processes'
@@ -228,4 +231,17 @@ class TaskExecutionLog(Base):
     message = Column(String)
 
     execution = relationship("TaskExecution", back_populates="logs")
+
+
+class Storage(Base):
+    __tablename__ = 'storages'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    path = Column(String, nullable=False)
+    type = Column(String, nullable=False)  # 'build', 'media', 'hls', 'logs', 'sdk', 'preview'
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    builds = relationship("FfmpegBuild", back_populates="storage")
 
