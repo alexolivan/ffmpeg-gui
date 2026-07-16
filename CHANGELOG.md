@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] (Backend) - 2026-07-16
+
+### Added
+- (Backend) Rewrote `_watchdog` to monitor `/dev/shm` (or `/tmp` fallback) progress files.
+- (Backend) Parsed `frame`, `fps`, `bitrate`, `speed`, and `out_time_us` from the progress log, updating real-time process statistics in the database.
+- (Backend) Implemented freeze/stall detection in the watchdog loop to force-kill frozen service pipelines if metrics do not change for 15 seconds.
+- (Backend) Added support for re-attaching the watchdog to already-running processes upon panel restart, avoiding killing functional streams.
+- (Backend) Added unit tests for watchdog stall detection/killing and startup process re-attachment.
+
 ## [1.21.0] (Backend) - 2026-07-16
 
 ### Added

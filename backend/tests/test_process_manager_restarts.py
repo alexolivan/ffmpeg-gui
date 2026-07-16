@@ -165,7 +165,7 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
             self.db.commit()
 
     @patch("asyncio.create_subprocess_exec")
-    async def test_srt_listener_watchdog_resilience(self, mock_exec):
+    async def test_watchdog_progress_stall_kill(self, mock_exec):
         class StubProcess:
             def __init__(self):
                 self.pid = 12345
@@ -187,12 +187,12 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
 
         stub_proc = StubProcess()
 
-        # Create a test media process in DB configured as SRT listener
+        # Create a test media process in DB configured as service
         media_proc = MediaProcess(
-            name="SRT Listener Process",
+            name="Watchdog Stall Service",
             type="service",
-            input_config={"type": "srt", "mode": "listener", "host": "127.0.0.1", "port": "9999"},
-            output_config={"type": "file", "path": "/tmp/test_srt_out.mp4"},
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/test_watchdog_stall.mp4"},
             codec_config={"vcodec": "libx264"},
             status="running",
             watchdog_enabled=True,
@@ -205,7 +205,24 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
         self.db.refresh(media_proc)
 
         self.manager.processes[media_proc.id] = stub_proc
-        self.manager.restart_counts[media_proc.id] = 2
+
+        import os
+        shm_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}.log"
+        tmp_path = f"/tmp/ffmpeg_progress_{media_proc.id}.log"
+        if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK):
+            progress_path = shm_path
+        else:
+            progress_path = tmp_path
+
+        # Helper to write progress log file
+        def write_progress(frame, fps, bitrate, speed, out_time_us):
+            content = f"frame={frame}\nfps={fps}\nbitrate={bitrate}\nspeed={speed}\nout_time_us={out_time_us}\nprogress=continue\n"
+            with open(progress_path, "w") as f:
+                f.write(content)
+
+        # Start by cleanup in case file exists
+        if os.path.exists(progress_path):
+            os.remove(progress_path)
 
         try:
             with patch("psutil.Process") as mock_psutil:
@@ -219,43 +236,26 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
                     nonlocal sleep_count
                     sleep_count += 1
                     if sleep_count == 1:
-                        # Initially, no traffic, flag should be False
-                        self.assertFalse(self.manager.srt_has_had_activity.get(media_proc.id))
-                        # Simulate traffic starts
-                        db_sess = SessionLocal()
-                        mp = db_sess.query(MediaProcess).get(media_proc.id)
-                        mp.bitrate = "1200.0kbits/s"
-                        mp.fps = "25.0"
-                        db_sess.commit()
-                        db_sess.close()
+                        # Write initial activity
+                        write_progress(frame=100, fps="25.0", bitrate="1500kbits/s", speed="1.0x", out_time_us=4000000)
                     elif sleep_count == 2:
-                        # Traffic was detected, srt_has_had_activity should be True, restart_counts should reset to 0
-                        self.assertTrue(self.manager.srt_has_had_activity.get(media_proc.id))
-                        self.assertEqual(self.manager.restart_counts.get(media_proc.id), 0)
-                        # Simulate traffic stops (client disconnected)
-                        db_sess = SessionLocal()
-                        mp = db_sess.query(MediaProcess).get(media_proc.id)
-                        mp.bitrate = "0.0kbits/s"
-                        mp.fps = "0"
-                        db_sess.commit()
-                        db_sess.close()
+                        # Write same activity (stall begins)
+                        write_progress(frame=100, fps="25.0", bitrate="1500kbits/s", speed="1.0x", out_time_us=4000000)
                     elif sleep_count >= 3:
-                        # Let loop continue, mock_utcnow will return timedelta > 30s to trigger check
+                        # Continue sleep and let the loop run
                         pass
 
                 from datetime import timedelta
+                now = datetime.utcnow()
                 time_points = [
-                    datetime.utcnow(),
-                    datetime.utcnow(),
-                    datetime.utcnow(),
-                    # Loop 1
-                    datetime.utcnow(),
-                    # Loop 2
-                    datetime.utcnow(),
-                    # Loop 3 (simulate 35 seconds later)
-                    datetime.utcnow() + timedelta(seconds=35),
-                    # Loop 4 (simulate 70 seconds later)
-                    datetime.utcnow() + timedelta(seconds=70),
+                    now,                        # Setup/init
+                    now,                        # Loop 1 check running
+                    now,                        # Loop 1 update DB & check stall
+                    now + timedelta(seconds=2), # Loop 2 check running
+                    now + timedelta(seconds=2), # Loop 2 update DB & check stall
+                    now + timedelta(seconds=4), # Loop 3 check running
+                    now + timedelta(seconds=25),# Loop 3 update DB & check stall (elapsed > 15s)
+                    now + timedelta(seconds=27),# Loop 4 check running
                 ]
                 time_iter = iter(time_points)
                 def mock_utcnow():
@@ -269,11 +269,19 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
                     mock_dt.fromisoformat = datetime.fromisoformat
                     
                     await self.manager._watchdog(media_proc.id, stub_proc)
-                
-                # Check if stub_proc.kill() was called (which means watchdog successfully killed it due to disconnection)
+
+                # Check if stub_proc.kill() was called due to stall
                 self.assertTrue(stub_proc.kill_called)
 
+                # Refresh and verify stats in DB
+                self.db.refresh(media_proc)
+                self.assertEqual(media_proc.fps, "0")
+                self.assertEqual(media_proc.bitrate, "0 kb/s")
+                self.assertEqual(media_proc.speed, "0x")
+
         finally:
+            if os.path.exists(progress_path):
+                os.remove(progress_path)
             self.db.delete(media_proc)
             self.db.commit()
 

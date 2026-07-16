@@ -1458,11 +1458,7 @@ def sanitize_database_processes(db: Session):
 @app.on_event("startup")
 async def startup_event():
     logger.info("Startup: Checking and cleaning up stale build profiles, processes and tasks...")
-    try:
-        cleanup_rogue_processes()
-    except Exception as e:
-        logger.error(f"Failed to clean up rogue processes on startup: {e}")
-
+    active_pids = set()
     try:
         with SessionLocal() as db:
             # Clean up stale DB configurations on startup
@@ -1477,16 +1473,21 @@ async def startup_event():
                 build.build_log_summary = "Build aborted (server restarted)"
                 logger.info(f"Cleaned up stale build profile ID {build.id} on startup.")
             
-            stale_processes = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
-            for p in stale_processes:
-                p.status = "stopped"
-                p.pid = None
-                p.cpu_usage = 0
-                p.ram_usage = 0
-                p.fps = "0"
-                p.bitrate = "0 kb/s"
-                p.speed = "0x"
-                logger.info(f"Cleaned up stale running process '{p.name}' (ID: {p.id}) on startup.")
+            running_processes = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
+            for p in running_processes:
+                if p.pid and psutil.pid_exists(p.pid):
+                    logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is alive with PID {p.pid}. Re-attaching watchdog.")
+                    process_manager.reattach_process(p.id, p.pid)
+                    active_pids.add(p.pid)
+                else:
+                    logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is NOT alive in OS. Cleaning up.")
+                    p.status = "stopped"
+                    p.pid = None
+                    p.cpu_usage = 0
+                    p.ram_usage = 0
+                    p.fps = "0"
+                    p.bitrate = "0 kb/s"
+                    p.speed = "0x"
             
             stale_executions = db.query(TaskExecution).filter(TaskExecution.status == "running").all()
             for ex in stale_executions:
@@ -1500,6 +1501,11 @@ async def startup_event():
             db.commit()
     except Exception as e:
         logger.error(f"Failed to clean up stale builds/processes/tasks on startup: {e}")
+
+    try:
+        cleanup_rogue_processes(active_pids=active_pids)
+    except Exception as e:
+        logger.error(f"Failed to clean up rogue processes on startup: {e}")
 
     # Start LCD Manager if enabled
     global lcd_manager
