@@ -162,6 +162,9 @@ class ProcessCreate(BaseModel):
     watchdog_enabled: Optional[bool] = False
     watchdog_retries: Optional[int] = 5
     alias: Optional[str] = None
+    network_timeout: Optional[int] = 15
+    debug_mode: Optional[bool] = False
+    log_storage_id: Optional[int] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -188,6 +191,9 @@ class ProcessUpdate(BaseModel):
     watchdog_enabled: Optional[bool] = None
     watchdog_retries: Optional[int] = None
     alias: Optional[str] = None
+    network_timeout: Optional[int] = None
+    debug_mode: Optional[bool] = None
+    log_storage_id: Optional[int] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -2131,6 +2137,9 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         watchdog_enabled=proc_in.watchdog_enabled,
         watchdog_retries=proc_in.watchdog_retries,
         alias=proc_in.alias,
+        network_timeout=proc_in.network_timeout if proc_in.network_timeout is not None else 15,
+        debug_mode=proc_in.debug_mode if proc_in.debug_mode is not None else False,
+        log_storage_id=proc_in.log_storage_id,
     )
     db.add(db_proc)
     db.commit()
@@ -2152,6 +2161,9 @@ def preview_command(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         codec_config=proc_in.codec_config,
         filter_config=filter_cfg if proc_in.filter_config is not None else None,
         ffmpeg_build_id=proc_in.ffmpeg_build_id,
+        network_timeout=proc_in.network_timeout if proc_in.network_timeout is not None else 15,
+        debug_mode=proc_in.debug_mode if proc_in.debug_mode is not None else False,
+        log_storage_id=proc_in.log_storage_id,
     )
     ffmpeg_bin = process_manager.ffmpeg_path
     if db_proc.ffmpeg_build_id:
@@ -2195,6 +2207,9 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.watchdog_enabled is not None: db_proc.watchdog_enabled = proc_in.watchdog_enabled
     if proc_in.watchdog_retries is not None: db_proc.watchdog_retries = proc_in.watchdog_retries
     if proc_in.alias is not None: db_proc.alias = proc_in.alias
+    if proc_in.network_timeout is not None: db_proc.network_timeout = proc_in.network_timeout
+    if proc_in.debug_mode is not None: db_proc.debug_mode = proc_in.debug_mode
+    if proc_in.log_storage_id is not None: db_proc.log_storage_id = proc_in.log_storage_id
 
     db.commit()
     db.refresh(db_proc)

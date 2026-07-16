@@ -94,6 +94,9 @@ interface ProcessConfig {
   duration_end_time: string;
   retry_max: number;
   retry_delay: number;
+  network_timeout: number | null;
+  debug_mode: boolean;
+  log_storage_id: number | null;
 }
 
 interface ProcessConfigFormProps {
@@ -424,7 +427,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         duration_seconds: initialConfig.duration_seconds ?? 60,
         duration_end_time: initialConfig.duration_end_time ? initialConfig.duration_end_time.substring(0, 16) : '',
         retry_max: initialConfig.retry_policy?.max_retries ?? 3,
-        retry_delay: initialConfig.retry_policy?.retry_delay ?? 10
+        retry_delay: initialConfig.retry_policy?.retry_delay ?? 10,
+        network_timeout: initialConfig.network_timeout ?? 15,
+        debug_mode: !!initialConfig.debug_mode,
+        log_storage_id: initialConfig.log_storage_id ?? null
       };
     }
     return {
@@ -466,7 +472,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       duration_seconds: 60,
       duration_end_time: '',
       retry_max: 3,
-      retry_delay: 10
+      retry_delay: 10,
+      network_timeout: 15,
+      debug_mode: false,
+      log_storage_id: null
     };
   };
 
@@ -562,6 +571,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       name: config.name,
       alias: config.alias ? config.alias.trim() : null,
       ffmpeg_build_id: config.ffmpeg_build_id,
+      network_timeout: Number(config.network_timeout) || 15,
+      debug_mode: config.debug_mode,
+      log_storage_id: config.log_storage_id,
       input_config: {
         has_video: config.has_video,
         has_audio: config.has_audio,
@@ -1254,6 +1266,48 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                 />
               </div>
             )}
+
+            {/* Network Input Timeout Control */}
+            {['rtmp', 'rtsp', 'hls', 'udp', 'rtp', 'http_audio'].includes(config.input1.type) && (
+              <div className="glass-card p-4 !rounded-2xl space-y-2 border border-white/5 bg-white/2 animate-in fade-in duration-300">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Ajustes de Red de Entrada</h4>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="proc-network-timeout" className="text-xs font-semibold text-white">
+                    Timeout de Red (segundos)
+                  </label>
+                  <span className="text-[10px] text-text-secondary">
+                    Tiempo de espera máximo antes de declarar pérdida de señal. Se aplica a las peticiones de red del stream.
+                  </span>
+                  <input
+                    type="number"
+                    id="proc-network-timeout"
+                    name="network_timeout"
+                    placeholder="15"
+                    className={`bg-white/5 border rounded-lg px-2.5 py-1.5 text-xs outline-none w-36 focus:border-brand-lime text-white mt-1 ${
+                      (config.network_timeout === undefined || config.network_timeout === null || String(config.network_timeout).trim() === '')
+                        ? 'border-amber-500/50 bg-amber-500/5 focus:border-amber-500'
+                        : 'border-white/10'
+                    }`}
+                    value={config.network_timeout !== undefined && config.network_timeout !== null ? config.network_timeout : ''}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setConfig(prev => ({
+                        ...prev,
+                        network_timeout: v === '' ? null : Math.max(1, parseInt(v) || 1)
+                      }));
+                    }}
+                  />
+                  {(config.network_timeout === undefined || config.network_timeout === null || String(config.network_timeout).trim() === '') && (
+                    <span className="text-[10px] text-amber-400 block mt-1">
+                      ⚠️ El campo de timeout está vacío. Se aplicará el valor balanceado por defecto (15 segundos) al iniciar el stream.
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1380,6 +1434,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                   auto_start={config.auto_start}
                   watchdog_enabled={config.watchdog_enabled}
                   watchdog_retries={config.watchdog_retries}
+                  debug_mode={config.debug_mode}
+                  log_storage_id={config.log_storage_id}
+                  logsStorages={storages.filter((s: any) => s.type === 'logs')}
                   onChange={handleLifecycleOrSchedulingChange}
                 />
               )}

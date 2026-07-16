@@ -4,10 +4,15 @@ interface LifecycleFormSectionProps {
   auto_start: boolean;
   watchdog_enabled: boolean;
   watchdog_retries: number;
+  debug_mode: boolean;
+  log_storage_id: number | null;
+  logsStorages: any[];
   onChange: (updates: {
     auto_start?: boolean;
     watchdog_enabled?: boolean;
     watchdog_retries?: number;
+    debug_mode?: boolean;
+    log_storage_id?: number | null;
   }) => void;
 }
 
@@ -15,6 +20,9 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
   auto_start,
   watchdog_enabled,
   watchdog_retries,
+  debug_mode,
+  log_storage_id,
+  logsStorages,
   onChange,
 }) => {
   return (
@@ -98,6 +106,43 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
           )}
         </div>
       )}
+
+      {/* Debug Mode Toggle */}
+      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-semibold text-white">Modo Debug (Consola en Vivo)</span>
+          <span className="text-[10px] text-text-secondary">Habilita lectura interactiva de logs. Sensible a reinicios del panel.</span>
+        </div>
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={debug_mode}
+            onChange={e => onChange({ debug_mode: e.target.checked })}
+            className="sr-only peer"
+          />
+          <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
+        </label>
+      </div>
+
+      {/* Logs Storage Dropdown */}
+      <div className="p-2 bg-white/5 rounded-lg border border-white/5 space-y-1.5">
+        <label htmlFor="log-storage-select" className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block">
+          Almacenamiento de Logs
+        </label>
+        <select
+          id="log-storage-select"
+          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime text-white"
+          value={log_storage_id || ''}
+          onChange={e => onChange({ log_storage_id: e.target.value ? parseInt(e.target.value) : null })}
+        >
+          <option value="" className="bg-[#1e1e24] text-white">Default (Usa Default Logs Storage)</option>
+          {logsStorages.map((s: any) => (
+            <option key={s.id} value={s.id} className="bg-[#1e1e24] text-white">
+              {s.name} ({s.path}) {s.is_default ? '[Predeterminado]' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 };

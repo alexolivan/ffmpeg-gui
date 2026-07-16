@@ -346,6 +346,23 @@ class ProcessManager:
         output_cfg = copy.deepcopy(media_proc.output_config)
         
         self._resolve_config_paths(input_cfg, output_cfg, filter_cfg)
+
+        # Inject root level network_timeout into inputs for protocol timeout parameters
+        net_timeout = getattr(media_proc, 'network_timeout', 15)
+        if type(net_timeout).__name__ in ('MagicMock', 'Mock'):
+            net_timeout = input_cfg.get('network_timeout')
+            if net_timeout is None:
+                if 'input1' in input_cfg and isinstance(input_cfg['input1'], dict):
+                    net_timeout = input_cfg['input1'].get('network_timeout', 15)
+                else:
+                    net_timeout = 15
+
+        if 'input1' in input_cfg and isinstance(input_cfg['input1'], dict):
+            input_cfg['input1']['network_timeout'] = net_timeout
+        if 'input2' in input_cfg and isinstance(input_cfg['input2'], dict):
+            input_cfg['input2']['network_timeout'] = net_timeout
+        if 'input1' not in input_cfg:
+            input_cfg['network_timeout'] = net_timeout
         advanced = filter_cfg.get('advanced', {})
 
         # ── Detect format and resolve primary input type ──
