@@ -300,6 +300,9 @@ function App() {
                       auto_start: config.auto_start,
                       watchdog_enabled: config.watchdog_enabled,
                       watchdog_retries: config.watchdog_retries,
+                      network_timeout: config.network_timeout,
+                      debug_mode: config.debug_mode,
+                      log_storage_id: config.log_storage_id,
                     })
                   });
                   if (res.ok) {
@@ -341,6 +344,9 @@ function App() {
                       auto_start: config.auto_start,
                       watchdog_enabled: config.watchdog_enabled,
                       watchdog_retries: config.watchdog_retries,
+                      network_timeout: config.network_timeout,
+                      debug_mode: config.debug_mode,
+                      log_storage_id: config.log_storage_id,
                     })
                   });
                   if (res.ok) {
