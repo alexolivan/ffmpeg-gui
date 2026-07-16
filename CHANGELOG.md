@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] (Backend) / [1.3.0] (Database Schema) - 2026-07-16
+
+### Added
+- (Backend) Added `network_timeout`, `debug_mode`, and `log_storage_id` columns to the `MediaProcess` database model.
+- (Backend) Added self-migration rules for the new columns in the `media_processes` table.
+- (Backend) Registered and seeded `"Default Logs Storage"` to the default storages.
+
 ## [1.19.0] (Frontend) / [1.19.0] (Backend) - 2026-07-10
 
 ### Added

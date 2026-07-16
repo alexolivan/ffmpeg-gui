@@ -42,8 +42,8 @@ class TestStorageSeeding(unittest.TestCase):
         try:
             storages = db.query(Storage).all()
             
-            # Assert exactly 4 default storage records
-            self.assertEqual(len(storages), 4)
+            # Assert exactly 5 default storage records
+            self.assertEqual(len(storages), 5)
             
             # Prepare expected storages data mapping
             expected = {
@@ -66,6 +66,11 @@ class TestStorageSeeding(unittest.TestCase):
                     "path": os.path.abspath("/tmp/ffmpeg-gui-previews"),
                     "type": "preview",
                     "is_default": True
+                },
+                "Default Logs Storage": {
+                    "path": os.path.abspath("data/logs"),
+                    "type": "logs",
+                    "is_default": True
                 }
             }
             
@@ -85,10 +90,10 @@ class TestStorageSeeding(unittest.TestCase):
         # 1. First run init_db to seed the database
         self.db_module.init_db()
         
-        # 2. Verify we have 4 storages
+        # 2. Verify we have 5 storages
         db = self.db_module.SessionLocal()
         try:
-            self.assertEqual(db.query(Storage).count(), 4)
+            self.assertEqual(db.query(Storage).count(), 5)
             
             # 3. Add a custom storage record
             custom_storage = Storage(
@@ -100,12 +105,12 @@ class TestStorageSeeding(unittest.TestCase):
             db.add(custom_storage)
             db.commit()
             
-            self.assertEqual(db.query(Storage).count(), 5)
+            self.assertEqual(db.query(Storage).count(), 6)
             
             # 4. Run init_db again, it should NOT add any duplicate default records
             self.db_module.init_db()
             
-            # Count must still be 5
-            self.assertEqual(db.query(Storage).count(), 5)
+            # Count must still be 6
+            self.assertEqual(db.query(Storage).count(), 6)
         finally:
             db.close()

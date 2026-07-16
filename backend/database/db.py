@@ -39,6 +39,12 @@ def init_db():
                 conn.execute(text("ALTER TABLE media_processes ADD COLUMN alias TEXT DEFAULT NULL"))
             if "restart_count" not in columns:
                 conn.execute(text("ALTER TABLE media_processes ADD COLUMN restart_count INTEGER DEFAULT 0"))
+            if "network_timeout" not in columns:
+                conn.execute(text("ALTER TABLE media_processes ADD COLUMN network_timeout INTEGER DEFAULT 15"))
+            if "debug_mode" not in columns:
+                conn.execute(text("ALTER TABLE media_processes ADD COLUMN debug_mode BOOLEAN DEFAULT 0"))
+            if "log_storage_id" not in columns:
+                conn.execute(text("ALTER TABLE media_processes ADD COLUMN log_storage_id INTEGER REFERENCES storages(id)"))
                 
             # Migración para la tabla scheduled_tasks
             result = conn.execute(text("PRAGMA table_info(scheduled_tasks)"))
@@ -126,6 +132,12 @@ def init_db():
                         name="Default Preview Storage",
                         path=os.path.abspath("/tmp/ffmpeg-gui-previews"),
                         type="preview",
+                        is_default=True
+                    ),
+                    Storage(
+                        name="Default Logs Storage",
+                        path=os.path.abspath("data/logs"),
+                        type="logs",
                         is_default=True
                     )
                 ]

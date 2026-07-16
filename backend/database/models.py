@@ -79,6 +79,11 @@ class MediaProcess(Base):
     # Watchdog info
     cpu_usage = Column(Integer, default=0)
     ram_usage = Column(Integer, default=0)
+    network_timeout = Column(Integer, default=15)
+    debug_mode = Column(Boolean, default=False)
+    log_storage_id = Column(Integer, ForeignKey('storages.id'), nullable=True)
+
+    log_storage = relationship("Storage", foreign_keys=[log_storage_id])
 
     # Configuration toggles & snapshot
     auto_start = Column(Boolean, default=False)
