@@ -230,7 +230,7 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                   <span className="text-white font-bold uppercase tracking-wider text-[10px]">Telemetría de Progreso (Snapshot)</span>
                 </div>
                 <span className="text-[9px] text-text-secondary bg-white/5 px-2.5 py-1 rounded-md">
-                  Origen: /dev/shm/progress_log
+                  Origen: /dev/shm/ffmpeg_progress_{currentProcess.id}.log
                 </span>
               </div>
               
