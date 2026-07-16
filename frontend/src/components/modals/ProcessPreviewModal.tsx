@@ -34,6 +34,32 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
   const isRunning = currentProcess.status === 'running';
   const showPreview = isRunning && hasVideo;
 
+  const [progressData, setProgressData] = React.useState<any>(null);
+
+  // Poll progress data when running in normal mode
+  useEffect(() => {
+    if (!isRunning || currentProcess.debug_mode) {
+      setProgressData(null);
+      return;
+    }
+
+    const fetchProgress = async () => {
+      try {
+        const res = await fetch(`${API}/api/processes/${currentProcess.id}/progress`);
+        if (res.ok) {
+          const data = await res.json();
+          setProgressData(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch process progress telemetry', err);
+      }
+    };
+
+    fetchProgress();
+    const interval = setInterval(fetchProgress, 2000);
+    return () => clearInterval(interval);
+  }, [currentProcess.id, isRunning, currentProcess.debug_mode, API]);
+
   // Auto-scroll logs when running
   useEffect(() => {
     if (processLogsContainerRef.current && isRunning) {
@@ -195,30 +221,101 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
             </div>
           )}
 
-          {/* Process Terminal logs */}
-          <div className="bg-black/60 border border-white/5 rounded-2xl p-4 font-mono text-xs max-w-5xl mx-auto w-full">
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-brand-lime font-bold uppercase tracking-wider text-[10px]">Process Logs</span>
-              <span className="text-text-secondary text-[10px] font-bold">{logs.length} lines buffered</span>
+          {/* Telemetry Snapshot Panel (Normal Mode) */}
+          {!currentProcess.debug_mode && (
+            <div className="bg-[#13131a] border border-white/10 rounded-2xl p-6 max-w-5xl mx-auto w-full space-y-4">
+              <div className="flex justify-between items-center pb-3 border-b border-white/5">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-brand-lime animate-pulse" />
+                  <span className="text-white font-bold uppercase tracking-wider text-[10px]">Telemetría de Progreso (Snapshot)</span>
+                </div>
+                <span className="text-[9px] text-text-secondary bg-white/5 px-2.5 py-1 rounded-md">
+                  Origen: /dev/shm/progress_log
+                </span>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                  <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Procesados</span>
+                  <span className="text-white font-mono font-black text-lg">{progressData?.frame ?? '0'}</span>
+                </div>
+                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                  <span className="text-[9px] uppercase font-bold text-text-secondary">Frecuencia (FPS)</span>
+                  <span className="text-white font-mono font-black text-lg">{progressData?.fps ?? '0.0'}</span>
+                </div>
+                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                  <span className="text-[9px] uppercase font-bold text-text-secondary">Tasa de Bits</span>
+                  <span className="text-white font-mono font-black text-lg">{progressData?.bitrate ?? 'N/A'}</span>
+                </div>
+                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                  <span className="text-[9px] uppercase font-bold text-text-secondary">Velocidad</span>
+                  <span className="text-white font-mono font-black text-lg">{progressData?.speed ?? 'N/A'}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
+                  <span className="text-[9px] uppercase font-bold text-text-secondary">Tiempo Transmitido</span>
+                  <span className="text-white font-mono font-semibold text-xs">{progressData?.out_time?.split('.')[0] ?? 'N/A'}</span>
+                </div>
+                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
+                  <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Duplicados</span>
+                  <span className="text-white font-mono font-semibold text-xs">{progressData?.dup_frames ?? '0'}</span>
+                </div>
+                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
+                  <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Perdidos (Drop)</span>
+                  <span className="text-white font-mono font-semibold text-xs">{progressData?.drop_frames ?? '0'}</span>
+                </div>
+              </div>
+
+              <div className="bg-white/2 border border-white/5 rounded-xl p-3 flex justify-between items-center text-[10px]">
+                <span className="text-text-secondary">Estado de Procesamiento</span>
+                <span className={`font-bold uppercase ${progressData?.progress === 'continue' ? 'text-brand-lime' : 'text-text-secondary'}`}>
+                  {progressData?.progress ?? 'N/A'}
+                </span>
+              </div>
             </div>
-            <div 
-              ref={processLogsContainerRef}
-              className={`h-44 space-y-1 custom-scrollbar pr-2 select-text ${
-                currentProcess?.status === 'running' ? 'overflow-y-hidden' : 'overflow-y-auto'
-              }`}
-            >
-              {logs.length === 0 ? (
-                <div className="text-white/20 italic text-center py-10 select-none">No logs available for this process</div>
-              ) : (
-                logs.map((log, i) => (
-                  <div key={i} className="leading-relaxed whitespace-pre-wrap">
-                    <span className="text-text-secondary select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                    <span className={`ml-2 ${log.level === 'ERROR' ? 'text-red-400 font-bold' : 'text-white/80'}`}>{log.message}</span>
-                  </div>
-                ))
-              )}
+          )}
+
+          {/* Process Terminal logs (Debug Mode) */}
+          {currentProcess.debug_mode && (
+            <div className="bg-black/60 border border-white/5 rounded-2xl p-4 font-mono text-xs max-w-5xl mx-auto w-full">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-brand-lime font-bold uppercase tracking-wider text-[10px]">Process Logs (Modo Debug)</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = `${API}/api/processes/${currentProcess.id}/download-log`;
+                      a.download = `process_${currentProcess.id}_console.log`;
+                      a.click();
+                    }}
+                    className="px-2 py-0.5 bg-brand-lime/10 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/20 text-[9px] font-bold rounded uppercase tracking-wider transition-colors"
+                  >
+                    Descargar Log
+                  </button>
+                  <span className="text-text-secondary text-[10px] font-bold">{logs.length} lines buffered</span>
+                </div>
+              </div>
+              <div 
+                ref={processLogsContainerRef}
+                className={`h-44 space-y-1 custom-scrollbar pr-2 select-text ${
+                  currentProcess?.status === 'running' ? 'overflow-y-hidden' : 'overflow-y-auto'
+                }`}
+              >
+                {logs.length === 0 ? (
+                  <div className="text-white/20 italic text-center py-10 select-none">No logs available for this process</div>
+                ) : (
+                  logs.map((log, i) => (
+                    <div key={i} className="leading-relaxed whitespace-pre-wrap">
+                      <span className="text-text-secondary select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                      <span className={`ml-2 ${log.level === 'ERROR' ? 'text-red-400 font-bold' : 'text-white/80'}`}>{log.message}</span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}

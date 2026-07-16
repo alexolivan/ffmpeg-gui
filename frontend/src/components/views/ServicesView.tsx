@@ -128,6 +128,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           <ShieldIcon size={10} /> WATCHDOG
                         </span>
                       )}
+                      {proc.debug_mode && (
+                        <span className="text-[9px] bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Runs in interactive console debug mode">
+                          DEBUG
+                        </span>
+                      )}
                       {proc.watchdog_enabled && proc.restart_count > 0 && (
                         <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1" title={`Watchdog rescued this service ${proc.restart_count} times`}>
                           ⚠️ RESCUED {proc.restart_count}/{proc.watchdog_retries === -1 ? '∞' : proc.watchdog_retries}
@@ -269,6 +274,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         {proc.watchdog_enabled && (
                           <span className="text-[9px] bg-purple-500/20 text-purple-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Monitored by system watchdog">
                             <ShieldIcon size={10} /> WATCHDOG
+                          </span>
+                        )}
+                        {proc.debug_mode && (
+                          <span className="text-[9px] bg-yellow-500/20 text-yellow-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Runs in interactive console debug mode">
+                            DEBUG
                           </span>
                         )}
                         {proc.status === 'error' && (

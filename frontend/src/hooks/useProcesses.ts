@@ -91,6 +91,24 @@ export function useProcesses() {
   const [actionPending, setActionPending] = useState<Record<number, 'starting' | 'stopping' | 'restarting'>>({});
 
   const handleStartService = async (procId: number) => {
+    const proc = telemetry.find(p => p.id === procId);
+    if (proc && proc.debug_mode) {
+      try {
+        const checkRes = await fetch(`${API}/api/processes/${procId}/log-exists`);
+        if (checkRes.ok) {
+          const { exists } = await checkRes.json();
+          if (exists) {
+            const proceed = window.confirm(
+              `⚠️ ATENCIÓN: Existe una bitácora (log) de consola de una ejecución anterior de "${proc.name}".\n\nSi continúas, la bitácora anterior se eliminará permanentemente para evitar consumo innecesario de espacio.\n\n¿Deseas iniciar el proceso y borrar el log anterior?`
+            );
+            if (!proceed) return;
+          }
+        }
+      } catch (err) {
+        console.error("Error checking log existence:", err);
+      }
+    }
+
     setLogs([]);
     setActionPending(prev => ({ ...prev, [procId]: 'starting' }));
     try {

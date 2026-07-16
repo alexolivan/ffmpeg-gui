@@ -24,6 +24,7 @@ export default defineConfig({
         target: `ws://localhost:${backendPort}`,
         ws: true,
       },
+      '/api': `http://localhost:${backendPort}`,
       '/settings': `http://localhost:${backendPort}`,
       '/login': `http://localhost:${backendPort}`,
       '/builds': `http://localhost:${backendPort}`,
