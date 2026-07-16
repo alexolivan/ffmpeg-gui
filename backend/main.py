@@ -2236,7 +2236,7 @@ async def delete_process(process_id: int, db: Session = Depends(get_db)):
             log_storage_path = default_storage.path
     
     if not log_storage_path:
-        log_storage_path = os.path.abspath("./logs")
+        log_storage_path = os.path.abspath("data/logs")
 
     try:
         await process_manager.stop_process(process_id)
@@ -2275,7 +2275,7 @@ def get_process_log_exists(process_id: int, db: Session = Depends(get_db)):
             log_storage_path = default_storage.path
             
     if not log_storage_path:
-        log_storage_path = os.path.abspath("./logs")
+        log_storage_path = os.path.abspath("data/logs")
         
     log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
     exists = False
@@ -2306,7 +2306,7 @@ def download_process_log(process_id: int, db: Session = Depends(get_db)):
             log_storage_path = default_storage.path
             
     if not log_storage_path:
-        log_storage_path = os.path.abspath("./logs")
+        log_storage_path = os.path.abspath("data/logs")
         
     log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
     if not os.path.exists(log_file):

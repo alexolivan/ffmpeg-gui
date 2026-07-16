@@ -82,7 +82,7 @@ class ProcessManager:
                     log_storage_path = default_storage.path
             
             if not log_storage_path:
-                log_storage_path = os.path.abspath("./logs")
+                log_storage_path = os.path.abspath("data/logs")
             
             logs_dir = log_storage_path
             debug_mode = media_proc.debug_mode or False

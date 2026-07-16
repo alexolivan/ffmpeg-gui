@@ -41,6 +41,10 @@ docs/superpowers/
 docs/*.png
 docs/*.md
 docs/*.txt
+docs/*.pdf
+
+# Logs fallback
+logs/
 
 # Ignore temporary screenshots
 screenshots/tmp/

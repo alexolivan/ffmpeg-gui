@@ -143,6 +143,16 @@ def init_db():
                 ]
                 db.add_all(default_storages)
                 db.commit()
+            else:
+                # Ensure Default Logs Storage is seeded if logs type storages are missing
+                if db.query(Storage).filter(Storage.type == "logs").count() == 0:
+                    db.add(Storage(
+                        name="Default Logs Storage",
+                        path=os.path.abspath("data/logs"),
+                        type="logs",
+                        is_default=True
+                    ))
+                    db.commit()
         finally:
             db.close()
     except Exception as e:
