@@ -314,5 +314,64 @@ class TestCommandGenerator(unittest.TestCase):
 
         self.assertIn("-f alsa hw:0,0", cmd_str)
 
+    def test_progress_telemetry_command_generation(self):
+        proc = MagicMock()
+        proc.id = 500
+        proc.type = "service"
+        proc.input_config = {'type': 'file', 'path': '/path/to/input.mp4'}
+        proc.codec_config = {'vcodec': 'libx264', 'acodec': 'aac'}
+        proc.filter_config = {}
+        proc.output_config = {'type': 'file', 'path': '/path/to/output.mp4'}
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        
+        # Verify -progress parameter is present
+        self.assertIn("-progress", cmd)
+        progress_idx = cmd.index("-progress")
+        progress_val = cmd[progress_idx + 1]
+        self.assertTrue(progress_val.endswith("ffmpeg_progress_500.log"))
+        
+    def test_network_timeouts_command_generation(self):
+        # HTTP / HLS
+        proc = MagicMock()
+        proc.id = 501
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'hls',
+            'path': 'http://example.com/live.m3u8',
+            'network_timeout': '25'
+        }
+        proc.codec_config = {'vcodec': 'libx264', 'acodec': 'aac'}
+        proc.filter_config = {}
+        proc.output_config = {'type': 'file', 'path': '/path/to/output.mp4'}
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+        
+        # Microseconds for 25 seconds = 25000000
+        self.assertIn("-timeout 25000000 -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 -i http://example.com/live.m3u8", cmd_str)
+
+        # UDP
+        proc.input_config = {
+            'type': 'udp',
+            'host': '239.0.0.1',
+            'port': '1234',
+            'network_timeout': 5  # integer test
+        }
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+        # Microseconds for 5 seconds = 5000000
+        self.assertIn("-timeout 5000000 -i udp://239.0.0.1:1234?fifo_size=1000000", cmd_str)
+
+        # RTMP
+        proc.input_config = {
+            'type': 'rtmp',
+            'path': 'rtmp://example.com/live/stream',
+            # network_timeout missing -> should fallback to 15 (15000000 us)
+        }
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+        self.assertIn("-rw_timeout 15000000 -i rtmp://example.com/live/stream", cmd_str)
+
 if __name__ == '__main__':
     unittest.main()

@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] (Backend) - 2026-07-16
+
+### Added
+- (Backend) Resolved logs storage inside `start_process`, falling back to default `"logs"` storage type.
+- (Backend) Implemented `network_timeout` limits for RTMP, RTSP, HTTP, HLS, UDP, and RTP inputs.
+- (Backend) Appended `-progress` telemetry logging to the FFmpeg arguments.
+- (Backend) Supported decoupled/background execution mode when `debug_mode` is `False`, and piped stdout/stderr log reading in debug mode.
+
 ## [1.20.0] (Backend) / [1.3.0] (Database Schema) - 2026-07-16
+
 
 ### Added
 - (Backend) Added `network_timeout`, `debug_mode`, and `log_storage_id` columns to the `MediaProcess` database model.

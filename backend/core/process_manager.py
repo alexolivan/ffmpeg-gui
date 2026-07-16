@@ -31,9 +31,12 @@ class ProcessManager:
     async def start_process(self, process_id: int, is_restart: bool = False):
         cleanup_rogue_processes(process_id=process_id)
         
+        logs_dir = None
+        debug_mode = False
+        
         # 1. Fetch config and prepare snap in a quick database transaction
         with self.db_session_factory() as session:
-            from database.models import MediaProcess, FfmpegBuild, ProcessLog
+            from database.models import MediaProcess, FfmpegBuild, ProcessLog, Storage
             media_proc = session.query(MediaProcess).get(process_id)
             if not media_proc:
                 self.logger.error(f"Process {process_id} not found in DB")
@@ -63,6 +66,26 @@ class ProcessManager:
             if pending and pending != asyncio.current_task():
                 pending.cancel()
 
+            # Resolve log_storage
+            log_storage_path = None
+            if media_proc.log_storage_id:
+                storage = session.query(Storage).get(media_proc.log_storage_id)
+                if storage:
+                    log_storage_path = storage.path
+            
+            if not log_storage_path:
+                default_storage = session.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
+                if not default_storage:
+                    default_storage = session.query(Storage).filter(Storage.type == "logs").first()
+                if default_storage:
+                    log_storage_path = default_storage.path
+            
+            if not log_storage_path:
+                log_storage_path = os.path.abspath("./logs")
+            
+            logs_dir = log_storage_path
+            debug_mode = media_proc.debug_mode or False
+
             # Determine which FFmpeg binary to use
             ffmpeg_bin = self.ffmpeg_path  # Default fallback
             if media_proc.ffmpeg_build_id:
@@ -88,18 +111,45 @@ class ProcessManager:
             proc_name = media_proc.name
             session.commit()  # Save changes and release write lock immediately!
             
+        # Ensure log directory exists
+        os.makedirs(logs_dir, exist_ok=True)
+        log_path = os.path.join(logs_dir, f"process_{process_id}.log")
+
         # 2. Spawn subprocess (outside of any database session locks)
         self.logger.info(f"Starting FFMPEG for {proc_name}: {shlex.join(cmd)}")
         try:
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                stdin=asyncio.subprocess.PIPE,
-                env=sub_env
-            )
+            
+            if not debug_mode:
+                # Normal / Decoupled mode
+                log_file_desc = open(log_path, "w")
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=log_file_desc,
+                        stdin=asyncio.subprocess.PIPE,
+                        env=sub_env
+                    )
+                finally:
+                    log_file_desc.close()
+            else:
+                # Debug / Piped mode
+                try:
+                    with open(log_path, "wb") as f:
+                        pass
+                except Exception as file_err:
+                    self.logger.error(f"Failed to truncate log file: {file_err}")
+                    
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                    stdin=asyncio.subprocess.PIPE,
+                    env=sub_env
+                )
+            
             self.processes[process_id] = proc
             
             # 3. Update PID and status in a second short database transaction
@@ -112,7 +162,8 @@ class ProcessManager:
                     session.commit()
             
             # Start watchdog and log reader tasks
-            asyncio.create_task(self._log_reader(process_id, proc))
+            if debug_mode:
+                asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
             asyncio.create_task(self._watchdog(process_id, proc))
             
         except Exception as e:
@@ -703,6 +754,16 @@ class ProcessManager:
                 "-y", preview_path
             ]
 
+        # Append -progress to the FFmpeg command line
+        process_id = media_proc.id
+        shm_dir = "/dev/shm"
+        if os.path.exists(shm_dir) and os.access(shm_dir, os.W_OK):
+            progress_file_path = f"/dev/shm/ffmpeg_progress_{process_id}.log"
+        else:
+            progress_file_path = f"/tmp/ffmpeg_progress_{process_id}.log"
+            
+        cmd += ["-progress", progress_file_path]
+
         return cmd
 
     def _append_fps_mode(self, cmd: list, codec_cfg: dict, output_cfg: dict, filter_cfg: dict, ffmpeg_bin: str):
@@ -756,6 +817,33 @@ class ProcessManager:
             if hwaccel_out and hwaccel_out != 'none':
                 cmd += ["-hwaccel_output_format", hwaccel_out]
 
+        # Extract network_timeout (default 15 if missing/empty)
+        network_timeout_val = input_cfg.get('network_timeout')
+        if network_timeout_val is None or str(network_timeout_val).strip() == "":
+            network_timeout = 15
+        else:
+            try:
+                network_timeout = int(network_timeout_val)
+            except (ValueError, TypeError):
+                network_timeout = 15
+
+        # Check if input type is network-based (RTMP, RTSP, HTTP, HLS, UDP, RTP)
+        input_type_upper = str(input_type).upper() if input_type else ""
+        if input_type_upper in ('RTMP', 'RTSP', 'HTTP', 'HLS', 'UDP', 'RTP', 'HTTP_AUDIO'):
+            timeout_us = network_timeout * 1000000
+            if input_type_upper in ('RTMP', 'RTSP'):
+                cmd += ["-rw_timeout", str(timeout_us)]
+            elif input_type_upper in ('HTTP', 'HLS', 'HTTP_AUDIO'):
+                cmd += [
+                    "-timeout", str(timeout_us),
+                    "-reconnect", "1",
+                    "-reconnect_at_eof", "1",
+                    "-reconnect_streamed", "1",
+                    "-reconnect_delay_max", "5"
+                ]
+            elif input_type_upper in ('UDP', 'RTP'):
+                cmd += ["-timeout", str(timeout_us)]
+
         if input_type == 'file':
             cmd += ["-i", input_cfg.get('path', '')]
         elif input_type == 'srt':
@@ -807,7 +895,7 @@ class ProcessManager:
             if size:
                 cmd += ["-video_size", size]
             cmd += ["-f", "v4l2", "-i", device]
-        elif input_type in ('http_audio', 'rtmp', 'hls'):
+        elif input_type in ('http_audio', 'rtmp', 'rtsp', 'hls', 'http'):
             cmd += ["-i", input_cfg.get('path', '')]
         elif input_type == 'lavfi_video':
             pattern = input_cfg.get('pattern', 'testsrc')
@@ -1159,31 +1247,51 @@ class ProcessManager:
 
             cmd += [path]
 
-    async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process):
+    async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process, log_path: Optional[str] = None):
         import re
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
         status_re = re.compile(r"(?:fps=\s*([\d.]+).*?)?bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         
-        buffer = bytearray()
-        while True:
-            chunk = await proc.stderr.read(4096)
-            if not chunk:
-                if buffer:
-                    msg = buffer.decode('utf-8', errors='replace').strip()
-                    if msg:
-                        self._handle_log_msg(process_id, msg, status_re)
-                break
-            
-            for b in chunk:
-                char = bytes([b])
-                if char in (b'\r', b'\n'):
+        log_file = None
+        if log_path:
+            try:
+                log_file = open(log_path, "ab", buffering=0)
+            except Exception as e:
+                self.logger.error(f"Failed to open log file {log_path} for writing: {e}")
+                
+        try:
+            buffer = bytearray()
+            while True:
+                chunk = await proc.stderr.read(4096)
+                if not chunk:
                     if buffer:
                         msg = buffer.decode('utf-8', errors='replace').strip()
-                        buffer.clear()
                         if msg:
                             self._handle_log_msg(process_id, msg, status_re)
-                else:
-                    buffer.extend(char)
+                    break
+                
+                if log_file:
+                    try:
+                        log_file.write(chunk)
+                    except Exception as e:
+                        self.logger.error(f"Error writing log chunk for process {process_id}: {e}")
+                
+                for b in chunk:
+                    char = bytes([b])
+                    if char in (b'\r', b'\n'):
+                        if buffer:
+                            msg = buffer.decode('utf-8', errors='replace').strip()
+                            buffer.clear()
+                            if msg:
+                                self._handle_log_msg(process_id, msg, status_re)
+                    else:
+                        buffer.extend(char)
+        finally:
+            if log_file:
+                try:
+                    log_file.close()
+                except Exception:
+                    pass
 
     def _handle_log_msg(self, process_id: int, msg: str, status_re):
         lower_msg = msg.lower()
