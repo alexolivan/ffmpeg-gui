@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] (Frontend) / [1.24.0] (Backend) / [1.4.0] (Database Schema) - 2026-07-16
+
+### Added
+- (Frontend) Added "Modo Debug" toggle, Network Timeout input field, and Logs Storage dropdown selector in the process configuration form.
+- (Frontend) Rendered a sleek real-time progress metrics snapshot panel in the process modal when running in normal mode.
+- (Frontend) Added a "DEBUG" badge to services cards configured in debug mode.
+- (Frontend) Integrated "Descargar Log" button in the debug console preview header.
+- (Frontend) Implemented pre-start log deletion confirmation prompts for debug-mode processes when existing console logs reside on the server.
+- (Backend/Database) Added `network_timeout`, `debug_mode`, and `log_storage_id` columns to `MediaProcess` model with automatic SQLite schema migrations.
+- (Backend) Integrated input network timeouts in command generator for RTMP, RTSP, HTTP, HLS, UDP, and RTP protocols.
+- (Backend) Supported background decoupled execution (detaching processes from standard buffers when debug mode is disabled).
+- (Backend) Parsed real-time progress stats in the watchdog loop to update DB columns and trigger 15s freeze stall kills.
+- (Backend) Added support for re-attaching the watchdog to running processes upon panel restart.
+
 ## [1.23.0] (Backend) - 2026-07-16
 
 ### Added
