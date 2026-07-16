@@ -2206,14 +2206,178 @@ async def delete_process(process_id: int, db: Session = Depends(get_db)):
     if not db_proc:
         raise HTTPException(status_code=404, detail="Process not found")
 
+    # Resolve logs storage directory for this process
+    log_storage_path = None
+    if db_proc.log_storage_id:
+        storage = db.query(Storage).get(db_proc.log_storage_id)
+        if storage:
+            log_storage_path = storage.path
+    
+    if not log_storage_path:
+        default_storage = db.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
+        if not default_storage:
+            default_storage = db.query(Storage).filter(Storage.type == "logs").first()
+        if default_storage:
+            log_storage_path = default_storage.path
+    
+    if not log_storage_path:
+        log_storage_path = os.path.abspath("./logs")
+
     try:
         await process_manager.stop_process(process_id)
     except Exception as e:
         logger.warning(f"Error stopping process {process_id} before delete: {e}")
 
+    # Physically delete process_{process_id}.log if it exists
+    log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
+    if os.path.exists(log_file):
+        try:
+            os.remove(log_file)
+        except Exception as e:
+            logger.error(f"Error deleting log file {log_file} for process {process_id}: {e}")
+
     db.delete(db_proc)
     db.commit()
     return {"status": "deleted", "process_id": process_id}
+
+@app.get("/api/processes/{process_id}/log-exists")
+def get_process_log_exists(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+        
+    log_storage_path = None
+    if db_proc.log_storage_id:
+        storage = db.query(Storage).get(db_proc.log_storage_id)
+        if storage:
+            log_storage_path = storage.path
+            
+    if not log_storage_path:
+        default_storage = db.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
+        if not default_storage:
+            default_storage = db.query(Storage).filter(Storage.type == "logs").first()
+        if default_storage:
+            log_storage_path = default_storage.path
+            
+    if not log_storage_path:
+        log_storage_path = os.path.abspath("./logs")
+        
+    log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
+    exists = False
+    if os.path.exists(log_file):
+        try:
+            exists = os.path.getsize(log_file) > 0
+        except OSError:
+            pass
+    return {"exists": exists}
+
+@app.get("/api/processes/{process_id}/download-log")
+def download_process_log(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+        
+    log_storage_path = None
+    if db_proc.log_storage_id:
+        storage = db.query(Storage).get(db_proc.log_storage_id)
+        if storage:
+            log_storage_path = storage.path
+            
+    if not log_storage_path:
+        default_storage = db.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
+        if not default_storage:
+            default_storage = db.query(Storage).filter(Storage.type == "logs").first()
+        if default_storage:
+            log_storage_path = default_storage.path
+            
+    if not log_storage_path:
+        log_storage_path = os.path.abspath("./logs")
+        
+    log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
+    if not os.path.exists(log_file):
+        raise HTTPException(status_code=404, detail="Log file not found")
+        
+    return FileResponse(log_file, media_type="text/plain", filename=f"process_{process_id}.log")
+
+@app.get("/api/processes/{process_id}/progress")
+def get_process_progress(process_id: int):
+    # Path fallbacks
+    paths = [
+        f"/dev/shm/ffmpeg_progress_{process_id}.log",
+        f"/tmp/ffmpeg_progress_{process_id}.log"
+    ]
+    
+    # Default values
+    result = {
+        "frame": 0,
+        "fps": 0.0,
+        "bitrate": "N/A",
+        "speed": "N/A",
+        "out_time": "N/A",
+        "dup_frames": 0,
+        "drop_frames": 0,
+        "progress": "N/A"
+    }
+    
+    found_file = None
+    for p in paths:
+        if os.path.exists(p):
+            found_file = p
+            break
+            
+    if not found_file:
+        return result
+        
+    try:
+        with open(found_file, "r") as f:
+            content = f.read()
+    except Exception as e:
+        logger.error(f"Error reading progress file {found_file}: {e}")
+        return result
+
+    # Parse lines from the file
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        try:
+            k, v = line.split("=", 1)
+            k = k.strip()
+            v = v.strip()
+            
+            if k == "frame":
+                try:
+                    result["frame"] = int(v)
+                except ValueError:
+                    pass
+            elif k == "fps":
+                try:
+                    result["fps"] = float(v)
+                except ValueError:
+                    pass
+            elif k == "bitrate":
+                result["bitrate"] = v
+            elif k == "speed":
+                result["speed"] = v
+            elif k == "out_time":
+                result["out_time"] = v
+            elif k == "dup_frames":
+                try:
+                    result["dup_frames"] = int(v)
+                except ValueError:
+                    pass
+            elif k == "drop_frames":
+                try:
+                    result["drop_frames"] = int(v)
+                except ValueError:
+                    pass
+            elif k == "progress":
+                result["progress"] = v
+        except Exception:
+            continue
+            
+    return result
+
 
 @app.get("/processes/{process_id}/logs")
 def get_process_logs(process_id: int, db: Session = Depends(get_db)):

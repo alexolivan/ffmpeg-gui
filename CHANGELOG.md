@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] (Backend) - 2026-07-16
+
+### Added
+- (Backend) Implemented `GET /api/processes/{process_id}/log-exists` endpoint to check process log existence.
+- (Backend) Implemented `GET /api/processes/{process_id}/download-log` endpoint to download process log files.
+- (Backend) Implemented `GET /api/processes/{process_id}/progress` endpoint to parse real-time progress metrics from shared memory.
+- (Backend) Updated `DELETE /processes/{process_id}` endpoint to automatically clean up the associated physical log file from disk.
+- (Backend) Added comprehensive unit tests in `backend/tests/test_log_apis.py` to cover log and progress endpoints and automatic log file cleanup.
+
 ## [1.22.0] (Backend) - 2026-07-16
 
 ### Added

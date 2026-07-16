@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
 from database.db import SessionLocal, init_db
 from database.models import MediaProcess
-from main import startup_event, process_manager
+import main
 
 class TestStartupReattach(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -19,7 +19,7 @@ class TestStartupReattach(unittest.IsolatedAsyncioTestCase):
 
     @patch("main.cleanup_rogue_processes")
     @patch("psutil.pid_exists")
-    @patch.object(process_manager, "reattach_process")
+    @patch("main.process_manager.reattach_process")
     async def test_startup_event_reattaches_alive_processes_and_stops_dead_ones(
         self, mock_reattach, mock_pid_exists, mock_cleanup
     ):
@@ -62,7 +62,7 @@ class TestStartupReattach(unittest.IsolatedAsyncioTestCase):
              patch("main.auto_start_services") as mock_auto_start:
             
             # Execute the startup event
-            await startup_event()
+            await main.startup_event()
 
             # Verify alive process got reattached
             mock_reattach.assert_called_once_with(alive_proc.id, 12345)
