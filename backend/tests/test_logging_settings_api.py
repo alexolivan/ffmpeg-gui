@@ -36,6 +36,11 @@ class TestLoggingSettingsAPI(unittest.TestCase):
             os.environ["DATABASE_PATH"] = cls.original_db_path_env
         else:
             os.environ.pop("DATABASE_PATH", None)
+            
+        import database.db
+        importlib.reload(database.db)
+        import main
+        importlib.reload(main)
 
     def setUp(self):
         self.db_module.init_db()
