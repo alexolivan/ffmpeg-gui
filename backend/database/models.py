@@ -175,6 +175,7 @@ class ScheduledTask(Base):
     name = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     is_system = Column(Boolean, default=False)
+    command = Column(String, nullable=True)
 
     input_config = Column(JSON, nullable=False)
     output_config = Column(JSON, nullable=False)

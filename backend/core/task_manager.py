@@ -33,6 +33,15 @@ class TaskManager:
                 return
             task = execution.task
 
+            # If task command starts with "system://", run it internally
+            if task.command and task.command.startswith("system://"):
+                execution.started_at = datetime.utcnow()
+                execution.status = 'running'
+                session.commit()
+                # Run the system task asynchronously and return!
+                asyncio.create_task(self._run_system_task(execution_id, task.command))
+                return
+
             # Calculate duration limit
             limit_sec = None
             if task.duration_type == 'timer':
@@ -1053,3 +1062,122 @@ class TaskManager:
                     session.commit()
             self.running_processes.pop(execution_id, None)
             self.last_activity.pop(execution_id, None)
+
+    async def _run_system_task(self, execution_id: int, command: str):
+        self.logger.info(f"Running system task {command} for execution {execution_id}")
+        
+        logs = []
+        status = 'finished'
+        error_msg = None
+        
+        def log_info(msg: str):
+            self.logger.info(f"[Execution {execution_id}] {msg}")
+            logs.append(("INFO", msg))
+            
+        def log_error(msg: str):
+            self.logger.error(f"[Execution {execution_id}] {msg}")
+            logs.append(("ERROR", msg))
+            
+        try:
+            if command == "system://log_rotate":
+                await self._execute_log_rotate(log_info, log_error)
+            else:
+                raise ValueError(f"Unknown system command: {command}")
+        except Exception as e:
+            self.logger.exception(f"System task {command} failed")
+            log_error(f"Error executing system task: {str(e)}")
+            status = 'error'
+            error_msg = str(e)
+            
+        # Write logs and update execution status in DB
+        try:
+            with self.db_session_factory() as session:
+                execution = session.query(TaskExecution).get(execution_id)
+                if execution:
+                    execution.status = status
+                    if error_msg:
+                        execution.error_message = error_msg
+                    execution.stopped_at = datetime.utcnow()
+                    
+                    for level, msg in logs:
+                        log_record = TaskExecutionLog(
+                            execution_id=execution_id,
+                            level=level,
+                            message=msg
+                        )
+                        session.add(log_record)
+                    session.commit()
+        except Exception as db_err:
+            self.logger.error(f"Failed to save system task execution results: {db_err}")
+
+    async def _execute_log_rotate(self, log_info, log_error):
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if not config_path:
+            log_info("CONFIG_FILE_PATH environment variable not set. Using defaults (no file logging).")
+            return
+            
+        if not os.path.exists(config_path):
+            log_info(f"Config file not found at: {config_path}")
+            return
+            
+        import configparser
+        config = configparser.ConfigParser()
+        config.read(config_path)
+        
+        logging_mode = "both"
+        logging_file_path = None
+        retention_days = 30
+        
+        if "logging" in config:
+            logging_cfg = config["logging"]
+            logging_mode = logging_cfg.get("mode", logging_mode)
+            logging_file_path = logging_cfg.get("file_path", logging_file_path)
+            try:
+                retention_days = logging_cfg.getint("retention_days", 30)
+            except Exception:
+                pass
+        
+        if "server" in config and not logging_file_path:
+            logging_file_path = config["server"].get("log_file", None)
+            
+        use_file = bool(logging_file_path and logging_mode in ("file", "both"))
+        if not use_file:
+            log_info(f"File logging is not active or path is not set (mode={logging_mode}, path={logging_file_path}). Nothing to clean up.")
+            return
+
+        abs_log_path = os.path.abspath(logging_file_path)
+        log_dir = os.path.dirname(abs_log_path)
+        log_filename = os.path.basename(abs_log_path)
+        
+        log_info(f"Logging directory to scan: {log_dir}")
+        log_info(f"Log filename prefix: {log_filename}")
+        log_info(f"Retention days: {retention_days}")
+        
+        if not os.path.exists(log_dir):
+            log_info(f"Directory {log_dir} does not exist. Nothing to clean up.")
+            return
+            
+        import time
+        now = time.time()
+        deleted_count = 0
+        preserved_count = 0
+        
+        for name in os.listdir(log_dir):
+            if name.startswith(log_filename) and name.endswith(".gz"):
+                file_path = os.path.join(log_dir, name)
+                if not os.path.isfile(file_path):
+                    continue
+                mtime = os.path.getmtime(file_path)
+                age_days = (now - mtime) / (24 * 3600)
+                if age_days > retention_days:
+                    try:
+                        os.remove(file_path)
+                        log_info(f"Deleted expired rotated log file: {name} (age: {age_days:.1f} days)")
+                        deleted_count += 1
+                    except Exception as e:
+                        log_error(f"Failed to delete {name}: {e}")
+                else:
+                    log_info(f"Preserved rotated log file: {name} (age: {age_days:.1f} days)")
+                    preserved_count += 1
+                    
+        log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")

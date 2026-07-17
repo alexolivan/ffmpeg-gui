@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0] (Backend) - 2026-07-17
+
+### Added
+- (Backend) Added system task execution bypass to bypass standard shell command spawning and run Python internal tasks (prefixed with `system://`).
+- (Backend) Seeding of "System Log Rotation and Retention Cleanup" task automatically inside `init_db()` with daily midnight schedule.
+- (Backend) Internal log rotation task logic implementation to clean up expired rotated `.gz` logs according to the configured `retention_days`.
+- (Backend) Integrated unit tests in `backend/tests/test_system_tasks.py` to cover system task seeding, internal execution, log retention parsing, and execution history database saving.
+
 ## [1.26.0] (Backend) - 2026-07-17
 
 ### Added
