@@ -1269,6 +1269,9 @@ async def telemetry_broadcast_loop():
                         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
                         "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
                         "restart_count": p.restart_count,
+                        "network_timeout": p.network_timeout,
+                        "debug_mode": p.debug_mode,
+                        "log_storage_id": p.log_storage_id,
                     } for p in processes
                 ]
 
@@ -2103,6 +2106,9 @@ def list_processes(db: Session = Depends(get_db)):
             "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
             "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
             "restart_count": p.restart_count,
+            "network_timeout": p.network_timeout,
+            "debug_mode": p.debug_mode,
+            "log_storage_id": p.log_storage_id,
         } for p in processes
     ]
 
