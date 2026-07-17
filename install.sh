@@ -254,6 +254,7 @@ WorkingDirectory=$PROJ_DIR/backend
 ExecStart=$PROJ_DIR/venv/bin/python $PROJ_DIR/backend/run_server.py --config $CONF_FILE
 Restart=always
 RestartSec=5
+KillMode=process
 
 [Install]
 WantedBy=multi-user.target
@@ -274,6 +275,7 @@ WorkingDirectory=$PROJ_DIR/backend
 ExecStart=$PROJ_DIR/venv/bin/python $PROJ_DIR/backend/run_server.py --config $CONF_FILE
 Restart=always
 RestartSec=5
+KillMode=process
 
 [Install]
 WantedBy=default.target
