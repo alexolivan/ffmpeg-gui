@@ -217,6 +217,15 @@ class SettingsUpdate(BaseModel):
     accent_color: Optional[str] = None
     lcd_enabled: Optional[bool] = None
 
+    logging_mode: Optional[str] = None
+    logging_storage_id: Optional[int] = None
+    logging_relative_path: Optional[str] = None
+    logging_rotation_enabled: Optional[bool] = None
+    logging_rotation_max_bytes: Optional[int] = None
+    logging_rotation_backup_count: Optional[int] = None
+    logging_compression_enabled: Optional[bool] = None
+    logging_retention_days: Optional[int] = None
+
     @validator('lcd_alias')
     def validate_lcd_alias(cls, v):
         if v is None:
@@ -265,6 +274,16 @@ def make_settings_response(settings):
     gui_port = active_port
     restart_required = False
 
+    # Default logging values
+    logging_mode = "both"
+    logging_storage_id = None
+    logging_relative_path = "ffmpeg-gui.log"
+    logging_rotation_enabled = False
+    logging_rotation_max_bytes = 10485760
+    logging_rotation_backup_count = 5
+    logging_compression_enabled = False
+    logging_retention_days = 30
+
     if config_path and os.path.exists(config_path):
         try:
             import configparser
@@ -274,12 +293,150 @@ def make_settings_response(settings):
                 gui_port = int(config["server"]["port"])
                 if gui_port != active_port:
                     restart_required = True
+            
+            if "logging" in config:
+                logging_cfg = config["logging"]
+                logging_mode = logging_cfg.get("mode", logging_mode)
+                
+                storage_id_str = logging_cfg.get("storage_id", "")
+                if storage_id_str.strip():
+                    try:
+                        logging_storage_id = int(storage_id_str)
+                    except ValueError:
+                        pass
+                
+                logging_relative_path = logging_cfg.get("relative_path", logging_relative_path)
+                
+                try:
+                    logging_rotation_enabled = logging_cfg.getboolean("rotation_enabled", logging_rotation_enabled)
+                except ValueError:
+                    pass
+                
+                try:
+                    logging_rotation_max_bytes = logging_cfg.getint("rotation_max_bytes", logging_rotation_max_bytes)
+                except ValueError:
+                    pass
+                    
+                try:
+                    logging_rotation_backup_count = logging_cfg.getint("rotation_backup_count", logging_rotation_backup_count)
+                except ValueError:
+                    pass
+                    
+                try:
+                    logging_compression_enabled = logging_cfg.getboolean("compression_enabled", logging_compression_enabled)
+                except ValueError:
+                    pass
+                    
+                try:
+                    logging_retention_days = logging_cfg.getint("retention_days", logging_retention_days)
+                except ValueError:
+                    pass
         except Exception as e:
-            logger.error(f"Error reading port from config file: {e}")
+            logger.error(f"Error reading settings from config file: {e}")
+
+    # Check if active settings differ from .conf settings
+    try:
+        import logging.handlers
+        
+        # 1. Locate active file handler and console handler
+        active_fh = None
+        has_console = False
+        
+        logger_inst = logging.getLogger("FFMPEG-GUI")
+        all_handlers = []
+        if logger_inst.handlers:
+            all_handlers.extend(logger_inst.handlers)
+        root_handlers = logging.getLogger().handlers
+        for h in root_handlers:
+            if h not in all_handlers:
+                all_handlers.append(h)
+                
+        for h in all_handlers:
+            if isinstance(h, logging.FileHandler):
+                active_fh = h
+            elif isinstance(h, logging.StreamHandler):
+                has_console = True
+                
+        has_file = active_fh is not None
+        
+        if has_console and has_file:
+            active_mode = "both"
+        elif has_file:
+            active_mode = "file"
+        else:
+            active_mode = "journalctl"
+            
+        active_file_path = os.path.abspath(active_fh.baseFilename) if active_fh else None
+        
+        active_rotation_enabled = False
+        active_max_bytes = None
+        active_backup_count = None
+        active_compression_enabled = False
+        
+        if active_fh:
+            if isinstance(active_fh, logging.handlers.RotatingFileHandler):
+                active_rotation_enabled = True
+                active_max_bytes = getattr(active_fh, "maxBytes", 10485760)
+                active_backup_count = getattr(active_fh, "backupCount", 5)
+                active_compression_enabled = "Gzipped" in active_fh.__class__.__name__
+                
+        # Get expected file path from config
+        expected_file_path = None
+        if config_path and os.path.exists(config_path):
+            try:
+                import configparser
+                config = configparser.ConfigParser()
+                config.read(config_path)
+                if "logging" in config:
+                    expected_file_path = config["logging"].get("file_path", None)
+                if not expected_file_path and "server" in config:
+                    expected_file_path = config["server"].get("log_file", None)
+            except Exception:
+                pass
+                
+        if not expected_file_path and logging_mode in ("both", "file"):
+            expected_file_path = logging_relative_path
+
+        if expected_file_path:
+            expected_file_path = os.path.abspath(expected_file_path)
+            
+        # Compare
+        logging_diff = False
+        if logging_mode != active_mode:
+            logging_diff = True
+        elif expected_file_path and active_file_path and os.path.normpath(expected_file_path) != os.path.normpath(active_file_path):
+            logging_diff = True
+        elif (expected_file_path is None) != (active_file_path is None):
+            logging_diff = True
+        elif logging_rotation_enabled != active_rotation_enabled:
+            logging_diff = True
+        elif logging_rotation_enabled and (logging_rotation_max_bytes != active_max_bytes):
+            logging_diff = True
+        elif logging_rotation_enabled and (logging_rotation_backup_count != active_backup_count):
+            logging_diff = True
+        elif logging_rotation_enabled and (logging_compression_enabled != active_compression_enabled):
+            logging_diff = True
+            
+        if logging_diff:
+            restart_required = True
+            
+    except Exception as e:
+        logger.error(f"Error checking active logging diff: {e}")
 
     res = {c.name: getattr(settings, c.name) for c in settings.__table__.columns}
     res["gui_port"] = gui_port
     res["restart_required"] = restart_required
+    
+    # Populate logging configuration fields
+    res["logging_mode"] = logging_mode
+    res["logging_storage_id"] = logging_storage_id
+    res["logging_relative_path"] = logging_relative_path
+    res["logging_rotation_enabled"] = logging_rotation_enabled
+    res["logging_rotation_max_bytes"] = logging_rotation_max_bytes
+    res["logging_rotation_backup_count"] = logging_rotation_backup_count
+    res["logging_compression_enabled"] = logging_compression_enabled
+    res["logging_retention_days"] = logging_retention_days
+    
     return res
 
 
@@ -439,6 +596,75 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config["server"]["port"] = str(settings_in.gui_port)
             with open(config_path, "w") as f:
                 config.write(f)
+
+    # ── Handle Logging Settings update ──
+    logging_fields = [
+        "logging_mode",
+        "logging_storage_id",
+        "logging_relative_path",
+        "logging_rotation_enabled",
+        "logging_rotation_max_bytes",
+        "logging_rotation_backup_count",
+        "logging_compression_enabled",
+        "logging_retention_days",
+    ]
+    
+    has_logging_updates = any(getattr(settings_in, field) is not None for field in logging_fields)
+    
+    if has_logging_updates:
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if not config_path:
+            config_path = "ffmpeg-gui.conf"
+            
+        import configparser
+        config = configparser.ConfigParser()
+        if os.path.exists(config_path):
+            config.read(config_path)
+            
+        if "logging" not in config:
+            config["logging"] = {}
+            
+        if settings_in.logging_mode is not None:
+            config["logging"]["mode"] = settings_in.logging_mode
+            
+        existing_rel_path = config["logging"].get("relative_path", "ffmpeg-gui.log")
+        rel_path = settings_in.logging_relative_path if settings_in.logging_relative_path is not None else existing_rel_path
+        if settings_in.logging_relative_path is not None:
+            config["logging"]["relative_path"] = settings_in.logging_relative_path
+            
+        # Check if we have storage_id (either from input or from config file) to resolve absolute file_path
+        storage_id_to_use = settings_in.logging_storage_id
+        if storage_id_to_use is None:
+            conf_storage_id = config["logging"].get("storage_id", "")
+            if conf_storage_id.strip():
+                try:
+                    storage_id_to_use = int(conf_storage_id)
+                except ValueError:
+                    pass
+                    
+        if storage_id_to_use is not None:
+            storage = db.query(Storage).filter(Storage.id == storage_id_to_use).first()
+            if not storage or storage.type != "logs":
+                raise HTTPException(status_code=400, detail="Invalid storage type selected for logging. Must be of type 'logs'.")
+            if settings_in.logging_storage_id is not None:
+                config["logging"]["storage_id"] = str(settings_in.logging_storage_id)
+            if settings_in.logging_storage_id is not None or settings_in.logging_relative_path is not None:
+                resolved_file_path = os.path.abspath(os.path.join(storage.path, rel_path))
+                config["logging"]["file_path"] = resolved_file_path
+                
+        if settings_in.logging_rotation_enabled is not None:
+            config["logging"]["rotation_enabled"] = str(settings_in.logging_rotation_enabled).lower()
+        if settings_in.logging_rotation_max_bytes is not None:
+            config["logging"]["rotation_max_bytes"] = str(settings_in.logging_rotation_max_bytes)
+        if settings_in.logging_rotation_backup_count is not None:
+            config["logging"]["rotation_backup_count"] = str(settings_in.logging_rotation_backup_count)
+        if settings_in.logging_compression_enabled is not None:
+            config["logging"]["compression_enabled"] = str(settings_in.logging_compression_enabled).lower()
+        if settings_in.logging_retention_days is not None:
+            config["logging"]["retention_days"] = str(settings_in.logging_retention_days)
+            
+        with open(config_path, "w") as f:
+            config.write(f)
 
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()

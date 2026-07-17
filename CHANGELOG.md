@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0] (Backend) - 2026-07-17
+
+### Added
+- (Backend) Updated `SettingsUpdate` schema to accept new logging configuration fields.
+- (Backend) Enhanced `make_settings_response` to read logging configuration from the config file and compare them with active Python logging handlers to flag `restart_required`.
+- (Backend) Integrated `POST /settings` endpoint updates to write logging settings into the `.conf` file and query the database to validate storage directories.
+- (Backend) Implemented comprehensive unit tests in `backend/tests/test_logging_settings_api.py` covering GET/POST settings endpoints, validation, and active handler state comparison.
+
 ## [1.27.0] (Backend) - 2026-07-17
 
 ### Added
