@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] (Backend) - 2026-07-17
+
+### Added
+- (Backend) Added `GzippedRotatingFileHandler` which compresses rotated log files using native `gzip` module and purges original uncompressed files.
+- (Backend) Added configuration capabilities parsing the `[logging]` section of `ffmpeg-gui.conf` and supporting `journalctl`, `file`, and `both` logging modes.
+- (Backend) Integrated unit tests in `backend/tests/test_logging_handler.py` to test Gzipped log rotations and logging configuration logic.
+
 ## [1.25.0] (Backend) / [1.5.0] (Database Schema) - 2026-07-17
 
 ### Added
