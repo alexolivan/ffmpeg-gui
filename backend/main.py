@@ -1384,6 +1384,10 @@ async def auto_start_services():
         service_ids = [service.id for service in services]
         
     for s_id in service_ids:
+        if s_id in process_manager.processes:
+            logger.info(f"Auto-start: Service ID {s_id} is already running/reattached. Skipping auto-start.")
+            continue
+            
         logger.info(f"Auto-starting service with ID: {s_id}")
         try:
             await process_manager.start_process(s_id)
