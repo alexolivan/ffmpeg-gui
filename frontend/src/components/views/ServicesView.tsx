@@ -153,10 +153,26 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                       <span>Uptime: <strong className="text-white font-mono">{formatUptime(proc.last_start)}</strong></span>
                       <span className="text-white/10 select-none">|</span>
                       <span>CPU: <strong className="text-white">{proc.cpu || 0}%</strong></span>
+                      <span className="text-white/10 select-none">|</span>
                       <span>RAM: <strong className="text-white">{proc.ram || 0} MB</strong></span>
-                      {proc.fps && <span>FPS: <strong className="text-white">{proc.fps}</strong></span>}
-                      {proc.bitrate && <span>Bitrate: <strong className="text-white">{proc.bitrate}</strong></span>}
-                      {proc.speed && <span>Speed: <strong className="text-white">{proc.speed}</strong></span>}
+                      {proc.fps && proc.fps !== '0' && proc.fps !== '0.0' && (
+                        <>
+                          <span className="text-white/10 select-none">|</span>
+                          <span>FPS: <strong className="text-white">{proc.fps}</strong></span>
+                        </>
+                      )}
+                      {proc.bitrate && proc.bitrate !== 'N/A' && proc.bitrate !== '0 kb/s' && proc.bitrate !== '0.0kbits/s' && (
+                        <>
+                          <span className="text-white/10 select-none">|</span>
+                          <span>Bitrate: <strong className="text-white">{proc.bitrate}</strong></span>
+                        </>
+                      )}
+                      {proc.speed && proc.speed !== '0x' && proc.speed !== '0.00x' && proc.speed !== 'N/A' && (
+                        <>
+                          <span className="text-white/10 select-none">|</span>
+                          <span>Speed: <strong className="text-white">{proc.speed}</strong></span>
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-4">

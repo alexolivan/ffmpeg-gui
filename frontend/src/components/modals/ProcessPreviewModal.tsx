@@ -36,6 +36,13 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
 
   const [progressData, setProgressData] = React.useState<any>(null);
 
+  const showFrames = progressData?.frame !== undefined && progressData?.frame !== null && progressData?.frame !== '0' && progressData?.frame !== 0;
+  const showFps = progressData?.fps !== undefined && progressData?.fps !== null && progressData?.fps !== '0.0' && progressData?.fps !== '0';
+  const showBitrate = progressData?.bitrate !== undefined && progressData?.bitrate !== null && progressData?.bitrate !== 'N/A' && progressData?.bitrate !== '0.0kbits/s' && progressData?.bitrate !== '0 kb/s';
+  const showSpeed = progressData?.speed !== undefined && progressData?.speed !== null && progressData?.speed !== 'N/A' && progressData?.speed !== '0x' && progressData?.speed !== '0.00x';
+  const showDups = progressData?.dup_frames !== undefined && progressData?.dup_frames !== null && progressData?.dup_frames !== '0' && progressData?.dup_frames !== 0 && progressData?.dup_frames !== '0.0' && progressData?.dup_frames !== 0.0;
+  const showDrops = progressData?.drop_frames !== undefined && progressData?.drop_frames !== null && progressData?.drop_frames !== '0' && progressData?.drop_frames !== 0 && progressData?.drop_frames !== '0.0' && progressData?.drop_frames !== 0.0;
+
   // Poll progress data when running in normal mode
   useEffect(() => {
     if (!isRunning || currentProcess.debug_mode) {
@@ -235,22 +242,30 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
               </div>
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
-                  <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Procesados</span>
-                  <span className="text-white font-mono font-black text-lg">{progressData?.frame ?? '0'}</span>
-                </div>
-                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
-                  <span className="text-[9px] uppercase font-bold text-text-secondary">Frecuencia (FPS)</span>
-                  <span className="text-white font-mono font-black text-lg">{progressData?.fps ?? '0.0'}</span>
-                </div>
-                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
-                  <span className="text-[9px] uppercase font-bold text-text-secondary">Tasa de Bits</span>
-                  <span className="text-white font-mono font-black text-lg">{progressData?.bitrate ?? 'N/A'}</span>
-                </div>
-                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
-                  <span className="text-[9px] uppercase font-bold text-text-secondary">Velocidad</span>
-                  <span className="text-white font-mono font-black text-lg">{progressData?.speed ?? 'N/A'}</span>
-                </div>
+                {showFrames && (
+                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                    <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Procesados</span>
+                    <span className="text-white font-mono font-black text-lg">{progressData?.frame}</span>
+                  </div>
+                )}
+                {showFps && (
+                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                    <span className="text-[9px] uppercase font-bold text-text-secondary">Frecuencia (FPS)</span>
+                    <span className="text-white font-mono font-black text-lg">{progressData?.fps}</span>
+                  </div>
+                )}
+                {showBitrate && (
+                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                    <span className="text-[9px] uppercase font-bold text-text-secondary">Tasa de Bits</span>
+                    <span className="text-white font-mono font-black text-lg">{progressData?.bitrate}</span>
+                  </div>
+                )}
+                {showSpeed && (
+                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                    <span className="text-[9px] uppercase font-bold text-text-secondary">Velocidad</span>
+                    <span className="text-white font-mono font-black text-lg">{progressData?.speed}</span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
@@ -258,14 +273,18 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                   <span className="text-[9px] uppercase font-bold text-text-secondary">Tiempo Transmitido</span>
                   <span className="text-white font-mono font-semibold text-xs">{progressData?.out_time?.split('.')[0] ?? 'N/A'}</span>
                 </div>
-                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
-                  <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Duplicados</span>
-                  <span className="text-white font-mono font-semibold text-xs">{progressData?.dup_frames ?? '0'}</span>
-                </div>
-                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
-                  <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Perdidos (Drop)</span>
-                  <span className="text-white font-mono font-semibold text-xs">{progressData?.drop_frames ?? '0'}</span>
-                </div>
+                {showDups && (
+                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
+                    <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Duplicados</span>
+                    <span className="text-white font-mono font-semibold text-xs">{progressData?.dup_frames}</span>
+                  </div>
+                )}
+                {showDrops && (
+                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
+                    <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Perdidos (Drop)</span>
+                    <span className="text-white font-mono font-semibold text-xs">{progressData?.drop_frames}</span>
+                  </div>
+                )}
               </div>
 
               <div className="bg-white/2 border border-white/5 rounded-xl p-3 flex justify-between items-center text-[10px]">
