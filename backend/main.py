@@ -626,6 +626,15 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             
         if settings_in.logging_mode is not None:
             config["logging"]["mode"] = settings_in.logging_mode
+            # Synchronize system task active state
+            from database.models import ScheduledTask
+            from utils.cron_helper import CronHelper
+            sys_task = db.query(ScheduledTask).filter(ScheduledTask.command == "system://log_rotate").first()
+            if sys_task:
+                is_active = settings_in.logging_mode in ("file", "both")
+                sys_task.is_active = is_active
+                sys_task.next_run = CronHelper.get_next_run("0 0 * * *") if is_active else None
+            
             
         existing_rel_path = config["logging"].get("relative_path", "ffmpeg-gui.log")
         rel_path = settings_in.logging_relative_path if settings_in.logging_relative_path is not None else existing_rel_path
@@ -3015,6 +3024,7 @@ def list_tasks(db: Session = Depends(get_db)):
             "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
             "retry_policy": t.retry_policy,
             "alias": t.alias,
+            "is_system": t.is_system,
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
             "last_execution": {
@@ -3245,6 +3255,8 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depend
     task = db.query(ScheduledTask).get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.is_system:
+        raise HTTPException(status_code=400, detail="Cannot edit system-defined tasks.")
     
     update_data = payload.dict(exclude_unset=True)
     
@@ -3280,6 +3292,8 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
     task = db.query(ScheduledTask).get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.is_system:
+        raise HTTPException(status_code=400, detail="Cannot delete system-defined tasks.")
     db.delete(task)
     db.commit()
     return {"status": "success", "message": f"Task {task_id} and its executions deleted."}

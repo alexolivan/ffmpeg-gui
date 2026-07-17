@@ -163,14 +163,27 @@ def init_db():
             from utils.cron_helper import CronHelper
             log_rotate_task = db.query(ScheduledTask).filter(ScheduledTask.command == "system://log_rotate").first()
             if not log_rotate_task:
+                is_active = False
+                config_path = os.environ.get("CONFIG_FILE_PATH")
+                if config_path and os.path.exists(config_path):
+                    try:
+                        import configparser
+                        config = configparser.ConfigParser()
+                        config.read(config_path)
+                        if "logging" in config:
+                            mode = config["logging"].get("mode", "journalctl")
+                            is_active = (mode in ("file", "both"))
+                    except Exception:
+                        pass
+                
                 task = ScheduledTask(
                     name="System Log Rotation and Retention Cleanup",
                     command="system://log_rotate",
                     is_system=True,
-                    is_active=True,
+                    is_active=is_active,
                     schedule_type="recurring",
                     schedule_cron="0 0 * * *",
-                    next_run=CronHelper.get_next_run("0 0 * * *"),
+                    next_run=CronHelper.get_next_run("0 0 * * *") if is_active else None,
                     input_config={},
                     output_config={},
                     codec_config={}
