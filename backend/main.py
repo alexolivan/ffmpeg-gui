@@ -1489,9 +1489,19 @@ async def startup_event():
             running_processes = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
             for p in running_processes:
                 if p.pid and psutil.pid_exists(p.pid):
-                    logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is alive with PID {p.pid}. Re-attaching watchdog.")
-                    process_manager.reattach_process(p.id, p.pid)
-                    active_pids.add(p.pid)
+                    if p.debug_mode:
+                        logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is in debug mode. Cannot re-attach live pipes. Marking as stopped to force restart.")
+                        p.status = "stopped"
+                        p.pid = None
+                        p.cpu_usage = 0
+                        p.ram_usage = 0
+                        p.fps = "0"
+                        p.bitrate = "0 kb/s"
+                        p.speed = "0x"
+                    else:
+                        logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is alive with PID {p.pid}. Re-attaching watchdog.")
+                        process_manager.reattach_process(p.id, p.pid)
+                        active_pids.add(p.pid)
                 else:
                     logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is NOT alive in OS. Cleaning up.")
                     p.status = "stopped"

@@ -89,3 +89,44 @@ class TestStartupReattach(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(dead_proc.fps, "0")
             self.assertEqual(dead_proc.bitrate, "0 kb/s")
             self.assertEqual(dead_proc.speed, "0x")
+
+    @patch("main.cleanup_rogue_processes")
+    @patch("psutil.pid_exists")
+    @patch("main.process_manager.reattach_process")
+    async def test_startup_event_stops_debug_mode_processes(
+        self, mock_reattach, mock_pid_exists, mock_cleanup
+    ):
+        mock_pid_exists.return_value = True
+
+        debug_proc = MediaProcess(
+            name="Debug Process",
+            type="service",
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/debug.mp4"},
+            codec_config={},
+            status="running",
+            pid=12345,
+            debug_mode=True
+        )
+        self.db.add(debug_proc)
+        self.db.commit()
+        self.db.refresh(debug_proc)
+
+        mock_sch = MagicMock()
+        mock_sch.start = AsyncMock()
+        with patch("main.lcd_manager") as mock_lcd, \
+             patch("main.scheduler", mock_sch), \
+             patch("main.telemetry_broadcast_loop") as mock_telemetry, \
+             patch("main.auto_start_services") as mock_auto_start:
+            
+            await main.startup_event()
+
+            # Verify debug process was NOT reattached
+            mock_reattach.assert_not_called()
+
+            # Refresh and check DB states
+            self.db.refresh(debug_proc)
+
+            # Debug process should be marked as stopped
+            self.assertEqual(debug_proc.status, "stopped")
+            self.assertIsNone(debug_proc.pid)
