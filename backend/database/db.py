@@ -51,6 +51,8 @@ def init_db():
             task_columns = [row[1] for row in result.fetchall()]
             if "alias" not in task_columns:
                 conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN alias TEXT DEFAULT NULL"))
+            if "is_system" not in task_columns:
+                conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN is_system BOOLEAN DEFAULT 0"))
             
             # Migración para la columna auto_clean en ffmpeg_builds
             result = conn.execute(text("PRAGMA table_info(ffmpeg_builds)"))

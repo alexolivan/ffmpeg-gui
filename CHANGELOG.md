@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0] (Backend) / [1.5.0] (Database Schema) - 2026-07-17
+
+### Added
+- (Backend/Database) Added `is_system` column to `ScheduledTask` model with SQLite migrations to dynamically alter table if it does not exist.
+- (Backend) Added comprehensive unit tests in `backend/tests/test_system_task_schema.py` to cover system task schema migrations and database model validation.
+
 ## [1.20.0] (Frontend) / [1.24.0] (Backend) / [1.4.0] (Database Schema) - 2026-07-16
 
 ### Added
