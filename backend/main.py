@@ -275,7 +275,7 @@ def make_settings_response(settings):
     restart_required = False
 
     # Default logging values
-    logging_mode = "both"
+    logging_mode = "journalctl"
     logging_storage_id = None
     logging_relative_path = "ffmpeg-gui.log"
     logging_rotation_enabled = False

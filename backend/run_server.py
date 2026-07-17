@@ -71,7 +71,7 @@ def main():
     database = None
 
     # Valores por defecto para logging
-    logging_mode = "both"
+    logging_mode = "journalctl"
     logging_file_path = None
     rotation_enabled = False
     rotation_max_bytes = 10 * 1024 * 1024

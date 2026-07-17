@@ -71,14 +71,14 @@ class TestLoggingSettingsAPI(unittest.TestCase):
         try:
             with patch("main.logging.getLogger") as mock_get_logger:
                 mock_logger = MagicMock()
-                mock_logger.handlers = [fh, sh]
+                mock_logger.handlers = [sh]
                 mock_get_logger.return_value = mock_logger
                 
                 res = self.client.get("/settings")
                 self.assertEqual(res.status_code, 200)
                 data = res.json()
                 
-                self.assertEqual(data["logging_mode"], "both")
+                self.assertEqual(data["logging_mode"], "journalctl")
                 self.assertIsNone(data["logging_storage_id"])
                 self.assertEqual(data["logging_relative_path"], "ffmpeg-gui.log")
                 self.assertFalse(data["logging_rotation_enabled"])
