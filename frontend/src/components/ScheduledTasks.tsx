@@ -429,7 +429,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         ) : (
           <div className="divide-y divide-white/5">
             {tasks.map(task => (
-              <div key={task.id} className="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-white/[0.01] transition-all px-2">
+              <div key={task.id} className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-white/[0.01] transition-all px-2 ${task.is_system ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1' : ''}`}>
                 <div className="flex-1 space-y-0.5 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h3 className="font-bold text-lg text-white truncate">
@@ -440,6 +440,11 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         </span>
                       )}
                     </h3>
+                    {task.is_system && (
+                      <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
+                        SYSTEM
+                      </span>
+                    )}
                     <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                       task.schedule_type === 'recurring' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' :
                       task.schedule_type === 'one_shot' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
@@ -534,23 +539,27 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     <ExportIcon size={16} />
                   </button>
 
-                  <button 
-                    disabled={taskTriggerPending[task.id]}
-                    onClick={() => handleEditClick(task)}
-                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                    title="Edit Task"
-                  >
-                    <PencilIcon size={16} />
-                  </button>
+                  {!task.is_system && (
+                    <>
+                      <button 
+                        disabled={taskTriggerPending[task.id]}
+                        onClick={() => handleEditClick(task)}
+                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                        title="Edit Task"
+                      >
+                        <PencilIcon size={16} />
+                      </button>
 
-                  <button 
-                    disabled={taskTriggerPending[task.id]}
-                    onClick={() => handleDeleteTask(task.id)}
-                    className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                    title="Delete Task"
-                  >
-                    <TrashIcon size={16} />
-                  </button>
+                      <button 
+                        disabled={taskTriggerPending[task.id]}
+                        onClick={() => handleDeleteTask(task.id)}
+                        className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                        title="Delete Task"
+                      >
+                        <TrashIcon size={16} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}

@@ -218,6 +218,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [logoText, setLogoText] = useState(settings.logo_text || '');
   const [lcdAlias, setLcdAlias] = useState(settings.lcd_alias || 'NODE-01');
   const [guiPort, setGuiPort] = useState(settings.gui_port || 8000);
+  const [loggingMode, setLoggingMode] = useState(settings.logging_mode || 'journalctl');
+  const [loggingStorageId, setLoggingStorageId] = useState<number | ''>(settings.logging_storage_id !== undefined && settings.logging_storage_id !== null ? settings.logging_storage_id : '');
+  const [loggingRelativePath, setLoggingRelativePath] = useState(settings.logging_relative_path || 'ffmpeg-gui.log');
+  const [loggingRotationEnabled, setLoggingRotationEnabled] = useState<boolean>(settings.logging_rotation_enabled || false);
+  const [loggingRotationMaxBytes, setLoggingRotationMaxBytes] = useState<number>(settings.logging_rotation_max_bytes || 10485760);
+  const [loggingRotationBackupCount, setLoggingRotationBackupCount] = useState<number>(settings.logging_rotation_backup_count || 5);
+  const [loggingCompressionEnabled, setLoggingCompressionEnabled] = useState<boolean>(settings.logging_compression_enabled || false);
+  const [loggingRetentionDays, setLoggingRetentionDays] = useState<number>(settings.logging_retention_days || 7);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
@@ -228,7 +236,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLogoText(settings.logo_text || '');
     setLcdAlias(settings.lcd_alias || 'NODE-01');
     setGuiPort(settings.gui_port || 8000);
-  }, [settings.node_name, settings.logo_text, settings.lcd_alias, settings.gui_port]);
+    setLoggingMode(settings.logging_mode || 'journalctl');
+    setLoggingStorageId(settings.logging_storage_id !== undefined && settings.logging_storage_id !== null ? settings.logging_storage_id : '');
+    setLoggingRelativePath(settings.logging_relative_path || 'ffmpeg-gui.log');
+    setLoggingRotationEnabled(settings.logging_rotation_enabled || false);
+    setLoggingRotationMaxBytes(settings.logging_rotation_max_bytes || 10485760);
+    setLoggingRotationBackupCount(settings.logging_rotation_backup_count || 5);
+    setLoggingCompressionEnabled(settings.logging_compression_enabled || false);
+    setLoggingRetentionDays(settings.logging_retention_days || 7);
+  }, [
+    settings.node_name,
+    settings.logo_text,
+    settings.lcd_alias,
+    settings.gui_port,
+    settings.logging_mode,
+    settings.logging_storage_id,
+    settings.logging_relative_path,
+    settings.logging_rotation_enabled,
+    settings.logging_rotation_max_bytes,
+    settings.logging_rotation_backup_count,
+    settings.logging_compression_enabled,
+    settings.logging_retention_days
+  ]);
 
   const [lcdEnabled, setLcdEnabled] = useState(settings.lcd_enabled || false);
   const [lcdPort, setLcdPort] = useState(settings.lcd_port || '/dev/ttyACM0');
@@ -304,6 +333,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     lcdLed1Profile !== (settings.lcd_led1_profile || 'streams') ||
     lcdLed2Profile !== (settings.lcd_led2_profile || 'tasks') ||
     lcdLed3Profile !== (settings.lcd_led3_profile || 'alert') ||
+    loggingMode !== (settings.logging_mode || 'journalctl') ||
+    loggingStorageId !== (settings.logging_storage_id !== undefined && settings.logging_storage_id !== null ? settings.logging_storage_id : '') ||
+    loggingRelativePath !== (settings.logging_relative_path || 'ffmpeg-gui.log') ||
+    loggingRotationEnabled !== (settings.logging_rotation_enabled || false) ||
+    Number(loggingRotationMaxBytes) !== Number(settings.logging_rotation_max_bytes || 10485760) ||
+    Number(loggingRotationBackupCount) !== Number(settings.logging_rotation_backup_count || 5) ||
+    loggingCompressionEnabled !== (settings.logging_compression_enabled || false) ||
+    Number(loggingRetentionDays) !== Number(settings.logging_retention_days || 7) ||
     newPassword !== '' ||
     confirmPassword !== '';
 
@@ -338,6 +375,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         lcd_led1_profile: lcdLed1Profile,
         lcd_led2_profile: lcdLed2Profile,
         lcd_led3_profile: lcdLed3Profile,
+        logging_mode: loggingMode,
+        logging_storage_id: loggingStorageId === '' ? null : Number(loggingStorageId),
+        logging_relative_path: loggingRelativePath,
+        logging_rotation_enabled: loggingRotationEnabled,
+        logging_rotation_max_bytes: Number(loggingRotationMaxBytes),
+        logging_rotation_backup_count: Number(loggingRotationBackupCount),
+        logging_compression_enabled: loggingCompressionEnabled,
+        logging_retention_days: Number(loggingRetentionDays),
       };
 
       if (newPassword !== '') {
@@ -593,6 +638,142 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <p className="text-[9px] text-text-secondary leading-tight italic mt-1">
                   The network port on which this dashboard listens for connection requests.
                 </p>
+              </div>
+            </div>
+
+            {/* Card 3: Logging Configuration */}
+            <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
+              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">LOGGING CONFIGURATION</h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Mode</label>
+                    <select
+                      value={loggingMode}
+                      onChange={e => setLoggingMode(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white"
+                    >
+                      <option value="journalctl" className="bg-black text-white">journalctl (journald console)</option>
+                      <option value="file" className="bg-black text-white">file (log file only)</option>
+                      <option value="both" className="bg-black text-white">both (console + log file)</option>
+                    </select>
+                  </div>
+
+                  {(loggingMode === 'file' || loggingMode === 'both') && (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Log Storage</label>
+                        <select
+                          value={loggingStorageId}
+                          onChange={e => setLoggingStorageId(e.target.value === '' ? '' : Number(e.target.value))}
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white"
+                        >
+                          <option value="" className="bg-black text-white">Select a Log Storage...</option>
+                          {storages.filter(s => s.type === 'logs').map(s => (
+                            <option key={s.id} value={s.id} className="bg-black text-white">
+                              {s.name} ({s.path})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Relative Path</label>
+                        <input
+                          type="text"
+                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white font-mono"
+                          value={loggingRelativePath}
+                          onChange={e => setLoggingRelativePath(e.target.value)}
+                          placeholder="e.g. ffmpeg-gui.log"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {(loggingMode === 'file' || loggingMode === 'both') && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
+                      <div>
+                        <h4 className="text-xs font-bold text-white">Enable Rotation</h4>
+                        <p className="text-[9px] text-text-secondary leading-snug">Limit file size and retain archives</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setLoggingRotationEnabled(!loggingRotationEnabled)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          loggingRotationEnabled ? 'bg-brand-lime' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                            loggingRotationEnabled ? 'translate-x-4' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {loggingRotationEnabled && (
+                      <div className="grid grid-cols-2 gap-3 pl-1">
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Max Bytes</label>
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white font-mono"
+                            value={loggingRotationMaxBytes}
+                            onChange={e => setLoggingRotationMaxBytes(Number(e.target.value))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Backup Count</label>
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white font-mono"
+                            value={loggingRotationBackupCount}
+                            onChange={e => setLoggingRotationBackupCount(Number(e.target.value))}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
+                      <div>
+                        <h4 className="text-xs font-bold text-white">Enable Compression</h4>
+                        <p className="text-[9px] text-text-secondary leading-snug">Compress backup logs (.gz)</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setLoggingCompressionEnabled(!loggingCompressionEnabled)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          loggingCompressionEnabled ? 'bg-brand-lime' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                            loggingCompressionEnabled ? 'translate-x-4' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Retention Days</label>
+                      <input
+                        type="number"
+                        min={0}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white font-mono"
+                        value={loggingRetentionDays}
+                        onChange={e => setLoggingRetentionDays(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </>
