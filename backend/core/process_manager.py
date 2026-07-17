@@ -1487,7 +1487,9 @@ class ProcessManager:
                                 has_had_activity = True
 
                             # Compare with previous iteration
-                            if prev_frame is None or prev_out_time_us is None:
+                            # Treat frame as matching if it's absent (None) in both.
+                            # If a video stream gets its first frame, we reset the baseline to avoid false matches.
+                            if prev_out_time_us is None or (frame is not None and prev_frame is None):
                                 prev_frame = frame
                                 prev_out_time_us = out_time_us
                                 self.watchdog_stalled_since[process_id] = None

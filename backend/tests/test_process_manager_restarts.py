@@ -385,3 +385,112 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
         finally:
             self.db.delete(media_proc)
             self.db.commit()
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_watchdog_progress_stall_kill_audio_only(self, mock_exec):
+        class StubProcess:
+            def __init__(self):
+                self.pid = 12346
+                self.returncode = None
+                self.stdin = MagicMock()
+                self.stderr = MagicMock()
+                self.kill_called = False
+
+                async def mock_read(n):
+                    return b""
+                self.stderr.read = mock_read
+
+            def kill(self):
+                self.kill_called = True
+                self.returncode = -9
+
+            async def wait(self):
+                return self.returncode
+
+        stub_proc = StubProcess()
+
+        media_proc = MediaProcess(
+            name="Watchdog Stall Audio Service",
+            type="service",
+            input_config={"type": "alsa", "path": "default"},
+            output_config={"type": "icecast", "path": "http://localhost:8000/mount"},
+            codec_config={"acodec": "libmp3lame"},
+            status="running",
+            watchdog_enabled=True,
+            watchdog_retries=3,
+            bitrate="0.0kbits/s",
+            fps="0"
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        self.manager.processes[media_proc.id] = stub_proc
+
+        import os
+        shm_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}.log"
+        tmp_path = f"/tmp/ffmpeg_progress_{media_proc.id}.log"
+        if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK):
+            progress_path = shm_path
+        else:
+            progress_path = tmp_path
+
+        # Write progress log file WITHOUT frame=... key to simulate audio-only
+        def write_progress(bitrate, speed, out_time_us):
+            content = f"bitrate={bitrate}\nspeed={speed}\nout_time_us={out_time_us}\nprogress=continue\n"
+            with open(progress_path, "w") as f:
+                f.write(content)
+
+        if os.path.exists(progress_path):
+            os.remove(progress_path)
+
+        try:
+            with patch("psutil.Process") as mock_psutil:
+                mock_p = MagicMock()
+                mock_p.cpu_percent.return_value = 5.0
+                mock_p.memory_info.return_value.rss = 100 * 1024 * 1024
+                mock_psutil.return_value = mock_p
+
+                sleep_count = 0
+                async def mock_sleep(delay):
+                    nonlocal sleep_count
+                    sleep_count += 1
+                    if sleep_count == 1:
+                        write_progress(bitrate="128kbits/s", speed="1.0x", out_time_us=4000000)
+                    elif sleep_count == 2:
+                        write_progress(bitrate="128kbits/s", speed="1.0x", out_time_us=4000000)
+                    elif sleep_count >= 3:
+                        pass
+
+                from datetime import timedelta
+                now = datetime.utcnow()
+                time_points = [
+                    now,                        # Setup/init
+                    now,                        # Loop 1 check running
+                    now,                        # Loop 1 update DB & check stall
+                    now + timedelta(seconds=2), # Loop 2 check running
+                    now + timedelta(seconds=2), # Loop 2 update DB & check stall
+                    now + timedelta(seconds=4), # Loop 3 check running
+                    now + timedelta(seconds=25),# Loop 3 update DB & check stall (elapsed > 15s)
+                    now + timedelta(seconds=27),# Loop 4 check running
+                ]
+                time_iter = iter(time_points)
+                def mock_utcnow():
+                    try:
+                        return next(time_iter)
+                    except StopIteration:
+                        return datetime.utcnow() + timedelta(seconds=100)
+
+                with patch("core.process_manager.datetime") as mock_dt, patch("asyncio.sleep", side_effect=mock_sleep):
+                    mock_dt.utcnow = mock_utcnow
+                    mock_dt.fromisoformat = datetime.fromisoformat
+                    
+                    await self.manager._watchdog(media_proc.id, stub_proc)
+
+                self.assertTrue(stub_proc.kill_called)
+
+        finally:
+            if os.path.exists(progress_path):
+                os.remove(progress_path)
+            self.db.delete(media_proc)
+            self.db.commit()
