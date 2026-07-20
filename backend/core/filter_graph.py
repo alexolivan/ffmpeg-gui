@@ -81,11 +81,32 @@ class FilterGraphBuilder:
             o_type = overlay.get('type')
             if o_type == 'text':
                 text = cls.escape_filter_arg(overlay.get('text', ''))
-                x = overlay.get('x', '0')
-                y = overlay.get('y', '0')
+                x = str(overlay.get('x', '0'))
+                y = str(overlay.get('y', '0'))
+                
+                # Translate overlay filter expression variables (main_w, main_h) to drawtext variables (w, h, text_w, text_h)
+                x_dt = x.replace('main_w-w', 'w-text_w').replace('main_w', 'w')
+                y_dt = y.replace('main_h-h', 'h-text_h').replace('main_h', 'h')
+                
                 fontsize = overlay.get('fontsize', '24')
                 fontcolor = overlay.get('fontcolor', 'white')
-                text_and_simple.append(f"drawtext=text='{text}':x={x}:y={y}:fontsize={fontsize}:fontcolor={fontcolor}")
+                
+                dt_parts = [
+                    f"drawtext=text='{text}'",
+                    f"x={x_dt}",
+                    f"y={y_dt}",
+                    f"fontsize={fontsize}",
+                    f"fontcolor={fontcolor}"
+                ]
+                
+                if overlay.get('box'):
+                    dt_parts.append("box=1")
+                    if overlay.get('boxcolor'):
+                        dt_parts.append(f"boxcolor={overlay.get('boxcolor')}")
+                    if overlay.get('boxborderw'):
+                        dt_parts.append(f"boxborderw={overlay.get('boxborderw')}")
+                        
+                text_and_simple.append(":".join(dt_parts))
             elif o_type == 'image':
                 image_overlays.append(overlay)
                 
