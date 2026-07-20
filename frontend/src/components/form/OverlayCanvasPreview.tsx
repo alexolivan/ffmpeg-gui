@@ -3,6 +3,7 @@ import { calculateCanvasCoords } from '../../utils/overlayPositionHelper';
 
 export interface OverlayItem {
   id: string;
+  name?: string;
   type: 'text' | 'image';
   text?: string;
   path?: string;
@@ -33,6 +34,23 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
   const [showTitleSafe, setShowTitleSafe] = useState<boolean>(true);
   const [showActionSafe, setShowActionSafe] = useState<boolean>(true);
   const [showCenterCross, setShowCenterCross] = useState<boolean>(true);
+
+  // Image load error & dimensions tracker
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const [imgDimensions, setImgDimensions] = useState<Record<string, { w: number; h: number }>>({});
+
+  const handleImageError = (id: string) => {
+    setFailedImages((prev) => ({ ...prev, [id]: true }));
+  };
+
+  const handleImageLoad = (id: string, img: HTMLImageElement) => {
+    if (img.naturalWidth && img.naturalHeight) {
+      setImgDimensions((prev) => ({
+        ...prev,
+        [id]: { w: img.naturalWidth, h: img.naturalHeight },
+      }));
+    }
+  };
 
   // Manual Aspect Ratio Selection (null = auto from scaleResolution)
   const [manualRatio, setManualRatio] = useState<'16:9' | '4:3' | '9:16' | '1:1' | null>(null);
@@ -95,13 +113,6 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
       }
     }
     return null;
-  };
-
-  // Image load error tracker
-  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
-
-  const handleImageError = (id: string) => {
-    setFailedImages((prev) => ({ ...prev, [id]: true }));
   };
 
   // Sort overlays by order ascending
@@ -330,14 +341,13 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
                   NO OVERLAY LAYERS ACTIVE
                 </p>
                 <p className="text-[10px] text-slate-500 max-w-xs">
-                  Add Text or Image overlays to preview exact broadcast pixel coordinates
+                  Add Text or Image overlays to preview broadcast positions
                 </p>
               </div>
             ) : (
               sortedOverlays.map((item, idx) => {
                 const fontSizePx = parseInt(item.fontsize || '24', 10) || 24;
 
-                // Estimate layer dimensions in nominal canvas pixels
                 let layerW = 160;
                 let layerH = 90;
 
@@ -345,9 +355,12 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
                   layerH = Math.round(fontSizePx * 1.3);
                   const textStr = item.text || 'Sample Text';
                   layerW = Math.max(80, Math.round(textStr.length * fontSizePx * 0.55));
+                } else if (imgDimensions[item.id]) {
+                  const dims = imgDimensions[item.id];
+                  layerW = Math.min(480, dims.w);
+                  layerH = Math.min(270, dims.h);
                 }
 
-                // Compute pixel coordinates inside screen canvas
                 const { pxX, pxY } = calculateCanvasCoords(
                   item.x || '10',
                   item.y || '10',
@@ -357,15 +370,22 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
                   layerH
                 );
 
-                // Convert to percentage position relative to screen canvas
                 const leftPct = (pxX / canvasW) * 100;
                 const topPct = (pxY / canvasH) * 100;
-
-                // Scale font size relative to container height (using Container Query Height cqh)
                 const fontCQH = (fontSizePx / canvasH) * 100;
 
                 const imgUrl = getImageUrl(item);
                 const isImgFailed = item.type === 'image' && (!imgUrl || failedImages[item.id]);
+
+                const rawRel = item.relative_path || item.path || '';
+                const ext = rawRel.split('.').pop()?.toUpperCase() || 'IMG';
+                const extBadge = ext.length <= 4 ? ext : 'IMG';
+
+                const displayName = item.name?.trim() || (
+                  item.type === 'text' 
+                    ? (item.text || 'Text Layer')
+                    : (rawRel ? rawRel.split('/').pop() : 'Image Layer')
+                );
 
                 return (
                   <div
@@ -391,34 +411,32 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
                         }}
                       >
                         {item.text || 'Sample Text'}
-                        {/* Layer order badge on hover */}
-                        <span className="opacity-0 group-hover:opacity-100 absolute -top-5 left-0 bg-cyan-500 text-slate-950 font-bold font-mono text-[9px] px-1 py-0.2 rounded shadow transition-opacity">
-                          #{item.order ?? idx + 1} Text ({Math.round(pxX)}, {Math.round(pxY)})
+                        <span className="opacity-0 group-hover:opacity-100 absolute -top-5 left-0 bg-cyan-500 text-slate-950 font-bold font-mono text-[9px] px-1 py-0.2 rounded shadow transition-opacity whitespace-nowrap">
+                          #{item.order ?? idx + 1} {displayName} ({Math.round(pxX)}, {Math.round(pxY)})
                         </span>
                       </div>
                     ) : (
                       <div className="inline-block relative group">
                         {isImgFailed ? (
-                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900/90 border border-cyan-500/50 rounded-lg shadow-lg backdrop-blur-md text-cyan-300 font-mono text-xs">
-                            <span className="text-sm">🖼️</span>
-                            <div className="flex flex-col text-[10px] leading-tight">
-                              <span className="font-bold text-white uppercase">Image Layer</span>
-                              <span className="text-slate-400 truncate max-w-[120px]">
-                                {item.relative_path || item.path || 'No Path Selected'}
-                              </span>
-                            </div>
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-cyan-950/90 border border-cyan-400/40 rounded shadow-md backdrop-blur-sm">
+                            <span className="bg-cyan-500 text-black font-black font-mono text-[9px] px-1 rounded uppercase">
+                              {extBadge}
+                            </span>
+                            <span className="text-[10px] font-bold text-white tracking-wide truncate max-w-[110px]">
+                              {displayName}
+                            </span>
                           </div>
                         ) : (
                           <img
                             src={imgUrl!}
                             alt={`Overlay ${item.order ?? idx + 1}`}
                             onError={() => handleImageError(item.id)}
+                            onLoad={(e) => handleImageLoad(item.id, e.currentTarget)}
                             className="max-h-24 max-w-48 object-contain rounded border border-white/20 shadow-md"
                           />
                         )}
-                        {/* Layer order badge on hover */}
                         <span className="opacity-0 group-hover:opacity-100 absolute -top-5 left-0 bg-amber-500 text-slate-950 font-bold font-mono text-[9px] px-1 py-0.2 rounded shadow transition-opacity whitespace-nowrap">
-                          #{item.order ?? idx + 1} Image ({Math.round(pxX)}, {Math.round(pxY)})
+                          #{item.order ?? idx + 1} {displayName} ({Math.round(pxX)}, {Math.round(pxY)})
                         </span>
                       </div>
                     )}
