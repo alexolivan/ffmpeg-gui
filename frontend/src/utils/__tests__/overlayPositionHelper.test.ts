@@ -3,7 +3,7 @@ import {
   generateAnchorExpressions,
   parseAnchorFromExpressions,
   calculateCanvasCoords,
-  AnchorPreset,
+  type AnchorPreset,
 } from '../overlayPositionHelper';
 
 describe('overlayPositionHelper', () => {

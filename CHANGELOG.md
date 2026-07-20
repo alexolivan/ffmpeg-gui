@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.22.0] (Frontend) - 2026-07-20
 
 ### Added
+- Created `frontend/src/components/form/OverlayCanvasPreview.tsx` for real-time TV monitor video overlay preview with broadcast safe area guides (Title Safe 80%, Action Safe 90%, Center +) and aspect ratio options (16:9, 4:3, 9:16, 1:1).
 - Created `frontend/src/utils/overlayPositionHelper.ts` containing `generateAnchorExpressions`, `parseAnchorFromExpressions`, and `calculateCanvasCoords` for 3x3 grid positioning in Video Overlays Studio.
 - Added comprehensive unit tests in `frontend/src/utils/__tests__/overlayPositionHelper.test.ts`.
 
