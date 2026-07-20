@@ -55,7 +55,7 @@ echo ""
 echo "[PHASE 2/3] Building Frontend Assets..."
 if [ -d "$PROJ_DIR/frontend" ]; then
     cd "$PROJ_DIR/frontend"
-    npm install
+    npm ci
     npm run build
     cd "$PROJ_DIR"
 else
