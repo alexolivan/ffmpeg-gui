@@ -757,12 +757,18 @@ class ProcessManager:
             os.makedirs(previews_dir, exist_ok=True)
             preview_path = os.path.join(previews_dir, f"preview_{media_proc.id}.jpg")
             
-            preview_vf = "fps=1,scale=480:-1"
             try:
-                if is_vram:
-                    preview_vf = "fps=1,hwdownload,format=nv12,scale=480:-1"
+                if final_vf:
+                    if remains_vram:
+                        preview_vf = f"{final_vf},hwdownload,format=nv12,fps=1,scale=480:-1"
+                    else:
+                        preview_vf = f"{final_vf},fps=1,scale=480:-1"
+                else:
+                    preview_vf = "fps=1,scale=480:-1"
+                    if is_vram:
+                        preview_vf = "fps=1,hwdownload,format=nv12,scale=480:-1"
             except NameError:
-                pass
+                preview_vf = "fps=1,scale=480:-1"
                 
             cmd += [
                 "-map", "0:v",
