@@ -452,26 +452,48 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     }`}>
                       {task.schedule_type}
                     </span>
-                    <button 
-                      onClick={() => handleToggleActive(task)}
-                      className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 ${
-                        task.is_active 
-                          ? 'bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20' 
-                          : 'bg-white/5 text-white/30 border-white/10 hover:bg-white/10'
-                      }`}
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>
-                      {task.is_active ? 'Active' : 'Disabled'}
-                    </button>
+                    {task.is_system ? (
+                      <span 
+                        title="Managed via Settings > General > Logging"
+                        className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help ${
+                          task.is_active 
+                            ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                            : 'bg-white/5 text-white/30 border-white/10'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>
+                        {task.is_active ? 'Active' : 'Disabled'}
+                      </span>
+                    ) : (
+                      <button 
+                        onClick={() => handleToggleActive(task)}
+                        className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 ${
+                          task.is_active 
+                            ? 'bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20' 
+                            : 'bg-white/5 text-white/30 border-white/10 hover:bg-white/10'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>
+                        {task.is_active ? 'Active' : 'Disabled'}
+                      </button>
+                    )}
                   </div>
 
                   <div className="text-xs text-text-secondary space-y-1">
-                    <p className="truncate">
-                      Input: <code className="text-white font-mono">{formatInputDesc(task.input_config)}</code>
-                    </p>
-                    <p className="truncate">
-                      Output: <code className="text-white font-mono">{formatOutputDesc(task.output_config)}</code>
-                    </p>
+                    {task.is_system ? (
+                      <p className="truncate">
+                        System Action: <code className="text-brand-orange font-mono">Log Retention Cleanup (system://log_rotate)</code>
+                      </p>
+                    ) : (
+                      <>
+                        <p className="truncate">
+                          Input: <code className="text-white font-mono">{formatInputDesc(task.input_config)}</code>
+                        </p>
+                        <p className="truncate">
+                          Output: <code className="text-white font-mono">{formatOutputDesc(task.output_config)}</code>
+                        </p>
+                      </>
+                    )}
                     {task.schedule_type === 'recurring' && (
                       <p>
                         Cron Expression: <code className="text-brand-lime font-mono">{task.schedule_cron}</code>
@@ -509,9 +531,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   </button>
                   
                   <button 
-                    disabled={taskTriggerPending[task.id]}
+                    disabled={!task.is_active || taskTriggerPending[task.id]}
                     onClick={() => handleTriggerTask(task.id)}
                     className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+                    title={!task.is_active ? 'Task is currently disabled' : 'Run Now'}
                   >
                     {taskTriggerPending[task.id] ? (
                       <span className="w-3 h-3 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
@@ -520,27 +543,27 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     )}
                     {taskTriggerPending[task.id] ? 'TRIGGERING...' : 'RUN NOW'}
                   </button>
-                  
-                  <button 
-                    disabled={taskTriggerPending[task.id]}
-                    onClick={() => handleCloneTask(task)}
-                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                    title="Clone Task"
-                  >
-                    <ClipboardIcon size={16} />
-                  </button>
-
-                  <button 
-                    disabled={taskTriggerPending[task.id]}
-                    onClick={() => handleExportTask(task)}
-                    className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                    title="Export Task"
-                  >
-                    <ExportIcon size={16} />
-                  </button>
 
                   {!task.is_system && (
                     <>
+                      <button 
+                        disabled={taskTriggerPending[task.id]}
+                        onClick={() => handleCloneTask(task)}
+                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                        title="Clone Task"
+                      >
+                        <ClipboardIcon size={16} />
+                      </button>
+
+                      <button 
+                        disabled={taskTriggerPending[task.id]}
+                        onClick={() => handleExportTask(task)}
+                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                        title="Export Task"
+                      >
+                        <ExportIcon size={16} />
+                      </button>
+
                       <button 
                         disabled={taskTriggerPending[task.id]}
                         onClick={() => handleEditClick(task)}

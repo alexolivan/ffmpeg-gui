@@ -10,6 +10,8 @@ class TestScheduler(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         init_db()
         self.db = SessionLocal()
+        self.db.query(ScheduledTask).delete()
+        self.db.commit()
         # Mock TaskManager
         self.task_manager = MagicMock()
         self.task_manager.start_execution = AsyncMock()

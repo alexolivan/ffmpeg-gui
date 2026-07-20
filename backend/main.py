@@ -3181,6 +3181,8 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
 
         db_task = ScheduledTask(
             name=f"Imported: {td.get('name', 'Untitled')}",
+            is_system=False,
+            command=None,
             is_active=td.get("is_active", True),
             input_config=td.get("input_config", {}),
             output_config=td.get("output_config", {}),
