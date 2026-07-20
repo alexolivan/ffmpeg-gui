@@ -429,10 +429,21 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         ) : (
           <div className="divide-y divide-white/5">
             {tasks.map(task => (
-              <div key={task.id} className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-white/[0.01] transition-all px-2 ${task.is_system ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1' : ''}`}>
+              <div 
+                key={task.id} 
+                className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all px-2 ${
+                  !task.is_active ? 'opacity-50 grayscale-[30%] hover:opacity-80' : ''
+                } ${
+                  task.is_system 
+                    ? task.is_active 
+                      ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1 shadow-sm shadow-brand-orange/5' 
+                      : 'border border-white/10 rounded-xl bg-white/[0.01] px-3 my-1'
+                    : 'hover:bg-white/[0.01]'
+                }`}
+              >
                 <div className="flex-1 space-y-0.5 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <h3 className="font-bold text-lg text-white truncate">
+                    <h3 className={`font-bold text-lg truncate ${task.is_active ? 'text-white' : 'text-white/50'}`}>
                       {task.name}
                       {task.alias && (
                         <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
@@ -441,7 +452,11 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                       )}
                     </h3>
                     {task.is_system && (
-                      <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        task.is_active 
+                          ? 'bg-brand-orange/15 text-brand-orange border border-brand-orange/30' 
+                          : 'bg-white/5 text-white/40 border border-white/10'
+                      }`}>
                         SYSTEM
                       </span>
                     )}
@@ -482,7 +497,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   <div className="text-xs text-text-secondary space-y-1">
                     {task.is_system ? (
                       <p className="truncate">
-                        System Action: <code className="text-brand-orange font-mono">Log Retention Cleanup (system://log_rotate)</code>
+                        System Action: <strong className={task.is_active ? "text-brand-orange font-medium" : "text-white/50 font-medium"}>Log Retention & Cleanup Routine</strong>
                       </p>
                     ) : (
                       <>
