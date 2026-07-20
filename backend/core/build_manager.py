@@ -88,7 +88,10 @@ class BuildManager:
             "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
             "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"},
             "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)"},
-            "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)"}
+            "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)"},
+            "libharfbuzz": {"pkg": "harfbuzz", "type": "optional", "description": "Motor de formateo y modelado de texto (libharfbuzz-dev, requerido por drawtext en FFmpeg 6.1+)"},
+            "libfontconfig": {"pkg": "fontconfig", "type": "optional", "description": "Gestión y selección de fuentes del sistema (libfontconfig1-dev)"},
+            "libfribidi": {"pkg": "fribidi", "type": "optional", "description": "Biblioteca para algoritmos bidireccionales de texto (libfribidi-dev)"}
         }
 
         has_pkg_config = results.get("pkg-config", {}).get("installed", False)
@@ -442,9 +445,15 @@ class BuildManager:
             if dep_check.get("dependencies", {}).get("libvpx", {}).get("installed"):
                 config_flags.append("--enable-libvpx")
 
-            # Automatically enable libfreetype if available on the system (required for drawtext filter)
+            # Automatically enable libfreetype and libharfbuzz if available on the system (required for drawtext filter in FFmpeg 6.1+)
             if dep_check.get("dependencies", {}).get("libfreetype", {}).get("installed"):
                 config_flags.append("--enable-libfreetype")
+            if dep_check.get("dependencies", {}).get("libharfbuzz", {}).get("installed"):
+                config_flags.append("--enable-libharfbuzz")
+            if dep_check.get("dependencies", {}).get("libfontconfig", {}).get("installed"):
+                config_flags.append("--enable-libfontconfig")
+            if dep_check.get("dependencies", {}).get("libfribidi", {}).get("installed"):
+                config_flags.append("--enable-libfribidi")
 
             if options.get("libsrt"):
                 config_flags.append("--enable-libsrt")
