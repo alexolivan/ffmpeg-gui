@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] (Frontend) - 2026-07-20
+
+### Added
+- Added visual accent color indicator dot to accordion headers and Canvas Badge Accent Color picker with 8 presets for Image layers.
+- Assigned automatic unique colors to new layers on creation to distinguish multiple layers of the same format (e.g. multiple PNGs).
+- Refactored `OverlayCanvasPreview` elements to measure their actual layout size using `ResizeObserver` and map it dynamically to FFmpeg virtual dimensions.
+
+### Changed
+- Configured overlays list to start completely collapsed to reduce layout vertical footprint on tab load.
+- Replaced ambiguous reorder arrow icons in accordion headers with vertical arrows (↑/↓) and expand/collapse icons with a pill button (▾ EDIT / ▴ CLOSE).
+
+### Fixed
+- Fixed position expression parsing in `overlayPositionHelper.ts` to support negative integer and float margin offsets.
+- Isolated the 3-character file format badge (e.g. `PNG`, `JPG`) on the preview canvas to prevent aspect ratio distortion caused by inline layer text labels.
+
 ## [1.23.0] (Frontend) - 2026-07-20
 
 ### Added
