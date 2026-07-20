@@ -10,6 +10,7 @@ export interface OverlayItem {
   id: string; // client-side unique id
   name?: string;
   type: 'text' | 'image';
+  color?: string;
   text?: string;
   path?: string;
   storage_id?: number | null;
@@ -23,6 +24,17 @@ export interface OverlayItem {
   boxcolor?: string;
   boxborderw?: string;
 }
+
+export const LAYER_COLOR_PRESETS = [
+  { name: 'Cyan', hex: '#22d3ee' },
+  { name: 'Lime', hex: '#a3e635' },
+  { name: 'Yellow', hex: '#facc15' },
+  { name: 'Pink', hex: '#ec4899' },
+  { name: 'Purple', hex: '#a855f7' },
+  { name: 'Orange', hex: '#f97316' },
+  { name: 'Red', hex: '#ef4444' },
+  { name: 'Blue', hex: '#3b82f6' },
+];
 
 interface FiltersFormSectionProps {
   hasVideo: boolean;
@@ -346,9 +358,11 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   // Overlay management
   const addOverlay = (type: 'text' | 'image') => {
     const defaultPos = generateAnchorExpressions('top-left', 10, 10);
+    const defaultColor = LAYER_COLOR_PRESETS[overlays.length % LAYER_COLOR_PRESETS.length].hex;
     const newItem: OverlayItem = {
       id: Math.random().toString(36).substr(2, 9),
       type,
+      color: defaultColor,
       x: defaultPos.x,
       y: defaultPos.y,
       order: overlays.length,
@@ -1121,9 +1135,18 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                             </div>
 
                             {/* Type Badge */}
-                            <span className={`text-[9.5px] font-black px-2 py-0.5 rounded uppercase shrink-0 ${
-                              overlay.type === 'text' ? 'bg-brand-lime/20 text-brand-lime' : 'bg-cyan-500/20 text-cyan-400'
-                            }`}>
+                            <span 
+                              className="text-[9.5px] font-black px-2 py-0.5 rounded uppercase shrink-0 flex items-center gap-1.5"
+                              style={{
+                                backgroundColor: `${overlay.color || (overlay.type === 'text' ? '#a3e635' : '#22d3ee')}25`,
+                                color: overlay.color || (overlay.type === 'text' ? '#a3e635' : '#22d3ee'),
+                                border: `1px solid ${overlay.color || (overlay.type === 'text' ? '#a3e635' : '#22d3ee')}50`
+                              }}
+                            >
+                              <span 
+                                className="w-2 h-2 rounded-full shadow-sm" 
+                                style={{ backgroundColor: overlay.color || (overlay.type === 'text' ? '#a3e635' : '#22d3ee') }} 
+                              />
                               #{idx + 1} {overlay.type === 'text' ? 'TEXT' : 'IMAGE'}
                             </span>
 
@@ -1317,44 +1340,74 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                               </div>
                             ) : (
                               /* Image Overlay Parameters */
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div>
-                                  <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                    Media Storage Selector
-                                  </label>
-                                  <select
-                                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none text-white focus:border-brand-lime disabled:opacity-35"
-                                    value={overlay.storage_id || ''}
-                                    onChange={(e) =>
-                                      updateOverlayItem(idx, {
-                                        storage_id: e.target.value ? Number(e.target.value) : null,
-                                      })
-                                    }
-                                    disabled={isVideoCopy}
-                                  >
-                                    <option value="" className="bg-slate-900 text-white">-- Select Media Storage --</option>
-                                    {storages
-                                      .filter((s: any) => s.type === 'media')
-                                      .map((s: any) => (
-                                        <option key={s.id} value={s.id} className="bg-slate-900 text-white">
-                                          {s.name} ({s.path})
-                                        </option>
-                                      ))}
-                                  </select>
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
+                                      Media Storage Selector
+                                    </label>
+                                    <select
+                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none text-white focus:border-brand-lime disabled:opacity-35"
+                                      value={overlay.storage_id || ''}
+                                      onChange={(e) =>
+                                        updateOverlayItem(idx, {
+                                          storage_id: e.target.value ? Number(e.target.value) : null,
+                                        })
+                                      }
+                                      disabled={isVideoCopy}
+                                    >
+                                      <option value="" className="bg-slate-900 text-white">-- Select Media Storage --</option>
+                                      {storages
+                                        .filter((s: any) => s.type === 'media')
+                                        .map((s: any) => (
+                                          <option key={s.id} value={s.id} className="bg-slate-900 text-white">
+                                            {s.name} ({s.path})
+                                          </option>
+                                        ))}
+                                    </select>
+                                  </div>
+
+                                  <div>
+                                    <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
+                                      Relative Path
+                                    </label>
+                                    <input
+                                      type="text"
+                                      placeholder="e.g. logos/watermark.png"
+                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-white disabled:opacity-35"
+                                      value={overlay.relative_path || ''}
+                                      onChange={(e) => updateOverlayItem(idx, { relative_path: e.target.value })}
+                                      disabled={isVideoCopy}
+                                    />
+                                  </div>
                                 </div>
 
-                                <div>
-                                  <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                    Relative Path
+                                {/* Canvas Badge Accent Color Selector */}
+                                <div className="bg-black/20 p-2.5 rounded-lg border border-white/5 space-y-1.5">
+                                  <label className="text-[9px] uppercase font-bold text-text-secondary block">
+                                    Canvas Badge Accent Color
                                   </label>
-                                  <input
-                                    type="text"
-                                    placeholder="e.g. logos/watermark.png"
-                                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-white disabled:opacity-35"
-                                    value={overlay.relative_path || ''}
-                                    onChange={(e) => updateOverlayItem(idx, { relative_path: e.target.value })}
-                                    disabled={isVideoCopy}
-                                  />
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    {LAYER_COLOR_PRESETS.map((preset) => (
+                                      <button
+                                        key={preset.hex}
+                                        type="button"
+                                        disabled={isVideoCopy}
+                                        onClick={() => updateOverlayItem(idx, { color: preset.hex })}
+                                        className={`px-2 py-1 rounded-md text-[9.5px] font-mono font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
+                                          (overlay.color || '#22d3ee') === preset.hex
+                                            ? 'border-white text-white shadow-sm scale-105 bg-white/10'
+                                            : 'border-white/10 text-white/70 hover:border-white/30 hover:text-white bg-black/20'
+                                        }`}
+                                      >
+                                        <span
+                                          className="w-2.5 h-2.5 rounded-full border border-white/20 shadow-sm"
+                                          style={{ backgroundColor: preset.hex }}
+                                        />
+                                        {preset.name}
+                                      </button>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
                             )}

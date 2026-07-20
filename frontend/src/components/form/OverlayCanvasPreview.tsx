@@ -5,6 +5,7 @@ export interface OverlayItem {
   id: string;
   name?: string;
   type: 'text' | 'image';
+  color?: string;
   text?: string;
   path?: string;
   storage_id?: number | null;
@@ -386,6 +387,8 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
                     ? (item.text || 'Text Layer')
                     : (rawRel ? rawRel.split('/').pop() : 'Image Layer')
                 );
+                
+                const itemColor = item.color || '#22d3ee';
 
                 return (
                   <div
@@ -418,8 +421,17 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
                     ) : (
                       <div className="inline-block relative group">
                         {isImgFailed ? (
-                          <div className="flex items-center justify-center px-2 py-1 bg-cyan-950/90 border border-cyan-400/50 rounded shadow-md backdrop-blur-sm">
-                            <span className="bg-cyan-500 text-black font-black font-mono text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider">
+                          <div 
+                            className="flex items-center justify-center px-2 py-1 rounded shadow-md backdrop-blur-sm border"
+                            style={{ 
+                              backgroundColor: `${itemColor}20`, 
+                              borderColor: `${itemColor}80` 
+                            }}
+                          >
+                            <span 
+                              className="text-black font-black font-mono text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider shadow-sm"
+                              style={{ backgroundColor: itemColor }}
+                            >
                               {extBadge}
                             </span>
                           </div>
@@ -429,10 +441,14 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
                             alt={`Overlay ${item.order ?? idx + 1}`}
                             onError={() => handleImageError(item.id)}
                             onLoad={(e) => handleImageLoad(item.id, e.currentTarget)}
-                            className="max-h-24 max-w-48 object-contain rounded border border-white/20 shadow-md"
+                            className="max-h-24 max-w-48 object-contain rounded border shadow-md"
+                            style={{ borderColor: `${itemColor}80` }}
                           />
                         )}
-                        <span className="opacity-0 group-hover:opacity-100 absolute -top-5 left-0 bg-amber-500 text-slate-950 font-bold font-mono text-[9px] px-1 py-0.2 rounded shadow transition-opacity whitespace-nowrap">
+                        <span 
+                          className="opacity-0 group-hover:opacity-100 absolute -top-5 left-0 text-slate-950 font-bold font-mono text-[9px] px-1.5 py-0.2 rounded shadow-md transition-opacity whitespace-nowrap"
+                          style={{ backgroundColor: itemColor }}
+                        >
                           #{item.order ?? idx + 1} {displayName} ({Math.round(pxX)}, {Math.round(pxY)})
                         </span>
                       </div>
