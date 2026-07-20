@@ -1,4 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { OverlayCanvasPreview } from './OverlayCanvasPreview';
+import {
+  generateAnchorExpressions,
+  parseAnchorFromExpressions,
+  type AnchorPreset,
+} from '../../utils/overlayPositionHelper';
 
 interface OverlayItem {
   id: string; // client-side unique id
@@ -12,6 +18,9 @@ interface OverlayItem {
   fontsize?: string;
   fontcolor?: string;
   order: number;
+  box?: boolean;
+  boxcolor?: string;
+  boxborderw?: string;
 }
 
 interface FiltersFormSectionProps {
@@ -68,6 +77,18 @@ interface FiltersFormSectionProps {
   storages?: any[];
 }
 
+const ANCHOR_GRID_PRESETS: { id: AnchorPreset; symbol: string; label: string }[] = [
+  { id: 'top-left', symbol: '↖', label: 'Top Left' },
+  { id: 'top-center', symbol: '↑', label: 'Top Center' },
+  { id: 'top-right', symbol: '↗', label: 'Top Right' },
+  { id: 'center-left', symbol: '←', label: 'Center Left' },
+  { id: 'center', symbol: '┼', label: 'Center' },
+  { id: 'center-right', symbol: '→', label: 'Center Right' },
+  { id: 'bottom-left', symbol: '↙', label: 'Bottom Left' },
+  { id: 'bottom-center', symbol: '↓', label: 'Bottom Center' },
+  { id: 'bottom-right', symbol: '↘', label: 'Bottom Right' },
+];
+
 export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   hasVideo,
   hasAudio,
@@ -91,6 +112,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   storages = [],
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'video' | 'audio' | 'overlays'>(hasVideo ? 'video' : 'audio');
+  const [customModes, setCustomModes] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!hasVideo && (activeSubTab === 'video' || activeSubTab === 'overlays')) {
@@ -321,13 +343,16 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
   // Overlay management
   const addOverlay = (type: 'text' | 'image') => {
+    const defaultPos = generateAnchorExpressions('top-left', 10, 10);
     const newItem: OverlayItem = {
       id: Math.random().toString(36).substr(2, 9),
       type,
-      x: '10',
-      y: '10',
+      x: defaultPos.x,
+      y: defaultPos.y,
       order: overlays.length,
-      ...(type === 'text' ? { text: 'LIVE BROADCAST', fontsize: '24', fontcolor: 'white' } : { path: '/path/to/logo.png' })
+      ...(type === 'text'
+        ? { text: 'LIVE BROADCAST', fontsize: '24', fontcolor: '#ffffff', box: false, boxcolor: 'black@0.6', boxborderw: '5' }
+        : { relative_path: '' })
     };
     onChange({ overlays: [...overlays, newItem] });
   };
@@ -989,185 +1014,448 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
       {/* SUB-TAB: Overlays */}
       {activeSubTab === 'overlays' && hasVideo && (
-        <div className="glass-card p-2.5 !rounded-lg space-y-2">
+        <div className="glass-card p-3 !rounded-xl space-y-4">
           {isVideoCopy && (
             <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
               ⚠️ Video codec is set to 'copy'. Overlays cannot be applied because the stream is copied directly without re-encoding.
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-              <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Video Overlays Layering</h4>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            {/* Left Column: TV Preview Monitor (Sticky on lg desktop) */}
+            <div className="lg:col-span-5 space-y-2 lg:sticky lg:top-4 self-start">
+              <OverlayCanvasPreview
+                overlays={overlays}
+                scaleResolution={scale || ''}
+                storages={storages}
+              />
             </div>
 
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={isVideoCopy}
-                onClick={() => addOverlay('text')}
-                className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all disabled:opacity-35 disabled:cursor-not-allowed"
-              >
-                + Text Overlay
-              </button>
-              <button
-                type="button"
-                disabled={isVideoCopy}
-                onClick={() => addOverlay('image')}
-                className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all disabled:opacity-35 disabled:cursor-not-allowed"
-              >
-                + Image Overlay
-              </button>
+            {/* Right Column: Layer Editor Controls */}
+            <div className="lg:col-span-7 space-y-3">
+              <div className="flex items-center justify-between bg-white/5 p-2.5 rounded-xl border border-white/5">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-brand-lime shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">
+                    Overlay Layers ({overlays.length})
+                  </h4>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={isVideoCopy}
+                    onClick={() => addOverlay('text')}
+                    className="px-2.5 py-1.5 bg-brand-lime/10 hover:bg-brand-lime/20 border border-brand-lime/30 text-brand-lime font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    + Text Overlay
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isVideoCopy}
+                    onClick={() => addOverlay('image')}
+                    className="px-2.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    + Image Overlay
+                  </button>
+                </div>
+              </div>
+
+              {overlays.length === 0 ? (
+                <div className="text-center py-12 text-xs text-text-secondary italic border border-dashed border-white/10 rounded-xl bg-black/20">
+                  No overlay layers added yet. Click "+ Text Overlay" or "+ Image Overlay" above to start building broadcast graphics.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {overlays.map((overlay, idx) => {
+                    const { anchor, marginX, marginY } = parseAnchorFromExpressions(
+                      overlay.x || '10',
+                      overlay.y || '10'
+                    );
+                    const isCustomMode = customModes[overlay.id] ?? (anchor === 'custom');
+
+                    return (
+                      <div
+                        key={overlay.id || idx}
+                        className="flex flex-col gap-3 p-3.5 rounded-xl border border-white/10 bg-white/5 relative group transition-all"
+                      >
+                        {/* Layer Header Controls */}
+                        <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded bg-brand-orange/20 text-brand-orange uppercase">
+                              Layer {idx + 1}
+                            </span>
+                            <span className="text-xs font-bold text-white uppercase flex items-center gap-1">
+                              {overlay.type === 'text' ? '📝 Text Overlay' : '🖼️ Image Overlay'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              disabled={isVideoCopy || idx === 0}
+                              onClick={() => moveOverlay(idx, 'up')}
+                              className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all shrink-0 cursor-pointer"
+                              title="Move layer up"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isVideoCopy || idx === overlays.length - 1}
+                              onClick={() => moveOverlay(idx, 'down')}
+                              className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all shrink-0 cursor-pointer"
+                              title="Move layer down"
+                            >
+                              ▼
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isVideoCopy}
+                              onClick={() => removeOverlay(idx)}
+                              className="p-1 bg-white/5 hover:bg-red-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all shrink-0 ml-1 cursor-pointer"
+                              title="Remove overlay"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Layer Content Editors */}
+                        {overlay.type === 'text' ? (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                              <div className="md:col-span-3">
+                                <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
+                                  Text String
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
+                                  value={overlay.text || ''}
+                                  onChange={(e) => updateOverlayItem(idx, { text: e.target.value })}
+                                  disabled={isVideoCopy}
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
+                                  Font Size (px)
+                                </label>
+                                <input
+                                  type="number"
+                                  min="8"
+                                  max="300"
+                                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
+                                  value={overlay.fontsize || '24'}
+                                  onChange={(e) => updateOverlayItem(idx, { fontsize: e.target.value })}
+                                  disabled={isVideoCopy}
+                                />
+                              </div>
+
+                              <div className="md:col-span-2">
+                                <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
+                                  Font Color
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    className="w-8 h-8 rounded bg-transparent border border-white/10 cursor-pointer shrink-0"
+                                    value={
+                                      overlay.fontcolor && overlay.fontcolor.startsWith('#')
+                                        ? overlay.fontcolor
+                                        : '#ffffff'
+                                    }
+                                    onChange={(e) => updateOverlayItem(idx, { fontcolor: e.target.value })}
+                                    disabled={isVideoCopy}
+                                  />
+                                  <input
+                                    type="text"
+                                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
+                                    value={overlay.fontcolor || 'white'}
+                                    onChange={(e) => updateOverlayItem(idx, { fontcolor: e.target.value })}
+                                    disabled={isVideoCopy}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                                  {[
+                                    { name: 'White', color: '#ffffff' },
+                                    { name: 'Yellow', color: '#facc15' },
+                                    { name: 'Lime', color: '#a3e635' },
+                                    { name: 'Cyan', color: '#22d3ee' },
+                                    { name: 'Red', color: '#ef4444' },
+                                    { name: 'Black', color: '#000000' },
+                                  ].map((preset) => (
+                                    <button
+                                      key={preset.color}
+                                      type="button"
+                                      disabled={isVideoCopy}
+                                      onClick={() => updateOverlayItem(idx, { fontcolor: preset.color })}
+                                      className="px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10 hover:border-white/30 transition-all flex items-center gap-1 cursor-pointer"
+                                      style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+                                    >
+                                      <span
+                                        className="w-2 h-2 rounded-full border border-white/20"
+                                        style={{ backgroundColor: preset.color }}
+                                      />
+                                      {preset.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Background Box Settings */}
+                            <div className="bg-black/20 p-2.5 rounded-lg border border-white/5 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={`box-chk-${overlay.id}`}
+                                  className="w-3.5 h-3.5 accent-brand-lime cursor-pointer disabled:opacity-35"
+                                  checked={!!overlay.box}
+                                  onChange={(e) => updateOverlayItem(idx, { box: e.target.checked })}
+                                  disabled={isVideoCopy}
+                                />
+                                <label
+                                  htmlFor={`box-chk-${overlay.id}`}
+                                  className="text-[10px] font-bold uppercase tracking-wider text-text-secondary select-none cursor-pointer"
+                                >
+                                  Enable Background Box (box=1)
+                                </label>
+                              </div>
+
+                              {overlay.box && (
+                                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                                  <div>
+                                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                                      Box Color (e.g. black@0.6)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono focus:border-brand-lime disabled:opacity-35"
+                                      value={overlay.boxcolor || 'black@0.6'}
+                                      onChange={(e) => updateOverlayItem(idx, { boxcolor: e.target.value })}
+                                      disabled={isVideoCopy}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                                      Box Border Width (px)
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="50"
+                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono focus:border-brand-lime disabled:opacity-35"
+                                      value={overlay.boxborderw || '5'}
+                                      onChange={(e) => updateOverlayItem(idx, { boxborderw: e.target.value })}
+                                      disabled={isVideoCopy}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          /* Image Overlay Parameters */
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
+                                Media Storage Selector
+                              </label>
+                              <select
+                                className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none text-white focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
+                                value={overlay.storage_id || ''}
+                                onChange={(e) =>
+                                  updateOverlayItem(idx, {
+                                    storage_id: e.target.value ? Number(e.target.value) : null,
+                                  })
+                                }
+                                disabled={isVideoCopy}
+                              >
+                                <option value="" className="bg-slate-900 text-white">
+                                  -- Select Media Storage --
+                                </option>
+                                {storages
+                                  .filter((s: any) => s.type === 'media')
+                                  .map((s: any) => (
+                                    <option key={s.id} value={s.id} className="bg-slate-900 text-white">
+                                      {s.name} ({s.path})
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
+                                Relative Path
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. logos/watermark.png"
+                                className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
+                                value={overlay.relative_path || ''}
+                                onChange={(e) => updateOverlayItem(idx, { relative_path: e.target.value })}
+                                disabled={isVideoCopy}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Position Positioning Section */}
+                        <div className="border-t border-white/5 pt-2.5 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-text-secondary">
+                              Position & Alignment Mode
+                            </span>
+
+                            {/* Position Mode Toggle */}
+                            <div className="flex items-center bg-black/40 p-0.5 rounded-lg border border-white/10">
+                              <button
+                                type="button"
+                                disabled={isVideoCopy}
+                                onClick={() => {
+                                  setCustomModes((prev) => ({ ...prev, [overlay.id]: false }));
+                                  const targetAnchor = anchor === 'custom' ? 'top-left' : anchor;
+                                  const { x, y } = generateAnchorExpressions(targetAnchor, marginX, marginY);
+                                  updateOverlayItem(idx, { x, y });
+                                }}
+                                className={`px-2 py-1 text-[9.5px] font-bold rounded transition-all cursor-pointer ${
+                                  !isCustomMode
+                                    ? 'bg-brand-lime text-black shadow-sm'
+                                    : 'text-text-secondary hover:text-white'
+                                }`}
+                              >
+                                3x3 Broadcast Anchor Grid
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isVideoCopy}
+                                onClick={() => setCustomModes((prev) => ({ ...prev, [overlay.id]: true }))}
+                                className={`px-2 py-1 text-[9.5px] font-bold rounded transition-all cursor-pointer ${
+                                  isCustomMode
+                                    ? 'bg-cyan-400 text-black shadow-sm'
+                                    : 'text-text-secondary hover:text-white'
+                                }`}
+                              >
+                                Custom Expression
+                              </button>
+                            </div>
+                          </div>
+
+                          {!isCustomMode ? (
+                            <div className="space-y-3">
+                              {/* 3x3 Grid Matrix Buttons */}
+                              <div className="grid grid-cols-3 gap-1 bg-black/30 p-2 rounded-xl border border-white/5 max-w-xs mx-auto">
+                                {ANCHOR_GRID_PRESETS.map((preset) => (
+                                  <button
+                                    key={preset.id}
+                                    type="button"
+                                    disabled={isVideoCopy}
+                                    onClick={() => {
+                                      const { x, y } = generateAnchorExpressions(preset.id, marginX, marginY);
+                                      updateOverlayItem(idx, { x, y });
+                                    }}
+                                    className={`p-2 rounded-lg flex flex-col items-center justify-center gap-0.5 text-xs font-mono transition-all border cursor-pointer ${
+                                      anchor === preset.id
+                                        ? 'bg-brand-lime text-black font-bold border-brand-lime shadow-md scale-102'
+                                        : 'bg-white/5 border-white/10 hover:bg-white/10 text-white hover:border-white/20'
+                                    } disabled:opacity-35 disabled:cursor-not-allowed`}
+                                    title={preset.label}
+                                  >
+                                    <span className="text-base leading-none">{preset.symbol}</span>
+                                    <span className="text-[8px] uppercase font-sans font-semibold tracking-tighter truncate">
+                                      {preset.label}
+                                    </span>
+                                  </button>
+                                ))}
+                              </div>
+
+                              {/* Margin Sliders */}
+                              <div className="grid grid-cols-2 gap-3 bg-black/20 p-2.5 rounded-lg border border-white/5">
+                                <div>
+                                  <div className="flex justify-between text-[9px] font-mono text-text-secondary mb-1">
+                                    <span>Margin X</span>
+                                    <span className="font-bold text-white">{marginX} px</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="200"
+                                    step="1"
+                                    className="w-full h-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                                    value={marginX}
+                                    onChange={(e) => {
+                                      const newXMargin = Number(e.target.value);
+                                      const curAnchor = anchor === 'custom' ? 'top-left' : anchor;
+                                      const { x, y } = generateAnchorExpressions(curAnchor, newXMargin, marginY);
+                                      updateOverlayItem(idx, { x, y });
+                                    }}
+                                    disabled={isVideoCopy}
+                                  />
+                                </div>
+                                <div>
+                                  <div className="flex justify-between text-[9px] font-mono text-text-secondary mb-1">
+                                    <span>Margin Y</span>
+                                    <span className="font-bold text-white">{marginY} px</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min="0"
+                                    max="200"
+                                    step="1"
+                                    className="w-full h-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                                    value={marginY}
+                                    onChange={(e) => {
+                                      const newYMargin = Number(e.target.value);
+                                      const curAnchor = anchor === 'custom' ? 'top-left' : anchor;
+                                      const { x, y } = generateAnchorExpressions(curAnchor, marginX, newYMargin);
+                                      updateOverlayItem(idx, { x, y });
+                                    }}
+                                    disabled={isVideoCopy}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Custom Freeform Math Expressions */
+                            <div className="grid grid-cols-2 gap-3 bg-black/20 p-2.5 rounded-lg border border-white/5">
+                              <div>
+                                <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
+                                  X Expression (FFmpeg Math)
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. (main_w-w)/2 or 10"
+                                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
+                                  value={overlay.x || '10'}
+                                  onChange={(e) => updateOverlayItem(idx, { x: e.target.value })}
+                                  disabled={isVideoCopy}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
+                                  Y Expression (FFmpeg Math)
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. (main_h-h)/2 or 10"
+                                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
+                                  value={overlay.y || '10'}
+                                  onChange={(e) => updateOverlayItem(idx, { y: e.target.value })}
+                                  disabled={isVideoCopy}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
-
-          {overlays.length === 0 ? (
-            <div className="text-center py-8 text-xs text-text-secondary italic border border-dashed border-white/10 rounded-xl">
-              No overlays added yet. Adding overlays will automatically execute download filters if GPU VRAM path is active.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {overlays.map((overlay, idx) => (
-                <div
-                  key={overlay.id || idx}
-                  className="flex flex-col gap-2.5 p-3 rounded-xl border border-white/10 bg-white/5 relative group transition-all"
-                >
-                  {/* Layer controls */}
-                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-brand-orange/20 text-brand-orange uppercase">
-                        Layer {idx + 1}
-                      </span>
-                      <span className="text-xs font-bold text-white uppercase">
-                        {overlay.type === 'text' ? '📝 Text' : '🖼️ Image'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={isVideoCopy || idx === 0}
-                        onClick={() => moveOverlay(idx, 'up')}
-                        className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all shrink-0 cursor-pointer"
-                        title="Move layer up"
-                      >
-                        ▲
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isVideoCopy || idx === overlays.length - 1}
-                        onClick={() => moveOverlay(idx, 'down')}
-                        className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all shrink-0 cursor-pointer"
-                        title="Move layer down"
-                      >
-                        ▼
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isVideoCopy}
-                        onClick={() => removeOverlay(idx)}
-                        className="p-1 bg-white/5 hover:bg-red-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all shrink-0 ml-1 cursor-pointer"
-                        title="Remove overlay"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Input controls based on type */}
-                  {overlay.type === 'text' ? (
-                    <div className="grid grid-cols-2 gap-3.5">
-                      <div className="col-span-2">
-                        <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Text String</label>
-                        <input
-                          type="text"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none disabled:opacity-35 disabled:cursor-not-allowed"
-                          value={overlay.text || ''}
-                          onChange={e => updateOverlayItem(idx, { text: e.target.value })}
-                          disabled={isVideoCopy}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Font Size</label>
-                        <input
-                          type="text"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
-                          value={overlay.fontsize || '24'}
-                          onChange={e => updateOverlayItem(idx, { fontsize: e.target.value })}
-                          disabled={isVideoCopy}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Font Color</label>
-                        <input
-                          type="text"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
-                          value={overlay.fontcolor || 'white'}
-                          onChange={e => updateOverlayItem(idx, { fontcolor: e.target.value })}
-                          disabled={isVideoCopy}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3.5">
-                      <div>
-                        <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Media Storage</label>
-                        <select
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
-                          value={overlay.storage_id || ''}
-                          onChange={e => updateOverlayItem(idx, { storage_id: e.target.value ? Number(e.target.value) : null })}
-                          disabled={isVideoCopy}
-                        >
-                          <option value="">-- Select Storage --</option>
-                          {storages.filter((s: any) => s.type === 'media').map((s: any) => (
-                            <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Relative Path</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. images/watermark.png"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime disabled:opacity-35 disabled:cursor-not-allowed"
-                          value={overlay.relative_path || ''}
-                          onChange={e => updateOverlayItem(idx, { relative_path: e.target.value })}
-                          disabled={isVideoCopy}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Positioning coordinates */}
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div>
-                      <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">X Position</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 10 or main_w-w-10"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
-                        value={overlay.x || '10'}
-                        onChange={e => updateOverlayItem(idx, { x: e.target.value })}
-                        disabled={isVideoCopy}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">Y Position</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 10 or main_h-h-10"
-                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono disabled:opacity-35 disabled:cursor-not-allowed"
-                        value={overlay.y || '10'}
-                        onChange={e => updateOverlayItem(idx, { y: e.target.value })}
-                        disabled={isVideoCopy}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
     </div>
