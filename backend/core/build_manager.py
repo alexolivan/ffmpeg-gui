@@ -87,7 +87,8 @@ class BuildManager:
             "libssl": {"pkg": "openssl", "type": "required", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
             "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
             "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"},
-            "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)"}
+            "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)"},
+            "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)"}
         }
 
         has_pkg_config = results.get("pkg-config", {}).get("installed", False)
@@ -440,6 +441,10 @@ class BuildManager:
             # Automatically enable libvpx if available on the system
             if dep_check.get("dependencies", {}).get("libvpx", {}).get("installed"):
                 config_flags.append("--enable-libvpx")
+
+            # Automatically enable libfreetype if available on the system (required for drawtext filter)
+            if dep_check.get("dependencies", {}).get("libfreetype", {}).get("installed"):
+                config_flags.append("--enable-libfreetype")
 
             if options.get("libsrt"):
                 config_flags.append("--enable-libsrt")
