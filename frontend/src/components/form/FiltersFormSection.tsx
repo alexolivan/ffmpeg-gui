@@ -114,7 +114,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'video' | 'audio' | 'overlays'>(hasVideo ? 'video' : 'audio');
   const [customModes, setCustomModes] = useState<Record<string, boolean>>({});
-  const [expandedOverlayId, setExpandedOverlayId] = useState<string | null>(null);
+  const [expandedOverlayId, setExpandedOverlayId] = useState<string | null>('');
 
   useEffect(() => {
     if (!hasVideo && (activeSubTab === 'video' || activeSubTab === 'overlays')) {
@@ -1075,7 +1075,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       overlay.y || '10'
                     );
                     const isCustomMode = customModes[overlay.id] ?? (anchor === 'custom');
-                    const isExpanded = (expandedOverlayId === overlay.id) || (expandedOverlayId === null && idx === 0);
+                    const isExpanded = expandedOverlayId === overlay.id;
 
                     const displayName = overlay.name?.trim() || (
                       overlay.type === 'text' 
@@ -1104,19 +1104,19 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 type="button"
                                 disabled={isVideoCopy || idx === 0}
                                 onClick={() => moveOverlay(idx, 'up')}
-                                className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-[10px] transition-all cursor-pointer"
+                                className="p-1 px-1.5 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all cursor-pointer font-black"
                                 title="Move layer up (render order)"
                               >
-                                ▲
+                                ↑
                               </button>
                               <button
                                 type="button"
                                 disabled={isVideoCopy || idx === overlays.length - 1}
                                 onClick={() => moveOverlay(idx, 'down')}
-                                className="p-1 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-[10px] transition-all cursor-pointer"
+                                className="p-1 px-1.5 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all cursor-pointer font-black"
                                 title="Move layer down (render order)"
                               >
-                                ▼
+                                ↓
                               </button>
                             </div>
 
@@ -1151,9 +1151,13 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                             <button
                               type="button"
                               onClick={() => setExpandedOverlayId(isExpanded ? '' : overlay.id)}
-                              className="p-1.5 text-white/60 hover:text-white transition-colors cursor-pointer text-xs font-bold"
+                              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer border ${
+                                isExpanded 
+                                  ? 'bg-brand-lime/20 border-brand-lime/50 text-brand-lime' 
+                                  : 'bg-white/5 border-white/10 text-white/70 hover:text-white hover:bg-white/10'
+                              }`}
                             >
-                              {isExpanded ? '▲' : '▼'}
+                              {isExpanded ? '▴ CLOSE' : '▾ EDIT'}
                             </button>
                           </div>
                         </div>

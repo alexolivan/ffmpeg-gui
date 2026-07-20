@@ -17,25 +17,28 @@ export function generateAnchorExpressions(
   marginX: number = 10,
   marginY: number = 10
 ): { x: string; y: string } {
+  const formatRightMargin = (m: number) => (m >= 0 ? `main_w-w-${m}` : `main_w-w+${Math.abs(m)}`);
+  const formatBottomMargin = (m: number) => (m >= 0 ? `main_h-h-${m}` : `main_h-h+${Math.abs(m)}`);
+
   switch (anchor) {
     case 'top-left':
       return { x: `${marginX}`, y: `${marginY}` };
     case 'top-center':
       return { x: '(main_w-w)/2', y: `${marginY}` };
     case 'top-right':
-      return { x: `main_w-w-${marginX}`, y: `${marginY}` };
+      return { x: formatRightMargin(marginX), y: `${marginY}` };
     case 'center-left':
       return { x: `${marginX}`, y: '(main_h-h)/2' };
     case 'center':
       return { x: '(main_w-w)/2', y: '(main_h-h)/2' };
     case 'center-right':
-      return { x: `main_w-w-${marginX}`, y: '(main_h-h)/2' };
+      return { x: formatRightMargin(marginX), y: '(main_h-h)/2' };
     case 'bottom-left':
-      return { x: `${marginX}`, y: `main_h-h-${marginY}` };
+      return { x: `${marginX}`, y: formatBottomMargin(marginY) };
     case 'bottom-center':
-      return { x: '(main_w-w)/2', y: `main_h-h-${marginY}` };
+      return { x: '(main_w-w)/2', y: formatBottomMargin(marginY) };
     case 'bottom-right':
-      return { x: `main_w-w-${marginX}`, y: `main_h-h-${marginY}` };
+      return { x: formatRightMargin(marginX), y: formatBottomMargin(marginY) };
   }
 }
 
@@ -56,16 +59,21 @@ export function parseAnchorFromExpressions(
   // X logic
   if (cleanX === '(main_w-w)/2' || cleanX === '(W-w)/2') {
     xType = 'center';
+    extractedMarginX = 0;
   } else if (cleanX === 'main_w-w' || cleanX === 'W-w') {
     xType = 'right';
     extractedMarginX = 0;
   } else {
-    const rightMatch = cleanX.match(/^(?:main_w-w|W-w)-(\d+(?:\.\d+)?)$/i);
-    if (rightMatch) {
+    const rightMinusMatch = cleanX.match(/^(?:main_w-w|W-w)-(\d+(?:\.\d+)?)$/i);
+    const rightPlusMatch = cleanX.match(/^(?:main_w-w|W-w)\+(\d+(?:\.\d+)?)$/i);
+    if (rightMinusMatch) {
       xType = 'right';
-      extractedMarginX = parseFloat(rightMatch[1]);
+      extractedMarginX = parseFloat(rightMinusMatch[1]);
+    } else if (rightPlusMatch) {
+      xType = 'right';
+      extractedMarginX = -parseFloat(rightPlusMatch[1]);
     } else {
-      const leftMatch = cleanX.match(/^(\d+(?:\.\d+)?)$/);
+      const leftMatch = cleanX.match(/^(-?\d+(?:\.\d+)?)$/);
       if (leftMatch) {
         xType = 'left';
         extractedMarginX = parseFloat(leftMatch[1]);
@@ -79,16 +87,21 @@ export function parseAnchorFromExpressions(
   // Y logic
   if (cleanY === '(main_h-h)/2' || cleanY === '(H-h)/2') {
     yType = 'center';
+    extractedMarginY = 0;
   } else if (cleanY === 'main_h-h' || cleanY === 'H-h') {
     yType = 'bottom';
     extractedMarginY = 0;
   } else {
-    const bottomMatch = cleanY.match(/^(?:main_h-h|H-h)-(\d+(?:\.\d+)?)$/i);
-    if (bottomMatch) {
+    const bottomMinusMatch = cleanY.match(/^(?:main_h-h|H-h)-(\d+(?:\.\d+)?)$/i);
+    const bottomPlusMatch = cleanY.match(/^(?:main_h-h|H-h)\+(\d+(?:\.\d+)?)$/i);
+    if (bottomMinusMatch) {
       yType = 'bottom';
-      extractedMarginY = parseFloat(bottomMatch[1]);
+      extractedMarginY = parseFloat(bottomMinusMatch[1]);
+    } else if (bottomPlusMatch) {
+      yType = 'bottom';
+      extractedMarginY = -parseFloat(bottomPlusMatch[1]);
     } else {
-      const topMatch = cleanY.match(/^(\d+(?:\.\d+)?)$/);
+      const topMatch = cleanY.match(/^(-?\d+(?:\.\d+)?)$/);
       if (topMatch) {
         yType = 'top';
         extractedMarginY = parseFloat(topMatch[1]);

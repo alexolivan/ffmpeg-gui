@@ -418,12 +418,9 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
                     ) : (
                       <div className="inline-block relative group">
                         {isImgFailed ? (
-                          <div className="flex items-center gap-1.5 px-2 py-1 bg-cyan-950/90 border border-cyan-400/40 rounded shadow-md backdrop-blur-sm">
-                            <span className="bg-cyan-500 text-black font-black font-mono text-[9px] px-1 rounded uppercase">
+                          <div className="flex items-center justify-center px-2 py-1 bg-cyan-950/90 border border-cyan-400/50 rounded shadow-md backdrop-blur-sm">
+                            <span className="bg-cyan-500 text-black font-black font-mono text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wider">
                               {extBadge}
-                            </span>
-                            <span className="text-[10px] font-bold text-white tracking-wide truncate max-w-[110px]">
-                              {displayName}
                             </span>
                           </div>
                         ) : (
