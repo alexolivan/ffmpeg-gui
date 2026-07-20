@@ -29,6 +29,9 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libopus": "libopus-dev",
     "libvpx": "libvpx-dev",
     "libfreetype": "libfreetype-dev",
+    "libharfbuzz": "libharfbuzz-dev",
+    "libfontconfig": "libfontconfig1-dev",
+    "libfribidi": "libfribidi-dev",
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "nvidia-cuda-dev",
     "clang": "clang"
@@ -49,6 +52,9 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libopus": "opus-devel",
     "libvpx": "libvpx-devel",
     "libfreetype": "freetype-devel",
+    "libharfbuzz": "harfbuzz-devel",
+    "libfontconfig": "fontconfig-devel",
+    "libfribidi": "fribidi-devel",
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "cuda-toolkit",
     "clang": "clang"
@@ -69,6 +75,9 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libopus": "opus",
     "libvpx": "libvpx",
     "libfreetype": "freetype2",
+    "libharfbuzz": "harfbuzz",
+    "libfontconfig": "fontconfig",
+    "libfribidi": "fribidi",
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "cuda",
     "clang": "clang"

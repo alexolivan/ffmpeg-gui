@@ -86,7 +86,7 @@ install_debian_deps() {
                        build-essential cmake git pkg-config yasm nasm \
                        libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev \
                        libavahi-client-dev libavahi-common-dev libasound2-dev \
-                       libfreetype-dev
+                       libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev
 }
 
 # Paquetes a instalar en RedHat/Fedora/CentOS
@@ -95,7 +95,7 @@ install_rhel_deps() {
     dnf groupinstall -y "Development Tools"
     dnf install -y python3-devel nodejs npm cmake git pkgconfig yasm nasm \
                    x264-devel x265-devel openssl-devel libva-devel libdrm-devel \
-                   avahi-devel alsa-lib-devel freetype-devel
+                   avahi-devel alsa-lib-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel
 }
 
 # ---------------------------------------------------------
