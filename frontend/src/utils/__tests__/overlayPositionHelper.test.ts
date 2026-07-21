@@ -84,7 +84,7 @@ describe('overlayPositionHelper', () => {
 
     it('should handle extra whitespace in expressions', () => {
       const parsed = parseAnchorFromExpressions(' ( main_w - w ) / 2 ', ' 10 ');
-      expect(parsed).toEqual({ anchor: 'top-center', marginX: 10, marginY: 10 });
+      expect(parsed).toEqual({ anchor: 'top-center', marginX: 0, marginY: 10 });
     });
 
     it('should detect zero margin right and bottom expressions', () => {

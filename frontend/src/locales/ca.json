@@ -1,0 +1,37 @@
+{
+  "common": {
+    "save": "Desar Ajustos",
+    "saving": "Desant...",
+    "cancel": "Cancel·lar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "close": "Tancar",
+    "actions": "Accions",
+    "status": "Estat",
+    "enabled": "Habilitat",
+    "disabled": "Deshabilitat"
+  },
+  "nav": {
+    "dashboard": "Tauler de Control",
+    "forge": "Forge Studio",
+    "tasks": "Tasques Programades",
+    "settings": "Ajustos"
+  },
+  "settings": {
+    "title": "Ajustos",
+    "subtitle": "Identitat del node, seguretat, emmagatzematge i configuració d'idioma",
+    "tabs": {
+      "general": "General",
+      "storage": "Emmagatzematge",
+      "security": "Seguretat",
+      "lcd": "Pantalla LCD"
+    },
+    "language": {
+      "title": "Idioma de l'Interfície",
+      "description": "Selecciona l'idioma de visualització de la interfície d'usuari.",
+      "en": "English (US)",
+      "es": "Español (ES)",
+      "ca": "Català (CA)"
+    }
+  }
+}

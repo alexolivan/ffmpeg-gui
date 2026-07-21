@@ -1,0 +1,37 @@
+{
+  "common": {
+    "save": "Save Settings",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "actions": "Actions",
+    "status": "Status",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "forge": "Forge Studio",
+    "tasks": "Scheduled Tasks",
+    "settings": "Settings"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Node identity, security, storage and language configuration",
+    "tabs": {
+      "general": "General",
+      "storage": "Storage",
+      "security": "Security",
+      "lcd": "LCD Screen"
+    },
+    "language": {
+      "title": "Interface Language",
+      "description": "Select the application display language for the user interface.",
+      "en": "English (US)",
+      "es": "Español (ES)",
+      "ca": "Català (CA)"
+    }
+  }
+}

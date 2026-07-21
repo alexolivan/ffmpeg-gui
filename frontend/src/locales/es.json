@@ -1,0 +1,37 @@
+{
+  "common": {
+    "save": "Guardar Ajustes",
+    "saving": "Guardando...",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "close": "Cerrar",
+    "actions": "Acciones",
+    "status": "Estado",
+    "enabled": "Habilitado",
+    "disabled": "Deshabilitado"
+  },
+  "nav": {
+    "dashboard": "Panel de Control",
+    "forge": "Forge Studio",
+    "tasks": "Tareas Programadas",
+    "settings": "Ajustes"
+  },
+  "settings": {
+    "title": "Ajustes",
+    "subtitle": "Identidad de nodo, seguridad, almacenamiento y configuración de idioma",
+    "tabs": {
+      "general": "General",
+      "storage": "Almacenamiento",
+      "security": "Seguridad",
+      "lcd": "Pantalla LCD"
+    },
+    "language": {
+      "title": "Idioma de la Interfaz",
+      "description": "Selecciona el idioma de visualización de la interfaz de usuario.",
+      "en": "English (US)",
+      "es": "Español (ES)",
+      "ca": "Català (CA)"
+    }
+  }
+}
