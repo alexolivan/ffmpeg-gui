@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import InputSourcePanel from './source/InputSourcePanel';
 import type { InputSourceConfig } from './source/InputSourcePanel';
 import VideoCodecPanel from './codec/VideoCodecPanel';
@@ -120,6 +121,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   isTask = false,
   validationErrors: propsValidationErrors,
 }) => {
+  const { t } = useTranslation();
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
   const [selectedBuildOptions, setSelectedBuildOptions] = useState<Record<string, boolean> | undefined>();
   const [activeSection, setActiveSection] = useState<string>('system');
@@ -1011,11 +1013,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   }, []);
 
   const sections = [
-    { id: 'system', label: 'General', icon: <ShieldIcon size={14} /> },
-    { id: 'inputs', label: 'Input', icon: <SourceIcon size={14} /> },
-    { id: 'output', label: 'Output', icon: <DestinationIcon size={14} /> },
-    { id: 'encoding', label: 'Codecs', icon: <GearIcon size={14} /> },
-    { id: 'filters', label: 'Filters', icon: <KnobsIcon size={14} /> },
+    { id: 'system', label: t('form.sections.general', 'General'), icon: <ShieldIcon size={14} /> },
+    { id: 'inputs', label: t('form.sections.input', 'Input'), icon: <SourceIcon size={14} /> },
+    { id: 'output', label: t('form.sections.output', 'Output'), icon: <DestinationIcon size={14} /> },
+    { id: 'encoding', label: t('form.sections.codecs', 'Codecs'), icon: <GearIcon size={14} /> },
+    { id: 'filters', label: t('form.sections.filters', 'Filters'), icon: <KnobsIcon size={14} /> },
   ];
 
   const hasErrors = Object.keys(validationErrors).length > 0;
@@ -1147,7 +1149,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
               <ShieldIcon size={14} />
             </span>
             <div>
-              <strong>Configuración de códec incompatible:</strong> Has seleccionado salida física DeckLink, pero la codificación de vídeo/audio configurada no es compatible con el hardware (requiere vídeo sin compresión v210 o rawvideo/uyvy422, y audio PCM).
+              <strong>{t('forge.incompatibleCodecTitle', 'Configuración de códec incompatible:')}</strong> {t('forge.decklinkIncompatNotice', 'Has seleccionado salida física DeckLink, pero la codificación de vídeo/audio configurada no es compatible con el hardware (requiere vídeo sin compresión v210 o rawvideo/uyvy422, y audio PCM).')}
             </div>
           </div>
           <button
@@ -1163,7 +1165,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             }}
             className="flex-shrink-0 flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-black font-black px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
           >
-            <ToolsIcon size={14} /> Ajustar a compatible
+            <ToolsIcon size={14} /> {t('forge.autoFixCompatible', 'Ajustar a compatible')}
           </button>
         </div>
       )}
@@ -1175,7 +1177,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
               <ShieldIcon size={14} />
             </span>
             <div>
-              <strong>Configuración de códec incompatible:</strong> Has seleccionado salida NDI, pero la codificación de vídeo/audio configurada no es compatible con NDI (requiere vídeo wrapped_avframe y audio PCM 16-bit).
+              <strong>{t('forge.incompatibleCodecTitle', 'Configuración de códec incompatible:')}</strong> {t('forge.ndiIncompatNotice', 'Has seleccionado salida NDI, pero la codificación de vídeo/audio configurada no es compatible con NDI (requiere vídeo wrapped_avframe y audio PCM 16-bit).')}
             </div>
           </div>
           <button
@@ -1191,7 +1193,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             }}
             className="flex-shrink-0 flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-black font-black px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
           >
-            <ToolsIcon size={14} /> Ajustar a compatible
+            <ToolsIcon size={14} /> {t('forge.autoFixCompatible', 'Ajustar a compatible')}
           </button>
         </div>
       )}
@@ -1280,14 +1282,14 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
               <div className="glass-card p-4 !rounded-2xl space-y-2 border border-white/5 bg-white/2 animate-in fade-in duration-300">
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Ajustes de Red de Entrada</h4>
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('sources.networkSettingsTitle', 'Input Network Settings')}</h4>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label htmlFor="proc-network-timeout" className="text-xs font-semibold text-white">
-                    Timeout de Red (segundos)
+                    {t('sources.networkTimeoutLabel', 'Network Timeout (seconds)')}
                   </label>
                   <span className="text-[10px] text-text-secondary">
-                    Tiempo de espera máximo antes de declarar pérdida de señal. Se aplica a las peticiones de red del stream.
+                    {t('sources.networkTimeoutDesc', 'Maximum waiting time before declaring signal loss. Applied to stream network requests.')}
                   </span>
                   <input
                     type="number"
@@ -1310,7 +1312,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                   />
                   {(config.network_timeout === undefined || config.network_timeout === null || String(config.network_timeout).trim() === '') && (
                     <span className="text-[10px] text-amber-400 block mt-1">
-                      ⚠️ El campo de timeout está vacío. Se aplicará el valor balanceado por defecto (15 segundos) al iniciar el stream.
+                      ⚠️ {t('sources.networkTimeoutWarning', 'Timeout field is empty. Default balanced value (15 seconds) will be applied at stream start.')}
                     </span>
                   )}
                 </div>
@@ -1471,14 +1473,14 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
           onClick={onCancel}
           className="flex-1 py-2 bg-white/5 border border-white/10 rounded-lg font-bold hover:bg-white/10 transition-all uppercase tracking-widest text-xs"
         >
-          Cancel
+          {t('common.cancel', 'Cancel')}
         </button>
         <button
           onClick={handlePreview}
           disabled={isPreviewing}
           className="flex-1 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg font-bold hover:bg-blue-500/30 transition-all uppercase tracking-widest text-xs"
         >
-          {isPreviewing ? 'Wait...' : 'Preview CLI'}
+          {isPreviewing ? t('common.waiting', 'Wait...') : t('form.previewCli', 'Preview CLI')}
         </button>
         <button
           onClick={handleSubmit}
@@ -1489,7 +1491,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
               : 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] shadow-brand-lime/20'
           }`}
         >
-          {initialConfig ? 'Save Changes' : (isTask ? 'Create Task' : 'Deploy Service')}
+          {initialConfig ? t('common.save', 'Save Changes') : (isTask ? t('form.createTask', 'Create Task') : t('form.deployService', 'Deploy Service'))}
         </button>
         {initialConfig && onSaveAs && (
           <button
@@ -1501,7 +1503,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                 : 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 hover:bg-brand-orange/30'
             }`}
           >
-            Save as New
+            {t('form.saveAsNew', 'Save as New')}
           </button>
         )}
       </div>

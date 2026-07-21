@@ -50,17 +50,17 @@ interface DestinationPanelProps {
 }
 
 const OUTPUT_TYPES = [
-  { value: 'udp', label: 'UDP Multicast (MPEG-TS)', requiresVideo: false },
-  { value: 'srt', label: 'SRT Stream', requiresVideo: false },
-  { value: 'rtmp', label: 'RTMP / RTMPS Push', requiresVideo: true },
-  { value: 'whip', label: 'WHIP Push (WebRTC)', requiresVideo: false },
-  { value: 'ndi', label: 'NDI Output', requiresVideo: true },
-  { value: 'decklink', label: 'Blackmagic Decklink Output', requiresVideo: true },
-  { value: 'file', label: 'Local Recording', requiresVideo: false },
-  { value: 'icecast', label: 'Icecast2 (Audio Stream)', requiresVideo: false },
-  { value: 'alsa', label: 'ALSA Audio Device', requiresVideo: false },
-  { value: 'rtp', label: 'RTP Stream', requiresVideo: false },
-  { value: 'hls', label: 'HLS Live Streaming', requiresVideo: false },
+  { value: 'udp', labelKey: 'destinations.types.udp', label: 'UDP Multicast (MPEG-TS)', requiresVideo: false },
+  { value: 'srt', labelKey: 'destinations.types.srt', label: 'SRT Stream', requiresVideo: false },
+  { value: 'rtmp', labelKey: 'destinations.types.rtmp', label: 'RTMP / RTMPS Push', requiresVideo: true },
+  { value: 'whip', labelKey: 'destinations.types.whip', label: 'WHIP Push (WebRTC)', requiresVideo: false },
+  { value: 'ndi', labelKey: 'destinations.types.ndi', label: 'NDI Output', requiresVideo: true },
+  { value: 'decklink', labelKey: 'destinations.types.decklink', label: 'Blackmagic Decklink Output', requiresVideo: true },
+  { value: 'file', labelKey: 'destinations.types.file', label: 'Local Recording', requiresVideo: false },
+  { value: 'icecast', labelKey: 'destinations.types.icecast', label: 'Icecast2 (Audio Stream)', requiresVideo: false },
+  { value: 'alsa', labelKey: 'destinations.types.alsa', label: 'ALSA Audio Device', requiresVideo: false },
+  { value: 'rtp', labelKey: 'destinations.types.rtp', label: 'RTP Stream', requiresVideo: false },
+  { value: 'hls', labelKey: 'destinations.types.hls', label: 'HLS Live Streaming', requiresVideo: false },
 ];
 
 const CONTAINERS = [
@@ -295,7 +295,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         })}
       >
         {availableTypes.map(tItem => (
-          <option key={tItem.value} value={tItem.value}>{tItem.label}</option>
+          <option key={tItem.value} value={tItem.value}>{t(tItem.labelKey, tItem.label)}</option>
         ))}
       </select>
 

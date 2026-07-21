@@ -34,7 +34,7 @@ describe('i18n initialization & translations', () => {
     await i18n.changeLanguage('es');
     expect(i18n.language).toBe('es');
     expect(i18n.t('common.save')).toBe('Guardar Ajustes');
-    expect(i18n.t('nav.dashboard')).toBe('Panel de Control');
+    expect(i18n.t('nav.dashboard')).toBe('Dashboard');
     expect(i18n.t('settings.title')).toBe('Ajustes');
   });
 
@@ -42,8 +42,8 @@ describe('i18n initialization & translations', () => {
     await i18n.changeLanguage('ca');
     expect(i18n.language).toBe('ca');
     expect(i18n.t('common.save')).toBe('Desar Ajustos');
-    expect(i18n.t('nav.dashboard')).toBe('Tauler de Control');
-    expect(i18n.t('settings.title')).toBe('Ajustos');
+    expect(i18n.t('nav.dashboard')).toBe('Dashboard');
+    expect(i18n.t('settings.title')).toBe('Configuració');
   });
 
   it('falls back to English when translation key is missing', async () => {

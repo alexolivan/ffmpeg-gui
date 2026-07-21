@@ -19,13 +19,12 @@
     "copy": "Copiar"
   },
   "nav": {
-    "dashboard": "Panel de Control",
-    "forge": "Forge Studio",
+    "dashboard": "Dashboard",
+    "forge": "Forja",
     "services": "Servicios",
     "tasks": "Tareas Programadas",
     "settings": "Ajustes",
-    "tools": "Herramientas / Forge",
-    "logout": "Cerrar sesión"
+    "logout": "Cerrar Sesión"
   },
   "auth": {
     "accessRestricted": "Acceso restringido. Introduce la contraseña del nodo.",
@@ -364,5 +363,83 @@
     "anchorBottomLeft": "Inferior Izquierda",
     "anchorBottomCenter": "Inferior Centro",
     "anchorBottomRight": "Inferior Derecha"
+  },
+  "sources": {
+    "mediaStorage": "Almacenamiento de Medios",
+    "selectStorage": "-- Seleccionar Almacenamiento --",
+    "networkSettingsTitle": "Ajustes de Red de Entrada",
+    "networkTimeoutLabel": "Timeout de Red (segundos)",
+    "networkTimeoutDesc": "Tiempo de espera máximo antes de declarar pérdida de señal. Se aplica a las peticiones de red del stream.",
+    "networkTimeoutWarning": "El campo de timeout está vacío. Se aplicará el valor balanceado por defecto (15 segundos) al iniciar el stream.",
+    "types": {
+      "file": "Archivo Local / VOD",
+      "srt": "Stream SRT",
+      "ndi": "Origen NDI",
+      "udp": "UDP / MPEG-TS",
+      "rtp": "Stream RTP",
+      "decklink": "Blackmagic Decklink",
+      "alsa": "Dispositivo de Audio ALSA",
+      "v4l2": "Video4Linux2 (USB/Magewell)",
+      "lavfi_video": "Generador Interno (Vídeo)",
+      "lavfi_audio": "Generador Interno (Audio)",
+      "http_audio": "Stream de Audio HTTP (Icecast/Shoutcast)",
+      "rtmp": "Stream RTMP",
+      "hls": "Stream HLS"
+    }
+  },
+  "destinations": {
+    "destination": "Destino",
+    "types": {
+      "udp": "UDP Multicast (MPEG-TS)",
+      "srt": "Stream SRT",
+      "rtmp": "RTMP / RTMPS Push",
+      "whip": "WHIP Push (WebRTC)",
+      "ndi": "Salida NDI",
+      "decklink": "Salida Blackmagic Decklink",
+      "file": "Grabación Local",
+      "icecast": "Icecast2 (Stream de Audio)",
+      "alsa": "Dispositivo de Audio ALSA",
+      "rtp": "Stream RTP",
+      "hls": "Streaming HLS en Directo"
+    }
+  },
+  "codecs": {
+    "videoCodecOutput": "Códec de Vídeo (Salida)",
+    "audioCodec": "Códec de Audio",
+    "softwareCpu": "Códecs por Software (CPU)",
+    "hardwareGpu": "Códecs por Hardware (GPU)"
+  },
+  "lifecycle": {
+    "title": "Ajustes del Ciclo de Vida del Proceso",
+    "autoStart": "Inicio automático en arranque",
+    "autoStartDesc": "Iniciar este servicio automáticamente cuando arranque la aplicación.",
+    "enableWatchdog": "Habilitar Watchdog",
+    "watchdogDesc": "Supervisar estado del proceso y reiniciar automáticamente en caídas inesperadas.",
+    "infiniteRetries": "Reintentos de Reinicio Infinitos",
+    "infiniteRetriesDesc": "Seguir intentando reiniciar el proceso indefinidamente.",
+    "maxRetries": "Máximo de reintentos consecutivos:",
+    "minSpeed": "Velocidad Mínima:",
+    "tolerance": "Tolerancia (s):",
+    "debugMode": "Modo Debug (Consola en Vivo)",
+    "debugModeDesc": "Habilita lectura interactiva de logs. Sensible a reinicios del panel.",
+    "logStorage": "Almacenamiento de Logs",
+    "defaultLogStorage": "Predeterminado (Usar almacenamiento de logs por defecto)"
+  },
+  "form": {
+    "sections": {
+      "general": "General",
+      "input": "Origen",
+      "output": "Destino",
+      "codecs": "Códecs",
+      "filters": "Filtros"
+    },
+    "placeholderTaskName": "Nombre de la tarea (ej. Transcodificación diaria)",
+    "placeholderServiceName": "Nombre del servicio (ej. Codificador Principal Nodo-01)",
+    "lcdAlias": "Alias LCD",
+    "defaultBuild": "Compilación FFmpeg por defecto",
+    "previewCli": "Vista Previa CLI",
+    "createTask": "Crear Tarea",
+    "deployService": "Desplegar Servicio",
+    "saveAsNew": "Guardar como Nuevo"
   }
 }

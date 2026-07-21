@@ -19,13 +19,12 @@
     "copy": "Copiar"
   },
   "nav": {
-    "dashboard": "Tauler de Control",
-    "forge": "Forge Studio",
+    "dashboard": "Dashboard",
+    "forge": "Forja",
     "services": "Serveis",
     "tasks": "Tasques Programades",
-    "settings": "Ajustos",
-    "tools": "Eines / Forge",
-    "logout": "Tancar sessió"
+    "settings": "Configuració",
+    "logout": "Tancar Sessió"
   },
   "auth": {
     "accessRestricted": "Accés restringit. Introdueix la contrasenya del node.",
@@ -37,7 +36,7 @@
     "editService": "EDITAR SERVEI"
   },
   "settings": {
-    "title": "Ajustos",
+    "title": "Configuració",
     "subtitle": "Identitat del node, seguretat, emmagatzematge i configuració d'idioma",
     "tabs": {
       "general": "General",
@@ -364,5 +363,83 @@
     "anchorBottomLeft": "Inferior Esquerra",
     "anchorBottomCenter": "Inferior Centre",
     "anchorBottomRight": "Inferior Dreta"
+  },
+  "sources": {
+    "mediaStorage": "Emmagatzematge de Mitjans",
+    "selectStorage": "-- Seleccionar Emmagatzematge --",
+    "networkSettingsTitle": "Ajustos de Xarxa d'Entrada",
+    "networkTimeoutLabel": "Timeout de Xarxa (segons)",
+    "networkTimeoutDesc": "Temps d'espera màxim abans de declarar pèrdua de senyal. S'aplica a les peticions de xarxa del stream.",
+    "networkTimeoutWarning": "El camp de timeout està buit. S'aplicarà el valor equilibrat per defecte (15 segons) en iniciar el stream.",
+    "types": {
+      "file": "Fitxer Local / VOD",
+      "srt": "Stream SRT",
+      "ndi": "Origen NDI",
+      "udp": "UDP / MPEG-TS",
+      "rtp": "Stream RTP",
+      "decklink": "Blackmagic Decklink",
+      "alsa": "Dispositiu d'Àudio ALSA",
+      "v4l2": "Video4Linux2 (USB/Magewell)",
+      "lavfi_video": "Generador Intern (Vídeo)",
+      "lavfi_audio": "Generador Intern (Àudio)",
+      "http_audio": "Stream d'Àudio HTTP (Icecast/Shoutcast)",
+      "rtmp": "Stream RTMP",
+      "hls": "Stream HLS"
+    }
+  },
+  "destinations": {
+    "destination": "Destinació",
+    "types": {
+      "udp": "UDP Multicast (MPEG-TS)",
+      "srt": "Stream SRT",
+      "rtmp": "RTMP / RTMPS Push",
+      "whip": "WHIP Push (WebRTC)",
+      "ndi": "Eixida NDI",
+      "decklink": "Eixida Blackmagic Decklink",
+      "file": "Enregistrament Local",
+      "icecast": "Icecast2 (Stream d'Àudio)",
+      "alsa": "Dispositiu d'Àudio ALSA",
+      "rtp": "Stream RTP",
+      "hls": "Streaming HLS en Directe"
+    }
+  },
+  "codecs": {
+    "videoCodecOutput": "Còdec de Vídeo (Eixida)",
+    "audioCodec": "Còdec d'Àudio",
+    "softwareCpu": "Còdecs per Programari (CPU)",
+    "hardwareGpu": "Còdecs per Maquinari (GPU)"
+  },
+  "lifecycle": {
+    "title": "Ajustos del Cicle de Vida del Procés",
+    "autoStart": "Inici automàtic en arrencada",
+    "autoStartDesc": "Iniciar aquest servei automàticament quan arrenqui l'aplicació.",
+    "enableWatchdog": "Habilitar Watchdog",
+    "watchdogDesc": "Supervisar estat del procés i reiniciar automàticament en caigudes inesperades.",
+    "infiniteRetries": "Reintents de Reinici Infinits",
+    "infiniteRetriesDesc": "Continuar intentant reiniciar el procés indefinidament.",
+    "maxRetries": "Màxim de reintents consecutius:",
+    "minSpeed": "Velocitat Mínima:",
+    "tolerance": "Tolerància (s):",
+    "debugMode": "Mode Debug (Consola en Directe)",
+    "debugModeDesc": "Habilita lectura interactiva de registres. Sensible a reinicis del panell.",
+    "logStorage": "Emmagatzematge de Registres",
+    "defaultLogStorage": "Predeterminat (Usar emmagatzematge de registres per defecte)"
+  },
+  "form": {
+    "sections": {
+      "general": "General",
+      "input": "Origen",
+      "output": "Destinació",
+      "codecs": "Còdecs",
+      "filters": "Filtres"
+    },
+    "placeholderTaskName": "Nom de la tasca (ex. Transcodificació diària)",
+    "placeholderServiceName": "Nom del servei (ex. Codificador Principal Node-01)",
+    "lcdAlias": "Àlies LCD",
+    "defaultBuild": "Compilació FFmpeg per defecte",
+    "previewCli": "Vista Prèvia CLI",
+    "createTask": "Crear Tasca",
+    "deployService": "Desplegar Servei",
+    "saveAsNew": "Desar com a Nou"
   }
 }

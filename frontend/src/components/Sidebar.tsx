@@ -33,7 +33,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'services', icon: <LightningIcon size={20} />, label: t('nav.services') },
     { id: 'batch', icon: <CalendarIcon size={20} />, label: t('nav.tasks') },
     { id: 'settings', icon: <GearIcon size={20} />, label: t('nav.settings') },
-    { id: 'tools', icon: <ToolsIcon size={20} />, label: t('nav.tools') },
+    { id: 'tools', icon: <ToolsIcon size={20} />, label: t('nav.forge', 'Forge') },
   ];
 
   return (

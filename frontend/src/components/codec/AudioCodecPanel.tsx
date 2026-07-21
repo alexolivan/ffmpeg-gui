@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { CodecParam } from './codecRegistry';
 import {
   getAvailableAudioCodecs,
@@ -21,6 +22,7 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
   outputType,
   onChange,
 }) => {
+  const { t } = useTranslation();
   const available = React.useMemo(() => {
     return getAvailableAudioCodecs(buildOptions, outputType);
   }, [buildOptions, outputType]);
@@ -41,7 +43,7 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 mb-0.5">
         <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-        <h4 className="text-blue-400 font-bold text-xs uppercase tracking-wider">Audio Codec</h4>
+        <h4 className="text-blue-400 font-bold text-xs uppercase tracking-wider">{t('codecs.audioCodec', 'Audio Codec')}</h4>
       </div>
 
       <select

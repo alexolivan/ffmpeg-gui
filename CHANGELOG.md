@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored UI views (`Sidebar`, `DashboardView`, `ForgeView`, `InputSourcePanel`, `DestinationPanel`, `FiltersFormSection`) to systematically use `useTranslation()`.
 - Added internationalization protocol rule to `.agents/AGENTS.md` enforcing `useTranslation()` and `en.json` single source of truth for future developments.
 
+### Changed
+- Standardized navigation single-word naming in sidebar (`Forge` / `Forja`).
+- Refactored process forms (`ProcessConfigForm`, `InputSourcePanel`, `DestinationPanel`, `VideoCodecPanel`, `AudioCodecPanel`, `LifecycleFormSection`) to extract all hardcoded UI strings into `i18n` dictionaries while preserving industry technical jargon (`Bitrate`, `FPS`, `Codec`, `SRT`, `NDI`, `MPEG-TS`, `RTMP`, `HLS`, `WHIP`, `DeckLink`, `ALSA`, `V4L2`) in English.
+- Achieved 100% key parity (279 keys) across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`) translation dictionaries.
+
 ## [1.24.0] (Frontend) - 2026-07-20
 
 ### Added

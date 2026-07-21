@@ -20,11 +20,10 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "forge": "Forge Studio",
+    "forge": "Forge",
     "services": "Services",
     "tasks": "Scheduled Tasks",
     "settings": "Settings",
-    "tools": "Tools / Forge",
     "logout": "Logout"
   },
   "auth": {
@@ -364,5 +363,83 @@
     "anchorBottomLeft": "Bottom Left",
     "anchorBottomCenter": "Bottom Center",
     "anchorBottomRight": "Bottom Right"
+  },
+  "sources": {
+    "mediaStorage": "Media Storage",
+    "selectStorage": "-- Select Media Storage --",
+    "networkSettingsTitle": "Input Network Settings",
+    "networkTimeoutLabel": "Network Timeout (seconds)",
+    "networkTimeoutDesc": "Maximum waiting time before declaring signal loss. Applied to stream network requests.",
+    "networkTimeoutWarning": "Timeout field is empty. Default balanced value (15 seconds) will be applied at stream start.",
+    "types": {
+      "file": "Local File / VOD",
+      "srt": "SRT Stream",
+      "ndi": "NDI Source",
+      "udp": "UDP / MPEG-TS",
+      "rtp": "RTP Stream",
+      "decklink": "Blackmagic Decklink",
+      "alsa": "ALSA Audio Device",
+      "v4l2": "Video4Linux2 (USB/Magewell)",
+      "lavfi_video": "Internal Generator (Video)",
+      "lavfi_audio": "Internal Generator (Audio)",
+      "http_audio": "HTTP Audio Stream (Icecast/Shoutcast)",
+      "rtmp": "RTMP Stream",
+      "hls": "HLS Stream"
+    }
+  },
+  "destinations": {
+    "destination": "Destination",
+    "types": {
+      "udp": "UDP Multicast (MPEG-TS)",
+      "srt": "SRT Stream",
+      "rtmp": "RTMP / RTMPS Push",
+      "whip": "WHIP Push (WebRTC)",
+      "ndi": "NDI Output",
+      "decklink": "Blackmagic Decklink Output",
+      "file": "Local Recording",
+      "icecast": "Icecast2 (Audio Stream)",
+      "alsa": "ALSA Audio Device",
+      "rtp": "RTP Stream",
+      "hls": "HLS Live Streaming"
+    }
+  },
+  "codecs": {
+    "videoCodecOutput": "Video Codec (Output)",
+    "audioCodec": "Audio Codec",
+    "softwareCpu": "Software Codecs (CPU)",
+    "hardwareGpu": "Hardware Codecs (GPU)"
+  },
+  "lifecycle": {
+    "title": "Process Lifecycle Settings",
+    "autoStart": "Auto-start on boot",
+    "autoStartDesc": "Launch this service automatically when the application starts.",
+    "enableWatchdog": "Enable Watchdog",
+    "watchdogDesc": "Monitor process health and auto-restart on unexpected crashes.",
+    "infiniteRetries": "Infinite Restart Attempts",
+    "infiniteRetriesDesc": "Keep trying to restart the process indefinitely.",
+    "maxRetries": "Maximum consecutive retries:",
+    "minSpeed": "Minimum Speed:",
+    "tolerance": "Tolerance (s):",
+    "debugMode": "Debug Mode (Live Console)",
+    "debugModeDesc": "Enables interactive log reading. Sensitive to panel restarts.",
+    "logStorage": "Log Storage",
+    "defaultLogStorage": "Default (Use Default Log Storage)"
+  },
+  "form": {
+    "sections": {
+      "general": "General",
+      "input": "Input",
+      "output": "Output",
+      "codecs": "Codecs",
+      "filters": "Filters"
+    },
+    "placeholderTaskName": "Task name (e.g. Daily Transcode of Stream)",
+    "placeholderServiceName": "Service name (e.g. Primary Encoder Node-01)",
+    "lcdAlias": "LCD Alias",
+    "defaultBuild": "Default FFmpeg build",
+    "previewCli": "Preview CLI",
+    "createTask": "Create Task",
+    "deployService": "Deploy Service",
+    "saveAsNew": "Save as New"
   }
 }

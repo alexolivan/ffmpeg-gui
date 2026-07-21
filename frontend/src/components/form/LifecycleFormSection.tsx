@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface LifecycleFormSectionProps {
   auto_start: boolean;
@@ -31,18 +32,20 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
   logsStorages,
   onChange,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="glass-card p-2.5 !rounded-lg space-y-2">
       <div className="flex items-center gap-1.5 mb-1.5">
         <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-        <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Process Lifecycle Settings</h4>
+        <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('lifecycle.title', 'Process Lifecycle Settings')}</h4>
       </div>
 
       {/* Auto Start Toggle */}
       <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold text-white">Auto-start on boot</span>
-          <span className="text-[10px] text-text-secondary">Launch this service automatically when the application starts.</span>
+          <span className="text-xs font-semibold text-white">{t('lifecycle.autoStart', 'Auto-start on boot')}</span>
+          <span className="text-[10px] text-text-secondary">{t('lifecycle.autoStartDesc', 'Launch this service automatically when the application starts.')}</span>
         </div>
         <label className="relative inline-flex items-center cursor-pointer">
           <input
@@ -58,8 +61,8 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
       {/* Watchdog Toggle */}
       <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold text-white">Enable Watchdog</span>
-          <span className="text-[10px] text-text-secondary">Monitor process health and auto-restart on unexpected crashes.</span>
+          <span className="text-xs font-semibold text-white">{t('lifecycle.enableWatchdog', 'Enable Watchdog')}</span>
+          <span className="text-[10px] text-text-secondary">{t('lifecycle.watchdogDesc', 'Monitor process health and auto-restart on unexpected crashes.')}</span>
         </div>
         <label className="relative inline-flex items-center cursor-pointer">
           <input
@@ -77,8 +80,8 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
         <div className="p-2 bg-white/5 rounded-lg border border-white/5 space-y-2 animate-in fade-in duration-200">
           <div className="flex items-center justify-between">
             <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-semibold text-white">Infinite Restart Attempts</span>
-              <span className="text-[10px] text-text-secondary">Keep trying to restart the process indefinitely.</span>
+              <span className="text-xs font-semibold text-white">{t('lifecycle.infiniteRetries', 'Infinite Restart Attempts')}</span>
+              <span className="text-[10px] text-text-secondary">{t('lifecycle.infiniteRetriesDesc', 'Keep trying to restart the process indefinitely.')}</span>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -96,7 +99,7 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
           {watchdog_retries !== -1 && (
             <div className="flex items-center gap-2 pt-1.5 border-t border-white/5 animate-in fade-in duration-200">
               <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
-                Maximum consecutive retries:
+                {t('lifecycle.maxRetries', 'Maximum consecutive retries:')}
               </label>
               <input
                 type="number"
@@ -115,14 +118,14 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
           <div className="flex items-center gap-4 pt-2.5 border-t border-white/5 flex-wrap">
             <div className="flex items-center gap-2">
               <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
-                Velocidad Mínima:
+                {t('lifecycle.minSpeed', 'Minimum Speed:')}
               </label>
               <input
                 type="number"
                 step="0.05"
                 min="0.05"
                 max="10.0"
-                placeholder="Desactivado"
+                placeholder={t('common.disabled', 'Disabled')}
                 className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-28 focus:border-brand-lime"
                 value={watchdog_min_speed === null || watchdog_min_speed === undefined ? '' : watchdog_min_speed}
                 onChange={e => {
@@ -134,7 +137,7 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
             {(watchdog_min_speed !== null && watchdog_min_speed !== undefined) && (
               <div className="flex items-center gap-2 animate-in fade-in duration-200">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
-                  Tolerancia (s):
+                  {t('lifecycle.tolerance', 'Tolerance (s):')}
                 </label>
                 <input
                   type="number"
@@ -155,8 +158,8 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
       {/* Debug Mode Toggle */}
       <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
         <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold text-white">Modo Debug (Consola en Vivo)</span>
-          <span className="text-[10px] text-text-secondary">Habilita lectura interactiva de logs. Sensible a reinicios del panel.</span>
+          <span className="text-xs font-semibold text-white">{t('lifecycle.debugMode', 'Debug Mode (Live Console)')}</span>
+          <span className="text-[10px] text-text-secondary">{t('lifecycle.debugModeDesc', 'Enables interactive log reading. Sensitive to panel restarts.')}</span>
         </div>
         <label className="relative inline-flex items-center cursor-pointer">
           <input
@@ -172,7 +175,7 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
       {/* Logs Storage Dropdown */}
       <div className="p-2 bg-white/5 rounded-lg border border-white/5 space-y-1.5">
         <label htmlFor="log-storage-select" className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block">
-          Almacenamiento de Logs
+          {t('lifecycle.logStorage', 'Log Storage')}
         </label>
         <select
           id="log-storage-select"
@@ -180,10 +183,10 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
           value={log_storage_id || ''}
           onChange={e => onChange({ log_storage_id: e.target.value ? parseInt(e.target.value) : null })}
         >
-          <option value="" className="bg-[#1e1e24] text-white">Default (Usa Default Logs Storage)</option>
+          <option value="" className="bg-[#1e1e24] text-white">{t('lifecycle.defaultLogStorage', 'Default (Use Default Log Storage)')}</option>
           {logsStorages.map((s: any) => (
             <option key={s.id} value={s.id} className="bg-[#1e1e24] text-white">
-              {s.name} ({s.path}) {s.is_default ? '[Predeterminado]' : ''}
+              {s.name} ({s.path}) {s.is_default ? `[${t('common.default', 'Default')}]` : ''}
             </option>
           ))}
         </select>

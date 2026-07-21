@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { CodecParam } from './codecRegistry';
 import {
   getAvailableVideoCodecs,
@@ -24,6 +25,7 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
   outputType,
   onChange,
 }) => {
+  const { t } = useTranslation();
   const available = React.useMemo(() => {
     return getAvailableVideoCodecs(buildOptions, systemCapabilities, outputType);
   }, [buildOptions, systemCapabilities, outputType]);
@@ -56,7 +58,7 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
       <div className="space-y-1.5">
         <div className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-pulse" />
-          <h4 className="text-brand-orange font-bold text-xs uppercase tracking-wider">Video Codec (Output)</h4>
+          <h4 className="text-brand-orange font-bold text-xs uppercase tracking-wider">{t('codecs.videoCodecOutput', 'Video Codec (Output)')}</h4>
         </div>
 
         <select
@@ -65,7 +67,7 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
           onChange={e => handleCodecChange(e.target.value)}
         >
           {softwareCodecs.length > 0 && (
-            <optgroup label="Software Codecs (CPU)">
+            <optgroup label={t('codecs.softwareCpu', 'Software Codecs (CPU)')}>
               {softwareCodecs.map(c => (
                 <option key={c.id} value={c.id}>
                   {c.label}
@@ -74,7 +76,7 @@ const VideoCodecPanel: React.FC<VideoCodecPanelProps> = ({
             </optgroup>
           )}
           {hardwareCodecs.length > 0 && (
-            <optgroup label="Hardware Codecs (GPU)">
+            <optgroup label={t('codecs.hardwareGpu', 'Hardware Codecs (GPU)')}>
               {hardwareCodecs.map(c => (
                 <option key={c.id} value={c.id}>
                   {c.label}

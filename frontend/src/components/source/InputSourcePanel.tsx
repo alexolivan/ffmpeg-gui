@@ -44,19 +44,19 @@ interface InputSourcePanelProps {
 }
 
 const ALL_SOURCE_TYPES = [
-  { value: 'file', label: 'Local File / VOD' },
-  { value: 'srt', label: 'SRT Stream' },
-  { value: 'ndi', label: 'NDI Source' },
-  { value: 'udp', label: 'UDP / MPEG-TS' },
-  { value: 'rtp', label: 'RTP Stream' },
-  { value: 'decklink', label: 'Blackmagic Decklink' },
-  { value: 'alsa', label: 'ALSA Audio Device' },
-  { value: 'v4l2', label: 'Video4Linux2 (USB/Magewell)' },
-  { value: 'lavfi_video', label: 'Internal Generator (Video)' },
-  { value: 'lavfi_audio', label: 'Internal Generator (Audio)' },
-  { value: 'http_audio', label: 'HTTP Audio Stream (Icecast/Shoutcast)' },
-  { value: 'rtmp', label: 'RTMP Stream' },
-  { value: 'hls', label: 'HLS Stream' },
+  { value: 'file', labelKey: 'sources.types.file', label: 'Local File / VOD' },
+  { value: 'srt', labelKey: 'sources.types.srt', label: 'SRT Stream' },
+  { value: 'ndi', labelKey: 'sources.types.ndi', label: 'NDI Source' },
+  { value: 'udp', labelKey: 'sources.types.udp', label: 'UDP / MPEG-TS' },
+  { value: 'rtp', labelKey: 'sources.types.rtp', label: 'RTP Stream' },
+  { value: 'decklink', labelKey: 'sources.types.decklink', label: 'Blackmagic Decklink' },
+  { value: 'alsa', labelKey: 'sources.types.alsa', label: 'ALSA Audio Device' },
+  { value: 'v4l2', labelKey: 'sources.types.v4l2', label: 'Video4Linux2 (USB/Magewell)' },
+  { value: 'lavfi_video', labelKey: 'sources.types.lavfi_video', label: 'Internal Generator (Video)' },
+  { value: 'lavfi_audio', labelKey: 'sources.types.lavfi_audio', label: 'Internal Generator (Audio)' },
+  { value: 'http_audio', labelKey: 'sources.types.http_audio', label: 'HTTP Audio Stream (Icecast/Shoutcast)' },
+  { value: 'rtmp', labelKey: 'sources.types.rtmp', label: 'RTMP Stream' },
+  { value: 'hls', labelKey: 'sources.types.hls', label: 'HLS Stream' },
 ];
 
 const deviceCache: {
@@ -388,7 +388,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         }}
       >
         {types.map(tItem => (
-          <option key={tItem.value} value={tItem.value}>{tItem.label}</option>
+          <option key={tItem.value} value={tItem.value}>{t(tItem.labelKey, tItem.label)}</option>
         ))}
       </select>
 
