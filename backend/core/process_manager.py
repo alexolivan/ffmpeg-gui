@@ -16,6 +16,7 @@ class ProcessManager:
         self.log_buffers: Dict[int, collections.deque] = {}
         self.restart_counts: Dict[int, int] = {}
         self.pending_restarts: Dict[int, asyncio.Task] = {}
+        self.watchdog_tasks: Dict[int, asyncio.Task] = {}
         self.srt_has_had_activity: Dict[int, bool] = {}
         self.watchdog_stalled_since: Dict[int, Optional[datetime]] = {}
         self.db_session_factory = db_session_factory
@@ -165,7 +166,7 @@ class ProcessManager:
             # Start watchdog and log reader tasks
             if debug_mode:
                 asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
-            asyncio.create_task(self._watchdog(process_id, proc))
+            self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, proc))
             
         except Exception as e:
             self.logger.exception(f"Failed to start process {process_id}")
@@ -182,6 +183,13 @@ class ProcessManager:
                 pending.cancel()
             except Exception as e:
                 self.logger.warning(f"Error cancelling pending restart task for process {process_id}: {e}")
+
+        watchdog_task = self.watchdog_tasks.pop(process_id, None)
+        if watchdog_task:
+            try:
+                watchdog_task.cancel()
+            except Exception as e:
+                self.logger.warning(f"Error cancelling watchdog task for process {process_id}: {e}")
 
         proc = self.processes.get(process_id)
         self.restart_counts.pop(process_id, None)
@@ -1547,6 +1555,9 @@ class ProcessManager:
         except Exception as loop_err:
             self.logger.error(f"Watchdog loop encountered error for process {process_id}: {loop_err}")
         finally:
+            if self.watchdog_tasks.get(process_id) == asyncio.current_task():
+                self.watchdog_tasks.pop(process_id, None)
+
             if process_id in self.processes:
                 was_unexpected = True
 
@@ -1673,5 +1684,5 @@ class ProcessManager:
                 return
 
         self.processes[process_id] = None
-        asyncio.create_task(self._watchdog(process_id, pid=pid))
+        self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
 
