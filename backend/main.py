@@ -6,6 +6,7 @@ import shutil
 import uuid
 import shlex
 import platform
+import configparser
 from PIL import Image
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
@@ -28,6 +29,8 @@ from fastapi import BackgroundTasks
 from utils.process_utils import cleanup_rogue_processes
 from version import __version__ as backend_version
 from database.version import __schema_version__ as schema_version
+
+SUPPORTED_LANGUAGES = ['en', 'es', 'ca']
 
 import time
 
@@ -618,7 +621,7 @@ def check_media_process_port_conflicts(input_config: dict, output_config: list):
 @app.post("/api/settings")
 def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.language is not None:
-        if settings_in.language not in ['en', 'es', 'ca']:
+        if settings_in.language not in SUPPORTED_LANGUAGES:
             raise HTTPException(status_code=400, detail="Invalid language code")
         
         config_path = os.environ.get("CONFIG_FILE_PATH")
