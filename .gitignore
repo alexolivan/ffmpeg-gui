@@ -32,8 +32,10 @@ dist/
 .DS_Store
 Thumbs.db
 
-# FFmpeg Forge builds
+# Storage data and build artifacts
+ffmpeg_builds/
 backend/ffmpeg_builds/
+data/
 backend/data/
 
 # Ignore non-documentation docs
