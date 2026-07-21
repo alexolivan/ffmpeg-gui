@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { SystemCapabilities } from '../codec/codecRegistry';
 
 // ── Input source types ───────────────────────────────────────────
@@ -84,6 +85,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   idPrefix = 'input',
   storages = [],
 }) => {
+  const { t } = useTranslation();
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
 
@@ -353,7 +355,6 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
     return () => { active = false; };
   }, [config.type]);
 
-
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 mb-0.5">
@@ -386,8 +387,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           });
         }}
       >
-        {types.map(t => (
-          <option key={t.value} value={t.value}>{t.label}</option>
+        {types.map(tItem => (
+          <option key={tItem.value} value={tItem.value}>{tItem.label}</option>
         ))}
       </select>
 
@@ -395,7 +396,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'file' ? (
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label htmlFor={`${idPrefix}-storage`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Media Storage</label>
+            <label htmlFor={`${idPrefix}-storage`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.mediaStorage')}</label>
             <select
               id={`${idPrefix}-storage`}
               name="storage_id"
@@ -403,14 +404,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               value={config.storage_id || ''}
               onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
             >
-              <option value="">-- Select Storage --</option>
+              <option value="">{t('sources.selectStorage')}</option>
               {storages.filter((s: any) => s.type === 'media').map((s: any) => (
                 <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
               ))}
             </select>
           </div>
           <div>
-            <label htmlFor={`${idPrefix}-relative-path`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Relative Path</label>
+            <label htmlFor={`${idPrefix}-relative-path`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.relativePath')}</label>
             <input
               type="text"
               id={`${idPrefix}-relative-path`}
@@ -427,7 +428,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           type="text"
           id={`${idPrefix}-path`}
           name="path"
-          placeholder="Stream URL (e.g. rtmp://... or http://...)"
+          placeholder={t('sources.streamUrl') + " (e.g. rtmp://... or http://...)"}
           className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime"
           value={config.path || ''}
           onChange={e => update({ path: e.target.value })}
@@ -438,7 +439,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div className="col-span-2">
-              <label htmlFor={`${idPrefix}-srt-mode`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">SRT Connection Mode</label>
+              <label htmlFor={`${idPrefix}-srt-mode`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.srtConnectionMode')}</label>
               <select
                 id={`${idPrefix}-srt-mode`}
                 name="mode"
@@ -452,15 +453,15 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   });
                 }}
               >
-                <option value="listener">Listener (Server Mode — wait for connection)</option>
-                <option value="caller">Caller (Client Mode — initiate connection)</option>
-                <option value="rendezvous">Rendezvous Mode (Peer-to-peer connection)</option>
+                <option value="listener">{t('sources.listenerMode')}</option>
+                <option value="caller">{t('sources.callerMode')}</option>
+                <option value="rendezvous">{t('sources.rendezvousMode')}</option>
               </select>
             </div>
 
             <div>
               <label htmlFor={`${idPrefix}-host`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                {config.mode === 'listener' ? 'Bind Interface / Host' : 'Remote Host / IP'}
+                {config.mode === 'listener' ? t('sources.bindInterfaceHost') : t('sources.remoteHostIp')}
               </label>
               <input
                 type="text"
@@ -474,7 +475,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             </div>
 
             <div>
-              <label htmlFor={`${idPrefix}-port`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Port</label>
+              <label htmlFor={`${idPrefix}-port`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.port')}</label>
               <input
                 type="text"
                 id={`${idPrefix}-port`}
@@ -487,7 +488,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             </div>
 
             <div>
-              <label htmlFor={`${idPrefix}-latency`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Latency (ms)</label>
+              <label htmlFor={`${idPrefix}-latency`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.latencyMs')}</label>
               <input
                 type="number"
                 id={`${idPrefix}-latency`}
@@ -502,7 +503,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             </div>
 
             <div>
-              <label htmlFor={`${idPrefix}-streamid`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Stream ID (Optional)</label>
+              <label htmlFor={`${idPrefix}-streamid`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.streamId')}</label>
               <input
                 type="text"
                 id={`${idPrefix}-streamid`}
@@ -518,15 +519,15 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-[10px] text-blue-300">
             {config.mode === 'listener' ? (
               <span>
-                <strong>Listener Mode:</strong> FFmpeg opens a local UDP socket on port <strong>{config.port || '9000'}</strong> and waits.
+                <strong>Listener Mode:</strong> {t('sources.listenerDesc')} (Port: {config.port || '9000'})
               </span>
             ) : config.mode === 'caller' ? (
               <span>
-                <strong>Caller Mode:</strong> FFmpeg actively connects to remote host <strong>{config.host || 'Host'}</strong> on port <strong>{config.port || 'Port'}</strong>.
+                <strong>Caller Mode:</strong> {t('sources.callerDesc')} ({config.host || 'Host'}:{config.port || 'Port'})
               </span>
             ) : (
               <span>
-                <strong>Rendezvous Mode:</strong> Both nodes must use Rendezvous mode on the same port.
+                <strong>Rendezvous Mode:</strong> {t('sources.rendezvousDesc')}
               </span>
             )}
           </div>
@@ -537,12 +538,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         <div className="space-y-1.5">
           {!avahiAvailable && (
             <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-2.5 rounded-lg leading-relaxed font-bold mb-2 flex flex-col gap-1">
-              <div>⚠️ NDI requires Avahi.</div>
-              <div>Please run <code className="font-mono text-[10px] bg-black/40 px-1 py-0.5 rounded select-all">sudo systemctl enable --now avahi-daemon</code> to start it.</div>
+              <div>{t('sources.ndiAvahiWarning')}</div>
+              <div>{t('sources.ndiAvahiCommandHint')}</div>
             </div>
           )}
           <label htmlFor={`${idPrefix}-ndi-name`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-            NDI Source Name
+            {t('sources.ndiSourceName')}
           </label>
           <div className="flex gap-1.5">
             {!manualNdiMode ? (
@@ -560,11 +561,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   }
                 }}
               >
-                <option value="">-- Select NDI Source --</option>
+                <option value="">{t('sources.selectNdiSource')}</option>
                 {displayedNdiSources.map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
-                <option value="__manual__">📝 Manual input...</option>
+                <option value="__manual__">{t('sources.manualInput')}</option>
               </select>
             ) : (
               <div className="flex w-full gap-1.5">
@@ -585,7 +586,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     update({ name: ndiSources[0] || '' });
                   }}
                 >
-                  List
+                  {t('common.list')}
                 </button>
               </div>
             )}
@@ -595,14 +596,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               onClick={scanNdi}
               className="px-2.5 bg-brand-lime hover:bg-brand-lime/80 disabled:opacity-50 text-black font-black rounded-lg text-xs transition-colors shrink-0 cursor-pointer"
             >
-              {scanningNdi ? "Scanning..." : "Scan"}
+              {scanningNdi ? t('common.scanning') : t('common.scan')}
             </button>
           </div>
           
           {/* NDI Scan Feedback and Helper Tips */}
           {scanningNdi && (
             <p className="text-[10px] text-brand-orange animate-pulse font-bold mt-1.5">
-              🔍 Buscando fuentes NDI activas en la red local...
+              {t('sources.scanningNdi')}
             </p>
           )}
           {!scanningNdi && scanResult && (
@@ -610,9 +611,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               <p className={`text-[10px] font-bold ${scanResult.success && scanResult.count > 0 ? 'text-brand-lime' : 'text-brand-orange'}`}>
                 {scanResult.success 
                   ? (scanResult.count > 0 
-                    ? `✓ Se encontraron ${scanResult.count} fuentes NDI en la red.` 
-                    : '⚠️ No se detectó ninguna fuente NDI activa.')
-                  : '❌ Error de comunicación al escanear fuentes NDI.'}
+                    ? t('sources.foundNdiSources', { count: scanResult.count })
+                    : t('sources.noNdiSources'))
+                  : t('sources.ndiScanError')}
               </p>
               {scanResult.success && scanResult.count > 0 && manualNdiMode && (
                 <button
@@ -620,7 +621,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   onClick={() => setManualNdiMode(false)}
                   className="text-[9px] text-brand-lime underline hover:text-brand-lime/80 block font-bold cursor-pointer text-left"
                 >
-                  👉 Hacer clic aquí para ver la lista y seleccionar una fuente detectada.
+                  {t('sources.clickToSelectNdi')}
                 </button>
               )}
             </div>
@@ -634,7 +635,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             type="text"
             id={`${idPrefix}-udp-host`}
             name="host"
-            placeholder="Multicast / Host"
+            placeholder={t('sources.bindInterfaceHost')}
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.host || ''} onChange={e => update({ host: e.target.value })}
           />
@@ -642,7 +643,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             type="text"
             id={`${idPrefix}-udp-port`}
             name="port"
-            placeholder="Port"
+            placeholder={t('sources.port')}
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.port || ''} onChange={e => update({ port: e.target.value })}
           />
@@ -655,7 +656,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             type="text"
             id={`${idPrefix}-rtp-host`}
             name="host"
-            placeholder="Host"
+            placeholder={t('sources.remoteHostIp')}
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.host || ''} onChange={e => update({ host: e.target.value })}
           />
@@ -663,7 +664,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             type="text"
             id={`${idPrefix}-rtp-port`}
             name="port"
-            placeholder="Port"
+            placeholder={t('sources.port')}
             className="bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
             value={config.port || ''} onChange={e => update({ port: e.target.value })}
           />
@@ -673,24 +674,21 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'decklink' && (
         <div className="space-y-2">
           <div>
-            <label htmlFor={`${idPrefix}-decklink-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo DeckLink</label>
+            <label htmlFor={`${idPrefix}-decklink-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.decklinkDevice')}</label>
             {loadingDevices ? (
-              <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingDevices')}</div>
             ) : devices.length === 0 ? (
               <div className="space-y-1.5">
-                <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron tarjetas de captura DeckLink.</div>
+                <div className="text-[10px] text-amber-500 font-medium">{t('sources.noDecklinkDetected')}</div>
                 <input
                   type="text"
                   id={`${idPrefix}-decklink-device`}
                   name="device"
-                  placeholder="Nombre del dispositivo (ej: DeckLink Mini Recorder)"
+                  placeholder="Device name (e.g. DeckLink Mini Recorder)"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
-                <p className="text-[9px] text-text-secondary">
-                  Ejemplo: <code className="text-brand-orange font-mono">DeckLink Mini Recorder</code>.
-                </p>
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -710,11 +708,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         }
                       }}
                     >
-                      <option value="">-- Seleccionar dispositivo --</option>
+                      <option value="">{t('sources.selectDevice')}</option>
                       {devices.map(d => (
                         <option key={d} value={d}>{d}</option>
                       ))}
-                      <option value="__manual__">📝 Entrada manual...</option>
+                      <option value="__manual__">{t('sources.manualInput')}</option>
                     </select>
                   ) : (
                     <div className="flex flex-col w-full gap-1.5">
@@ -723,7 +721,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           type="text"
                           id={`${idPrefix}-decklink-device`}
                           name="device"
-                          placeholder="Nombre del dispositivo"
+                          placeholder="Device Name"
                           className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                           value={config.device || ''}
                           onChange={e => update({ device: e.target.value })}
@@ -736,12 +734,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                             update({ device: devices[0] || '' });
                           }}
                         >
-                          Lista
+                          {t('common.list')}
                         </button>
                       </div>
-                      <p className="text-[9px] text-text-secondary">
-                        Ejemplo: <code className="text-brand-orange font-mono">DeckLink Mini Recorder</code>.
-                      </p>
                     </div>
                   )}
                 </div>
@@ -750,7 +745,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-decklink-video-input`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Conector de Video (video_input)</label>
+            <label htmlFor={`${idPrefix}-decklink-video-input`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.videoConnector')}</label>
             <select
               id={`${idPrefix}-decklink-video-input`}
               name="video_input"
@@ -758,7 +753,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               value={config.video_input || ''}
               onChange={e => update({ video_input: e.target.value })}
             >
-              <option value="">Por defecto / No especificado</option>
+              <option value="">{t('sources.defaultUnspecified')}</option>
               <option value="sdi">SDI</option>
               <option value="hdmi">HDMI</option>
               <option value="optical_sdi">Optical SDI</option>
@@ -769,7 +764,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-decklink-audio-input`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Conector de Audio (audio_input)</label>
+            <label htmlFor={`${idPrefix}-decklink-audio-input`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.audioConnector')}</label>
             <select
               id={`${idPrefix}-decklink-audio-input`}
               name="audio_input"
@@ -777,7 +772,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               value={config.audio_input || ''}
               onChange={e => update({ audio_input: e.target.value })}
             >
-              <option value="">Por defecto / No especificado</option>
+              <option value="">{t('sources.defaultUnspecified')}</option>
               <option value="embedded">Embedded (SDI/HDMI)</option>
               <option value="aes_ebu">AES/EBU (Digital)</option>
               <option value="analog">Analog (XLR/RCA)</option>
@@ -785,25 +780,25 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-decklink-format-code`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato de Entrada (format_code)</label>
+            <label htmlFor={`${idPrefix}-decklink-format-code`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.inputFormat')}</label>
             {manualDeviceMode ? (
               <input
                 type="text"
                 id={`${idPrefix}-decklink-format-code`}
                 name="format_code"
-                placeholder="Código de formato (ej: hp50)"
+                placeholder="Format code (e.g. hp50)"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.format_code || ''}
                 onChange={e => update({ format_code: e.target.value })}
               />
             ) : loadingFormats ? (
-              <div className="text-[10px] text-text-secondary animate-pulse">Cargando formatos soportados...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingFormats')}</div>
             ) : formats.length === 0 ? (
               <input
                 type="text"
                 id={`${idPrefix}-decklink-format-code`}
                 name="format_code"
-                placeholder="Código de formato (ej: hp50) - No se detectaron formatos"
+                placeholder="Format code (e.g. hp50)"
                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                 value={config.format_code || ''}
                 onChange={e => update({ format_code: e.target.value })}
@@ -816,7 +811,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 value={config.format_code || ''}
                 onChange={e => update({ format_code: e.target.value })}
               >
-                <option value="">Por defecto / Detección automática (SDK)</option>
+                <option value="">{t('sources.defaultAutoSdk')}</option>
                 {formats.map(f => (
                   <option key={f.code} value={f.code}>
                     {f.code} ({f.description})
@@ -831,24 +826,21 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'alsa' && (
         <div className="space-y-2">
           <div>
-            <label htmlFor={`${idPrefix}-alsa-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo ALSA</label>
+            <label htmlFor={`${idPrefix}-alsa-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.alsaDevice')}</label>
             {loadingAlsaDevices ? (
-              <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos ALSA...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingAlsa')}</div>
             ) : alsaDevices.length === 0 ? (
               <div className="space-y-1.5">
-                <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron tarjetas de sonido ALSA.</div>
+                <div className="text-[10px] text-amber-500 font-medium">{t('sources.noAlsaDetected')}</div>
                 <input
                   type="text"
                   id={`${idPrefix}-alsa-device`}
                   name="device"
-                  placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
+                  placeholder="ALSA Device ID (e.g. hw:0,0)"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
-                <p className="text-[9px] text-text-secondary">
-                  Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code>.
-                </p>
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -868,11 +860,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         }
                       }}
                     >
-                      <option value="">-- Seleccionar dispositivo ALSA --</option>
+                      <option value="">{t('sources.selectAlsa')}</option>
                       {alsaDevices.map(d => (
                         <option key={d.device} value={d.device}>{d.name} ({d.device})</option>
                       ))}
-                      <option value="__manual__">📝 Entrada manual...</option>
+                      <option value="__manual__">{t('sources.manualInput')}</option>
                     </select>
                   ) : (
                     <div className="flex flex-col w-full gap-1.5">
@@ -881,7 +873,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           type="text"
                           id={`${idPrefix}-alsa-device`}
                           name="device"
-                          placeholder="ID del dispositivo ALSA (ej: hw:0,0)"
+                          placeholder="ALSA Device ID (e.g. hw:0,0)"
                           className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                           value={config.device || ''}
                           onChange={e => update({ device: e.target.value })}
@@ -894,12 +886,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                             update({ device: alsaDevices[0]?.device || '' });
                           }}
                         >
-                          Lista
+                          {t('common.list')}
                         </button>
                       </div>
-                      <p className="text-[9px] text-text-secondary">
-                        Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code>.
-                      </p>
                     </div>
                   )}
                 </div>
@@ -912,24 +901,21 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'v4l2' && (
         <div className="space-y-2">
           <div>
-            <label htmlFor={`${idPrefix}-v4l2-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Dispositivo V4L2</label>
+            <label htmlFor={`${idPrefix}-v4l2-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.v4l2Device')}</label>
             {loadingV4l2Devices ? (
-              <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos V4L2...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingV4l2')}</div>
             ) : v4l2Devices.length === 0 ? (
               <div className="space-y-1.5">
-                <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron dispositivos V4L2.</div>
+                <div className="text-[10px] text-amber-500 font-medium">{t('sources.noV4l2Detected')}</div>
                 <input
                   type="text"
                   id={`${idPrefix}-v4l2-device`}
                   name="device"
-                  placeholder="Ruta del dispositivo (ej: /dev/video0)"
+                  placeholder="Device Path (e.g. /dev/video0)"
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
-                <p className="text-[9px] text-text-secondary">
-                  Ejemplo: <code className="text-brand-orange font-mono">/dev/video0</code>.
-                </p>
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -949,18 +935,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         }
                       }}
                     >
-                      <option value="">-- Seleccionar dispositivo V4L2 --</option>
+                      <option value="">{t('sources.selectV4l2')}</option>
                       {v4l2Devices.map(d => (
                         <option key={d.device} value={d.device}>{d.name} ({d.device})</option>
                       ))}
-                      <option value="__manual__">📝 Entrada manual...</option>
+                      <option value="__manual__">{t('sources.manualInput')}</option>
                     </select>
                   ) : (
                     <div className="flex flex-col w-full gap-1.5">
                       <div className="flex w-full gap-1.5">
                         <input
                           type="text"
-                          placeholder="Ruta del dispositivo (ej: /dev/video0)"
+                          placeholder="Device Path (e.g. /dev/video0)"
                           className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
                           value={config.device || ''}
                           onChange={e => update({ device: e.target.value })}
@@ -973,12 +959,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                             update({ device: v4l2Devices[0]?.device || '' });
                           }}
                         >
-                          Lista
+                          {t('common.list')}
                         </button>
                       </div>
-                      <p className="text-[9px] text-text-secondary">
-                        Ejemplo: <code className="text-brand-orange font-mono">/dev/video0</code>.
-                      </p>
                     </div>
                   )}
                 </div>
@@ -988,11 +971,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
           {!manualV4l2Mode && config.device && (
             <div>
-              <label htmlFor={`${idPrefix}-v4l2-format`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato y Resolución</label>
+              <label htmlFor={`${idPrefix}-v4l2-format`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.formatResolution')}</label>
               {loadingV4l2Formats ? (
-                <div className="text-[10px] text-text-secondary animate-pulse">Cargando formatos...</div>
+                <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingFormats')}</div>
               ) : v4l2Formats.length === 0 ? (
-                <div className="text-[10px] text-text-secondary italic">No se detectaron formatos.</div>
+                <div className="text-[10px] text-text-secondary italic">No formats detected.</div>
               ) : (
                 <select
                   id={`${idPrefix}-v4l2-format`}
@@ -1009,7 +992,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     }
                   }}
                 >
-                  <option value="">Por defecto / Detección automática</option>
+                  <option value="">{t('sources.defaultAutoSdk')}</option>
                   {v4l2Formats.map(f => (
                     <optgroup key={`${f.type}-${f.pixel_format}`} label={`${f.type}: ${f.description || f.pixel_format}`}>
                       {f.resolutions.map((r: string) => (
@@ -1034,10 +1017,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <span className="text-[9px] bg-lime-500/20 text-lime-400 px-1 py-0.5 rounded-full font-bold uppercase tracking-wider">
                         Magewell Link
                       </span>
-                      <span className="text-[11px] font-semibold text-white">Audio Embebido Detectado</span>
+                      <span className="text-[11px] font-semibold text-white">{t('sources.magewellEmbeddedAudio')}</span>
                     </div>
                     <p className="text-[10px] text-text-secondary">
-                      Asociado a ALSA <span className="font-mono text-lime-400">{selDev.alsa_device}</span>.
+                      {t('sources.magewellAssociatedAlsa')} <span className="font-mono text-lime-400">{selDev.alsa_device}</span>.
                     </p>
                   </div>
                   <button
@@ -1045,7 +1028,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     onClick={() => onSyncAlsaAudio(selDev.alsa_device)}
                     className="text-[10px] bg-lime-500 hover:bg-lime-600 text-black font-bold px-2 py-1 rounded-lg transition-colors whitespace-nowrap self-end sm:self-center"
                   >
-                    Sincronizar Audio (Input 2)
+                    {t('sources.syncAudio')}
                   </button>
                 </div>
               );
@@ -1071,7 +1054,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </select>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label htmlFor={`${idPrefix}-lavfi-video-size`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Resolution (size)</label>
+              <label htmlFor={`${idPrefix}-lavfi-video-size`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.resolution')}</label>
               <select
                 id={`${idPrefix}-lavfi-video-size`}
                 name="size"
@@ -1087,7 +1070,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               </select>
             </div>
             <div>
-              <label htmlFor={`${idPrefix}-lavfi-video-rate`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Framerate (rate)</label>
+              <label htmlFor={`${idPrefix}-lavfi-video-rate`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.framerate')}</label>
               <select
                 id={`${idPrefix}-lavfi-video-rate`}
                 name="rate"
@@ -1124,7 +1107,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </select>
           {(config.pattern === 'sine' || !config.pattern) && (
             <div>
-              <label htmlFor={`${idPrefix}-lavfi-audio-frequency`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Frequency (Hz)</label>
+              <label htmlFor={`${idPrefix}-lavfi-audio-frequency`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.frequencyHz')}</label>
               <input
                 type="number"
                 id={`${idPrefix}-lavfi-audio-frequency`}
@@ -1145,7 +1128,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         <div className="space-y-1.5 pt-2 border-t border-white/5 animate-in fade-in duration-300">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-            <label htmlFor={`${idPrefix}-hwaccel`} className="text-brand-lime font-bold text-[10px] uppercase tracking-wider cursor-pointer">Hardware Decoding (Input)</label>
+            <label htmlFor={`${idPrefix}-hwaccel`} className="text-brand-lime font-bold text-[10px] uppercase tracking-wider cursor-pointer">{t('sources.hardwareDecoding')}</label>
             <span className="text-[9px] text-white/20 italic ml-auto">-hwaccel</span>
           </div>
 
@@ -1163,26 +1146,26 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               });
             }}
           >
-            <option value="none">None (Software Decoding)</option>
+            <option value="none">{t('sources.noneSoftware')}</option>
             {(!systemCapabilities || systemCapabilities.nvenc?.available) && (
-              <option value="cuda">NVIDIA GPU (CUDA)</option>
+              <option value="cuda">{t('sources.nvidiaGpuCuda')}</option>
             )}
             {(!systemCapabilities || systemCapabilities.vaapi?.available) && (
               <>
-                <option value="vaapi">Intel/AMD GPU (VAAPI)</option>
-                <option value="qsv">Intel Quick Sync (QSV)</option>
+                <option value="vaapi">{t('sources.intelAmdVaapi')}</option>
+                <option value="qsv">{t('sources.intelQsv')}</option>
               </>
             )}
-            <option value="auto">Auto-detect</option>
+            <option value="auto">{t('sources.autoDetect')}</option>
           </select>
           <span className="text-[9px] text-text-secondary block px-1">
-            Offloads video decoding to the selected GPU. Recommended for high-bitrate file or network inputs.
+            {t('sources.hardwareDecodingDesc')}
           </span>
 
           {config.hwaccel && config.hwaccel !== 'none' && (
             <div className="mt-1.5 animate-in fade-in duration-200">
               <label htmlFor={`${idPrefix}-hwaccel-output-format`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                Decoded Frames Destination
+                {t('sources.decodedFramesDest')}
               </label>
               <select
                 id={`${idPrefix}-hwaccel-output-format`}
@@ -1197,13 +1180,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   });
                 }}
               >
-                <option value="system">System Memory (CPU RAM) — Maximum Compatibility</option>
-                <option value={config.hwaccel}>GPU Memory (VRAM) — High Performance GPU Transcode</option>
+                <option value="system">{t('sources.systemMemoryCpu')}</option>
+                <option value={config.hwaccel}>{t('sources.gpuMemoryVram')}</option>
               </select>
               <span className="text-[9px] text-text-secondary block mt-1 px-1">
                 {config.hwaccel_output_format === 'system'
-                  ? "Copies decoded frames to system RAM. Works with all software filters/encoders."
-                  : "Keeps decoded frames in VRAM. Bypasses CPU copies, requires hardware filters/encoders."
+                  ? t('sources.systemMemoryDesc')
+                  : t('sources.gpuMemoryDesc')
                 }
               </span>
             </div>

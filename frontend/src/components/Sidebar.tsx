@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   DashboardIcon, 
   LightningIcon, 
@@ -25,12 +26,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   accentColor = '#FF6B00',
   onLogout
 }) => {
+  const { t } = useTranslation();
+
   const items = [
-    { id: 'dashboard', icon: <DashboardIcon size={20} />, label: 'Dashboard' },
-    { id: 'services', icon: <LightningIcon size={20} />, label: 'Services' },
-    { id: 'batch', icon: <CalendarIcon size={20} />, label: 'Tasks' },
-    { id: 'settings', icon: <GearIcon size={20} />, label: 'Settings' },
-    { id: 'tools', icon: <ToolsIcon size={20} />, label: 'Tools' },
+    { id: 'dashboard', icon: <DashboardIcon size={20} />, label: t('nav.dashboard') },
+    { id: 'services', icon: <LightningIcon size={20} />, label: t('nav.services') },
+    { id: 'batch', icon: <CalendarIcon size={20} />, label: t('nav.tasks') },
+    { id: 'settings', icon: <GearIcon size={20} />, label: t('nav.settings') },
+    { id: 'tools', icon: <ToolsIcon size={20} />, label: t('nav.tools') },
   ];
 
   return (
@@ -65,12 +68,12 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div 
             onClick={onLogout}
             className="flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all text-red-400 hover:bg-red-500/10"
-            title="Lock Console"
+            title={t('nav.logout')}
           >
             <span className="flex items-center justify-center w-6 h-6">
               <LogoutIcon size={20} />
             </span>
-            <span className="hidden lg:block font-medium">Logout</span>
+            <span className="hidden lg:block font-medium">{t('nav.logout')}</span>
           </div>
         </div>
       )}

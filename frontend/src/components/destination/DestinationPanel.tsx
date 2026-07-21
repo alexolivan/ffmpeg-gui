@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import type { SystemCapabilities } from '../codec/codecRegistry';
 import { HlsVariantsForm, type HlsVariant } from './HlsVariantsForm';
 
@@ -89,6 +90,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   validationWarnings,
   storages = [],
 }) => {
+  const { t } = useTranslation();
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
   const avahiAvailable = systemCapabilities?.avahi?.available ?? true;
 
@@ -275,7 +277,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 mb-0.5">
         <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-        <label htmlFor="dest-type" className="text-purple-400 font-bold text-xs uppercase tracking-wider cursor-pointer">Destination</label>
+        <label htmlFor="dest-type" className="text-purple-400 font-bold text-xs uppercase tracking-wider cursor-pointer">{t('destinations.destination')}</label>
       </div>
 
       <select
@@ -292,8 +294,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           hls_abr_enabled: false, hls_stream_name: '', variants: [],
         })}
       >
-        {availableTypes.map(t => (
-          <option key={t.value} value={t.value}>{t.label}</option>
+        {availableTypes.map(tItem => (
+          <option key={tItem.value} value={tItem.value}>{tItem.label}</option>
         ))}
       </select>
 
@@ -304,7 +306,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label htmlFor={`dest-${config.type}-host`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                Host / Multicast IP<span className="text-red-500 ml-0.5">*</span>
+                {t('destinations.hostMulticastIp')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
                 type="text"
@@ -324,7 +326,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
             <div>
               <label htmlFor={`dest-${config.type}-port`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                Port<span className="text-red-500 ml-0.5">*</span>
+                {t('destinations.port')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
                 type="text"
@@ -347,12 +349,12 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           {config.type === 'udp' && (
             <div className="border border-white/5 bg-white/[0.01] rounded-lg p-2.5 space-y-2">
               <span className="text-[9px] uppercase font-black tracking-widest text-text-secondary">
-                MPEG-TS & DVB Broadcast Options
+                {t('destinations.mpegTsDvbOptions')}
               </span>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label htmlFor="dest-udp-muxrate" className="text-[9px] text-text-secondary font-bold block mb-0.5">Constant Muxrate (bps)</label>
+                  <label htmlFor="dest-udp-muxrate" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.constantMuxrate')}</label>
                   <input
                     type="text"
                     id="dest-udp-muxrate"
@@ -364,7 +366,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 </div>
 
                 <div>
-                  <label htmlFor="dest-udp-pkt-size" className="text-[9px] text-text-secondary font-bold block mb-0.5">Socket Packet Size (pkt_size)</label>
+                  <label htmlFor="dest-udp-pkt-size" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.socketPacketSize')}</label>
                   <input
                     type="number"
                     id="dest-udp-pkt-size"
@@ -376,7 +378,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 </div>
 
                 <div>
-                  <label htmlFor="dest-udp-service-provider" className="text-[9px] text-text-secondary font-bold block mb-0.5">Service Provider</label>
+                  <label htmlFor="dest-udp-service-provider" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceProvider')}</label>
                   <input
                     type="text"
                     id="dest-udp-service-provider"
@@ -388,7 +390,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 </div>
 
                 <div>
-                  <label htmlFor="dest-udp-service-name" className="text-[9px] text-text-secondary font-bold block mb-0.5">Service Name</label>
+                  <label htmlFor="dest-udp-service-name" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceName')}</label>
                   <input
                     type="text"
                     id="dest-udp-service-name"
@@ -400,7 +402,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 </div>
 
                 <div>
-                  <label htmlFor="dest-udp-ts-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">Transport Stream ID (HEX/DEC)</label>
+                  <label htmlFor="dest-udp-ts-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.transportStreamId')}</label>
                   <input
                     type="text"
                     id="dest-udp-ts-id"
@@ -412,7 +414,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 </div>
 
                 <div>
-                  <label htmlFor="dest-udp-net-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">Original Network ID (HEX/DEC)</label>
+                  <label htmlFor="dest-udp-net-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.originalNetworkId')}</label>
                   <input
                     type="text"
                     id="dest-udp-net-id"
@@ -424,7 +426,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 </div>
 
                 <div className="col-span-2">
-                  <label htmlFor="dest-udp-service-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">Service ID (HEX/DEC)</label>
+                  <label htmlFor="dest-udp-service-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceId')}</label>
                   <input
                     type="text"
                     id="dest-udp-service-id"
@@ -444,7 +446,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div className="col-span-2">
-              <label htmlFor="dest-srt-mode" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">SRT Connection Mode</label>
+              <label htmlFor="dest-srt-mode" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.srtConnectionMode')}</label>
               <select
                 id="dest-srt-mode"
                 name="mode"
@@ -458,15 +460,15 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   });
                 }}
               >
-                <option value="caller">Caller (Client Mode — push stream to remote listener)</option>
-                <option value="listener">Listener (Server Mode — wait for remote caller to fetch stream)</option>
-                <option value="rendezvous">Rendezvous Mode (Peer-to-peer connection)</option>
+                <option value="caller">{t('destinations.callerMode')}</option>
+                <option value="listener">{t('destinations.listenerMode')}</option>
+                <option value="rendezvous">{t('destinations.rendezvousMode')}</option>
               </select>
             </div>
 
             <div>
               <label htmlFor="dest-srt-host" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                {config.mode === 'listener' ? 'Bind Interface / Host' : 'Host / IP'}
+                {config.mode === 'listener' ? t('sources.bindInterfaceHost') : t('destinations.hostMulticastIp')}
                 <span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
@@ -489,7 +491,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
             <div>
               <label htmlFor="dest-srt-port" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                Port<span className="text-red-500 ml-0.5">*</span>
+                {t('destinations.port')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
                 type="text"
@@ -510,7 +512,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
 
             <div>
-              <label htmlFor="dest-srt-latency" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Latency (ms)</label>
+              <label htmlFor="dest-srt-latency" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.latencyMs')}</label>
               <input
                 type="number"
                 id="dest-srt-latency"
@@ -525,7 +527,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
 
             <div>
-              <label htmlFor="dest-srt-streamid" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Stream ID (Optional)</label>
+              <label htmlFor="dest-srt-streamid" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.streamId')}</label>
               <input
                 type="text"
                 id="dest-srt-streamid"
@@ -541,15 +543,15 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-2 text-[10px] text-purple-300">
             {config.mode === 'caller' ? (
               <span>
-                <strong>Caller Mode:</strong> FFmpeg pushes the stream to remote listener at <strong>{config.host || 'Host'}</strong>:<strong>{config.port || 'Port'}</strong>.
+                <strong>Caller Mode:</strong> {t('destinations.callerDesc')} ({config.host || 'Host'}:{config.port || 'Port'})
               </span>
             ) : config.mode === 'listener' ? (
               <span>
-                <strong>Listener Mode:</strong> FFmpeg opens port <strong>{config.port || '9000'}</strong>. Transcoding starts when a client connects.
+                <strong>Listener Mode:</strong> {t('destinations.listenerDesc')} (Port: {config.port || '9000'})
               </span>
             ) : (
               <span>
-                <strong>Rendezvous Mode:</strong> Peer-to-peer connection. Requires the same port on both nodes.
+                <strong>Rendezvous Mode:</strong> {t('destinations.rendezvousDesc')}
               </span>
             )}
           </div>
@@ -559,7 +561,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {config.type === 'rtmp' && (
         <div className="space-y-1.5">
           <label htmlFor="dest-rtmp-url" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-            Stream URL<span className="text-red-500 ml-0.5">*</span>
+            {t('destinations.streamUrl')}<span className="text-red-500 ml-0.5">*</span>
           </label>
           <input
             type="text"
@@ -583,13 +585,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="space-y-2">
           {!avahiAvailable && (
             <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-xs p-2.5 rounded-lg leading-relaxed font-bold mb-2 flex flex-col gap-1">
-              <div>⚠️ NDI requires Avahi.</div>
-              <div>Please run <code className="font-mono text-[10px] bg-black/40 px-1 py-0.5 rounded select-all">sudo systemctl enable --now avahi-daemon</code> to start it.</div>
+              <div>{t('destinations.ndiAvahiWarning')}</div>
+              <div>{t('destinations.ndiAvahiCommandHint')}</div>
             </div>
           )}
           <div>
             <label htmlFor="dest-ndi-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              Stream Name<span className="text-red-500 ml-0.5">*</span>
+              {t('destinations.ndiStreamName')}<span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               type="text"
@@ -609,7 +611,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           </div>
           <div className="p-2 bg-purple-500/10 border border-purple-500/20 rounded-lg text-[10px] text-purple-300 space-y-0.5">
             <div className="flex items-center gap-1 font-bold">
-              <span>🔒 Locked NDI Specifications:</span>
+              <span>{t('destinations.ndiSpecsLocked')}</span>
             </div>
             <ul className="list-disc pl-3.5 space-y-0.5 text-text-secondary">
               <li>Format: <code className="text-purple-300 font-mono text-[9px]">libndi_newtek</code></li>
@@ -625,23 +627,23 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           <div className="p-2 bg-purple-500/10 border border-purple-500/20 rounded-lg text-[10px] text-purple-300 flex items-start gap-1.5">
             <span className="text-xs">ℹ️</span>
             <div>
-              <strong>Salida física DeckLink:</strong> Las tarjetas de reproducción DeckLink requieren vídeo y audio sin compresión (como v210/rawvideo en formato UYVY 4:2:2, y audio PCM). Configura códecs compatibles en la pestaña de codificación.
+              {t('destinations.decklinkNotice')}
             </div>
           </div>
           <div>
             <label htmlFor="dest-decklink-device" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              Device Name / Index<span className="text-red-500 ml-0.5">*</span>
+              {t('destinations.deviceNameIndex')}<span className="text-red-500 ml-0.5">*</span>
             </label>
             {loadingDevices ? (
-              <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingDevices')}</div>
             ) : devices.length === 0 ? (
               <div className="space-y-1.5">
-                <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron tarjetas de salida DeckLink.</div>
+                <div className="text-[10px] text-amber-500 font-medium">{t('destinations.noDecklinkOutputs')}</div>
                 <input
                   type="text"
                   id="dest-decklink-device"
                   name="device"
-                  placeholder="Nombre del dispositivo (ej: DeckLink Mini Monitor)"
+                  placeholder="Device Name (e.g. DeckLink Mini Monitor)"
                   className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
                     validationErrors?.device
                       ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
@@ -676,11 +678,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         }
                       }}
                     >
-                      <option value="">-- Seleccionar dispositivo --</option>
+                      <option value="">{t('sources.selectDevice')}</option>
                       {devices.map(d => (
                         <option key={d} value={d}>{d}</option>
                       ))}
-                      <option value="__manual__">📝 Entrada manual...</option>
+                      <option value="__manual__">{t('sources.manualInput')}</option>
                     </select>
                   ) : (
                     <div className="flex w-full gap-1.5">
@@ -688,7 +690,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         type="text"
                         id="dest-decklink-device"
                         name="device"
-                        placeholder="Nombre del dispositivo"
+                        placeholder="Device Name"
                         className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
                           validationErrors?.device
                             ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
@@ -705,7 +707,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                           update({ device: devices[0] || '' });
                         }}
                       >
-                        Lista
+                        {t('common.list')}
                       </button>
                     </div>
                   )}
@@ -718,14 +720,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           </div>
 
           <div>
-            <label htmlFor="dest-decklink-format-code" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Formato de Salida (format_code)</label>
+            <label htmlFor="dest-decklink-format-code" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.outputFormatCode')}</label>
             {manualDeviceMode ? (
               <div className="grid grid-cols-3 gap-2">
                 <input
                   type="text"
                   id="dest-decklink-format-code"
                   name="format_code"
-                  placeholder="Formato (ej: Hp25)"
+                  placeholder="Format (e.g. Hp25)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.format_code || ''}
                   onChange={e => update({ format_code: e.target.value })}
@@ -734,7 +736,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   type="text"
                   id="dest-decklink-video-size"
                   name="video_size"
-                  placeholder="Resolución (ej: 1920x1080)"
+                  placeholder="Resolution (e.g. 1920x1080)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.video_size || ''}
                   onChange={e => update({ video_size: e.target.value })}
@@ -743,21 +745,21 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   type="text"
                   id="dest-decklink-framerate"
                   name="framerate"
-                  placeholder="FPS (ej: 25)"
+                  placeholder="FPS (e.g. 25)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.framerate || ''}
                   onChange={e => update({ framerate: e.target.value })}
                 />
               </div>
             ) : loadingFormats ? (
-              <div className="text-[10px] text-text-secondary animate-pulse">Cargando formatos soportados...</div>
+              <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingFormats')}</div>
             ) : formats.length === 0 ? (
               <div className="grid grid-cols-3 gap-2">
                 <input
                   type="text"
                   id="dest-decklink-format-code"
                   name="format_code"
-                  placeholder="Formato (ej: Hp25) - No detectados"
+                  placeholder="Format (e.g. Hp25)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.format_code || ''}
                   onChange={e => update({ format_code: e.target.value })}
@@ -766,7 +768,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   type="text"
                   id="dest-decklink-video-size"
                   name="video_size"
-                  placeholder="Resolución (ej: 1920x1080)"
+                  placeholder="Resolution (e.g. 1920x1080)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.video_size || ''}
                   onChange={e => update({ video_size: e.target.value })}
@@ -775,7 +777,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   type="text"
                   id="dest-decklink-framerate"
                   name="framerate"
-                  placeholder="FPS (ej: 25)"
+                  placeholder="FPS (e.g. 25)"
                   className="col-span-1 bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
                   value={config.framerate || ''}
                   onChange={e => update({ framerate: e.target.value })}
@@ -790,7 +792,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   value={config.format_code || ''}
                   onChange={e => handleFormatChange(e.target.value)}
                 >
-                  <option value="">Por defecto / Detección automática (SDK)</option>
+                  <option value="">{t('sources.defaultAutoSdk')}</option>
                   {formats.map(f => (
                     <option key={f.code} value={f.code}>
                       {f.code} ({f.description})
@@ -800,8 +802,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 
                 {config.format_code && (
                   <div className="flex gap-4 px-1 text-[10px] text-text-secondary font-mono">
-                    <div>Resolución forzada: <span className="text-purple-300">{config.video_size || 'Auto'}</span></div>
-                    <div>Tasa de frames forzada: <span className="text-purple-300">{config.framerate || 'Auto'}</span></div>
+                    <div>{t('destinations.forcedResolution')} <span className="text-purple-300">{config.video_size || 'Auto'}</span></div>
+                    <div>{t('destinations.forcedFramerate')} <span className="text-purple-300">{config.framerate || 'Auto'}</span></div>
                   </div>
                 )}
               </div>
@@ -815,7 +817,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label htmlFor="dest-file-storage" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                Media Storage<span className="text-red-500 ml-0.5">*</span>
+                {t('destinations.mediaStorage')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <select
                 id="dest-file-storage"
@@ -828,7 +830,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 value={config.storage_id || ''}
                 onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
               >
-                <option value="">-- Select Storage --</option>
+                <option value="">{t('sources.selectStorage')}</option>
                 {storages.filter((s: any) => s.type === 'media').map((s: any) => (
                   <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
                 ))}
@@ -836,7 +838,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
             <div>
               <label htmlFor="dest-file-relative-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                Relative Path / Filename<span className="text-red-500 ml-0.5">*</span>
+                {t('destinations.relativePathFilename')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
                 type="text"
@@ -856,7 +858,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             </div>
             <div>
               <label htmlFor="dest-file-container" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                Container
+                {t('destinations.container')}
               </label>
               <select
                 id="dest-file-container"
@@ -886,7 +888,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label htmlFor="dest-icecast-host" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              Server URL<span className="text-red-500 ml-0.5">*</span>
+              {t('destinations.serverUrl')}<span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               type="text"
@@ -906,7 +908,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           </div>
           <div>
             <label htmlFor="dest-icecast-port" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              Port
+              {t('destinations.port')}
             </label>
             <input
               type="text"
@@ -926,7 +928,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           </div>
           <div>
             <label htmlFor="dest-icecast-mount" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              Mountpoint URL<span className="text-red-500 ml-0.5">*</span>
+              {t('destinations.mountpointUrl')}<span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               type="text"
@@ -946,7 +948,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           </div>
           <div>
             <label htmlFor="dest-icecast-password" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              Source Password
+              {t('destinations.sourcePassword')}
             </label>
             <input
               type="password"
@@ -971,12 +973,12 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="space-y-2">
           {storages.filter((s: any) => s.type === 'hls').length === 0 && (
             <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-2.5 rounded-lg text-xs leading-relaxed font-bold mb-2">
-              ⚠️ No HLS storages configured. Please configure at least one storage of type "HLS" in Settings to use local HLS output.
+              {t('destinations.hlsNoStorageWarning')}
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label htmlFor="dest-hls-method" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">HLS Ingest Method</label>
+              <label htmlFor="dest-hls-method" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.hlsIngestMethod')}</label>
               <select
                 id="dest-hls-method"
                 name="hls_method"
@@ -984,14 +986,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 value={config.hls_method || 'local'}
                 onChange={e => update({ hls_method: e.target.value })}
               >
-                <option value="local">Local Directory (.m3u8 + .ts)</option>
-                <option value="PUT">HTTP PUT Upload</option>
-                <option value="POST">HTTP POST Upload</option>
+                <option value="local">{t('destinations.localDir')}</option>
+                <option value="PUT">{t('destinations.httpPutUpload')}</option>
+                <option value="POST">{t('destinations.httpPostUpload')}</option>
               </select>
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               <div>
-                <label htmlFor="dest-hls-time" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Segment (s)</label>
+                <label htmlFor="dest-hls-time" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.segmentSeconds')}</label>
                 <input
                   type="number"
                   id="dest-hls-time"
@@ -1003,7 +1005,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 />
               </div>
               <div>
-                <label htmlFor="dest-hls-list-size" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">List Size</label>
+                <label htmlFor="dest-hls-list-size" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.listSize')}</label>
                 <input
                   type="number"
                   id="dest-hls-list-size"
@@ -1021,7 +1023,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label htmlFor="dest-hls-storage" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                  HLS Storage<span className="text-red-500 ml-0.5">*</span>
+                  {t('destinations.hlsStorage')}<span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <select
                   id="dest-hls-storage"
@@ -1035,7 +1037,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
                   disabled={storages.filter((s: any) => s.type === 'hls').length === 0}
                 >
-                  <option value="">-- Select Storage --</option>
+                  <option value="">{t('sources.selectStorage')}</option>
                   {storages.filter((s: any) => s.type === 'hls').map((s: any) => (
                     <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
                   ))}
@@ -1043,7 +1045,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               </div>
               <div>
                 <label htmlFor="dest-hls-relative-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                  Relative Path / Directory<span className="text-red-500 ml-0.5">*</span>
+                  {t('destinations.relativePathDir')}<span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <input
                   type="text"
@@ -1078,7 +1080,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           ) : (
             <div>
               <label htmlFor="dest-hls-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                Server Ingest URL<span className="text-red-500 ml-0.5">*</span>
+                {t('destinations.serverIngestUrl')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
                 type="text"
@@ -1101,7 +1103,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
           <div>
             <label htmlFor="dest-hls-stream-name" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              Stream Name<span className="text-red-500 ml-0.5">*</span>
+              {t('destinations.ndiStreamName')}<span className="text-red-500 ml-0.5">*</span>
             </label>
             <input
               type="text"
@@ -1118,7 +1120,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               required
             />
             <span className="text-[10px] text-white/40 block mt-0.5">
-              Se añadirá la extensión .m3u8 automáticamente
+              {t('destinations.hlsExtensionNote')}
             </span>
             {validationErrors?.hls_stream_name && (
               <span className="text-[10px] text-red-400 block mt-1">{validationErrors.hls_stream_name}</span>
@@ -1141,7 +1143,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               }}
             />
             <label htmlFor="hls-abr-enabled-chk" className="text-xs font-medium cursor-pointer">
-              Habilitar Adaptive Bitrate (ABR)
+              {t('destinations.enableAbr')}
             </label>
           </div>
 
@@ -1155,14 +1157,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 onChange={e => update({ hls_delete_segments: e.target.checked })}
               />
               <label htmlFor="hls-delete-chk" className="text-xs font-medium cursor-pointer">
-                Delete Expired Segments (keep playlist clean)
+                {t('destinations.deleteExpiredSegments')}
               </label>
             </div>
           )}
 
           {(config.hls_method === 'PUT' || config.hls_method === 'POST') && (
             <div>
-              <label htmlFor="dest-hls-headers" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">Custom HTTP Headers (Optional)</label>
+              <label htmlFor="dest-hls-headers" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.customHttpHeaders')}</label>
               <textarea
                 id="dest-hls-headers"
                 name="headers"
@@ -1187,7 +1189,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {config.type === 'whip' && (
         <div className="space-y-1.5 animate-in fade-in duration-200">
           <label htmlFor="dest-whip-url" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-            Stream URL<span className="text-red-500 ml-0.5">*</span>
+            {t('destinations.whipIngestUrl')}<span className="text-red-500 ml-0.5">*</span>
           </label>
           <input
             type="text"
@@ -1211,13 +1213,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {config.type === 'alsa' && (
         <div className="space-y-1.5 animate-in fade-in duration-200">
           <label htmlFor="dest-alsa-device" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-            ALSA Playout Device<span className="text-red-500 ml-0.5">*</span>
+            {t('destinations.alsaPlayoutDevice')}<span className="text-red-500 ml-0.5">*</span>
           </label>
           {loadingAlsaDevices ? (
-            <div className="text-[10px] text-text-secondary animate-pulse">Cargando dispositivos ALSA...</div>
+            <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingAlsa')}</div>
           ) : alsaDevices.length === 0 ? (
             <div className="space-y-1.5">
-              <div className="text-[10px] text-amber-500 font-medium">⚠️ No se detectaron dispositivos de salida ALSA.</div>
+              <div className="text-[10px] text-amber-500 font-medium">{t('destinations.noAlsaPlaybackDetected')}</div>
               <input
                 type="text"
                 id="dest-alsa-device"
@@ -1229,9 +1231,6 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 value={config.device || ''}
                 onChange={e => update({ device: e.target.value })}
               />
-              <p className="text-[9px] text-text-secondary">
-                Ejemplo: <code className="text-brand-orange font-mono">hw:0,0</code> o <code className="text-brand-orange font-mono">default</code>.
-              </p>
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -1252,11 +1251,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     }
                   }}
                 >
-                  <option value="default">Default Device (default)</option>
+                  <option value="default">{t('destinations.defaultDevice')}</option>
                   {alsaDevices.map(d => (
                     <option key={d.device} value={d.device}>{d.name} ({d.device})</option>
                   ))}
-                  <option value="__manual__">📝 Entrada manual...</option>
+                  <option value="__manual__">{t('sources.manualInput')}</option>
                 </select>
               ) : (
                 <div className="flex flex-col w-full gap-1.5">
@@ -1280,7 +1279,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         update({ device: 'default' });
                       }}
                     >
-                      Lista
+                      {t('common.list')}
                     </button>
                   </div>
                 </div>
@@ -1294,12 +1293,12 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       )}
 
       {/* ── Recommended Broadcast Recipe Card ── */}
-      {renderBroadcastRecipe(config.type)}
+      {renderBroadcastRecipe(config.type, t)}
     </div>
   );
 };
 
-const renderBroadcastRecipe = (type: string) => {
+const renderBroadcastRecipe = (type: string, t: any) => {
   const recipes: Record<string, { title: string; video: string; audio: string; details: string; container: string }> = {
     udp: {
       title: "UDP Multicast (MPEG-TS)",
@@ -1386,19 +1385,19 @@ const renderBroadcastRecipe = (type: string) => {
   return (
     <div className="mt-4 p-3 bg-brand-orange/5 border border-brand-orange/15 rounded-xl text-[10px] space-y-1.5 animate-in fade-in duration-200">
       <div className="flex items-center gap-1.5 font-bold text-brand-orange">
-        <span>💡 Receta Broadcast Recomendada (Best Practices)</span>
+        <span>{t('destinations.recommendedRecipe')}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-text-secondary">
         <div>
-          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">Códec de Vídeo</span>
+          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">{t('destinations.videoCodec')}</span>
           <span className="text-white/85 font-mono">{recipe.video}</span>
         </div>
         <div>
-          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">Códec de Audio</span>
+          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">{t('destinations.audioCodec')}</span>
           <span className="text-white/85 font-mono">{recipe.audio}</span>
         </div>
         <div className="col-span-2">
-          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">Contenedor / Muxer</span>
+          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">{t('destinations.containerMuxer')}</span>
           <span className="text-white/85 font-mono">{recipe.container}</span>
         </div>
       </div>

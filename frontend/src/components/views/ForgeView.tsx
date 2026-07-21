@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import BuildProfileCard from '../BuildProfileCard';
 import type { BuildProfile } from '../BuildProfileCard';
 import BuildFormModal from '../BuildFormModal';
@@ -163,6 +164,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   refreshDiskInfo,
   refreshDeps,
 }) => {
+  const { t } = useTranslation();
+
   useEffect(() => {
     if (showEnvModal) {
       refreshDeps();
@@ -179,14 +182,9 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
     textArea.focus();
     textArea.select();
     try {
-      const successful = document.execCommand('copy');
-      if (successful) {
-        alert("Comando copiado al portapapeles con éxito.");
-      } else {
-        alert("No se pudo copiar el comando. Por favor, cópielo manualmente.");
-      }
+      document.execCommand('copy');
     } catch (err) {
-      alert("No se pudo copiar el comando. Por favor, cópielo manualmente.");
+      console.error(err);
     }
     document.body.removeChild(textArea);
   };
@@ -198,20 +196,20 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">
             FFMPEG <span className="text-brand-orange">FORGE</span>
           </h1>
-          <p className="text-xs text-text-secondary">Build Profiles Manager</p>
+          <p className="text-xs text-text-secondary">{t('forge.subtitle')}</p>
         </div>
         <div className="flex items-center gap-4">
           {diskInfo && (
             <div className="pill-button bg-white/5 border border-white/10 flex items-center gap-2 text-xs">
-              <span className="text-text-secondary">Disk:</span>
+              <span className="text-text-secondary">{t('forge.disk')}:</span>
               <span className={`font-mono font-bold ${diskInfo.free_gb < 10 ? 'text-red-400' : diskInfo.free_gb < 50 ? 'text-brand-orange' : 'text-brand-lime'}`}>
-                {diskInfo.free_gb} GB free
+                {diskInfo.free_gb} {t('dashboard.freeGb')}
               </span>
             </div>
           )}
           <button onClick={() => importRecipeRef.current?.click()}
             className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold hover:scale-105 transition-transform flex items-center gap-1.5">
-            <ImportIcon size={14} /> IMPORT RECIPE
+            <ImportIcon size={14} /> {t('forge.importRecipe')}
           </button>
           <input 
             type="file" 
@@ -222,7 +220,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           />
           <button onClick={() => { setEditingBuild(null); setShowBuildForm(true) }}
             className="pill-button bg-brand-orange text-black font-black hover:scale-105 transition-transform flex items-center gap-1.5">
-            <PlusIcon size={14} /> NEW BUILD PROFILE
+            <PlusIcon size={14} /> {t('forge.newBuildProfile')}
           </button>
         </div>
       </header>
@@ -240,16 +238,16 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             )}
           </div>
           <div>
-            <h4 className="text-sm font-black uppercase tracking-wider">Estado del Entorno FFMPEG Forge</h4>
+            <h4 className="text-sm font-black uppercase tracking-wider">{t('forge.envStatusTitle')}</h4>
             <p className="text-xs text-text-secondary mt-0.5">
               {checkStatus === 'loading' ? (
-                <span className="text-brand-orange animate-pulse">Analizando dependencias del sistema...</span>
+                <span className="text-brand-orange animate-pulse">{t('forge.analyzingDeps')}</span>
               ) : checkStatus === 'error' ? (
-                <span className="text-red-400 font-bold">Error de comunicación con el backend</span>
+                <span className="text-red-400 font-bold">{t('forge.backendError')}</span>
               ) : buildDeps?.all_required_met ? (
-                <span className="text-brand-lime">Todas las dependencias críticas obligatorias están instaladas.</span>
+                <span className="text-brand-lime">{t('forge.allDepsInstalled')}</span>
               ) : (
-                <span className="text-brand-orange font-bold">Faltan herramientas esenciales requeridas para compilar FFmpeg.</span>
+                <span className="text-brand-orange font-bold">{t('forge.missingDeps')}</span>
               )}
             </p>
           </div>
@@ -258,7 +256,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           onClick={() => setShowEnvModal(true)}
           className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all hover:scale-102 flex items-center gap-2"
         >
-          <GearIcon size={14} /> Gestionar Dependencias
+          <GearIcon size={14} /> {t('forge.manageDeps')}
         </button>
       </div>
 
@@ -269,8 +267,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             <div className="text-white/10 mb-6 flex justify-center">
               <ToolsIcon size={48} />
             </div>
-            <div className="text-text-secondary text-lg mb-2">No build profiles yet</div>
-            <div className="text-text-secondary text-sm">Create your first FFmpeg build profile to get started</div>
+            <div className="text-text-secondary text-lg mb-2">{t('forge.noProfilesYet')}</div>
+            <div className="text-text-secondary text-sm">{t('forge.createFirstProfile')}</div>
           </div>
         ) : (
           (() => {
@@ -323,7 +321,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           <div className="glass-card w-full max-w-2xl p-8 relative">
             <button onClick={() => setValidationResult(null)}
               className="absolute top-6 right-6 text-text-secondary hover:text-white">✕</button>
-            <h3 className="text-xl font-bold mb-4 text-brand-lime">BUILD VALIDATION</h3>
+            <h3 className="text-xl font-bold mb-4 text-brand-lime">{t('forge.buildValidation')}</h3>
             <pre className="bg-black/60 p-6 rounded-2xl font-mono text-xs text-white/80 overflow-auto max-h-96 whitespace-pre-wrap">
               {validationResult.output}
             </pre>
@@ -355,14 +353,14 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             </button>
 
             <h3 className="text-lg font-black tracking-tight mb-1 flex items-center gap-2">
-              <ToolsIcon size={16} /> ESTADO DEL ENTORNO DE COMPILACIÓN
+              <ToolsIcon size={16} /> {t('forge.compilationEnvState')}
             </h3>
             <p className="text-xs text-text-secondary mb-6 leading-relaxed">
-              FFmpeg Forge necesita compiladores de bajo nivel y bibliotecas externas de codecs para generar un binario robusto optimizado.
+              {t('forge.envDescription')}
             </p>
 
             <div className="flex items-center justify-between pb-4 border-b border-white/5 mb-6">
-              <span className="text-xs font-bold text-white/70 uppercase tracking-wider">Distribución de Linux</span>
+              <span className="text-xs font-bold text-white/70 uppercase tracking-wider">{t('forge.linuxDistro')}</span>
               <div className="flex gap-2">
                 {(['debian', 'fedora', 'arch'] as const).map(distro => (
                   <button
@@ -380,7 +378,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
               
               {/* Required Deps Section */}
               <div>
-                <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Herramientas Requeridas (Obligatorias)</h4>
+                <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">{t('forge.requiredTools')}</h4>
                 <div className="space-y-2">
                   {Object.entries(buildDeps?.dependencies || {})
                     .filter(([, info]: any) => info.type === 'required')
@@ -392,7 +390,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                             <span className="text-[10px] text-text-secondary mt-0.5">{info.description}</span>
                           </div>
                           <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black ${info.installed ? 'bg-brand-lime/10 text-brand-lime' : 'bg-red-500/10 text-red-400'}`}>
-                            {info.installed ? 'INSTALADO' : 'AUSENTE'}
+                            {info.installed ? t('forge.installed') : t('forge.absent')}
                           </span>
                         </div>
                         {!info.installed && (
@@ -404,15 +402,13 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                               onClick={() => {
                                 const cmd = getSingleInstallCommand(name, selectedLinuxDistro);
                                 if (navigator.clipboard && navigator.clipboard.writeText) {
-                                  navigator.clipboard.writeText(cmd)
-                                    .then(() => alert("Comando copiado al portapapeles con éxito."))
-                                    .catch(() => fallbackCopy(cmd));
+                                  navigator.clipboard.writeText(cmd).catch(() => fallbackCopy(cmd));
                                 } else {
                                   fallbackCopy(cmd);
                                 }
                               }}
                               className="p-1 bg-white/5 hover:bg-white/10 rounded text-text-secondary hover:text-white transition-all shrink-0 flex items-center justify-center"
-                              title="Copiar comando de instalación"
+                              title={t('forge.copyInstallCommand')}
                             >
                               <ClipboardIcon size={10} />
                             </button>
@@ -425,7 +421,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 
               {/* Optional Deps Section */}
               <div>
-                <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">Bibliotecas Adicionales (Opcionales)</h4>
+                <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">{t('forge.optionalLibs')}</h4>
                 <div className="space-y-2">
                   {Object.entries(buildDeps?.dependencies || {})
                     .filter(([, info]: any) => info.type === 'optional')
@@ -437,7 +433,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                             <span className="text-[10px] text-text-secondary mt-0.5">{info.description}</span>
                           </div>
                           <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black ${info.installed ? 'bg-brand-lime/10 text-brand-lime' : 'bg-brand-orange/10 text-brand-orange'}`}>
-                            {info.installed ? 'INSTALADO' : 'NO INSTALADO'}
+                            {info.installed ? t('forge.installed') : t('forge.notInstalled')}
                           </span>
                         </div>
                         {!info.installed && (
@@ -449,15 +445,13 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                               onClick={() => {
                                 const cmd = getSingleInstallCommand(name, selectedLinuxDistro);
                                 if (navigator.clipboard && navigator.clipboard.writeText) {
-                                  navigator.clipboard.writeText(cmd)
-                                    .then(() => alert("Comando copiado al portapapeles con éxito."))
-                                    .catch(() => fallbackCopy(cmd));
+                                  navigator.clipboard.writeText(cmd).catch(() => fallbackCopy(cmd));
                                 } else {
                                   fallbackCopy(cmd);
                                 }
                               }}
                               className="p-1 bg-white/5 hover:bg-white/10 rounded text-text-secondary hover:text-white transition-all shrink-0 flex items-center justify-center"
-                              title="Copiar comando de instalación"
+                              title={t('forge.copyInstallCommand')}
                             >
                               <ClipboardIcon size={10} />
                             </button>
@@ -470,10 +464,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 
               {/* Command Generator */}
               {(() => {
-                // Implement NVIDIA GPU presence check
                 const hasNvidia = !!(systemTelemetry?.capabilities?.nvenc?.available || (systemTelemetry?.gpu?.vendor && systemTelemetry.gpu.vendor.toLowerCase().includes('nvidia')));
 
-                // Gather names of missing dependencies
                 const missingRequired = Object.entries(buildDeps?.dependencies || {})
                   .filter(([, info]: any) => info.type === 'required' && !info.installed)
                   .map(([name]) => name);
@@ -491,7 +483,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 if (allMissing.length === 0) {
                   return (
                     <div className="bg-brand-lime/5 border border-brand-lime/20 p-4 rounded-2xl text-center">
-                      <span className="text-brand-lime font-bold text-xs">🎉 ¡Todo listo! Tu sistema tiene todas las dependencias instaladas.</span>
+                      <span className="text-brand-lime font-bold text-xs">{t('forge.allSet')}</span>
                     </div>
                   );
                 }
@@ -512,7 +504,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                   <div className="bg-white/5 border border-white/5 p-4 rounded-2xl space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black uppercase text-brand-orange tracking-wider flex items-center gap-1">
-                        <ToolsIcon size={12} /> Comando de Instalación Sugerido
+                        <ToolsIcon size={12} /> {t('forge.suggestedInstallCommand')}
                       </span>
                     </div>
                     
@@ -523,26 +515,24 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                       <button
                         onClick={() => {
                           if (navigator.clipboard && navigator.clipboard.writeText) {
-                            navigator.clipboard.writeText(cmdStr)
-                              .then(() => alert("Comando copiado al portapapeles con éxito."))
-                              .catch(() => fallbackCopy(cmdStr));
+                            navigator.clipboard.writeText(cmdStr).catch(() => fallbackCopy(cmdStr));
                           } else {
                             fallbackCopy(cmdStr);
                           }
                         }}
                         className="shrink-0 p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs hover:scale-105 transition-all active:scale-95 flex items-center justify-center text-text-secondary hover:text-white"
-                        title="Copiar Comando"
+                        title={t('forge.copyInstallCommand')}
                       >
                         <ClipboardIcon size={14} />
                       </button>
                     </div>
                     {!hasNvidia && (
                       <p className="text-[9px] text-brand-orange mt-2">
-                        * Las dependencias opcionales de NVIDIA (clang, nvidia-cuda-dev) han sido excluidas de este comando sugerido al no detectarse una GPU NVIDIA en este host.
+                        {t('forge.nvidiaExcludedNote')}
                       </p>
                     )}
                     <p className="text-[9px] text-text-secondary leading-tight">
-                      Este comando instalará exactamente las dependencias del sistema que se detectan ausentes ({allMissing.join(', ')}).
+                      {t('forge.commandWillInstall')} ({allMissing.join(', ')}).
                     </p>
                   </div>
                 );
@@ -556,7 +546,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 onClick={() => setShowEnvModal(false)}
                 className="px-6 py-2.5 bg-brand-orange text-black font-black text-xs rounded-xl hover:scale-102 transition-all uppercase tracking-wider"
               >
-                Cerrar Panel
+                {t('forge.closePanel')}
               </button>
             </div>
 

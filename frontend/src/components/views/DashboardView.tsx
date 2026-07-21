@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { BuildProfile } from '../../components/BuildProfileCard';
 
 interface DashboardViewProps {
@@ -18,6 +19,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   builds,
   settings,
 }) => {
+  const { t } = useTranslation();
   const [locatorActive, setLocatorActive] = useState(false);
 
   useEffect(() => {
@@ -55,8 +57,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <>
       <header className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">DASHBOARD</h1>
-          <p className="text-xs text-text-secondary">Monitoring and controlling FFMPEG nodes</p>
+          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">{t('dashboard.title')}</h1>
+          <p className="text-xs text-text-secondary">{t('dashboard.subtitle')}</p>
         </div>
         <div className="flex gap-4">
           {systemTelemetry.lcd && systemTelemetry.lcd.connected && (
@@ -69,12 +71,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               }`}
             >
               <span className={`w-2 h-2 rounded-full ${locatorActive ? 'bg-white' : 'bg-red-500'}`}></span>
-              {locatorActive ? 'LOCATOR ACTIVE' : 'FIND ME'}
+              {locatorActive ? t('dashboard.locatorActive') : t('dashboard.findMe')}
             </button>
           )}
           <div className="pill-button bg-white/5 border border-white/10 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-brand-lime"></span>
-            Node: {settings.lcd_alias || 'NODE-01'}
+            {t('dashboard.node')}: {settings.lcd_alias || 'NODE-01'}
           </div>
         </div>
       </header>
@@ -83,45 +85,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Column 1: Process Management & load */}
         <div className="space-y-4">
           <div className="glass-card p-4 md:p-5 border-brand-lime/10">
-            <h3 className="text-xl font-black mb-3">SYSTEM STATS</h3>
+            <h3 className="text-xl font-black mb-3">{t('dashboard.systemStats')}</h3>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Active Services</div>
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.activeServices')}</div>
                 <div className="font-black text-xl text-brand-lime">
                   {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length}
                 </div>
               </div>
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Inactive Services</div>
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.inactiveServices')}</div>
                 <div className="font-black text-xl text-white/50">
                   {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length}
                 </div>
               </div>
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Active Tasks</div>
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.activeTasks')}</div>
                 <div className="font-black text-xl text-brand-blue">
                   {taskStats.active}
                 </div>
               </div>
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Scheduled Tasks</div>
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.scheduledTasks')}</div>
                 <div className="font-black text-xl text-brand-orange">
                   {taskStats.scheduled}
                 </div>
               </div>
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center col-span-2 lg:col-span-1">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">Inactive Tasks</div>
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.inactiveTasks')}</div>
                 <div className="font-black text-xl text-white/40">
                   {taskStats.inactive}
                 </div>
               </div>
             </div>
 
-            <h4 className="text-xs font-black uppercase text-text-secondary tracking-wider mb-2">Node Resources Load</h4>
+            <h4 className="text-xs font-black uppercase text-text-secondary tracking-wider mb-2">{t('dashboard.nodeResourcesLoad')}</h4>
             <div className="space-y-2.5">
               <div>
                 <div className="flex justify-between text-xs mb-0.5">
-                  <span className="text-text-secondary">System CPU Load</span>
+                  <span className="text-text-secondary">{t('dashboard.cpuLoad')}</span>
                   <span className="text-brand-lime font-mono font-bold">
                     {systemTelemetry.cpu}%
                   </span>
@@ -135,7 +137,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <div>
                 <div className="flex justify-between text-xs mb-0.5">
-                  <span className="text-text-secondary">System Memory Usage</span>
+                  <span className="text-text-secondary">{t('dashboard.memoryUsage')}</span>
                   <span className="text-brand-orange font-mono font-bold">
                     {systemTelemetry.ram_used} MB / {systemTelemetry.ram_total || 16384} MB
                   </span>
@@ -157,7 +159,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <div className="pt-2 border-t border-white/5">
                     <div className="flex justify-between text-xs mb-0.5">
                       <span className="text-text-secondary flex items-center gap-1.5">
-                        GPU Load 
+                        {t('dashboard.gpuLoad')} 
                         <span className="text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">
                           {systemTelemetry.gpu.vendor}
                         </span>
@@ -175,7 +177,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                   <div>
                     <div className="flex justify-between text-xs mb-0.5">
-                      <span className="text-text-secondary">VRAM Usage</span>
+                      <span className="text-text-secondary">{t('dashboard.vramUsage')}</span>
                       <span className="text-blue-400 font-mono font-bold">
                         {systemTelemetry.gpu.vram_used} MB / {systemTelemetry.gpu.vram_total} MB
                       </span>
@@ -195,8 +197,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               ) : (
                 <div className="pt-3 border-t border-white/5">
                   <div className="flex flex-col items-center justify-center p-4 bg-white/2 border border-white/5 rounded-xl text-center">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-white/30 font-mono mb-1">GPU Telemetry</span>
-                    <span className="text-xs font-bold text-white/40">Not Detected</span>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-white/30 font-mono mb-1">{t('dashboard.gpuTelemetry')}</span>
+                    <span className="text-xs font-bold text-white/40">{t('dashboard.notDetected')}</span>
                   </div>
                 </div>
               )}
@@ -205,7 +207,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {systemTelemetry.storages && systemTelemetry.storages.length > 0 && (
               <div className="mt-4 pt-4 border-t border-white/5">
                 <h4 className="text-xs font-black uppercase text-text-secondary tracking-wider mb-2">
-                  STORAGE CAPACITIES
+                  {t('dashboard.storageCapacities')}
                 </h4>
                 <div
                   className={`space-y-2.5 ${
@@ -227,7 +229,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             </span>
                           </div>
                           <span className="text-text-secondary font-mono text-[10px] shrink-0">
-                            {percent}% ({freeGb} GB free)
+                            {percent}% ({freeGb} {t('dashboard.freeGb')})
                           </span>
                         </div>
                         <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -253,22 +255,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Column 2: Hardware Capabilities Detection */}
         <div className="glass-card p-4 md:p-5 border-brand-orange/10">
-          <h3 className="text-xl font-black mb-3">HARDWARE & PERIPHERALS</h3>
+          <h3 className="text-xl font-black mb-3">{t('dashboard.hardwarePeripherals')}</h3>
           <p className="text-xs text-text-secondary mb-4 leading-relaxed">
-            Real-time introspection of host media acceleration capabilities, sound servers, and capture hardware devices.
+            {t('dashboard.hardwareIntrospection')}
           </p>
           <div className="space-y-2">
             {/* LCD Status Item */}
             {systemTelemetry.lcd && (
               <div className="flex flex-col gap-1 p-2 bg-white/2 border border-white/5 rounded-xl">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs uppercase text-white font-mono">LCD PANEL</span>
+                  <span className="font-bold text-xs uppercase text-white font-mono">{t('dashboard.lcdPanel')}</span>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                     systemTelemetry.lcd.connected
                       ? 'bg-brand-lime/25 text-brand-lime'
                       : 'bg-white/5 text-white/40'
                   }`}>
-                    {systemTelemetry.lcd.connected ? 'AVAILABLE' : 'UNAVAILABLE'}
+                    {systemTelemetry.lcd.connected ? t('dashboard.available') : t('dashboard.unavailable')}
                   </span>
                 </div>
                 <p className="text-[10px] text-text-secondary mt-1">
@@ -291,7 +293,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       ? 'bg-brand-lime/25 text-brand-lime'
                       : 'bg-white/5 text-white/40'
                   }`}>
-                    {value.available ? 'AVAILABLE' : 'UNAVAILABLE'}
+                    {value.available ? t('dashboard.available') : t('dashboard.unavailable')}
                   </span>
                 </div>
                 <p className="text-[10px] text-text-secondary mt-1">{value.details}</p>
@@ -338,34 +340,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="space-y-4">
           {/* System Info */}
           <div className="glass-card p-4 md:p-5 border-white/5">
-            <h3 className="text-xl font-black mb-3">SYSTEM INFO</h3>
+            <h3 className="text-xl font-black mb-3">{t('dashboard.systemInfo')}</h3>
             <div className="space-y-4">
               <div className="flex justify-between py-2 border-b border-white/5">
-                <span className="text-xs text-text-secondary">Host OS & Arch</span>
+                <span className="text-xs text-text-secondary">{t('dashboard.hostOsArch')}</span>
                 <span className="text-xs font-mono font-bold text-white">
                   {systemTelemetry.host_os_arch || 'Linux x86_64'}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-white/5">
-                <span className="text-xs text-text-secondary">Active Profiles</span>
+                <span className="text-xs text-text-secondary">{t('dashboard.activeProfiles')}</span>
                 <span className="text-xs font-mono font-bold text-brand-lime text-right">
                   {builds.filter(b => b.status === 'ready').length}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-white/5">
-                <span className="text-xs text-text-secondary">Frontend Version</span>
+                <span className="text-xs text-text-secondary">{t('dashboard.frontendVersion')}</span>
                 <span className="text-xs font-mono font-bold text-brand-lime text-right">
                   v{import.meta.env.VITE_APP_VERSION || '1.0.0'}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-white/5">
-                <span className="text-xs text-text-secondary">Backend API Version</span>
+                <span className="text-xs text-text-secondary">{t('dashboard.backendApiVersion')}</span>
                 <span className="text-xs font-mono font-bold text-brand-lime text-right">
                   v{systemTelemetry.backend_version || '1.0.0'}
                 </span>
               </div>
               <div className="flex justify-between py-2">
-                <span className="text-xs text-text-secondary">Database Schema</span>
+                <span className="text-xs text-text-secondary">{t('dashboard.databaseSchema')}</span>
                 <span className="text-xs font-mono font-bold text-brand-lime text-right">
                   v{systemTelemetry.schema_version || '1.0.0'}
                 </span>
@@ -377,20 +379,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="glass-card p-4 md:p-5 border-purple-500/10 bg-purple-500/2">
             <div className="flex items-center gap-3 mb-4">
               <span className="text-2xl">📅</span>
-              <h3 className="text-lg font-black text-white/90">SCHEDULER STATUS</h3>
+              <h3 className="text-lg font-black text-white/90">{t('dashboard.schedulerStatus')}</h3>
             </div>
             <div className="p-4 bg-purple-500/10 border border-purple-500/25 rounded-2xl">
               <div className="text-[10px] uppercase font-black text-purple-400 tracking-wider mb-1 flex items-center justify-between">
-                <span>CRON DAEMON</span>
+                <span>{t('dashboard.cronDaemon')}</span>
                 <span className={`w-2 h-2 rounded-full ${taskExecutions.some(e => e.status === 'running') ? 'bg-brand-lime animate-pulse' : 'bg-purple-400'}`}></span>
               </div>
               <div className="text-xs text-white font-bold">
                 {taskExecutions.some(e => e.status === 'running')
-                  ? `ACTIVE / RUNNING (${taskExecutions.filter(e => e.status === 'running').length} active)`
-                  : 'ONLINE / IDLE'}
+                  ? `${t('dashboard.schedulerActiveRunning')} (${taskExecutions.filter(e => e.status === 'running').length} active)`
+                  : t('dashboard.schedulerOnlineIdle')}
               </div>
               <div className="text-[10px] text-text-secondary mt-2 leading-relaxed">
-                Real-time monitor of task schedules, cron intervals, and batch processes.
+                {t('dashboard.schedulerDescription')}
               </div>
             </div>
           </div>

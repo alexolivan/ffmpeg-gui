@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { OverlayCanvasPreview } from './OverlayCanvasPreview';
 import {
   generateAnchorExpressions,
@@ -90,18 +91,6 @@ interface FiltersFormSectionProps {
   storages?: any[];
 }
 
-const ANCHOR_GRID_PRESETS: { id: AnchorPreset; symbol: string; label: string }[] = [
-  { id: 'top-left', symbol: '↖', label: 'Top Left' },
-  { id: 'top-center', symbol: '↑', label: 'Top Center' },
-  { id: 'top-right', symbol: '↗', label: 'Top Right' },
-  { id: 'center-left', symbol: '←', label: 'Center Left' },
-  { id: 'center', symbol: '┼', label: 'Center' },
-  { id: 'center-right', symbol: '→', label: 'Center Right' },
-  { id: 'bottom-left', symbol: '↙', label: 'Bottom Left' },
-  { id: 'bottom-center', symbol: '↓', label: 'Bottom Center' },
-  { id: 'bottom-right', symbol: '↘', label: 'Bottom Right' },
-];
-
 export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   hasVideo,
   hasAudio,
@@ -124,9 +113,22 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   audioCodecId,
   storages = [],
 }) => {
+  const { t } = useTranslation();
   const [activeSubTab, setActiveSubTab] = useState<'video' | 'audio' | 'overlays'>(hasVideo ? 'video' : 'audio');
   const [customModes, setCustomModes] = useState<Record<string, boolean>>({});
   const [expandedOverlayId, setExpandedOverlayId] = useState<string | null>('');
+
+  const anchorGridPresets: { id: AnchorPreset; symbol: string; label: string }[] = [
+    { id: 'top-left', symbol: '↖', label: t('filters.anchorTopLeft') },
+    { id: 'top-center', symbol: '↑', label: t('filters.anchorTopCenter') },
+    { id: 'top-right', symbol: '↗', label: t('filters.anchorTopRight') },
+    { id: 'center-left', symbol: '←', label: t('filters.anchorCenterLeft') },
+    { id: 'center', symbol: '┼', label: t('filters.anchorCenter') },
+    { id: 'center-right', symbol: '→', label: t('filters.anchorCenterRight') },
+    { id: 'bottom-left', symbol: '↙', label: t('filters.anchorBottomLeft') },
+    { id: 'bottom-center', symbol: '↓', label: t('filters.anchorBottomCenter') },
+    { id: 'bottom-right', symbol: '↘', label: t('filters.anchorBottomRight') },
+  ];
 
   useEffect(() => {
     if (!hasVideo && (activeSubTab === 'video' || activeSubTab === 'overlays')) {
@@ -142,7 +144,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   if (!hasVideo && !hasAudio) {
     return (
       <div className="text-center py-12 text-text-secondary text-sm italic">
-        Filters are only available when video or audio streams are enabled.
+        {t('filters.filtersNotAvailable')}
       </div>
     );
   }
@@ -412,7 +414,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               activeSubTab === 'video' ? 'bg-brand-lime text-black' : 'text-text-secondary hover:bg-white/5 hover:text-white'
             }`}
           >
-            Video Settings
+            {t('filters.videoSettings')}
           </button>
         )}
         {hasAudio && (
@@ -423,7 +425,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               activeSubTab === 'audio' ? 'bg-brand-lime text-black' : 'text-text-secondary hover:bg-white/5 hover:text-white'
             }`}
           >
-            Audio Settings
+            {t('filters.audioSettings')}
           </button>
         )}
         {hasVideo && (
@@ -434,7 +436,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               activeSubTab === 'overlays' ? 'bg-brand-lime text-black' : 'text-text-secondary hover:bg-white/5 hover:text-white'
             }`}
           >
-            Overlays ({overlays.length})
+            {t('filters.overlays')} ({overlays.length})
           </button>
         )}
       </div>
@@ -444,18 +446,18 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
         <div className="glass-card p-2.5 !rounded-lg space-y-2">
           {isVideoCopy && (
             <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
-              ⚠️ Video codec is set to 'copy'. Video filters and scaling are disabled because the stream is copied directly without re-encoding.
+              {t('filters.videoCodecCopyNotice')}
             </div>
           )}
 
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-            <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Video Filters</h4>
+            <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('filters.videoFilters')}</h4>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">Scale / Resize</label>
+              <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">{t('filters.scaleResize')}</label>
               <input
                 type="text"
                 placeholder="e.g. 1920:1080 or -1:720"
@@ -466,7 +468,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               />
             </div>
             <div>
-              <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">Framerate Convert</label>
+              <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">{t('filters.framerateConvert')}</label>
               <input
                 type="text"
                 placeholder="e.g. 25, 29.97, 50"
@@ -485,25 +487,22 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 disabled={isVideoCopy}
               />
               <label htmlFor="deinterlace-chk" className={`text-xs font-semibold cursor-pointer select-none ${isVideoCopy ? 'opacity-35 cursor-not-allowed' : ''}`}>
-                Enable Deinterlacing (YADIF / QSV VPP / CUDA yadif)
+                {t('filters.enableDeinterlacing')}
               </label>
             </div>
             {deinterlace && isVram && hwaccel === 'cuda' && systemCapabilities?.ffmpeg?.filters && !systemCapabilities.ffmpeg.filters.includes('yadif_cuda') && (
               <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
-                ⚠️ El binario activo de FFmpeg no soporta el filtro de hardware 'yadif_cuda'.
-                Se recomienda cambiar el formato de salida a 'System Memory (CPU RAM)' en la pestaña Source, o recompilar con soporte CUDA Filters.
+                {t('filters.noYadifCudaSupport')}
               </div>
             )}
             {deinterlace && isVram && hwaccel === 'vaapi' && systemCapabilities?.ffmpeg?.filters && !systemCapabilities.ffmpeg.filters.includes('deinterlace_vaapi') && (
               <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
-                ⚠️ El binario activo de FFmpeg no soporta el filtro de hardware 'deinterlace_vaapi'.
-                Se recomienda cambiar el formato de salida a 'System Memory (CPU RAM)' en la pestaña Source.
+                {t('filters.noDeinterlaceVaapiSupport')}
               </div>
             )}
             {deinterlace && isVram && hwaccel === 'qsv' && systemCapabilities?.ffmpeg?.filters && !systemCapabilities.ffmpeg.filters.includes('vpp_qsv') && (
               <div className="col-span-2 bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
-                ⚠️ El binario activo de FFmpeg no soporta el filtro de hardware 'vpp_qsv'.
-                Se recomienda cambiar el formato de salida a 'System Memory (CPU RAM)' en la pestaña Source.
+                {t('filters.noVppQsvSupport')}
               </div>
             )}
             
@@ -513,13 +512,13 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 <div className="flex items-center gap-1.5 mb-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
                   <h5 className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
-                    Audio / Video Sync
+                    {t('filters.audioVideoSync')}
                   </h5>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">
-                      Sync Mode
+                      {t('filters.syncMode')}
                     </label>
                     <select
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono text-white disabled:opacity-35 disabled:cursor-not-allowed"
@@ -536,23 +535,23 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       }}
                       disabled={isAudioCopy}
                     >
-                      <option value="off">Off (Disabled)</option>
-                      <option value="basic">Basic Sync (async=1)</option>
-                      <option value="advanced">Advanced Sync Configuration</option>
+                      <option value="off">{t('filters.offDisabled')}</option>
+                      <option value="basic">{t('filters.basicSync')}</option>
+                      <option value="advanced">{t('filters.advancedSync')}</option>
                     </select>
                   </div>
                   {aresample?.enabled && aresample?.mode === 'advanced' && (
                     <div className="col-span-2 grid grid-cols-3 gap-2 bg-white/5 p-2 rounded-lg border border-white/5 mt-1">
                       <div>
                         <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                          Sample Rate (osr)
+                          {t('filters.sampleRateOsr')}
                         </label>
                         <select
                           className="w-full bg-black/40 border border-white/10 rounded-lg p-1 text-[10px] outline-none text-white"
                           value={aresample?.osr || ''}
                           onChange={e => onChange({ aresample: { ...aresample, osr: e.target.value } })}
                         >
-                          <option value="">Keep Original</option>
+                          <option value="">{t('filters.keepOriginal')}</option>
                           <option value="48000">48000 Hz</option>
                           <option value="44100">44100 Hz</option>
                           <option value="32000">32000 Hz</option>
@@ -560,7 +559,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       </div>
                       <div>
                         <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                          Min Sync (sec)
+                          {t('filters.minSyncSec')}
                         </label>
                         <input
                           type="number"
@@ -572,7 +571,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       </div>
                       <div>
                         <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                          Hard Sync (sec)
+                          {t('filters.hardSyncSec')}
                         </label>
                         <input
                           type="number"
@@ -596,13 +595,13 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
         <div className="glass-card p-2.5 !rounded-lg space-y-2">
           {isAudioCopy && (
             <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
-              ⚠️ Audio codec is set to 'copy'. Audio filters and DSP settings are disabled because the stream is copied directly without re-encoding.
+              {t('filters.audioCodecCopyNotice')}
             </div>
           )}
 
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-            <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Audio DSP & Levels</h4>
+            <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('filters.audioDspLevels')}</h4>
           </div>
 
           {/* Card 1: Input Level & Clean Filters */}
@@ -611,11 +610,11 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               <div className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
                 <h5 className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
-                  Input Level & Clean Filters
+                  {t('filters.inputLevelCleanFilters')}
                 </h5>
               </div>
               {(volume !== '' || highpass !== '' || lowpass !== '') && (
-                <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">ACTIVE</span>
+                <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">{t('filters.active')}</span>
               )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -630,7 +629,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     disabled={isAudioCopy}
                   />
                   <label htmlFor="vol-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
-                    Input Gain{volume !== '' ? `: ${parseVolumeToDb(volume) > 0 ? `+${parseVolumeToDb(volume)}` : parseVolumeToDb(volume)} dB` : ''}
+                    {t('filters.inputGain')}{volume !== '' ? `: ${parseVolumeToDb(volume) > 0 ? `+${parseVolumeToDb(volume)}` : parseVolumeToDb(volume)} dB` : ''}
                   </label>
                 </div>
                 <input
@@ -653,7 +652,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     disabled={isAudioCopy}
                   />
                   <label htmlFor="hp-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
-                    Highpass{highpass !== '' ? `: ${highpass} Hz` : ''}
+                    {t('filters.highpass')}{highpass !== '' ? `: ${highpass} Hz` : ''}
                   </label>
                 </div>
                 <input
@@ -676,7 +675,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     disabled={isAudioCopy}
                   />
                   <label htmlFor="lp-enable-chk" className="text-[9px] uppercase font-bold text-text-secondary cursor-pointer select-none">
-                    Lowpass{lowpass !== '' ? `: ${parseInt(lowpass) >= 1000 ? `${parseInt(lowpass)/1000}k` : lowpass} Hz` : ''}
+                    {t('filters.lowpass')}{lowpass !== '' ? `: ${parseInt(lowpass) >= 1000 ? `${parseInt(lowpass)/1000}k` : lowpass} Hz` : ''}
                   </label>
                 </div>
                 <input
@@ -702,7 +701,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   disabled={isAudioCopy}
                 />
                 <label htmlFor="eq-chk" className={`text-[11px] font-bold uppercase tracking-wider text-text-secondary select-none cursor-pointer ${isAudioCopy ? 'opacity-35 cursor-not-allowed' : ''}`}>
-                  10-Band ISO Graphic Equalizer
+                  {t('filters.graphicEqualizer')}
                 </label>
               </div>
               {equalizer.enabled && (
@@ -712,21 +711,21 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     onChange={e => applyPreset(e.target.value)}
                     defaultValue=""
                   >
-                    <option value="" disabled>Presets...</option>
-                    <option value="flat">Flat (0dB)</option>
-                    <option value="vocal">Vocal Clarity</option>
-                    <option value="bass">Bass Boost</option>
-                    <option value="treble">Treble Boost</option>
-                    <option value="radio">Radio AM</option>
+                    <option value="" disabled>{t('filters.presetsLabel')}</option>
+                    <option value="flat">{t('filters.flat0db')}</option>
+                    <option value="vocal">{t('filters.vocalClarity')}</option>
+                    <option value="bass">{t('filters.bassBoost')}</option>
+                    <option value="treble">{t('filters.trebleBoost')}</option>
+                    <option value="radio">{t('filters.radioAm')}</option>
                   </select>
                   <button
                     type="button"
                     onClick={resetEq}
                     className="bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded px-1.5 py-0.5 text-[9px] font-semibold"
                   >
-                    Reset (Flat)
+                    {t('filters.resetFlat')}
                   </button>
-                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">ACTIVE</span>
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">{t('filters.active')}</span>
                 </div>
               )}
             </div>
@@ -791,7 +790,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   disabled={isAudioCopy}
                 />
                 <label htmlFor="compressor-chk" className={`text-[11px] font-bold uppercase tracking-wider text-text-secondary select-none cursor-pointer ${isAudioCopy ? 'opacity-35 cursor-not-allowed' : ''}`}>
-                  Dynamics Compressor & Noise Gate (Compand)
+                  {t('filters.dynamicsCompressor')}
                 </label>
               </div>
               {compressor?.enabled && (
@@ -801,14 +800,14 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     onChange={e => applyCompPreset(e.target.value)}
                     defaultValue=""
                   >
-                    <option value="" disabled>Presets...</option>
-                    <option value="flat">Bypass / Flat</option>
-                    <option value="vocal">Vocal / Speech</option>
-                    <option value="broadcast">Radio Broadcast</option>
-                    <option value="gate_only">Noise Gate Only</option>
-                    <option value="limiter">Peak Limiting</option>
+                    <option value="" disabled>{t('filters.presetsLabel')}</option>
+                    <option value="flat">{t('filters.bypassFlat')}</option>
+                    <option value="vocal">{t('filters.vocalSpeech')}</option>
+                    <option value="broadcast">{t('filters.radioBroadcast')}</option>
+                    <option value="gate_only">{t('filters.noiseGateOnly')}</option>
+                    <option value="limiter">{t('filters.peakLimiting')}</option>
                   </select>
-                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">ACTIVE</span>
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">{t('filters.active')}</span>
                 </div>
               )}
             </div>
@@ -828,11 +827,8 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       <line x1="0" y1="75" x2="100" y2="75" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
 
                       {/* Translucent colored areas (VU meter style) */}
-                      {/* Gate (Red/Orange): below gate */}
                       <rect x="0" y="0" width={100 + (compressor.gate ?? -60)} height="100" fill="rgba(239, 68, 68, 0.08)" />
-                      {/* Linear (Green): between gate and threshold */}
                       <rect x={100 + (compressor.gate ?? -60)} y="0" width={(compressor.threshold ?? -30) - (compressor.gate ?? -60)} height="100" fill="rgba(163, 230, 53, 0.08)" />
-                      {/* Compression (Yellow/Amber): above threshold */}
                       <rect x={100 + (compressor.threshold ?? -30)} y="0" width={-(compressor.threshold ?? -30)} height="100" fill="rgba(234, 179, 8, 0.08)" />
 
                       {/* Bypass Line (y = x) */}
@@ -849,13 +845,13 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   </div>
                   <div className="text-[7.5px] text-text-secondary mt-1 font-mono leading-tight">
                     <span className="inline-block w-2.5 h-2.5 rounded bg-red-500/20 border border-red-500/40 mr-1 align-middle" />
-                    Gate / Expander (Atn)
+                    {t('filters.gateExpanderAtn')}
                     <br />
                     <span className="inline-block w-2.5 h-2.5 rounded bg-lime-500/20 border border-lime-500/40 mr-1 align-middle" />
-                    Bypass / Linear
+                    {t('filters.bypassLinear')}
                     <br />
                     <span className="inline-block w-2.5 h-2.5 rounded bg-yellow-500/20 border border-yellow-500/40 mr-1 align-middle" />
-                    Gain Compression
+                    {t('filters.gainCompression')}
                   </div>
                 </div>
 
@@ -863,10 +859,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 <div className="flex-1 grid grid-cols-2 gap-2 text-xs">
                   {/* Gate settings */}
                   <div className="bg-black/20 p-1.5 rounded border border-white/5 space-y-1">
-                    <div className="text-[9px] uppercase font-bold text-red-400">Noise Gate</div>
+                    <div className="text-[9px] uppercase font-bold text-red-400">{t('filters.noiseGate')}</div>
                     <div>
                       <div className="flex justify-between text-[9px] font-mono text-text-secondary">
-                        <span>Threshold</span>
+                        <span>{t('filters.threshold')}</span>
                         <span>{compressor.gate ?? -60} dB</span>
                       </div>
                       <input
@@ -879,7 +875,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     </div>
                     <div>
                       <div className="flex justify-between text-[9px] font-mono text-text-secondary">
-                        <span>Ratio (Expansion)</span>
+                        <span>{t('filters.ratioExpansion')}</span>
                         <span>1:{compressor.gate_ratio ?? 4}</span>
                       </div>
                       <input
@@ -894,10 +890,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
                   {/* Compressor settings */}
                   <div className="bg-black/20 p-1.5 rounded border border-white/5 space-y-1">
-                    <div className="text-[9px] uppercase font-bold text-yellow-400">Compressor</div>
+                    <div className="text-[9px] uppercase font-bold text-yellow-400">{t('filters.compressor')}</div>
                     <div>
                       <div className="flex justify-between text-[9px] font-mono text-text-secondary">
-                        <span>Threshold</span>
+                        <span>{t('filters.threshold')}</span>
                         <span>{compressor.threshold ?? -30} dB</span>
                       </div>
                       <input
@@ -910,7 +906,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     </div>
                     <div>
                       <div className="flex justify-between text-[9px] font-mono text-text-secondary">
-                        <span>Ratio</span>
+                        <span>{t('filters.ratio')}</span>
                         <span>{compressor.ratio ?? 4}:1</span>
                       </div>
                       <input
@@ -926,7 +922,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   {/* Makeup Gain */}
                   <div className="col-span-2 bg-black/20 p-1.5 rounded border border-white/5">
                     <div className="flex justify-between text-[9px] font-mono text-text-secondary">
-                      <span className="font-bold text-white">Makeup Gain</span>
+                      <span className="font-bold text-white">{t('filters.makeupGain')}</span>
                       <span>+{compressor.gain ?? 0} dB</span>
                     </div>
                     <input
@@ -940,35 +936,35 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
                   {/* Attack / Release */}
                   <div>
-                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">Attack Time (s)</label>
+                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">{t('filters.attackTime')}</label>
                     <select
                       className="w-full bg-white/5 border border-white/10 rounded p-1 text-[10px] outline-none text-white font-mono"
                       value={compressor.attack ?? 0.3}
                       onChange={e => onChange({ compressor: { ...compressor, attack: Number(e.target.value) } })}
                       disabled={isAudioCopy}
                     >
-                      <option value="0.01">0.01s (Fast)</option>
+                      <option value="0.01">0.01s ({t('filters.fast')})</option>
                       <option value="0.05">0.05s</option>
                       <option value="0.1">0.1s</option>
-                      <option value="0.3">0.3s (Default)</option>
+                      <option value="0.3">0.3s ({t('filters.defaultLabel')})</option>
                       <option value="0.5">0.5s</option>
-                      <option value="1.0">1.0s (Slow)</option>
+                      <option value="1.0">1.0s ({t('filters.slow')})</option>
                     </select>
                   </div>
                   <div>
-                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">Release Time (s)</label>
+                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">{t('filters.releaseTime')}</label>
                     <select
                       className="w-full bg-white/5 border border-white/10 rounded p-1 text-[10px] outline-none text-white font-mono"
                       value={compressor.release ?? 0.3}
                       onChange={e => onChange({ compressor: { ...compressor, release: Number(e.target.value) } })}
                       disabled={isAudioCopy}
                     >
-                      <option value="0.05">0.05s (Fast)</option>
+                      <option value="0.05">0.05s ({t('filters.fast')})</option>
                       <option value="0.1">0.1s</option>
-                      <option value="0.3">0.3s (Default)</option>
+                      <option value="0.3">0.3s ({t('filters.defaultLabel')})</option>
                       <option value="0.5">0.5s</option>
                       <option value="1.0">1.0s</option>
-                      <option value="2.0">2.0s (Slow)</option>
+                      <option value="2.0">2.0s ({t('filters.slow')})</option>
                     </select>
                   </div>
                 </div>
@@ -988,17 +984,17 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   disabled={isAudioCopy}
                 />
                 <label htmlFor="limiter-chk" className={`text-[11px] font-bold uppercase tracking-wider text-text-secondary select-none cursor-pointer ${isAudioCopy ? 'opacity-35 cursor-not-allowed' : ''}`}>
-                  Output Brickwall Limiter (alimiter)
+                  {t('filters.brickwallLimiter')}
                 </label>
               </div>
-              {limiter?.enabled && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">ACTIVE</span>}
+              {limiter?.enabled && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">{t('filters.active')}</span>}
             </div>
 
             {limiter?.enabled && (
               <div className="grid grid-cols-2 gap-3 p-2 bg-white/5 rounded-lg border border-white/5 text-xs">
                 <div>
                   <div className="flex justify-between text-[9px] font-mono text-text-secondary mb-0.5">
-                    <span>Ceiling (Output Limit)</span>
+                    <span>{t('filters.ceilingOutputLimit')}</span>
                     <span className="font-bold text-white">{limiter.ceiling ?? -0.1} dBFS</span>
                   </div>
                   <input
@@ -1011,7 +1007,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 </div>
                 <div>
                   <div className="flex justify-between text-[9px] font-mono text-text-secondary mb-0.5">
-                    <span>Release Time</span>
+                    <span>{t('filters.releaseTime')}</span>
                     <span className="font-bold text-white">{limiter.release ?? 50} ms</span>
                   </div>
                   <input
@@ -1033,7 +1029,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
         <div className="glass-card p-3 !rounded-xl space-y-4">
           {isVideoCopy && (
             <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
-              ⚠️ Video codec is set to 'copy'. Overlays cannot be applied because the stream is copied directly without re-encoding.
+              {t('filters.videoCodecCopyOverlayNotice')}
             </div>
           )}
 
@@ -1053,7 +1049,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-brand-lime shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
                   <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">
-                    Overlay Layers ({overlays.length})
+                    {t('filters.overlayLayers')} ({overlays.length})
                   </h4>
                 </div>
 
@@ -1064,7 +1060,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     onClick={() => addOverlay('text')}
                     className="px-2.5 py-1.5 bg-brand-lime/10 hover:bg-brand-lime/20 border border-brand-lime/30 text-brand-lime font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    + Text Overlay
+                    {t('filters.addTextOverlay')}
                   </button>
                   <button
                     type="button"
@@ -1072,14 +1068,14 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     onClick={() => addOverlay('image')}
                     className="px-2.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    + Image Overlay
+                    {t('filters.addImageOverlay')}
                   </button>
                 </div>
               </div>
 
               {overlays.length === 0 ? (
                 <div className="text-center py-12 text-xs text-text-secondary italic border border-dashed border-white/10 rounded-xl bg-black/20">
-                  No overlay layers added yet. Click "+ Text Overlay" or "+ Image Overlay" above to start building broadcast graphics.
+                  {t('filters.noOverlaysYet')}
                 </div>
               ) : (
                 <div className="space-y-2.5">
@@ -1119,7 +1115,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 disabled={isVideoCopy || idx === 0}
                                 onClick={() => moveOverlay(idx, 'up')}
                                 className="p-1 px-1.5 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all cursor-pointer font-black"
-                                title="Move layer up (render order)"
+                                title={t('filters.moveLayerUp')}
                               >
                                 ↑
                               </button>
@@ -1128,7 +1124,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 disabled={isVideoCopy || idx === overlays.length - 1}
                                 onClick={() => moveOverlay(idx, 'down')}
                                 className="p-1 px-1.5 bg-white/5 hover:bg-brand-lime hover:text-black disabled:opacity-30 disabled:cursor-not-allowed rounded text-xs transition-all cursor-pointer font-black"
-                                title="Move layer down (render order)"
+                                title={t('filters.moveLayerDown')}
                               >
                                 ↓
                               </button>
@@ -1167,7 +1163,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                               disabled={isVideoCopy}
                               onClick={() => removeOverlay(idx)}
                               className="p-1.5 bg-white/5 hover:bg-red-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed rounded-md text-xs transition-all cursor-pointer"
-                              title="Delete layer"
+                              title={t('filters.deleteLayer')}
                             >
                               ✕
                             </button>
@@ -1180,7 +1176,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                   : 'bg-white/5 border-white/10 text-white/70 hover:text-white hover:bg-white/10'
                               }`}
                             >
-                              {isExpanded ? '▴ CLOSE' : '▾ EDIT'}
+                              {isExpanded ? t('filters.close') : t('filters.edit')}
                             </button>
                           </div>
                         </div>
@@ -1191,7 +1187,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                             {/* Layer Name / Tag */}
                             <div>
                               <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                Layer Name / Label (Optional)
+                                {t('filters.layerNameLabel')}
                               </label>
                               <input
                                 type="text"
@@ -1209,7 +1205,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                                   <div className="md:col-span-3">
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                      Text String
+                                      {t('filters.textString')}
                                     </label>
                                     <input
                                       type="text"
@@ -1222,7 +1218,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
                                   <div>
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                      Font Size (px)
+                                      {t('filters.fontSizePx')}
                                     </label>
                                     <input
                                       type="number"
@@ -1237,7 +1233,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
                                   <div className="md:col-span-2">
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                      Font Color
+                                      {t('filters.fontColor')}
                                     </label>
                                     <div className="flex items-center gap-2">
                                       <input
@@ -1302,7 +1298,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                       htmlFor={`box-chk-${overlay.id}`}
                                       className="text-[10px] font-bold uppercase tracking-wider text-text-secondary select-none cursor-pointer"
                                     >
-                                      Enable Background Box (box=1)
+                                      {t('filters.enableBackgroundBox')}
                                     </label>
                                   </div>
 
@@ -1310,7 +1306,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                     <div className="grid grid-cols-2 gap-2.5 pt-1">
                                       <div>
                                         <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                                          Box Color (e.g. black@0.6)
+                                          {t('filters.boxColor')}
                                         </label>
                                         <input
                                           type="text"
@@ -1322,7 +1318,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                       </div>
                                       <div>
                                         <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                                          Box Border Width (px)
+                                          {t('filters.boxBorderWidthPx')}
                                         </label>
                                         <input
                                           type="number"
@@ -1344,7 +1340,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   <div>
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                      Media Storage Selector
+                                      {t('filters.mediaStorageSelector')}
                                     </label>
                                     <select
                                       className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none text-white focus:border-brand-lime disabled:opacity-35"
@@ -1356,7 +1352,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                       }
                                       disabled={isVideoCopy}
                                     >
-                                      <option value="" className="bg-slate-900 text-white">-- Select Media Storage --</option>
+                                      <option value="" className="bg-slate-900 text-white">{t('filters.selectMediaStorage')}</option>
                                       {storages
                                         .filter((s: any) => s.type === 'media')
                                         .map((s: any) => (
@@ -1369,7 +1365,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
                                   <div>
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                      Relative Path
+                                      {t('filters.relativePath')}
                                     </label>
                                     <input
                                       type="text"
@@ -1385,7 +1381,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 {/* Canvas Badge Accent Color Selector */}
                                 <div className="bg-black/20 p-2.5 rounded-lg border border-white/5 space-y-1.5">
                                   <label className="text-[9px] uppercase font-bold text-text-secondary block">
-                                    Canvas Badge Accent Color
+                                    {t('filters.canvasBadgeAccentColor')}
                                   </label>
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     {LAYER_COLOR_PRESETS.map((preset) => (
@@ -1416,7 +1412,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                             <div className="border-t border-white/5 pt-3 space-y-3">
                               <div className="flex items-center justify-between">
                                 <span className="text-[9px] font-bold uppercase tracking-wider text-text-secondary">
-                                  Position & Alignment Mode
+                                  {t('filters.positionAlignmentMode')}
                                 </span>
 
                                 {/* Position Mode Toggle */}
@@ -1436,7 +1432,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                         : 'text-text-secondary hover:text-white'
                                     }`}
                                   >
-                                    3x3 Broadcast Anchor Grid
+                                    {t('filters.broadcastAnchorGrid')}
                                   </button>
                                   <button
                                     type="button"
@@ -1448,7 +1444,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                         : 'text-text-secondary hover:text-white'
                                     }`}
                                   >
-                                    Custom Expression
+                                    {t('filters.customExpression')}
                                   </button>
                                 </div>
                               </div>
@@ -1457,7 +1453,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 <div className="space-y-3">
                                   {/* 3x3 Grid Matrix Buttons */}
                                   <div className="grid grid-cols-3 gap-1 bg-black/30 p-2 rounded-xl border border-white/5 max-w-xs mx-auto">
-                                    {ANCHOR_GRID_PRESETS.map((preset) => (
+                                    {anchorGridPresets.map((preset) => (
                                       <button
                                         key={preset.id}
                                         type="button"
@@ -1485,7 +1481,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                   <div className="grid grid-cols-2 gap-3 bg-black/20 p-2.5 rounded-lg border border-white/5">
                                     <div>
                                       <div className="flex justify-between items-center text-[9px] font-mono text-text-secondary mb-1">
-                                        <span>Margin X (px)</span>
+                                        <span>{t('filters.marginXPx')}</span>
                                         <input
                                           type="number"
                                           className="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-xs text-right font-mono text-white outline-none focus:border-brand-lime"
@@ -1518,7 +1514,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
                                     <div>
                                       <div className="flex justify-between items-center text-[9px] font-mono text-text-secondary mb-1">
-                                        <span>Margin Y (px)</span>
+                                        <span>{t('filters.marginYPx')}</span>
                                         <input
                                           type="number"
                                           className="w-16 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-xs text-right font-mono text-white outline-none focus:border-brand-lime"
@@ -1555,7 +1551,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 <div className="grid grid-cols-2 gap-3 bg-black/20 p-2.5 rounded-lg border border-white/5">
                                   <div>
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                      X Position Expression
+                                      {t('filters.xPositionExpression')}
                                     </label>
                                     <input
                                       type="text"
@@ -1568,7 +1564,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                   </div>
                                   <div>
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
-                                      Y Position Expression
+                                      {t('filters.yPositionExpression')}
                                     </label>
                                     <input
                                       type="text"

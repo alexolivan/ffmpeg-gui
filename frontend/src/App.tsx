@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import Sidebar from './components/Sidebar';
 import ProcessConfigForm from './components/ProcessConfigForm';
 import { ScheduledTasks } from './components/ScheduledTasks';
@@ -14,6 +15,7 @@ import { ProcessPreviewModal } from './components/modals/ProcessPreviewModal';
 const API = '';
 
 function App() {
+  const { t } = useTranslation();
   const [activeView, setActiveView] = useState('dashboard');
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [selectedLinuxDistro, setSelectedLinuxDistro] = useState<'debian' | 'fedora' | 'arch'>('debian');
@@ -141,7 +143,7 @@ function App() {
             )}
           </div>
           <h1 className="text-2xl font-bold text-center mb-2 uppercase tracking-tighter">{settings.node_name}</h1>
-          <p className="text-text-secondary text-center text-sm mb-10">Access restricted. Enter node password.</p>
+          <p className="text-text-secondary text-center text-sm mb-10">{t('auth.accessRestricted')}</p>
           
           <div className="space-y-6">
             <input 
@@ -152,13 +154,13 @@ function App() {
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
               autoFocus
             />
-            {isLoginError && <p className="text-red-500 text-center text-xs font-bold animate-shake">INVALID PASSWORD</p>}
+            {isLoginError && <p className="text-red-500 text-center text-xs font-bold animate-shake">{t('auth.invalidPassword')}</p>}
             <button 
               onClick={handleLogin}
               className="w-full py-4 text-black font-black rounded-2xl hover:scale-[1.02] transition-all uppercase tracking-widest"
               style={{ backgroundColor: accent, boxShadow: `0 10px 20px ${accent}33` }}
             >
-              Unlock Node
+              {t('auth.unlockNode')}
             </button>
           </div>
         </div>
@@ -283,7 +285,7 @@ function App() {
           <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
             <button onClick={() => setShowAddModal(false)}
               className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs">✕</button>
-            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase">ADD NEW SERVICE</h3>
+            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase">{t('services.addNewService')}</h3>
             <ProcessConfigForm
               onCancel={() => setShowAddModal(false)}
               onSubmit={async (config) => {
@@ -326,7 +328,7 @@ function App() {
           <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
             <button onClick={() => setEditingProcess(null)}
               className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs">✕</button>
-            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase">EDIT SERVICE: {editingProcess.name.toUpperCase()}</h3>
+            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase">{t('services.editService')}: {editingProcess.name.toUpperCase()}</h3>
             <ProcessConfigForm
               initialConfig={editingProcess}
               onCancel={() => setEditingProcess(null)}
