@@ -644,6 +644,8 @@ class ProcessManager:
                     cmd += ["-map", "0:a"]
 
             # ── Video processing ──
+            original_vf_str = ""
+            original_remains_vram = False
             if not has_video:
                 cmd += ["-vn"]
             else:
@@ -676,6 +678,8 @@ class ProcessManager:
                 vf_str, remains_vram = FilterGraphBuilder.build_video_filters(
                     input_cfg, filter_cfg, is_vram, hwaccel
                 )
+                original_vf_str = vf_str
+                original_remains_vram = remains_vram
                 
                 vf_list = []
                 if vf_str:
@@ -767,11 +771,11 @@ class ProcessManager:
             preview_path = os.path.join(previews_dir, f"preview_{media_proc.id}.jpg")
             
             try:
-                if final_vf:
-                    if remains_vram:
-                        preview_vf = f"{final_vf},hwdownload,format=nv12,fps=1,scale=480:-1"
+                if original_vf_str:
+                    if original_remains_vram:
+                        preview_vf = f"{original_vf_str},hwdownload,format=nv12,fps=1,scale=480:-1"
                     else:
-                        preview_vf = f"{final_vf},fps=1,scale=480:-1"
+                        preview_vf = f"{original_vf_str},fps=1,scale=480:-1"
                 else:
                     preview_vf = "fps=1,scale=480:-1"
                     if is_vram:
