@@ -494,3 +494,102 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
                 os.remove(progress_path)
             self.db.delete(media_proc)
             self.db.commit()
+
+    async def test_watchdog_speed_degradation_kill(self):
+        class StubProcess:
+            def __init__(self):
+                self.pid = 12345
+                self.returncode = None
+                self.stdin = MagicMock()
+                self.stderr = MagicMock()
+                self.kill_called = False
+
+            def kill(self):
+                self.kill_called = True
+                self.returncode = -9
+
+            async def wait(self):
+                return self.returncode
+
+        stub_proc = StubProcess()
+
+        media_proc = MediaProcess(
+            name="Watchdog Speed Service",
+            type="service",
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/test_watchdog_speed.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="running",
+            watchdog_enabled=True,
+            watchdog_retries=3,
+            watchdog_min_speed=0.85,
+            watchdog_min_speed_duration=10
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        self.manager.processes[media_proc.id] = stub_proc
+
+        import os
+        progress_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}.log"
+        def write_progress(speed="1.0x", frame=100, out_time_us=10000000):
+            with open(progress_path, "w") as f:
+                f.write(f"frame={frame}\n")
+                f.write("fps=25.0\n")
+                f.write("bitrate=4500kb/s\n")
+                f.write(f"speed={speed}\n")
+                f.write(f"out_time_us={out_time_us}\n")
+                f.write("progress=continue\n")
+
+        write_progress(speed="1.0x")
+
+        try:
+            with patch("core.process_manager.psutil.Process") as mock_psutil_class, \
+                 patch("core.process_manager.psutil.pid_exists", return_value=True):
+                mock_p = MagicMock()
+                mock_p.cpu_percent.return_value = 5.0
+                mock_p.memory_info.return_value.rss = 100 * 1024 * 1024
+                mock_psutil_class.return_value = mock_p
+
+                sleep_count = 0
+                async def mock_sleep(delay):
+                    nonlocal sleep_count
+                    sleep_count += 1
+                    if sleep_count == 1:
+                        write_progress(speed="0.5x", frame=110, out_time_us=11000000)
+                    elif sleep_count == 2:
+                        write_progress(speed="0.5x", frame=120, out_time_us=12000000)
+                    elif sleep_count >= 3:
+                        pass
+
+                from datetime import timedelta
+                now = datetime.utcnow()
+                time_points = [
+                    now,                        # Setup/init
+                    now,                        # Loop 1 check running
+                    now + timedelta(seconds=40), # Loop 1 check speed (elapsed > 30s grace, low speed since here)
+                    now + timedelta(seconds=42), # Loop 2 check running
+                    now + timedelta(seconds=55), # Loop 2 check speed (low speed duration > 10s)
+                    now + timedelta(seconds=57), # Loop 3 check running
+                ]
+                time_iter = iter(time_points)
+                def mock_utcnow():
+                    try:
+                        return next(time_iter)
+                    except StopIteration:
+                        return datetime.utcnow() + timedelta(seconds=500)
+
+                with patch("core.process_manager.datetime") as mock_dt, patch("asyncio.sleep", side_effect=mock_sleep):
+                    mock_dt.utcnow = mock_utcnow
+                    mock_dt.fromisoformat = datetime.fromisoformat
+                    
+                    await self.manager._watchdog(media_proc.id, stub_proc)
+
+                self.assertTrue(stub_proc.kill_called)
+
+        finally:
+            if os.path.exists(progress_path):
+                os.remove(progress_path)
+            self.db.delete(media_proc)
+            self.db.commit()

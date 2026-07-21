@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Boolean, Float
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 class Base(DeclarativeBase):
@@ -89,6 +89,8 @@ class MediaProcess(Base):
     auto_start = Column(Boolean, default=False)
     watchdog_enabled = Column(Boolean, default=False)
     watchdog_retries = Column(Integer, default=5)
+    watchdog_min_speed = Column(Float, nullable=True, default=None)
+    watchdog_min_speed_duration = Column(Integer, default=30)
     restart_count = Column(Integer, default=0)
     last_started_config = Column(JSON, nullable=True)
 

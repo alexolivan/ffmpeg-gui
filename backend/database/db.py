@@ -45,6 +45,10 @@ def init_db():
                 conn.execute(text("ALTER TABLE media_processes ADD COLUMN debug_mode BOOLEAN DEFAULT 0"))
             if "log_storage_id" not in columns:
                 conn.execute(text("ALTER TABLE media_processes ADD COLUMN log_storage_id INTEGER REFERENCES storages(id)"))
+            if "watchdog_min_speed" not in columns:
+                conn.execute(text("ALTER TABLE media_processes ADD COLUMN watchdog_min_speed FLOAT DEFAULT NULL"))
+            if "watchdog_min_speed_duration" not in columns:
+                conn.execute(text("ALTER TABLE media_processes ADD COLUMN watchdog_min_speed_duration INTEGER DEFAULT 30"))
                 
             # Migración para la tabla scheduled_tasks
             result = conn.execute(text("PRAGMA table_info(scheduled_tasks)"))

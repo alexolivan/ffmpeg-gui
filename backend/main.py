@@ -164,6 +164,8 @@ class ProcessCreate(BaseModel):
     auto_start: Optional[bool] = False
     watchdog_enabled: Optional[bool] = False
     watchdog_retries: Optional[int] = 5
+    watchdog_min_speed: Optional[float] = None
+    watchdog_min_speed_duration: Optional[int] = 30
     alias: Optional[str] = None
     network_timeout: Optional[int] = 15
     debug_mode: Optional[bool] = False
@@ -193,6 +195,8 @@ class ProcessUpdate(BaseModel):
     auto_start: Optional[bool] = None
     watchdog_enabled: Optional[bool] = None
     watchdog_retries: Optional[int] = None
+    watchdog_min_speed: Optional[float] = None
+    watchdog_min_speed_duration: Optional[int] = None
     alias: Optional[str] = None
     network_timeout: Optional[int] = None
     debug_mode: Optional[bool] = None
@@ -1580,6 +1584,8 @@ async def telemetry_broadcast_loop():
                         "auto_start": p.auto_start,
                         "watchdog_enabled": p.watchdog_enabled,
                         "watchdog_retries": p.watchdog_retries,
+                        "watchdog_min_speed": p.watchdog_min_speed,
+                        "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
                         "pending_changes": p.pending_changes,
                         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
                         "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
@@ -2431,6 +2437,8 @@ def list_processes(db: Session = Depends(get_db)):
             "auto_start": p.auto_start,
             "watchdog_enabled": p.watchdog_enabled,
             "watchdog_retries": p.watchdog_retries,
+            "watchdog_min_speed": p.watchdog_min_speed,
+            "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
             "pending_changes": p.pending_changes,
             "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
             "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
@@ -2471,6 +2479,8 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         auto_start=proc_in.auto_start,
         watchdog_enabled=proc_in.watchdog_enabled,
         watchdog_retries=proc_in.watchdog_retries,
+        watchdog_min_speed=proc_in.watchdog_min_speed,
+        watchdog_min_speed_duration=proc_in.watchdog_min_speed_duration if proc_in.watchdog_min_speed_duration is not None else 30,
         alias=proc_in.alias,
         network_timeout=proc_in.network_timeout if proc_in.network_timeout is not None else 15,
         debug_mode=proc_in.debug_mode if proc_in.debug_mode is not None else False,
@@ -2541,6 +2551,8 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.auto_start is not None: db_proc.auto_start = proc_in.auto_start
     if proc_in.watchdog_enabled is not None: db_proc.watchdog_enabled = proc_in.watchdog_enabled
     if proc_in.watchdog_retries is not None: db_proc.watchdog_retries = proc_in.watchdog_retries
+    if proc_in.watchdog_min_speed is not None: db_proc.watchdog_min_speed = proc_in.watchdog_min_speed
+    if proc_in.watchdog_min_speed_duration is not None: db_proc.watchdog_min_speed_duration = proc_in.watchdog_min_speed_duration
     if proc_in.alias is not None: db_proc.alias = proc_in.alias
     if proc_in.network_timeout is not None: db_proc.network_timeout = proc_in.network_timeout
     if proc_in.debug_mode is not None: db_proc.debug_mode = proc_in.debug_mode
@@ -2837,6 +2849,8 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "auto_start": proc.auto_start,
             "watchdog_enabled": proc.watchdog_enabled,
             "watchdog_retries": proc.watchdog_retries,
+            "watchdog_min_speed": proc.watchdog_min_speed,
+            "watchdog_min_speed_duration": proc.watchdog_min_speed_duration,
         }
     }
 
@@ -2859,6 +2873,8 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         auto_start=profile.get('auto_start', False),
         watchdog_enabled=profile.get('watchdog_enabled', False),
         watchdog_retries=profile.get('watchdog_retries', 5),
+        watchdog_min_speed=profile.get('watchdog_min_speed'),
+        watchdog_min_speed_duration=profile.get('watchdog_min_speed_duration', 30),
     )
     db.add(db_proc)
     db.commit()

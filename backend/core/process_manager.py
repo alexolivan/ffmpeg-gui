@@ -19,6 +19,7 @@ class ProcessManager:
         self.watchdog_tasks: Dict[int, asyncio.Task] = {}
         self.srt_has_had_activity: Dict[int, bool] = {}
         self.watchdog_stalled_since: Dict[int, Optional[datetime]] = {}
+        self.watchdog_low_speed_since: Dict[int, Optional[datetime]] = {}
         self.db_session_factory = db_session_factory
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
@@ -1414,6 +1415,7 @@ class ProcessManager:
 
         was_unexpected = False
         self.watchdog_stalled_since[process_id] = None
+        self.watchdog_low_speed_since[process_id] = None
 
         try:
             p = psutil.Process(pid)
@@ -1424,6 +1426,7 @@ class ProcessManager:
         prev_frame = None
         prev_out_time_us = None
         has_had_activity = False
+        start_time = datetime.utcnow()
 
         try:
             while True:
@@ -1499,6 +1502,50 @@ class ProcessManager:
                             # Check for initial activity (e.g. frame > 0 or out_time_us > 0 at least once)
                             if (frame is not None and frame > 0) or (out_time_us is not None and out_time_us > 0):
                                 has_had_activity = True
+
+                            # Check speed degradation
+                            speed_val = None
+                            if speed and speed != "N/A":
+                                try:
+                                    speed_val = float(speed.replace("x", "").strip())
+                                except ValueError:
+                                    pass
+
+                            if media_proc.type == 'service' and media_proc.watchdog_enabled and media_proc.watchdog_min_speed is not None:
+                                elapsed = (datetime.utcnow() - start_time).total_seconds()
+                                if elapsed > 30:
+                                    if speed_val is not None and speed_val < media_proc.watchdog_min_speed:
+                                        if self.watchdog_low_speed_since.get(process_id) is None:
+                                            self.watchdog_low_speed_since[process_id] = datetime.utcnow()
+                                        else:
+                                            duration = media_proc.watchdog_min_speed_duration if media_proc.watchdog_min_speed_duration is not None else 30
+                                            low_speed_duration = (datetime.utcnow() - self.watchdog_low_speed_since[process_id]).total_seconds()
+                                            if low_speed_duration > duration:
+                                                log_msg = f"Watchdog: Stream speed ({speed_val}x) fell below minimum threshold ({media_proc.watchdog_min_speed}x) for more than {duration}s. Force killing..."
+                                                self.logger.error(log_msg)
+                                                
+                                                from database.models import ProcessLog
+                                                log = ProcessLog(
+                                                    process_id=process_id,
+                                                    level='ERROR',
+                                                    message=log_msg
+                                                )
+                                                session.add(log)
+                                                session.commit()
+
+                                                if proc is not None:
+                                                    try:
+                                                        proc.kill()
+                                                    except Exception as kerr:
+                                                        self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
+                                                else:
+                                                    import signal
+                                                    try:
+                                                        os.kill(pid, signal.SIGKILL)
+                                                    except Exception as kerr:
+                                                        self.logger.error(f"Failed to kill PID {pid} via os.kill: {kerr}")
+                                    else:
+                                        self.watchdog_low_speed_since[process_id] = None
 
                             # Compare with previous iteration
                             # Treat frame as matching if it's absent (None) in both.
@@ -1669,6 +1716,7 @@ class ProcessManager:
             # Clean up memory buffer and tracking flags
             self.srt_has_had_activity.pop(process_id, None)
             self.watchdog_stalled_since.pop(process_id, None)
+            self.watchdog_low_speed_since.pop(process_id, None)
             if process_id in self.log_buffers:
                 del self.log_buffers[process_id]
 

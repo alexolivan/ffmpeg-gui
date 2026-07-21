@@ -4,6 +4,8 @@ interface LifecycleFormSectionProps {
   auto_start: boolean;
   watchdog_enabled: boolean;
   watchdog_retries: number;
+  watchdog_min_speed: number | null;
+  watchdog_min_speed_duration: number;
   debug_mode: boolean;
   log_storage_id: number | null;
   logsStorages: any[];
@@ -11,6 +13,8 @@ interface LifecycleFormSectionProps {
     auto_start?: boolean;
     watchdog_enabled?: boolean;
     watchdog_retries?: number;
+    watchdog_min_speed?: number | null;
+    watchdog_min_speed_duration?: number;
     debug_mode?: boolean;
     log_storage_id?: number | null;
   }) => void;
@@ -20,6 +24,8 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
   auto_start,
   watchdog_enabled,
   watchdog_retries,
+  watchdog_min_speed,
+  watchdog_min_speed_duration,
   debug_mode,
   log_storage_id,
   logsStorages,
@@ -104,6 +110,45 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
               />
             </div>
           )}
+
+          {/* Minimum Speed Watchdog Settings */}
+          <div className="flex items-center gap-4 pt-2.5 border-t border-white/5 flex-wrap">
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
+                Velocidad Mínima:
+              </label>
+              <input
+                type="number"
+                step="0.05"
+                min="0.05"
+                max="10.0"
+                placeholder="Desactivado"
+                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-28 focus:border-brand-lime"
+                value={watchdog_min_speed === null || watchdog_min_speed === undefined ? '' : watchdog_min_speed}
+                onChange={e => {
+                  const val = e.target.value ? parseFloat(e.target.value) : null;
+                  onChange({ watchdog_min_speed: val });
+                }}
+              />
+            </div>
+            {(watchdog_min_speed !== null && watchdog_min_speed !== undefined) && (
+              <div className="flex items-center gap-2 animate-in fade-in duration-200">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
+                  Tolerancia (s):
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  max="3600"
+                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-20 focus:border-brand-lime"
+                  value={watchdog_min_speed_duration}
+                  onChange={e => onChange({
+                    watchdog_min_speed_duration: Math.max(5, parseInt(e.target.value) || 30)
+                  })}
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 

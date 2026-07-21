@@ -156,6 +156,8 @@ export function useProcesses() {
           auto_start: proc.auto_start,
           watchdog_enabled: proc.watchdog_enabled,
           watchdog_retries: proc.watchdog_retries,
+          watchdog_min_speed: proc.watchdog_min_speed,
+          watchdog_min_speed_duration: proc.watchdog_min_speed_duration,
           network_timeout: proc.network_timeout,
           debug_mode: proc.debug_mode,
           log_storage_id: proc.log_storage_id,

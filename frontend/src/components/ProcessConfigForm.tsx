@@ -85,6 +85,8 @@ interface ProcessConfig {
   auto_start: boolean;
   watchdog_enabled: boolean;
   watchdog_retries: number;
+  watchdog_min_speed: number | null;
+  watchdog_min_speed_duration: number;
 
   schedule_type: string;
   schedule_cron: string;
@@ -420,6 +422,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         auto_start: !!initialConfig.auto_start,
         watchdog_enabled: !!initialConfig.watchdog_enabled,
         watchdog_retries: initialConfig.watchdog_retries ?? 5,
+        watchdog_min_speed: initialConfig.watchdog_min_speed !== undefined ? initialConfig.watchdog_min_speed : null,
+        watchdog_min_speed_duration: initialConfig.watchdog_min_speed_duration ?? 30,
         schedule_type: initialConfig.schedule_type || 'manual',
         schedule_cron: initialConfig.schedule_cron || '*/30 * * * *',
         schedule_datetime: initialConfig.schedule_datetime ? initialConfig.schedule_datetime.substring(0, 16) : '',
@@ -465,6 +469,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       auto_start: false,
       watchdog_enabled: false,
       watchdog_retries: 5,
+      watchdog_min_speed: null,
+      watchdog_min_speed_duration: 30,
       schedule_type: 'manual',
       schedule_cron: '*/30 * * * *',
       schedule_datetime: '',
@@ -621,6 +627,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         auto_start: config.auto_start,
         watchdog_enabled: config.watchdog_enabled,
         watchdog_retries: config.watchdog_retries,
+        watchdog_min_speed: config.watchdog_min_speed,
+        watchdog_min_speed_duration: config.watchdog_min_speed_duration,
       })
     };
   };
@@ -1434,6 +1442,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                   auto_start={config.auto_start}
                   watchdog_enabled={config.watchdog_enabled}
                   watchdog_retries={config.watchdog_retries}
+                  watchdog_min_speed={config.watchdog_min_speed}
+                  watchdog_min_speed_duration={config.watchdog_min_speed_duration}
                   debug_mode={config.debug_mode}
                   log_storage_id={config.log_storage_id}
                   logsStorages={storages.filter((s: any) => s.type === 'logs')}
