@@ -209,6 +209,36 @@ class ProcessUpdate(BaseModel):
             raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
         return v
 
+class SettingsResponse(BaseModel):
+    id: Optional[int] = None
+    node_name: Optional[str] = None
+    gui_password: Optional[str] = None
+    logo_text: Optional[str] = None
+    logo_image_path: Optional[str] = None
+    accent_color: Optional[str] = None
+    lcd_enabled: Optional[bool] = None
+    lcd_alias: Optional[str] = None
+    lcd_port: Optional[str] = None
+    lcd_model: Optional[str] = None
+    lcd_brightness: Optional[int] = None
+    lcd_dim_brightness: Optional[int] = None
+    lcd_dim_timeout: Optional[int] = None
+    lcd_led0_profile: Optional[str] = None
+    lcd_led1_profile: Optional[str] = None
+    lcd_led2_profile: Optional[str] = None
+    lcd_led3_profile: Optional[str] = None
+    gui_port: Optional[int] = None
+    restart_required: Optional[bool] = False
+    logging_mode: Optional[str] = None
+    logging_storage_id: Optional[int] = None
+    logging_relative_path: Optional[str] = None
+    logging_rotation_enabled: Optional[bool] = None
+    logging_rotation_max_bytes: Optional[int] = None
+    logging_rotation_backup_count: Optional[int] = None
+    logging_compression_enabled: Optional[bool] = None
+    logging_retention_days: Optional[int] = None
+    language: str = "en"
+
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
     lcd_alias: Optional[str] = None
@@ -216,6 +246,7 @@ class SettingsUpdate(BaseModel):
     logo_text: Optional[str] = None
     accent_color: Optional[str] = None
     lcd_enabled: Optional[bool] = None
+    language: Optional[str] = None
 
     logging_mode: Optional[str] = None
     logging_storage_id: Optional[int] = None
@@ -270,9 +301,12 @@ class StorageTest(BaseModel):
 
 def make_settings_response(settings):
     config_path = os.environ.get("CONFIG_FILE_PATH")
+    if not config_path:
+        config_path = "ffmpeg-gui.conf"
     active_port = int(os.environ.get("ACTIVE_PORT", 8000))
     gui_port = active_port
     restart_required = False
+    language = "en"
 
     # Default logging values
     logging_mode = "journalctl"
@@ -289,6 +323,8 @@ def make_settings_response(settings):
             import configparser
             config = configparser.ConfigParser()
             config.read(config_path)
+            if "general" in config:
+                language = config.get("general", "language", fallback="en")
             if "server" in config and "port" in config["server"]:
                 gui_port = int(config["server"]["port"])
                 if gui_port != active_port:
@@ -436,11 +472,13 @@ def make_settings_response(settings):
     res["logging_rotation_backup_count"] = logging_rotation_backup_count
     res["logging_compression_enabled"] = logging_compression_enabled
     res["logging_retention_days"] = logging_retention_days
+    res["language"] = language
     
-    return res
+    return SettingsResponse(**res).model_dump()
 
 
 @app.get("/settings")
+@app.get("/api/settings")
 def get_settings(db: Session = Depends(get_db)):
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()
@@ -577,7 +615,27 @@ def check_media_process_port_conflicts(input_config: dict, output_config: list):
 
 
 @app.post("/settings")
+@app.post("/api/settings")
 def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
+    if settings_in.language is not None:
+        if settings_in.language not in ['en', 'es', 'ca']:
+            raise HTTPException(status_code=400, detail="Invalid language code")
+        
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if not config_path:
+            config_path = "ffmpeg-gui.conf"
+            
+        import configparser
+        config = configparser.ConfigParser()
+        if os.path.exists(config_path):
+            config.read(config_path)
+            
+        if "general" not in config:
+            config["general"] = {}
+        config["general"]["language"] = settings_in.language
+        
+        with open(config_path, "w") as f:
+            config.write(f)
     if settings_in.gui_port is not None:
         if settings_in.gui_port < 1 or settings_in.gui_port > 65535:
             raise HTTPException(status_code=400, detail="Port must be between 1 and 65535.")
