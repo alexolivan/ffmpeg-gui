@@ -554,8 +554,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="bg-brand-orange/10 border border-brand-orange/30 text-brand-orange rounded-xl p-3.5 text-xs flex items-center gap-3 animate-in fade-in duration-300">
             <span className="text-lg">⚠️</span>
             <div className="flex-1">
-              <span className="font-bold uppercase tracking-wider block mb-0.5 text-[10px]">Restart Required</span>
-              <span>A restart is required to apply the new GUI Port configuration. Click the 'Restart Panel' button to apply.</span>
+              <span className="font-bold uppercase tracking-wider block mb-0.5 text-[10px]">
+                {t('settings.restart.title', 'Restart Required')}
+              </span>
+              <span>
+                {settings.restart_reasons?.includes('port') && settings.restart_reasons?.includes('logging')
+                  ? t('settings.restart.reason_both', 'A restart is required to apply the new GUI Port and Logging configurations. Click the "Restart Panel" button to apply.')
+                  : settings.restart_reasons?.includes('logging')
+                  ? t('settings.restart.reason_logging', 'A restart is required to apply the new Logging configuration. Click the "Restart Panel" button to apply.')
+                  : t('settings.restart.reason_port', 'A restart is required to apply the new GUI Port configuration. Click the "Restart Panel" button to apply.')}
+              </span>
             </div>
           </div>
         )}

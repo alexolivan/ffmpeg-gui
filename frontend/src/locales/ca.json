@@ -51,6 +51,12 @@
       "en": "English (US)",
       "es": "Español (ES)",
       "ca": "Català (CA)"
+    },
+    "restart": {
+      "title": "Reinici Requerit",
+      "reason_port": "Es requereix reiniciar per aplicar la nova configuració del Port de la GUI. Fes clic al botó 'Reiniciar Panell' per aplicar.",
+      "reason_logging": "Es requereix reiniciar per aplicar la nova configuració de Registres/Logging. Fes clic al botó 'Reiniciar Panell' per aplicar.",
+      "reason_both": "Es requereix reiniciar per aplicar les noves configuracions del Port de la GUI i de Registres. Fes clic al botó 'Reiniciar Panell' per aplicar."
     }
   },
   "dashboard": {

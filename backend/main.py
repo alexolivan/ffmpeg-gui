@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -232,6 +232,7 @@ class SettingsResponse(BaseModel):
     lcd_led3_profile: Optional[str] = None
     gui_port: Optional[int] = None
     restart_required: Optional[bool] = False
+    restart_reasons: List[str] = []
     logging_mode: Optional[str] = None
     logging_storage_id: Optional[int] = None
     logging_relative_path: Optional[str] = None
@@ -303,13 +304,22 @@ class StorageTest(BaseModel):
 
 # ── System Settings & Auth ────────────────────────────────────────
 
-def make_settings_response(settings):
+def make_settings_response(settings, current_request_port: Optional[int] = None):
     config_path = os.environ.get("CONFIG_FILE_PATH")
     if not config_path:
         config_path = "ffmpeg-gui.conf"
-    active_port = int(os.environ.get("ACTIVE_PORT", 8000))
+    
+    env_active_port = os.environ.get("ACTIVE_PORT")
+    if env_active_port:
+        active_port = int(env_active_port)
+    elif current_request_port:
+        active_port = current_request_port
+    else:
+        active_port = 8000
+
     gui_port = active_port
     restart_required = False
+    restart_reasons = []
     language = "en"
 
     # Default logging values
@@ -333,6 +343,7 @@ def make_settings_response(settings):
                 gui_port = int(config["server"]["port"])
                 if gui_port != active_port:
                     restart_required = True
+                    restart_reasons.append("port")
             
             if "logging" in config:
                 logging_cfg = config["logging"]
@@ -459,6 +470,7 @@ def make_settings_response(settings):
             
         if logging_diff:
             restart_required = True
+            restart_reasons.append("logging")
             
     except Exception as e:
         logger.error(f"Error checking active logging diff: {e}")
@@ -466,6 +478,7 @@ def make_settings_response(settings):
     res = {c.name: getattr(settings, c.name) for c in settings.__table__.columns}
     res["gui_port"] = gui_port
     res["restart_required"] = restart_required
+    res["restart_reasons"] = restart_reasons
     
     # Populate logging configuration fields
     res["logging_mode"] = logging_mode
@@ -483,7 +496,7 @@ def make_settings_response(settings):
 
 @app.get("/settings")
 @app.get("/api/settings")
-def get_settings(db: Session = Depends(get_db)):
+def get_settings(request: Request, db: Session = Depends(get_db)):
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()
     if not settings:
@@ -491,6 +504,9 @@ def get_settings(db: Session = Depends(get_db)):
         db.add(settings)
         db.commit()
         db.refresh(settings)
+    
+    current_port = request.url.port if request else None
+    return make_settings_response(settings, current_request_port=current_port)
     
     # Backwards compatibility auto-normalization for pre-existing rows
     dirty = False

@@ -51,6 +51,12 @@
       "en": "English (US)",
       "es": "Español (ES)",
       "ca": "Català (CA)"
+    },
+    "restart": {
+      "title": "Reinicio Requerido",
+      "reason_port": "Se requiere reiniciar para aplicar la nueva configuración del Puerto del GUI. Haz clic en el botón 'Reiniciar Panel' para aplicar.",
+      "reason_logging": "Se requiere reiniciar para aplicar la nueva configuración de Registros/Logging. Haz clic en el botón 'Reiniciar Panel' para aplicar.",
+      "reason_both": "Se requiere reiniciar para aplicar las nuevas configuraciones del Puerto del GUI y de Registros. Haz clic en el botón 'Reiniciar Panel' para aplicar."
     }
   },
   "dashboard": {

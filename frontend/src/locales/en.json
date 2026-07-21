@@ -51,6 +51,12 @@
       "en": "English (US)",
       "es": "Español (ES)",
       "ca": "Català (CA)"
+    },
+    "restart": {
+      "title": "Restart Required",
+      "reason_port": "A restart is required to apply the new GUI Port configuration. Click the 'Restart Panel' button to apply.",
+      "reason_logging": "A restart is required to apply the new Logging configuration. Click the 'Restart Panel' button to apply.",
+      "reason_both": "A restart is required to apply the new GUI Port and Logging configurations. Click the 'Restart Panel' button to apply."
     }
   },
   "dashboard": {
