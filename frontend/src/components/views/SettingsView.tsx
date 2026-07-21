@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n/i18n';
 import { ShieldIcon, GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon } from '../Icons';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
@@ -47,6 +49,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setPasswordSuccess,
   API,
 }) => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security'>('general');
 
   const [storages, setStorages] = useState<any[]>([]);
@@ -214,6 +217,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const [language, setLanguage] = useState(settings.language || 'en');
   const [nodeName, setNodeName] = useState(settings.node_name || '');
   const [logoText, setLogoText] = useState(settings.logo_text || '');
   const [lcdAlias, setLcdAlias] = useState(settings.lcd_alias || 'NODE-01');
@@ -232,6 +236,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isRestarting, setIsRestarting] = useState(false);
 
   useEffect(() => {
+    setLanguage(settings.language || 'en');
     setNodeName(settings.node_name || '');
     setLogoText(settings.logo_text || '');
     setLcdAlias(settings.lcd_alias || 'NODE-01');
@@ -245,6 +250,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLoggingCompressionEnabled(settings.logging_compression_enabled || false);
     setLoggingRetentionDays(settings.logging_retention_days || 7);
   }, [
+    settings.language,
     settings.node_name,
     settings.logo_text,
     settings.lcd_alias,
@@ -319,6 +325,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }, []);
 
   const hasChanges = 
+    language !== (settings.language || 'en') ||
     nodeName !== (settings.node_name || '') || 
     logoText !== (settings.logo_text || '') ||
     lcdAlias !== (settings.lcd_alias || 'NODE-01') ||
@@ -361,6 +368,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       const payload: any = {
         ...settings,
+        language,
         node_name: nodeName,
         logo_text: logoText,
         lcd_alias: lcdAlias,
@@ -390,6 +398,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
 
       await onUpdateSettings(payload);
+      i18n.changeLanguage(language);
+      localStorage.setItem('app_lang', language);
       
       setSaveSuccess(true);
       if (newPassword !== '') {
@@ -553,6 +563,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* TAB 1: General */}
         {activeTab === 'general' && (
           <>
+            {/* TAB 1: General -> Interface Language Card */}
+            <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
+              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                <h4 className="text-cyan-400 font-bold text-xs uppercase tracking-wider">
+                  {t('settings.language.title', 'Interface Language')}
+                </h4>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs text-text-secondary">
+                  {t('settings.language.description', 'Select the display language for the application user interface.')}
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { code: 'en', label: 'English (US)', badge: 'EN 🇺🇸' },
+                    { code: 'es', label: 'Español (ES)', badge: 'ES 🇪🇸' },
+                    { code: 'ca', label: 'Català (CA)', badge: 'CA 🏴' },
+                  ].map((item) => (
+                    <button
+                      key={item.code}
+                      type="button"
+                      onClick={() => setLanguage(item.code)}
+                      className={`p-3 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
+                        language === item.code
+                          ? 'border-brand-lime bg-brand-lime/10 text-white font-bold shadow-md'
+                          : 'border-white/10 bg-white/5 text-text-secondary hover:border-white/20 hover:text-white'
+                      }`}
+                    >
+                      <span className="text-xs">{item.label}</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/30 border border-white/10 text-cyan-300 font-bold">
+                        {item.badge}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
               <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
