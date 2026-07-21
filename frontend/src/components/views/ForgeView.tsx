@@ -8,7 +8,7 @@ import {
   ImportIcon, 
   PlusIcon, 
   GearIcon, 
-  ToolsIcon, 
+  ForgeIcon, 
   ClipboardIcon,
   RefreshIcon
 } from '../Icons';
@@ -265,7 +265,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         {builds.length === 0 ? (
           <div className="text-center py-20 border-2 border-dashed border-white/5 rounded-3xl">
             <div className="text-white/10 mb-6 flex justify-center">
-              <ToolsIcon size={48} />
+              <ForgeIcon size={48} />
             </div>
             <div className="text-text-secondary text-lg mb-2">{t('forge.noProfilesYet')}</div>
             <div className="text-text-secondary text-sm">{t('forge.createFirstProfile')}</div>
@@ -353,7 +353,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             </button>
 
             <h3 className="text-lg font-black tracking-tight mb-1 flex items-center gap-2">
-              <ToolsIcon size={16} /> {t('forge.compilationEnvState')}
+              <ForgeIcon size={16} /> {t('forge.compilationEnvState')}
             </h3>
             <p className="text-xs text-text-secondary mb-6 leading-relaxed">
               {t('forge.envDescription')}
@@ -504,7 +504,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                   <div className="bg-white/5 border border-white/5 p-4 rounded-2xl space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black uppercase text-brand-orange tracking-wider flex items-center gap-1">
-                        <ToolsIcon size={12} /> {t('forge.suggestedInstallCommand')}
+                        <ForgeIcon size={12} /> {t('forge.suggestedInstallCommand')}
                       </span>
                     </div>
                     

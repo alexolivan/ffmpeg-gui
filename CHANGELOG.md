@@ -16,9 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added internationalization protocol rule to `.agents/AGENTS.md` enforcing `useTranslation()` and `en.json` single source of truth for future developments.
 
 ### Changed
-- Standardized navigation single-word naming in sidebar (`Forge` / `Forja`).
-- Refactored process forms (`ProcessConfigForm`, `InputSourcePanel`, `DestinationPanel`, `VideoCodecPanel`, `AudioCodecPanel`, `LifecycleFormSection`) to extract all hardcoded UI strings into `i18n` dictionaries while preserving industry technical jargon (`Bitrate`, `FPS`, `Codec`, `SRT`, `NDI`, `MPEG-TS`, `RTMP`, `HLS`, `WHIP`, `DeckLink`, `ALSA`, `V4L2`) in English.
-- Achieved 100% key parity (279 keys) across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`) translation dictionaries.
+- Added `ForgeIcon` (Lucide Anvil SVG) in `Icons.tsx` replacing wrench icon for La Forja.
+- Standardized page headers and subtitles across all views (`ServicesView`, `ScheduledTasks`, `SettingsView`, `ForgeView`, `DashboardView`) to dynamically render translated titles.
+- Refactored Services and Scheduled Tasks cards (`SYSTEM` badge, system log cleanup task routines, schedule types, active/disabled status badges, action tooltips, field labels) with `i18n` translations.
+- Achieved 100% key parity (309 keys) across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`) translation dictionaries.
 
 ## [1.24.0] (Frontend) - 2026-07-20
 

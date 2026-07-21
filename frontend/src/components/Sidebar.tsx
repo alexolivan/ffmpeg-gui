@@ -5,7 +5,7 @@ import {
   LightningIcon, 
   CalendarIcon, 
   GearIcon, 
-  ToolsIcon,
+  ForgeIcon,
   LogoutIcon 
 } from './Icons';
 
@@ -33,7 +33,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'services', icon: <LightningIcon size={20} />, label: t('nav.services') },
     { id: 'batch', icon: <CalendarIcon size={20} />, label: t('nav.tasks') },
     { id: 'settings', icon: <GearIcon size={20} />, label: t('nav.settings') },
-    { id: 'tools', icon: <ToolsIcon size={20} />, label: t('nav.forge', 'Forge') },
+    { id: 'tools', icon: <ForgeIcon size={20} />, label: t('nav.forge', 'Forge') },
   ];
 
   return (

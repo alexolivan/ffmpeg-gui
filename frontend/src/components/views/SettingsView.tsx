@@ -460,8 +460,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Header */}
       <header className="flex justify-between items-center mb-6 shrink-0">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5 uppercase">Settings</h1>
-          <p className="text-xs text-text-secondary">Node identity, security and hardware branding configuration</p>
+          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5 uppercase">{t('settings.title', 'Settings')}</h1>
+          <p className="text-xs text-text-secondary">{t('settings.subtitle', 'Node identity, security, storage and language configuration')}</p>
         </div>
         <div className="flex items-center gap-3">
           {/* Status Indicator */}

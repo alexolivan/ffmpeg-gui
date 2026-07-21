@@ -32,8 +32,19 @@
     "unlockNode": "Desbloquejar Node"
   },
   "services": {
+    "title": "Serveis",
+    "subtitle": "Instàncies de node per a emissió i processament continu",
     "addNewService": "AFEGIR NOU SERVEI",
-    "editService": "EDITAR SERVEI"
+    "editService": "EDITAR SERVEI",
+    "importProfile": "Importar Perfil",
+    "newService": "Nou Servei",
+    "activeServicesRunning": "Serveis Actius (En Execució)",
+    "noRunningServices": "No hi ha serveis en execució",
+    "configuredServicesInactive": "Serveis Configurats (Inactius)",
+    "noInactiveServices": "No hi ha serveis inactius",
+    "editServiceSettings": "Editar Ajustos del Servei",
+    "cloneService": "Clonar Servei",
+    "exportService": "Exportar Servei"
   },
   "settings": {
     "title": "Configuració",
@@ -441,5 +452,28 @@
     "createTask": "Crear Tasca",
     "deployService": "Desplegar Servei",
     "saveAsNew": "Desar com a Nou"
+  },
+  "tasks": {
+    "title": "Tasques Programades",
+    "subtitle": "Automatització de tasques en lot, fonts recurrents i conversions cron.",
+    "importTask": "Importar Tasca",
+    "newTask": "Crear Tasca",
+    "taskJobConfigurations": "Configuracions de Tasques Programades",
+    "noScheduledTasks": "No hi ha tasques programades definides. Fes clic en \"Crear Tasca\" per a configurar la teua primera execució automatitzada de FFmpeg.",
+    "systemLogTaskName": "Rotació de Registres del Sistema i Neteja de Retenció",
+    "systemLogTaskRoutine": "Rutina de Retenció i Neteja de Registres",
+    "systemBadge": "SISTEMA",
+    "scheduleTypes": {
+      "recurring": "recurrent",
+      "oneShot": "puntual"
+    },
+    "systemActionLabel": "Acció de Sistema:",
+    "cronExpressionLabel": "Expressió Cron:",
+    "targetDateLabel": "Data Programada:",
+    "nextExecutionLabel": "Pròxima execució:",
+    "lastExecutionLabel": "Última Execució",
+    "runHistory": "Historial",
+    "inputLabel": "Origen:",
+    "outputLabel": "Destinació:"
   }
 }

@@ -32,8 +32,19 @@
     "unlockNode": "Desbloquear Nodo"
   },
   "services": {
+    "title": "Servicios",
+    "subtitle": "Instancias de nodo para emisión y procesamiento continuo",
     "addNewService": "AÑADIR NUEVO SERVICIO",
-    "editService": "EDITAR SERVICIO"
+    "editService": "EDITAR SERVICIO",
+    "importProfile": "Importar Perfil",
+    "newService": "Nuevo Servicio",
+    "activeServicesRunning": "Servicios Activos (En Ejecución)",
+    "noRunningServices": "No hay servicios en ejecución",
+    "configuredServicesInactive": "Servicios Configurados (Inactivos)",
+    "noInactiveServices": "No hay servicios inactivos",
+    "editServiceSettings": "Editar Ajustes del Servicio",
+    "cloneService": "Clonar Servicio",
+    "exportService": "Exportar Servicio"
   },
   "settings": {
     "title": "Ajustes",
@@ -441,5 +452,28 @@
     "createTask": "Crear Tarea",
     "deployService": "Desplegar Servicio",
     "saveAsNew": "Guardar como Nuevo"
+  },
+  "tasks": {
+    "title": "Tareas Programadas",
+    "subtitle": "Automatización de tareas en lote, fuentes recurrentes y conversiones cron.",
+    "importTask": "Importar Tarea",
+    "newTask": "Crear Tarea",
+    "taskJobConfigurations": "Configuraciones de Tareas Programadas",
+    "noScheduledTasks": "No hay tareas programadas definidas. Haz clic en \"Crear Tarea\" para configurar tu primera ejecución automatizada de FFmpeg.",
+    "systemLogTaskName": "Rotación de Logs del Sistema y Limpieza de Retención",
+    "systemLogTaskRoutine": "Rutina de Retención y Limpieza de Logs",
+    "systemBadge": "SISTEMA",
+    "scheduleTypes": {
+      "recurring": "recurrente",
+      "oneShot": "puntual"
+    },
+    "systemActionLabel": "Acción de Sistema:",
+    "cronExpressionLabel": "Expresión Cron:",
+    "targetDateLabel": "Fecha Programada:",
+    "nextExecutionLabel": "Próxima ejecución:",
+    "lastExecutionLabel": "Última Ejecución",
+    "runHistory": "Historial",
+    "inputLabel": "Origen:",
+    "outputLabel": "Destino:"
   }
 }

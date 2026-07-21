@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import ProcessConfigForm from './ProcessConfigForm';
 import { formatInputDesc, formatOutputDesc } from '../utils/formatters';
 import { 
@@ -19,6 +20,7 @@ interface ScheduledTasksProps {
 }
 
 export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecutions }) => {
+  const { t } = useTranslation();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -302,16 +304,16 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-4">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-white uppercase mb-0.5">
-            Task Scheduling
+            {t('tasks.title', 'Task Scheduling')}
           </h1>
-          <p className="text-xs text-text-secondary">Automate batch jobs, recurring feeds and cron conversions.</p>
+          <p className="text-xs text-text-secondary">{t('tasks.subtitle', 'Automate batch jobs, recurring feeds and cron conversions.')}</p>
         </div>
         <div className="flex gap-4">
           <button 
             onClick={() => importFileRef.current?.click()} 
             className="pill-button bg-white/5 border border-white/10 text-white hover:bg-white/10 text-sm py-2.5 px-6 flex items-center gap-1.5"
           >
-            <ImportIcon size={14} /> IMPORT TASK
+            <ImportIcon size={14} /> {t('tasks.importTask', 'IMPORT TASK')}
           </button>
           <input 
             type="file" 
@@ -327,7 +329,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
             }}
             className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20 flex items-center gap-1.5"
           >
-            <PlusIcon size={14} /> CREATE TASK
+            <PlusIcon size={14} /> {t('tasks.newTask', 'CREATE TASK')}
           </button>
         </div>
       </header>
@@ -416,15 +418,15 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
       {/* TASKS LIST */}
       <div className="glass-card p-4 md:p-5 bg-white/5 border-white/5">
-        <h2 className="text-xl font-bold mb-3">Task Job Configurations</h2>
+        <h2 className="text-xl font-bold mb-3">{t('tasks.taskJobConfigurations', 'Task Job Configurations')}</h2>
         
         {loading ? (
-          <div className="py-20 text-center text-text-secondary animate-pulse">Loading task configurations...</div>
+          <div className="py-20 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
         ) : error ? (
           <div className="py-12 text-center text-red-400 font-bold border border-red-500/20 rounded-2xl bg-red-500/5">{error}</div>
         ) : tasks.length === 0 ? (
           <div className="py-20 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
-            No scheduled tasks defined. Click "Create Task" to configure your first automated FFmpeg run.
+            {t('tasks.noScheduledTasks', 'No scheduled tasks defined. Click "Create Task" to configure your first automated FFmpeg run.')}
           </div>
         ) : (
           <div className="divide-y divide-white/5">
@@ -444,7 +446,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 <div className="flex-1 space-y-0.5 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h3 className={`font-bold text-lg truncate ${task.is_active ? 'text-white' : 'text-white/50'}`}>
-                      {task.name}
+                      {task.is_system && task.name === 'System Log Rotation and Retention Cleanup'
+                        ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
+                        : task.name}
                       {task.alias && (
                         <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
                           [{task.alias}]
@@ -457,7 +461,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           ? 'bg-brand-orange/15 text-brand-orange border border-brand-orange/30' 
                           : 'bg-white/5 text-white/40 border border-white/10'
                       }`}>
-                        SYSTEM
+                        {t('tasks.systemBadge', 'SYSTEM')}
                       </span>
                     )}
                     <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
@@ -465,7 +469,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                       task.schedule_type === 'one_shot' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
                       'bg-white/5 text-white/40 border border-white/10'
                     }`}>
-                      {task.schedule_type}
+                      {task.schedule_type === 'recurring' ? t('tasks.scheduleTypes.recurring', 'recurring') :
+                       task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
+                       task.schedule_type}
                     </span>
                     {task.is_system ? (
                       <span 
@@ -477,7 +483,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         }`}
                       >
                         <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>
-                        {task.is_active ? 'Active' : 'Disabled'}
+                        {task.is_active ? t('common.enabled', 'Active') : t('common.disabled', 'Disabled')}
                       </span>
                     ) : (
                       <button 
@@ -489,7 +495,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         }`}
                       >
                         <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>
-                        {task.is_active ? 'Active' : 'Disabled'}
+                        {task.is_active ? t('common.enabled', 'Active') : t('common.disabled', 'Disabled')}
                       </button>
                     )}
                   </div>
@@ -497,31 +503,31 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   <div className="text-xs text-text-secondary space-y-1">
                     {task.is_system ? (
                       <p className="truncate">
-                        System Action: <strong className={task.is_active ? "text-brand-orange font-medium" : "text-white/50 font-medium"}>Log Retention & Cleanup Routine</strong>
+                        {t('tasks.systemActionLabel', 'System Action:')} <strong className={task.is_active ? "text-brand-orange font-medium" : "text-white/50 font-medium"}>{t('tasks.systemLogTaskRoutine', 'Log Retention & Cleanup Routine')}</strong>
                       </p>
                     ) : (
                       <>
                         <p className="truncate">
-                          Input: <code className="text-white font-mono">{formatInputDesc(task.input_config)}</code>
+                          {t('tasks.inputLabel', 'Input:')} <code className="text-white font-mono">{formatInputDesc(task.input_config)}</code>
                         </p>
                         <p className="truncate">
-                          Output: <code className="text-white font-mono">{formatOutputDesc(task.output_config)}</code>
+                          {t('tasks.outputLabel', 'Output:')} <code className="text-white font-mono">{formatOutputDesc(task.output_config)}</code>
                         </p>
                       </>
                     )}
                     {task.schedule_type === 'recurring' && (
                       <p>
-                        Cron Expression: <code className="text-brand-lime font-mono">{task.schedule_cron}</code>
+                        {t('tasks.cronExpressionLabel', 'Cron Expression:')} <code className="text-brand-lime font-mono">{task.schedule_cron}</code>
                       </p>
                     )}
                     {task.schedule_type === 'one_shot' && (
                       <p>
-                        Target Date: <strong className="text-white">{new Date(task.schedule_datetime).toLocaleString()}</strong>
+                        {t('tasks.targetDateLabel', 'Target Date:')} <strong className="text-white">{new Date(task.schedule_datetime).toLocaleString()}</strong>
                       </p>
                     )}
                     {task.is_active && task.next_run && (
                       <p>
-                        Next execution: <strong className="text-brand-orange">{new Date(task.next_run).toLocaleString()}</strong>
+                        {t('tasks.nextExecutionLabel', 'Next execution:')} <strong className="text-brand-orange">{new Date(task.next_run).toLocaleString()}</strong>
                       </p>
                     )}
                   </div>
@@ -530,7 +536,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 <div className="flex flex-wrap items-center gap-3">
                   {task.last_execution ? (
                     <div className="text-right hidden lg:block mr-2">
-                      <div className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">Last Execution</div>
+                      <div className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution')}</div>
                       <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md mt-1 ${getStatusBadgeClass(task.last_execution.status)}`}>
                         {task.last_execution.status}
                       </span>
@@ -542,7 +548,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     onClick={() => viewTaskDetails(task.id)}
                     className="pill-button bg-white/5 hover:bg-white/10 text-white text-xs py-2 px-4 border border-white/5 disabled:opacity-50 disabled:pointer-events-none"
                   >
-                    RUN HISTORY
+                    {t('tasks.runHistory', 'RUN HISTORY')}
                   </button>
                   
                   <button 

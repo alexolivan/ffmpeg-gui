@@ -101,6 +101,27 @@ export const ToolsIcon: React.FC<IconProps> = ({ size = 18, className = '', ...p
   </svg>
 );
 
+export const ForgeIcon: React.FC<IconProps> = ({ size = 18, className = '', ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <path d="M7 10H6a4 4 0 0 1-4-4V5h14.5a2.5 2.5 0 0 1 0 5H17" />
+    <path d="M9 10v5a2 2 0 0 1-2 2H4" />
+    <path d="M15 10v5a2 2 0 0 0 2 2h3" />
+    <path d="M4 20h16" />
+  </svg>
+);
+
 export const SourceIcon: React.FC<IconProps> = ({ size = 18, className = '', ...props }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"

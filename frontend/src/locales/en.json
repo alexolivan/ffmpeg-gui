@@ -32,8 +32,19 @@
     "unlockNode": "Unlock Node"
   },
   "services": {
+    "title": "Services",
+    "subtitle": "Continuous media streaming and processing node instances",
     "addNewService": "ADD NEW SERVICE",
-    "editService": "EDIT SERVICE"
+    "editService": "EDIT SERVICE",
+    "importProfile": "Import Profile",
+    "newService": "New Service",
+    "activeServicesRunning": "Active Services (Running)",
+    "noRunningServices": "No running services",
+    "configuredServicesInactive": "Configured Services (Inactive)",
+    "noInactiveServices": "No inactive services",
+    "editServiceSettings": "Edit Service Settings",
+    "cloneService": "Clone Service",
+    "exportService": "Export Service"
   },
   "settings": {
     "title": "Settings",
@@ -441,5 +452,28 @@
     "createTask": "Create Task",
     "deployService": "Deploy Service",
     "saveAsNew": "Save as New"
+  },
+  "tasks": {
+    "title": "Task Scheduling",
+    "subtitle": "Automate batch jobs, recurring feeds and cron conversions.",
+    "importTask": "Import Task",
+    "newTask": "Create Task",
+    "taskJobConfigurations": "Task Job Configurations",
+    "noScheduledTasks": "No scheduled tasks defined. Click \"Create Task\" to configure your first automated FFmpeg run.",
+    "systemLogTaskName": "System Log Rotation and Retention Cleanup",
+    "systemLogTaskRoutine": "Log Retention & Cleanup Routine",
+    "systemBadge": "SYSTEM",
+    "scheduleTypes": {
+      "recurring": "recurring",
+      "oneShot": "one-shot"
+    },
+    "systemActionLabel": "System Action:",
+    "cronExpressionLabel": "Cron Expression:",
+    "targetDateLabel": "Target Date:",
+    "nextExecutionLabel": "Next execution:",
+    "lastExecutionLabel": "Last Execution",
+    "runHistory": "Run History",
+    "inputLabel": "Input:",
+    "outputLabel": "Output:"
   }
 }

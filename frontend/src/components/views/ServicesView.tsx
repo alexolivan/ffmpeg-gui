@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { formatInputDesc, formatOutputDesc } from '../../utils/formatters';
 import { 
   ImportIcon, 
@@ -63,17 +64,19 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   setShowAddModal,
   API,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
       <header className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">SERVICES</h1>
-          <p className="text-xs text-text-secondary">Continuous media streaming and processing node instances</p>
+          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">{t('services.title', 'SERVICES')}</h1>
+          <p className="text-xs text-text-secondary">{t('services.subtitle', 'Continuous media streaming and processing node instances')}</p>
         </div>
         <div className="flex gap-4">
           <button onClick={() => importFileRef.current?.click()}
             className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold transition-all flex items-center gap-1.5">
-            <ImportIcon size={14} /> IMPORT PROFILE
+            <ImportIcon size={14} /> {t('services.importProfile', 'IMPORT PROFILE')}
           </button>
           <input 
             type="file" 
@@ -84,7 +87,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           />
           <button onClick={() => setShowAddModal(true)}
             className="pill-button bg-brand-lime text-black font-black transition-all flex items-center gap-1.5">
-            <PlusIcon size={14} /> NEW SERVICE
+            <PlusIcon size={14} /> {t('services.newService', 'NEW SERVICE')}
           </button>
         </div>
       </header>
@@ -92,11 +95,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
       <div className="space-y-4">
         {/* Active Running Services */}
         <div className="glass-card p-4 md:p-5">
-          <h3 className="text-xl font-black mb-3">ACTIVE SERVICES (RUNNING)</h3>
+          <h3 className="text-xl font-black mb-3">{t('services.activeServicesRunning', 'ACTIVE SERVICES (RUNNING)')}</h3>
           <div className="space-y-2.5">
             {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length === 0 ? (
               <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
-                No running services
+                {t('services.noRunningServices', 'No running services')}
               </div>
             ) : (
               telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').map(proc => (
@@ -260,11 +263,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
         {/* Inactive Configured Services */}
         <div className="glass-card p-4 md:p-5">
-          <h3 className="text-xl font-black mb-3 text-white/50">CONFIGURED SERVICES (INACTIVE)</h3>
+          <h3 className="text-xl font-black mb-3 text-white/50">{t('services.configuredServicesInactive', 'Configured Services (Inactive)')}</h3>
           <div className="space-y-2.5">
             {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length === 0 ? (
               <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
-                No inactive services
+                {t('services.noInactiveServices', 'No inactive services')}
               </div>
             ) : (
               telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').map(proc => {
