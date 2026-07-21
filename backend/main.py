@@ -217,7 +217,7 @@ class SettingsResponse(BaseModel):
     node_name: Optional[str] = None
     gui_password: Optional[str] = None
     logo_text: Optional[str] = None
-    logo_image_path: Optional[str] = None
+    logo_path: Optional[str] = None
     accent_color: Optional[str] = None
     lcd_enabled: Optional[bool] = None
     lcd_alias: Optional[str] = None
@@ -247,6 +247,7 @@ class SettingsUpdate(BaseModel):
     lcd_alias: Optional[str] = None
     gui_password: Optional[str] = None
     logo_text: Optional[str] = None
+    logo_path: Optional[str] = None
     accent_color: Optional[str] = None
     lcd_enabled: Optional[bool] = None
     language: Optional[str] = None
@@ -746,6 +747,7 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.lcd_alias is not None: settings.lcd_alias = settings_in.lcd_alias
     if settings_in.gui_password is not None: settings.gui_password = settings_in.gui_password
     if settings_in.logo_text is not None: settings.logo_text = settings_in.logo_text
+    if settings_in.logo_path is not None: settings.logo_path = settings_in.logo_path
     if settings_in.accent_color is not None: settings.accent_color = settings_in.accent_color
     
     lcd_core_changed = (
@@ -838,6 +840,7 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     raise HTTPException(status_code=401, detail="Invalid password")
 
 @app.post("/settings/logo")
+@app.post("/api/settings/logo")
 async def upload_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()
