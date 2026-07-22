@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] (Frontend) / [1.30.0] (Backend) - 2026-07-22
+
+### Added
+- Created `SystemInfoView` (`INFO` option in `MainMenuView`) displaying LAN IP Address, Web GUI Port, Backend Version, Frontend Version, and Node Name with multi-page navigation on 2-row LCD screens.
+- Added `recording` LED status profile (`REC `) that blinks in Red when any active service or task is writing output to local disk storage paths (excluding network protocols like HTTP PUT/POST HLS, RTMP, SRT, etc.).
+- Added `storage` LED status profile (`STO `) that lights Red when any configured system storage drive or root partition `/` exceeds 90% space utilization.
+- Added new LED options (`services`, `resources`, `recording`, `storage`) to `SettingsView.tsx` with full i18n support across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`).
+
+### Changed
+- Standardized LCD nomenclature from "Streams" to "Services" (`Services: {count}` line in `DashboardView` and `"SRV "` legend prefix).
+- Re-labeled "CPU Alert" LED profile to "Resources Alert" (`resources` / `"RES "` legend prefix) checking CPU > 90% or RAM > 90%.
+
 ## [1.26.0] (Frontend) - 2026-07-22
 
 ### Added
