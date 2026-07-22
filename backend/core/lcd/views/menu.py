@@ -4,7 +4,7 @@ from .base import LCDView
 class MainMenuView(LCDView):
     def __init__(self, manager):
         super().__init__(manager)
-        self.options = ["1. Dashboard", "2. Services", "3. Tasks"]
+        self.options = ["1. Dashboard", "2. Services", "3. Tasks", "4. System Info"]
         self.selected_index = 0
 
     def render(self) -> List[str]:
@@ -13,7 +13,9 @@ class MainMenuView(LCDView):
         if rows == 2:
             lines.append(f"> {self.options[self.selected_index]}")
         else:
-            for idx in range(3):
+            start = max(0, min(self.selected_index, len(self.options) - 3))
+            end = start + 3
+            for idx in range(start, end):
                 prefix = "> " if idx == self.selected_index else "  "
                 lines.append(f"{prefix}{self.options[idx]}")
         return lines
@@ -34,6 +36,9 @@ class MainMenuView(LCDView):
                 self.manager.switch_to_view(ServicesMenuView(self.manager))
             elif self.selected_index == 2:
                 self.manager.switch_to_view(TasksMenuView(self.manager))
+            elif self.selected_index == 3:
+                from .info import SystemInfoView
+                self.manager.switch_to_view(SystemInfoView(self.manager))
 
 class ServicesMenuView(LCDView):
     def __init__(self, manager):
