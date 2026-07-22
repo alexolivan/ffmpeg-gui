@@ -74,6 +74,7 @@ function App() {
   const {
     telemetry,
     taskExecutions,
+    upcomingTasks,
     systemTelemetry,
     taskStats,
     selectedProcess,
@@ -193,7 +194,7 @@ function App() {
               capabilities,
             }}
             taskStats={taskStats}
-            taskExecutions={taskExecutions}
+            upcomingTasks={upcomingTasks}
             builds={builds}
             settings={settings}
           />

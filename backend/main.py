@@ -1633,6 +1633,25 @@ async def telemetry_broadcast_loop():
                     "inactive": inactive_count
                 }
 
+                # Query upcoming scheduled tasks ordered by next_run
+                upcoming_tasks = db.query(ScheduledTask).filter(
+                    ScheduledTask.is_active == True,
+                    ScheduledTask.schedule_type.in_(["recurring", "one_shot"]),
+                    ScheduledTask.next_run != None
+                ).order_by(ScheduledTask.next_run.asc()).limit(5).all()
+
+                upcoming_data = [
+                    {
+                        "id": t.id,
+                        "name": t.name,
+                        "alias": t.alias,
+                        "is_system": t.is_system,
+                        "schedule_type": t.schedule_type,
+                        "schedule_cron": t.schedule_cron,
+                        "next_run": t.next_run.isoformat() + ("Z" if not t.next_run.isoformat().endswith("Z") else "") if t.next_run else None,
+                    } for t in upcoming_tasks
+                ]
+
                 # Query all configured storages
                 storages = db.query(Storage).all()
                 for s in storages:
@@ -1684,6 +1703,7 @@ async def telemetry_broadcast_loop():
                 "type": "telemetry",
                 "data": processes_data,
                 "task_executions": exec_data,
+                "upcoming_tasks": upcoming_data,
                 "system": system_data,
                 "task_stats": task_stats,
                 "storages": storages_data
@@ -3590,8 +3610,13 @@ def test_storage_path(test_in: StorageTest, db: Session = Depends(get_db)):
 
 # Mounting static files and SPA fallback
 FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", "../frontend/dist")
-os.makedirs(os.path.join(FRONTEND_DIST_DIR, "assets"), exist_ok=True)
-app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST_DIR, "assets")), name="assets")
+try:
+    os.makedirs(os.path.join(FRONTEND_DIST_DIR, "assets"), exist_ok=True)
+except Exception as e:
+    logger.warning(f"Could not create static asset dir {FRONTEND_DIST_DIR}/assets: {e}")
+
+if os.path.exists(os.path.join(FRONTEND_DIST_DIR, "assets")):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST_DIR, "assets")), name="assets")
 
 @app.get("/{catchall:path}")
 def serve_spa(catchall: str):

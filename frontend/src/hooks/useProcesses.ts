@@ -5,6 +5,7 @@ const API = '';
 export function useProcesses() {
   const [telemetry, setTelemetry] = useState<any[]>([]);
   const [taskExecutions, setTaskExecutions] = useState<any[]>([]);
+  const [upcomingTasks, setUpcomingTasks] = useState<any[]>([]);
   const [systemTelemetry, setSystemTelemetry] = useState<any>({
     cpu_percent: 0,
     memory_percent: 0,
@@ -37,6 +38,9 @@ export function useProcesses() {
         setTelemetry(msg.data);
         if (msg.task_executions) {
           setTaskExecutions(msg.task_executions);
+        }
+        if (msg.upcoming_tasks) {
+          setUpcomingTasks(msg.upcoming_tasks);
         }
         if (msg.system) {
           setSystemTelemetry({
@@ -225,6 +229,7 @@ export function useProcesses() {
   return {
     telemetry,
     taskExecutions,
+    upcomingTasks,
     systemTelemetry,
     taskStats,
     selectedProcess,

@@ -211,7 +211,18 @@
     "quickControl": "Quick Control",
     "start": "Start",
     "stop": "Stop",
-    "restart": "Restart"
+    "restart": "Restart",
+    "upcomingTasksTitle": "Upcoming Tasks",
+    "scheduledCount": "scheduled",
+    "noUpcomingTasks": "No upcoming tasks scheduled in the near future.",
+    "noUpcomingTasksSub": "Active recurring or one-shot tasks will be listed here.",
+    "systemTask": "SYSTEM",
+    "userTask": "JOB",
+    "nextRunImminent": "Imminent",
+    "nextRunInMins": "In {{mins}} min",
+    "nextRunInHours": "In {{hours}}h",
+    "nextRunInHoursMins": "In {{hours}}h {{mins}}m",
+    "nextRunTodayAt": "Today at {{time}}"
   },
   "forge": {
     "title": "FFMPEG FORGE",

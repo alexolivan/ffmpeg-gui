@@ -211,7 +211,18 @@
     "quickControl": "Control Ràpid",
     "start": "Iniciar",
     "stop": "Aturar",
-    "restart": "Reiniciar"
+    "restart": "Reiniciar",
+    "upcomingTasksTitle": "Pròximes Execucions",
+    "scheduledCount": "programades",
+    "noUpcomingTasks": "No hi ha tasques programades pròximament.",
+    "noUpcomingTasksSub": "Les tasques recurrents o programades actives apareixeran aquí.",
+    "systemTask": "SISTEMA",
+    "userTask": "TASCA",
+    "nextRunImminent": "Imminent",
+    "nextRunInMins": "En {{mins}} min",
+    "nextRunInHours": "En {{hours}}h",
+    "nextRunInHoursMins": "En {{hours}}h {{mins}}m",
+    "nextRunTodayAt": "Avui a les {{time}}h"
   },
   "forge": {
     "title": "FFMPEG FORGE",
