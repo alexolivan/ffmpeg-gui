@@ -134,9 +134,13 @@
       "led3": "LED 3 (Inferior)",
       "ledOption": {
         "heartbeat": "Batec (Parpelleig)",
-        "streams": "Estat de Streams",
+        "services": "Estat de Serveis",
+        "streams": "Estat de Serveis",
         "tasks": "Esdeveniments de Tasques",
-        "alert": "Alerta de CPU"
+        "resources": "Alerta Recursos (CPU/RAM)",
+        "alert": "Alerta Recursos (CPU/RAM)",
+        "recording": "Gravació (Pilot REC)",
+        "storage": "Alerta Emmagatzematge"
       }
     },
     "storage": {

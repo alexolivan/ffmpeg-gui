@@ -1011,9 +1011,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 focus:border-brand-lime outline-none text-white text-xs"
                   >
                     <option value="heartbeat" className="bg-black text-white">{t('settings.lcd.ledOption.heartbeat', 'Heartbeat (Blink)')}</option>
-                    <option value="streams" className="bg-black text-white">{t('settings.lcd.ledOption.streams', 'Streams Status')}</option>
+                    <option value="services" className="bg-black text-white">{t('settings.lcd.ledOption.services', 'Services Status')}</option>
                     <option value="tasks" className="bg-black text-white">{t('settings.lcd.ledOption.tasks', 'Task Events')}</option>
-                    <option value="alert" className="bg-black text-white">{t('settings.lcd.ledOption.alert', 'CPU Alert')}</option>
+                    <option value="resources" className="bg-black text-white">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
+                    <option value="recording" className="bg-black text-white">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
+                    <option value="storage" className="bg-black text-white">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
                     <option value="disabled" className="bg-black text-white">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -1025,9 +1027,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 focus:border-brand-lime outline-none text-white text-xs"
                   >
                     <option value="heartbeat" className="bg-black text-white">{t('settings.lcd.ledOption.heartbeat', 'Heartbeat (Blink)')}</option>
-                    <option value="streams" className="bg-black text-white">{t('settings.lcd.ledOption.streams', 'Streams Status')}</option>
+                    <option value="services" className="bg-black text-white">{t('settings.lcd.ledOption.services', 'Services Status')}</option>
                     <option value="tasks" className="bg-black text-white">{t('settings.lcd.ledOption.tasks', 'Task Events')}</option>
-                    <option value="alert" className="bg-black text-white">{t('settings.lcd.ledOption.alert', 'CPU Alert')}</option>
+                    <option value="resources" className="bg-black text-white">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
+                    <option value="recording" className="bg-black text-white">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
+                    <option value="storage" className="bg-black text-white">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
                     <option value="disabled" className="bg-black text-white">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -1039,9 +1043,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 focus:border-brand-lime outline-none text-white text-xs"
                   >
                     <option value="heartbeat" className="bg-black text-white">{t('settings.lcd.ledOption.heartbeat', 'Heartbeat (Blink)')}</option>
-                    <option value="streams" className="bg-black text-white">{t('settings.lcd.ledOption.streams', 'Streams Status')}</option>
+                    <option value="services" className="bg-black text-white">{t('settings.lcd.ledOption.services', 'Services Status')}</option>
                     <option value="tasks" className="bg-black text-white">{t('settings.lcd.ledOption.tasks', 'Task Events')}</option>
-                    <option value="alert" className="bg-black text-white">{t('settings.lcd.ledOption.alert', 'CPU Alert')}</option>
+                    <option value="resources" className="bg-black text-white">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
+                    <option value="recording" className="bg-black text-white">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
+                    <option value="storage" className="bg-black text-white">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
                     <option value="disabled" className="bg-black text-white">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -1053,9 +1059,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 focus:border-brand-lime outline-none text-white text-xs"
                   >
                     <option value="heartbeat" className="bg-black text-white">{t('settings.lcd.ledOption.heartbeat', 'Heartbeat (Blink)')}</option>
-                    <option value="streams" className="bg-black text-white">{t('settings.lcd.ledOption.streams', 'Streams Status')}</option>
+                    <option value="services" className="bg-black text-white">{t('settings.lcd.ledOption.services', 'Services Status')}</option>
                     <option value="tasks" className="bg-black text-white">{t('settings.lcd.ledOption.tasks', 'Task Events')}</option>
-                    <option value="alert" className="bg-black text-white">{t('settings.lcd.ledOption.alert', 'CPU Alert')}</option>
+                    <option value="resources" className="bg-black text-white">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
+                    <option value="recording" className="bg-black text-white">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
+                    <option value="storage" className="bg-black text-white">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
                     <option value="disabled" className="bg-black text-white">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>

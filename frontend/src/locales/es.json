@@ -134,9 +134,13 @@
       "led3": "LED 3 (Inferior)",
       "ledOption": {
         "heartbeat": "Latido (Parpadeo)",
-        "streams": "Estado de Streams",
+        "services": "Estado de Servicios",
+        "streams": "Estado de Servicios",
         "tasks": "Eventos de Tareas",
-        "alert": "Alerta de CPU"
+        "resources": "Alerta Recursos (CPU/RAM)",
+        "alert": "Alerta Recursos (CPU/RAM)",
+        "recording": "Grabación (Piloto REC)",
+        "storage": "Alerta Almacenamiento"
       }
     },
     "storage": {

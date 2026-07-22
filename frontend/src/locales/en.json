@@ -134,9 +134,13 @@
       "led3": "LED 3 (Bottom)",
       "ledOption": {
         "heartbeat": "Heartbeat (Blink)",
-        "streams": "Streams Status",
+        "services": "Services Status",
+        "streams": "Services Status",
         "tasks": "Task Events",
-        "alert": "CPU Alert"
+        "resources": "Resources Alert (CPU/RAM)",
+        "alert": "Resources Alert (CPU/RAM)",
+        "recording": "Recording (REC Pilot)",
+        "storage": "Storage Alert"
       }
     },
     "storage": {
