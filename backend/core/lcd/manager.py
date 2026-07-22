@@ -250,10 +250,10 @@ class LCDManager:
                             color = "green"
                         else:
                             color = "off"
-                    elif profile == "streams":
-                        if self._cached_led_states.get("error_stream"):
+                    elif profile in ("services", "streams"):
+                        if self._cached_led_states.get("error_stream") or self._cached_led_states.get("error_service"):
                             color = "red"
-                        elif self._cached_led_states.get("running_stream"):
+                        elif self._cached_led_states.get("running_stream") or self._cached_led_states.get("running_service"):
                             color = "green"
                         else:
                             color = "off"
@@ -264,7 +264,7 @@ class LCDManager:
                             color = "green"
                         else:
                             color = "off"
-                    elif profile == "alert":
+                    elif profile in ("resources", "alert"):
                         if self._cached_led_states.get("cpu_high") or self._cached_led_states.get("ram_high"):
                             color = "red"
                         else:
@@ -332,12 +332,16 @@ class LCDManager:
     def get_led_legend_prefix(self, profile: str) -> str:
         if profile == "heartbeat":
             return "HB  "
-        elif profile == "streams":
+        elif profile in ("services", "streams"):
             return "SRV "
         elif profile == "tasks":
             return "TSK "
-        elif profile == "alert":
-            return "ERR "
+        elif profile in ("resources", "alert"):
+            return "RES "
+        elif profile == "recording":
+            return "REC "
+        elif profile == "storage":
+            return "STO "
         return "    "
 
     def refresh_display(self):

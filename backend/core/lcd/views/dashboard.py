@@ -31,7 +31,7 @@ class DashboardView(LCDView):
 
         return [
             header,
-            f"Streams: {active_count}",
+            f"Services: {active_count}",
             f"CPU: {cpu}%",
             f"RAM: {ram}%"
         ]
