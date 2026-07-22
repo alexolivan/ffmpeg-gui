@@ -152,8 +152,48 @@ class LCDManager:
                         
                         self._cached_led_states["running_stream"] = has_running
                         self._cached_led_states["error_stream"] = has_error
+                        self._cached_led_states["running_service"] = has_running
+                        self._cached_led_states["error_service"] = has_error
                         self._cached_led_states["running_task"] = has_running_task
                         self._cached_led_states["failed_task"] = has_failed_task
+
+                        # 4. Check active local file recording
+                        is_recording = False
+                        running_procs = [s for s in services if s.status == 'running']
+                        network_protocols = ("http://", "https://", "rtmp://", "rtmps://", "srt://", "udp://", "rtp://")
+                        
+                        for p in running_procs:
+                            out_cfg = p.output_config or {}
+                            target_type = out_cfg.get("type", "")
+                            url = str(out_cfg.get("url") or out_cfg.get("path") or out_cfg.get("output") or "")
+                            
+                            if target_type in ("file", "recording") or out_cfg.get("storage_id") is not None:
+                                is_recording = True
+                                break
+                            if url.startswith(("/", "./", "file://")) and not any(url.startswith(proto) for proto in network_protocols):
+                                is_recording = True
+                                break
+                        
+                        # 5. Check storage space usage
+                        from database.models import Storage
+                        import psutil
+                        storage_alert = False
+                        try:
+                            storages = db.query(Storage).all()
+                            check_paths = [s.path for s in storages if s.path] or ["/"]
+                            for path in check_paths:
+                                try:
+                                    usage = psutil.disk_usage(path)
+                                    if usage.percent > 90.0:
+                                        storage_alert = True
+                                        break
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
+
+                        self._cached_led_states["is_recording"] = is_recording
+                        self._cached_led_states["storage_alert"] = storage_alert
                     except Exception as e:
                         logger.error(f"Error polling LED DB states: {e}")
                     finally:
@@ -266,6 +306,17 @@ class LCDManager:
                             color = "off"
                     elif profile in ("resources", "alert"):
                         if self._cached_led_states.get("cpu_high") or self._cached_led_states.get("ram_high"):
+                            color = "red"
+                        else:
+                            color = "green"
+                    elif profile == "recording":
+                        if self._cached_led_states.get("is_recording"):
+                            # Blink RED (500ms ON / 500ms OFF)
+                            color = "red" if tick_10 < 5 else "off"
+                        else:
+                            color = "off"
+                    elif profile == "storage":
+                        if self._cached_led_states.get("storage_alert"):
                             color = "red"
                         else:
                             color = "green"
