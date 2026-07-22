@@ -35,7 +35,7 @@ describe('i18n initialization & translations', () => {
     expect(i18n.language).toBe('es');
     expect(i18n.t('common.save')).toBe('Guardar Ajustes');
     expect(i18n.t('nav.dashboard')).toBe('Dashboard');
-    expect(i18n.t('settings.title')).toBe('Ajustes');
+    expect(i18n.t('settings.title')).toBe('Configuración');
   });
 
   it('switches language to Catalan (ca)', async () => {

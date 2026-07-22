@@ -55,13 +55,30 @@
     "exportService": "Exportar Servicio"
   },
   "settings": {
-    "title": "Ajustes",
-    "subtitle": "Identidad de nodo, seguridad, almacenamiento y configuración de idioma",
+    "title": "Configuración",
+    "subtitle": "Configuración de identidad del nodo, seguridad, almacenamiento e idioma",
+    "settingsSaved": "Configuración guardada.",
+    "securityErrors": "Revisa errores de Seguridad.",
+    "unsavedChanges": "Cambios no guardados.",
+    "upToDate": "Actualizado.",
+    "restartPanel": "Reiniciar Panel",
     "tabs": {
       "general": "General",
+      "lcd": "Pantalla LCD",
       "storage": "Almacenamiento",
-      "security": "Seguridad",
-      "lcd": "Pantalla LCD"
+      "security": "Seguridad"
+    },
+    "restart": {
+      "title": "Reinicio Requerido",
+      "reason_both": "Se requiere un reinicio para aplicar las nuevas configuraciones de Puerto GUI y Logs. Haz clic en \"Reiniciar Panel\" para aplicar.",
+      "reason_logging": "Se requiere un reinicio para aplicar la nueva configuración de Logs. Haz clic en \"Reiniciar Panel\" para aplicar.",
+      "reason_port": "Se requiere un reinicio para aplicar la nueva configuración del Puerto GUI. Haz clic en \"Reiniciar Panel\" para aplicar.",
+      "confirmTitle": "Confirmar Reinicio",
+      "confirmDesc": "¿Estás seguro de que deseas reiniciar el panel? Esto interrumpirá temporalmente la conectividad con la GUI. Si cambiaste el puerto, serás redirigido al nuevo puerto.",
+      "confirmBtn": "Confirmar Reinicio",
+      "restartingTitle": "Reiniciando panel...",
+      "reconnectingPort": "Reconectando al puerto",
+      "failedTrigger": "Error al solicitar el reinicio del panel."
     },
     "language": {
       "title": "Idioma de la Interfaz",
@@ -70,39 +87,32 @@
       "es": "Español (ES)",
       "ca": "Català (CA)"
     },
-    "restart": {
-      "title": "Reinicio Requerido",
-      "reason_port": "Se requiere reiniciar para aplicar la nueva configuración del Puerto del GUI. Haz clic en el botón 'Reiniciar Panel' para aplicar.",
-      "reason_logging": "Se requiere reiniciar para aplicar la nueva configuración de Registros/Logging. Haz clic en el botón 'Reiniciar Panel' para aplicar.",
-      "reason_both": "Se requiere reiniciar para aplicar las nuevas configuraciones del Puerto del GUI y de Registros. Haz clic en el botón 'Reiniciar Panel' para aplicar.",
-      "confirmTitle": "Confirmar Reinicio",
-      "confirmDesc": "¿Estás seguro de que deseas reiniciar el panel? Esto interrumpirá temporalmente la conectividad con la GUI. Si cambiaste el puerto, serás redirigido al nuevo puerto.",
-      "confirmBtn": "Confirmar Reinicio",
-      "restartingTitle": "Reiniciando panel...",
-      "reconnectingPort": "Reconectando al puerto"
-    },
-    "general": {
-      "brandingTitle": "Branding e Identidad del Nodo",
-      "stationName": "Nombre de la Estación / Organización",
+    "branding": {
+      "title": "Branding e Identidad del Nodo",
+      "stationName": "Nombre de la Estación",
       "logoAbbr": "Abreviatura del Logo",
-      "lcdAlias": "Alias LCD / Nodo",
-      "clickLogoUpload": "Haz clic en la imagen para subir un logo personalizado",
-      "logoHint": "Imagen cuadrada PNG/SVG. Máx 1MB.",
-      "networkTitle": "Configuración de Red",
+      "nodeAlias": "Alias LCD / Nodo",
+      "logoChange": "Haz clic para cambiar el logo",
+      "logoUpload": "Subir logo personalizado"
+    },
+    "network": {
+      "title": "Configuración de Red",
       "guiPort": "Puerto de Escucha del GUI",
-      "guiPortDesc": "Puerto de la interfaz Web HTTP (por defecto: 8000). Requiere reinicio para surtir efecto.",
-      "loggingTitle": "Configuración de Logs",
-      "loggingMode": "Modo",
-      "loggingStorage": "Almacenamiento de Logs",
-      "selectLogStorage": "Selecciona un almacenamiento de logs...",
-      "loggingRelativePath": "Ruta Relativa",
-      "loggingEnableRotation": "Habilitar Rotación de Logs",
-      "loggingRotationDesc": "Rota automáticamente los archivos de registro cuando alcanzan el tamaño máximo.",
-      "loggingMaxBytes": "Bytes Máximos",
-      "loggingBackupCount": "Cantidad de Respaldos",
-      "loggingEnableCompression": "Habilitar Compresión de Logs (.gz)",
-      "loggingCompressionDesc": "Comprime los archivos de log rotados para ahorrar espacio en disco.",
-      "loggingRetentionDays": "Días de Retención"
+      "guiPortDesc": "El puerto de red en el que este panel escucha peticiones de conexión."
+    },
+    "logging": {
+      "title": "CONFIGURACIÓN DE LOGS",
+      "mode": "Modo",
+      "storage": "Almacenamiento de Logs",
+      "selectStorage": "Selecciona un almacenamiento de logs...",
+      "relativePath": "Ruta Relativa",
+      "enableRotation": "Habilitar Rotación",
+      "rotationDesc": "Limitar tamaño de archivo y conservar respaldos",
+      "maxBytes": "Bytes Máximos",
+      "backupCount": "Cantidad de Respaldos",
+      "enableCompression": "Habilitar Compresión",
+      "compressionDesc": "Comprimir logs de respaldo (.gz)",
+      "retentionDays": "Días de Retención"
     },
     "lcd": {
       "title": "Pantalla LCD y Driver Serie",
@@ -152,7 +162,9 @@
       "newPasswordPlaceholder": "Dejar vacío para eliminar contraseña",
       "confirmPassword": "Confirmar Contraseña",
       "confirmPasswordPlaceholder": "Confirmar nueva contraseña",
-      "description": "Protege el panel de tu nodo FFmpeg contra modificaciones de stream o ejecución de comandos no autorizadas."
+      "description": "Protege el panel de tu nodo FFmpeg contra modificaciones de stream o ejecución de comandos no autorizadas.",
+      "passwordUpdatedSuccess": "Contraseña actualizada con éxito",
+      "saveSettingsError": "Error al guardar la configuración"
     }
   },
   "dashboard": {

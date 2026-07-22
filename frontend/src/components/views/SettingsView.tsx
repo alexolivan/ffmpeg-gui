@@ -403,7 +403,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       
       setSaveSuccess(true);
       if (newPassword !== '') {
-        setPasswordSuccess('Contraseña actualizada con éxito');
+        setPasswordSuccess(t('settings.security.passwordUpdatedSuccess', 'Password updated successfully'));
       }
       
       setNewPassword('');
@@ -415,7 +415,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }, 3000);
     } catch (err) {
       console.error(err);
-      setPasswordError('Error al guardar la configuración');
+      setPasswordError(t('settings.security.saveSettingsError', 'Error saving settings'));
     } finally {
       setIsSaving(false);
     }
@@ -431,7 +431,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     } catch (err) {
       console.error(err);
       setIsRestarting(false);
-      alert("Failed to trigger panel restart.");
+      alert(t('settings.restart.failedTrigger', 'Failed to trigger panel restart.'));
     }
   };
   

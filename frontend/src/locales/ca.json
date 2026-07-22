@@ -56,53 +56,63 @@
   },
   "settings": {
     "title": "Configuració",
-    "subtitle": "Identitat del node, seguretat, emmagatzematge i configuració d'idioma",
+    "subtitle": "Configuració d'identitat del node, seguretat, emmagatzematge i idioma",
+    "settingsSaved": "Configuració desada.",
+    "securityErrors": "Revisa errors de Seguretat.",
+    "unsavedChanges": "Canvis no desats.",
+    "upToDate": "Actualitzat.",
+    "restartPanel": "Reiniciar Panell",
     "tabs": {
       "general": "General",
+      "lcd": "Pantalla LCD",
       "storage": "Emmagatzematge",
-      "security": "Seguretat",
-      "lcd": "Pantalla LCD"
+      "security": "Seguretat"
+    },
+    "restart": {
+      "title": "Reinici Requerit",
+      "reason_both": "Es requereix un reinici per aplicar les noves configuracions de Port GUI i Registres. Fes clic a \"Reiniciar Panell\" per aplicar.",
+      "reason_logging": "Es requereix un reinici per aplicar la nova configuració de Registres. Fes clic a \"Reiniciar Panell\" per aplicar.",
+      "reason_port": "Es requereix un reinici per aplicar la nova configuració del Port GUI. Fes clic a \"Reiniciar Panell\" per aplicar.",
+      "confirmTitle": "Confirmar Reinici",
+      "confirmDesc": "Estàs segur que vols reiniciar el panell? Això interromprà temporalment la connectivitat amb la GUI. Si has canviat el port, seràs redirigit al nou port.",
+      "confirmBtn": "Confirmar Reinici",
+      "restartingTitle": "Reiniciant panell...",
+      "reconnectingPort": "Reconnectant al port",
+      "failedTrigger": "Error en sol·licitar el reinici del panell."
     },
     "language": {
-      "title": "Idioma de l'Interfície",
+      "title": "Idioma de la Interfície",
       "description": "Selecciona l'idioma de visualització de la interfície d'usuari.",
       "en": "English (US)",
       "es": "Español (ES)",
       "ca": "Català (CA)"
     },
-    "restart": {
-      "title": "Reinici Requerit",
-      "reason_port": "Es requereix reiniciar per aplicar la nova configuració del Port de la GUI. Fes clic al botó 'Reiniciar Panell' per aplicar.",
-      "reason_logging": "Es requereix reiniciar per aplicar la nova configuració de Registres/Logging. Fes clic al botó 'Reiniciar Panell' per aplicar.",
-      "reason_both": "Es requereix reiniciar per aplicar les noves configuracions del Port de la GUI i de Registres. Fes clic al botó 'Reiniciar Panell' per aplicar.",
-      "confirmTitle": "Confirmar Reinici",
-      "confirmDesc": "Estàs segur que vols reiniciar el panell? Això interromprà temporalment la connectivitat amb la GUI. Si has canviat el port, seràs redirigit al nou port.",
-      "confirmBtn": "Confirmar Reinici",
-      "restartingTitle": "Reiniciant panell...",
-      "reconnectingPort": "Reconnectant al port"
-    },
-    "general": {
-      "brandingTitle": "Branding i Identitat del Node",
-      "stationName": "Nom de l'Estació / Organització",
+    "branding": {
+      "title": "Branding i Identitat del Node",
+      "stationName": "Nom de l'Estació",
       "logoAbbr": "Abreviatura del Logotip",
-      "lcdAlias": "Àlies LCD / Node",
-      "clickLogoUpload": "Fes clic a la imatge per pujar un logotip personalitzat",
-      "logoHint": "Imatge quadrada PNG/SVG. Màx 1MB.",
-      "networkTitle": "Configuració de Xarxa",
+      "nodeAlias": "Àlies LCD / Node",
+      "logoChange": "Fes clic per canviar el logotip",
+      "logoUpload": "Pujar logotip personalitzat"
+    },
+    "network": {
+      "title": "Configuració de Xarxa",
       "guiPort": "Port d'Escolta del GUI",
-      "guiPortDesc": "Port de la interfície Web HTTP (per defecte: 8000). Requereix reinici per tenir efecte.",
-      "loggingTitle": "Configuració de Registres",
-      "loggingMode": "Mode",
-      "loggingStorage": "Emmagatzematge de Registres",
-      "selectLogStorage": "Selecciona un emmagatzematge de registres...",
-      "loggingRelativePath": "Ruta Relativa",
-      "loggingEnableRotation": "Habilitar Rotació de Registres",
-      "loggingRotationDesc": "Rota automàticament els fitxers de registre quan arriben a la mida màxima.",
-      "loggingMaxBytes": "Bytes Màxims",
-      "loggingBackupCount": "Nombre de Còpies de Seguretat",
-      "loggingEnableCompression": "Habilitar Compressió de Registres (.gz)",
-      "loggingCompressionDesc": "Comprimeix els fitxers de registre rotats per estalviar espai de disc.",
-      "loggingRetentionDays": "Dies de Retenció"
+      "guiPortDesc": "El port de xarxa en el qual aquest panell escolta peticions de connexió."
+    },
+    "logging": {
+      "title": "CONFIGURACIÓ DE REGISTRES",
+      "mode": "Mode",
+      "storage": "Emmagatzematge de Registres",
+      "selectStorage": "Selecciona un emmagatzematge de registres...",
+      "relativePath": "Ruta Relativa",
+      "enableRotation": "Habilitar Rotació",
+      "rotationDesc": "Limitar mida de fitxer i conservar còpies de seguretat",
+      "maxBytes": "Bytes Màxims",
+      "backupCount": "Nombre de Còpies de Seguretat",
+      "enableCompression": "Habilitar Compressió",
+      "compressionDesc": "Comprimir fitxers de registre (.gz)",
+      "retentionDays": "Dies de Retenció"
     },
     "lcd": {
       "title": "Pantalla LCD i Controladora Sèrie",
@@ -152,7 +162,9 @@
       "newPasswordPlaceholder": "Deixar buit per eliminar la contrasenya",
       "confirmPassword": "Confirmar Contrasenya",
       "confirmPasswordPlaceholder": "Confirmar nova contrasenya",
-      "description": "Protegeix el panell del teu node FFmpeg contra modificacions de stream o execució de comandes no autoritzades."
+      "description": "Protegeix el panell del teu node FFmpeg contra modificacions de stream o execució de comandes no autoritzades.",
+      "passwordUpdatedSuccess": "Contrasenya actualitzada amb èxit",
+      "saveSettingsError": "Error en desar la configuració"
     }
   },
   "dashboard": {

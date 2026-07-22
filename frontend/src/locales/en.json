@@ -57,11 +57,28 @@
   "settings": {
     "title": "Settings",
     "subtitle": "Node identity, security, storage and language configuration",
+    "settingsSaved": "Settings saved.",
+    "securityErrors": "Check Security errors.",
+    "unsavedChanges": "Unsaved changes.",
+    "upToDate": "Up to date.",
+    "restartPanel": "Restart Panel",
     "tabs": {
       "general": "General",
+      "lcd": "LCD Display",
       "storage": "Storage",
-      "security": "Security",
-      "lcd": "LCD Screen"
+      "security": "Security"
+    },
+    "restart": {
+      "title": "Restart Required",
+      "reason_both": "A restart is required to apply the new GUI Port and Logging configurations. Click the \"Restart Panel\" button to apply.",
+      "reason_logging": "A restart is required to apply the new Logging configuration. Click the \"Restart Panel\" button to apply.",
+      "reason_port": "A restart is required to apply the new GUI Port configuration. Click the \"Restart Panel\" button to apply.",
+      "confirmTitle": "Confirm Restart",
+      "confirmDesc": "Are you sure you want to restart the panel? This will temporarily interrupt connectivity to the GUI. If you changed the port, you will be redirected to the new port address.",
+      "confirmBtn": "Confirm Restart",
+      "restartingTitle": "Restarting panel...",
+      "reconnectingPort": "Reconnecting to port",
+      "failedTrigger": "Failed to trigger panel restart."
     },
     "language": {
       "title": "Interface Language",
@@ -70,39 +87,32 @@
       "es": "Español (ES)",
       "ca": "Català (CA)"
     },
-    "restart": {
-      "title": "Restart Required",
-      "reason_port": "A restart is required to apply the new GUI Port configuration. Click the 'Restart Panel' button to apply.",
-      "reason_logging": "A restart is required to apply the new Logging configuration. Click the 'Restart Panel' button to apply.",
-      "reason_both": "A restart is required to apply the new GUI Port and Logging configurations. Click the 'Restart Panel' button to apply.",
-      "confirmTitle": "Confirm Restart",
-      "confirmDesc": "Are you sure you want to restart the panel? This will temporarily interrupt connectivity to the GUI. If you changed the port, you will be redirected to the new port address.",
-      "confirmBtn": "Confirm Restart",
-      "restartingTitle": "Restarting panel...",
-      "reconnectingPort": "Reconnecting to port"
-    },
-    "general": {
-      "brandingTitle": "Branding & Node Identity",
-      "stationName": "Station / Organization Name",
+    "branding": {
+      "title": "Branding & Node Identity",
+      "stationName": "Station Name",
       "logoAbbr": "Logo Abbreviation",
-      "lcdAlias": "LCD / Node Alias",
-      "clickLogoUpload": "Click image to upload custom logo",
-      "logoHint": "PNG/SVG square image. Max 1MB.",
-      "networkTitle": "Network Settings",
+      "nodeAlias": "LCD / Node Alias",
+      "logoChange": "Click to change logo",
+      "logoUpload": "Upload custom logo"
+    },
+    "network": {
+      "title": "Network Settings",
       "guiPort": "GUI Listen Port",
-      "guiPortDesc": "Web HTTP interface port (default: 8000). Requires restart to take effect.",
-      "loggingTitle": "Logging Configuration",
-      "loggingMode": "Mode",
-      "loggingStorage": "Log Storage",
-      "selectLogStorage": "Select a Log Storage...",
-      "loggingRelativePath": "Relative Path",
-      "loggingEnableRotation": "Enable Log Rotation",
-      "loggingRotationDesc": "Automatically rotate log files when they reach maximum size.",
-      "loggingMaxBytes": "Max Bytes",
-      "loggingBackupCount": "Backup Count",
-      "loggingEnableCompression": "Enable Log Compression (.gz)",
-      "loggingCompressionDesc": "Compress rotated log files to save disk space.",
-      "loggingRetentionDays": "Retention Days"
+      "guiPortDesc": "The network port on which this dashboard listens for connection requests."
+    },
+    "logging": {
+      "title": "LOGGING CONFIGURATION",
+      "mode": "Mode",
+      "storage": "Log Storage",
+      "selectStorage": "Select a Log Storage...",
+      "relativePath": "Relative Path",
+      "enableRotation": "Enable Rotation",
+      "rotationDesc": "Limit file size and retain archives",
+      "maxBytes": "Max Bytes",
+      "backupCount": "Backup Count",
+      "enableCompression": "Enable Compression",
+      "compressionDesc": "Compress backup logs (.gz)",
+      "retentionDays": "Retention Days"
     },
     "lcd": {
       "title": "LCD display & Serial Driver",
@@ -152,7 +162,9 @@
       "newPasswordPlaceholder": "Leave empty to remove password",
       "confirmPassword": "Confirm Password",
       "confirmPasswordPlaceholder": "Confirm new password",
-      "description": "Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution."
+      "description": "Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.",
+      "passwordUpdatedSuccess": "Password updated successfully",
+      "saveSettingsError": "Error saving settings"
     }
   },
   "dashboard": {
