@@ -1,21 +1,23 @@
 
-interface BuildProfile {
+import { useTranslation } from 'react-i18next'
+
+export interface BuildProfile {
   id: number
   name: string
   ffmpeg_version: string
   srt_version: string | null
-  build_options: Record<string, boolean>
-  sdk_paths: Record<string, string> | null
-  status: string
-  is_default: boolean
-  sources_cleaned: boolean
-  auto_clean?: boolean
-  disk_usage_mb: number | null
-  build_log_summary: string | null
-  ffmpeg_version_output: string | null
-  created_at: string | null
+  status: 'pending' | 'building' | 'ready' | 'failed'
   built_at: string | null
+  disk_usage_mb: number | null
+  sources_cleaned: boolean
+  is_default: boolean
+  auto_clean?: boolean
   storage_id: number | null
+  build_options?: Record<string, boolean>
+  sdk_paths?: Record<string, string> | null
+  build_log_summary: string | null
+  ffmpeg_version_output?: string | null
+  created_at?: string | null
 }
 
 interface BuildProfileCardProps {
@@ -32,13 +34,6 @@ interface BuildProfileCardProps {
   onExport: (id: number) => void
 }
 
-const STATUS_STYLES: Record<string, { dot: string; badge: string; label: string }> = {
-  pending:  { dot: 'bg-white/30',                    badge: 'bg-white/10 text-white/50',         label: 'PENDING' },
-  building: { dot: 'bg-brand-orange animate-pulse',  badge: 'bg-brand-orange/20 text-brand-orange', label: 'BUILDING' },
-  ready:    { dot: 'bg-brand-lime',                   badge: 'bg-brand-lime/20 text-brand-lime',     label: 'READY' },
-  failed:   { dot: 'bg-red-500',                      badge: 'bg-red-500/20 text-red-400',           label: 'FAILED' },
-}
-
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('es-ES', {
@@ -47,11 +42,18 @@ function formatDate(iso: string | null): string {
   })
 }
 
-
-
 export default function BuildProfileCard({
   build, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport,
 }: BuildProfileCardProps) {
+  const { t } = useTranslation()
+
+  const STATUS_STYLES: Record<string, { dot: string; badge: string; label: string }> = {
+    pending:  { dot: 'bg-white/30',                    badge: 'bg-white/10 text-white/50',         label: t('forge.status.pending', 'PENDING') },
+    building: { dot: 'bg-brand-orange animate-pulse',  badge: 'bg-brand-orange/20 text-brand-orange', label: t('forge.status.building', 'BUILDING') },
+    ready:    { dot: 'bg-brand-lime',                   badge: 'bg-brand-lime/20 text-brand-lime',     label: t('forge.status.ready', 'READY') },
+    failed:   { dot: 'bg-red-500',                      badge: 'bg-red-500/20 text-red-400',           label: t('forge.status.failed', 'FAILED') },
+  }
+
   const style = STATUS_STYLES[build.status] || STATUS_STYLES.pending
 
   return (
@@ -62,7 +64,7 @@ export default function BuildProfileCard({
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           {build.is_default && (
-            <span className="text-brand-lime text-lg" title="Default Build">★</span>
+            <span className="text-brand-lime text-lg" title={t('forge.defaultBuildTitle', 'Default Build')}>★</span>
           )}
           <div>
             <h4 className="text-lg font-bold">{build.name}</h4>
@@ -109,22 +111,22 @@ export default function BuildProfileCard({
       {/* Metadata Row */}
       <div className="flex items-center gap-6 text-[11px] text-text-secondary mb-5 border-t border-white/5 pt-4">
         <div>
-          <span className="uppercase tracking-widest text-[9px] block mb-0.5">Built</span>
+          <span className="uppercase tracking-widest text-[9px] block mb-0.5">{t('forge.built', 'Built')}</span>
           <span className="text-white/70 font-mono">{formatDate(build.built_at)}</span>
         </div>
         <div>
-          <span className="uppercase tracking-widest text-[9px] block mb-0.5">Size</span>
+          <span className="uppercase tracking-widest text-[9px] block mb-0.5">{t('forge.size', 'Size')}</span>
           <span className="text-white/70 font-mono">
             {build.disk_usage_mb != null ? `${build.disk_usage_mb} MB` : '—'}
           </span>
         </div>
         {build.sources_cleaned ? (
           <div className="text-brand-lime/60 text-[9px] uppercase tracking-widest font-bold">
-            ✓ Sources cleaned
+            ✓ {t('forge.sourcesCleaned', 'Sources cleaned')}
           </div>
         ) : build.auto_clean ? (
           <div className="text-brand-orange/60 text-[9px] uppercase tracking-widest font-bold">
-            ⚡ Auto-clean active
+            ⚡ {t('forge.autoCleanActive', 'Auto-clean active')}
           </div>
         ) : null}
         {build.build_log_summary && build.status === 'failed' && (
@@ -140,7 +142,7 @@ export default function BuildProfileCard({
           <button
             onClick={() => onStop(build.id)}
             className="pill-button bg-red-500/20 text-red-400 text-xs animate-pulse"
-          >ABORT</button>
+          >{t('forge.abort', 'ABORT')}</button>
         ) : (
           <button
             onClick={() => onCompile(build.id)}
@@ -153,48 +155,46 @@ export default function BuildProfileCard({
                   : 'bg-brand-orange/20 text-brand-orange hover:bg-brand-orange/30'
             }`}
           >
-            {build.status === 'ready' ? 'RECOMPILE' : build.status === 'failed' ? 'RETRY BUILD' : 'COMPILE'}
+            {build.status === 'ready' ? t('forge.recompile', 'RECOMPILE') : build.status === 'failed' ? t('forge.retryBuild', 'RETRY BUILD') : t('forge.compile', 'COMPILE')}
           </button>
         )}
 
         {build.status === 'ready' && (
           <>
             <button onClick={() => onValidate(build.id)}
-              className="pill-button bg-white/5 text-xs hover:bg-white/10">VALIDATE</button>
+              className="pill-button bg-white/5 text-xs hover:bg-white/10">{t('forge.validate', 'VALIDATE')}</button>
             {!build.sources_cleaned && (
               <button onClick={() => onCleanSources(build.id)}
-                className="pill-button bg-white/5 text-xs hover:bg-white/10">CLEAN SRC</button>
+                className="pill-button bg-white/5 text-xs hover:bg-white/10">{t('forge.cleanSrc', 'CLEAN SRC')}</button>
             )}
             {!build.is_default && (
               <button onClick={() => onSetDefault(build.id)}
-                className="pill-button bg-brand-lime/10 text-brand-lime text-xs hover:bg-brand-lime/20">SET DEFAULT</button>
+                className="pill-button bg-brand-lime/10 text-brand-lime text-xs hover:bg-brand-lime/20">{t('common.setDefault', 'SET DEFAULT')}</button>
             )}
           </>
         )}
 
         {(build.status === 'building' || build.status === 'ready' || build.status === 'failed') && (
           <button onClick={() => onViewLogs(build.id)}
-            className="pill-button bg-white/5 text-xs hover:bg-white/10">VIEW LOGS</button>
+            className="pill-button bg-white/5 text-xs hover:bg-white/10">{t('forge.viewLogs', 'VIEW LOGS')}</button>
         )}
 
         <button onClick={() => onExport(build.id)}
-          className="pill-button bg-white/5 text-xs hover:bg-white/10">EXPORT RECIPE</button>
+          className="pill-button bg-white/5 text-xs hover:bg-white/10">{t('forge.exportRecipe', 'EXPORT RECIPE')}</button>
 
         <button
           onClick={() => onEdit(build)}
           disabled={build.status === 'building'}
           className={`pill-button text-xs ml-auto ${build.status === 'building' ? 'opacity-30 cursor-not-allowed bg-white/5 text-white/40' : 'bg-white/5 hover:bg-white/10'}`}
         >
-          EDIT
+          {t('common.edit', 'EDIT')}
         </button>
 
         {build.status !== 'building' && (
           <button onClick={() => onDelete(build.id)}
-            className="pill-button bg-white/5 text-xs hover:bg-red-500/10 hover:text-red-400">DELETE</button>
+            className="pill-button bg-white/5 text-xs hover:bg-red-500/10 hover:text-red-400">{t('common.delete', 'DELETE')}</button>
         )}
       </div>
     </div>
   )
 }
-
-export type { BuildProfile }

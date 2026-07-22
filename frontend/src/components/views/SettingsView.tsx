@@ -467,20 +467,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Status Indicator */}
           <div className="text-[10px] text-text-secondary font-medium">
             {saveSuccess ? (
-              <span className="text-brand-lime font-bold animate-pulse">✓ Settings saved.</span>
+              <span className="text-brand-lime font-bold animate-pulse">✓ {t('settings.settingsSaved', 'Settings saved.')}</span>
             ) : passwordError ? (
-              <span className="text-red-500 font-bold">⚠️ Check Security errors.</span>
+              <span className="text-red-500 font-bold">⚠️ {t('settings.securityErrors', 'Check Security errors.')}</span>
             ) : hasChanges ? (
-              <span className="text-brand-orange font-bold">● Unsaved changes.</span>
+              <span className="text-brand-orange font-bold">● {t('settings.unsavedChanges', 'Unsaved changes.')}</span>
             ) : (
-              <span className="opacity-40">Up to date.</span>
+              <span className="opacity-40">{t('settings.upToDate', 'Up to date.')}</span>
             )}
           </div>
           <button
             onClick={() => setShowRestartConfirm(true)}
             className="border border-red-500/30 text-red-400 bg-red-500/10 hover:bg-red-500/20 active:scale-95 pill-button font-black text-xs py-2 px-4 transition-all uppercase tracking-widest cursor-pointer"
           >
-            Restart Panel
+            {t('settings.restartPanel', 'Restart Panel')}
           </button>
           <button
             onClick={handleSaveAll}
@@ -491,7 +491,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 : 'bg-white/5 text-white/40 cursor-not-allowed border border-white/5'
             }`}
           >
-            {isSaving ? 'Saving...' : 'Save Settings'}
+            {isSaving ? t('common.saving', 'Saving...') : t('common.save', 'Save Settings')}
           </button>
         </div>
       </header>
@@ -508,7 +508,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <GearIcon size={14} />
-          General
+          {t('settings.tabs.general', 'General')}
         </button>
         <button
           type="button"
@@ -520,7 +520,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <SlidersIcon size={14} />
-          LCD Display
+          {t('settings.tabs.lcd', 'LCD Display')}
         </button>
         <button
           type="button"
@@ -532,7 +532,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <ServerIcon size={14} />
-          Storage
+          {t('settings.tabs.storage', 'Storage')}
         </button>
         <button
           type="button"
@@ -544,7 +544,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <ShieldIcon size={14} />
-          Security
+          {t('settings.tabs.security', 'Security')}
         </button>
       </div>
 
@@ -614,13 +614,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
               <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Branding & Node Identity</h4>
+                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.branding.title', 'Branding & Node Identity')}</h4>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Station Name</label>
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.branding.stationName', 'Station Name')}</label>
                     <input 
                       type="text" 
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all"
@@ -630,7 +630,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Logo Abbreviation</label>
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.branding.logoAbbr', 'Logo Abbreviation')}</label>
                     <input 
                       type="text" 
                       maxLength={3}
@@ -641,7 +641,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">LCD / Node Alias</label>
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.branding.nodeAlias', 'LCD / Node Alias')}</label>
                     <input 
                       type="text" 
                       maxLength={12}
@@ -670,7 +670,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                   )}
                   <div className="text-[9px] uppercase font-bold text-text-secondary mt-2.5 text-center tracking-wider">
-                    {settings.logo_path ? 'Click to change logo' : 'Upload custom logo'}
+                    {settings.logo_path ? t('settings.branding.logoChange', 'Click to change logo') : t('settings.branding.logoUpload', 'Upload custom logo')}
                   </div>
                 </div>
               </div>
@@ -680,11 +680,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
               <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Network Settings</h4>
+                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.network.title', 'Network Settings')}</h4>
               </div>
               
               <div className="max-w-xs space-y-1">
-                <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">GUI Listen Port</label>
+                <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.network.guiPort', 'GUI Listen Port')}</label>
                 <input 
                   type="number" 
                   min={1}
@@ -694,7 +694,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onChange={e => setGuiPort(Number(e.target.value))}
                 />
                 <p className="text-[9px] text-text-secondary leading-tight italic mt-1">
-                  The network port on which this dashboard listens for connection requests.
+                  {t('settings.network.guiPortDesc', 'The network port on which this dashboard listens for connection requests.')}
                 </p>
               </div>
             </div>
@@ -703,13 +703,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
               <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">LOGGING CONFIGURATION</h4>
+                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.logging.title', 'LOGGING CONFIGURATION')}</h4>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Mode</label>
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.logging.mode', 'Mode')}</label>
                     <select
                       value={loggingMode}
                       onChange={e => setLoggingMode(e.target.value)}
@@ -724,13 +724,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {(loggingMode === 'file' || loggingMode === 'both') && (
                     <>
                       <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Log Storage</label>
+                        <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.logging.storage', 'Log Storage')}</label>
                         <select
                           value={loggingStorageId}
                           onChange={e => setLoggingStorageId(e.target.value === '' ? '' : Number(e.target.value))}
                           className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white"
                         >
-                          <option value="" className="bg-black text-white">Select a Log Storage...</option>
+                          <option value="" className="bg-black text-white">{t('settings.logging.selectStorage', 'Select a Log Storage...')}</option>
                           {storages.filter(s => s.type === 'logs').map(s => (
                             <option key={s.id} value={s.id} className="bg-black text-white">
                               {s.name} ({s.path})
@@ -740,7 +740,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Relative Path</label>
+                        <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.logging.relativePath', 'Relative Path')}</label>
                         <input
                           type="text"
                           className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white font-mono"
@@ -757,8 +757,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
                       <div>
-                        <h4 className="text-xs font-bold text-white">Enable Rotation</h4>
-                        <p className="text-[9px] text-text-secondary leading-snug">Limit file size and retain archives</p>
+                        <h4 className="text-xs font-bold text-white">{t('settings.logging.enableRotation', 'Enable Rotation')}</h4>
+                        <p className="text-[9px] text-text-secondary leading-snug">{t('settings.logging.rotationDesc', 'Limit file size and retain archives')}</p>
                       </div>
                       <button
                         type="button"
@@ -778,7 +778,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {loggingRotationEnabled && (
                       <div className="grid grid-cols-2 gap-3 pl-1">
                         <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Max Bytes</label>
+                          <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.logging.maxBytes', 'Max Bytes')}</label>
                           <input
                             type="number"
                             min={0}
@@ -788,7 +788,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Backup Count</label>
+                          <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.logging.backupCount', 'Backup Count')}</label>
                           <input
                             type="number"
                             min={0}
@@ -802,8 +802,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                     <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
                       <div>
-                        <h4 className="text-xs font-bold text-white">Enable Compression</h4>
-                        <p className="text-[9px] text-text-secondary leading-snug">Compress backup logs (.gz)</p>
+                        <h4 className="text-xs font-bold text-white">{t('settings.logging.enableCompression', 'Enable Compression')}</h4>
+                        <p className="text-[9px] text-text-secondary leading-snug">{t('settings.logging.compressionDesc', 'Compress backup logs (.gz)')}</p>
                       </div>
                       <button
                         type="button"
@@ -821,7 +821,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Retention Days</label>
+                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.logging.retentionDays', 'Retention Days')}</label>
                       <input
                         type="number"
                         min={0}
@@ -843,15 +843,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="glass-card p-4 !rounded-2xl space-y-4">
               <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">LCD display & Serial Driver</h4>
+                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.lcd.title', 'LCD display & Serial Driver')}</h4>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5">
                     <div>
-                      <h4 className="text-xs font-bold text-white">Enable LCD Display</h4>
-                      <p className="text-[9px] text-text-secondary leading-snug">Control status via hardware panel</p>
+                      <h4 className="text-xs font-bold text-white">{t('settings.lcd.enable', 'Enable LCD Display')}</h4>
+                      <p className="text-[9px] text-text-secondary leading-snug">{t('settings.lcd.enableDesc', 'Control status via hardware panel')}</p>
                     </div>
                     <button
                       type="button"
@@ -869,7 +869,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">LCD Model</label>
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.lcd.model', 'LCD Model')}</label>
                     <select
                       value={lcdModel}
                       onChange={e => setLcdModel(e.target.value)}
@@ -880,7 +880,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Serial Port</label>
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.lcd.serialPort', 'Serial Port')}</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -895,7 +895,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         disabled={isProbing}
                         className="px-3 bg-white/10 border border-white/10 rounded-lg hover:bg-white/20 font-bold text-[10px] uppercase tracking-wider transition-all text-white cursor-pointer"
                       >
-                        {isProbing ? 'Scanning...' : 'Scan'}
+                        {isProbing ? t('common.scanning', 'Scanning...') : t('common.scan', 'Scan')}
                       </button>
                     </div>
                   </div>
@@ -903,9 +903,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="bg-white/5 border border-white/10 rounded-xl p-3 flex flex-col justify-between min-h-[140px]">
                   <div>
-                    <h4 className="text-[9px] font-bold uppercase tracking-wider mb-1.5 text-text-secondary">Auto-Detected Serial Ports</h4>
+                    <h4 className="text-[9px] font-bold uppercase tracking-wider mb-1.5 text-text-secondary">{t('settings.lcd.detectedPorts', 'Auto-Detected Serial Ports')}</h4>
                     {probeResults.length === 0 && (!settings.lcd_enabled || !settings.lcd_port) ? (
-                      <p className="text-[10px] text-text-secondary italic leading-normal">No active serial displays detected. Click "Scan" to probe COM ports.</p>
+                      <p className="text-[10px] text-text-secondary italic leading-normal">{t('settings.lcd.noPortsDetected', 'No active serial displays detected. Click "Scan" to probe COM ports.')}</p>
                     ) : (
                       <div className="space-y-1.5 max-h-[100px] overflow-y-auto pr-1 custom-scrollbar">
                         {settings.lcd_enabled && settings.lcd_port && !probeResults.some(p => p.port === settings.lcd_port) && (
@@ -919,7 +919,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           >
                             <div>
                               <div className="text-[11px] font-bold text-brand-lime font-mono">{settings.lcd_port}</div>
-                              <div className="text-[8px] text-text-secondary leading-none mt-0.5">Configured Port (Active)</div>
+                              <div className="text-[8px] text-text-secondary leading-none mt-0.5">{t('settings.lcd.configuredActive', 'Configured Port (Active)')}</div>
                             </div>
                             <span className="text-[8px] font-black uppercase bg-brand-lime text-black px-1.5 py-0.5 rounded leading-none">
                               {settings.lcd_model || 'cfa635'}
@@ -951,7 +951,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                   
                   <p className="text-[8px] text-text-secondary leading-tight italic mt-2">
-                    Make sure the service user is in the Dialout group to permit raw serial operations.
+                    {t('settings.lcd.dialoutPermissionHint', 'Make sure the service user is in the Dialout group to permit raw serial operations.')}
                   </p>
                 </div>
               </div>
@@ -959,7 +959,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {/* Backlight / LEDs */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-white/5">
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Active Brightness ({lcdBrightness}%)</label>
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.lcd.activeBrightness', 'Active Brightness ({{brightness}}%)', { brightness: lcdBrightness })}</label>
                   <input
                     type="range"
                     min="0"
@@ -971,7 +971,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Dimmed Brightness ({lcdDimBrightness}%)</label>
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.lcd.dimmedBrightness', 'Dimmed Brightness ({{brightness}}%)', { brightness: lcdDimBrightness })}</label>
                   <input
                     type="range"
                     min="0"
@@ -983,7 +983,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Dim Timeout (sec)</label>
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.lcd.dimTimeout', 'Dim Timeout (sec)')}</label>
                   <input
                     type="number"
                     min="5"
@@ -999,64 +999,64 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="glass-card p-4 !rounded-2xl space-y-3">
               <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
-                <h4 className="text-brand-orange font-bold text-xs uppercase tracking-wider">Status LED Profiles</h4>
+                <h4 className="text-brand-orange font-bold text-xs uppercase tracking-wider">{t('settings.lcd.ledProfiles', 'Status LED Profiles')}</h4>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">LED 0 (Top)</label>
+                  <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.lcd.led0', 'LED 0 (Top)')}</label>
                   <select
                     value={lcdLed0Profile}
                     onChange={e => setLcdLed0Profile(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 focus:border-brand-lime outline-none text-white text-xs"
                   >
-                    <option value="heartbeat" className="bg-black text-white">Heartbeat (Blink)</option>
-                    <option value="streams" className="bg-black text-white">Streams Status</option>
-                    <option value="tasks" className="bg-black text-white">Task Events</option>
-                    <option value="alert" className="bg-black text-white">CPU Alert</option>
-                    <option value="disabled" className="bg-black text-white">Disabled</option>
+                    <option value="heartbeat" className="bg-black text-white">{t('settings.lcd.ledOption.heartbeat', 'Heartbeat (Blink)')}</option>
+                    <option value="streams" className="bg-black text-white">{t('settings.lcd.ledOption.streams', 'Streams Status')}</option>
+                    <option value="tasks" className="bg-black text-white">{t('settings.lcd.ledOption.tasks', 'Task Events')}</option>
+                    <option value="alert" className="bg-black text-white">{t('settings.lcd.ledOption.alert', 'CPU Alert')}</option>
+                    <option value="disabled" className="bg-black text-white">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">LED 1</label>
+                  <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.lcd.led1', 'LED 1')}</label>
                   <select
                     value={lcdLed1Profile}
                     onChange={e => setLcdLed1Profile(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 focus:border-brand-lime outline-none text-white text-xs"
                   >
-                    <option value="heartbeat" className="bg-black text-white">Heartbeat (Blink)</option>
-                    <option value="streams" className="bg-black text-white">Streams Status</option>
-                    <option value="tasks" className="bg-black text-white">Task Events</option>
-                    <option value="alert" className="bg-black text-white">CPU Alert</option>
-                    <option value="disabled" className="bg-black text-white">Disabled</option>
+                    <option value="heartbeat" className="bg-black text-white">{t('settings.lcd.ledOption.heartbeat', 'Heartbeat (Blink)')}</option>
+                    <option value="streams" className="bg-black text-white">{t('settings.lcd.ledOption.streams', 'Streams Status')}</option>
+                    <option value="tasks" className="bg-black text-white">{t('settings.lcd.ledOption.tasks', 'Task Events')}</option>
+                    <option value="alert" className="bg-black text-white">{t('settings.lcd.ledOption.alert', 'CPU Alert')}</option>
+                    <option value="disabled" className="bg-black text-white">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">LED 2</label>
+                  <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.lcd.led2', 'LED 2')}</label>
                   <select
                     value={lcdLed2Profile}
                     onChange={e => setLcdLed2Profile(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 focus:border-brand-lime outline-none text-white text-xs"
                   >
-                    <option value="heartbeat" className="bg-black text-white">Heartbeat (Blink)</option>
-                    <option value="streams" className="bg-black text-white">Streams Status</option>
-                    <option value="tasks" className="bg-black text-white">Task Events</option>
-                    <option value="alert" className="bg-black text-white">CPU Alert</option>
-                    <option value="disabled" className="bg-black text-white">Disabled</option>
+                    <option value="heartbeat" className="bg-black text-white">{t('settings.lcd.ledOption.heartbeat', 'Heartbeat (Blink)')}</option>
+                    <option value="streams" className="bg-black text-white">{t('settings.lcd.ledOption.streams', 'Streams Status')}</option>
+                    <option value="tasks" className="bg-black text-white">{t('settings.lcd.ledOption.tasks', 'Task Events')}</option>
+                    <option value="alert" className="bg-black text-white">{t('settings.lcd.ledOption.alert', 'CPU Alert')}</option>
+                    <option value="disabled" className="bg-black text-white">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">LED 3 (Bottom)</label>
+                  <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.lcd.led3', 'LED 3 (Bottom)')}</label>
                   <select
                     value={lcdLed3Profile}
                     onChange={e => setLcdLed3Profile(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 focus:border-brand-lime outline-none text-white text-xs"
                   >
-                    <option value="heartbeat" className="bg-black text-white">Heartbeat (Blink)</option>
-                    <option value="streams" className="bg-black text-white">Streams Status</option>
-                    <option value="tasks" className="bg-black text-white">Task Events</option>
-                    <option value="alert" className="bg-black text-white">CPU Alert</option>
-                    <option value="disabled" className="bg-black text-white">Disabled</option>
+                    <option value="heartbeat" className="bg-black text-white">{t('settings.lcd.ledOption.heartbeat', 'Heartbeat (Blink)')}</option>
+                    <option value="streams" className="bg-black text-white">{t('settings.lcd.ledOption.streams', 'Streams Status')}</option>
+                    <option value="tasks" className="bg-black text-white">{t('settings.lcd.ledOption.tasks', 'Task Events')}</option>
+                    <option value="alert" className="bg-black text-white">{t('settings.lcd.ledOption.alert', 'CPU Alert')}</option>
+                    <option value="disabled" className="bg-black text-white">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
               </div>
@@ -1076,11 +1076,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="glass-card p-4 !rounded-2xl space-y-4">
                 <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Add Storage Drive</h4>
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.storage.addTitle', 'Add Storage Drive')}</h4>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Storage Name</label>
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.storage.name', 'Storage Name')}</label>
                     <input
                       type="text"
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white"
@@ -1090,7 +1090,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Storage Type</label>
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.storage.type', 'Storage Type')}</label>
                     <select
                       value={newType}
                       onChange={e => setNewType(e.target.value)}
@@ -1105,7 +1105,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Absolute Directory Path</label>
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.storage.path', 'Absolute Directory Path')}</label>
                     <input
                       type="text"
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono text-white"
@@ -1132,7 +1132,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       (!newPath.trim() || isAddingValidating) ? 'opacity-40 cursor-not-allowed' : ''
                     }`}
                   >
-                    {isAddingValidating ? 'Validating...' : 'Validate Path'}
+                    {isAddingValidating ? t('settings.storage.validating', 'Validating...') : t('settings.storage.validatePath', 'Validate Path')}
                   </button>
                   <button
                     type="button"
@@ -1144,7 +1144,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         : 'bg-white/5 text-white/40 cursor-not-allowed border border-white/5'
                     }`}
                   >
-                    {isAdding ? 'Saving...' : 'Save Storage'}
+                    {isAdding ? t('common.saving', 'Saving...') : t('settings.storage.saveStorage', 'Save Storage')}
                   </button>
                 </div>
               </div>
@@ -1163,16 +1163,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <div className="flex items-center justify-between border-b border-white/5 pb-2">
                           <div className="flex items-center gap-1.5">
                             <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
-                            <h4 className="text-white font-bold text-xs uppercase tracking-wider">{type} STorage Drives</h4>
+                            <h4 className="text-white font-bold text-xs uppercase tracking-wider">{t('settings.storage.typeDrives', '{{type}} Storage Drives', { type: type.toUpperCase() })}</h4>
                           </div>
                           <span className="text-[10px] font-mono text-text-secondary bg-white/5 px-2 py-0.5 rounded">
-                            {typeStorages.length} configured
+                            {t('settings.storage.configuredCount', '{{count}} configured', { count: typeStorages.length })}
                           </span>
                         </div>
 
                         {typeStorages.length === 0 ? (
                           <div className="py-4 text-center text-xs text-text-secondary italic">
-                            No storage drives registered for this category.
+                            {t('settings.storage.noDrives', 'No storage drives registered for this category.')}
                           </div>
                         ) : (
                           <div className="space-y-3 divide-y divide-white/5">
@@ -1188,7 +1188,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                     <div className="space-y-3">
                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <div className="space-y-1">
-                                          <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">Storage Name</label>
+                                          <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.storage.name', 'Storage Name')}</label>
                                           <input
                                             type="text"
                                             className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-white"
@@ -1197,7 +1197,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           />
                                         </div>
                                         <div className="space-y-1">
-                                          <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">Directory Path</label>
+                                          <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.storage.path', 'Absolute Directory Path')}</label>
                                           <input
                                             type="text"
                                             className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono text-white"
@@ -1221,14 +1221,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           onClick={() => handleValidatePath(editPath, true)}
                                           className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all text-white cursor-pointer"
                                         >
-                                          {isEditValidating ? 'Validating...' : 'Validate Path'}
+                                          {isEditValidating ? t('settings.storage.validating', 'Validating...') : t('settings.storage.validatePath', 'Validate Path')}
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => setEditingId(null)}
                                           className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all text-text-secondary cursor-pointer"
                                         >
-                                          Cancel
+                                          {t('common.cancel', 'Cancel')}
                                         </button>
                                         <button
                                           type="button"
@@ -1236,7 +1236,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           onClick={() => handleSaveEdit(s.id)}
                                           className="px-4 py-1.5 bg-brand-lime text-black rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                                         >
-                                          {isSavingEdit ? 'Saving...' : 'Save'}
+                                          {isSavingEdit ? t('common.saving', 'Saving...') : t('common.save', 'Save')}
                                         </button>
                                       </div>
                                     </div>
@@ -1254,7 +1254,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             </span>
                                             {s.is_default && (
                                               <span className="text-[9px] font-black uppercase bg-brand-lime text-black px-1.5 py-0.5 rounded tracking-widest">
-                                                DEFAULT
+                                                {t('common.default', 'DEFAULT')}
                                               </span>
                                             )}
                                           </div>
@@ -1277,7 +1277,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             className={`p-1.5 rounded bg-white/5 border border-white/5 hover:bg-white/10 transition-all text-white cursor-pointer ${
                                               s.is_default ? 'opacity-30 cursor-not-allowed' : ''
                                             }`}
-                                            title={s.is_default ? 'Cannot edit default storage' : 'Edit Storage'}
+                                            title={s.is_default ? t('settings.storage.cannotEditDefault', 'Cannot edit default storage') : t('settings.storage.editStorage', 'Edit Storage')}
                                           >
                                             <PencilIcon size={12} />
                                           </button>
@@ -1288,7 +1288,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             className={`p-1.5 rounded bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all text-red-400 cursor-pointer ${
                                               s.is_default ? 'opacity-30 cursor-not-allowed' : ''
                                             }`}
-                                            title={s.is_default ? 'Cannot delete default storage' : 'Delete Storage'}
+                                            title={s.is_default ? t('settings.storage.cannotDeleteDefault', 'Cannot delete default storage') : t('settings.storage.deleteStorage', 'Delete Storage')}
                                           >
                                             <TrashIcon size={12} />
                                           </button>
@@ -1298,7 +1298,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                       {/* Space Utilization Details */}
                                       <div className="space-y-1">
                                         <div className="flex justify-between items-center text-[10px] font-bold text-text-secondary">
-                                          <span>Space Utilization</span>
+                                          <span>{t('settings.storage.utilization', 'Space Utilization')}</span>
                                           <span className="font-mono text-white">
                                             {formatGB(s.used)} / {formatGB(s.total)} ({usedPercent}%)
                                           </span>
@@ -1331,25 +1331,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
             <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
               <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-              <h4 className="text-red-400 font-bold text-xs uppercase tracking-wider">Security & Access</h4>
+              <h4 className="text-red-400 font-bold text-xs uppercase tracking-wider">{t('settings.security.title', 'Security & Access')}</h4>
             </div>
 
             <div className="max-w-md space-y-3">
               <div className="space-y-1">
-                <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">New Password</label>
+                <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.security.newPassword', 'New Password')}</label>
                 <input 
                   type="password" 
-                  placeholder="Leave empty to remove password"
+                  placeholder={t('settings.security.newPasswordPlaceholder', 'Leave empty to remove password')}
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-red-500 transition-all"
                   value={newPassword}
                   onChange={e => { setNewPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">Confirm Password</label>
+                <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.security.confirmPassword', 'Confirm Password')}</label>
                 <input 
                   type="password" 
-                  placeholder="Confirm new password"
+                  placeholder={t('settings.security.confirmPasswordPlaceholder', 'Confirm new password')}
                   className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-red-500 transition-all"
                   value={confirmPassword}
                   onChange={e => { setConfirmPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
@@ -1360,7 +1360,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {passwordSuccess && <p className="text-[10px] text-brand-lime font-bold mt-1">{passwordSuccess}</p>}
               
               <p className="text-[9px] text-text-secondary leading-tight italic">
-                Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.
+                {t('settings.security.description', 'Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.')}
               </p>
             </div>
           </div>
@@ -1371,23 +1371,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
           <div className="glass-card w-full max-w-md p-6 border-red-500/20 shadow-2xl space-y-4 relative">
             <h3 className="text-base font-bold text-red-400 tracking-wide uppercase flex items-center gap-2">
-              ⚠️ Confirm Restart
+              ⚠️ {t('settings.restart.confirmTitle', 'Confirm Restart')}
             </h3>
             <p className="text-xs text-text-secondary leading-relaxed">
-              Are you sure you want to restart the panel? This will temporarily interrupt connectivity to the GUI. If you changed the port, you will be redirected to the new port address.
+              {t('settings.restart.confirmDesc', 'Are you sure you want to restart the panel? This will temporarily interrupt connectivity to the GUI. If you changed the port, you will be redirected to the new port address.')}
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setShowRestartConfirm(false)}
                 className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer border border-white/5"
               >
-                Cancel
+                {t('common.cancel', 'Cancel')}
               </button>
               <button
                 onClick={handleConfirmRestart}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-red-600/20"
               >
-                Confirm Restart
+                {t('settings.restart.confirmBtn', 'Confirm Restart')}
               </button>
             </div>
           </div>
@@ -1402,9 +1402,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="absolute inset-0 rounded-full border-4 border-brand-lime border-t-transparent animate-spin"></div>
             </div>
             <div>
-              <h3 className="text-base font-bold text-white uppercase tracking-wider">Restarting panel...</h3>
+              <h3 className="text-base font-bold text-white uppercase tracking-wider">{t('settings.restart.restartingTitle', 'Restarting panel...')}</h3>
               <p className="text-xs text-text-secondary mt-1">
-                Reconnecting to port <span className="font-mono text-brand-lime font-bold">{settings.gui_port || 8000}</span>...
+                {t('settings.restart.reconnectingPort', 'Reconnecting to port')} <span className="font-mono text-brand-lime font-bold">{settings.gui_port || 8000}</span>...
               </p>
             </div>
           </div>

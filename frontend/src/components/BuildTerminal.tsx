@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface BuildTerminalProps {
   buildId: number
@@ -7,6 +8,7 @@ interface BuildTerminalProps {
 }
 
 export default function BuildTerminal({ buildId, buildName, onClose }: BuildTerminalProps) {
+  const { t } = useTranslation()
   const [logs, setLogs] = useState<string[]>([])
   const logEndRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -50,12 +52,12 @@ export default function BuildTerminal({ buildId, buildName, onClose }: BuildTerm
               <div className="w-2.5 h-2.5 rounded-full bg-green-500/60"></div>
             </div>
             <span className="text-[11px] font-mono text-text-secondary uppercase tracking-widest">
-              Build: {buildName}
+              {t('forge.buildTerminalTitle', 'Build: {{name}}', { name: buildName })}
             </span>
           </div>
           <button onClick={onClose}
             className="text-text-secondary hover:text-white text-sm px-3 py-1 bg-white/5 rounded-lg hover:bg-white/10 transition-colors">
-            CLOSE
+            {t('common.close', 'CLOSE')}
           </button>
         </div>
 
@@ -63,7 +65,7 @@ export default function BuildTerminal({ buildId, buildName, onClose }: BuildTerm
         <div className="flex-1 p-6 font-mono text-[11px] overflow-y-auto bg-black/60 custom-scrollbar">
           {logs.length === 0 ? (
             <div className="text-white/10 italic text-center mt-20 text-lg">
-              Waiting for build output...
+              {t('forge.waitingForBuildOutput', 'Waiting for build output...')}
             </div>
           ) : (
             logs.map((line, i) => (

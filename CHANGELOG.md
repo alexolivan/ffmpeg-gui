@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] (Frontend) - 2026-07-22
+
+### Added
+- Completed full multi-language (i18n) refactoring for all form controls, modals, tooltips, warnings, and overlays in Settings (`SettingsView.tsx`) and FFmpeg Forge (`BuildFormModal.tsx`, `BuildProfileCard.tsx`, `BuildTerminal.tsx`).
+- Added full translation coverage for LCD integration settings, serial COM port probes, backlight/dimming sliders, status LED profiles, storage drive management, path validation, space utilization details, security password forms, and panel restart confirmation overlays.
+- Added full translation coverage for FFmpeg Build Profile creation/editing forms (General tab, GPU Acceleration options & dependency warnings, Third Party SDKs & Protocols, DeckLink/NDI drag-and-drop file uploaders, NDI custom patch uploaders, and Build Terminal log overlay).
+- Expanded translation dictionaries (`en.json`, `es.json`, `ca.json`) to 457 keys with 100% key parity across English, Spanish, and Catalan.
+
 ## [1.25.0] (Frontend) / [1.29.0] (Backend) - 2026-07-21
 
 ### Added
