@@ -51,3 +51,15 @@ async def test_manager_keymap_and_dimming(mock_serial):
     mgr._register_activity()
     mgr.driver.set_backlight.assert_called_with(100)
     assert mgr._is_dimmed is False
+
+
+def test_manager_prefixes_and_new_profiles():
+    mgr = LCDManager(None, None, None, port="/dev/test_port")
+    assert mgr.get_led_legend_prefix("heartbeat") == "HB  "
+    assert mgr.get_led_legend_prefix("services") == "SRV "
+    assert mgr.get_led_legend_prefix("streams") == "SRV "
+    assert mgr.get_led_legend_prefix("tasks") == "TSK "
+    assert mgr.get_led_legend_prefix("resources") == "RES "
+    assert mgr.get_led_legend_prefix("alert") == "RES "
+    assert mgr.get_led_legend_prefix("recording") == "REC "
+    assert mgr.get_led_legend_prefix("storage") == "STO "

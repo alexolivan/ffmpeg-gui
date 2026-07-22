@@ -148,3 +148,37 @@ def test_2_row_scrolling():
     lines = menu.render()
     assert lines[0] == "-- SERVICES MENU -"
     assert ">   Svc2" in lines[1]
+
+
+def test_system_info_view():
+    from unittest.mock import MagicMock
+    from core.lcd.views.info import SystemInfoView
+    from database.models import SystemSettings
+
+    manager = MagicMock()
+    manager.driver.rows = 4
+
+    db_mock = MagicMock()
+    manager.db_session_factory.return_value = db_mock
+
+    settings = SystemSettings(node_name="TestNode")
+    db_mock.query.return_value.first.return_value = settings
+
+    info_view = SystemInfoView(manager)
+    lines = info_view.render()
+    assert "IP:" in lines[0]
+    assert "PORT:8000" in lines[1]
+    assert "BE:v1.29 FE:v1.26" in lines[2]
+    assert "NODE:TestNode" in lines[3]
+
+    # Test 2-row screen page cycling
+    manager.driver.rows = 2
+    info_view.current_page = 0
+    lines_p0 = info_view.render()
+    assert "IP:" in lines_p0[0]
+    assert "PORT:8000" in lines_p0[1]
+
+    info_view.handle_key("DOWN")
+    assert info_view.current_page == 1
+    lines_p1 = info_view.render()
+    assert "BE:v1.29 FE:v1.26" in lines_p1[0]
