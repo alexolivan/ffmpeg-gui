@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0] - 2026-07-23
+
+### Added
+- Dedicated SDK Management Modal (`BuildSdksModal`) accessible via `Manage SDKs` button in ForgeView.
+- Database persistence for SDK packages via `installed_sdks` table (Schema v1.7.0).
+- Strategy pattern processors for `DeckLink` and `NDI` SDK uploads.
+- Storage migration for installed SDKs between `sdk` type storage drives.
+- Missing SDK safety guard disabling compilation when required SDK versions are missing.
+
+### Changed
+- Decoupled and cleaned SDK upload dropzones from `BuildFormModal`.
+
 ## [1.26.0] (Frontend) / [1.30.0] (Backend) - 2026-07-22
 
 ### Added
