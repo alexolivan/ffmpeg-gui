@@ -87,6 +87,15 @@
       "es": "Español (ES)",
       "ca": "Català (CA)"
     },
+    "theme": {
+      "title": "TEMA DE INTERFAZ",
+      "description": "Selecciona el tema visual para la interfaz de usuario.",
+      "studioDark": "Studio Dark",
+      "cyberpunk": "Cyberpunk Neón",
+      "nordicFrost": "Nordic Frost",
+      "broadcastLight": "Broadcast Light",
+      "warmPaper": "Warm Paper"
+    },
     "branding": {
       "title": "Branding e Identidad del Nodo",
       "stationName": "Nombre de la Estación",

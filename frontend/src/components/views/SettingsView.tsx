@@ -5,6 +5,54 @@ import { ShieldIcon, GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon } 
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
 
+const THEME_OPTIONS = [
+  {
+    key: 'studio-dark',
+    nameKey: 'settings.theme.studioDark',
+    defaultName: 'Studio Dark',
+    mode: 'dark',
+    bg: '#050505',
+    accent1: '#d4ff5b',
+    accent2: '#ff9500',
+  },
+  {
+    key: 'cyberpunk',
+    nameKey: 'settings.theme.cyberpunk',
+    defaultName: 'Cyberpunk Neon',
+    mode: 'dark',
+    bg: '#090614',
+    accent1: '#00f0ff',
+    accent2: '#ff007f',
+  },
+  {
+    key: 'nordic-frost',
+    nameKey: 'settings.theme.nordicFrost',
+    defaultName: 'Nordic Frost',
+    mode: 'dark',
+    bg: '#0a0e17',
+    accent1: '#38bdf8',
+    accent2: '#f43f5e',
+  },
+  {
+    key: 'broadcast-light',
+    nameKey: 'settings.theme.broadcastLight',
+    defaultName: 'Broadcast Light',
+    mode: 'light',
+    bg: '#f8fafc',
+    accent1: '#16a34a',
+    accent2: '#ea580c',
+  },
+  {
+    key: 'warm-paper',
+    nameKey: 'settings.theme.warmPaper',
+    defaultName: 'Warm Paper',
+    mode: 'light',
+    bg: '#fbf9f5',
+    accent1: '#059669',
+    accent2: '#d97706',
+  },
+] as const;
+
 const formatGB = (bytes: number): string => {
   if (!bytes) return '0 GB';
   const gb = bytes / (1024 * 1024 * 1024);
@@ -217,6 +265,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const [theme, setTheme] = useState<string>(settings?.theme || localStorage.getItem('app_theme') || 'studio-dark');
   const [language, setLanguage] = useState(settings.language || 'en');
   const [nodeName, setNodeName] = useState(settings.node_name || '');
   const [logoText, setLogoText] = useState(settings.logo_text || '');
@@ -236,6 +285,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isRestarting, setIsRestarting] = useState(false);
 
   useEffect(() => {
+    if (settings.theme) {
+      setTheme(settings.theme);
+    }
     setLanguage(settings.language || 'en');
     setNodeName(settings.node_name || '');
     setLogoText(settings.logo_text || '');
@@ -250,6 +302,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLoggingCompressionEnabled(settings.logging_compression_enabled || false);
     setLoggingRetentionDays(settings.logging_retention_days || 7);
   }, [
+    settings.theme,
     settings.language,
     settings.node_name,
     settings.logo_text,
@@ -264,6 +317,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings.logging_compression_enabled,
     settings.logging_retention_days
   ]);
+
+  const handleSelectTheme = (themeKey: string) => {
+    setTheme(themeKey);
+    document.documentElement.setAttribute('data-theme', themeKey);
+    localStorage.setItem('app_theme', themeKey);
+  };
 
   const [lcdEnabled, setLcdEnabled] = useState(settings.lcd_enabled || false);
   const [lcdPort, setLcdPort] = useState(settings.lcd_port || '/dev/ttyACM0');
@@ -325,6 +384,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }, []);
 
   const hasChanges = 
+    theme !== (settings.theme || 'studio-dark') ||
     language !== (settings.language || 'en') ||
     nodeName !== (settings.node_name || '') || 
     logoText !== (settings.logo_text || '') ||
@@ -368,6 +428,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       const payload: any = {
         ...settings,
+        theme,
         language,
         node_name: nodeName,
         logo_text: logoText,
@@ -607,6 +668,71 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </span>
                     </button>
                   ))}
+                </div>
+              </div>
+            </div>
+
+            {/* TAB 1: General -> Interface Theme Card */}
+            <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
+              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">
+                  {t('settings.theme.title', 'INTERFACE THEME')}
+                </h4>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-xs text-text-secondary">
+                  {t('settings.theme.description', 'Select visual theme for the user interface.')}
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                  {THEME_OPTIONS.map((item) => {
+                    const isSelected = theme === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => handleSelectTheme(item.key)}
+                        className={`p-3 rounded-xl border flex flex-col justify-between transition-all cursor-pointer text-left relative overflow-hidden ${
+                          isSelected
+                            ? 'border-brand-lime bg-brand-lime/10 shadow-md ring-1 ring-brand-lime/50'
+                            : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]'
+                        }`}
+                      >
+                        {isSelected && (
+                          <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-brand-lime text-black flex items-center justify-center text-[10px] font-bold">
+                            ✓
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-2 mb-2 pr-5">
+                          <span className="text-xs font-bold text-white truncate">
+                            {t(item.nameKey, item.defaultName)}
+                          </span>
+                          <span className="text-xs shrink-0" title={item.mode}>
+                            {item.mode === 'dark' ? '🌙' : '☀️'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <span
+                            className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
+                            style={{ backgroundColor: item.bg }}
+                            title={`BG: ${item.bg}`}
+                          />
+                          <span
+                            className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
+                            style={{ backgroundColor: item.accent1 }}
+                            title={`Accent 1: ${item.accent1}`}
+                          />
+                          <span
+                            className="w-4 h-4 rounded-full border border-white/20 shadow-sm"
+                            style={{ backgroundColor: item.accent2 }}
+                            title={`Accent 2: ${item.accent2}`}
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
