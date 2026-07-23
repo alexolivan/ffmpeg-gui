@@ -324,8 +324,9 @@ class SdkManager:
     ) -> List[Dict[str, Any]]:
         """List installed SDKs populated from DB and disk status check or filesystem fallback."""
         if db is not None:
-            from database.models import InstalledSdk
+            from database.models import InstalledSdk, FfmpegBuild
 
+            builds = db.query(FfmpegBuild).all()
             query = db.query(InstalledSdk).filter(InstalledSdk.target_app == target_app)
             if sdk_type is not None:
                 query = query.filter(InstalledSdk.sdk_type == sdk_type)
@@ -346,6 +347,11 @@ class SdkManager:
                     sdk.status = "ready"
                     db.commit()
 
+                referencing_builds = [
+                    b.name for b in builds
+                    if self._build_references_sdk(b, sdk.sdk_type, sdk.version)
+                ]
+
                 sdks.append(
                     {
                         "id": sdk.id,
@@ -358,6 +364,7 @@ class SdkManager:
                         "path": full_path,
                         "size_bytes": sdk.size_bytes,
                         "status": sdk.status,
+                        "used_by_builds": referencing_builds,
                     }
                 )
             return sdks
@@ -391,6 +398,7 @@ class SdkManager:
                         "version": version,
                         "path": version_path,
                         "status": "ready",
+                        "used_by_builds": [],
                     }
                 )
 

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -304,6 +304,9 @@ class StorageUpdate(BaseModel):
 
 class StorageTest(BaseModel):
     path: str
+
+class SdkMigrateRequest(BaseModel):
+    target_storage_id: int
 
 
 # ── System Settings & Auth ────────────────────────────────────────
@@ -2051,32 +2054,49 @@ def check_build_deps():
     return build_manager.check_dependencies()
 
 
+@app.get("/sdks")
+def list_sdks(
+    sdk_type: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """List installed SDKs with build dependency references."""
+    return sdk_manager.list_installed_sdks(sdk_type=sdk_type, db=db)
+
+
 @app.get("/sdks/{sdk_type}")
-def get_sdks(sdk_type: str):
+def get_sdks_by_type(sdk_type: str, db: Session = Depends(get_db)):
     """List installed versions of the specified SDK type (decklink or ndi)."""
-    return sdk_manager.list_installed_sdks(sdk_type)
+    return sdk_manager.list_installed_sdks(sdk_type=sdk_type, db=db)
+
 
 @app.post("/sdks/upload")
-async def upload_sdk(sdk_type: str = File(...), file: UploadFile = File(...)):
+async def upload_sdk(
+    file: UploadFile = File(...),
+    sdk_type: str = Form(...),
+    storage_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db)
+):
     """Upload and process a DeckLink or NDI SDK archive."""
-    # Ensure temporary upload directory exists
     temp_dir = os.path.join(sdk_manager.workspace_root, "data", "temp_uploads")
     os.makedirs(temp_dir, exist_ok=True)
-    
-    # Save uploaded file temporarily
+
     temp_file_path = os.path.join(temp_dir, f"upload_{uuid.uuid4().hex}_{file.filename}")
     try:
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        
+
         result = sdk_manager.process_sdk_upload(
             file_path=temp_file_path,
             original_filename=file.filename,
-            sdk_type=sdk_type
+            sdk_type=sdk_type,
+            storage_id=storage_id,
+            db=db
         )
         if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error"))
+            raise HTTPException(status_code=400, detail=result.get("error", "SDK upload failed"))
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         if os.path.exists(temp_file_path):
             try:
@@ -2084,6 +2104,45 @@ async def upload_sdk(sdk_type: str = File(...), file: UploadFile = File(...)):
             except OSError:
                 pass
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/sdks/{sdk_id}")
+def delete_sdk_endpoint(
+    sdk_id: int,
+    force: bool = Query(False),
+    db: Session = Depends(get_db)
+):
+    """Delete installed SDK record and files or soft delete if force flag is set when referenced."""
+    result = sdk_manager.delete_sdk(sdk_id=sdk_id, force=force, db=db)
+    if not result.get("success"):
+        if result.get("in_use") and not force:
+            raise HTTPException(
+                status_code=409,
+                detail=result.get("error", "SDK is currently in use by build profiles")
+            )
+        if "not found" in result.get("error", "").lower():
+            raise HTTPException(status_code=404, detail=result.get("error"))
+        raise HTTPException(status_code=400, detail=result.get("error", "Failed to delete SDK"))
+    return result
+
+
+@app.post("/sdks/{sdk_id}/migrate")
+def migrate_sdk_endpoint(
+    sdk_id: int,
+    request: SdkMigrateRequest,
+    db: Session = Depends(get_db)
+):
+    """Migrate installed SDK files to target storage drive."""
+    result = sdk_manager.migrate_sdk_storage(
+        sdk_id=sdk_id,
+        target_storage_id=request.target_storage_id,
+        db=db
+    )
+    if not result.get("success"):
+        if "not found" in result.get("error", "").lower():
+            raise HTTPException(status_code=404, detail=result.get("error"))
+        raise HTTPException(status_code=400, detail=result.get("error", "SDK migration failed"))
+    return result
 
 
 @app.get("/system/patches")
