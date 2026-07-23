@@ -9,10 +9,12 @@
   --text-primary: #ffffff;
   --text-secondary: #a1a1aa;
   --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.15);
   --input-bg: rgba(0, 0, 0, 0.4);
   --radial-glow-1: rgba(212, 255, 91, 0.03);
   --radial-glow-2: rgba(59, 130, 246, 0.03);
-  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+  --card-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.7);
+  --card-shadow-hover: 0 12px 32px 0 rgba(0, 0, 0, 0.85);
   --track-bg: rgba(255, 255, 255, 0.08);
 }
 
@@ -25,10 +27,12 @@
   --text-primary: #ffffff;
   --text-secondary: #c0b3e2;
   --glass-border: rgba(255, 0, 127, 0.25);
+  --glass-border-hover: rgba(255, 0, 127, 0.4);
   --input-bg: rgba(14, 9, 26, 0.6);
   --radial-glow-1: rgba(255, 0, 127, 0.15);
   --radial-glow-2: rgba(0, 240, 255, 0.12);
-  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.9);
+  --card-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.8);
+  --card-shadow-hover: 0 12px 32px 0 rgba(255, 0, 127, 0.25);
   --track-bg: rgba(255, 255, 255, 0.1);
 }
 
@@ -41,10 +45,12 @@
   --text-primary: #f0f9ff;
   --text-secondary: #94a3b8;
   --glass-border: rgba(56, 189, 248, 0.2);
+  --glass-border-hover: rgba(56, 189, 248, 0.4);
   --input-bg: rgba(8, 22, 38, 0.6);
   --radial-glow-1: rgba(56, 189, 248, 0.12);
   --radial-glow-2: rgba(99, 102, 241, 0.12);
-  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.9);
+  --card-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.8);
+  --card-shadow-hover: 0 12px 32px 0 rgba(56, 189, 248, 0.25);
   --track-bg: rgba(255, 255, 255, 0.1);
 }
 
@@ -57,10 +63,12 @@
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-border-hover: rgba(0, 0, 0, 0.15);
   --input-bg: rgba(255, 255, 255, 0.95);
   --radial-glow-1: rgba(37, 99, 235, 0.06);
   --radial-glow-2: rgba(234, 88, 12, 0.05);
-  --card-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.05);
+  --card-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+  --card-shadow-hover: 0 4px 14px 0 rgba(0, 0, 0, 0.08);
   --track-bg: rgba(0, 0, 0, 0.12);
 }
 
@@ -73,10 +81,12 @@
   --text-primary: #1c1917;
   --text-secondary: #57534e;
   --glass-border: rgba(120, 53, 15, 0.12);
+  --glass-border-hover: rgba(120, 53, 15, 0.25);
   --input-bg: rgba(253, 246, 227, 0.95);
   --radial-glow-1: rgba(217, 119, 6, 0.08);
   --radial-glow-2: rgba(5, 150, 105, 0.06);
-  --card-shadow: 0 4px 20px 0 rgba(120, 53, 15, 0.08);
+  --card-shadow: 0 2px 8px 0 rgba(120, 53, 15, 0.05);
+  --card-shadow-hover: 0 4px 14px 0 rgba(120, 53, 15, 0.1);
   --track-bg: rgba(120, 53, 15, 0.12);
 }
 
@@ -111,8 +121,8 @@ body {
 }
 
 .glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 12px 48px 0 rgba(0, 0, 0, 0.9);
+  border-color: var(--glass-border-hover, rgba(255, 255, 255, 0.15));
+  box-shadow: var(--card-shadow-hover, 0 12px 48px 0 rgba(0, 0, 0, 0.9));
 }
 
 .pill-button {
