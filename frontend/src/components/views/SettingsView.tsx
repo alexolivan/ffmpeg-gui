@@ -610,7 +610,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Tab content wrapper (Scrollable area) */}
-      <div className="flex-1 overflow-y-auto pr-2 min-h-0 custom-scrollbar space-y-3 pb-4">
+      <div className="flex-1 overflow-y-auto p-3 min-h-0 custom-scrollbar space-y-4">
         {settings.restart_required && (
           <div className="bg-brand-orange/10 border border-brand-orange/30 text-brand-orange rounded-xl p-3.5 text-xs flex items-center gap-3 animate-in fade-in duration-300">
             <span className="text-lg">⚠️</span>

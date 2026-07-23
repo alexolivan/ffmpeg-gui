@@ -165,7 +165,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {systemTelemetry.cpu}%
                   </span>
                 </div>
-                <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-2 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-brand-lime transition-all duration-500" 
                     style={{ width: `${Math.min(100, systemTelemetry.cpu)}%` }}
@@ -179,7 +179,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     {systemTelemetry.ram_used} MB / {systemTelemetry.ram_total || 16384} MB
                   </span>
                 </div>
-                <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-2 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-brand-orange transition-all duration-500" 
                     style={{ 
@@ -193,7 +193,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               {systemTelemetry.gpu && systemTelemetry.gpu.vendor && systemTelemetry.gpu.vendor !== 'none' ? (
                 <>
-                  <div className="pt-2 border-t border-white/5">
+                  <div className="pt-2 border-t border-[var(--glass-border)]">
                     <div className="flex justify-between text-xs mb-0.5">
                       <span className="text-text-secondary flex items-center gap-1.5">
                         {t('dashboard.gpuLoad')} 
@@ -205,7 +205,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {systemTelemetry.gpu.utilization}%
                       </span>
                     </div>
-                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                    <div className="h-2 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-blue-400 transition-all duration-500" 
                         style={{ width: `${Math.min(100, systemTelemetry.gpu.utilization)}%` }}
@@ -219,7 +219,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {systemTelemetry.gpu.vram_used} MB / {systemTelemetry.gpu.vram_total} MB
                       </span>
                     </div>
-                    <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                    <div className="h-2 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-blue-400 transition-all duration-500" 
                         style={{ 
@@ -269,7 +269,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             {percent}% ({freeGb} {t('dashboard.freeGb')})
                           </span>
                         </div>
-                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
                           <div
                             className={`h-full transition-all duration-500 ${
                               percent < 75
