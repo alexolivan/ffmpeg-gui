@@ -7,6 +7,7 @@ interface BuildFormModalProps {
   onClose: () => void
   onSubmit: (data: BuildFormData) => void
   buildDeps: any
+  onOpenSdksModal?: () => void
 }
 
 export interface BuildFormData {
@@ -21,7 +22,7 @@ export interface BuildFormData {
 
 const API_BASE = '';
 
-export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps }: BuildFormModalProps) {
+export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps, onOpenSdksModal }: BuildFormModalProps) {
   const { t } = useTranslation()
   const [name, setName] = useState(editBuild?.name || '')
   const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || '')
@@ -53,9 +54,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [nvencTags, setNvencTags] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Dynamic SDK lists
-  const [decklinkSdks, setDecklinkSdks] = useState<{ version: string; path: string }[]>([])
-  const [ndiSdks, setNdiSdks] = useState<{ version: string; path: string }[]>([])
+  // Installed SDKs from inventory
+  const [installedSdks, setInstalledSdks] = useState<any[]>([])
 
   // Dynamic Patch list
   interface PatchItem {
@@ -72,17 +72,13 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [newPatchFfmpegVersion, setNewPatchFfmpegVersion] = useState('7')
   const [selectedPatchFile, setSelectedPatchFile] = useState<File | null>(null)
 
-  // Upload UIs states
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
-  const [uploadingSdk, setUploadingSdk] = useState<Record<string, boolean>>({})
-  const [uploadError, setUploadError] = useState<Record<string, string>>({})
-
-  // Refs for file inputs
-  const decklinkInputRef = useRef<HTMLInputElement>(null)
-  const ndiInputRef = useRef<HTMLInputElement>(null)
+  // Ref for patch file input
   const patchInputRef = useRef<HTMLInputElement>(null)
 
   const isEditing = editBuild !== null
+
+  const decklinkSdks = installedSdks.filter((s: any) => s.sdk_type === 'decklink')
+  const ndiSdks = installedSdks.filter((s: any) => s.sdk_type === 'ndi')
 
   const fetchPatches = async () => {
     try {
@@ -105,27 +101,29 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     }
   }
 
-  // Fetch Tags and SDKs
-  const fetchSdks = async (sdkType: 'decklink' | 'ndi') => {
+  const fetchInstalledSdks = async () => {
     try {
-      const res = await fetch(`${API_BASE}/sdks/${sdkType}`)
-      const data = await res.json()
-      if (sdkType === 'decklink') {
-        setDecklinkSdks(data)
-        // If not editing and we have SDKs available, default to the latest one
-        if (!isEditing && data.length > 0 && !sdkPaths.decklink) {
-          setSdkPaths(prev => ({ ...prev, decklink: data[0].version }))
-        }
-      } else {
-        setNdiSdks(data)
-        if (!isEditing && data.length > 0 && !sdkPaths.ndi) {
-          setSdkPaths(prev => ({ ...prev, ndi: data[0].version }))
-        }
+      const res = await fetch(`${API_BASE}/sdks`)
+      if (res.ok) {
+        const data = await res.json()
+        setInstalledSdks(data)
       }
     } catch (err) {
-      console.error(`Failed to fetch ${sdkType} SDKs:`, err)
+      console.error('Failed to fetch installed SDKs:', err)
     }
   }
+
+  useEffect(() => {
+    if (!isEditing && installedSdks.length > 0) {
+      const dSdks = installedSdks.filter((s: any) => s.sdk_type === 'decklink')
+      const nSdks = installedSdks.filter((s: any) => s.sdk_type === 'ndi')
+      setSdkPaths(prev => ({
+        ...prev,
+        decklink: prev.decklink || (dSdks.length > 0 ? dSdks[0].version : ''),
+        ndi: prev.ndi || (nSdks.length > 0 ? nSdks[0].version : ''),
+      }))
+    }
+  }, [installedSdks, isEditing])
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -161,64 +159,10 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
       }
     }
     fetchTags()
-    fetchSdks('decklink')
-    fetchSdks('ndi')
+    fetchInstalledSdks()
     fetchPatches()
     fetchStorages()
   }, [])
-
-  // File Upload logic using raw XMLHttpRequest for progress tracking
-  const handleSdkUpload = (file: File, sdkType: 'decklink' | 'ndi') => {
-    setUploadingSdk(prev => ({ ...prev, [sdkType]: true }))
-    setUploadProgress(prev => ({ ...prev, [sdkType]: 0 }))
-    setUploadError(prev => ({ ...prev, [sdkType]: '' }))
-
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('sdk_type', sdkType)
-
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${API_BASE}/sdks/upload`)
-
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percentage = Math.round((event.loaded / event.total) * 100)
-        setUploadProgress(prev => ({ ...prev, [sdkType]: percentage }))
-      }
-    }
-
-    xhr.onload = () => {
-      setUploadingSdk(prev => ({ ...prev, [sdkType]: false }))
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const response = JSON.parse(xhr.responseText)
-          if (response.success) {
-            // Update selected SDK path to the version returned from backend
-            setSdkPaths(prev => ({ ...prev, [sdkType]: response.version }))
-            fetchSdks(sdkType)
-          } else {
-            setUploadError(prev => ({ ...prev, [sdkType]: response.error || 'Upload failed' }))
-          }
-        } catch (e) {
-          setUploadError(prev => ({ ...prev, [sdkType]: 'Failed to parse server response' }))
-        }
-      } else {
-        try {
-          const response = JSON.parse(xhr.responseText)
-          setUploadError(prev => ({ ...prev, [sdkType]: response.detail || 'Internal server error' }))
-        } catch (e) {
-          setUploadError(prev => ({ ...prev, [sdkType]: `Server returned code ${xhr.status}` }))
-        }
-      }
-    }
-
-    xhr.onerror = () => {
-      setUploadingSdk(prev => ({ ...prev, [sdkType]: false }))
-      setUploadError(prev => ({ ...prev, [sdkType]: 'Network connection error' }))
-    }
-
-    xhr.send(formData)
-  }
 
   const handlePatchUpload = async () => {
     if (!selectedPatchFile) return
@@ -294,22 +238,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                   (!options.nvenc || !!sdkPaths.nvenc_headers) &&
                   (!options.cuda_filters || (buildDeps?.dependencies?.clang?.installed !== false && buildDeps?.dependencies?.['nvidia-cuda-dev']?.installed !== false))
 
-  // Drag and Drop events
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-  }
-
-  const handleDrop = (e: React.DragEvent, sdkType: 'decklink' | 'ndi') => {
-    e.preventDefault()
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0]
-      if (file.name.endsWith('.zip') || file.name.endsWith('.tar.gz') || file.name.endsWith('.tgz') || file.name.endsWith('.tar')) {
-        handleSdkUpload(file, sdkType)
-      } else {
-        setUploadError(prev => ({ ...prev, [sdkType]: t('forge.invalidFormatError', 'Invalid file format. Use (.zip, .tar.gz)') }))
-      }
-    }
-  }
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-hidden">
       <div className="glass-card w-full max-w-2xl flex flex-col border-brand-orange/20 max-h-[95vh] shadow-2xl relative overflow-hidden">
@@ -543,73 +471,37 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                   </div>
                   {options.decklink && (
                     <div className="space-y-2 mt-1 animate-in slide-in-from-top-2 duration-300">
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="col-span-2">
-                          <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">{t('forge.chooseSdkVersion', 'Choose SDK Version')}</label>
-                          <select
-                            className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none"
-                            value={sdkPaths.decklink || ''}
-                            onChange={e => setSdkPaths({ ...sdkPaths, decklink: e.target.value })}
-                          >
-                            <option value="">{t('forge.selectInstalledSdk', '-- Select installed SDK --')}</option>
-                            {decklinkSdks.map(sdk => (
-                              <option key={sdk.version} value={sdk.version}>{t('forge.version', 'Version')} {sdk.version}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="col-span-1 flex items-end">
-                          <button
-                            type="button"
-                            onClick={() => decklinkInputRef.current?.click()}
-                            className="w-full py-1.5 bg-white/5 border border-white/10 text-[9px] font-bold rounded-lg hover:bg-white/10 text-center uppercase tracking-wider"
-                          >
-                            {t('forge.uploadSdk', '+ Upload SDK')}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Hidden input */}
-                      <input
-                        type="file"
-                        ref={decklinkInputRef}
-                        className="hidden"
-                        accept=".zip,.tar.gz,.tgz,.tar"
-                        onChange={e => {
-                          if (e.target.files && e.target.files.length > 0) {
-                            handleSdkUpload(e.target.files[0], 'decklink')
-                          }
-                        }}
-                      />
-
-                      {/* Drag and drop panel */}
-                      <div
-                        onDragOver={handleDragOver}
-                        onDrop={(e) => handleDrop(e, 'decklink')}
-                        className="border border-dashed border-white/10 rounded-lg p-2.5 flex flex-col items-center justify-center bg-black/20 hover:border-brand-orange/40 transition-colors cursor-pointer"
-                        onClick={() => decklinkInputRef.current?.click()}
-                      >
-                        {uploadingSdk.decklink ? (
-                          <div className="w-full space-y-1.5 text-center">
-                            <span className="text-[9px] uppercase tracking-wider font-bold text-brand-orange animate-pulse">{t('forge.uploadingSdk', 'Uploading and sanitizing SDK...')}</span>
-                            <div className="w-full bg-white/5 rounded-full h-1 overflow-hidden">
-                              <div className="bg-brand-orange h-1 rounded-full transition-all duration-100" style={{ width: `${uploadProgress.decklink || 0}%` }}></div>
-                            </div>
-                            <span className="text-[9px] text-text-secondary font-mono">{uploadProgress.decklink || 0}%</span>
-                          </div>
-                        ) : (
-                          <div className="text-center">
-                            <span className="text-[9px] font-bold text-white/70 block">{t('forge.dragDecklinkSdk', 'Drag official DeckLink SDK file here')}</span>
-                            <span className="text-[8px] text-text-secondary block">{t('forge.dragFormatHint', 'Formats: .zip, .tar.gz (<100MB will be automatically reduced to ~250KB)')}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {uploadError.decklink && (
-                        <div className="text-[9px] text-red-400 font-bold bg-red-500/10 border border-red-500/20 p-1.5 rounded-lg">
-                          ⚠️ {t('common.error', 'Error:')} {uploadError.decklink}
+                      <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">{t('forge.chooseSdkVersion', 'Choose SDK Version')}</label>
+                      {decklinkSdks.length > 0 ? (
+                        <select
+                          className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none"
+                          value={sdkPaths.decklink || ''}
+                          onChange={e => setSdkPaths({ ...sdkPaths, decklink: e.target.value })}
+                        >
+                          <option value="">{t('forge.selectInstalledSdk', '-- Select installed SDK --')}</option>
+                          {decklinkSdks.map((sdk: any) => (
+                            <option key={sdk.id || sdk.version} value={sdk.version}>
+                              {t('forge.version', 'Version')} {sdk.version} {sdk.status === 'missing' ? `(${t('sdks.missingOnDisk', 'Missing on disk')})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="bg-brand-orange/10 border border-brand-orange/20 rounded-lg p-2.5 flex items-center justify-between">
+                          <span className="text-[10px] text-brand-orange font-bold">
+                            ⚠️ {t('forge.noDecklinkSdks', 'No DeckLink SDK installed')}
+                          </span>
+                          {onOpenSdksModal && (
+                            <button
+                              type="button"
+                              onClick={onOpenSdksModal}
+                              className="text-[9px] font-bold bg-brand-orange text-black px-2 py-1 rounded hover:bg-brand-orange/90 uppercase tracking-wider cursor-pointer"
+                            >
+                              {t('forge.openManageSdks', '+ Open Manage SDKs')}
+                            </button>
+                          )}
                         </div>
                       )}
-                      {!sdkPaths.decklink && <p className="text-[9px] text-red-400 pl-1 font-bold">⚠ {t('forge.decklinkRequired', 'Selecting or uploading a DeckLink SDK is required')}</p>}
+                      {!sdkPaths.decklink && <p className="text-[9px] text-red-400 pl-1 font-bold">⚠ {t('forge.decklinkRequired', 'Selecting a DeckLink SDK is required')}</p>}
                     </div>
                   )}
                 </div>
@@ -634,72 +526,38 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                         </div>
                       )}
 
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="col-span-2">
-                          <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">{t('forge.chooseSdkVersion', 'Choose SDK Version')}</label>
+                      <div>
+                        <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">{t('forge.chooseSdkVersion', 'Choose SDK Version')}</label>
+                        {ndiSdks.length > 0 ? (
                           <select
                             className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none"
                             value={sdkPaths.ndi || ''}
                             onChange={e => setSdkPaths({ ...sdkPaths, ndi: e.target.value })}
                           >
                             <option value="">{t('forge.selectInstalledSdk', '-- Select installed SDK --')}</option>
-                            {ndiSdks.map(sdk => (
-                              <option key={sdk.version} value={sdk.version}>{t('forge.version', 'Version')} {sdk.version}</option>
+                            {ndiSdks.map((sdk: any) => (
+                              <option key={sdk.id || sdk.version} value={sdk.version}>
+                                {t('forge.version', 'Version')} {sdk.version} {sdk.status === 'missing' ? `(${t('sdks.missingOnDisk', 'Missing on disk')})` : ''}
+                              </option>
                             ))}
                           </select>
-                        </div>
-                        <div className="col-span-1 flex items-end">
-                          <button
-                            type="button"
-                            onClick={() => ndiInputRef.current?.click()}
-                            className="w-full py-1.5 bg-white/5 border border-white/10 text-[9px] font-bold rounded-lg hover:bg-white/10 text-center uppercase tracking-wider"
-                          >
-                            {t('forge.uploadSdk', '+ Upload SDK')}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Hidden input */}
-                      <input
-                        type="file"
-                        ref={ndiInputRef}
-                        className="hidden"
-                        accept=".zip,.tar.gz,.tgz,.tar"
-                        onChange={e => {
-                          if (e.target.files && e.target.files.length > 0) {
-                            handleSdkUpload(e.target.files[0], 'ndi')
-                          }
-                        }}
-                      />
-
-                      {/* Drag and drop panel */}
-                      <div
-                        onDragOver={handleDragOver}
-                        onDrop={(e) => handleDrop(e, 'ndi')}
-                        className="border border-dashed border-white/10 rounded-lg p-2.5 flex flex-col items-center justify-center bg-black/20 hover:border-brand-orange/40 transition-colors cursor-pointer"
-                        onClick={() => ndiInputRef.current?.click()}
-                      >
-                        {uploadingSdk.ndi ? (
-                          <div className="w-full space-y-1.5 text-center">
-                            <span className="text-[9px] uppercase tracking-wider font-bold text-brand-orange animate-pulse">{t('forge.uploadingSdk', 'Uploading and sanitizing SDK...')}</span>
-                            <div className="w-full bg-white/5 rounded-full h-1 overflow-hidden">
-                              <div className="bg-brand-orange h-1 rounded-full transition-all duration-100" style={{ width: `${uploadProgress.ndi || 0}%` }}></div>
-                            </div>
-                            <span className="text-[9px] text-text-secondary font-mono">{uploadProgress.ndi || 0}%</span>
-                          </div>
                         ) : (
-                          <div className="text-center">
-                            <span className="text-[9px] font-bold text-white/70 block">{t('forge.dragNdiSdk', 'Drag official NDI SDK file here')}</span>
-                            <span className="text-[8px] text-text-secondary block">{t('forge.dragNdiFormatHint', 'Formats: .zip, .tar.gz (Will be sanitized by reducing its size)')}</span>
+                          <div className="bg-brand-orange/10 border border-brand-orange/20 rounded-lg p-2.5 flex items-center justify-between">
+                            <span className="text-[10px] text-brand-orange font-bold">
+                              ⚠️ {t('forge.noNdiSdks', 'No NDI SDK installed')}
+                            </span>
+                            {onOpenSdksModal && (
+                              <button
+                                type="button"
+                                onClick={onOpenSdksModal}
+                                className="text-[9px] font-bold bg-brand-orange text-black px-2 py-1 rounded hover:bg-brand-orange/90 uppercase tracking-wider cursor-pointer"
+                              >
+                                {t('forge.openManageSdks', '+ Open Manage SDKs')}
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
-
-                      {uploadError.ndi && (
-                        <div className="text-[9px] text-red-400 font-bold bg-red-500/10 border border-red-500/20 p-1.5 rounded-lg">
-                          ⚠️ {t('common.error', 'Error:')} {uploadError.ndi}
-                        </div>
-                      )}
 
                       {/* Parche NDI local */}
                       <div className="space-y-2 pt-1 border-t border-white/5">

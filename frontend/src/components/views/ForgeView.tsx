@@ -336,6 +336,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           onClose={() => { setShowBuildForm(false); setEditingBuild(null) }}
           onSubmit={editingBuild ? handleUpdateBuild : handleCreateBuild}
           buildDeps={buildDeps}
+          onOpenSdksModal={() => { setShowBuildForm(false); setShowSdksModal(true); }}
         />
       )}
 

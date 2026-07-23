@@ -1,4 +1,5 @@
 
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 export interface BuildProfile {
@@ -22,6 +23,7 @@ export interface BuildProfile {
 
 interface BuildProfileCardProps {
   build: BuildProfile
+  installedSdks?: any[]
   isAnyBuilding?: boolean
   onCompile: (id: number) => void
   onStop: (id: number) => void
@@ -43,9 +45,37 @@ function formatDate(iso: string | null): string {
 }
 
 export default function BuildProfileCard({
-  build, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport,
+  build, installedSdks: installedSdksProp, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport,
 }: BuildProfileCardProps) {
   const { t } = useTranslation()
+  const [fetchedSdks, setFetchedSdks] = useState<any[]>([])
+
+  useEffect(() => {
+    if (!installedSdksProp) {
+      fetch('/sdks')
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setFetchedSdks(data))
+        .catch(() => {})
+    }
+  }, [installedSdksProp])
+
+  const sdks = installedSdksProp || fetchedSdks
+
+  const isDecklinkEnabled = !!build.build_options?.decklink
+  const reqDecklinkVer = build.sdk_paths?.decklink
+  const missingDecklink = isDecklinkEnabled && (
+    !reqDecklinkVer ||
+    !sdks.some((s: any) => s.sdk_type === 'decklink' && s.version === reqDecklinkVer && s.status !== 'missing')
+  )
+
+  const isNdiEnabled = !!build.build_options?.ndi
+  const reqNdiVer = build.sdk_paths?.ndi
+  const missingNdi = isNdiEnabled && (
+    !reqNdiVer ||
+    !sdks.some((s: any) => s.sdk_type === 'ndi' && s.version === reqNdiVer && s.status !== 'missing')
+  )
+
+  const hasMissingSdk = missingDecklink || missingNdi
 
   const STATUS_STYLES: Record<string, { dot: string; badge: string; label: string }> = {
     pending:  { dot: 'bg-white/30',                    badge: 'bg-white/10 text-white/50',         label: t('forge.status.pending', 'PENDING') },
@@ -82,15 +112,27 @@ export default function BuildProfileCard({
                   VAAPI{build.sdk_paths?.vaapi ? ` ${build.sdk_paths.vaapi}` : ''}
                 </span>
               )}
-              {build.build_options?.ndi && (
-                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
-                  NDI{build.sdk_paths?.ndi ? ` ${build.sdk_paths.ndi}` : ''}
-                </span>
+              {isNdiEnabled && (
+                missingNdi ? (
+                  <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
+                    ⚠️ {t('forge.missingNdiBadge', 'Missing NDI SDK v{{version}}', { version: reqNdiVer || '?' })}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                    NDI{reqNdiVer ? ` ${reqNdiVer}` : ''}
+                  </span>
+                )
               )}
-              {build.build_options?.decklink && (
-                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
-                  DeckLink{build.sdk_paths?.decklink ? ` ${build.sdk_paths.decklink}` : ''}
-                </span>
+              {isDecklinkEnabled && (
+                missingDecklink ? (
+                  <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
+                    ⚠️ {t('forge.missingDecklinkBadge', 'Missing DeckLink SDK v{{version}}', { version: reqDecklinkVer || '?' })}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                    DeckLink{reqDecklinkVer ? ` ${reqDecklinkVer}` : ''}
+                  </span>
+                )
               )}
               {build.build_options?.nvenc && (
                 <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
@@ -145,11 +187,12 @@ export default function BuildProfileCard({
           >{t('forge.abort', 'ABORT')}</button>
         ) : (
           <button
-            onClick={() => onCompile(build.id)}
-            disabled={isAnyBuilding}
+            onClick={() => !hasMissingSdk && onCompile(build.id)}
+            disabled={isAnyBuilding || hasMissingSdk}
+            title={hasMissingSdk ? t('forge.missingSdkCompileTooltip', 'Required SDK version is missing and must be uploaded via Manage SDKs.') : undefined}
             className={`pill-button text-xs transition-all ${
-              isAnyBuilding
-                ? 'opacity-30 cursor-not-allowed bg-white/5 text-white/40 border border-white/5'
+              isAnyBuilding || hasMissingSdk
+                ? 'opacity-40 cursor-not-allowed bg-white/5 text-white/40 border border-white/5'
                 : build.status === 'failed' 
                   ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' 
                   : 'bg-brand-orange/20 text-brand-orange hover:bg-brand-orange/30'
