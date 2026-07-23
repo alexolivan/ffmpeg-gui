@@ -573,6 +573,7 @@
     "confirmDelete": "Delete SDK",
     "forceDelete": "Force Delete",
     "deleting": "Deleting...",
-    "manageSdks": "Manage SDKs"
+    "manageSdks": "Manage SDKs",
+    "versionMismatchNotice": "⚠️ Notice: The uploaded archive contains SDK v{{uploaded}}. The required version v{{expected}} is still missing."
   }
 }

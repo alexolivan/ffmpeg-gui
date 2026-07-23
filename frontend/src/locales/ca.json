@@ -573,6 +573,7 @@
     "confirmDelete": "Eliminar SDK",
     "forceDelete": "Forçar Eliminació",
     "deleting": "Eliminant...",
-    "manageSdks": "Gestionar SDKs"
+    "manageSdks": "Gestionar SDKs",
+    "versionMismatchNotice": "⚠️ Advertència: El fitxer carregat conté el SDK v{{uploaded}}. La versió requerida v{{expected}} continua absent."
   }
 }

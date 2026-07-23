@@ -57,6 +57,8 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [versionNotice, setVersionNotice] = useState<string | null>(null);
+  const [reuploadExpectedVersion, setReuploadExpectedVersion] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -135,8 +137,15 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
       });
 
       if (res.ok) {
+        const result = await res.json().catch(() => ({}));
         setSelectedFile(null);
         setShowUploadDrawer(false);
+        if (reuploadExpectedVersion && result.version && result.version !== reuploadExpectedVersion) {
+          setVersionNotice(t('sdks.versionMismatchNotice', { uploaded: result.version, expected: reuploadExpectedVersion }));
+        } else {
+          setVersionNotice(null);
+        }
+        setReuploadExpectedVersion(null);
         await fetchSdks();
         if (onRefresh) onRefresh();
       } else {
@@ -213,6 +222,7 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
   const handleReuploadClick = (sdk: SdkItem) => {
     setUploadType(sdk.sdk_type);
     setUploadStorageId(sdk.storage_id !== null ? sdk.storage_id : '');
+    setReuploadExpectedVersion(sdk.version);
     setShowUploadDrawer(true);
     setSelectedFile(null);
   };
@@ -239,6 +249,16 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
             ✕
           </button>
         </header>
+
+        {/* Version Mismatch Warning Banner */}
+        {versionNotice && (
+          <div className="mb-4 p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-amber-300 text-xs font-bold flex justify-between items-center animate-in slide-in-from-top-2 duration-300">
+            <span>{versionNotice}</span>
+            <button onClick={() => setVersionNotice(null)} className="text-amber-300 font-bold ml-2 hover:text-white">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Global error banner */}
         {errorMsg && (
