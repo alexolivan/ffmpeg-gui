@@ -10,8 +10,10 @@ import {
   GearIcon, 
   ForgeIcon, 
   ClipboardIcon,
-  RefreshIcon
+  RefreshIcon,
+  PackageIcon
 } from '../Icons';
+import { BuildSdksModal } from '../modals/BuildSdksModal';
 
 const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string>> = {
   debian: {
@@ -129,6 +131,8 @@ interface ForgeViewProps {
   refreshBuilds: () => Promise<void>;
   refreshDiskInfo: () => Promise<void>;
   refreshDeps: () => Promise<void>;
+  storages?: any[];
+  API?: string;
 }
 
 export const ForgeView: React.FC<ForgeViewProps> = ({
@@ -163,8 +167,29 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   refreshBuilds,
   refreshDiskInfo,
   refreshDeps,
+  storages: initialStorages = [],
+  API = '',
 }) => {
   const { t } = useTranslation();
+  const [showSdksModal, setShowSdksModal] = React.useState(false);
+  const [storages, setStorages] = React.useState<any[]>(initialStorages);
+
+  useEffect(() => {
+    if (initialStorages.length > 0) {
+      setStorages(initialStorages);
+    }
+  }, [initialStorages]);
+
+  useEffect(() => {
+    if ((showSdksModal || storages.length === 0) && API !== undefined) {
+      fetch(`${API}/storages`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) setStorages(data);
+        })
+        .catch(err => console.error("Failed to fetch storages in ForgeView:", err));
+    }
+  }, [showSdksModal, API, storages.length]);
 
   useEffect(() => {
     if (showEnvModal) {
@@ -252,12 +277,20 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowEnvModal(true)}
-          className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all hover:scale-102 flex items-center gap-2"
-        >
-          <GearIcon size={14} /> {t('forge.manageDeps')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSdksModal(true)}
+            className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all hover:scale-102 flex items-center gap-2 text-white"
+          >
+            <PackageIcon size={14} /> {t('sdks.manageSdks')}
+          </button>
+          <button
+            onClick={() => setShowEnvModal(true)}
+            className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all hover:scale-102 flex items-center gap-2"
+          >
+            <GearIcon size={14} /> {t('forge.manageDeps')}
+          </button>
+        </div>
       </div>
 
       {/* Build Profiles List */}
@@ -553,6 +586,20 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           </div>
         </div>
       )}
+      {/* SDKs Management Modal */}
+      <BuildSdksModal
+        isOpen={showSdksModal}
+        onClose={() => setShowSdksModal(false)}
+        storages={storages}
+        onRefresh={() => {
+          if (typeof checkStatus === 'function') {
+            (checkStatus as any)();
+          } else {
+            refreshBuilds();
+          }
+        }}
+        API={API}
+      />
     </div>
   );
 };
