@@ -246,6 +246,7 @@ class SettingsResponse(BaseModel):
     logging_compression_enabled: Optional[bool] = None
     logging_retention_days: Optional[int] = None
     language: str = "en"
+    theme: str = "studio-dark"
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -256,6 +257,7 @@ class SettingsUpdate(BaseModel):
     accent_color: Optional[str] = None
     lcd_enabled: Optional[bool] = None
     language: Optional[str] = None
+    theme: Optional[str] = None
 
     logging_mode: Optional[str] = None
     logging_storage_id: Optional[int] = None
@@ -328,6 +330,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     restart_required = False
     restart_reasons = []
     language = "en"
+    theme = "studio-dark"
 
     # Default logging values
     logging_mode = "journalctl"
@@ -346,6 +349,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
             config.read(config_path)
             if "general" in config:
                 language = config.get("general", "language", fallback="en")
+                theme = config.get("general", "theme", fallback="studio-dark")
             if "server" in config and "port" in config["server"]:
                 gui_port = int(config["server"]["port"])
                 if gui_port != active_port:
@@ -497,6 +501,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["logging_compression_enabled"] = logging_compression_enabled
     res["logging_retention_days"] = logging_retention_days
     res["language"] = language
+    res["theme"] = theme
     
     return SettingsResponse(**res).model_dump()
 
@@ -660,6 +665,25 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
         if "general" not in config:
             config["general"] = {}
         config["general"]["language"] = settings_in.language
+        
+        with open(config_path, "w") as f:
+            config.write(f)
+    if settings_in.theme is not None:
+        if settings_in.theme not in ['studio-dark', 'cyberpunk', 'nordic-frost', 'broadcast-light', 'warm-paper']:
+            raise HTTPException(status_code=400, detail="Invalid theme name")
+        
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if not config_path:
+            config_path = "ffmpeg-gui.conf"
+            
+        import configparser
+        config = configparser.ConfigParser()
+        if os.path.exists(config_path):
+            config.read(config_path)
+            
+        if "general" not in config:
+            config["general"] = {}
+        config.set('general', 'theme', settings_in.theme)
         
         with open(config_path, "w") as f:
             config.write(f)
