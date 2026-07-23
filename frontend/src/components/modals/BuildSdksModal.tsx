@@ -229,7 +229,10 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
             </h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              if (onRefresh) onRefresh();
+              onClose();
+            }}
             className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center text-text-secondary hover:text-white font-bold"
             title={t('common.close')}
           >

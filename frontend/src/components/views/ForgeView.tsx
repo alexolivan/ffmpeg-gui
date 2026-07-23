@@ -595,9 +595,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         onRefresh={() => {
           if (typeof checkStatus === 'function') {
             (checkStatus as any)();
-          } else {
-            refreshBuilds();
           }
+          refreshBuilds();
         }}
         API={API}
       />
