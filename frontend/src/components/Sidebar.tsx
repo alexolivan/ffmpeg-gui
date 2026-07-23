@@ -37,7 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <div className="w-20 lg:w-64 h-screen bg-card-bg border-r border-white/5 flex flex-col items-center py-8 transition-all">
+    <div className="w-20 lg:w-64 h-screen bg-card-bg border-r border-[var(--glass-border)] flex flex-col items-center py-8 transition-colors duration-300">
       <div 
         className="w-12 h-12 rounded-2xl flex items-center justify-center mb-6 shadow-lg cursor-pointer transition-all hover:scale-110 overflow-hidden" 
         style={!logoPath ? { backgroundColor: accentColor, boxShadow: `0 10px 20px ${accentColor}33` } : undefined}

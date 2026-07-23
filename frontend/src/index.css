@@ -10,54 +10,64 @@
   --text-secondary: #a1a1aa;
   --glass-border: rgba(255, 255, 255, 0.08);
   --input-bg: rgba(0, 0, 0, 0.4);
+  --radial-glow-1: rgba(212, 255, 91, 0.03);
+  --radial-glow-2: rgba(59, 130, 246, 0.03);
 }
 
 [data-theme="cyberpunk"] {
   --bg-dark: #090614;
-  --bg-card: rgba(22, 16, 38, 0.75);
+  --bg-card: rgba(24, 15, 42, 0.75);
   --accent-lime: #00f0ff;
   --accent-orange: #ff007f;
-  --accent-blue: #7000ff;
+  --accent-blue: #a855f7;
   --text-primary: #ffffff;
-  --text-secondary: #9d8ec4;
-  --glass-border: rgba(255, 0, 127, 0.15);
-  --input-bg: rgba(14, 9, 26, 0.5);
+  --text-secondary: #c0b3e2;
+  --glass-border: rgba(255, 0, 127, 0.25);
+  --input-bg: rgba(14, 9, 26, 0.6);
+  --radial-glow-1: rgba(255, 0, 127, 0.15);
+  --radial-glow-2: rgba(0, 240, 255, 0.12);
 }
 
 [data-theme="nordic-frost"] {
-  --bg-dark: #0a0e17;
-  --bg-card: rgba(16, 24, 40, 0.75);
+  --bg-dark: #06111e;
+  --bg-card: rgba(12, 30, 58, 0.75);
   --accent-lime: #38bdf8;
-  --accent-orange: #f43f5e;
+  --accent-orange: #06b6d4;
   --accent-blue: #6366f1;
-  --text-primary: #ffffff;
+  --text-primary: #f0f9ff;
   --text-secondary: #94a3b8;
-  --glass-border: rgba(56, 189, 248, 0.12);
-  --input-bg: rgba(10, 16, 28, 0.5);
+  --glass-border: rgba(56, 189, 248, 0.2);
+  --input-bg: rgba(8, 22, 38, 0.6);
+  --radial-glow-1: rgba(56, 189, 248, 0.12);
+  --radial-glow-2: rgba(99, 102, 241, 0.12);
 }
 
 [data-theme="broadcast-light"] {
-  --bg-dark: #f8fafc;
-  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-dark: #e2e8f0;
+  --bg-card: rgba(255, 255, 255, 0.9);
   --accent-lime: #16a34a;
   --accent-orange: #ea580c;
   --accent-blue: #2563eb;
   --text-primary: #0f172a;
   --text-secondary: #475569;
-  --glass-border: rgba(0, 0, 0, 0.1);
-  --input-bg: rgba(241, 245, 249, 0.8);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.95);
+  --radial-glow-1: rgba(37, 99, 235, 0.06);
+  --radial-glow-2: rgba(234, 88, 12, 0.05);
 }
 
 [data-theme="warm-paper"] {
-  --bg-dark: #fbf9f5;
-  --bg-card: rgba(255, 253, 248, 0.88);
+  --bg-dark: #eee8d5;
+  --bg-card: rgba(253, 246, 227, 0.92);
   --accent-lime: #059669;
   --accent-orange: #d97706;
   --accent-blue: #4f46e5;
   --text-primary: #1c1917;
   --text-secondary: #57534e;
   --glass-border: rgba(120, 53, 15, 0.12);
-  --input-bg: rgba(245, 240, 232, 0.8);
+  --input-bg: rgba(253, 246, 227, 0.95);
+  --radial-glow-1: rgba(217, 119, 6, 0.08);
+  --radial-glow-2: rgba(5, 150, 105, 0.06);
 }
 
 @theme {
@@ -70,13 +80,14 @@
 body {
   background-color: var(--bg-dark);
   background-image: 
-    radial-gradient(circle at 0% 0%, rgba(212, 255, 91, 0.03) 0%, transparent 50%),
-    radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.03) 0%, transparent 50%);
+    radial-gradient(circle at 0% 0%, var(--radial-glow-1, rgba(212, 255, 91, 0.03)) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, var(--radial-glow-2, rgba(59, 130, 246, 0.03)) 0%, transparent 50%);
   color: var(--text-primary);
   font-family: 'Inter', 'Outfit', system-ui, -apple-system, sans-serif;
   margin: 0;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .glass-card {

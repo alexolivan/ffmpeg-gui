@@ -128,7 +128,7 @@ function App() {
     const logoUrl = settings.logo_path ? `${API}${settings.logo_path}` : null;
     const accent = settings.accent_color || '#FF6B00';
     return (
-      <div className="flex h-screen items-center justify-center bg-black text-white p-4">
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-dark)] text-[var(--text-primary)] p-4 transition-colors duration-300">
         <div 
           className="glass-card w-full max-w-md p-10 animate-in zoom-in duration-500"
           style={{ borderColor: `${accent}4d` }}
@@ -171,7 +171,7 @@ function App() {
 
   // ── Render Application ──────────────────────────────────────────
   return (
-    <div className="flex h-screen overflow-hidden bg-black text-white">
+    <div className="flex h-screen overflow-hidden bg-[var(--bg-dark)] text-[var(--text-primary)] transition-colors duration-300">
       <Sidebar 
         activeView={activeView} 
         onViewChange={setActiveView} 
