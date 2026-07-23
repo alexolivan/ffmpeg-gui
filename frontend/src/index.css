@@ -12,6 +12,7 @@
   --input-bg: rgba(0, 0, 0, 0.4);
   --radial-glow-1: rgba(212, 255, 91, 0.03);
   --radial-glow-2: rgba(59, 130, 246, 0.03);
+  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
 }
 
 [data-theme="cyberpunk"] {
@@ -26,6 +27,7 @@
   --input-bg: rgba(14, 9, 26, 0.6);
   --radial-glow-1: rgba(255, 0, 127, 0.15);
   --radial-glow-2: rgba(0, 240, 255, 0.12);
+  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.9);
 }
 
 [data-theme="nordic-frost"] {
@@ -40,6 +42,7 @@
   --input-bg: rgba(8, 22, 38, 0.6);
   --radial-glow-1: rgba(56, 189, 248, 0.12);
   --radial-glow-2: rgba(99, 102, 241, 0.12);
+  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.9);
 }
 
 [data-theme="broadcast-light"] {
@@ -54,6 +57,7 @@
   --input-bg: rgba(255, 255, 255, 0.95);
   --radial-glow-1: rgba(37, 99, 235, 0.06);
   --radial-glow-2: rgba(234, 88, 12, 0.05);
+  --card-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.05);
 }
 
 [data-theme="warm-paper"] {
@@ -68,6 +72,7 @@
   --input-bg: rgba(253, 246, 227, 0.95);
   --radial-glow-1: rgba(217, 119, 6, 0.08);
   --radial-glow-2: rgba(5, 150, 105, 0.06);
+  --card-shadow: 0 4px 20px 0 rgba(120, 53, 15, 0.08);
 }
 
 @theme {
@@ -96,7 +101,7 @@ body {
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
   border-radius: 28px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+  box-shadow: var(--card-shadow, 0 8px 32px 0 rgba(0, 0, 0, 0.8));
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

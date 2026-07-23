@@ -634,7 +634,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <>
             {/* TAB 1: General -> Interface Language Card */}
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
-              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
+              <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
                 <h4 className="text-cyan-400 font-bold text-xs uppercase tracking-wider">
                   {t('settings.language.title', 'Interface Language')}
@@ -658,12 +658,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       onClick={() => setLanguage(item.code)}
                       className={`p-3 rounded-xl border flex items-center justify-between transition-all cursor-pointer ${
                         language === item.code
-                          ? 'border-brand-lime bg-brand-lime/10 text-white font-bold shadow-md'
-                          : 'border-white/10 bg-white/5 text-text-secondary hover:border-white/20 hover:text-white'
+                          ? 'border-brand-lime bg-brand-lime/10 text-[var(--text-primary)] font-bold shadow-md'
+                          : 'border-[var(--glass-border)] bg-[var(--input-bg)] text-text-secondary hover:border-brand-lime/40 hover:text-[var(--text-primary)]'
                       }`}
                     >
                       <span className="text-xs">{item.label}</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/30 border border-white/10 text-cyan-300 font-bold">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--bg-dark)] border border-[var(--glass-border)] text-cyan-400 font-bold">
                         {item.badge}
                       </span>
                     </button>
@@ -674,7 +674,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* TAB 1: General -> Interface Theme Card */}
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
-              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
+              <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
                 <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">
                   {t('settings.theme.title', 'INTERFACE THEME')}
@@ -697,7 +697,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         className={`p-3 rounded-xl border flex flex-col justify-between transition-all cursor-pointer text-left relative overflow-hidden ${
                           isSelected
                             ? 'border-brand-lime bg-brand-lime/10 shadow-md ring-1 ring-brand-lime/50'
-                            : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/[0.07]'
+                            : 'border-[var(--glass-border)] bg-[var(--input-bg)] hover:border-brand-lime/40'
                         }`}
                       >
                         {isSelected && (
@@ -706,7 +706,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           </div>
                         )}
                         <div className="flex items-center justify-between gap-2 mb-2 pr-5">
-                          <span className="text-xs font-bold text-white truncate">
+                          <span className="text-xs font-bold text-[var(--text-primary)] truncate">
                             {t(item.nameKey, item.defaultName)}
                           </span>
                           <span className="text-xs shrink-0" title={item.mode}>
@@ -738,7 +738,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
-              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2">
+              <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
                 <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.branding.title', 'Branding & Node Identity')}</h4>
               </div>
@@ -749,7 +749,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.branding.stationName', 'Station Name')}</label>
                     <input 
                       type="text" 
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all"
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all"
                       value={nodeName}
                       onChange={e => setNodeName(e.target.value)}
                       placeholder="e.g. Primary Transcode Node"
@@ -760,7 +760,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <input 
                       type="text" 
                       maxLength={3}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all uppercase font-bold tracking-widest text-brand-lime"
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all uppercase font-bold tracking-widest text-brand-lime"
                       value={logoText}
                       onChange={e => setLogoText(e.target.value.toUpperCase())}
                       placeholder="e.g. FFG"
@@ -771,7 +771,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <input 
                       type="text" 
                       maxLength={12}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono"
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono"
                       value={lcdAlias}
                       onChange={e => {
                         const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
@@ -782,7 +782,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-xl p-4 hover:border-brand-lime transition-all relative group cursor-pointer h-full min-h-[140px] bg-white/[0.01]">
+                <div className="flex flex-col items-center justify-center border-2 border-dashed border-[var(--glass-border)] rounded-xl p-4 hover:border-brand-lime transition-all relative group cursor-pointer h-full min-h-[140px] bg-[var(--input-bg)]">
                   <label className="absolute inset-0 cursor-pointer flex flex-col items-center justify-center w-full h-full z-10">
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                   </label>
@@ -791,8 +791,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <img src={`${API}${settings.logo_path}`} alt="Custom Logo" className="max-w-full max-h-full object-contain" />
                     </div>
                   ) : (
-                    <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                      <span className="text-white font-black text-lg uppercase tracking-wider">{logoText || 'FF'}</span>
+                    <div className="w-12 h-12 bg-brand-lime/10 border border-brand-lime/30 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+                      <span className="text-brand-lime font-black text-lg uppercase tracking-wider">{logoText || 'FF'}</span>
                     </div>
                   )}
                   <div className="text-[9px] uppercase font-bold text-text-secondary mt-2.5 text-center tracking-wider">
