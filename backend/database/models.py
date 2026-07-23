@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Boolean, Float
+from sqlalchemy import Column, Integer, BigInteger, String, DateTime, JSON, ForeignKey, Boolean, Float
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 class Base(DeclarativeBase):
@@ -253,4 +253,23 @@ class Storage(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     builds = relationship("FfmpegBuild", back_populates="storage")
+
+
+class InstalledSdk(Base):
+    __tablename__ = 'installed_sdks'
+
+    id = Column(Integer, primary_key=True)
+    target_app = Column(String, default="ffmpeg")
+    sdk_type = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    version = Column(String, nullable=False)
+    storage_id = Column(Integer, ForeignKey('storages.id'), nullable=True)
+    relative_path = Column(String, nullable=False)
+    size_bytes = Column(BigInteger, default=0)
+    status = Column(String, default="ready")
+    metadata_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    storage = relationship("Storage")
+
 
