@@ -194,6 +194,46 @@ def init_db():
                 )
                 db.add(task)
                 db.commit()
+
+            # Seed pre-existing SDKs on disk if not registered in InstalledSdk
+            from database.models import InstalledSdk
+            default_sdk_storage = db.query(Storage).filter(Storage.type == "sdk", Storage.is_default == True).first()
+            sdk_base_path = default_sdk_storage.path if default_sdk_storage else os.path.abspath("data/sdks")
+            if os.path.exists(sdk_base_path):
+                for sdk_type in ["decklink", "ndi"]:
+                    type_dir = os.path.join(sdk_base_path, sdk_type)
+                    if os.path.exists(type_dir) and os.path.isdir(type_dir):
+                        for version in os.listdir(type_dir):
+                            version_path = os.path.join(type_dir, version)
+                            if not os.path.isdir(version_path):
+                                continue
+                            existing = db.query(InstalledSdk).filter(
+                                InstalledSdk.target_app == "ffmpeg",
+                                InstalledSdk.sdk_type == sdk_type,
+                                InstalledSdk.version == version
+                            ).first()
+                            if not existing:
+                                total_bytes = 0
+                                for root_d, _, files in os.walk(version_path):
+                                    for f in files:
+                                        try:
+                                            total_bytes += os.path.getsize(os.path.join(root_d, f))
+                                        except OSError:
+                                            pass
+                                name = f"Blackmagic DeckLink SDK v{version}" if sdk_type == "decklink" else f"NewTek NDI SDK v{version}"
+                                new_sdk = InstalledSdk(
+                                    target_app="ffmpeg",
+                                    sdk_type=sdk_type,
+                                    name=name,
+                                    version=version,
+                                    storage_id=default_sdk_storage.id if default_sdk_storage else None,
+                                    relative_path=os.path.join(sdk_type, version),
+                                    size_bytes=total_bytes,
+                                    status="ready"
+                                )
+                                db.add(new_sdk)
+                                logger.info(f"Seeded pre-existing disk SDK: {sdk_type} v{version}")
+                db.commit()
         finally:
             db.close()
     except Exception as e:
