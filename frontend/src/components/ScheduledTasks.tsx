@@ -303,7 +303,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       {/* HEADER */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white uppercase mb-0.5">
+          <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] uppercase mb-0.5">
             {t('tasks.title', 'Task Scheduling')}
           </h1>
           <p className="text-xs text-text-secondary">{t('tasks.subtitle', 'Automate batch jobs, recurring feeds and cron conversions.')}</p>
@@ -311,7 +311,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         <div className="flex gap-4">
           <button 
             onClick={() => importFileRef.current?.click()} 
-            className="pill-button bg-white/5 border border-white/10 text-white hover:bg-white/10 text-sm py-2.5 px-6 flex items-center gap-1.5"
+            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 text-sm py-2.5 px-6 flex items-center gap-1.5"
           >
             <ImportIcon size={14} /> {t('tasks.importTask', 'IMPORT TASK')}
           </button>

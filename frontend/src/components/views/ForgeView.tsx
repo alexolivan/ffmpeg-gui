@@ -218,14 +218,14 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
       <header className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">
+          <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5">
             FFMPEG <span className="text-brand-orange">FORGE</span>
           </h1>
           <p className="text-xs text-text-secondary">{t('forge.subtitle')}</p>
         </div>
         <div className="flex items-center gap-4">
           {diskInfo && (
-            <div className="pill-button bg-white/5 border border-white/10 flex items-center gap-2 text-xs">
+            <div className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] flex items-center gap-2 text-xs">
               <span className="text-text-secondary">{t('forge.disk')}:</span>
               <span className={`font-mono font-bold ${diskInfo.free_gb < 10 ? 'text-red-400' : diskInfo.free_gb < 50 ? 'text-brand-orange' : 'text-brand-lime'}`}>
                 {diskInfo.free_gb} {t('dashboard.freeGb')}
@@ -233,7 +233,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             </div>
           )}
           <button onClick={() => importRecipeRef.current?.click()}
-            className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold hover:scale-105 transition-transform flex items-center gap-1.5">
+            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 hover:scale-105 transition-transform flex items-center gap-1.5">
             <ImportIcon size={14} /> {t('forge.importRecipe')}
           </button>
           <input 

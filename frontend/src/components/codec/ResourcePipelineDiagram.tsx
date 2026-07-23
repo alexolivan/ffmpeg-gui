@@ -252,8 +252,8 @@ export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(
               height={(audioCpuY - videoCpuY) + 20}
               rx={10}
               ry={10}
-              fill="#111827"
-              stroke="#e5e7eb"
+              fill="var(--bg-card)"
+              stroke="var(--text-primary)"
               strokeWidth={2}
             />
           ) : videoCpuActive ? (
@@ -261,7 +261,7 @@ export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(
               cx={x}
               cy={videoCpuY}
               r={6}
-              fill="#111827"
+              fill="var(--bg-card)"
               stroke="#f97316"
               strokeWidth={2}
             />
@@ -270,7 +270,7 @@ export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(
               cx={x}
               cy={audioCpuY}
               r={6}
-              fill="#111827"
+              fill="var(--bg-card)"
               stroke="#3b82f6"
               strokeWidth={2}
             />
@@ -283,7 +283,7 @@ export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(
             cx={x}
             cy={gpuY}
             r={6}
-            fill="#111827"
+            fill="var(--bg-card)"
             stroke="#f97316"
             strokeWidth={2}
           />
@@ -294,7 +294,7 @@ export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(
 
   return (
     <div 
-      className={`p-2.5 rounded-xl border bg-white/[0.02] flex flex-col gap-2 transition-all duration-300 ${pathColorClass} mb-2.5`}
+      className={`p-2.5 rounded-xl border bg-[var(--input-bg)] border-[var(--glass-border)] flex flex-col gap-2 transition-all duration-300 ${pathColorClass} mb-2.5`}
       data-gpu-filters={hasGpuFilters}
     >
       <div className="flex items-center justify-between">
@@ -306,24 +306,24 @@ export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(
         </span>
       </div>
 
-      <div className="relative w-full overflow-hidden rounded-lg bg-black/40 border border-white/5 py-2">
-        <svg viewBox="0 0 600 135" className="w-full text-white">
+      <div className="relative w-full overflow-hidden rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] py-2">
+        <svg viewBox="0 0 600 135" className="w-full text-[var(--text-primary)]">
           {/* Track Labels */}
-          <text x={12} y={39} className="fill-white/30 text-[9px] font-black tracking-wider uppercase font-mono">GPU</text>
-          <text x={12} y={videoCpuY + 8} className="fill-white/30 text-[9px] font-black tracking-wider uppercase font-mono">CPU</text>
+          <text x={12} y={39} className="fill-[var(--text-secondary)] text-[9px] font-black tracking-wider uppercase font-mono">GPU</text>
+          <text x={12} y={videoCpuY + 8} className="fill-[var(--text-secondary)] text-[9px] font-black tracking-wider uppercase font-mono">CPU</text>
 
           {/* Guide rails / Track Bed (Dark thick lines) */}
-          <line x1={50} y1={gpuY} x2={550} y2={gpuY} stroke="#1f2937" strokeWidth={5} strokeLinecap="round" />
+          <line x1={50} y1={gpuY} x2={550} y2={gpuY} stroke="var(--glass-border)" strokeWidth={5} strokeLinecap="round" />
           {useOffset ? (
             <>
-              <line x1={50} y1={videoCpuY} x2={550} y2={videoCpuY} stroke="#1f2937" strokeWidth={5} strokeLinecap="round" />
-              <line x1={50} y1={audioCpuY} x2={550} y2={audioCpuY} stroke="#1f2937" strokeWidth={5} strokeLinecap="round" />
+              <line x1={50} y1={videoCpuY} x2={550} y2={videoCpuY} stroke="var(--glass-border)" strokeWidth={5} strokeLinecap="round" />
+              <line x1={50} y1={audioCpuY} x2={550} y2={audioCpuY} stroke="var(--glass-border)" strokeWidth={5} strokeLinecap="round" />
             </>
           ) : (
-            <line x1={50} y1={videoCpuY} x2={550} y2={videoCpuY} stroke="#1f2937" strokeWidth={5} strokeLinecap="round" />
+            <line x1={50} y1={videoCpuY} x2={550} y2={videoCpuY} stroke="var(--glass-border)" strokeWidth={5} strokeLinecap="round" />
           )}
           {isHybridFilters && (
-            <line x1={300} y1={35} x2={300} y2={videoCpuY} stroke="#1f2937" strokeWidth={5} strokeLinecap="round" />
+            <line x1={300} y1={35} x2={300} y2={videoCpuY} stroke="var(--glass-border)" strokeWidth={5} strokeLinecap="round" />
           )}
 
           {/* Audio line path */}
@@ -352,11 +352,11 @@ export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(
           )}
 
           {/* Station Column Name Labels */}
-          <text x={60} y={15} textAnchor="middle" className="fill-white/50 text-[9px] font-black tracking-widest font-mono uppercase">INPUT</text>
-          <text x={180} y={15} textAnchor="middle" className="fill-white/50 text-[9px] font-black tracking-widest font-mono uppercase">DECODE</text>
-          <text x={300} y={15} textAnchor="middle" className="fill-white/50 text-[9px] font-black tracking-widest font-mono uppercase">FILTER</text>
-          <text x={420} y={15} textAnchor="middle" className="fill-white/50 text-[9px] font-black tracking-widest font-mono uppercase">ENCODE</text>
-          <text x={540} y={15} textAnchor="middle" className="fill-white/50 text-[9px] font-black tracking-widest font-mono uppercase">OUTPUT</text>
+          <text x={60} y={15} textAnchor="middle" className="fill-[var(--text-secondary)] text-[9px] font-black tracking-widest font-mono uppercase">INPUT</text>
+          <text x={180} y={15} textAnchor="middle" className="fill-[var(--text-secondary)] text-[9px] font-black tracking-widest font-mono uppercase">DECODE</text>
+          <text x={300} y={15} textAnchor="middle" className="fill-[var(--text-secondary)] text-[9px] font-black tracking-widest font-mono uppercase">FILTER</text>
+          <text x={420} y={15} textAnchor="middle" className="fill-[var(--text-secondary)] text-[9px] font-black tracking-widest font-mono uppercase">ENCODE</text>
+          <text x={540} y={15} textAnchor="middle" className="fill-[var(--text-secondary)] text-[9px] font-black tracking-widest font-mono uppercase">OUTPUT</text>
 
           {/* Render Station Circles/Capsules */}
           {renderStationNode(60, inputCpuActive, inputGpuActive, hasVideo, hasAudio, 'input')}
@@ -367,53 +367,53 @@ export const ResourcePipelineDiagram = React.memo<ResourcePipelineDiagramProps>(
 
           {/* Display operation counts for CPU nodes */}
           {inputCpuActive && (
-            <text x={60} y={120} textAnchor="middle" className="fill-white/80 text-[8px] font-mono font-bold">
+            <text x={60} y={120} textAnchor="middle" className="fill-[var(--text-primary)] text-[8px] font-mono font-bold">
               {`[ ${cpuAudioCount('input')} | ${cpuVideoCount('input')} ]`}
             </text>
           )}
           {decodeCpuActive && (
-            <text x={180} y={120} textAnchor="middle" className="fill-white/80 text-[8px] font-mono font-bold">
+            <text x={180} y={120} textAnchor="middle" className="fill-[var(--text-primary)] text-[8px] font-mono font-bold">
               {`[ ${cpuAudioCount('decode')} | ${cpuVideoCount('decode')} ]`}
             </text>
           )}
           {filterCpuActive && (
-            <text x={300} y={120} textAnchor="middle" className="fill-white/80 text-[8px] font-mono font-bold">
+            <text x={300} y={120} textAnchor="middle" className="fill-[var(--text-primary)] text-[8px] font-mono font-bold">
               {`[ ${cpuAudioCount('filter')} | ${cpuVideoCount('filter')} ]`}
             </text>
           )}
           {encodeCpuActive && (
-            <text x={420} y={120} textAnchor="middle" className="fill-white/80 text-[8px] font-mono font-bold">
+            <text x={420} y={120} textAnchor="middle" className="fill-[var(--text-primary)] text-[8px] font-mono font-bold">
               {`[ ${cpuAudioCount('encode')} | ${cpuVideoCount('encode')} ]`}
             </text>
           )}
           {outputCpuActive && (
-            <text x={540} y={120} textAnchor="middle" className="fill-white/80 text-[8px] font-mono font-bold">
+            <text x={540} y={120} textAnchor="middle" className="fill-[var(--text-primary)] text-[8px] font-mono font-bold">
               {`[ ${cpuAudioCount('output')} | ${cpuVideoCount('output')} ]`}
             </text>
           )}
 
           {/* Display operation counts for GPU nodes */}
           {decodeGpuActive && (
-            <text x={180} y={51} textAnchor="middle" className="fill-white/80 text-[8px] font-mono font-bold">
+            <text x={180} y={51} textAnchor="middle" className="fill-[var(--text-primary)] text-[8px] font-mono font-bold">
               {`[ ${gpuVideoCount('decode')} ]`}
             </text>
           )}
           {filterGpuActive && (
-            <text x={300} y={51} textAnchor="middle" className="fill-white/80 text-[8px] font-mono font-bold">
+            <text x={300} y={51} textAnchor="middle" className="fill-[var(--text-primary)] text-[8px] font-mono font-bold">
               {`[ ${gpuVideoCount('filter')} ]`}
             </text>
           )}
           {encodeGpuActive && (
-            <text x={420} y={51} textAnchor="middle" className="fill-white/80 text-[8px] font-mono font-bold">
+            <text x={420} y={51} textAnchor="middle" className="fill-[var(--text-primary)] text-[8px] font-mono font-bold">
               {`[ ${gpuVideoCount('encode')} ]`}
             </text>
           )}
 
           {/* Input/Output format labels at the ends */}
-          <text x={60} y={131} textAnchor="middle" className="fill-white/40 text-[8px] font-mono uppercase">
+          <text x={60} y={131} textAnchor="middle" className="fill-[var(--text-secondary)] text-[8px] font-mono uppercase">
             {isRawInput ? 'INPUT (RAW)' : 'INPUT (COMPRESSED)'}
           </text>
-          <text x={540} y={131} textAnchor="middle" className="fill-white/40 text-[8px] font-mono uppercase">
+          <text x={540} y={131} textAnchor="middle" className="fill-[var(--text-secondary)] text-[8px] font-mono uppercase">
             {isRawOutput ? 'OUTPUT (RAW)' : 'OUTPUT (COMPRESSED)'}
           </text>
         </svg>

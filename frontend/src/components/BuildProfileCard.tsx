@@ -88,8 +88,8 @@ export default function BuildProfileCard({
 
   return (
     <div className={`glass-card p-6 border transition-all duration-300 ${
-      build.is_default ? 'border-brand-lime/30' : 'border-white/5'
-    } hover:border-white/15`}>
+      build.is_default ? 'border-brand-lime/30' : 'border-[var(--glass-border)]'
+    } hover:border-brand-lime/30`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -97,7 +97,7 @@ export default function BuildProfileCard({
             <span className="text-brand-lime text-lg" title={t('forge.defaultBuildTitle', 'Default Build')}>★</span>
           )}
           <div>
-            <h4 className="text-lg font-bold">{build.name}</h4>
+            <h4 className="text-lg font-bold text-[var(--text-primary)]">{build.name}</h4>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
                 FFmpeg {build.ffmpeg_version}
@@ -151,23 +151,23 @@ export default function BuildProfileCard({
       </div>
 
       {/* Metadata Row */}
-      <div className="flex items-center gap-6 text-[11px] text-text-secondary mb-5 border-t border-white/5 pt-4">
+      <div className="flex items-center gap-6 text-[11px] text-text-secondary mb-5 border-t border-[var(--glass-border)] pt-4">
         <div>
           <span className="uppercase tracking-widest text-[9px] block mb-0.5">{t('forge.built', 'Built')}</span>
-          <span className="text-white/70 font-mono">{formatDate(build.built_at)}</span>
+          <span className="text-[var(--text-primary)] opacity-80 font-mono">{formatDate(build.built_at)}</span>
         </div>
         <div>
           <span className="uppercase tracking-widest text-[9px] block mb-0.5">{t('forge.size', 'Size')}</span>
-          <span className="text-white/70 font-mono">
+          <span className="text-[var(--text-primary)] opacity-80 font-mono">
             {build.disk_usage_mb != null ? `${build.disk_usage_mb} MB` : '—'}
           </span>
         </div>
         {build.sources_cleaned ? (
-          <div className="text-brand-lime/60 text-[9px] uppercase tracking-widest font-bold">
+          <div className="text-brand-lime/80 text-[9px] uppercase tracking-widest font-bold">
             ✓ {t('forge.sourcesCleaned', 'Sources cleaned')}
           </div>
         ) : build.auto_clean ? (
-          <div className="text-brand-orange/60 text-[9px] uppercase tracking-widest font-bold">
+          <div className="text-brand-orange/80 text-[9px] uppercase tracking-widest font-bold">
             ⚡ {t('forge.autoCleanActive', 'Auto-clean active')}
           </div>
         ) : null}
@@ -192,7 +192,7 @@ export default function BuildProfileCard({
             title={hasMissingSdk ? t('forge.missingSdkCompileTooltip', 'Required SDK version is missing and must be uploaded via Manage SDKs.') : undefined}
             className={`pill-button text-xs transition-all ${
               isAnyBuilding || hasMissingSdk
-                ? 'opacity-40 cursor-not-allowed bg-white/5 text-white/40 border border-white/5'
+                ? 'opacity-40 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
                 : build.status === 'failed' 
                   ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' 
                   : 'bg-brand-orange/20 text-brand-orange hover:bg-brand-orange/30'
@@ -205,37 +205,37 @@ export default function BuildProfileCard({
         {build.status === 'ready' && (
           <>
             <button onClick={() => onValidate(build.id)}
-              className="pill-button bg-white/5 text-xs hover:bg-white/10">{t('forge.validate', 'VALIDATE')}</button>
+              className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:border-brand-lime/40">{t('forge.validate', 'VALIDATE')}</button>
             {!build.sources_cleaned && (
               <button onClick={() => onCleanSources(build.id)}
-                className="pill-button bg-white/5 text-xs hover:bg-white/10">{t('forge.cleanSrc', 'CLEAN SRC')}</button>
+                className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:border-brand-lime/40">{t('forge.cleanSrc', 'CLEAN SRC')}</button>
             )}
             {!build.is_default && (
               <button onClick={() => onSetDefault(build.id)}
-                className="pill-button bg-brand-lime/10 text-brand-lime text-xs hover:bg-brand-lime/20">{t('common.setDefault', 'SET DEFAULT')}</button>
+                className="pill-button bg-brand-lime/10 text-brand-lime text-xs hover:bg-brand-lime/20 border border-brand-lime/30">{t('common.setDefault', 'SET DEFAULT')}</button>
             )}
           </>
         )}
 
         {(build.status === 'building' || build.status === 'ready' || build.status === 'failed') && (
           <button onClick={() => onViewLogs(build.id)}
-            className="pill-button bg-white/5 text-xs hover:bg-white/10">{t('forge.viewLogs', 'VIEW LOGS')}</button>
+            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:border-brand-lime/40">{t('forge.viewLogs', 'VIEW LOGS')}</button>
         )}
 
         <button onClick={() => onExport(build.id)}
-          className="pill-button bg-white/5 text-xs hover:bg-white/10">{t('forge.exportRecipe', 'EXPORT RECIPE')}</button>
+          className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:border-brand-lime/40">{t('forge.exportRecipe', 'EXPORT RECIPE')}</button>
 
         <button
           onClick={() => onEdit(build)}
           disabled={build.status === 'building'}
-          className={`pill-button text-xs ml-auto ${build.status === 'building' ? 'opacity-30 cursor-not-allowed bg-white/5 text-white/40' : 'bg-white/5 hover:bg-white/10'}`}
+          className={`pill-button text-xs ml-auto ${build.status === 'building' ? 'opacity-30 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary' : 'bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40'}`}
         >
           {t('common.edit', 'EDIT')}
         </button>
 
         {build.status !== 'building' && (
           <button onClick={() => onDelete(build.id)}
-            className="pill-button bg-white/5 text-xs hover:bg-red-500/10 hover:text-red-400">{t('common.delete', 'DELETE')}</button>
+            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:bg-red-500/10 hover:text-red-400">{t('common.delete', 'DELETE')}</button>
         )}
       </div>
     </div>

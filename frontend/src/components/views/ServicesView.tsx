@@ -70,12 +70,12 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
       <header className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">{t('services.title', 'SERVICES')}</h1>
+          <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5">{t('services.title', 'SERVICES')}</h1>
           <p className="text-xs text-text-secondary">{t('services.subtitle', 'Continuous media streaming and processing node instances')}</p>
         </div>
         <div className="flex gap-4">
           <button onClick={() => importFileRef.current?.click()}
-            className="pill-button bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold transition-all flex items-center gap-1.5">
+            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 transition-all flex items-center gap-1.5">
             <ImportIcon size={14} /> {t('services.importProfile', 'IMPORT PROFILE')}
           </button>
           <input 

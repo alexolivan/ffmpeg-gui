@@ -94,7 +94,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <>
       <header className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-white mb-0.5">{t('dashboard.title')}</h1>
+          <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5">{t('dashboard.title')}</h1>
           <p className="text-xs text-text-secondary">{t('dashboard.subtitle')}</p>
         </div>
         <div className="flex gap-4">
@@ -104,14 +104,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               className={`pill-button flex items-center gap-2 transition-all ${
                 locatorActive 
                   ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/25 border border-red-500' 
-                  : 'bg-white/5 border border-white/10 text-white/60 hover:bg-white/10'
+                  : 'bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40'
               }`}
             >
               <span className={`w-2 h-2 rounded-full ${locatorActive ? 'bg-white' : 'bg-red-500'}`}></span>
               {locatorActive ? t('dashboard.locatorActive') : t('dashboard.findMe')}
             </button>
           )}
-          <div className="pill-button bg-white/5 border border-white/10 flex items-center gap-2">
+          <div className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-brand-lime"></span>
             {t('dashboard.node')}: {settings.lcd_alias || 'NODE-01'}
           </div>

@@ -110,6 +110,22 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+input[type="text"],
+input[type="number"],
+input[type="search"],
+input[type="password"],
+select,
+textarea {
+  background-color: var(--input-bg);
+  color: var(--text-primary);
+  border-color: var(--glass-border);
+}
+
+select option {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+}
+
 .glass-card {
   background: var(--bg-card);
   backdrop-filter: blur(20px);
