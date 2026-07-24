@@ -411,7 +411,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
             type="button"
             onClick={() => setActiveSubTab('video')}
             className={`px-2 py-1 rounded text-[11px] font-black uppercase tracking-wider transition-all ${
-              activeSubTab === 'video' ? 'bg-brand-lime text-black' : 'text-text-secondary hover:bg-white/5 hover:text-white'
+              activeSubTab === 'video' ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm' : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
             }`}
           >
             {t('filters.videoSettings')}
@@ -422,7 +422,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
             type="button"
             onClick={() => setActiveSubTab('audio')}
             className={`px-2 py-1 rounded text-[11px] font-black uppercase tracking-wider transition-all ${
-              activeSubTab === 'audio' ? 'bg-brand-lime text-black' : 'text-text-secondary hover:bg-white/5 hover:text-white'
+              activeSubTab === 'audio' ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm' : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
             }`}
           >
             {t('filters.audioSettings')}
@@ -433,7 +433,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
             type="button"
             onClick={() => setActiveSubTab('overlays')}
             className={`px-2 py-1 rounded text-[11px] font-black uppercase tracking-wider transition-all ${
-              activeSubTab === 'overlays' ? 'bg-brand-lime text-black' : 'text-text-secondary hover:bg-white/5 hover:text-white'
+              activeSubTab === 'overlays' ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm' : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
             }`}
           >
             {t('filters.overlays')} ({overlays.length})
@@ -733,7 +733,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
             {equalizer.enabled && (
               <div className="space-y-3 p-2 bg-white/5 rounded-lg border border-white/5">
                 {/* EQ Curve Display */}
-                <div className="relative h-20 bg-black/40 rounded border border-white/5 overflow-hidden">
+                <div className="relative h-20 bg-[var(--input-bg)] rounded border border-[var(--glass-border)] overflow-hidden shadow-inner">
                   <svg viewBox="0 0 450 80" className="w-full h-full" preserveAspectRatio="none">
                     {/* Grid Lines */}
                     <line x1="0" y1="40" x2="450" y2="40" stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="3,3" />
@@ -1147,12 +1147,12 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                             </span>
 
                             {/* Custom Display Name */}
-                            <span className="text-xs font-bold text-white truncate max-w-[200px]">
+                            <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-[200px]">
                               {displayName}
                             </span>
 
                             {/* Position Summary Badge */}
-                            <span className="text-[9px] font-mono text-white/50 bg-black/40 px-2 py-0.5 rounded border border-white/5 shrink-0 hidden sm:inline-block">
+                            <span className="text-[9px] font-mono text-text-secondary bg-[var(--input-bg)] px-2 py-0.5 rounded border border-[var(--glass-border)] shrink-0 hidden sm:inline-block">
                               {anchor.toUpperCase()} ({overlay.x}, {overlay.y})
                             </span>
                           </div>
@@ -1183,7 +1183,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
                         {/* Expanded Layer Settings Form */}
                         {isExpanded && (
-                          <div className="p-4 border-t border-white/10 space-y-4 bg-black/40 animate-in fade-in duration-200">
+                          <div className="p-4 border-t border-[var(--glass-border)] space-y-4 bg-[var(--input-bg)] animate-in fade-in duration-200">
                             {/* Layer Name / Tag */}
                             <div>
                               <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
@@ -1352,11 +1352,11 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                       }
                                       disabled={isVideoCopy}
                                     >
-                                      <option value="" className="bg-slate-900 text-white">{t('filters.selectMediaStorage')}</option>
+                                      <option value="" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('filters.selectMediaStorage')}</option>
                                       {storages
                                         .filter((s: any) => s.type === 'media')
                                         .map((s: any) => (
-                                          <option key={s.id} value={s.id} className="bg-slate-900 text-white">
+                                          <option key={s.id} value={s.id} className="bg-[var(--bg-dark)] text-[var(--text-primary)]">
                                             {s.name} ({s.path})
                                           </option>
                                         ))}
@@ -1416,7 +1416,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 </span>
 
                                 {/* Position Mode Toggle */}
-                                <div className="flex items-center bg-black/40 p-0.5 rounded-lg border border-white/10">
+                                <div className="flex items-center bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
                                   <button
                                     type="button"
                                     disabled={isVideoCopy}

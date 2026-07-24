@@ -549,7 +549,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className={`pill-button font-black text-xs py-2.5 px-6 transition-all uppercase tracking-widest ${
               hasChanges && !isSaving
                 ? 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-brand-lime/20'
-                : 'bg-white/5 text-white/40 cursor-not-allowed border border-white/5'
+                : 'bg-[var(--input-bg)] text-text-secondary opacity-40 cursor-not-allowed border border-[var(--glass-border)]'
             }`}
           >
             {isSaving ? t('common.saving', 'Saving...') : t('common.save', 'Save Settings')}
@@ -1275,7 +1275,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className={`px-5 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all ${
                       newName.trim() && newPath.trim() && !isAdding
                         ? 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] cursor-pointer'
-                        : 'bg-white/5 text-white/40 cursor-not-allowed border border-white/5'
+                        : 'bg-[var(--input-bg)] text-text-secondary opacity-40 cursor-not-allowed border border-[var(--glass-border)]'
                     }`}
                   >
                     {isAdding ? t('common.saving', 'Saving...') : t('settings.storage.saveStorage', 'Save Storage')}

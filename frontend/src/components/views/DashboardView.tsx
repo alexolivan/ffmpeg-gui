@@ -233,7 +233,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </>
               ) : (
                 <div className="pt-3 border-t border-white/5">
-                  <div className="flex flex-col items-center justify-center p-4 bg-white/2 border border-white/5 rounded-xl text-center">
+                  <div className="flex flex-col items-center justify-center p-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-center">
                     <span className="text-[10px] font-black uppercase tracking-wider text-white/30 font-mono mb-1">{t('dashboard.gpuTelemetry')}</span>
                     <span className="text-xs font-bold text-text-secondary">{t('dashboard.notDetected')}</span>
                   </div>
@@ -258,7 +258,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <div key={storage.id || storage.name} className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-white font-bold truncate max-w-[120px]" title={storage.name}>
+                            <span className="text-[var(--text-primary)] font-bold truncate max-w-[120px]" title={storage.name}>
                               {storage.name}
                             </span>
                             <span className="text-[8px] font-black uppercase bg-brand-orange/20 text-brand-orange px-1.5 py-0.5 rounded tracking-wider shrink-0">
@@ -299,9 +299,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="space-y-2">
             {/* LCD Status Item */}
             {systemTelemetry.lcd && (
-              <div className="flex flex-col gap-1 p-2 bg-white/2 border border-white/5 rounded-xl">
+              <div className="flex flex-col gap-1 p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs uppercase text-white font-mono">{t('dashboard.lcdPanel')}</span>
+                  <span className="font-bold text-xs uppercase text-[var(--text-primary)] font-mono">{t('dashboard.lcdPanel')}</span>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                     systemTelemetry.lcd.connected
                       ? 'bg-brand-lime/25 text-brand-lime'
@@ -322,9 +322,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {Object.entries(systemTelemetry.capabilities || {})
               .filter(([key]) => key !== 'ffmpeg' && key !== 'avahi')
               .map(([key, value]: [string, any]) => (
-              <div key={key} className="flex flex-col gap-1 p-2 bg-white/2 border border-white/5 rounded-xl">
+              <div key={key} className="flex flex-col gap-1 p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs uppercase text-white font-mono">{key}</span>
+                  <span className="font-bold text-xs uppercase text-[var(--text-primary)] font-mono">{key}</span>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                     value.available
                       ? 'bg-brand-lime/25 text-brand-lime'
@@ -337,35 +337,35 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 {key === 'vaapi' && value.available && (
                   <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
                     {value.driver_version && (
-                      <div><span className="text-white/60">Driver:</span> {value.driver_version}</div>
+                      <div><span className="text-text-secondary">Driver:</span> {value.driver_version}</div>
                     )}
                     {value.vaapi_version && (
-                      <div><span className="text-white/60">VA-API:</span> v{value.vaapi_version} (libva {value.libva_version || 'N/A'})</div>
+                      <div><span className="text-text-secondary">VA-API:</span> v{value.vaapi_version} (libva {value.libva_version || 'N/A'})</div>
                     )}
                     {value.encoders && value.encoders.length > 0 && (
-                      <div><span className="text-white/60">Coders HW:</span> {value.encoders.join(', ')}</div>
+                      <div><span className="text-text-secondary">Coders HW:</span> {value.encoders.join(', ')}</div>
                     )}
                   </div>
                 )}
                 {key === 'nvenc' && value.available && (
                   <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
                     {value.gpu_name && (
-                      <div><span className="text-white/60">GPU:</span> {value.gpu_name}{value.gpu_arch ? ` (${value.gpu_arch})` : ''}</div>
+                      <div><span className="text-text-secondary">GPU:</span> {value.gpu_name}{value.gpu_arch ? ` (${value.gpu_arch})` : ''}</div>
                     )}
                     {value.driver_version && (
-                      <div><span className="text-white/60">Driver:</span> {value.driver_version}</div>
+                      <div><span className="text-text-secondary">Driver:</span> {value.driver_version}</div>
                     )}
                     {value.cuda_version && (
-                      <div><span className="text-white/60">CUDA:</span> v{value.cuda_version}</div>
+                      <div><span className="text-text-secondary">CUDA:</span> v{value.cuda_version}</div>
                     )}
                     {value.encoders && value.encoders.length > 0 && (
-                      <div><span className="text-white/60">Coders HW:</span> {value.encoders.join(', ')}</div>
+                      <div><span className="text-text-secondary">Coders HW:</span> {value.encoders.join(', ')}</div>
                     )}
                   </div>
                 )}
                 {key === 'alsa' && value.available && value.cards && value.cards.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
-                    <div><span className="text-white/60">Cards:</span> {value.cards.join(', ')}</div>
+                    <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
                   </div>
                 )}
               </div>

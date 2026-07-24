@@ -264,8 +264,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
                 activeTab === tab.id
-                  ? 'bg-white/10 text-white'
-                  : 'text-text-secondary hover:bg-white/5 hover:text-white/70'
+                  ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                  : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
               }`}
             >
               {tab.label}
