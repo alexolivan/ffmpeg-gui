@@ -99,16 +99,16 @@ export default function BuildProfileCard({
           <div>
             <h4 className="text-lg font-bold text-[var(--text-primary)]">{build.name}</h4>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+              <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
                 FFmpeg {build.ffmpeg_version}
               </span>
               {build.srt_version && (
-                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
                   SRT {build.srt_version}
                 </span>
               )}
               {build.build_options?.vaapi && (
-                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
                   VAAPI{build.sdk_paths?.vaapi ? ` ${build.sdk_paths.vaapi}` : ''}
                 </span>
               )}
@@ -118,7 +118,7 @@ export default function BuildProfileCard({
                     ⚠️ {t('forge.missingNdiBadge', 'Missing NDI SDK v{{version}}', { version: reqNdiVer || '?' })}
                   </span>
                 ) : (
-                  <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                  <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
                     NDI{reqNdiVer ? ` ${reqNdiVer}` : ''}
                   </span>
                 )
@@ -129,13 +129,13 @@ export default function BuildProfileCard({
                     ⚠️ {t('forge.missingDecklinkBadge', 'Missing DeckLink SDK v{{version}}', { version: reqDecklinkVer || '?' })}
                   </span>
                 ) : (
-                  <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                  <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
                     DeckLink{reqDecklinkVer ? ` ${reqDecklinkVer}` : ''}
                   </span>
                 )
               )}
               {build.build_options?.nvenc && (
-                <span className="text-[10px] font-mono bg-white/5 border border-white/10 px-2 py-0.5 rounded text-white/80">
+                <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
                   NVENC{build.sdk_paths?.nvenc_headers ? ` ${build.sdk_paths.nvenc_headers}` : ''}
                 </span>
               )}

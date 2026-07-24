@@ -813,10 +813,10 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
             </div>
 
             {compressor?.enabled && (
-              <div className="flex flex-col md:flex-row gap-3 p-2 bg-white/5 rounded-lg border border-white/5">
+              <div className="flex flex-col md:flex-row gap-3 p-2 bg-[var(--input-bg)] rounded-lg border border-[var(--glass-border)]">
                 {/* SVG Curve Plot */}
                 <div className="w-full md:w-1/3 flex flex-col justify-between">
-                  <div className="relative aspect-square w-full bg-black/40 rounded border border-white/5 overflow-hidden">
+                  <div className="relative aspect-square w-full bg-[var(--bg-dark)] rounded border border-[var(--glass-border)] overflow-hidden shadow-inner">
                     <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
                       {/* Grid Lines every 25 dB */}
                       <line x1="25" y1="0" x2="25" y2="100" stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
@@ -858,7 +858,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 {/* Parameters Controls */}
                 <div className="flex-1 grid grid-cols-2 gap-2 text-xs">
                   {/* Gate settings */}
-                  <div className="bg-black/20 p-1.5 rounded border border-white/5 space-y-1">
+                  <div className="bg-[var(--input-bg)] p-1.5 rounded border border-[var(--glass-border)] space-y-1">
                     <div className="text-[9px] uppercase font-bold text-red-400">{t('filters.noiseGate')}</div>
                     <div>
                       <div className="flex justify-between text-[9px] font-mono text-text-secondary">
@@ -889,7 +889,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   </div>
 
                   {/* Compressor settings */}
-                  <div className="bg-black/20 p-1.5 rounded border border-white/5 space-y-1">
+                  <div className="bg-[var(--input-bg)] p-1.5 rounded border border-[var(--glass-border)] space-y-1">
                     <div className="text-[9px] uppercase font-bold text-yellow-400">{t('filters.compressor')}</div>
                     <div>
                       <div className="flex justify-between text-[9px] font-mono text-text-secondary">
@@ -920,9 +920,9 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   </div>
 
                   {/* Makeup Gain */}
-                  <div className="col-span-2 bg-black/20 p-1.5 rounded border border-white/5">
+                  <div className="col-span-2 bg-[var(--input-bg)] p-1.5 rounded border border-[var(--glass-border)]">
                     <div className="flex justify-between text-[9px] font-mono text-text-secondary">
-                      <span className="font-bold text-white">{t('filters.makeupGain')}</span>
+                      <span className="font-bold text-[var(--text-primary)]">{t('filters.makeupGain')}</span>
                       <span>+{compressor.gain ?? 0} dB</span>
                     </div>
                     <input
@@ -1098,8 +1098,8 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                         key={overlay.id || idx}
                         className={`rounded-xl border transition-all overflow-hidden ${
                           isExpanded 
-                            ? 'border-brand-lime/40 bg-slate-900/95 shadow-lg' 
-                            : 'border-white/10 bg-white/5 hover:border-white/20'
+                            ? 'border-brand-lime/40 bg-[var(--bg-card)] shadow-lg' 
+                            : 'border-[var(--glass-border)] bg-[var(--input-bg)] hover:border-brand-lime/30'
                         }`}
                       >
                         {/* Compact Accordion Header */}

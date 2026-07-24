@@ -257,14 +257,14 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
   }, [overlays]);
 
   return (
-    <div className="w-full flex flex-col gap-3 p-4 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl backdrop-blur-xl">
+    <div className="w-full flex flex-col gap-3 p-4 bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-2xl shadow-xl backdrop-blur-xl">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+          <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
             TV Monitor Preview
           </span>
-          <div className="px-2.5 py-1 rounded-full bg-white/10 border border-white/15 backdrop-blur-md flex items-center gap-1.5 text-[11px] font-mono text-cyan-300 shadow-sm">
+          <div className="px-2.5 py-1 rounded-full bg-[var(--input-bg)] border border-[var(--glass-border)] backdrop-blur-md flex items-center gap-1.5 text-[11px] font-mono text-cyan-300 shadow-sm">
             <span>
               {scaleResolution ? scaleResolution : `${canvasW}x${canvasH}`}
             </span>
@@ -274,7 +274,7 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center bg-slate-950/80 p-0.5 rounded-lg border border-white/10">
+          <div className="flex items-center bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
             {(['16:9', '4:3', '9:16', '1:1'] as const).map((ratio) => {
               const isActive = activeRatio === ratio;
               return (
@@ -285,7 +285,7 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
                   className={`px-2 py-1 text-[10px] font-mono font-bold rounded transition-all cursor-pointer ${
                     isActive
                       ? 'bg-cyan-500 text-slate-950 shadow-md font-extrabold'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      : 'text-text-secondary hover:text-[var(--text-primary)] hover:bg-[var(--input-bg)]'
                   }`}
                 >
                   {ratio}
@@ -294,12 +294,12 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
             })}
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-lg border border-white/10 text-[10px] font-mono">
+          <div className="flex items-center gap-1.5 bg-[var(--input-bg)] p-1 rounded-lg border border-[var(--glass-border)] text-[10px] font-mono">
             <button
               type="button"
               onClick={() => setShowActionSafe(!showActionSafe)}
               className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
-                showActionSafe ? 'bg-amber-500/20 text-amber-400 font-bold border border-amber-500/40' : 'text-slate-500 hover:text-slate-300'
+                showActionSafe ? 'bg-amber-500/20 text-amber-400 font-bold border border-amber-500/40' : 'text-text-secondary hover:text-[var(--text-primary)]'
               }`}
             >
               SAFE 90%
@@ -308,7 +308,7 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
               type="button"
               onClick={() => setShowTitleSafe(!showTitleSafe)}
               className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
-                showTitleSafe ? 'bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/40' : 'text-slate-500 hover:text-slate-300'
+                showTitleSafe ? 'bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/40' : 'text-text-secondary hover:text-[var(--text-primary)]'
               }`}
             >
               SAFE 80%
@@ -317,7 +317,7 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
               type="button"
               onClick={() => setShowCenterCross(!showCenterCross)}
               className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
-                showCenterCross ? 'bg-sky-500/20 text-sky-400 font-bold border border-sky-500/40' : 'text-slate-500 hover:text-slate-300'
+                showCenterCross ? 'bg-sky-500/20 text-sky-400 font-bold border border-sky-500/40' : 'text-text-secondary hover:text-[var(--text-primary)]'
               }`}
             >
               CROSS

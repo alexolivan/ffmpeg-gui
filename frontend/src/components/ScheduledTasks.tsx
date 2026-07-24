@@ -445,7 +445,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               >
                 <div className="flex-1 space-y-0.5 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <h3 className={`font-bold text-lg truncate ${task.is_active ? 'text-white' : 'text-white/50'}`}>
+                    <h3 className={`font-bold text-lg truncate ${task.is_active ? 'text-[var(--text-primary)]' : 'text-text-secondary'}`}>
                       {task.is_system && task.name === 'System Log Rotation and Retention Cleanup'
                         ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
                         : task.name}
