@@ -1224,7 +1224,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                       type="number"
                                       min="8"
                                       max="300"
-                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-white disabled:opacity-35"
+                                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-[var(--text-primary)] disabled:opacity-35"
                                       value={overlay.fontsize || '24'}
                                       onChange={(e) => updateOverlayItem(idx, { fontsize: e.target.value })}
                                       disabled={isVideoCopy}
@@ -1249,7 +1249,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                       />
                                       <input
                                         type="text"
-                                        className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-white disabled:opacity-35"
+                                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-[var(--text-primary)] disabled:opacity-35"
                                         value={overlay.fontcolor || 'white'}
                                         onChange={(e) => updateOverlayItem(idx, { fontcolor: e.target.value })}
                                         disabled={isVideoCopy}
@@ -1310,7 +1310,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                         </label>
                                         <input
                                           type="text"
-                                          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono focus:border-brand-lime text-white disabled:opacity-35"
+                                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs outline-none font-mono focus:border-brand-lime text-[var(--text-primary)] disabled:opacity-35"
                                           value={overlay.boxcolor || 'black@0.6'}
                                           onChange={(e) => updateOverlayItem(idx, { boxcolor: e.target.value })}
                                           disabled={isVideoCopy}
@@ -1324,7 +1324,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                           type="number"
                                           min="0"
                                           max="50"
-                                          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono focus:border-brand-lime text-white disabled:opacity-35"
+                                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs outline-none font-mono focus:border-brand-lime text-[var(--text-primary)] disabled:opacity-35"
                                           value={overlay.boxborderw || '5'}
                                           onChange={(e) => updateOverlayItem(idx, { boxborderw: e.target.value })}
                                           disabled={isVideoCopy}
@@ -1370,7 +1370,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                     <input
                                       type="text"
                                       placeholder="e.g. logos/watermark.png"
-                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-white disabled:opacity-35"
+                                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-[var(--text-primary)] disabled:opacity-35"
                                       value={overlay.relative_path || ''}
                                       onChange={(e) => updateOverlayItem(idx, { relative_path: e.target.value })}
                                       disabled={isVideoCopy}
@@ -1391,9 +1391,9 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                         disabled={isVideoCopy}
                                         onClick={() => updateOverlayItem(idx, { color: preset.hex })}
                                         className={`px-2 py-1 rounded-md text-[9.5px] font-mono font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
-                                          (overlay.color || '#22d3ee') === preset.hex
-                                            ? 'border-white text-white shadow-sm scale-105 bg-white/10'
-                                            : 'border-white/10 text-white/70 hover:border-white/30 hover:text-white bg-black/20'
+                                          (overlay.color || (overlay.type === 'text' ? '#a3e635' : '#22d3ee')) === preset.hex
+                                            ? 'border-brand-lime text-brand-lime bg-brand-lime/15 shadow-sm scale-105'
+                                            : 'border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 bg-[var(--input-bg)]'
                                         }`}
                                       >
                                         <span
@@ -1556,7 +1556,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                     <input
                                       type="text"
                                       placeholder="e.g. (main_w-w)/2 or 50"
-                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-white disabled:opacity-35"
+                                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-[var(--text-primary)] disabled:opacity-35"
                                       value={overlay.x || ''}
                                       onChange={(e) => updateOverlayItem(idx, { x: e.target.value })}
                                       disabled={isVideoCopy}
@@ -1569,7 +1569,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                     <input
                                       type="text"
                                       placeholder="e.g. main_h-h-20 or 50"
-                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-white disabled:opacity-35"
+                                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none font-mono focus:border-brand-lime text-[var(--text-primary)] disabled:opacity-35"
                                       value={overlay.y || ''}
                                       onChange={(e) => updateOverlayItem(idx, { y: e.target.value })}
                                       disabled={isVideoCopy}
