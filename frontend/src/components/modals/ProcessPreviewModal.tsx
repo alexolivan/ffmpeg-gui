@@ -126,32 +126,32 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
               {/* Col 1: System Telemetry Stats */}
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                     <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Status</div>
                     <div className={`font-black text-sm tracking-tight ${currentProcess.status === 'running' ? 'text-brand-lime' : currentProcess.status === 'error' ? 'text-red-400' : 'text-white/60'}`}>
                       {currentProcess.status.toUpperCase()}
                     </div>
                   </div>
-                  <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                     <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
-                    <div className="font-bold font-mono text-sm">{currentProcess.bitrate || '0 kb/s'}</div>
+                    <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.bitrate || '0 kb/s'}</div>
                   </div>
-                  <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                     <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">FPS</div>
-                    <div className="font-bold font-mono text-sm">{currentProcess.fps || '0'}</div>
+                    <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.fps || '0'}</div>
                   </div>
-                  <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                     <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Speed</div>
-                    <div className="font-bold font-mono text-sm">{currentProcess.speed || '0x'}</div>
+                    <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.speed || '0x'}</div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 flex justify-between items-center">
                     <span className="text-[10px] uppercase font-black text-text-secondary">CPU Usage</span>
                     <span className="font-mono font-bold text-brand-lime">{currentProcess.cpu || 0}%</span>
                   </div>
-                  <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 flex justify-between items-center">
                     <span className="text-[10px] uppercase font-black text-text-secondary">RAM Usage</span>
                     <span className="font-mono font-bold text-brand-orange">{currentProcess.ram || 0} MB</span>
                   </div>
@@ -175,32 +175,32 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
           ) : (
             <div className="max-w-3xl mx-auto space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                   <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Status</div>
                   <div className={`font-black text-sm tracking-tight ${currentProcess.status === 'running' ? 'text-brand-lime' : currentProcess.status === 'error' ? 'text-red-400' : 'text-white/60'}`}>
                     {currentProcess.status.toUpperCase()}
                   </div>
                 </div>
-                <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                   <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
-                  <div className="font-bold font-mono text-sm">{currentProcess.bitrate || '0 kb/s'}</div>
+                  <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.bitrate || '0 kb/s'}</div>
                 </div>
-                <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                   <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">FPS</div>
-                  <div className="font-bold font-mono text-sm">{currentProcess.fps || '0'}</div>
+                  <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.fps || '0'}</div>
                 </div>
-                <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                   <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Speed</div>
-                  <div className="font-bold font-mono text-sm">{currentProcess.speed || '0x'}</div>
+                  <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.speed || '0x'}</div>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 flex justify-between items-center">
                   <span className="text-[10px] uppercase font-black text-text-secondary">CPU Usage</span>
                   <span className="font-mono font-bold text-brand-lime">{currentProcess.cpu || 0}%</span>
                 </div>
-                <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 flex justify-between items-center">
                   <span className="text-[10px] uppercase font-black text-text-secondary">RAM Usage</span>
                   <span className="font-mono font-bold text-brand-orange">{currentProcess.ram || 0} MB</span>
                 </div>
@@ -217,7 +217,7 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
               )}
 
               {!isRunning && (
-                <div className="p-5 bg-white/2 border border-white/5 rounded-2xl flex items-center gap-4 text-text-secondary">
+                <div className="p-5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl flex items-center gap-4 text-text-secondary">
                   <span className="text-2xl">💤</span>
                   <div>
                     <div className="font-bold uppercase text-xs tracking-wider">Service Inactive</div>
@@ -230,11 +230,11 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
 
           {/* Telemetry Snapshot Panel (Normal Mode) */}
           {!currentProcess.debug_mode && (
-            <div className="bg-[#13131a] border border-white/10 rounded-2xl p-6 max-w-5xl mx-auto w-full space-y-4">
+            <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-2xl p-6 max-w-5xl mx-auto w-full space-y-4">
               <div className="flex justify-between items-center pb-3 border-b border-white/5">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-brand-lime animate-pulse" />
-                  <span className="text-white font-bold uppercase tracking-wider text-[10px]">Telemetría de Progreso (Snapshot)</span>
+                  <span className="text-[var(--text-primary)] font-bold uppercase tracking-wider text-[10px]">Telemetría de Progreso (Snapshot)</span>
                 </div>
                 <span className="text-[9px] text-text-secondary bg-white/5 px-2.5 py-1 rounded-md">
                   Origen: /dev/shm/ffmpeg_progress_{currentProcess.id}.log
@@ -243,51 +243,51 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {showFrames && (
-                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 flex flex-col justify-between h-20">
                     <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Procesados</span>
-                    <span className="text-white font-mono font-black text-lg">{progressData?.frame}</span>
+                    <span className="text-[var(--text-primary)] font-mono font-black text-lg">{progressData?.frame}</span>
                   </div>
                 )}
                 {showFps && (
-                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 flex flex-col justify-between h-20">
                     <span className="text-[9px] uppercase font-bold text-text-secondary">Frecuencia (FPS)</span>
-                    <span className="text-white font-mono font-black text-lg">{progressData?.fps}</span>
+                    <span className="text-[var(--text-primary)] font-mono font-black text-lg">{progressData?.fps}</span>
                   </div>
                 )}
                 {showBitrate && (
-                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 flex flex-col justify-between h-20">
                     <span className="text-[9px] uppercase font-bold text-text-secondary">Tasa de Bits</span>
-                    <span className="text-white font-mono font-black text-lg">{progressData?.bitrate}</span>
+                    <span className="text-[var(--text-primary)] font-mono font-black text-lg">{progressData?.bitrate}</span>
                   </div>
                 )}
                 {showSpeed && (
-                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex flex-col justify-between h-20">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 flex flex-col justify-between h-20">
                     <span className="text-[9px] uppercase font-bold text-text-secondary">Velocidad</span>
-                    <span className="text-white font-mono font-black text-lg">{progressData?.speed}</span>
+                    <span className="text-[var(--text-primary)] font-mono font-black text-lg">{progressData?.speed}</span>
                   </div>
                 )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 flex items-center justify-between">
                   <span className="text-[9px] uppercase font-bold text-text-secondary">Tiempo Transmitido</span>
-                  <span className="text-white font-mono font-semibold text-xs">{progressData?.out_time?.split('.')[0] ?? 'N/A'}</span>
+                  <span className="text-[var(--text-primary)] font-mono font-semibold text-xs">{progressData?.out_time?.split('.')[0] ?? 'N/A'}</span>
                 </div>
                 {showDups && (
-                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 flex items-center justify-between">
                     <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Duplicados</span>
-                    <span className="text-white font-mono font-semibold text-xs">{progressData?.dup_frames}</span>
+                    <span className="text-[var(--text-primary)] font-mono font-semibold text-xs">{progressData?.dup_frames}</span>
                   </div>
                 )}
                 {showDrops && (
-                  <div className="bg-white/2 border border-white/5 rounded-xl p-3.5 flex items-center justify-between">
+                  <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 flex items-center justify-between">
                     <span className="text-[9px] uppercase font-bold text-text-secondary">Frames Perdidos (Drop)</span>
-                    <span className="text-white font-mono font-semibold text-xs">{progressData?.drop_frames}</span>
+                    <span className="text-[var(--text-primary)] font-mono font-semibold text-xs">{progressData?.drop_frames}</span>
                   </div>
                 )}
               </div>
 
-              <div className="bg-white/2 border border-white/5 rounded-xl p-3 flex justify-between items-center text-[10px]">
+              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 flex justify-between items-center text-[10px]">
                 <span className="text-text-secondary">Estado de Procesamiento</span>
                 <span className={`font-bold uppercase ${progressData?.progress === 'continue' ? 'text-brand-lime' : 'text-text-secondary'}`}>
                   {progressData?.progress ?? 'N/A'}
@@ -298,7 +298,7 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
 
           {/* Process Terminal logs (Debug Mode) */}
           {currentProcess.debug_mode && (
-            <div className="bg-black/60 border border-white/5 rounded-2xl p-4 font-mono text-xs max-w-5xl mx-auto w-full">
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 font-mono text-xs max-w-5xl mx-auto w-full">
               <div className="flex justify-between items-center mb-3">
                 <span className="text-brand-lime font-bold uppercase tracking-wider text-[10px]">Process Logs (Modo Debug)</span>
                 <div className="flex items-center gap-3">

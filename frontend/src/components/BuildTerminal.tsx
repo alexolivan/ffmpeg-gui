@@ -62,7 +62,7 @@ export default function BuildTerminal({ buildId, buildName, onClose }: BuildTerm
         </div>
 
         {/* Log Output */}
-        <div className="flex-1 p-6 font-mono text-[11px] overflow-y-auto bg-black/60 custom-scrollbar">
+        <div className="flex-1 p-6 font-mono text-[11px] overflow-y-auto bg-[var(--bg-dark)] custom-scrollbar">
           {logs.length === 0 ? (
             <div className="text-white/10 italic text-center mt-20 text-lg">
               {t('forge.waitingForBuildOutput', 'Waiting for build output...')}
@@ -73,7 +73,7 @@ export default function BuildTerminal({ buildId, buildName, onClose }: BuildTerm
                 line.startsWith('▶') ? 'border-brand-orange/40 text-brand-orange/80' :
                 line.startsWith('ERROR') || line.includes('error') ? 'border-red-500/40 text-red-400' :
                 line.startsWith('━━━') ? 'border-brand-lime/40 text-brand-lime font-bold' :
-                'border-white/5 text-white/70'
+                'border-[var(--glass-border)] text-[var(--text-primary)] opacity-85'
               }`}>
                 {line}
               </div>
