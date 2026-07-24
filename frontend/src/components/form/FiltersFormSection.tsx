@@ -1269,11 +1269,14 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                           type="button"
                                           disabled={isVideoCopy}
                                           onClick={() => updateOverlayItem(idx, { fontcolor: preset.color })}
-                                          className="px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10 hover:border-white/30 transition-all flex items-center gap-1 cursor-pointer text-white"
-                                          style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+                                          className={`px-2 py-1 rounded-md text-[9.5px] font-mono font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
+                                            (overlay.fontcolor || 'white').toLowerCase() === preset.color.toLowerCase()
+                                              ? 'border-brand-lime text-brand-lime bg-brand-lime/15 shadow-sm scale-105'
+                                              : 'border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 bg-[var(--input-bg)]'
+                                          }`}
                                         >
                                           <span
-                                            className="w-2 h-2 rounded-full border border-white/20"
+                                            className="w-2.5 h-2.5 rounded-full border border-white/20 shadow-sm"
                                             style={{ backgroundColor: preset.color }}
                                           />
                                           {preset.name}
