@@ -323,12 +323,12 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                 }`}
               >
                 {logs.length === 0 ? (
-                  <div className="text-white/20 italic text-center py-10 select-none">No logs available for this process</div>
+                  <div className="text-text-secondary opacity-40 italic text-center py-10 select-none">No logs available for this process</div>
                 ) : (
                   logs.map((log, i) => (
                     <div key={i} className="leading-relaxed whitespace-pre-wrap">
                       <span className="text-text-secondary select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                      <span className={`ml-2 ${log.level === 'ERROR' ? 'text-red-400 font-bold' : 'text-white/80'}`}>{log.message}</span>
+                      <span className={`ml-2 ${log.level === 'ERROR' ? 'text-red-400 font-bold' : 'text-[var(--text-primary)]'}`}>{log.message}</span>
                     </div>
                   ))
                 )}
