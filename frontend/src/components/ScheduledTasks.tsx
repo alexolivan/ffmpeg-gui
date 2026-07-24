@@ -338,7 +338,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <div className="glass-card py-3 px-4 bg-white/5 border-white/5 flex flex-col justify-between">
           <span className="text-xs uppercase font-bold tracking-wider text-text-secondary">Total Tasks</span>
-          <span className="text-2xl font-black text-white mt-1">{totalTasks}</span>
+          <span className="text-2xl font-black text-[var(--text-primary)] mt-1">{totalTasks}</span>
         </div>
         <div className="glass-card py-3 px-4 bg-white/5 border-white/5 flex flex-col justify-between">
           <span className="text-xs uppercase font-bold tracking-wider text-text-secondary">Active Timers</span>
@@ -373,17 +373,17 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               >
                 <div>
                   <div className="flex items-center gap-3">
-                    <span className="font-bold text-white">{exec.task_name}</span>
+                    <span className="font-bold text-[var(--text-primary)]">{exec.task_name}</span>
                     <span className="text-xs font-mono text-white/40">#run-{exec.id}</span>
                   </div>
                   <div className="flex gap-4 mt-1 text-xs text-text-secondary flex-wrap items-center">
-                    <span>PID: <strong className="text-white font-mono">{exec.pid || 'N/A'}</strong></span>
-                    <span className="text-white/10 select-none">|</span>
-                    <span>CPU: <strong className="text-white">{exec.cpu}%</strong></span>
-                    <span>RAM: <strong className="text-white">{exec.ram} MB</strong></span>
-                    {exec.fps && <span>FPS: <strong className="text-white">{exec.fps}</strong></span>}
-                    {exec.bitrate && <span>Bitrate: <strong className="text-white">{exec.bitrate}</strong></span>}
-                    {exec.speed && <span>Speed: <strong className="text-white">{exec.speed}</strong></span>}
+                    <span>PID: <strong className="text-[var(--text-primary)] font-mono">{exec.pid || 'N/A'}</strong></span>
+                    <span className="opacity-20 select-none">|</span>
+                    <span>CPU: <strong className="text-[var(--text-primary)]">{exec.cpu}%</strong></span>
+                    <span>RAM: <strong className="text-[var(--text-primary)]">{exec.ram} MB</strong></span>
+                    {exec.fps && <span>FPS: <strong className="text-[var(--text-primary)]">{exec.fps}</strong></span>}
+                    {exec.bitrate && <span>Bitrate: <strong className="text-[var(--text-primary)]">{exec.bitrate}</strong></span>}
+                    {exec.speed && <span>Speed: <strong className="text-[var(--text-primary)]">{exec.speed}</strong></span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -392,7 +392,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                       e.stopPropagation();
                       setViewingLogsExecutionId(exec.id);
                     }}
-                    className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4"
+                    className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 text-xs py-1.5 px-4"
                   >
                     CLI LOGS
                   </button>
@@ -503,15 +503,15 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   <div className="text-xs text-text-secondary space-y-1">
                     {task.is_system ? (
                       <p className="truncate">
-                        {t('tasks.systemActionLabel', 'System Action:')} <strong className={task.is_active ? "text-brand-orange font-medium" : "text-white/50 font-medium"}>{t('tasks.systemLogTaskRoutine', 'Log Retention & Cleanup Routine')}</strong>
+                        {t('tasks.systemActionLabel', 'System Action:')} <strong className={task.is_active ? "text-brand-orange font-medium" : "text-text-secondary font-medium"}>{t('tasks.systemLogTaskRoutine', 'Log Retention & Cleanup Routine')}</strong>
                       </p>
                     ) : (
                       <>
                         <p className="truncate">
-                          {t('tasks.inputLabel', 'Input:')} <code className="text-white font-mono">{formatInputDesc(task.input_config)}</code>
+                          {t('tasks.inputLabel', 'Input:')} <code className="text-[var(--text-primary)] font-mono">{formatInputDesc(task.input_config)}</code>
                         </p>
                         <p className="truncate">
-                          {t('tasks.outputLabel', 'Output:')} <code className="text-white font-mono">{formatOutputDesc(task.output_config)}</code>
+                          {t('tasks.outputLabel', 'Output:')} <code className="text-[var(--text-primary)] font-mono">{formatOutputDesc(task.output_config)}</code>
                         </p>
                       </>
                     )}
@@ -522,7 +522,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     )}
                     {task.schedule_type === 'one_shot' && (
                       <p>
-                        {t('tasks.targetDateLabel', 'Target Date:')} <strong className="text-white">{new Date(task.schedule_datetime).toLocaleString()}</strong>
+                        {t('tasks.targetDateLabel', 'Target Date:')} <strong className="text-[var(--text-primary)]">{new Date(task.schedule_datetime).toLocaleString()}</strong>
                       </p>
                     )}
                     {task.is_active && task.next_run && (
@@ -546,7 +546,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   <button 
                     disabled={taskTriggerPending[task.id]}
                     onClick={() => viewTaskDetails(task.id)}
-                    className="pill-button bg-white/5 hover:bg-white/10 text-white text-xs py-2 px-4 border border-white/5 disabled:opacity-50 disabled:pointer-events-none"
+                    className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs py-2 px-4 hover:border-brand-lime/40 disabled:opacity-50 disabled:pointer-events-none"
                   >
                     {t('tasks.runHistory', 'RUN HISTORY')}
                   </button>
@@ -749,7 +749,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           <div className="grid grid-cols-3 gap-4">
                             <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
                               <span className="text-[10px] uppercase font-black text-text-secondary">PID</span>
-                              <span className="font-mono font-bold text-white">{activeExec?.pid || 'N/A'}</span>
+                              <span className="font-mono font-bold text-[var(--text-primary)]">{activeExec?.pid || 'N/A'}</span>
                             </div>
                             <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
                               <span className="text-[10px] uppercase font-black text-text-secondary">CPU</span>
@@ -802,7 +802,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         <div className="grid grid-cols-3 gap-4">
                           <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
                             <span className="text-[10px] uppercase font-black text-text-secondary">PID</span>
-                            <span className="font-mono font-bold text-white">{activeExec?.pid || 'N/A'}</span>
+                            <span className="font-mono font-bold text-[var(--text-primary)]">{activeExec?.pid || 'N/A'}</span>
                           </div>
                           <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
                             <span className="text-[10px] uppercase font-black text-text-secondary">CPU</span>

@@ -95,7 +95,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
       <div className="space-y-4">
         {/* Active Running Services */}
         <div className="glass-card p-4 md:p-5">
-          <h3 className="text-xl font-black mb-3">{t('services.activeServicesRunning', 'ACTIVE SERVICES (RUNNING)')}</h3>
+          <h3 className="text-xl font-black mb-3 text-[var(--text-primary)]">{t('services.activeServicesRunning', 'ACTIVE SERVICES (RUNNING)')}</h3>
           <div className="space-y-2.5">
             {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length === 0 ? (
               <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
@@ -108,7 +108,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-brand-lime animate-pulse"></span>
-                      <span className="font-bold text-white">
+                      <span className="font-bold text-[var(--text-primary)]">
                         {proc.name}
                         {proc.alias && (
                           <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${proc.alias}`}>
@@ -144,36 +144,36 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     </div>
                     <div className="text-xs text-text-secondary space-y-0.5">
                       <p className="truncate">
-                        Input: <code className="text-white font-mono">{formatInputDesc(proc.input_config)}</code>
+                        Input: <code className="text-[var(--text-primary)] font-mono">{formatInputDesc(proc.input_config)}</code>
                       </p>
                       <p className="truncate">
-                        Output: <code className="text-white font-mono">{formatOutputDesc(proc.output_config)}</code>
+                        Output: <code className="text-[var(--text-primary)] font-mono">{formatOutputDesc(proc.output_config)}</code>
                       </p>
                     </div>
                     <div className="flex gap-4 mt-1 text-xs text-text-secondary flex-wrap items-center">
-                      <span>PID: <strong className="text-white font-mono">{proc.pid || 'N/A'}</strong></span>
-                      <span className="text-white/10 select-none">|</span>
-                      <span>Uptime: <strong className="text-white font-mono">{formatUptime(proc.last_start)}</strong></span>
-                      <span className="text-white/10 select-none">|</span>
-                      <span>CPU: <strong className="text-white">{proc.cpu || 0}%</strong></span>
-                      <span className="text-white/10 select-none">|</span>
-                      <span>RAM: <strong className="text-white">{proc.ram || 0} MB</strong></span>
+                      <span>PID: <strong className="text-[var(--text-primary)] font-mono">{proc.pid || 'N/A'}</strong></span>
+                      <span className="opacity-20 select-none">|</span>
+                      <span>Uptime: <strong className="text-[var(--text-primary)] font-mono">{formatUptime(proc.last_start)}</strong></span>
+                      <span className="opacity-20 select-none">|</span>
+                      <span>CPU: <strong className="text-[var(--text-primary)]">{proc.cpu || 0}%</strong></span>
+                      <span className="opacity-20 select-none">|</span>
+                      <span>RAM: <strong className="text-[var(--text-primary)]">{proc.ram || 0} MB</strong></span>
                       {proc.fps && proc.fps !== '0' && proc.fps !== '0.0' && (
                         <>
-                          <span className="text-white/10 select-none">|</span>
-                          <span>FPS: <strong className="text-white">{proc.fps}</strong></span>
+                          <span className="opacity-20 select-none">|</span>
+                          <span>FPS: <strong className="text-[var(--text-primary)]">{proc.fps}</strong></span>
                         </>
                       )}
                       {proc.bitrate && proc.bitrate !== 'N/A' && proc.bitrate !== '0 kb/s' && proc.bitrate !== '0.0kbits/s' && (
                         <>
-                          <span className="text-white/10 select-none">|</span>
-                          <span>Bitrate: <strong className="text-white">{proc.bitrate}</strong></span>
+                          <span className="opacity-20 select-none">|</span>
+                          <span>Bitrate: <strong className="text-[var(--text-primary)]">{proc.bitrate}</strong></span>
                         </>
                       )}
                       {proc.speed && proc.speed !== '0x' && proc.speed !== '0.00x' && proc.speed !== 'N/A' && (
                         <>
-                          <span className="text-white/10 select-none">|</span>
-                          <span>Speed: <strong className="text-white">{proc.speed}</strong></span>
+                          <span className="opacity-20 select-none">|</span>
+                          <span>Speed: <strong className="text-[var(--text-primary)]">{proc.speed}</strong></span>
                         </>
                       )}
                     </div>
@@ -263,7 +263,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
         {/* Inactive Configured Services */}
         <div className="glass-card p-4 md:p-5">
-          <h3 className="text-xl font-black mb-3 text-white/50">{t('services.configuredServicesInactive', 'Configured Services (Inactive)')}</h3>
+          <h3 className="text-xl font-black mb-3 text-text-secondary">{t('services.configuredServicesInactive', 'Configured Services (Inactive)')}</h3>
           <div className="space-y-2.5">
             {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length === 0 ? (
               <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
@@ -277,7 +277,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-2">
                         <span className={`w-2.5 h-2.5 rounded-full ${proc.status === 'error' ? 'bg-red-500' : 'bg-white/20'}`}></span>
-                        <span className="font-bold text-white/80">
+                        <span className="font-bold text-[var(--text-primary)]">
                           {proc.name}
                           {proc.alias && (
                             <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-75" title={`LCD Alias: ${proc.alias}`}>
@@ -308,10 +308,10 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                       </div>
                       <div className="text-xs text-text-secondary space-y-0.5 mt-0.5">
                         <p className="truncate">
-                          Input: <code className="text-white font-mono">{formatInputDesc(proc.input_config)}</code>
+                          Input: <code className="text-[var(--text-primary)] font-mono">{formatInputDesc(proc.input_config)}</code>
                         </p>
                         <p className="truncate">
-                          Output: <code className="text-white font-mono">{formatOutputDesc(proc.output_config)}</code>
+                          Output: <code className="text-[var(--text-primary)] font-mono">{formatOutputDesc(proc.output_config)}</code>
                         </p>
                         {proc.last_stop && (
                           <p className="text-[10px] text-text-secondary/60 mt-1">

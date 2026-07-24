@@ -229,11 +229,11 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
-      <div className="glass-card w-full max-w-4xl p-6 border-white/10 shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden bg-black/90 text-white rounded-3xl">
+      <div className="glass-card w-full max-w-4xl p-6 border-white/10 shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden bg-[var(--bg-card)] text-[var(--text-primary)] rounded-3xl border border-[var(--glass-border)]">
         {/* Header bar */}
         <header className="flex justify-between items-center pb-4 mb-4 border-b border-white/10 flex-shrink-0">
           <div>
-            <h2 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
+            <h2 className="text-xl font-black tracking-tight text-[var(--text-primary)] flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-brand-orange inline-block" />
               {t('sdks.modalTitle')}
             </h2>
@@ -243,7 +243,7 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
               if (onRefresh) onRefresh();
               onClose();
             }}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition-colors flex items-center justify-center text-text-secondary hover:text-white font-bold"
+            className="w-8 h-8 rounded-full bg-[var(--input-bg)] hover:bg-brand-lime/10 transition-colors flex items-center justify-center text-text-secondary hover:text-[var(--text-primary)] font-bold"
             title={t('common.close')}
           >
             ✕
@@ -427,7 +427,7 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
                     </span>
 
                     {/* Version pill */}
-                    <span className="px-2.5 py-1 rounded-full bg-white/10 border border-white/10 font-mono text-xs font-bold text-white">
+                    <span className="px-2.5 py-1 rounded-full bg-[var(--input-bg)] border border-[var(--glass-border)] font-mono text-xs font-bold text-[var(--text-primary)]">
                       v{sdk.version}
                     </span>
 
@@ -464,13 +464,13 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
                         setMigrateSdk(sdk);
                         setTargetStorageId('');
                       }}
-                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                      className="px-3 py-1.5 bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-xl text-xs font-bold hover:border-brand-lime/40 transition-all flex items-center gap-1"
                     >
                       {t('sdks.migrate')}
                     </button>
                     <button
                       onClick={() => handleReuploadClick(sdk)}
-                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                      className="px-3 py-1.5 bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-xl text-xs font-bold hover:border-brand-lime/40 transition-all flex items-center gap-1"
                     >
                       {t('sdks.reupload')}
                     </button>

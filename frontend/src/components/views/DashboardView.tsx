@@ -417,7 +417,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center justify-between border-b border-purple-500/10 pb-2 mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-xl">📅</span>
-                <h3 className="text-sm font-black uppercase text-white tracking-wider">{t('dashboard.upcomingTasksTitle', 'Upcoming Tasks')}</h3>
+                <h3 className="text-sm font-black uppercase text-[var(--text-primary)] tracking-wider">{t('dashboard.upcomingTasksTitle', 'Upcoming Tasks')}</h3>
               </div>
               {upcomingTasks && upcomingTasks.length > 0 && (
                 <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300">
@@ -428,7 +428,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             {!upcomingTasks || upcomingTasks.length === 0 ? (
               <div className="p-4 bg-purple-500/5 border border-purple-500/15 rounded-2xl text-center space-y-1">
-                <p className="text-xs text-white/60 font-medium">{t('dashboard.noUpcomingTasks', 'No upcoming tasks scheduled in the near future.')}</p>
+                <p className="text-xs text-text-secondary font-medium">{t('dashboard.noUpcomingTasks', 'No upcoming tasks scheduled in the near future.')}</p>
                 <p className="text-[9px] text-text-secondary">{t('dashboard.noUpcomingTasksSub', 'Active recurring or one-shot tasks will be listed here.')}</p>
               </div>
             ) : (
@@ -442,12 +442,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         }`}>
                           {task.is_system ? t('dashboard.systemTask', 'SYSTEM') : t('dashboard.userTask', 'JOB')}
                         </span>
-                        <span className="text-xs font-bold text-white truncate max-w-[140px]" title={task.alias || task.name}>
+                        <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-[140px]" title={task.alias || task.name}>
                           {task.alias || task.name}
                         </span>
                       </div>
                       {task.schedule_cron && (
-                        <span className="text-[9px] font-mono text-purple-300/70 block">
+                        <span className="text-[9px] font-mono text-[var(--text-primary)] opacity-70 block">
                           cron: {task.schedule_cron}
                         </span>
                       )}

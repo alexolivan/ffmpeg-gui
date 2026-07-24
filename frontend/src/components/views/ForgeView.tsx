@@ -280,13 +280,13 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowSdksModal(true)}
-            className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all hover:scale-102 flex items-center gap-2 text-white"
+            className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
           >
             <PackageIcon size={14} /> {t('sdks.manageSdks')}
           </button>
           <button
             onClick={() => setShowEnvModal(true)}
-            className="px-5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold transition-all hover:scale-102 flex items-center gap-2"
+            className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
           >
             <GearIcon size={14} /> {t('forge.manageDeps')}
           </button>
