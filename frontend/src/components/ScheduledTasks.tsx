@@ -841,7 +841,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     )}
 
                     {/* Terminal logs */}
-                    <div className="bg-black/60 border border-white/5 rounded-2xl p-4 font-mono text-xs max-w-5xl mx-auto w-full">
+                    <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 font-mono text-xs max-w-5xl mx-auto w-full">
                       <div className="flex justify-between items-center mb-3">
                         <span className="text-brand-lime font-bold uppercase tracking-wider text-[10px]">Execution Logs</span>
                         <span className="text-text-secondary text-[10px] font-bold">{logs.length} lines buffered</span>
@@ -851,12 +851,12 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         className="h-44 space-y-1 custom-scrollbar pr-2 select-text overflow-y-auto"
                       >
                         {logs.length === 0 ? (
-                          <div className="text-white/20 italic text-center py-10 select-none">No logs available for this task execution</div>
+                          <div className="text-text-secondary opacity-40 italic text-center py-10 select-none">No logs available for this task execution</div>
                         ) : (
                           logs.map((log) => (
                             <div key={log.id} className="leading-relaxed whitespace-pre-wrap flex gap-4">
-                              <span className="text-white/30 select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                              <span className={log.level === 'error' ? 'text-red-400 font-bold' : log.level === 'warning' ? 'text-brand-orange' : 'text-white/80'}>
+                              <span className="text-text-secondary select-none">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                              <span className={log.level === 'error' ? 'text-red-400 font-bold' : log.level === 'warning' ? 'text-brand-orange' : 'text-[var(--text-primary)]'}>
                                 {log.message}
                               </span>
                             </div>

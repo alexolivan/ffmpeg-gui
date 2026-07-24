@@ -64,7 +64,7 @@ export default function BuildTerminal({ buildId, buildName, onClose }: BuildTerm
         {/* Log Output */}
         <div className="flex-1 p-6 font-mono text-[11px] overflow-y-auto bg-[var(--bg-dark)] custom-scrollbar">
           {logs.length === 0 ? (
-            <div className="text-white/10 italic text-center mt-20 text-lg">
+            <div className="text-text-secondary opacity-30 italic text-center mt-20 text-lg">
               {t('forge.waitingForBuildOutput', 'Waiting for build output...')}
             </div>
           ) : (
