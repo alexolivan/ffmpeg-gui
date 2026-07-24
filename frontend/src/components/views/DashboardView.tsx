@@ -132,7 +132,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
                 <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.inactiveServices')}</div>
-                <div className="font-black text-xl text-white/50">
+                <div className="font-black text-xl text-text-secondary">
                   {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length}
                 </div>
               </div>
@@ -150,7 +150,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center col-span-2 lg:col-span-1">
                 <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.inactiveTasks')}</div>
-                <div className="font-black text-xl text-white/40">
+                <div className="font-black text-xl text-text-secondary">
                   {taskStats.inactive}
                 </div>
               </div>
@@ -235,7 +235,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="pt-3 border-t border-white/5">
                   <div className="flex flex-col items-center justify-center p-4 bg-white/2 border border-white/5 rounded-xl text-center">
                     <span className="text-[10px] font-black uppercase tracking-wider text-white/30 font-mono mb-1">{t('dashboard.gpuTelemetry')}</span>
-                    <span className="text-xs font-bold text-white/40">{t('dashboard.notDetected')}</span>
+                    <span className="text-xs font-bold text-text-secondary">{t('dashboard.notDetected')}</span>
                   </div>
                 </div>
               )}
@@ -305,7 +305,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                     systemTelemetry.lcd.connected
                       ? 'bg-brand-lime/25 text-brand-lime'
-                      : 'bg-white/5 text-white/40'
+                      : 'bg-white/5 text-text-secondary'
                   }`}>
                     {systemTelemetry.lcd.connected ? t('dashboard.available') : t('dashboard.unavailable')}
                   </span>
@@ -328,7 +328,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                     value.available
                       ? 'bg-brand-lime/25 text-brand-lime'
-                      : 'bg-white/5 text-white/40'
+                      : 'bg-white/5 text-text-secondary'
                   }`}>
                     {value.available ? t('dashboard.available') : t('dashboard.unavailable')}
                   </span>

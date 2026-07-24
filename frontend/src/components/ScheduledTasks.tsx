@@ -459,7 +459,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                       <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                         task.is_active 
                           ? 'bg-brand-orange/15 text-brand-orange border border-brand-orange/30' 
-                          : 'bg-white/5 text-white/40 border border-white/10'
+                          : 'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
                       }`}>
                         {t('tasks.systemBadge', 'SYSTEM')}
                       </span>
@@ -467,7 +467,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
                       task.schedule_type === 'recurring' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' :
                       task.schedule_type === 'one_shot' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
-                      'bg-white/5 text-white/40 border border-white/10'
+                      'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
                     }`}>
                       {task.schedule_type === 'recurring' ? t('tasks.scheduleTypes.recurring', 'recurring') :
                        task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
@@ -479,7 +479,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help ${
                           task.is_active 
                             ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                            : 'bg-white/5 text-white/30 border-white/10'
+                            : 'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
                         }`}
                       >
                         <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>
@@ -491,7 +491,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 ${
                           task.is_active 
                             ? 'bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20' 
-                            : 'bg-white/5 text-white/30 border-white/10 hover:bg-white/10'
+                            : 'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10'
                         }`}
                       >
                         <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>

@@ -326,17 +326,17 @@ export const OverlayCanvasPreview: React.FC<OverlayCanvasPreviewProps> = ({
         </div>
       </div>
 
-      <div className="w-full flex justify-center bg-slate-950 p-3 rounded-xl border border-slate-800 shadow-2xl relative overflow-hidden">
+      <div className="w-full flex justify-center bg-[var(--input-bg)] p-3 rounded-xl border border-[var(--glass-border)] shadow-2xl relative overflow-hidden">
         <div
           data-screen-canvas="true"
-          className="w-full relative bg-slate-950 rounded-lg border-2 border-slate-700/80 shadow-[inset_0_0_20px_rgba(0,0,0,0.9)] overflow-hidden transition-all duration-300"
+          className="w-full relative bg-[var(--bg-dark)] rounded-lg border-2 border-[var(--glass-border)] shadow-[inset_0_0_20px_rgba(0,0,0,0.9)] overflow-hidden transition-all duration-300"
           style={{
             aspectRatio: aspectRatioCSS,
             maxHeight: activeRatio === '9:16' ? '520px' : '440px',
             containerType: 'size',
           }}
         >
-          <div className="absolute inset-0 bg-gradient-to-b from-slate-900/90 via-slate-950 to-black pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[var(--bg-card)] to-[var(--bg-dark)] pointer-events-none" />
           <div
             className="absolute inset-0 opacity-10 pointer-events-none"
             style={{

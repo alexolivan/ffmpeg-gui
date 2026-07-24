@@ -1083,7 +1083,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             <select
               id="process-build"
               name="ffmpeg_build_id"
-              className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-orange transition-all truncate"
+              className="flex-1 min-w-0 bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-orange transition-all truncate"
               value={config.ffmpeg_build_id ?? ''}
               onChange={e => handleBuildChange(e.target.value ? Number(e.target.value) : null)}
             >
@@ -1096,7 +1096,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             </select>
           )}
           {/* Stream toggles */}
-          <div className="flex items-center gap-3 bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/10 flex-shrink-0">
+          <div className="flex items-center gap-3 bg-[var(--input-bg)] rounded-lg px-2.5 py-1.5 border border-[var(--glass-border)] flex-shrink-0">
             <label htmlFor="process-has-video" className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox" id="process-has-video" name="has_video" checked={config.has_video}
@@ -1125,15 +1125,15 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
 
       {/* ── Section tabs ── */}
-      <div className="flex gap-1 mb-2 flex-shrink-0 border-b border-white/5 pb-2">
+      <div className="flex gap-1 mb-2 flex-shrink-0 border-b border-[var(--glass-border)] pb-2">
         {sections.map(s => (
           <button
             key={s.id}
             onClick={() => setActiveSection(s.id)}
             className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
               activeSection === s.id
-                ? 'bg-white/10 text-white'
-                : 'text-text-secondary hover:bg-white/5 hover:text-white/70'
+                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
             }`}
           >
             <span className="flex items-center justify-center">{s.icon}</span>
@@ -1250,7 +1250,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                     onChange={e => handleUseSecondaryInputChange(e.target.checked)}
                     className="w-4 h-4 accent-brand-lime"
                   />
-                  <span className="text-xs font-bold uppercase tracking-wider text-text-secondary group-hover:text-white transition-colors">
+                  <span className="text-xs font-bold uppercase tracking-wider text-text-secondary group-hover:text-[var(--text-primary)] transition-colors">
                     Use separate source for Input 2
                   </span>
                 </label>
@@ -1279,13 +1279,13 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
 
             {/* Network Input Timeout Control */}
             {['rtmp', 'rtsp', 'hls', 'udp', 'rtp', 'http_audio'].includes(config.input1.type) && (
-              <div className="glass-card p-4 !rounded-2xl space-y-2 border border-white/5 bg-white/2 animate-in fade-in duration-300">
+              <div className="glass-card p-4 !rounded-2xl space-y-2 border border-[var(--glass-border)] bg-[var(--input-bg)] animate-in fade-in duration-300">
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
                   <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('sources.networkSettingsTitle', 'Input Network Settings')}</h4>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label htmlFor="proc-network-timeout" className="text-xs font-semibold text-white">
+                  <label htmlFor="proc-network-timeout" className="text-xs font-semibold text-[var(--text-primary)]">
                     {t('sources.networkTimeoutLabel', 'Network Timeout (seconds)')}
                   </label>
                   <span className="text-[10px] text-text-secondary">

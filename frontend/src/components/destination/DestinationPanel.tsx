@@ -1389,19 +1389,19 @@ const renderBroadcastRecipe = (type: string, t: any) => {
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-text-secondary">
         <div>
-          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">{t('destinations.videoCodec')}</span>
-          <span className="text-white/85 font-mono">{recipe.video}</span>
+          <span className="font-bold block text-[9px] uppercase tracking-wider text-text-secondary">{t('destinations.videoCodec')}</span>
+          <span className="text-[var(--text-primary)] font-mono">{recipe.video}</span>
         </div>
         <div>
-          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">{t('destinations.audioCodec')}</span>
-          <span className="text-white/85 font-mono">{recipe.audio}</span>
+          <span className="font-bold block text-[9px] uppercase tracking-wider text-text-secondary">{t('destinations.audioCodec')}</span>
+          <span className="text-[var(--text-primary)] font-mono">{recipe.audio}</span>
         </div>
         <div className="col-span-2">
-          <span className="font-bold block text-[9px] uppercase tracking-wider text-white/55">{t('destinations.containerMuxer')}</span>
-          <span className="text-white/85 font-mono">{recipe.container}</span>
+          <span className="font-bold block text-[9px] uppercase tracking-wider text-text-secondary">{t('destinations.containerMuxer')}</span>
+          <span className="text-[var(--text-primary)] font-mono">{recipe.container}</span>
         </div>
       </div>
-      <div className="text-[10px] text-text-secondary border-t border-white/5 pt-1.5 leading-relaxed">
+      <div className="text-[10px] text-text-secondary border-t border-[var(--glass-border)] pt-1.5 leading-relaxed">
         {recipe.details}
       </div>
     </div>

@@ -119,11 +119,29 @@ textarea {
   background-color: var(--input-bg);
   color: var(--text-primary);
   border-color: var(--glass-border);
+  color-scheme: dark light;
 }
 
 select option {
   background-color: var(--bg-dark);
   color: var(--text-primary);
+}
+
+input[type="range"] {
+  background-color: var(--track-bg);
+  accent-color: var(--accent-lime);
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  background-color: var(--track-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+}
+
+input[type="range"]::-moz-range-track {
+  background-color: var(--track-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
 }
 
 .glass-card {

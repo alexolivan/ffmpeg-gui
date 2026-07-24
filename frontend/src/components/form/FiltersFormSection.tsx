@@ -541,7 +541,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     </select>
                   </div>
                   {aresample?.enabled && aresample?.mode === 'advanced' && (
-                    <div className="col-span-2 grid grid-cols-3 gap-2 bg-white/5 p-2 rounded-lg border border-white/5 mt-1">
+                    <div className="col-span-2 grid grid-cols-3 gap-2 bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)] mt-1">
                       <div>
                         <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
                           {t('filters.sampleRateOsr')}
@@ -605,7 +605,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
           </div>
 
           {/* Card 1: Input Level & Clean Filters */}
-          <div className="glass-card p-3 rounded-lg border border-white/5 space-y-2">
+          <div className="glass-card p-3 rounded-lg border border-[var(--glass-border)] space-y-2">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
@@ -619,7 +619,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* Volume Slider */}
-              <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1.5">
+              <div className="bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)] space-y-1.5">
                 <div className="flex items-center gap-1.5">
                   <input
                     type="checkbox" id="vol-enable-chk"
@@ -634,7 +634,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 </div>
                 <input
                   type="range" min="-20" max="20" step="0.5"
-                  className="w-full h-1.5 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                  className="w-full h-1.5 bg-[var(--track-bg)] accent-brand-lime border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
                   value={volume !== '' ? parseVolumeToDb(volume) : 0}
                   onChange={e => onChange({ volume: `${e.target.value}dB` })}
                   disabled={isAudioCopy || volume === ''}
@@ -642,7 +642,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               </div>
 
               {/* Highpass Slider */}
-              <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1.5">
+              <div className="bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)] space-y-1.5">
                 <div className="flex items-center gap-1.5">
                   <input
                     type="checkbox" id="hp-enable-chk"
@@ -657,7 +657,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 </div>
                 <input
                   type="range" min="20" max="500" step="5"
-                  className="w-full h-1.5 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                  className="w-full h-1.5 bg-[var(--track-bg)] accent-brand-lime border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
                   value={highpass !== '' ? parseInt(highpass) : 80}
                   onChange={e => onChange({ highpass: e.target.value })}
                   disabled={isAudioCopy || highpass === ''}
@@ -665,7 +665,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               </div>
 
               {/* Lowpass Slider */}
-              <div className="bg-white/5 p-2 rounded-lg border border-white/5 space-y-1.5">
+              <div className="bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)] space-y-1.5">
                 <div className="flex items-center gap-1.5">
                   <input
                     type="checkbox" id="lp-enable-chk"
@@ -680,7 +680,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 </div>
                 <input
                   type="range" min="1000" max="20000" step="100"
-                  className="w-full h-1.5 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                  className="w-full h-1.5 bg-[var(--track-bg)] accent-brand-lime border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
                   value={lowpass !== '' ? parseInt(lowpass) : 12000}
                   onChange={e => onChange({ lowpass: e.target.value })}
                   disabled={isAudioCopy || lowpass === ''}
@@ -690,7 +690,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
           </div>
 
           {/* Card 2: 10-Band Graphic Equalizer */}
-          <div className="glass-card p-3 rounded-lg border border-white/5 space-y-2">
+          <div className="glass-card p-3 rounded-lg border border-[var(--glass-border)] space-y-2">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-1.5">
                 <input
@@ -761,7 +761,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                           min="-12"
                           max="12"
                           step="0.5"
-                          className="h-16 w-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-ns-resize disabled:opacity-35 disabled:cursor-not-allowed"
+                          className="h-16 w-1 bg-[var(--track-bg)] accent-brand-lime border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-ns-resize disabled:opacity-35 disabled:cursor-not-allowed"
                           style={{ writingMode: 'bt-lr', WebkitAppearance: 'slider-vertical' } as any}
                           value={bandsObj[band] ?? 0}
                           onChange={e => updateEqBand(band, Number(e.target.value))}
@@ -779,7 +779,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
           </div>
 
           {/* Card 3: Dynamics Compressor / Expander */}
-          <div className="glass-card p-3 rounded-lg border border-white/5 space-y-2">
+          <div className="glass-card p-3 rounded-lg border border-[var(--glass-border)] space-y-2">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-1.5">
                 <input
@@ -867,7 +867,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       </div>
                       <input
                         type="range" min="-100" max="-40" step="1"
-                        className="w-full h-1 bg-white/10 accent-red-400 rounded-lg outline-none appearance-none cursor-pointer"
+                        className="w-full h-1 bg-[var(--track-bg)] accent-red-400 border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer"
                         value={compressor.gate ?? -60}
                         onChange={e => onChange({ compressor: { ...compressor, gate: Number(e.target.value) } })}
                         disabled={isAudioCopy}
@@ -880,7 +880,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       </div>
                       <input
                         type="range" min="1" max="8" step="0.5"
-                        className="w-full h-1 bg-white/10 accent-red-400 rounded-lg outline-none appearance-none cursor-pointer"
+                        className="w-full h-1 bg-[var(--track-bg)] accent-red-400 border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer"
                         value={compressor.gate_ratio ?? 4}
                         onChange={e => onChange({ compressor: { ...compressor, gate_ratio: Number(e.target.value) } })}
                         disabled={isAudioCopy}
@@ -898,7 +898,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       </div>
                       <input
                         type="range" min="-50" max="0" step="1"
-                        className="w-full h-1 bg-white/10 accent-yellow-400 rounded-lg outline-none appearance-none cursor-pointer"
+                        className="w-full h-1 bg-[var(--track-bg)] accent-yellow-400 border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer"
                         value={compressor.threshold ?? -30}
                         onChange={e => onChange({ compressor: { ...compressor, threshold: Number(e.target.value) } })}
                         disabled={isAudioCopy}
@@ -911,7 +911,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       </div>
                       <input
                         type="range" min="1" max="20" step="0.5"
-                        className="w-full h-1 bg-white/10 accent-yellow-400 rounded-lg outline-none appearance-none cursor-pointer"
+                        className="w-full h-1 bg-[var(--track-bg)] accent-yellow-400 border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer"
                         value={compressor.ratio ?? 4}
                         onChange={e => onChange({ compressor: { ...compressor, ratio: Number(e.target.value) } })}
                         disabled={isAudioCopy}
@@ -927,7 +927,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     </div>
                     <input
                       type="range" min="0" max="24" step="0.5"
-                      className="w-full h-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer"
+                      className="w-full h-1 bg-[var(--track-bg)] accent-brand-lime border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer"
                       value={compressor.gain ?? 0}
                       onChange={e => onChange({ compressor: { ...compressor, gain: Number(e.target.value) } })}
                       disabled={isAudioCopy}
@@ -973,7 +973,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
           </div>
 
           {/* Card 4: Output Brickwall Limiter */}
-          <div className="glass-card p-3 rounded-lg border border-white/5 space-y-2">
+          <div className="glass-card p-3 rounded-lg border border-[var(--glass-border)] space-y-2">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-1.5">
                 <input
@@ -999,7 +999,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   </div>
                   <input
                     type="range" min="-10" max="0" step="0.1"
-                    className="w-full h-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer"
+                    className="w-full h-1 bg-[var(--track-bg)] accent-brand-lime border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer"
                     value={limiter.ceiling ?? -0.1}
                     onChange={e => onChange({ limiter: { ...limiter, ceiling: Number(e.target.value) } })}
                     disabled={isAudioCopy}
@@ -1012,7 +1012,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   </div>
                   <input
                     type="range" min="5" max="1000" step="5"
-                    className="w-full h-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer"
+                    className="w-full h-1 bg-[var(--track-bg)] accent-brand-lime border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer"
                     value={limiter.release ?? 50}
                     onChange={e => onChange({ limiter: { ...limiter, release: Number(e.target.value) } })}
                     disabled={isAudioCopy}
@@ -1284,7 +1284,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 </div>
 
                                 {/* Background Box Settings */}
-                                <div className="bg-black/20 p-2.5 rounded-lg border border-white/5 space-y-2">
+                                <div className="bg-[var(--input-bg)] p-2.5 rounded-lg border border-[var(--glass-border)] space-y-2">
                                   <div className="flex items-center gap-2">
                                     <input
                                       type="checkbox"
@@ -1379,7 +1379,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 </div>
 
                                 {/* Canvas Badge Accent Color Selector */}
-                                <div className="bg-black/20 p-2.5 rounded-lg border border-white/5 space-y-1.5">
+                                <div className="bg-[var(--input-bg)] p-2.5 rounded-lg border border-[var(--glass-border)] space-y-1.5">
                                   <label className="text-[9px] uppercase font-bold text-text-secondary block">
                                     {t('filters.canvasBadgeAccentColor')}
                                   </label>
@@ -1452,7 +1452,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                               {!isCustomMode ? (
                                 <div className="space-y-3">
                                   {/* 3x3 Grid Matrix Buttons */}
-                                  <div className="grid grid-cols-3 gap-1 bg-black/30 p-2 rounded-xl border border-white/5 max-w-xs mx-auto">
+                                  <div className="grid grid-cols-3 gap-1 bg-[var(--input-bg)] p-2 rounded-xl border border-[var(--glass-border)] max-w-xs mx-auto">
                                     {anchorGridPresets.map((preset) => (
                                       <button
                                         key={preset.id}
@@ -1465,7 +1465,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                         className={`p-2 rounded-lg flex flex-col items-center justify-center gap-0.5 text-xs font-mono transition-all border cursor-pointer ${
                                           anchor === preset.id
                                             ? 'bg-brand-lime text-black font-bold border-brand-lime shadow-md scale-102'
-                                            : 'bg-white/5 border-white/10 hover:bg-white/10 text-white hover:border-white/20'
+                                            : 'bg-[var(--input-bg)] border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 hover:border-white/20'
                                         } disabled:opacity-35`}
                                         title={preset.label}
                                       >
@@ -1478,7 +1478,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                   </div>
 
                                   {/* Margin Sliders + Numeric Precision Inputs */}
-                                  <div className="grid grid-cols-2 gap-3 bg-black/20 p-2.5 rounded-lg border border-white/5">
+                                  <div className="grid grid-cols-2 gap-3 bg-[var(--input-bg)] p-2.5 rounded-lg border border-[var(--glass-border)]">
                                     <div>
                                       <div className="flex justify-between items-center text-[9px] font-mono text-text-secondary mb-1">
                                         <span>{t('filters.marginXPx')}</span>
@@ -1500,7 +1500,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                         min="-100"
                                         max="500"
                                         step="1"
-                                        className="w-full h-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                                        className="w-full h-1 bg-[var(--track-bg)] accent-brand-lime border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
                                         value={marginX}
                                         onChange={(e) => {
                                           const newXMargin = Number(e.target.value);
@@ -1533,7 +1533,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                         min="-100"
                                         max="500"
                                         step="1"
-                                        className="w-full h-1 bg-white/10 accent-brand-lime rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
+                                        className="w-full h-1 bg-[var(--track-bg)] accent-brand-lime border border-[var(--glass-border)] rounded-lg outline-none appearance-none cursor-pointer disabled:opacity-35"
                                         value={marginY}
                                         onChange={(e) => {
                                           const newYMargin = Number(e.target.value);
@@ -1548,7 +1548,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                 </div>
                               ) : (
                                 /* Custom Expressions Input */
-                                <div className="grid grid-cols-2 gap-3 bg-black/20 p-2.5 rounded-lg border border-white/5">
+                                <div className="grid grid-cols-2 gap-3 bg-[var(--input-bg)] p-2.5 rounded-lg border border-[var(--glass-border)]">
                                   <div>
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
                                       {t('filters.xPositionExpression')}
