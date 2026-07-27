@@ -203,10 +203,12 @@ export function useBuilds(activeView: string) {
         return r.json();
       })
       .then(data => {
+        const rawName = data.recipe?.name || data.name || (builds.find(b => Number(b.id) === Number(id))?.name) || `build_${id}`;
+        const safeName = rawName.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `ffmpeg_recipe_${data.name}.json`;
+        a.download = `ffmpeg_recipe_${safeName || 'export'}.json`;
         a.click();
       })
       .catch(err => alert(err.message || err));
