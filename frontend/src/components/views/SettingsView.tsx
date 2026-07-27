@@ -505,9 +505,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  // Auto-scan on component mount
+  // Auto-scan on component mount & reset password fields
   useEffect(() => {
     handleProbe();
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setPasswordSuccess('');
   }, []);
 
   const hasChanges = 
@@ -552,9 +556,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setPasswordError('');
     setPasswordSuccess('');
 
-    if (newPassword || confirmPassword) {
+    if (newPassword !== '' || confirmPassword !== '') {
       if (newPassword !== confirmPassword) {
-        setPasswordError('Las contraseñas no coinciden');
+        setPasswordError(t('settings.security.passwordMismatch', 'Passwords do not match'));
         setIsSaving(false);
         return;
       }
@@ -1598,6 +1602,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.security.newPassword', 'New Password')}</label>
                   <input 
                     type="password" 
+                    autoComplete="new-password"
                     placeholder={t('settings.security.newPasswordPlaceholder', 'Leave empty to remove password')}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-red-500 text-[var(--text-primary)] transition-all"
                     value={newPassword}
@@ -1608,6 +1613,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.security.confirmPassword', 'Confirm Password')}</label>
                   <input 
                     type="password" 
+                    autoComplete="new-password"
                     placeholder={t('settings.security.confirmPasswordPlaceholder', 'Confirm new password')}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-red-500 text-[var(--text-primary)] transition-all"
                     value={confirmPassword}

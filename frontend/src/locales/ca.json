@@ -183,6 +183,7 @@
       "confirmPasswordPlaceholder": "Confirmar nova contrasenya",
       "description": "Protegeix el panell del teu node FFmpeg contra modificacions de stream o execució de comandes no autoritzades.",
       "passwordUpdatedSuccess": "Contrasenya actualitzada amb èxit",
+      "passwordMismatch": "Les contrasenyes no coincideixen",
       "saveSettingsError": "Error en desar la configuració"
     },
     "ssl": {

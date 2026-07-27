@@ -183,6 +183,7 @@
       "confirmPasswordPlaceholder": "Confirm new password",
       "description": "Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.",
       "passwordUpdatedSuccess": "Password updated successfully",
+      "passwordMismatch": "Passwords do not match",
       "saveSettingsError": "Error saving settings"
     },
     "ssl": {
