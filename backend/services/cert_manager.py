@@ -219,6 +219,8 @@ class CertificateManager:
         _info(f"Starting ACME Let's Encrypt renewal for domain '{domain}' via pure Python ACME v2 client...")
 
         try:
+            import http.server
+            import threading
             import josepy as jose
             from acme import client as acme_client
             from acme import messages, challenges, crypto_util
@@ -277,13 +279,49 @@ class CertificateManager:
             except Exception as e:
                 _info(f"Challenge token registration note: {e}")
 
-            # 7. Answer Challenge
-            _info("Answering ACME HTTP-01 challenge...")
-            acme_c.answer_challenge(http_challenge, response)
+            # Temporary port 80 listener if main server is running on another port
+            temp_server = None
+            class AcmePort80Handler(http.server.BaseHTTPRequestHandler):
+                def do_GET(self):
+                    if "/.well-known/acme-challenge/" in self.path:
+                        t = self.path.split("/")[-1]
+                        val = validation if t == token_str else None
+                        if val:
+                            self.send_response(200)
+                            self.send_header("Content-Type", "text/plain")
+                            self.end_headers()
+                            self.wfile.write(val.encode("utf-8"))
+                            return
+                    self.send_response(404)
+                    self.end_headers()
 
-            # 8. Poll Order Finalization
-            _info("Polling ACME challenge validation status...")
-            finalized_order = acme_c.poll_and_finalize(orderr)
+                def log_message(self, format, *args):
+                    pass
+
+            try:
+                temp_server = http.server.HTTPServer(('0.0.0.0', 80), AcmePort80Handler)
+                temp_thread = threading.Thread(target=temp_server.serve_forever, daemon=True)
+                temp_thread.start()
+                _info("Started temporary HTTP-01 challenge listener on TCP Port 80...")
+            except Exception as e:
+                _info(f"Port 80 temporary listener note: {e}")
+
+            try:
+                # 7. Answer Challenge
+                _info("Answering ACME HTTP-01 challenge...")
+                acme_c.answer_challenge(http_challenge, response)
+
+                # 8. Poll Order Finalization
+                _info("Polling ACME challenge validation status...")
+                finalized_order = acme_c.poll_and_finalize(orderr)
+            finally:
+                if temp_server:
+                    try:
+                        temp_server.shutdown()
+                        temp_server.server_close()
+                        _info("Closed temporary Port 80 HTTP listener.")
+                    except Exception:
+                        pass
 
             cert_pem_bytes = finalized_order.fullchain_pem.encode("utf-8")
             key_pem_bytes = domain_key.private_bytes(
