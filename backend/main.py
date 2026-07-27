@@ -910,12 +910,16 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
         # Synchronize System Task #2 (SSL Auto-Renewal Routine) active status
         from database.models import ScheduledTask
         from utils.cron_helper import CronHelper
+        from services.cert_manager import CertificateManager
+        cert_mgr = CertificateManager()
+        cert_status = cert_mgr.get_cert_status()
+
         ssl_sys_task = db.query(ScheduledTask).filter(ScheduledTask.command == "system://ssl_renew").first()
         if ssl_sys_task:
             mode = config["ssl"].get("mode", "disabled")
             auto_renew_str = config["ssl"].get("auto_renew", "true").lower()
             auto_renew = auto_renew_str in ("true", "1", "yes")
-            is_active = (mode == "acme" and auto_renew)
+            is_active = (mode == "acme" and auto_renew and cert_status.get("valid", False) and cert_status.get("mode") == "acme")
             ssl_sys_task.is_active = is_active
             ssl_sys_task.next_run = CronHelper.get_next_run("0 3 * * *") if is_active else None
             db.commit()
@@ -3880,6 +3884,16 @@ def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session =
     success, msg = cert_mgr.renew_acme_certificate(domain, email, challenge_type)
     if not success:
         raise HTTPException(status_code=400, detail=msg)
+
+    # Activate System SSL Renewal task upon first successful ACME issuance
+    from database.models import ScheduledTask
+    from utils.cron_helper import CronHelper
+    ssl_sys_task = db.query(ScheduledTask).filter(ScheduledTask.command == "system://ssl_renew").first()
+    if ssl_sys_task:
+        ssl_sys_task.is_active = True
+        ssl_sys_task.next_run = CronHelper.get_next_run("0 3 * * *")
+        db.commit()
+
     return {"success": True, "message": msg, "status": cert_mgr.get_cert_status()}
 
 

@@ -202,10 +202,14 @@ def init_db():
             if config_path and os.path.exists(config_path):
                 try:
                     import configparser
+                    from services.cert_manager import CertificateManager
                     config = configparser.ConfigParser()
                     config.read(config_path)
+                    cert_mgr = CertificateManager()
+                    cert_status = cert_mgr.get_cert_status()
                     if "ssl" in config:
-                        is_ssl_acme = (config["ssl"].get("mode") == "acme")
+                        mode = config["ssl"].get("mode", "disabled")
+                        is_ssl_acme = (mode == "acme" and cert_status.get("valid", False) and cert_status.get("mode") == "acme")
                 except Exception:
                     pass
 

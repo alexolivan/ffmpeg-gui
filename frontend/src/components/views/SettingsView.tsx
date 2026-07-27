@@ -1759,7 +1759,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <span>{isRenewingSsl ? 'Renewing...' : t('settings.ssl.renewNow', 'Renew Certificate Now')}</span>
                     </button>
                     {sslRenewMessage && (
-                      <span className="text-xs font-mono font-bold text-brand-lime">{sslRenewMessage}</span>
+                      <span className={`text-xs font-mono font-bold ${sslRenewMessage.startsWith('✓') ? 'text-brand-lime' : 'text-red-400'}`}>{sslRenewMessage}</span>
                     )}
                   </div>
                 </div>
