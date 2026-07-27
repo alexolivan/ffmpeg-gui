@@ -221,62 +221,15 @@ class CertificateManager:
         try:
             import josepy as jose
             from acme import client as acme_client
-            from acme import messages, crypto_util
+            from acme import messages, challenges, crypto_util
             from cryptography.hazmat.primitives import serialization
             from cryptography.hazmat.primitives.asymmetric import rsa
 
-            # 1. Generate ACME Account Private Key
+            # 1. Generate ACME Account Private Key & Domain Key
             account_key = jose.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=2048))
-
-            # 2. Network Client Session
-            net = acme_client.ClientNetwork(account_key, user_agent="FFmpeg-GUI-ACME/1.29.0")
-            directory_url = "https://acme-v02.api.letsencrypt.org/directory"
-            directory = acme_client.ClientV2.get_directory(directory_url, net)
-            acme_c = acme_client.ClientV2(directory, net=net)
-
-            # 3. Register Account with Let's Encrypt
-            _info("Registering ACME account with Let's Encrypt...")
-            acme_c.new_account(messages.NewRegistration.from_data(email=email, terms_of_service_agreed=True))
-
-            # 4. Create Order
-            _info(f"Creating ACME certificate order for '{domain}'...")
-            order = acme_c.new_order(messages.NewOrder.from_data(identifiers=[messages.Identifier(type=messages.IDENTIFIER_TYPES['dns'], value=domain)]))
-
-            # 5. Extract HTTP-01 Challenge
-            authz = order.authorizations[0]
-            http_challenge = None
-            for chall_body in authz.body.challenges:
-                if isinstance(chall_body.chall, messages.HTTP01):
-                    http_challenge = chall_body
-                    break
-
-            if not http_challenge:
-                msg = "Let's Encrypt server did not offer an HTTP-01 challenge."
-                _err(msg)
-                return False, msg
-
-            response, validation = http_challenge.response_and_validation(account_key)
-            token = http_challenge.chall.token
-
-            # Register token in main app ACME_CHALLENGES dictionary
-            try:
-                from main import ACME_CHALLENGES
-                ACME_CHALLENGES[token] = validation
-                _info(f"Registered HTTP-01 token challenge for '{token}'...")
-            except Exception as e:
-                _info(f"Challenge token setup: {e}")
-
-            # 6. Answer Challenge
-            _info("Answering ACME HTTP-01 challenge...")
-            acme_c.answer_challenge(http_challenge, response)
-
-            # 7. Poll Order Finalization
-            _info("Polling ACME challenge validation status...")
-            finalized_order = acme_c.poll_and_finalize(order)
-
-            # 8. Generate Domain Key & CSR
-            _info("Generating RSA 2048 domain private key and CSR...")
             domain_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+            # 2. Generate CSR for requested domain
             csr_pem = crypto_util.make_csr(
                 domain_key.private_bytes(
                     encoding=serialization.Encoding.PEM,
@@ -286,11 +239,53 @@ class CertificateManager:
                 [domain]
             )
 
-            # 9. Request Certificate Issuance
-            _info("Requesting final certificate issuance from Let's Encrypt...")
-            final_order = acme_c.finalize_order(finalized_order, csr_pem)
+            # 3. Network Client Session
+            net = acme_client.ClientNetwork(account_key, user_agent="FFmpeg-GUI-ACME/1.29.0")
+            directory_url = "https://acme-v02.api.letsencrypt.org/directory"
+            directory = acme_client.ClientV2.get_directory(directory_url, net)
+            acme_c = acme_client.ClientV2(directory, net=net)
 
-            cert_pem_bytes = final_order.fullchain_pem.encode("utf-8")
+            # 4. Register Account with Let's Encrypt
+            _info("Registering ACME account with Let's Encrypt...")
+            acme_c.new_account(messages.NewRegistration.from_data(email=email, terms_of_service_agreed=True))
+
+            # 5. Create Order with CSR
+            _info(f"Creating ACME certificate order for '{domain}'...")
+            orderr = acme_c.new_order(csr_pem)
+
+            # 6. Extract HTTP-01 Challenge
+            authz = orderr.authorizations[0]
+            http_challenge = None
+            for chall_body in authz.body.challenges:
+                if isinstance(chall_body.chall, challenges.HTTP01):
+                    http_challenge = chall_body
+                    break
+
+            if not http_challenge:
+                msg = "Let's Encrypt server did not offer an HTTP-01 challenge."
+                _err(msg)
+                return False, msg
+
+            response, validation = http_challenge.response_and_validation(account_key)
+            token_str = http_challenge.chall.encode("token")
+
+            # Register token in main app ACME_CHALLENGES dictionary
+            try:
+                from main import ACME_CHALLENGES
+                ACME_CHALLENGES[token_str] = validation
+                _info(f"Registered HTTP-01 challenge token '{token_str}' on web server...")
+            except Exception as e:
+                _info(f"Challenge token registration note: {e}")
+
+            # 7. Answer Challenge
+            _info("Answering ACME HTTP-01 challenge...")
+            acme_c.answer_challenge(http_challenge, response)
+
+            # 8. Poll Order Finalization
+            _info("Polling ACME challenge validation status...")
+            finalized_order = acme_c.poll_and_finalize(orderr)
+
+            cert_pem_bytes = finalized_order.fullchain_pem.encode("utf-8")
             key_pem_bytes = domain_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.TraditionalOpenSSL,
@@ -306,7 +301,7 @@ class CertificateManager:
             # Clean token
             try:
                 from main import ACME_CHALLENGES
-                ACME_CHALLENGES.pop(token, None)
+                ACME_CHALLENGES.pop(token_str, None)
             except Exception:
                 pass
 
