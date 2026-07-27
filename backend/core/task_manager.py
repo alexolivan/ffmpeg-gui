@@ -1087,6 +1087,8 @@ class TaskManager:
         try:
             if command == "system://log_rotate":
                 await self._execute_log_rotate(log_info, log_error)
+            elif command == "system://ssl_renew":
+                await self._execute_ssl_renew(log_info, log_error)
             else:
                 raise ValueError(f"Unknown system command: {command}")
         except Exception as e:
@@ -1187,3 +1189,16 @@ class TaskManager:
                     preserved_count += 1
                     
         log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")
+
+    async def _execute_ssl_renew(self, log_info, log_error):
+        from services.cert_manager import CertificateManager
+        cert_mgr = CertificateManager()
+        status = cert_mgr.get_cert_status()
+        log_info(f"Checking SSL certificate status: {status['status']} (expires in {status['days_remaining']} days).")
+
+        domain = status.get("domain") or "localhost"
+        email = f"admin@{domain}"
+        success, msg = cert_mgr.renew_acme_certificate(domain, email, log_info=log_info, log_error=log_error)
+        if not success:
+            raise RuntimeError(f"ACME SSL renewal failed: {msg}")
+        log_info(f"SSL renewal routine finished successfully: {msg}")

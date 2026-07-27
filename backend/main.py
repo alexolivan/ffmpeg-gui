@@ -247,6 +247,16 @@ class SettingsResponse(BaseModel):
     logging_retention_days: Optional[int] = None
     language: str = "en"
     theme: str = "studio-dark"
+    bind_address: Optional[str] = "0.0.0.0"
+    http_port: Optional[int] = 8080
+    https_port: Optional[int] = 8443
+    ssl_enabled: Optional[bool] = False
+    force_https_redirect: Optional[bool] = False
+    ssl_mode: Optional[str] = "disabled"
+    ssl_domain: Optional[str] = None
+    ssl_email: Optional[str] = None
+    ssl_challenge_type: Optional[str] = "http-01"
+    ssl_auto_renew: Optional[bool] = True
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -258,6 +268,17 @@ class SettingsUpdate(BaseModel):
     lcd_enabled: Optional[bool] = None
     language: Optional[str] = None
     theme: Optional[str] = None
+
+    bind_address: Optional[str] = None
+    http_port: Optional[int] = None
+    https_port: Optional[int] = None
+    ssl_enabled: Optional[bool] = None
+    force_https_redirect: Optional[bool] = None
+    ssl_mode: Optional[str] = None
+    ssl_domain: Optional[str] = None
+    ssl_email: Optional[str] = None
+    ssl_challenge_type: Optional[str] = None
+    ssl_auto_renew: Optional[bool] = None
 
     logging_mode: Optional[str] = None
     logging_storage_id: Optional[int] = None
@@ -342,6 +363,18 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     logging_compression_enabled = False
     logging_retention_days = 30
 
+    # Default network & SSL values
+    bind_address = "0.0.0.0"
+    http_port = 8080
+    https_port = 8443
+    ssl_enabled = False
+    force_https_redirect = False
+    ssl_mode = "disabled"
+    ssl_domain = None
+    ssl_email = None
+    ssl_challenge_type = "http-01"
+    ssl_auto_renew = True
+
     if config_path and os.path.exists(config_path):
         try:
             import configparser
@@ -350,6 +383,25 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
             if "general" in config:
                 language = config.get("general", "language", fallback="en")
                 theme = config.get("general", "theme", fallback="studio-dark")
+            if "network" in config:
+                net_cfg = config["network"]
+                bind_address = net_cfg.get("bind_address", fallback=bind_address)
+                try: http_port = net_cfg.getint("http_port", fallback=http_port)
+                except ValueError: pass
+                try: https_port = net_cfg.getint("https_port", fallback=https_port)
+                except ValueError: pass
+                try: ssl_enabled = net_cfg.getboolean("ssl_enabled", fallback=ssl_enabled)
+                except ValueError: pass
+                try: force_https_redirect = net_cfg.getboolean("force_https_redirect", fallback=force_https_redirect)
+                except ValueError: pass
+            if "ssl" in config:
+                ssl_cfg = config["ssl"]
+                ssl_mode = ssl_cfg.get("mode", fallback=ssl_mode)
+                ssl_domain = ssl_cfg.get("domain", fallback=ssl_domain)
+                ssl_email = ssl_cfg.get("email", fallback=ssl_email)
+                ssl_challenge_type = ssl_cfg.get("challenge_type", fallback=ssl_challenge_type)
+                try: ssl_auto_renew = ssl_cfg.getboolean("auto_renew", fallback=ssl_auto_renew)
+                except ValueError: pass
             if "server" in config and "port" in config["server"]:
                 gui_port = int(config["server"]["port"])
                 if gui_port != active_port:
@@ -502,6 +554,16 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["logging_retention_days"] = logging_retention_days
     res["language"] = language
     res["theme"] = theme
+    res["bind_address"] = bind_address
+    res["http_port"] = http_port
+    res["https_port"] = https_port
+    res["ssl_enabled"] = ssl_enabled
+    res["force_https_redirect"] = force_https_redirect
+    res["ssl_mode"] = ssl_mode
+    res["ssl_domain"] = ssl_domain
+    res["ssl_email"] = ssl_email
+    res["ssl_challenge_type"] = ssl_challenge_type
+    res["ssl_auto_renew"] = ssl_auto_renew
     
     return SettingsResponse(**res).model_dump()
 
@@ -781,6 +843,65 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
         if settings_in.logging_retention_days is not None:
             config["logging"]["retention_days"] = str(settings_in.logging_retention_days)
             
+        with open(config_path, "w") as f:
+            config.write(f)
+
+    # ── Handle Network & SSL Settings update ──
+    network_ssl_fields = [
+        "bind_address", "http_port", "https_port", "ssl_enabled",
+        "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email",
+        "ssl_challenge_type", "ssl_auto_renew"
+    ]
+    has_net_ssl_updates = any(getattr(settings_in, field) is not None for field in network_ssl_fields)
+
+    if has_net_ssl_updates:
+        from services.cert_manager import CertificateManager
+        cert_mgr = CertificateManager()
+
+        if settings_in.ssl_enabled is True:
+            cert_status = cert_mgr.get_cert_status()
+            if not cert_status["valid"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot enable HTTPS encryption without a valid active SSL certificate and keypair."
+                )
+
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if not config_path:
+            config_path = "ffmpeg-gui.conf"
+
+        import configparser
+        config = configparser.ConfigParser()
+        if os.path.exists(config_path):
+            config.read(config_path)
+
+        if "network" not in config:
+            config["network"] = {}
+        if "ssl" not in config:
+            config["ssl"] = {}
+
+        if settings_in.bind_address is not None:
+            config["network"]["bind_address"] = settings_in.bind_address
+        if settings_in.http_port is not None:
+            config["network"]["http_port"] = str(settings_in.http_port)
+        if settings_in.https_port is not None:
+            config["network"]["https_port"] = str(settings_in.https_port)
+        if settings_in.ssl_enabled is not None:
+            config["network"]["ssl_enabled"] = str(settings_in.ssl_enabled).lower()
+        if settings_in.force_https_redirect is not None:
+            config["network"]["force_https_redirect"] = str(settings_in.force_https_redirect).lower()
+
+        if settings_in.ssl_mode is not None:
+            config["ssl"]["mode"] = settings_in.ssl_mode
+        if settings_in.ssl_domain is not None:
+            config["ssl"]["domain"] = settings_in.ssl_domain
+        if settings_in.ssl_email is not None:
+            config["ssl"]["email"] = settings_in.ssl_email
+        if settings_in.ssl_challenge_type is not None:
+            config["ssl"]["challenge_type"] = settings_in.ssl_challenge_type
+        if settings_in.ssl_auto_renew is not None:
+            config["ssl"]["auto_renew"] = str(settings_in.ssl_auto_renew).lower()
+
         with open(config_path, "w") as f:
             config.write(f)
 
@@ -3690,6 +3811,45 @@ def test_storage_path(test_in: StorageTest, db: Session = Depends(get_db)):
         "percent": stats["percent"],
         "stats": stats
     }
+
+# ── SSL & Certificate Management API Endpoints ──
+@app.get("/api/settings/ssl/status")
+def get_ssl_status():
+    from services.cert_manager import CertificateManager
+    return CertificateManager().get_cert_status()
+
+
+@app.post("/api/settings/ssl/upload-custom")
+async def upload_custom_ssl(cert_file: UploadFile = File(...), key_file: UploadFile = File(...)):
+    from services.cert_manager import CertificateManager
+    cert_mgr = CertificateManager()
+    cert_bytes = await cert_file.read()
+    key_bytes = await key_file.read()
+
+    success, err = cert_mgr.save_custom_cert(cert_bytes, key_bytes, mode="custom")
+    if not success:
+        raise HTTPException(status_code=400, detail=err or "Invalid SSL certificate or keypair.")
+    return {"success": True, "status": cert_mgr.get_cert_status()}
+
+
+@app.post("/api/settings/ssl/renew")
+def renew_ssl_certificate(db: Session = Depends(get_db)):
+    from services.cert_manager import CertificateManager
+    cert_mgr = CertificateManager()
+    status = cert_mgr.get_cert_status()
+    domain = status.get("domain") or "localhost"
+    email = f"admin@{domain}"
+
+    success, msg = cert_mgr.renew_acme_certificate(domain, email)
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"success": True, "message": msg, "status": cert_mgr.get_cert_status()}
+
+
+@app.get("/.well-known/acme-challenge/{token}")
+def get_acme_challenge(token: str):
+    return PlainTextResponse(content=token)
+
 
 # Mounting static files and SPA fallback
 FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", "../frontend/dist")

@@ -195,6 +195,24 @@ def init_db():
                 db.add(task)
                 db.commit()
 
+            # Seed System Task #2: SSL Auto-Renewal Routine
+            ssl_renew_task = db.query(ScheduledTask).filter(ScheduledTask.command == "system://ssl_renew").first()
+            if not ssl_renew_task:
+                ssl_task = ScheduledTask(
+                    name="System SSL/TLS Certificate Auto-Renewal Routine",
+                    command="system://ssl_renew",
+                    is_system=True,
+                    is_active=True,
+                    schedule_type="recurring",
+                    schedule_cron="0 3 * * *",
+                    next_run=CronHelper.get_next_run("0 3 * * *"),
+                    input_config={},
+                    output_config={},
+                    codec_config={}
+                )
+                db.add(ssl_task)
+                db.commit()
+
             # Seed pre-existing SDKs on disk if not registered in InstalledSdk
             from database.models import InstalledSdk
             default_sdk_storage = db.query(Storage).filter(Storage.type == "sdk", Storage.is_default == True).first()
