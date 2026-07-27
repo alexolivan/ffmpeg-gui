@@ -173,6 +173,20 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   const { t } = useTranslation();
   const [showSdksModal, setShowSdksModal] = React.useState(false);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
+  const [installedSdks, setInstalledSdks] = React.useState<any[]>([]);
+
+  const fetchSdks = React.useCallback(() => {
+    fetch(`${API}/sdks`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (Array.isArray(data)) setInstalledSdks(data);
+      })
+      .catch(err => console.error("Failed to fetch SDKs in ForgeView:", err));
+  }, [API]);
+
+  useEffect(() => {
+    fetchSdks();
+  }, [fetchSdks]);
 
   useEffect(() => {
     if (initialStorages.length > 0) {
@@ -310,6 +324,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
               <BuildProfileCard
                 key={build.id}
                 build={build}
+                installedSdks={installedSdks}
                 isAnyBuilding={isAnyBuilding}
                 onCompile={handleCompile}
                 onStop={handleStopBuild}
@@ -348,6 +363,24 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           onClose={() => { setTerminalBuild(null); refreshBuilds(); refreshDiskInfo() }}
         />
       )}
+
+      {/* SDKs Management Modal */}
+      <BuildSdksModal
+        isOpen={showSdksModal}
+        onClose={() => {
+          setShowSdksModal(false);
+          fetchSdks();
+        }}
+        storages={storages}
+        onRefresh={() => {
+          fetchSdks();
+          if (typeof checkStatus === 'function') {
+            (checkStatus as any)();
+          }
+          refreshBuilds();
+        }}
+        API={API}
+      />
 
       {/* Validation Result Modal */}
       {validationResult && (
@@ -587,19 +620,6 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           </div>
         </div>
       )}
-      {/* SDKs Management Modal */}
-      <BuildSdksModal
-        isOpen={showSdksModal}
-        onClose={() => setShowSdksModal(false)}
-        storages={storages}
-        onRefresh={() => {
-          if (typeof checkStatus === 'function') {
-            (checkStatus as any)();
-          }
-          refreshBuilds();
-        }}
-        API={API}
-      />
     </div>
   );
 };

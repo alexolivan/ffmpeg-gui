@@ -43,6 +43,27 @@ function formatDate(iso: string | null): string {
     hour: '2-digit', minute: '2-digit',
   })
 }
+function normalizeVersion(v: string | null | undefined): string {
+  if (!v) return ''
+  return v.trim().toLowerCase().replace(/^v/, '')
+}
+
+function matchesVersion(sdkVersion: string | null | undefined, reqVersion: string | null | undefined): boolean {
+  if (!sdkVersion || !reqVersion) return false
+  if (sdkVersion === reqVersion) return true
+  const normSdk = normalizeVersion(sdkVersion)
+  const normReq = normalizeVersion(reqVersion)
+  if (normSdk === normReq) return true
+  if (normSdk && normReq) {
+    const sdkParts = normSdk.split('.')
+    const reqParts = normReq.split('.')
+    if (sdkParts[0] === reqParts[0]) {
+      if (sdkParts.length === 1 || reqParts.length === 1) return true
+      if (sdkParts[1] === reqParts[1]) return true
+    }
+  }
+  return false
+}
 
 export default function BuildProfileCard({
   build, installedSdks: installedSdksProp, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport,
@@ -57,7 +78,7 @@ export default function BuildProfileCard({
         .then(data => setFetchedSdks(data))
         .catch(() => {})
     }
-  }, [installedSdksProp])
+  }, [installedSdksProp, build])
 
   const sdks = installedSdksProp || fetchedSdks
 
@@ -65,14 +86,14 @@ export default function BuildProfileCard({
   const reqDecklinkVer = build.sdk_paths?.decklink
   const missingDecklink = isDecklinkEnabled && (
     !reqDecklinkVer ||
-    !sdks.some((s: any) => s.sdk_type === 'decklink' && s.version === reqDecklinkVer && s.status !== 'missing')
+    !sdks.some((s: any) => s.sdk_type === 'decklink' && s.status !== 'missing' && matchesVersion(s.version, reqDecklinkVer))
   )
 
   const isNdiEnabled = !!build.build_options?.ndi
   const reqNdiVer = build.sdk_paths?.ndi
   const missingNdi = isNdiEnabled && (
     !reqNdiVer ||
-    !sdks.some((s: any) => s.sdk_type === 'ndi' && s.version === reqNdiVer && s.status !== 'missing')
+    !sdks.some((s: any) => s.sdk_type === 'ndi' && s.status !== 'missing' && matchesVersion(s.version, reqNdiVer))
   )
 
   const hasMissingSdk = missingDecklink || missingNdi
