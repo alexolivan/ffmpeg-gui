@@ -70,6 +70,11 @@ def main():
     log_file = None
     database = None
 
+    # Valores por defecto para network y SSL
+    https_port = 8443
+    ssl_enabled = False
+    force_https_redirect = False
+
     # Valores por defecto para logging
     logging_mode = "journalctl"
     logging_file_path = None
@@ -102,6 +107,23 @@ def main():
             log_file = server_cfg.get("log_file", log_file)
             database = server_cfg.get("database", database)
             
+        if "network" in config:
+            net_cfg = config["network"]
+            host = net_cfg.get("bind_address", host)
+            if net_cfg.get("gui_port"):
+                port = net_cfg.getint("gui_port", port)
+            elif net_cfg.get("http_port"):
+                port = net_cfg.getint("http_port", port)
+            https_port = net_cfg.getint("https_port", https_port)
+            ssl_enabled = net_cfg.getboolean("ssl_enabled", ssl_enabled)
+            force_https_redirect = net_cfg.getboolean("force_https_redirect", force_https_redirect)
+
+        if "ssl" in config:
+            ssl_cfg = config["ssl"]
+            if ssl_cfg.get("mode") in ("acme", "custom"):
+                if "enabled" in ssl_cfg:
+                    ssl_enabled = ssl_cfg.getboolean("enabled", ssl_enabled)
+
         if "logging" in config:
             logging_cfg = config["logging"]
             logging_mode = logging_cfg.get("mode", logging_mode)
@@ -197,8 +219,49 @@ def main():
         "propagate": False
     }
 
-    print(f"Starting FFMPEG-GUI Server on {host}:{port}...")
-    uvicorn.run("main:app", host=host, port=port, log_config=log_config)
+    # 5. Check SSL Certificate Availability
+    ssl_keyfile = None
+    ssl_certfile = None
+    if ssl_enabled:
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from services.cert_manager import CertificateManager
+            cert_mgr = CertificateManager()
+            cert_status = cert_mgr.get_cert_status()
+            if cert_status.get("valid"):
+                ssl_keyfile = cert_mgr.privkey_path
+                ssl_certfile = cert_mgr.fullchain_path
+                print(f"SSL/TLS Certificate verified! Key: {ssl_keyfile}, Cert: {ssl_certfile}")
+            else:
+                print("WARNING: ssl_enabled=True in config, but no valid SSL certificate was found in storage. Falling back to HTTP.")
+                ssl_enabled = False
+        except Exception as e:
+            print(f"Error checking SSL certificates: {e}")
+            ssl_enabled = False
+
+    # 6. Run Uvicorn server(s)
+    if ssl_enabled and ssl_keyfile and ssl_certfile:
+        import threading
+        print(f"Starting FFMPEG-GUI HTTPS Server on https://{host}:{https_port}...")
+        if port != https_port:
+            https_config = uvicorn.Config(
+                "main:app",
+                host=host,
+                port=https_port,
+                ssl_keyfile=ssl_keyfile,
+                ssl_certfile=ssl_certfile,
+                log_config=log_config
+            )
+            https_server = uvicorn.Server(https_config)
+            threading.Thread(target=https_server.run, daemon=True).start()
+
+            print(f"Starting FFMPEG-GUI HTTP Server on http://{host}:{port}...")
+            uvicorn.run("main:app", host=host, port=port, log_config=log_config)
+        else:
+            uvicorn.run("main:app", host=host, port=https_port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile, log_config=log_config)
+    else:
+        print(f"Starting FFMPEG-GUI HTTP Server on http://{host}:{port}...")
+        uvicorn.run("main:app", host=host, port=port, log_config=log_config)
 
 if __name__ == "__main__":
     main()
