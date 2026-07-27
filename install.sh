@@ -256,6 +256,8 @@ ExecStart=$PROJ_DIR/venv/bin/python $PROJ_DIR/backend/run_server.py --config $CO
 Restart=always
 RestartSec=5
 KillMode=process
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
