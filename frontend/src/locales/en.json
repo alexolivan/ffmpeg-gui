@@ -66,7 +66,7 @@
       "general": "General",
       "lcd": "LCD Display",
       "storage": "Storage",
-      "security": "Security"
+      "security": "Network & Security"
     },
     "restart": {
       "title": "Restart Required",
@@ -107,7 +107,13 @@
     "network": {
       "title": "Network Settings",
       "guiPort": "GUI Listen Port",
-      "guiPortDesc": "The network port on which this dashboard listens for connection requests."
+      "guiPortDesc": "The network port on which this dashboard listens for connection requests.",
+      "listenInterfaces": "Listen IP Interface",
+      "httpPort": "HTTP Listen Port",
+      "httpsPort": "HTTPS Listen Port",
+      "enableHttps": "Enable HTTPS Encryption",
+      "forceHttpsRedirect": "Automatically Redirect HTTP -> HTTPS",
+      "httpsDisabledCertTooltip": "HTTPS cannot be enabled until a valid SSL certificate and keypair are loaded."
     },
     "logging": {
       "title": "LOGGING CONFIGURATION",
@@ -178,6 +184,28 @@
       "description": "Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.",
       "passwordUpdatedSuccess": "Password updated successfully",
       "saveSettingsError": "Error saving settings"
+    },
+    "ssl": {
+      "title": "SSL / TLS Certificate Management",
+      "status": "Certificate Status",
+      "mode": "Certificate Source Mode",
+      "disabled": "Disabled / Fallback",
+      "acme": "Let's Encrypt (ACME Auto-Renewal)",
+      "custom": "Custom Certificate Upload",
+      "domain": "Domain Name (FQDN / SNI)",
+      "email": "ACME Contact Email",
+      "challenge": "Validation Challenge",
+      "autoRenew": "Automatic Background Renewal Routine",
+      "renewNow": "Renew Certificate Now",
+      "uploadTitle": "Upload Custom Certificate & Private Key",
+      "certFile": "Fullchain Certificate (.crt / .pem)",
+      "keyFile": "Private Key (.key / privkey.pem)",
+      "uploadBtn": "Upload & Validate Keypair",
+      "statusValid": "Valid Certificate",
+      "statusWarning": "Expiring Soon",
+      "statusCritical": "Critical Expiration",
+      "statusExpired": "Expired Certificate",
+      "statusMissing": "No Active Certificate"
     }
   },
   "dashboard": {
@@ -231,7 +259,9 @@
     "nextRunInMins": "In {{mins}} min",
     "nextRunInHours": "In {{hours}}h",
     "nextRunInHoursMins": "In {{hours}}h {{mins}}m",
-    "nextRunTodayAt": "Today at {{time}}"
+    "nextRunTodayAt": "Today at {{time}}",
+    "sniHostname": "SNI Hostname",
+    "sslCertificate": "SSL Certificate"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -550,7 +580,8 @@
     "lastExecutionLabel": "Last Execution",
     "runHistory": "Run History",
     "inputLabel": "Input:",
-    "outputLabel": "Output:"
+    "outputLabel": "Output:",
+    "systemSslTaskName": "System SSL/TLS Certificate Auto-Renewal Routine"
   },
   "sdks": {
     "modalTitle": "SDK INVENTORY & LIFECYCLE",

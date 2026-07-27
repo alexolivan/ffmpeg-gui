@@ -66,7 +66,7 @@
       "general": "General",
       "lcd": "Pantalla LCD",
       "storage": "Emmagatzematge",
-      "security": "Seguretat"
+      "security": "Xarxa i Seguretat"
     },
     "restart": {
       "title": "Reinici Requerit",
@@ -107,7 +107,13 @@
     "network": {
       "title": "Configuració de Xarxa",
       "guiPort": "Port d'Escolta del GUI",
-      "guiPortDesc": "El port de xarxa en el qual aquest panell escolta peticions de connexió."
+      "guiPortDesc": "El port de xarxa en el qual aquest panell escolta peticions de connexió.",
+      "listenInterfaces": "Interfície IP d'Escolta",
+      "httpPort": "Port d'Escolta HTTP",
+      "httpsPort": "Port d'Escolta HTTPS",
+      "enableHttps": "Habilitar Xifratge HTTPS",
+      "forceHttpsRedirect": "Redirigir Automàticament HTTP -> HTTPS",
+      "httpsDisabledCertTooltip": "No es pot habilitar HTTPS fins que hi hagi un certificat SSL i clau privada vàlids carregats."
     },
     "logging": {
       "title": "CONFIGURACIÓ DE REGISTRES",
@@ -178,6 +184,28 @@
       "description": "Protegeix el panell del teu node FFmpeg contra modificacions de stream o execució de comandes no autoritzades.",
       "passwordUpdatedSuccess": "Contrasenya actualitzada amb èxit",
       "saveSettingsError": "Error en desar la configuració"
+    },
+    "ssl": {
+      "title": "Gestió de Certificats SSL / TLS",
+      "status": "Estat del Certificat",
+      "mode": "Mode de Proveïdor de Certificat",
+      "disabled": "Deshabilitat / Mode Local",
+      "acme": "Let's Encrypt (Autorrenovació ACME)",
+      "custom": "Càrrega de Certificat Propi",
+      "domain": "Nom de Domini (FQDN / SNI)",
+      "email": "Correu de Contacte ACME",
+      "challenge": "Mètode de Validació",
+      "autoRenew": "Rutina de Renovació Automàtica en Segon Pla",
+      "renewNow": "Renovar Certificat Ara",
+      "uploadTitle": "Carregar Certificat Personalitzat i Clau Privada",
+      "certFile": "Certificat Cadena Completa (.crt / .pem)",
+      "keyFile": "Clau Privada (.key / privkey.pem)",
+      "uploadBtn": "Carregar i Validar Parell de Claus",
+      "statusValid": "Certificat Vàlid",
+      "statusWarning": "Proper a Caducar",
+      "statusCritical": "Caducitat Imminent",
+      "statusExpired": "Certificat Caducat",
+      "statusMissing": "Sense Certificat Actiu"
     }
   },
   "dashboard": {
@@ -231,7 +259,9 @@
     "nextRunInMins": "En {{mins}} min",
     "nextRunInHours": "En {{hours}}h",
     "nextRunInHoursMins": "En {{hours}}h {{mins}}m",
-    "nextRunTodayAt": "Avui a les {{time}}h"
+    "nextRunTodayAt": "Avui a les {{time}}h",
+    "sniHostname": "Hostname SNI",
+    "sslCertificate": "Certificat SSL"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -550,7 +580,8 @@
     "lastExecutionLabel": "Última Execució",
     "runHistory": "Historial",
     "inputLabel": "Origen:",
-    "outputLabel": "Destinació:"
+    "outputLabel": "Destinació:",
+    "systemSslTaskName": "Rutina de Renovació Automàtica de Certificats SSL/TLS del Sistema"
   },
   "sdks": {
     "modalTitle": "INVENTARI I CICLE DE VIDA DE SDKs",

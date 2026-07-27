@@ -66,7 +66,7 @@
       "general": "General",
       "lcd": "Pantalla LCD",
       "storage": "Almacenamiento",
-      "security": "Seguridad"
+      "security": "Red y Seguridad"
     },
     "restart": {
       "title": "Reinicio Requerido",
@@ -107,7 +107,13 @@
     "network": {
       "title": "Configuración de Red",
       "guiPort": "Puerto de Escucha del GUI",
-      "guiPortDesc": "El puerto de red en el que este panel escucha peticiones de conexión."
+      "guiPortDesc": "El puerto de red en el que este panel escucha peticiones de conexión.",
+      "listenInterfaces": "Interfaz IP de Escucha",
+      "httpPort": "Puerto de Escucha HTTP",
+      "httpsPort": "Puerto de Escucha HTTPS",
+      "enableHttps": "Habilitar Cifrado HTTPS",
+      "forceHttpsRedirect": "Redirigir Automáticamente HTTP -> HTTPS",
+      "httpsDisabledCertTooltip": "No se puede habilitar HTTPS hasta que haya un certificado SSL y clave privada válidos cargados."
     },
     "logging": {
       "title": "CONFIGURACIÓN DE LOGS",
@@ -178,6 +184,28 @@
       "description": "Protege el panel de tu nodo FFmpeg contra modificaciones de stream o ejecución de comandos no autorizadas.",
       "passwordUpdatedSuccess": "Contraseña actualizada con éxito",
       "saveSettingsError": "Error al guardar la configuración"
+    },
+    "ssl": {
+      "title": "Gestión de Certificados SSL / TLS",
+      "status": "Estado del Certificado",
+      "mode": "Modo de Proveedor de Certificado",
+      "disabled": "Deshabilitado / Modo Local",
+      "acme": "Let's Encrypt (Autorrenovación ACME)",
+      "custom": "Cálculo / Carga de Certificado Propio",
+      "domain": "Nombre de Dominio (FQDN / SNI)",
+      "email": "Email de Contacto ACME",
+      "challenge": "Método de Validación",
+      "autoRenew": "Rutina de Renovación Automática en Segundo Plano",
+      "renewNow": "Renovar Certificado Ahora",
+      "uploadTitle": "Cargar Certificado Personalizado y Clave Privada",
+      "certFile": "Certificado Cadena Completa (.crt / .pem)",
+      "keyFile": "Clave Privada (.key / privkey.pem)",
+      "uploadBtn": "Cargar y Validar Par de Claves",
+      "statusValid": "Certificado Válido",
+      "statusWarning": "Próximo a Caducar",
+      "statusCritical": "Caducidad Inminente",
+      "statusExpired": "Certificado Caducado",
+      "statusMissing": "Sin Certificado Activo"
     }
   },
   "dashboard": {
@@ -231,7 +259,9 @@
     "nextRunInMins": "En {{mins}} min",
     "nextRunInHours": "En {{hours}}h",
     "nextRunInHoursMins": "En {{hours}}h {{mins}}m",
-    "nextRunTodayAt": "Hoy a las {{time}}h"
+    "nextRunTodayAt": "Hoy a las {{time}}h",
+    "sniHostname": "Hostname SNI",
+    "sslCertificate": "Certificado SSL"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -550,7 +580,8 @@
     "lastExecutionLabel": "Última Ejecución",
     "runHistory": "Historial",
     "inputLabel": "Origen:",
-    "outputLabel": "Destino:"
+    "outputLabel": "Destino:",
+    "systemSslTaskName": "Rutina de Renovación Automática de Certificados SSL/TLS del Sistema"
   },
   "sdks": {
     "modalTitle": "INVENTARIO Y CICLO DE VIDA DE SDKs",
