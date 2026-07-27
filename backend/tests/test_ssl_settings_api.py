@@ -31,5 +31,10 @@ class TestSSLSettingsAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("SSL certificate", response.json()["detail"])
 
+    def test_renew_ssl_without_valid_domain_raises_400(self):
+        response = self.client.post("/api/settings/ssl/renew", json={"domain": "", "email": ""})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Domain Name", response.json()["detail"])
+
 if __name__ == "__main__":
     unittest.main()

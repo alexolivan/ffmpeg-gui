@@ -3859,8 +3859,13 @@ class AcmeRenewRequest(BaseModel):
 
 @app.post("/api/settings/ssl/renew")
 def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session = Depends(get_db)):
-    config_path = get_config_path()
-    config = get_config(config_path)
+    config_path = os.environ.get("CONFIG_FILE_PATH")
+    if not config_path:
+        config_path = "ffmpeg-gui.conf"
+    import configparser
+    config = configparser.ConfigParser()
+    if os.path.exists(config_path):
+        config.read(config_path)
 
     domain = (body and body.domain) or config.get("ssl", "domain", fallback="")
     email = (body and body.email) or config.get("ssl", "email", fallback="")
