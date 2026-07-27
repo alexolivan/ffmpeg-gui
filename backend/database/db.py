@@ -198,14 +198,25 @@ def init_db():
             # Seed System Task #2: SSL Auto-Renewal Routine
             ssl_renew_task = db.query(ScheduledTask).filter(ScheduledTask.command == "system://ssl_renew").first()
             if not ssl_renew_task:
+                is_ssl_acme = False
+                config_path = os.environ.get("CONFIG_FILE_PATH")
+                if config_path and os.path.exists(config_path):
+                    try:
+                        import configparser
+                        config = configparser.ConfigParser()
+                        config.read(config_path)
+                        if "ssl" in config:
+                            is_ssl_acme = (config["ssl"].get("mode") == "acme")
+                    except Exception:
+                        pass
                 ssl_task = ScheduledTask(
                     name="System SSL/TLS Certificate Auto-Renewal Routine",
                     command="system://ssl_renew",
                     is_system=True,
-                    is_active=True,
+                    is_active=is_ssl_acme,
                     schedule_type="recurring",
                     schedule_cron="0 3 * * *",
-                    next_run=CronHelper.get_next_run("0 3 * * *"),
+                    next_run=CronHelper.get_next_run("0 3 * * *") if is_ssl_acme else None,
                     input_config={},
                     output_config={},
                     codec_config={}

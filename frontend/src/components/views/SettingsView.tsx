@@ -877,28 +877,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
 
-            {/* Card 2: Network Settings */}
-            <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
-              <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.network.title', 'Network Settings')}</h4>
-              </div>
-              
-              <div className="max-w-xs space-y-1">
-                <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.network.guiPort', 'GUI Listen Port')}</label>
-                <input 
-                  type="number" 
-                  min={1}
-                  max={65535}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono"
-                  value={guiPort}
-                  onChange={e => setGuiPort(Number(e.target.value))}
-                />
-                <p className="text-[9px] text-text-secondary leading-tight italic mt-1">
-                  {t('settings.network.guiPortDesc', 'The network port on which this dashboard listens for connection requests.')}
-                </p>
-              </div>
-            </div>
+
 
             {/* Card 3: Logging Configuration */}
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
@@ -1597,11 +1576,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.network.httpPort', 'HTTP Listen Port')}</label>
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.network.httpPort', 'HTTP Listen Port (GUI)')}</label>
                   <input
                     type="number"
-                    value={settings?.http_port ?? 8080}
-                    onChange={e => onUpdateSettings({ http_port: parseInt(e.target.value) || 8080 })}
+                    min={1}
+                    max={65535}
+                    value={settings?.gui_port ?? settings?.http_port ?? 8080}
+                    onChange={e => {
+                      const val = parseInt(e.target.value) || 8080;
+                      onUpdateSettings({ gui_port: val, http_port: val });
+                    }}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-blue text-[var(--text-primary)] font-mono"
                   />
                 </div>

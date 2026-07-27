@@ -884,6 +884,8 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config["network"]["bind_address"] = settings_in.bind_address
         if settings_in.http_port is not None:
             config["network"]["http_port"] = str(settings_in.http_port)
+            if "server" not in config: config["server"] = {}
+            config["server"]["port"] = str(settings_in.http_port)
         if settings_in.https_port is not None:
             config["network"]["https_port"] = str(settings_in.https_port)
         if settings_in.ssl_enabled is not None:
@@ -904,6 +906,19 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
 
         with open(config_path, "w") as f:
             config.write(f)
+
+        # Synchronize System Task #2 (SSL Auto-Renewal Routine) active status
+        from database.models import ScheduledTask
+        from utils.cron_helper import CronHelper
+        ssl_sys_task = db.query(ScheduledTask).filter(ScheduledTask.command == "system://ssl_renew").first()
+        if ssl_sys_task:
+            mode = config["ssl"].get("mode", "disabled")
+            auto_renew_str = config["ssl"].get("auto_renew", "true").lower()
+            auto_renew = auto_renew_str in ("true", "1", "yes")
+            is_active = (mode == "acme" and auto_renew)
+            ssl_sys_task.is_active = is_active
+            ssl_sys_task.next_run = CronHelper.get_next_run("0 3 * * *") if is_active else None
+            db.commit()
 
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()
