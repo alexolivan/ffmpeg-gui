@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2026-07-27
+
+### Added
+- Integrated **HTTPS & SSL/TLS Certificate Management** system with standalone ACME (Let's Encrypt) auto-renewal and Custom Certificate Upload.
+- Reorganized `Network & Security` Settings view into 3 distinct cards: `ACCESS PASSWORD`, `LISTEN PORTS & NETWORK INTERFACES`, and `SSL / TLS CERTIFICATES`.
+- Core `CertificateManager` service with SSOT storage (`data/certs/live/`), keypair cryptographic validation, and event hooks for downstream services.
+- System Task #2: `System SSL/TLS Certificate Auto-Renewal Routine` (`system://ssl_renew`) integrated with `ScheduledTasks` execution history and CLI logs.
+- Automated maintenance helper script `scripts/setup-port-capabilities.sh` and systemd `CAP_NET_BIND_SERVICE` capabilities for binding ports 80/443 without root.
+- Dashboard `SYSTEM INFO` telemetry card displaying active SNI Hostname and color-coded expiration counter.
+
 ## [1.28.0] - 2026-07-23
 
 ### Added
