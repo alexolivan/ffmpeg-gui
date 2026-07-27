@@ -49,17 +49,9 @@ else
 fi
 
 # ---------------------------------------------------------
-# [PHASE 1.5/3] Verifying System Dependencies & Capabilities
+# [PHASE 1.5/3] Verifying System Capabilities
 # ---------------------------------------------------------
 if [ "$EUID" -eq 0 ]; then
-    if ! command -v certbot &>/dev/null; then
-        echo "--> Installing missing certbot dependency..."
-        if command -v apt-get &>/dev/null; then
-            apt-get update -qq && apt-get install -y certbot libcap2-bin || true
-        elif command -v dnf &>/dev/null; then
-            dnf install -y certbot libcap || true
-        fi
-    fi
     if [ -f "/etc/systemd/system/ffmpeg-gui.service" ]; then
         if ! grep -q "AmbientCapabilities=CAP_NET_BIND_SERVICE" "/etc/systemd/system/ffmpeg-gui.service"; then
             echo "--> Ensuring systemd service capabilities (CAP_NET_BIND_SERVICE)..."

@@ -202,7 +202,7 @@ class CertificateManager:
             return False, f"Failed to save certificate files: {str(e)}"
 
     def renew_acme_certificate(self, domain: str, email: str, challenge_type: str = "http-01", log_info=None, log_error=None) -> Tuple[bool, str]:
-        """Executes ACME Let's Encrypt certificate renewal via Certbot CLI."""
+        """Executes ACME Let's Encrypt certificate renewal via pure Python `acme` library."""
         def _info(msg: str):
             if log_info: log_info(msg)
             logger.info(msg)
@@ -216,51 +216,107 @@ class CertificateManager:
             _err(msg)
             return False, msg
 
-        _info(f"Starting ACME Let's Encrypt renewal for domain '{domain}' (challenge: {challenge_type})...")
+        _info(f"Starting ACME Let's Encrypt renewal for domain '{domain}' via pure Python ACME v2 client...")
 
-        # Check if certbot CLI is available
-        certbot_bin = subprocess.run(["which", "certbot"], capture_output=True, text=True).stdout.strip()
-        if not certbot_bin:
-            msg = "Certbot utility is not installed on this server. Please install certbot (e.g. 'sudo apt install certbot') or use Custom Certificate Upload."
-            _err(msg)
-            return False, msg
+        try:
+            import josepy as jose
+            from acme import client as acme_client
+            from acme import messages, crypto_util
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
 
-        acme_base_dir = os.path.abspath(os.path.join(self.certs_dir, "../acme"))
-        acme_config_dir = os.path.join(acme_base_dir, "config")
-        acme_work_dir = os.path.join(acme_base_dir, "work")
-        acme_logs_dir = os.path.join(acme_base_dir, "logs")
+            # 1. Generate ACME Account Private Key
+            account_key = jose.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=2048))
 
-        os.makedirs(acme_config_dir, mode=0o700, exist_ok=True)
-        os.makedirs(acme_work_dir, mode=0o700, exist_ok=True)
-        os.makedirs(acme_logs_dir, mode=0o700, exist_ok=True)
+            # 2. Network Client Session
+            net = acme_client.ClientNetwork(account_key, user_agent="FFmpeg-GUI-ACME/1.29.0")
+            directory_url = "https://acme-v02.api.letsencrypt.org/directory"
+            directory = acme_client.ClientV2.get_directory(directory_url, net)
+            acme_c = acme_client.ClientV2(directory, net=net)
 
-        _info(f"Using certbot CLI binary at {certbot_bin}...")
-        cmd = [
-            certbot_bin, "certonly", "--standalone", "--non-interactive", "--agree-tos",
-            "-m", email, "-d", domain, "--cert-name", "ffmpeg-gui", "--http-01-port", "80",
-            "--config-dir", acme_config_dir,
-            "--work-dir", acme_work_dir,
-            "--logs-dir", acme_logs_dir
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True)
-        if res.returncode == 0:
-            _info("Certbot renewal succeeded. Copying live certificates to SSOT...")
-            live_cert = os.path.join(acme_config_dir, "live", "ffmpeg-gui", "fullchain.pem")
-            live_key = os.path.join(acme_config_dir, "live", "ffmpeg-gui", "privkey.pem")
-            if os.path.exists(live_cert) and os.path.exists(live_key):
-                with open(live_cert, "rb") as f_c, open(live_key, "rb") as f_k:
-                    self.save_custom_cert(f_c.read(), f_k.read(), mode="acme")
-                _info("Certificates successfully imported into FFmpeg-GUI live storage.")
-                return True, f"Certificate for '{domain}' successfully renewed and imported via Certbot."
-            else:
-                msg = f"Certbot completed but certificate files were not found at {live_cert}."
+            # 3. Register Account with Let's Encrypt
+            _info("Registering ACME account with Let's Encrypt...")
+            acme_c.new_account(messages.NewRegistration.from_data(email=email, terms_of_service_agreed=True))
+
+            # 4. Create Order
+            _info(f"Creating ACME certificate order for '{domain}'...")
+            order = acme_c.new_order(messages.NewOrder.from_data(identifiers=[messages.Identifier(type=messages.IDENTIFIER_TYPES['dns'], value=domain)]))
+
+            # 5. Extract HTTP-01 Challenge
+            authz = order.authorizations[0]
+            http_challenge = None
+            for chall_body in authz.body.challenges:
+                if isinstance(chall_body.chall, messages.HTTP01):
+                    http_challenge = chall_body
+                    break
+
+            if not http_challenge:
+                msg = "Let's Encrypt server did not offer an HTTP-01 challenge."
                 _err(msg)
                 return False, msg
-        else:
-            err_output = res.stderr.strip() or res.stdout.strip() or "Unknown error"
-            msg = f"Certbot execution failed: {err_output}"
-            _err(msg)
-            return False, msg
+
+            response, validation = http_challenge.response_and_validation(account_key)
+            token = http_challenge.chall.token
+
+            # Register token in main app ACME_CHALLENGES dictionary
+            try:
+                from main import ACME_CHALLENGES
+                ACME_CHALLENGES[token] = validation
+                _info(f"Registered HTTP-01 token challenge for '{token}'...")
+            except Exception as e:
+                _info(f"Challenge token setup: {e}")
+
+            # 6. Answer Challenge
+            _info("Answering ACME HTTP-01 challenge...")
+            acme_c.answer_challenge(http_challenge, response)
+
+            # 7. Poll Order Finalization
+            _info("Polling ACME challenge validation status...")
+            finalized_order = acme_c.poll_and_finalize(order)
+
+            # 8. Generate Domain Key & CSR
+            _info("Generating RSA 2048 domain private key and CSR...")
+            domain_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            csr_pem = crypto_util.make_csr(
+                domain_key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption()
+                ),
+                [domain]
+            )
+
+            # 9. Request Certificate Issuance
+            _info("Requesting final certificate issuance from Let's Encrypt...")
+            final_order = acme_c.finalize_order(finalized_order, csr_pem)
+
+            cert_pem_bytes = final_order.fullchain_pem.encode("utf-8")
+            key_pem_bytes = domain_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption()
+            )
+
+            # Save certificate & private key to SSOT storage
+            saved, save_err = self.save_custom_cert(cert_pem_bytes, key_pem_bytes, mode="acme")
+            if not saved:
+                _err(f"Failed to save issued certificate: {save_err}")
+                return False, f"Failed to save certificate: {save_err}"
+
+            # Clean token
+            try:
+                from main import ACME_CHALLENGES
+                ACME_CHALLENGES.pop(token, None)
+            except Exception:
+                pass
+
+            _info(f"Certificate for '{domain}' successfully issued and saved!")
+            return True, f"Certificate for '{domain}' successfully issued and imported via Let's Encrypt."
+
+        except Exception as e:
+            err_msg = f"Pure Python ACME protocol error: {str(e)}"
+            _err(err_msg)
+            return False, err_msg
 
     def on_cert_renewed(self):
         """Hook triggered after certificate update to notify downstream services."""

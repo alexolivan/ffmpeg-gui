@@ -9,3 +9,6 @@ Pillow
 websockets
 croniter
 pyserial
+acme
+josepy
+cryptography

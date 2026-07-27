@@ -87,7 +87,7 @@ install_debian_deps() {
                        libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev \
                        libavahi-client-dev libavahi-common-dev libasound2-dev \
                        libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
-                       certbot libcap2-bin
+                       libcap2-bin
 }
 
 # Paquetes a instalar en RedHat/Fedora/CentOS
@@ -97,7 +97,7 @@ install_rhel_deps() {
     dnf install -y python3-devel nodejs npm cmake git pkgconfig yasm nasm \
                    x264-devel x265-devel openssl-devel libva-devel libdrm-devel \
                    avahi-devel alsa-lib-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel \
-                   certbot libcap
+                   libcap
 }
 
 # ---------------------------------------------------------

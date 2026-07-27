@@ -3902,8 +3902,13 @@ def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session =
     return {"success": True, "message": msg, "status": cert_mgr.get_cert_status()}
 
 
+ACME_CHALLENGES: dict[str, str] = {}
+
+
 @app.get("/.well-known/acme-challenge/{token}")
 def get_acme_challenge(token: str):
+    if token in ACME_CHALLENGES:
+        return PlainTextResponse(content=ACME_CHALLENGES[token])
     return PlainTextResponse(content=token)
 
 
