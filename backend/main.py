@@ -508,11 +508,13 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
             except Exception:
                 pass
                 
-        if not expected_file_path and logging_mode in ("both", "file"):
-            expected_file_path = logging_relative_path
-
-        if expected_file_path:
-            expected_file_path = os.path.abspath(expected_file_path)
+        if logging_mode in ("both", "file"):
+            if not expected_file_path:
+                expected_file_path = logging_relative_path
+            if expected_file_path:
+                expected_file_path = os.path.abspath(expected_file_path)
+        else:
+            expected_file_path = None
             
         # Compare
         logging_diff = False

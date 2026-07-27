@@ -119,6 +119,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isEditValidating, setIsEditValidating] = useState(false);
 
   // SSL & Network States
+  const [bindAddress, setBindAddress] = useState(settings?.bind_address || '0.0.0.0');
+  const [httpsPort, setHttpsPort] = useState(settings?.https_port || 8443);
+  const [sslEnabled, setSslEnabled] = useState(!!settings?.ssl_enabled);
+  const [forceHttpsRedirect, setForceHttpsRedirect] = useState(!!settings?.force_https_redirect);
+  const [sslMode, setSslMode] = useState(settings?.ssl_mode || 'disabled');
+  const [sslDomain, setSslDomain] = useState(settings?.ssl_domain || '');
+  const [sslEmail, setSslEmail] = useState(settings?.ssl_email || '');
+  const [sslChallengeType, setSslChallengeType] = useState(settings?.ssl_challenge_type || 'http-01');
+
   const [sslStatus, setSslStatus] = useState<any>(null);
   const [isUploadingSsl, setIsUploadingSsl] = useState(false);
   const [sslUploadError, setSslUploadError] = useState('');
@@ -127,6 +136,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [keyFile, setKeyFile] = useState<File | null>(null);
   const [isRenewingSsl, setIsRenewingSsl] = useState(false);
   const [sslRenewMessage, setSslRenewMessage] = useState('');
+
+  useEffect(() => {
+    setBindAddress(settings?.bind_address || '0.0.0.0');
+    setGuiPort(settings?.gui_port || settings?.http_port || 8000);
+    setHttpsPort(settings?.https_port || 8443);
+    setSslEnabled(!!settings?.ssl_enabled);
+    setForceHttpsRedirect(!!settings?.force_https_redirect);
+    setSslMode(settings?.ssl_mode || 'disabled');
+    setSslDomain(settings?.ssl_domain || '');
+    setSslEmail(settings?.ssl_email || '');
+    setSslChallengeType(settings?.ssl_challenge_type || 'http-01');
+  }, [
+    settings?.bind_address,
+    settings?.gui_port,
+    settings?.http_port,
+    settings?.https_port,
+    settings?.ssl_enabled,
+    settings?.force_https_redirect,
+    settings?.ssl_mode,
+    settings?.ssl_domain,
+    settings?.ssl_email,
+    settings?.ssl_challenge_type,
+  ]);
 
   const fetchSslStatus = async () => {
     try {
@@ -174,8 +206,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleRenewSsl = async () => {
-    const domainToRenew = settings?.ssl_domain || '';
-    const emailToRenew = settings?.ssl_email || '';
+    const domainToRenew = sslDomain || settings?.ssl_domain || '';
+    const emailToRenew = sslEmail || settings?.ssl_email || '';
 
     if (!domainToRenew || domainToRenew === 'localhost') {
       setSslRenewMessage('⚠️ Please enter a valid public Domain Name (FQDN) above first.');
@@ -195,7 +227,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         body: JSON.stringify({
           domain: domainToRenew,
           email: emailToRenew,
-          challenge_type: settings?.ssl_challenge_type || 'http-01'
+          challenge_type: sslChallengeType || settings?.ssl_challenge_type || 'http-01'
         })
       });
       const data = await res.json();
@@ -484,7 +516,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     nodeName !== (settings.node_name || '') || 
     logoText !== (settings.logo_text || '') ||
     lcdAlias !== (settings.lcd_alias || 'NODE-01') ||
-    Number(guiPort) !== Number(settings.gui_port || 8000) ||
+    bindAddress !== (settings.bind_address || '0.0.0.0') ||
+    Number(guiPort) !== Number(settings.gui_port || settings.http_port || 8000) ||
+    Number(httpsPort) !== Number(settings.https_port || 8443) ||
+    sslEnabled !== !!settings.ssl_enabled ||
+    forceHttpsRedirect !== !!settings.force_https_redirect ||
+    sslMode !== (settings.ssl_mode || 'disabled') ||
+    sslDomain !== (settings.ssl_domain || '') ||
+    sslEmail !== (settings.ssl_email || '') ||
+    sslChallengeType !== (settings.ssl_challenge_type || 'http-01') ||
     lcdEnabled !== (settings.lcd_enabled || false) ||
     lcdPort !== (settings.lcd_port || '/dev/ttyACM0') ||
     lcdModel !== (settings.lcd_model || 'cfa635') ||
@@ -528,7 +568,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         node_name: nodeName,
         logo_text: logoText,
         lcd_alias: lcdAlias,
+        bind_address: bindAddress,
         gui_port: Number(guiPort),
+        http_port: Number(guiPort),
+        https_port: Number(httpsPort),
+        ssl_enabled: sslEnabled,
+        force_https_redirect: forceHttpsRedirect,
+        ssl_mode: sslMode,
+        ssl_domain: sslDomain,
+        ssl_email: sslEmail,
+        ssl_challenge_type: sslChallengeType,
         lcd_enabled: lcdEnabled,
         lcd_port: lcdPort,
         lcd_model: lcdModel,
@@ -1586,8 +1635,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.network.listenInterfaces', 'Listen IP Interface')}</label>
                   <select
-                    value={settings?.bind_address || '0.0.0.0'}
-                    onChange={e => onUpdateSettings({ bind_address: e.target.value })}
+                    value={bindAddress}
+                    onChange={e => setBindAddress(e.target.value)}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-blue text-[var(--text-primary)] font-mono cursor-pointer"
                   >
                     <option value="0.0.0.0">0.0.0.0 (All Network Interfaces)</option>
@@ -1601,11 +1650,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="number"
                     min={1}
                     max={65535}
-                    value={settings?.gui_port ?? settings?.http_port ?? 8080}
-                    onChange={e => {
-                      const val = parseInt(e.target.value) || 8080;
-                      onUpdateSettings({ gui_port: val, http_port: val });
-                    }}
+                    value={guiPort}
+                    onChange={e => setGuiPort(parseInt(e.target.value) || 8080)}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-blue text-[var(--text-primary)] font-mono"
                   />
                 </div>
@@ -1614,8 +1660,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.network.httpsPort', 'HTTPS Listen Port')}</label>
                   <input
                     type="number"
-                    value={settings?.https_port ?? 8443}
-                    onChange={e => onUpdateSettings({ https_port: parseInt(e.target.value) || 8443 })}
+                    value={httpsPort}
+                    onChange={e => setHttpsPort(parseInt(e.target.value) || 8443)}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-blue text-[var(--text-primary)] font-mono"
                   />
                 </div>
@@ -1627,8 +1673,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="checkbox"
                     id="ssl_enabled_checkbox"
                     disabled={!sslStatus?.valid}
-                    checked={!!settings?.ssl_enabled}
-                    onChange={e => onUpdateSettings({ ssl_enabled: e.target.checked })}
+                    checked={sslEnabled}
+                    onChange={e => setSslEnabled(e.target.checked)}
                     className="w-4 h-4 rounded accent-brand-lime cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   />
                   <label htmlFor="ssl_enabled_checkbox" className={`text-xs font-bold ${!sslStatus?.valid ? 'opacity-40 cursor-not-allowed text-text-secondary' : 'text-[var(--text-primary)] cursor-pointer'}`}>
@@ -1647,12 +1693,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <input
                     type="checkbox"
                     id="force_https_redirect_checkbox"
-                    disabled={!settings?.ssl_enabled || !sslStatus?.valid}
-                    checked={!!settings?.force_https_redirect}
-                    onChange={e => onUpdateSettings({ force_https_redirect: e.target.checked })}
+                    disabled={!sslEnabled || !sslStatus?.valid}
+                    checked={forceHttpsRedirect}
+                    onChange={e => setForceHttpsRedirect(e.target.checked)}
                     className="w-4 h-4 rounded accent-brand-lime cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                   />
-                  <label htmlFor="force_https_redirect_checkbox" className={`text-xs font-bold ${(!settings?.ssl_enabled || !sslStatus?.valid) ? 'opacity-40 cursor-not-allowed text-text-secondary' : 'text-[var(--text-primary)] cursor-pointer'}`}>
+                  <label htmlFor="force_https_redirect_checkbox" className={`text-xs font-bold ${(!sslEnabled || !sslStatus?.valid) ? 'opacity-40 cursor-not-allowed text-text-secondary' : 'text-[var(--text-primary)] cursor-pointer'}`}>
                     {t('settings.network.forceHttpsRedirect', 'Automatically Redirect HTTP -> HTTPS')}
                   </label>
                 </div>
@@ -1695,8 +1741,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.mode', 'Certificate Source Mode')}</label>
                   <select
-                    value={settings?.ssl_mode || 'disabled'}
-                    onChange={e => onUpdateSettings({ ssl_mode: e.target.value })}
+                    value={sslMode}
+                    onChange={e => setSslMode(e.target.value)}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono cursor-pointer"
                   >
                     <option value="disabled">{t('settings.ssl.disabled', 'Disabled / Local Fallback')}</option>
@@ -1710,15 +1756,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <input
                     type="text"
                     placeholder="stream.vps-server.net"
-                    value={settings?.ssl_domain || ''}
-                    onChange={e => onUpdateSettings({ ssl_domain: e.target.value })}
+                    value={sslDomain}
+                    onChange={e => setSslDomain(e.target.value)}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
                   />
                 </div>
               </div>
 
               {/* ACME Configuration Panel */}
-              {(settings?.ssl_mode === 'acme' || !settings?.ssl_mode) && (
+              {(sslMode === 'acme' || !sslMode) && (
                 <div className="p-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl space-y-4">
                   <h5 className="text-xs font-bold uppercase tracking-wider text-brand-lime flex items-center gap-2">
                     <span>🔒</span> Let's Encrypt ACME Configuration
@@ -1730,8 +1776,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <input
                         type="email"
                         placeholder="admin@vps-server.net"
-                        value={settings?.ssl_email || ''}
-                        onChange={e => onUpdateSettings({ ssl_email: e.target.value })}
+                        value={sslEmail}
+                        onChange={e => setSslEmail(e.target.value)}
                         className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
                       />
                     </div>
@@ -1739,8 +1785,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="space-y-1">
                       <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.challenge', 'Validation Challenge')}</label>
                       <select
-                        value={settings?.ssl_challenge_type || 'http-01'}
-                        onChange={e => onUpdateSettings({ ssl_challenge_type: e.target.value })}
+                        value={sslChallengeType}
+                        onChange={e => setSslChallengeType(e.target.value)}
                         className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono cursor-pointer"
                       >
                         <option value="http-01">HTTP-01 Challenge (Requires TCP Port 80)</option>
@@ -1749,24 +1795,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-2">
-                    <button
-                      onClick={handleRenewSsl}
-                      disabled={isRenewingSsl}
-                      className="px-4 py-2 bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2"
-                    >
-                      <span>🔄</span>
-                      <span>{isRenewingSsl ? 'Renewing...' : t('settings.ssl.renewNow', 'Renew Certificate Now')}</span>
-                    </button>
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={handleRenewSsl}
+                        disabled={isRenewingSsl}
+                        className="px-4 py-2 bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2"
+                      >
+                        <span>🔄</span>
+                        <span>{isRenewingSsl ? 'Renewing...' : t('settings.ssl.renewNow', 'Renew Certificate Now')}</span>
+                      </button>
+                    </div>
+
                     {sslRenewMessage && (
-                      <span className={`text-xs font-mono font-bold ${sslRenewMessage.startsWith('✓') ? 'text-brand-lime' : 'text-red-400'}`}>{sslRenewMessage}</span>
+                      <div className={`p-3.5 rounded-xl border text-xs font-mono flex items-start gap-2.5 animate-in fade-in duration-300 ${
+                        sslRenewMessage.startsWith('✓')
+                          ? 'bg-brand-lime/10 border-brand-lime/30 text-brand-lime'
+                          : 'bg-red-500/10 border-red-500/30 text-red-400'
+                      }`}>
+                        <span className="text-sm shrink-0">{sslRenewMessage.startsWith('✓') ? '✓' : '⚠️'}</span>
+                        <div className="leading-relaxed break-words flex-1">
+                          {sslRenewMessage.replace(/^[✓⚠️]\s*/, '')}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
               )}
 
               {/* Custom Upload Drawer */}
-              {(settings?.ssl_mode === 'custom' || settings?.ssl_mode === 'disabled') && (
+              {(sslMode === 'custom' || sslMode === 'disabled') && (
                 <div className="p-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl space-y-4">
                   <h5 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
                     <span>📤</span> {t('settings.ssl.uploadTitle', 'Upload Custom Certificate & Private Key')}
