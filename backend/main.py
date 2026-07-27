@@ -3847,15 +3847,37 @@ async def upload_custom_ssl(cert_file: UploadFile = File(...), key_file: UploadF
     return {"success": True, "status": cert_mgr.get_cert_status()}
 
 
+class AcmeRenewRequest(BaseModel):
+    domain: Optional[str] = None
+    email: Optional[str] = None
+    challenge_type: Optional[str] = "http-01"
+
+
 @app.post("/api/settings/ssl/renew")
-def renew_ssl_certificate(db: Session = Depends(get_db)):
+def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session = Depends(get_db)):
+    config_path = get_config_path()
+    config = get_config(config_path)
+
+    domain = (body and body.domain) or config.get("ssl", "domain", fallback="")
+    email = (body and body.email) or config.get("ssl", "email", fallback="")
+    challenge_type = (body and body.challenge_type) or config.get("ssl", "challenge_type", fallback="http-01")
+
+    if not domain or domain == "localhost":
+        raise HTTPException(status_code=400, detail="Please specify a valid public Domain Name (FQDN) in SSL Settings first (e.g. stream.example.com).")
+    if not email:
+        raise HTTPException(status_code=400, detail="Please specify an ACME Contact Email in SSL Settings first.")
+
+    # Save updated domain & email to config
+    if "ssl" not in config: config["ssl"] = {}
+    config["ssl"]["domain"] = domain
+    config["ssl"]["email"] = email
+    config["ssl"]["challenge_type"] = challenge_type
+    with open(config_path, "w") as f:
+        config.write(f)
+
     from services.cert_manager import CertificateManager
     cert_mgr = CertificateManager()
-    status = cert_mgr.get_cert_status()
-    domain = status.get("domain") or "localhost"
-    email = f"admin@{domain}"
-
-    success, msg = cert_mgr.renew_acme_certificate(domain, email)
+    success, msg = cert_mgr.renew_acme_certificate(domain, email, challenge_type)
     if not success:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg, "status": cert_mgr.get_cert_status()}

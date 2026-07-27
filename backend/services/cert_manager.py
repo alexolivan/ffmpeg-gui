@@ -202,7 +202,7 @@ class CertificateManager:
             return False, f"Failed to save certificate files: {str(e)}"
 
     def renew_acme_certificate(self, domain: str, email: str, challenge_type: str = "http-01", log_info=None, log_error=None) -> Tuple[bool, str]:
-        """Executes ACME Let's Encrypt certificate renewal or HTTP-01 challenge response."""
+        """Executes ACME Let's Encrypt certificate renewal via Certbot CLI."""
         def _info(msg: str):
             if log_info: log_info(msg)
             logger.info(msg)
@@ -211,39 +211,44 @@ class CertificateManager:
             if log_error: log_error(msg)
             logger.error(msg)
 
-        _info(f"Starting ACME Let's Encrypt renewal for domain '{domain}' (challenge: {challenge_type})...")
-
-        if not domain or not email:
-            msg = "Domain name and ACME email are required for Let's Encrypt renewal."
+        if not domain or domain == "localhost" or not email:
+            msg = "A valid public Domain Name (FQDN) and ACME contact email are required for Let's Encrypt renewal."
             _err(msg)
             return False, msg
 
-        # Try using certbot CLI if available
-        certbot_bin = subprocess.run(["which", "certbot"], capture_output=True, text=True).stdout.strip()
-        if certbot_bin:
-            _info(f"Using certbot CLI binary at {certbot_bin}...")
-            cmd = [
-                certbot_bin, "certonly", "--standalone", "--non-interactive", "--agree-tos",
-                "-m", email, "-d", domain, "--cert-name", "ffmpeg-gui"
-            ]
-            res = subprocess.run(cmd, capture_output=True, text=True)
-            if res.returncode == 0:
-                _info("Certbot renewal succeeded. Copying live certificates to SSOT...")
-                live_cert = f"/etc/letsencrypt/live/ffmpeg-gui/fullchain.pem"
-                live_key = f"/etc/letsencrypt/live/ffmpeg-gui/privkey.pem"
-                if os.path.exists(live_cert) and os.path.exists(live_key):
-                    with open(live_cert, "rb") as f_c, open(live_key, "rb") as f_k:
-                        self.save_custom_cert(f_c.read(), f_k.read(), mode="acme")
-                    _info("Certificates successfully imported into FFmpeg-GUI live storage.")
-                    return True, "Certificate renewed successfully via Certbot."
-            else:
-                _err(f"Certbot command output: {res.stderr}")
+        _info(f"Starting ACME Let's Encrypt renewal for domain '{domain}' (challenge: {challenge_type})...")
 
-        # Fallback response for mock/test environment when certbot is not installed
-        _info("Certbot standalone not present. Using embedded ACME handler fallback...")
-        msg = f"ACME verification request issued for {domain}. HTTP-01 listener is active."
-        _info(msg)
-        return True, msg
+        # Check if certbot CLI is available
+        certbot_bin = subprocess.run(["which", "certbot"], capture_output=True, text=True).stdout.strip()
+        if not certbot_bin:
+            msg = "Certbot utility is not installed on this server. Please install certbot (e.g. 'sudo apt install certbot') or use Custom Certificate Upload."
+            _err(msg)
+            return False, msg
+
+        _info(f"Using certbot CLI binary at {certbot_bin}...")
+        cmd = [
+            certbot_bin, "certonly", "--standalone", "--non-interactive", "--agree-tos",
+            "-m", email, "-d", domain, "--cert-name", "ffmpeg-gui", "--http-01-port", "80"
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode == 0:
+            _info("Certbot renewal succeeded. Copying live certificates to SSOT...")
+            live_cert = f"/etc/letsencrypt/live/ffmpeg-gui/fullchain.pem"
+            live_key = f"/etc/letsencrypt/live/ffmpeg-gui/privkey.pem"
+            if os.path.exists(live_cert) and os.path.exists(live_key):
+                with open(live_cert, "rb") as f_c, open(live_key, "rb") as f_k:
+                    self.save_custom_cert(f_c.read(), f_k.read(), mode="acme")
+                _info("Certificates successfully imported into FFmpeg-GUI live storage.")
+                return True, f"Certificate for '{domain}' successfully renewed and imported via Certbot."
+            else:
+                msg = f"Certbot completed but certificate files were not found at {live_cert}."
+                _err(msg)
+                return False, msg
+        else:
+            err_output = res.stderr.strip() or res.stdout.strip() or "Unknown error"
+            msg = f"Certbot execution failed: {err_output}"
+            _err(msg)
+            return False, msg
 
     def on_cert_renewed(self):
         """Hook triggered after certificate update to notify downstream services."""

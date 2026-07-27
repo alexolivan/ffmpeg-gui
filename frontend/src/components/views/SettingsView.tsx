@@ -174,10 +174,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleRenewSsl = async () => {
+    const domainToRenew = settings?.ssl_domain || '';
+    const emailToRenew = settings?.ssl_email || '';
+
+    if (!domainToRenew || domainToRenew === 'localhost') {
+      setSslRenewMessage('⚠️ Please enter a valid public Domain Name (FQDN) above first.');
+      return;
+    }
+    if (!emailToRenew) {
+      setSslRenewMessage('⚠️ Please enter an ACME Contact Email above first.');
+      return;
+    }
+
     setIsRenewingSsl(true);
     setSslRenewMessage('');
     try {
-      const res = await fetch(`${API}/api/settings/ssl/renew`, { method: 'POST' });
+      const res = await fetch(`${API}/api/settings/ssl/renew`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          domain: domainToRenew,
+          email: emailToRenew,
+          challenge_type: settings?.ssl_challenge_type || 'http-01'
+        })
+      });
       const data = await res.json();
       if (res.ok) {
         setSslRenewMessage(`✓ ${data.message || 'Certificate renewed successfully.'}`);
