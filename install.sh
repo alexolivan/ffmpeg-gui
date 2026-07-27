@@ -266,6 +266,9 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
+    if [ -f "$PROJ_DIR/scripts/setup-port-capabilities.sh" ]; then
+        bash "$PROJ_DIR/scripts/setup-port-capabilities.sh" || true
+    fi
 else
     mkdir -p "$HOME/.config/systemd/user"
     SERVICE_FILE="$HOME/.config/systemd/user/ffmpeg-gui.service"
