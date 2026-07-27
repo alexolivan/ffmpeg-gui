@@ -33,6 +33,16 @@ class TestSystemTasks(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task.schedule_type, "recurring")
         self.assertEqual(task.schedule_cron, "0 0 * * *")
 
+    def test_ssl_renew_task_is_seeded_disabled_by_default(self):
+        task = self.db.query(ScheduledTask).filter(
+            ScheduledTask.command == "system://ssl_renew"
+        ).first()
+        self.assertIsNotNone(task)
+        self.assertEqual(task.name, "System SSL/TLS Certificate Auto-Renewal Routine")
+        self.assertTrue(task.is_system)
+        self.assertFalse(task.is_active)
+        self.assertIsNone(task.next_run)
+
     async def test_system_log_rotate_execution(self):
         # 1. Prepare dummy configuration file
         config_path = os.path.join(self.temp_dir.name, "test_app.conf")

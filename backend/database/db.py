@@ -195,20 +195,21 @@ def init_db():
                 db.add(task)
                 db.commit()
 
-            # Seed System Task #2: SSL Auto-Renewal Routine
+            # Seed & normalize System Task #2: SSL Auto-Renewal Routine
             ssl_renew_task = db.query(ScheduledTask).filter(ScheduledTask.command == "system://ssl_renew").first()
+            is_ssl_acme = False
+            config_path = os.environ.get("CONFIG_FILE_PATH")
+            if config_path and os.path.exists(config_path):
+                try:
+                    import configparser
+                    config = configparser.ConfigParser()
+                    config.read(config_path)
+                    if "ssl" in config:
+                        is_ssl_acme = (config["ssl"].get("mode") == "acme")
+                except Exception:
+                    pass
+
             if not ssl_renew_task:
-                is_ssl_acme = False
-                config_path = os.environ.get("CONFIG_FILE_PATH")
-                if config_path and os.path.exists(config_path):
-                    try:
-                        import configparser
-                        config = configparser.ConfigParser()
-                        config.read(config_path)
-                        if "ssl" in config:
-                            is_ssl_acme = (config["ssl"].get("mode") == "acme")
-                    except Exception:
-                        pass
                 ssl_task = ScheduledTask(
                     name="System SSL/TLS Certificate Auto-Renewal Routine",
                     command="system://ssl_renew",
@@ -223,6 +224,11 @@ def init_db():
                 )
                 db.add(ssl_task)
                 db.commit()
+            else:
+                if ssl_renew_task.is_active != is_ssl_acme:
+                    ssl_renew_task.is_active = is_ssl_acme
+                    ssl_renew_task.next_run = CronHelper.get_next_run("0 3 * * *") if is_ssl_acme else None
+                    db.commit()
 
             # Seed pre-existing SDKs on disk if not registered in InstalledSdk
             from database.models import InstalledSdk
