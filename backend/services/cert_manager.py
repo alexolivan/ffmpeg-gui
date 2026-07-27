@@ -225,16 +225,28 @@ class CertificateManager:
             _err(msg)
             return False, msg
 
+        acme_base_dir = os.path.abspath(os.path.join(self.certs_dir, "../acme"))
+        acme_config_dir = os.path.join(acme_base_dir, "config")
+        acme_work_dir = os.path.join(acme_base_dir, "work")
+        acme_logs_dir = os.path.join(acme_base_dir, "logs")
+
+        os.makedirs(acme_config_dir, mode=0o700, exist_ok=True)
+        os.makedirs(acme_work_dir, mode=0o700, exist_ok=True)
+        os.makedirs(acme_logs_dir, mode=0o700, exist_ok=True)
+
         _info(f"Using certbot CLI binary at {certbot_bin}...")
         cmd = [
             certbot_bin, "certonly", "--standalone", "--non-interactive", "--agree-tos",
-            "-m", email, "-d", domain, "--cert-name", "ffmpeg-gui", "--http-01-port", "80"
+            "-m", email, "-d", domain, "--cert-name", "ffmpeg-gui", "--http-01-port", "80",
+            "--config-dir", acme_config_dir,
+            "--work-dir", acme_work_dir,
+            "--logs-dir", acme_logs_dir
         ]
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode == 0:
             _info("Certbot renewal succeeded. Copying live certificates to SSOT...")
-            live_cert = f"/etc/letsencrypt/live/ffmpeg-gui/fullchain.pem"
-            live_key = f"/etc/letsencrypt/live/ffmpeg-gui/privkey.pem"
+            live_cert = os.path.join(acme_config_dir, "live", "ffmpeg-gui", "fullchain.pem")
+            live_key = os.path.join(acme_config_dir, "live", "ffmpeg-gui", "privkey.pem")
             if os.path.exists(live_cert) and os.path.exists(live_key):
                 with open(live_cert, "rb") as f_c, open(live_key, "rb") as f_k:
                     self.save_custom_cert(f_c.read(), f_k.read(), mode="acme")
