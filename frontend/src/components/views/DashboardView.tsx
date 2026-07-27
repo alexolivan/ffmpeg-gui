@@ -58,6 +58,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const [locatorActive, setLocatorActive] = useState(false);
+  const [sslStatus, setSslStatus] = useState<any>(null);
+
+  useEffect(() => {
+    fetch('/api/settings/ssl/status')
+      .then(res => res.json())
+      .then(data => setSslStatus(data))
+      .catch(err => console.error(err));
+  }, []);
 
   useEffect(() => {
     let interval: any;
@@ -385,6 +393,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   {systemTelemetry.host_os_arch || 'Linux x86_64'}
                 </span>
               </div>
+              {settings?.ssl_enabled && sslStatus && (
+                <>
+                  <div className="flex justify-between py-2 border-b border-white/5">
+                    <span className="text-xs text-text-secondary">{t('dashboard.sniHostname', 'SNI Hostname')}</span>
+                    <span className="text-xs font-mono font-bold text-brand-blue text-right">
+                      https://{settings?.ssl_domain || sslStatus.domain || 'localhost'}:{settings?.https_port || 8443}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-2 border-b border-white/5">
+                    <span className="text-xs text-text-secondary">{t('dashboard.sslCertificate', 'SSL Certificate')}</span>
+                    <span className={`text-xs font-mono font-bold text-right ${
+                      sslStatus.status === 'valid' ? 'text-brand-lime' :
+                      sslStatus.status === 'warning' ? 'text-amber-400 animate-pulse' :
+                      'text-red-400 font-bold animate-pulse'
+                    }`}>
+                      {sslStatus.valid ? `Expires in ${sslStatus.days_remaining}d` : 'EXPIRED / INVALID'}
+                    </span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between py-2 border-b border-white/5">
                 <span className="text-xs text-text-secondary">{t('dashboard.activeProfiles')}</span>
                 <span className="text-xs font-mono font-bold text-brand-lime text-right">

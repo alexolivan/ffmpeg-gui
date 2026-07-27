@@ -446,8 +446,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 <div className="flex-1 space-y-0.5 min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
                     <h3 className={`font-bold text-lg truncate ${task.is_active ? 'text-[var(--text-primary)]' : 'text-text-secondary'}`}>
-                      {task.is_system && task.name === 'System Log Rotation and Retention Cleanup'
+                      {task.is_system && (task.name === 'System Log Rotation and Retention Cleanup' || task.command === 'system://log_rotate')
                         ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
+                        : task.is_system && (task.name === 'System SSL/TLS Certificate Auto-Renewal Routine' || task.command === 'system://ssl_renew')
+                        ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
                         : task.name}
                       {task.alias && (
                         <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
