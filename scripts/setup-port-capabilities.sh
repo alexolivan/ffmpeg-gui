@@ -33,9 +33,10 @@ if [ -f "$SYSTEM_SERVICE" ]; then
     fi
 fi
 
-if [ -f "$VENV_PYTHON" ]; then
-    echo "--> Setting binary capability cap_net_bind_service=+ep on $VENV_PYTHON..."
-    setcap 'cap_net_bind_service=+ep' "$VENV_PYTHON" || echo "Warning: setcap command failed or not installed. Ensure libcap2-bin is installed."
+if [ -f "$VENV_PYTHON" ] && command -v setcap >/dev/null 2>&1; then
+    REAL_PYTHON="$(readlink -f "$VENV_PYTHON")"
+    echo "--> Setting binary capability cap_net_bind_service=+ep on $REAL_PYTHON..."
+    setcap cap_net_bind_service=+ep "$REAL_PYTHON" 2>/dev/null || echo "Info: Systemd service AmbientCapabilities will be used for port 80/443 binding."
 fi
 
 echo "--> Setup complete! ffmpeg-gui can now bind to ports 80 and 443."
