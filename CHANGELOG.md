@@ -12,8 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reorganized `Network & Security` Settings view into 3 distinct cards: `ACCESS PASSWORD`, `LISTEN PORTS & NETWORK INTERFACES`, and `SSL / TLS CERTIFICATES`.
 - Core `CertificateManager` service with SSOT storage (`data/certs/live/`), keypair cryptographic validation, and event hooks for downstream services.
 - System Task #2: `System SSL/TLS Certificate Auto-Renewal Routine` (`system://ssl_renew`) integrated with `ScheduledTasks` execution history and CLI logs.
-- Automated maintenance helper script `scripts/setup-port-capabilities.sh` and systemd `CAP_NET_BIND_SERVICE` capabilities for binding ports 80/443 without root.
+- Pure Python ACME protocol client (`acme`, `josepy`, `cryptography`) removing system `certbot` binary dependency.
+- Automatic temporary TCP Port 80 listener for Let's Encrypt HTTP-01 challenges when running on custom GUI ports.
+- Dual HTTP / HTTPS Uvicorn server listeners with automatic HTTP -> HTTPS redirection.
 - Dashboard `SYSTEM INFO` telemetry card displaying active SNI Hostname and color-coded expiration counter.
+
+### Fixed
+- Resolved false-positive restart warnings in `SettingsView` when logging mode is `journalctl`.
+- Fixed local state bindings in `SettingsView` for Network & SSL controls enabling immediate dirty checking and Save Config action.
+- Redesigned `sslRenewMessage` into a dedicated glassmorphic alert box.
+- Optimized Dashboard `SYSTEM INFO` vertical layout spacing and removed legacy static host OS row.
 
 ## [1.28.0] - 2026-07-23
 
