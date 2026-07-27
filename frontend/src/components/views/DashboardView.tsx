@@ -384,28 +384,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Column 3: System Info & Scheduler status */}
         <div className="space-y-4">
           {/* System Info */}
-          <div className="glass-card p-4 md:p-5 border-white/5">
-            <h3 className="text-xl font-black mb-3">{t('dashboard.systemInfo')}</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between py-2 border-b border-white/5">
-                <span className="text-xs text-text-secondary">{t('dashboard.hostOsArch')}</span>
-                <span className="text-xs font-mono font-bold text-white">
-                  {systemTelemetry.host_os_arch || 'Linux x86_64'}
-                </span>
-              </div>
+          <div className="glass-card p-4 md:p-5 border-[var(--glass-border)]">
+            <h3 className="text-sm font-black uppercase text-[var(--text-primary)] tracking-wider mb-2">{t('dashboard.systemInfo')}</h3>
+            <div className="space-y-0.5">
               {settings?.ssl_enabled && sslStatus && (
                 <>
-                  <div className="flex justify-between py-2 border-b border-white/5">
-                    <span className="text-xs text-text-secondary">{t('dashboard.sniHostname', 'SNI Hostname')}</span>
-                    <span className="text-xs font-mono font-bold text-brand-blue text-right">
+                  <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
+                    <span className="text-[11px] text-text-secondary">{t('dashboard.sniHostname', 'SNI Hostname')}</span>
+                    <span className="text-[11px] font-mono font-bold text-brand-blue text-right truncate max-w-[170px]" title={`https://${settings?.ssl_domain || sslStatus.domain || 'localhost'}:${settings?.https_port || 8443}`}>
                       https://{settings?.ssl_domain || sslStatus.domain || 'localhost'}:{settings?.https_port || 8443}
                     </span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-white/5">
-                    <span className="text-xs text-text-secondary">{t('dashboard.sslCertificate', 'SSL Certificate')}</span>
-                    <span className={`text-xs font-mono font-bold text-right ${
+                  <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
+                    <span className="text-[11px] text-text-secondary">{t('dashboard.sslCertificate', 'SSL Certificate')}</span>
+                    <span className={`text-[11px] font-mono font-bold text-right ${
                       sslStatus.status === 'valid' ? 'text-brand-lime' :
-                      sslStatus.status === 'warning' ? 'text-amber-400 animate-pulse' :
+                      sslStatus.status === 'warning' ? 'text-amber-400' :
                       'text-red-400 font-bold animate-pulse'
                     }`}>
                       {sslStatus.valid ? `Expires in ${sslStatus.days_remaining}d` : 'EXPIRED / INVALID'}
@@ -413,27 +407,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                 </>
               )}
-              <div className="flex justify-between py-2 border-b border-white/5">
-                <span className="text-xs text-text-secondary">{t('dashboard.activeProfiles')}</span>
-                <span className="text-xs font-mono font-bold text-brand-lime text-right">
+              <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
+                <span className="text-[11px] text-text-secondary">{t('dashboard.activeProfiles')}</span>
+                <span className="text-[11px] font-mono font-bold text-brand-lime text-right">
                   {builds.filter(b => b.status === 'ready').length}
                 </span>
               </div>
-              <div className="flex justify-between py-2 border-b border-white/5">
-                <span className="text-xs text-text-secondary">{t('dashboard.frontendVersion')}</span>
-                <span className="text-xs font-mono font-bold text-brand-lime text-right">
+              <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
+                <span className="text-[11px] text-text-secondary">{t('dashboard.frontendVersion')}</span>
+                <span className="text-[11px] font-mono font-bold text-brand-lime text-right">
                   v{import.meta.env.VITE_APP_VERSION || '1.0.0'}
                 </span>
               </div>
-              <div className="flex justify-between py-2 border-b border-white/5">
-                <span className="text-xs text-text-secondary">{t('dashboard.backendApiVersion')}</span>
-                <span className="text-xs font-mono font-bold text-brand-lime text-right">
+              <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
+                <span className="text-[11px] text-text-secondary">{t('dashboard.backendApiVersion')}</span>
+                <span className="text-[11px] font-mono font-bold text-brand-lime text-right">
                   v{systemTelemetry.backend_version || '1.0.0'}
                 </span>
               </div>
-              <div className="flex justify-between py-2">
-                <span className="text-xs text-text-secondary">{t('dashboard.databaseSchema')}</span>
-                <span className="text-xs font-mono font-bold text-brand-lime text-right">
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-[11px] text-text-secondary">{t('dashboard.databaseSchema')}</span>
+                <span className="text-[11px] font-mono font-bold text-brand-lime text-right">
                   v{systemTelemetry.schema_version || '1.0.0'}
                 </span>
               </div>
