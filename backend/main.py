@@ -2217,15 +2217,33 @@ async def shutdown_event():
 
 alerted_storages = set()
 
-def notify_build_result(build_id: int, build_name: str, success: bool, error_msg: Optional[str] = None):
+def notify_build_result(build_id: int, build_name: str, success: bool, version_output: Optional[str] = None, disk_usage_mb: Optional[float] = None, auto_clean: bool = False, error_msg: Optional[str] = None):
     nm = NotificationManager()
     if nm.is_enabled() and nm.config.get("notify_build_results", True):
-        status_str = "Ready" if success else "Failed"
-        body = f"FFmpeg build '{build_name}' (ID: {build_id}) status: {status_str}."
-        if not success and error_msg:
-            body += f"\nError details: {error_msg}"
+        if success:
+            subject = f"[FFmpeg-GUI Alert] FFmpeg Build Successful: {build_name}"
+            body_parts = [
+                f"FFmpeg compilation for profile '{build_name}' (ID: {build_id}) completed successfully.\n",
+                "━━━ FFMPEG BUILD SUCCESSFUL ━━━\n"
+            ]
+            if version_output:
+                body_parts.append(version_output.strip())
+            else:
+                body_parts.append("FFmpeg binary created and verified.")
+
+            if disk_usage_mb is not None:
+                body_parts.append(f"\nDisk Usage: {disk_usage_mb} MB")
+
+            if auto_clean:
+                body_parts.append("\n━━━ AUTO-CLEAN ENABLED ━━━\nCleaning temporary build sources to save space...\nSources cleaned successfully.")
+
+            body = "\n".join(body_parts)
+        else:
+            subject = f"[FFmpeg-GUI Alert] FFmpeg Build Failed: {build_name}"
+            body = f"FFmpeg compilation for profile '{build_name}' (ID: {build_id}) failed.\n\n━━━ FFMPEG BUILD FAILED ━━━\n\nError details / Log summary:\n{error_msg or 'Unknown compilation error.'}"
+
         nm.enqueue_notification({
-            "subject": f"[FFmpeg-GUI Alert] FFmpeg Build {status_str}: {build_name}",
+            "subject": subject,
             "body": body
         })
 
@@ -2731,7 +2749,14 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                             from sqlalchemy.orm.attributes import flag_modified
                             db_build.sdk_paths = result.get("sdk_paths")
                             flag_modified(db_build, "sdk_paths")
-                        notify_build_result(build_id=build_id, build_name=db_build.name, success=True)
+                        notify_build_result(
+                            build_id=build_id,
+                            build_name=db_build.name,
+                            success=True,
+                            version_output=result.get("version_output"),
+                            disk_usage_mb=result.get("disk_usage_mb"),
+                            auto_clean=bool(db_build.auto_clean)
+                        )
                     else:
                         db_build.status = "failed"
                         db_build.build_log_summary = result.get("error", "Unknown error")

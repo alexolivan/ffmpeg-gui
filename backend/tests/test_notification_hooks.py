@@ -61,14 +61,17 @@ class TestNotificationHooks(unittest.TestCase):
     def test_build_result_hook(self, mock_enqueue):
         import main
 
-        main.notify_build_result(build_id=10, build_name="Custom FFmpeg 6.1", success=True)
+        main.notify_build_result(build_id=10, build_name="Custom FFmpeg 6.1", success=True, version_output="ffmpeg version 6.1", disk_usage_mb=45.2, auto_clean=True)
         mock_enqueue.assert_called_once()
-        self.assertIn("Build Ready", mock_enqueue.call_args[0][0]["subject"])
+        self.assertIn("Build Successful", mock_enqueue.call_args[0][0]["subject"])
+        self.assertIn("ffmpeg version 6.1", mock_enqueue.call_args[0][0]["body"])
+        self.assertIn("AUTO-CLEAN ENABLED", mock_enqueue.call_args[0][0]["body"])
 
         mock_enqueue.reset_mock()
         main.notify_build_result(build_id=10, build_name="Custom FFmpeg 6.1", success=False, error_msg="Compilation failed")
         mock_enqueue.assert_called_once()
         self.assertIn("Build Failed", mock_enqueue.call_args[0][0]["subject"])
+        self.assertIn("Compilation failed", mock_enqueue.call_args[0][0]["body"])
 
     @patch("core.notification_manager.NotificationManager.enqueue_notification")
     def test_ssl_warning_hook(self, mock_enqueue):
