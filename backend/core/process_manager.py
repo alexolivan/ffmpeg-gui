@@ -163,8 +163,6 @@ class ProcessManager:
                     media_proc.status = 'running'
                     media_proc.last_start = datetime.utcnow()
                     session.commit()
-                    if media_proc.type == 'service':
-                        self.notify_service_recovery(process_id, media_proc.name)
             
             # Start watchdog and log reader tasks
             if debug_mode:
@@ -1475,16 +1473,6 @@ class ProcessManager:
                 if not running:
                     break
 
-                if not recovery_notified:
-                    elapsed = (datetime.utcnow() - start_time).total_seconds()
-                    if elapsed > 60:
-                        recovery_notified = True
-                        with self.db_session_factory() as session:
-                            from database.models import MediaProcess
-                            mp = session.query(MediaProcess).get(process_id)
-                            if mp:
-                                self.notify_service_recovery(process_id, mp.name)
-
                 # Get system metrics
                 cpu = 0
                 mem = 0
@@ -1544,6 +1532,12 @@ class ProcessManager:
                             media_proc.cpu_usage = int(cpu)
                             media_proc.ram_usage = int(mem)
                             session.commit()
+
+                            if not recovery_notified:
+                                elapsed = (datetime.utcnow() - start_time).total_seconds()
+                                if elapsed > 60:
+                                    recovery_notified = True
+                                    self.notify_service_recovery(process_id, media_proc.name)
 
                             # Check for initial activity (e.g. frame > 0 or out_time_us > 0 at least once)
                             if (frame is not None and frame > 0) or (out_time_us is not None and out_time_us > 0):
