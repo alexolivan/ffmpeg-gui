@@ -69,10 +69,12 @@ class NotificationManager:
 
         # Handle recipient_email (singular) and recipient_emails (plural)
         rec_data = data.get("recipient_emails") or data.get("recipient_email")
-        if rec_data is not None:
+        if rec_data:
             new_config["recipient_emails"] = rec_data
 
         for key in list(new_config.keys()):
+            if key == "recipient_emails":
+                continue
             if key in data and data[key] is not None:
                 val = data[key]
                 if key == "smtp_port":
