@@ -83,6 +83,7 @@ class TestNotificationSettingsAPI(unittest.TestCase):
                 "smtp_encryption": "ssl",
                 "smtp_user": "user@example.com",
                 "smtp_password": "secretpassword",
+                "sender_email": "sender@example.com",
                 "recipient_email": "admin@example.com",
                 "notify_service_failures": True,
                 "notify_build_results": False,
@@ -102,6 +103,7 @@ class TestNotificationSettingsAPI(unittest.TestCase):
         self.assertEqual(updated["smtp_encryption"], "ssl")
         self.assertEqual(updated["smtp_user"], "user@example.com")
         self.assertEqual(updated["smtp_password"], "*****")
+        self.assertEqual(updated["sender_email"], "sender@example.com")
         self.assertEqual(updated["recipient_email"], "admin@example.com")
         self.assertTrue(updated["notify_service_failures"])
         self.assertFalse(updated["notify_build_results"])
@@ -117,6 +119,7 @@ class TestNotificationSettingsAPI(unittest.TestCase):
         self.assertEqual(fetched["smtp_encryption"], "ssl")
         self.assertEqual(fetched["smtp_user"], "user@example.com")
         self.assertEqual(fetched["smtp_password"], "*****")
+        self.assertEqual(fetched["sender_email"], "sender@example.com")
         self.assertEqual(fetched["recipient_email"], "admin@example.com")
 
     @patch("core.notification_manager.NotificationManager.send_test_email")

@@ -225,6 +225,7 @@ class NotificationSettings(BaseModel):
     smtp_encryption: str = "tls"
     smtp_user: str = ""
     smtp_password: Optional[str] = ""
+    sender_email: str = ""
     recipient_email: str = ""
     notify_service_failures: bool = True
     notify_build_results: bool = True
@@ -239,6 +240,7 @@ class NotificationSettingsUpdate(BaseModel):
     smtp_encryption: Optional[str] = None
     smtp_user: Optional[str] = None
     smtp_password: Optional[str] = None
+    sender_email: Optional[str] = None
     recipient_email: Optional[str] = None
     notify_service_failures: Optional[bool] = None
     notify_build_results: Optional[bool] = None
@@ -415,6 +417,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
         "smtp_encryption": "tls",
         "smtp_user": "",
         "smtp_password": "",
+        "sender_email": "",
         "recipient_email": "",
         "notify_service_failures": True,
         "notify_build_results": True,
@@ -461,6 +464,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 notifications_data["smtp_user"] = notif_cfg.get("smtp_user", fallback=notifications_data["smtp_user"])
                 raw_pwd = notif_cfg.get("smtp_password", fallback="")
                 notifications_data["smtp_password"] = "*****" if raw_pwd else ""
+                notifications_data["sender_email"] = notif_cfg.get("sender_email", fallback=notifications_data["sender_email"])
                 notifications_data["recipient_email"] = notif_cfg.get("recipient_email", fallback=notifications_data["recipient_email"])
                 try: notifications_data["notify_service_failures"] = notif_cfg.getboolean("notify_service_failures", fallback=notifications_data["notify_service_failures"])
                 except ValueError: pass
