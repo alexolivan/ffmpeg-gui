@@ -207,6 +207,25 @@
       "statusCritical": "Caducitat Imminent",
       "statusExpired": "Certificat Caducat",
       "statusMissing": "Sense Certificat Actiu"
+    },
+    "notifications": {
+      "title": "NOTIFICACIONS PER CORREU I ALERTES",
+      "enableMaster": "Habilitar Sistema de Notificacions per Correu",
+      "smtpHost": "Servidor SMTP / Adreça",
+      "smtpPort": "Port SMTP",
+      "smtpEncryption": "Protocol de Xifratge",
+      "smtpUser": "Usuari SMTP / Compte d'Autenticació",
+      "smtpPassword": "Contrasenya SMTP / Clau d'Aplicació",
+      "senderEmail": "Adreça Remitent (Correu DES DE)",
+      "recipientEmail": "Adreça Destinatari (Correu PER A)",
+      "testButton": "PROVAR CONNEXIÓ SMTP",
+      "testing": "Provant Connexió...",
+      "eventTogglesTitle": "DISPARADORS AUTOMÀTICS D'ALERTA I ESDEVENIMENTS DE NOTIFICACIÓ",
+      "notifyServiceFailures": "Errades de Servei (Caigudes i Reinicis Inesperats)",
+      "notifyBuildResults": "Resultats de Compilació (FFmpeg A Punt / Fallat)",
+      "notifyTaskFailures": "Errades de Tasca (Errors en Tasques Programades)",
+      "notifySslAlerts": "Alertes SSL (Avisos de Caducitat i Renovacions)",
+      "notifyStorageAlerts": "Alertes d'Emmagatzematge (Avisos d'Espai Escàs)"
     }
   },
   "dashboard": {

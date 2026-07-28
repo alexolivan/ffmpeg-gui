@@ -207,6 +207,25 @@
       "statusCritical": "Caducidad Inminente",
       "statusExpired": "Certificado Caducado",
       "statusMissing": "Sin Certificado Activo"
+    },
+    "notifications": {
+      "title": "NOTIFICACIONES POR CORREO Y ALERTAS",
+      "enableMaster": "Habilitar Sistema de Notificaciones por Correo",
+      "smtpHost": "Servidor SMTP / Dirección",
+      "smtpPort": "Puerto SMTP",
+      "smtpEncryption": "Protocolo de Cifrado",
+      "smtpUser": "Usuario SMTP / Cuenta de Autenticación",
+      "smtpPassword": "Contraseña SMTP / Clave de Aplicación",
+      "senderEmail": "Dirección Remitente (Email DESDE)",
+      "recipientEmail": "Dirección Destinatario (Email PARA)",
+      "testButton": "PROBAR CONEXIÓN SMTP",
+      "testing": "Probando Conexión...",
+      "eventTogglesTitle": "DISPARADORES AUTOMÁTICOS DE ALERTA Y EVENTOS DE NOTIFICACIÓN",
+      "notifyServiceFailures": "Fallos de Servicio (Caídas y Reinicios Inesperados)",
+      "notifyBuildResults": "Resultados de Compilación (FFmpeg Listo / Fallido)",
+      "notifyTaskFailures": "Fallos de Tarea (Errores en Tareas Programadas)",
+      "notifySslAlerts": "Alertas SSL (Avisos de Caducidad y Renovaciones)",
+      "notifyStorageAlerts": "Alertas de Almacenamiento (Avisos de Espacio Escaso)"
     }
   },
   "dashboard": {

@@ -207,6 +207,25 @@
       "statusCritical": "Critical Expiration",
       "statusExpired": "Expired Certificate",
       "statusMissing": "No Active Certificate"
+    },
+    "notifications": {
+      "title": "EMAIL NOTIFICATIONS & ALERTING",
+      "enableMaster": "Enable Email Notifications System",
+      "smtpHost": "SMTP Server Host / Address",
+      "smtpPort": "SMTP Port",
+      "smtpEncryption": "Encryption Protocol",
+      "smtpUser": "SMTP Username / Auth Account",
+      "smtpPassword": "SMTP Password / App Secret",
+      "senderEmail": "Sender Address (FROM Email)",
+      "recipientEmail": "Recipient Address (TO Email)",
+      "testButton": "TEST SMTP CONNECTION",
+      "testing": "Testing Connection...",
+      "eventTogglesTitle": "AUTOMATED ALERT TRIGGERS & NOTIFICATION EVENTS",
+      "notifyServiceFailures": "Service Failures (Crashes & Unexpected Restarts)",
+      "notifyBuildResults": "Build Results (FFmpeg Compilation Ready / Failed)",
+      "notifyTaskFailures": "Task Failures (Scheduled Job Errors)",
+      "notifySslAlerts": "SSL Alerts (Expiration Warnings & Renewals)",
+      "notifyStorageAlerts": "Storage Alerts (Low Disk Space Threshold Warnings)"
     }
   },
   "dashboard": {

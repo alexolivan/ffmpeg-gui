@@ -137,6 +137,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isRenewingSsl, setIsRenewingSsl] = useState(false);
   const [sslRenewMessage, setSslRenewMessage] = useState('');
 
+  // Email Notification States
+  const [notifEnabled, setNotifEnabled] = useState(!!settings?.notif_enabled);
+  const [smtpHost, setSmtpHost] = useState(settings?.smtp_host || '');
+  const [smtpPort, setSmtpPort] = useState(settings?.smtp_port || 587);
+  const [smtpEncryption, setSmtpEncryption] = useState(settings?.smtp_encryption || 'tls');
+  const [smtpUser, setSmtpUser] = useState(settings?.smtp_user || '');
+  const [smtpPassword, setSmtpPassword] = useState(settings?.smtp_password || '');
+  const [senderEmail, setSenderEmail] = useState(settings?.sender_email || '');
+  const [recipientEmail, setRecipientEmail] = useState(settings?.recipient_email || '');
+  const [notifyServiceFailures, setNotifyServiceFailures] = useState(settings?.notify_service_failures !== undefined ? !!settings?.notify_service_failures : true);
+  const [notifyBuildResults, setNotifyBuildResults] = useState(settings?.notify_build_results !== undefined ? !!settings?.notify_build_results : true);
+  const [notifyTaskFailures, setNotifyTaskFailures] = useState(settings?.notify_task_failures !== undefined ? !!settings?.notify_task_failures : true);
+  const [notifySslAlerts, setNotifySslAlerts] = useState(settings?.notify_ssl_alerts !== undefined ? !!settings?.notify_ssl_alerts : true);
+  const [notifyStorageAlerts, setNotifyStorageAlerts] = useState(settings?.notify_storage_alerts !== undefined ? !!settings?.notify_storage_alerts : true);
+
+  const [isTestingNotif, setIsTestingNotif] = useState(false);
+  const [notifTestMessage, setNotifTestMessage] = useState('');
+  const [notifTestSuccess, setNotifTestSuccess] = useState(false);
+  const [showNotifPassword, setShowNotifPassword] = useState(false);
+
   useEffect(() => {
     setBindAddress(settings?.bind_address || '0.0.0.0');
     setGuiPort(settings?.gui_port || settings?.http_port || 8000);
@@ -147,6 +167,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSslDomain(settings?.ssl_domain || '');
     setSslEmail(settings?.ssl_email || '');
     setSslChallengeType(settings?.ssl_challenge_type || 'http-01');
+    setNotifEnabled(!!settings?.notif_enabled);
+    setSmtpHost(settings?.smtp_host || '');
+    setSmtpPort(settings?.smtp_port || 587);
+    setSmtpEncryption(settings?.smtp_encryption || 'tls');
+    setSmtpUser(settings?.smtp_user || '');
+    setSmtpPassword(settings?.smtp_password || '');
+    setSenderEmail(settings?.sender_email || '');
+    setRecipientEmail(settings?.recipient_email || '');
+    setNotifyServiceFailures(settings?.notify_service_failures !== undefined ? !!settings?.notify_service_failures : true);
+    setNotifyBuildResults(settings?.notify_build_results !== undefined ? !!settings?.notify_build_results : true);
+    setNotifyTaskFailures(settings?.notify_task_failures !== undefined ? !!settings?.notify_task_failures : true);
+    setNotifySslAlerts(settings?.notify_ssl_alerts !== undefined ? !!settings?.notify_ssl_alerts : true);
+    setNotifyStorageAlerts(settings?.notify_storage_alerts !== undefined ? !!settings?.notify_storage_alerts : true);
   }, [
     settings?.bind_address,
     settings?.gui_port,
@@ -158,6 +191,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings?.ssl_domain,
     settings?.ssl_email,
     settings?.ssl_challenge_type,
+    settings?.notif_enabled,
+    settings?.smtp_host,
+    settings?.smtp_port,
+    settings?.smtp_encryption,
+    settings?.smtp_user,
+    settings?.smtp_password,
+    settings?.sender_email,
+    settings?.recipient_email,
+    settings?.notify_service_failures,
+    settings?.notify_build_results,
+    settings?.notify_task_failures,
+    settings?.notify_ssl_alerts,
+    settings?.notify_storage_alerts,
   ]);
 
   const fetchSslStatus = async () => {
@@ -241,6 +287,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setSslRenewMessage('⚠️ Renewal request failed');
     } finally {
       setIsRenewingSsl(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    setIsTestingNotif(true);
+    setNotifTestMessage('');
+    setNotifTestSuccess(false);
+    try {
+      const res = await fetch(`${API}/api/notifications/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          smtp_host: smtpHost,
+          smtp_port: Number(smtpPort),
+          smtp_encryption: smtpEncryption,
+          smtp_user: smtpUser,
+          smtp_password: smtpPassword,
+          sender_email: senderEmail,
+          recipient_email: recipientEmail,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNotifTestSuccess(true);
+        setNotifTestMessage(`✓ ${data.message || 'Test email sent successfully.'}`);
+      } else {
+        setNotifTestSuccess(false);
+        setNotifTestMessage(`⚠️ ${data.detail || 'Failed to send test email.'}`);
+      }
+    } catch (err) {
+      setNotifTestSuccess(false);
+      setNotifTestMessage('⚠️ Error connecting to backend notification endpoint.');
+    } finally {
+      setIsTestingNotif(false);
     }
   };
 
@@ -547,6 +627,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(loggingRotationBackupCount) !== Number(settings.logging_rotation_backup_count || 5) ||
     loggingCompressionEnabled !== (settings.logging_compression_enabled || false) ||
     Number(loggingRetentionDays) !== Number(settings.logging_retention_days || 7) ||
+    notifEnabled !== !!settings?.notif_enabled ||
+    smtpHost !== (settings?.smtp_host || '') ||
+    Number(smtpPort) !== Number(settings?.smtp_port || 587) ||
+    smtpEncryption !== (settings?.smtp_encryption || 'tls') ||
+    smtpUser !== (settings?.smtp_user || '') ||
+    smtpPassword !== (settings?.smtp_password || '') ||
+    senderEmail !== (settings?.sender_email || '') ||
+    recipientEmail !== (settings?.recipient_email || '') ||
+    notifyServiceFailures !== (settings?.notify_service_failures !== undefined ? !!settings?.notify_service_failures : true) ||
+    notifyBuildResults !== (settings?.notify_build_results !== undefined ? !!settings?.notify_build_results : true) ||
+    notifyTaskFailures !== (settings?.notify_task_failures !== undefined ? !!settings?.notify_task_failures : true) ||
+    notifySslAlerts !== (settings?.notify_ssl_alerts !== undefined ? !!settings?.notify_ssl_alerts : true) ||
+    notifyStorageAlerts !== (settings?.notify_storage_alerts !== undefined ? !!settings?.notify_storage_alerts : true) ||
     newPassword !== '' ||
     confirmPassword !== '';
 
@@ -600,6 +693,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         logging_rotation_backup_count: Number(loggingRotationBackupCount),
         logging_compression_enabled: loggingCompressionEnabled,
         logging_retention_days: Number(loggingRetentionDays),
+        notif_enabled: notifEnabled,
+        smtp_host: smtpHost,
+        smtp_port: Number(smtpPort),
+        smtp_encryption: smtpEncryption,
+        smtp_user: smtpUser,
+        smtp_password: smtpPassword,
+        sender_email: senderEmail,
+        recipient_email: recipientEmail,
+        notify_service_failures: notifyServiceFailures,
+        notify_build_results: notifyBuildResults,
+        notify_task_failures: notifyTaskFailures,
+        notify_ssl_alerts: notifySslAlerts,
+        notify_storage_alerts: notifyStorageAlerts,
       };
 
       if (newPassword !== '') {
@@ -1873,6 +1979,287 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* CARD 5: EMAIL NOTIFICATIONS & ALERTING */}
+            <div className="glass-card p-5 !rounded-2xl space-y-5">
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-brand-lime" />
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">
+                    📧 {t('settings.notifications.title', 'EMAIL NOTIFICATIONS & ALERTING')}
+                  </h4>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-[var(--text-primary)]">
+                    {t('settings.notifications.enableMaster', 'Enable Email Notifications System')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setNotifEnabled(!notifEnabled)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                      notifEnabled ? 'bg-brand-lime' : 'bg-white/10'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                        notifEnabled ? 'translate-x-4' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div className={`space-y-5 transition-all ${!notifEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                      {t('settings.notifications.smtpHost', 'SMTP Server Host / Address')}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="smtp.example.com"
+                      value={smtpHost}
+                      onChange={e => setSmtpHost(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                      {t('settings.notifications.smtpPort', 'SMTP Port')}
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="587"
+                      value={smtpPort}
+                      onChange={e => setSmtpPort(parseInt(e.target.value) || 587)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                      {t('settings.notifications.smtpEncryption', 'Encryption Protocol')}
+                    </label>
+                    <select
+                      value={smtpEncryption}
+                      onChange={e => setSmtpEncryption(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono cursor-pointer"
+                    >
+                      <option value="tls" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">STARTTLS (Port 587 / 25)</option>
+                      <option value="ssl" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">SSL / TLS (Port 465)</option>
+                      <option value="none" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">None / Plain Text (Port 25)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                      {t('settings.notifications.smtpUser', 'SMTP Username / Auth Account')}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="notifications@example.com"
+                      value={smtpUser}
+                      onChange={e => setSmtpUser(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                      {t('settings.notifications.smtpPassword', 'SMTP Password / App Secret')}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showNotifPassword ? 'text' : 'password'}
+                        placeholder="••••••••••••"
+                        value={smtpPassword}
+                        onChange={e => setSmtpPassword(e.target.value)}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 pr-8 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNotifPassword(!showNotifPassword)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-[var(--text-primary)] text-xs cursor-pointer"
+                        title={showNotifPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showNotifPassword ? '🙈' : '👁️'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                      {t('settings.notifications.senderEmail', 'Sender Address (FROM Email)')}
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="ffmpeg-alerts@example.com"
+                      value={senderEmail}
+                      onChange={e => setSenderEmail(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                      {t('settings.notifications.recipientEmail', 'Recipient Address (TO Email)')}
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="noc-team@example.com"
+                      value={recipientEmail}
+                      onChange={e => setRecipientEmail(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-[var(--glass-border)] space-y-3">
+                  <h5 className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                    {t('settings.notifications.eventTogglesTitle', 'AUTOMATED ALERT TRIGGERS & NOTIFICATION EVENTS')}
+                  </h5>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="flex items-center justify-between p-2.5 bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)]">
+                      <span className="text-xs font-bold text-[var(--text-primary)]">
+                        {t('settings.notifications.notifyServiceFailures', 'Service Failures (Crashes & Unexpected Restarts)')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNotifyServiceFailures(!notifyServiceFailures)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                          notifyServiceFailures ? 'bg-brand-lime' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                            notifyServiceFailures ? 'translate-x-4' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)]">
+                      <span className="text-xs font-bold text-[var(--text-primary)]">
+                        {t('settings.notifications.notifyBuildResults', 'Build Results (FFmpeg Compilation Ready / Failed)')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNotifyBuildResults(!notifyBuildResults)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                          notifyBuildResults ? 'bg-brand-lime' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                            notifyBuildResults ? 'translate-x-4' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)]">
+                      <span className="text-xs font-bold text-[var(--text-primary)]">
+                        {t('settings.notifications.notifyTaskFailures', 'Task Failures (Scheduled Job Errors)')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNotifyTaskFailures(!notifyTaskFailures)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                          notifyTaskFailures ? 'bg-brand-lime' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                            notifyTaskFailures ? 'translate-x-4' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)]">
+                      <span className="text-xs font-bold text-[var(--text-primary)]">
+                        {t('settings.notifications.notifySslAlerts', 'SSL Alerts (Expiration Warnings & Renewals)')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNotifySslAlerts(!notifySslAlerts)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                          notifySslAlerts ? 'bg-brand-lime' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                            notifySslAlerts ? 'translate-x-4' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)]">
+                      <span className="text-xs font-bold text-[var(--text-primary)]">
+                        {t('settings.notifications.notifyStorageAlerts', 'Storage Alerts (Low Disk Space Threshold Warnings)')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNotifyStorageAlerts(!notifyStorageAlerts)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                          notifyStorageAlerts ? 'bg-brand-lime' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                            notifyStorageAlerts ? 'translate-x-4' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={handleTestEmail}
+                      disabled={isTestingNotif || !smtpHost || !recipientEmail}
+                      className="px-4 py-2 bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isTestingNotif ? (
+                        <>
+                          <span className="w-3.5 h-3.5 border-2 border-brand-lime border-t-transparent rounded-full animate-spin" />
+                          <span>{t('settings.notifications.testing', 'Testing Connection...')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>📨</span>
+                          <span>{t('settings.notifications.testButton', 'TEST SMTP CONNECTION')}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {notifTestMessage && (
+                    <div className={`p-3.5 rounded-xl border text-xs font-mono flex items-start gap-2.5 animate-in fade-in duration-300 ${
+                      notifTestSuccess
+                        ? 'bg-brand-lime/10 border-brand-lime/30 text-brand-lime'
+                        : 'bg-red-500/10 border-red-500/30 text-red-400'
+                    }`}>
+                      <span className="text-sm shrink-0">{notifTestSuccess ? '✓' : '⚠️'}</span>
+                      <div className="leading-relaxed break-words flex-1">
+                        {notifTestMessage.replace(/^[✓⚠️]\s*/, '')}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
