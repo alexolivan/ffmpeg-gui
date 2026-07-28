@@ -163,6 +163,8 @@ class ProcessManager:
                     media_proc.status = 'running'
                     media_proc.last_start = datetime.utcnow()
                     session.commit()
+                    if media_proc.type == 'service':
+                        self.notify_service_recovery(process_id, media_proc.name)
             
             # Start watchdog and log reader tasks
             if debug_mode:
@@ -176,6 +178,26 @@ class ProcessManager:
                 if media_proc:
                     media_proc.status = 'error'
                     session.commit()
+
+    def notify_service_crash(self, process_id: int, process_name: str, exit_code: int = 1, is_initial_crash: bool = True):
+        from core.notification_manager import NotificationManager
+        nm = NotificationManager()
+        if nm.is_enabled() and nm.config.get("notify_service_failures", True):
+            if nm.should_notify_service_failure(proc_id=process_id, proc_name=process_name, is_initial_crash=is_initial_crash, is_recovered=False):
+                nm.enqueue_notification({
+                    "subject": f"[FFmpeg-GUI Alert] Service Failure: {process_name}",
+                    "body": f"Service '{process_name}' (ID: {process_id}) failed/crashed unexpectedly with exit code {exit_code}."
+                })
+
+    def notify_service_recovery(self, process_id: int, process_name: str):
+        from core.notification_manager import NotificationManager
+        nm = NotificationManager()
+        if nm.is_enabled() and nm.config.get("notify_service_failures", True):
+            if nm.should_notify_service_failure(proc_id=process_id, proc_name=process_name, is_initial_crash=False, is_recovered=True):
+                nm.enqueue_notification({
+                    "subject": f"[FFmpeg-GUI Alert] Service Recovered: {process_name}",
+                    "body": f"Service '{process_name}' (ID: {process_id}) has successfully recovered and is running."
+                })
 
     async def stop_process(self, process_id: int, graceful: bool = True):
         pending = self.pending_restarts.pop(process_id, None)
@@ -1681,6 +1703,11 @@ class ProcessManager:
                         )
                         session.add(log)
                         session.commit()
+
+                        # Handle notification hook for unexpected exit
+                        if was_unexpected and media_proc.type == 'service':
+                            is_initial = (self.restart_counts.get(process_id, 0) <= 1)
+                            self.notify_service_crash(process_id, media_proc.name, exit_code=exit_code, is_initial_crash=is_initial)
 
                         # Handle automatic restart if enabled and unexpected
                         if was_unexpected and media_proc.type == 'service' and media_proc.watchdog_enabled:

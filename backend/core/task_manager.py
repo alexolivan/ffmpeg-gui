@@ -16,6 +16,23 @@ class TaskManager:
         self.logger = logging.getLogger("TaskManager")
         self.running_processes = {}
         self.last_activity = {}
+        self._notified_failed_executions = set()
+
+    def notify_task_failure(self, execution_id: int, task_name: str, error_msg: Optional[str] = None):
+        if execution_id in self._notified_failed_executions:
+            return
+        self._notified_failed_executions.add(execution_id)
+
+        from core.notification_manager import NotificationManager
+        nm = NotificationManager()
+        if nm.is_enabled() and nm.config.get("notify_task_failures", True):
+            body = f"Scheduled task '{task_name}' (Execution ID: {execution_id}) failed."
+            if error_msg:
+                body += f"\nDetails: {error_msg}"
+            nm.enqueue_notification({
+                "subject": f"[FFmpeg-GUI Alert] Task Execution Failed: {task_name}",
+                "body": body
+            })
 
     def _detect_ffmpeg(self):
         local_bin = os.path.abspath("./ffmpeg_bin/bin/ffmpeg")
@@ -962,6 +979,9 @@ class TaskManager:
                 execution.cpu_usage = 0
                 execution.ram_usage = 0
                 session.commit()
+                if status == 'error':
+                    task_name = execution.task.name if execution.task else str(execution_id)
+                    self.notify_task_failure(execution_id, task_name, error_msg)
 
     async def _log_reader(self, execution_id: int, proc):
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
@@ -1066,6 +1086,9 @@ class TaskManager:
                     execution.cpu_usage = 0
                     execution.ram_usage = 0
                     session.commit()
+                    if exit_code != 0:
+                        task_name = execution.task.name if execution.task else str(execution_id)
+                        self.notify_task_failure(execution_id, task_name, f"Exited with code {exit_code}")
             self.running_processes.pop(execution_id, None)
             self.last_activity.pop(execution_id, None)
 
@@ -1115,6 +1138,9 @@ class TaskManager:
                         )
                         session.add(log_record)
                     session.commit()
+                    if status == 'error':
+                        task_name = execution.task.name if execution.task else command
+                        self.notify_task_failure(execution_id, task_name, error_msg)
         except Exception as db_err:
             self.logger.error(f"Failed to save system task execution results: {db_err}")
 

@@ -1946,6 +1946,13 @@ async def telemetry_broadcast_loop():
                         free = 0
                         percent = 0.0
                     
+                    if percent > 90.0:
+                        if s.id not in alerted_storages:
+                            alerted_storages.add(s.id)
+                            notify_storage_alert(storage_id=s.id, storage_name=s.name, storage_path=s.path, percent=percent)
+                    else:
+                        alerted_storages.discard(s.id)
+
                     storages_data.append({
                         "id": s.id,
                         "name": s.name,
@@ -2202,6 +2209,40 @@ async def shutdown_event():
     if lcd_manager:
         logger.info("Shutdown: Stopping LCD manager...")
         lcd_manager.stop()
+
+
+alerted_storages = set()
+
+def notify_build_result(build_id: int, build_name: str, success: bool, error_msg: Optional[str] = None):
+    nm = NotificationManager()
+    if nm.is_enabled() and nm.config.get("notify_build_results", True):
+        status_str = "Ready" if success else "Failed"
+        body = f"FFmpeg build '{build_name}' (ID: {build_id}) status: {status_str}."
+        if not success and error_msg:
+            body += f"\nError details: {error_msg}"
+        nm.enqueue_notification({
+            "subject": f"[FFmpeg-GUI Alert] FFmpeg Build {status_str}: {build_name}",
+            "body": body
+        })
+
+def notify_ssl_warning(domain: str, days_remaining: int, error_msg: Optional[str] = None):
+    nm = NotificationManager()
+    if nm.is_enabled() and nm.config.get("notify_ssl_alerts", True):
+        body = f"SSL Certificate for domain '{domain}' expires in {days_remaining} days."
+        if error_msg:
+            body += f"\nDetails: {error_msg}"
+        nm.enqueue_notification({
+            "subject": f"[FFmpeg-GUI Alert] SSL Certificate Warning: {domain}",
+            "body": body
+        })
+
+def notify_storage_alert(storage_id: int, storage_name: str, storage_path: str, percent: float):
+    nm = NotificationManager()
+    if nm.is_enabled() and nm.config.get("notify_storage_alerts", True):
+        nm.enqueue_notification({
+            "subject": f"[FFmpeg-GUI Alert] Storage Space Warning: {storage_name}",
+            "body": f"Storage '{storage_name}' ({storage_path}) space usage is at {percent}%, exceeding the 90% threshold."
+        })
 
 
 # ── Build WebSocket (per-build log streaming) ────────────────────
@@ -2686,9 +2727,11 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                             from sqlalchemy.orm.attributes import flag_modified
                             db_build.sdk_paths = result.get("sdk_paths")
                             flag_modified(db_build, "sdk_paths")
+                        notify_build_result(build_id=build_id, build_name=db_build.name, success=True)
                     else:
                         db_build.status = "failed"
                         db_build.build_log_summary = result.get("error", "Unknown error")
+                        notify_build_result(build_id=build_id, build_name=db_build.name, success=False, error_msg=result.get("error", "Unknown error"))
                     session.commit()
             except Exception as e:
                 logger.error(f"Build {build_id} failed with exception: {str(e)}")
@@ -2699,6 +2742,9 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                         db_build.status = "failed"
                         db_build.build_log_summary = str(e)
                         session.commit()
+                        notify_build_result(build_id=build_id, build_name=db_build.name, success=False, error_msg=str(e))
+                    else:
+                        notify_build_result(build_id=build_id, build_name=str(build_id), success=False, error_msg=str(e))
         finally:
             if build_manager.current_task == asyncio.current_task():
                 build_manager.current_task = None
@@ -3968,7 +4014,10 @@ def test_storage_path(test_in: StorageTest, db: Session = Depends(get_db)):
 @app.get("/api/settings/ssl/status")
 def get_ssl_status():
     from services.cert_manager import CertificateManager
-    return CertificateManager().get_cert_status()
+    status_data = CertificateManager().get_cert_status()
+    if status_data.get("valid") and status_data.get("days_remaining", 999) <= 30:
+        notify_ssl_warning(domain=status_data.get("domain") or "localhost", days_remaining=status_data.get("days_remaining", 0))
+    return status_data
 
 
 @app.post("/api/settings/ssl/upload-custom")
@@ -4021,6 +4070,7 @@ def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session =
     cert_mgr = CertificateManager()
     success, msg = cert_mgr.renew_acme_certificate(domain, email, challenge_type)
     if not success:
+        notify_ssl_warning(domain=domain, days_remaining=0, error_msg=msg)
         raise HTTPException(status_code=400, detail=msg)
 
     # Activate System SSL Renewal task upon first successful ACME issuance

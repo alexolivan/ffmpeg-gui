@@ -36,6 +36,11 @@ class NotificationManager:
             "sender_email": "",
             "recipient_emails": [],
             "enabled": False,
+            "notify_service_failures": True,
+            "notify_build_results": True,
+            "notify_task_failures": True,
+            "notify_ssl_alerts": True,
+            "notify_storage_alerts": True,
         }
 
     def load_config(self, config_input: Any) -> Dict[str, Any]:
@@ -71,7 +76,7 @@ class NotificationManager:
                 if key == "smtp_port":
                     try: val = int(val)
                     except (ValueError, TypeError): pass
-                elif key in ("enabled", "use_tls", "use_ssl"):
+                elif key in ("enabled", "use_tls", "use_ssl", "notify_service_failures", "notify_build_results", "notify_task_failures", "notify_ssl_alerts", "notify_storage_alerts"):
                     if isinstance(val, str):
                         val = val.lower() in ("true", "1", "yes")
                     else:
