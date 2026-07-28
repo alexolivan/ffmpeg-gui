@@ -167,19 +167,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSslDomain(settings?.ssl_domain || '');
     setSslEmail(settings?.ssl_email || '');
     setSslChallengeType(settings?.ssl_challenge_type || 'http-01');
-    setNotifEnabled(!!settings?.notif_enabled);
-    setSmtpHost(settings?.smtp_host || '');
-    setSmtpPort(settings?.smtp_port || 587);
-    setSmtpEncryption(settings?.smtp_encryption || 'tls');
-    setSmtpUser(settings?.smtp_user || '');
-    setSmtpPassword(settings?.smtp_password || '');
-    setSenderEmail(settings?.sender_email || '');
-    setRecipientEmail(settings?.recipient_email || '');
-    setNotifyServiceFailures(settings?.notify_service_failures !== undefined ? !!settings?.notify_service_failures : true);
-    setNotifyBuildResults(settings?.notify_build_results !== undefined ? !!settings?.notify_build_results : true);
-    setNotifyTaskFailures(settings?.notify_task_failures !== undefined ? !!settings?.notify_task_failures : true);
-    setNotifySslAlerts(settings?.notify_ssl_alerts !== undefined ? !!settings?.notify_ssl_alerts : true);
-    setNotifyStorageAlerts(settings?.notify_storage_alerts !== undefined ? !!settings?.notify_storage_alerts : true);
+    const notif = settings?.notifications;
+    setNotifEnabled(!!notif?.enabled);
+    setSmtpHost(notif?.smtp_host || '');
+    setSmtpPort(notif?.smtp_port || 587);
+    setSmtpEncryption(notif?.smtp_encryption || 'tls');
+    setSmtpUser(notif?.smtp_user || '');
+    setSmtpPassword(notif?.smtp_password || '');
+    setSenderEmail(notif?.sender_email || '');
+    setRecipientEmail(notif?.recipient_email || '');
+    setNotifyServiceFailures(notif?.notify_service_failures !== undefined ? !!notif?.notify_service_failures : true);
+    setNotifyBuildResults(notif?.notify_build_results !== undefined ? !!notif?.notify_build_results : true);
+    setNotifyTaskFailures(notif?.notify_task_failures !== undefined ? !!notif?.notify_task_failures : true);
+    setNotifySslAlerts(notif?.notify_ssl_alerts !== undefined ? !!notif?.notify_ssl_alerts : true);
+    setNotifyStorageAlerts(notif?.notify_storage_alerts !== undefined ? !!notif?.notify_storage_alerts : true);
   }, [
     settings?.bind_address,
     settings?.gui_port,
@@ -191,19 +192,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings?.ssl_domain,
     settings?.ssl_email,
     settings?.ssl_challenge_type,
-    settings?.notif_enabled,
-    settings?.smtp_host,
-    settings?.smtp_port,
-    settings?.smtp_encryption,
-    settings?.smtp_user,
-    settings?.smtp_password,
-    settings?.sender_email,
-    settings?.recipient_email,
-    settings?.notify_service_failures,
-    settings?.notify_build_results,
-    settings?.notify_task_failures,
-    settings?.notify_ssl_alerts,
-    settings?.notify_storage_alerts,
+    settings?.notifications?.enabled,
+    settings?.notifications?.smtp_host,
+    settings?.notifications?.smtp_port,
+    settings?.notifications?.smtp_encryption,
+    settings?.notifications?.smtp_user,
+    settings?.notifications?.smtp_password,
+    settings?.notifications?.sender_email,
+    settings?.notifications?.recipient_email,
+    settings?.notifications?.notify_service_failures,
+    settings?.notifications?.notify_build_results,
+    settings?.notifications?.notify_task_failures,
+    settings?.notifications?.notify_ssl_alerts,
+    settings?.notifications?.notify_storage_alerts,
   ]);
 
   const fetchSslStatus = async () => {
@@ -627,19 +628,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(loggingRotationBackupCount) !== Number(settings.logging_rotation_backup_count || 5) ||
     loggingCompressionEnabled !== (settings.logging_compression_enabled || false) ||
     Number(loggingRetentionDays) !== Number(settings.logging_retention_days || 7) ||
-    notifEnabled !== !!settings?.notif_enabled ||
-    smtpHost !== (settings?.smtp_host || '') ||
-    Number(smtpPort) !== Number(settings?.smtp_port || 587) ||
-    smtpEncryption !== (settings?.smtp_encryption || 'tls') ||
-    smtpUser !== (settings?.smtp_user || '') ||
-    smtpPassword !== (settings?.smtp_password || '') ||
-    senderEmail !== (settings?.sender_email || '') ||
-    recipientEmail !== (settings?.recipient_email || '') ||
-    notifyServiceFailures !== (settings?.notify_service_failures !== undefined ? !!settings?.notify_service_failures : true) ||
-    notifyBuildResults !== (settings?.notify_build_results !== undefined ? !!settings?.notify_build_results : true) ||
-    notifyTaskFailures !== (settings?.notify_task_failures !== undefined ? !!settings?.notify_task_failures : true) ||
-    notifySslAlerts !== (settings?.notify_ssl_alerts !== undefined ? !!settings?.notify_ssl_alerts : true) ||
-    notifyStorageAlerts !== (settings?.notify_storage_alerts !== undefined ? !!settings?.notify_storage_alerts : true) ||
+    notifEnabled !== !!settings?.notifications?.enabled ||
+    smtpHost !== (settings?.notifications?.smtp_host || '') ||
+    Number(smtpPort) !== Number(settings?.notifications?.smtp_port || 587) ||
+    smtpEncryption !== (settings?.notifications?.smtp_encryption || 'tls') ||
+    smtpUser !== (settings?.notifications?.smtp_user || '') ||
+    smtpPassword !== (settings?.notifications?.smtp_password || '') ||
+    senderEmail !== (settings?.notifications?.sender_email || '') ||
+    recipientEmail !== (settings?.notifications?.recipient_email || '') ||
+    notifyServiceFailures !== (settings?.notifications?.notify_service_failures !== undefined ? !!settings?.notifications?.notify_service_failures : true) ||
+    notifyBuildResults !== (settings?.notifications?.notify_build_results !== undefined ? !!settings?.notifications?.notify_build_results : true) ||
+    notifyTaskFailures !== (settings?.notifications?.notify_task_failures !== undefined ? !!settings?.notifications?.notify_task_failures : true) ||
+    notifySslAlerts !== (settings?.notifications?.notify_ssl_alerts !== undefined ? !!settings?.notifications?.notify_ssl_alerts : true) ||
+    notifyStorageAlerts !== (settings?.notifications?.notify_storage_alerts !== undefined ? !!settings?.notifications?.notify_storage_alerts : true) ||
     newPassword !== '' ||
     confirmPassword !== '';
 
@@ -693,19 +694,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         logging_rotation_backup_count: Number(loggingRotationBackupCount),
         logging_compression_enabled: loggingCompressionEnabled,
         logging_retention_days: Number(loggingRetentionDays),
-        notif_enabled: notifEnabled,
-        smtp_host: smtpHost,
-        smtp_port: Number(smtpPort),
-        smtp_encryption: smtpEncryption,
-        smtp_user: smtpUser,
-        smtp_password: smtpPassword,
-        sender_email: senderEmail,
-        recipient_email: recipientEmail,
-        notify_service_failures: notifyServiceFailures,
-        notify_build_results: notifyBuildResults,
-        notify_task_failures: notifyTaskFailures,
-        notify_ssl_alerts: notifySslAlerts,
-        notify_storage_alerts: notifyStorageAlerts,
+        notifications: {
+          enabled: notifEnabled,
+          smtp_host: smtpHost,
+          smtp_port: Number(smtpPort),
+          smtp_encryption: smtpEncryption,
+          smtp_user: smtpUser,
+          smtp_password: smtpPassword,
+          sender_email: senderEmail,
+          recipient_email: recipientEmail,
+          notify_service_failures: notifyServiceFailures,
+          notify_build_results: notifyBuildResults,
+          notify_task_failures: notifyTaskFailures,
+          notify_ssl_alerts: notifySslAlerts,
+          notify_storage_alerts: notifyStorageAlerts,
+        },
       };
 
       if (newPassword !== '') {
