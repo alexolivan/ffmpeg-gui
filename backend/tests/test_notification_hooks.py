@@ -90,5 +90,19 @@ class TestNotificationHooks(unittest.TestCase):
         self.assertIn("Storage Space Warning", call_event["subject"])
         self.assertIn("92.5%", call_event["body"])
 
+    @patch("core.notification_manager.NotificationManager.enqueue_notification")
+    def test_service_exhausted_hook(self, mock_enqueue):
+        from core.process_manager import ProcessManager
+
+        mock_db_factory = MagicMock()
+        pm = ProcessManager(db_session_factory=mock_db_factory)
+
+        pm.notify_service_exhausted(process_id=5, process_name="RTMP Stream", retries=5)
+        mock_enqueue.assert_called_once()
+        call_event = mock_enqueue.call_args[0][0]
+        self.assertIn("Max Retries Reached", call_event["subject"])
+        self.assertIn("RTMP Stream", call_event["body"])
+        self.assertIn("5 automatic restart attempts", call_event["body"])
+
 if __name__ == "__main__":
     unittest.main()

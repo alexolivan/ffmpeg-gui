@@ -199,6 +199,15 @@ class ProcessManager:
                     "body": f"Service '{process_name}' (ID: {process_id}) has successfully recovered and is running."
                 })
 
+    def notify_service_exhausted(self, process_id: int, process_name: str, retries: int):
+        from core.notification_manager import NotificationManager
+        nm = NotificationManager()
+        if nm.is_enabled() and nm.config.get("notify_service_failures", True):
+            nm.enqueue_notification({
+                "subject": f"[FFmpeg-GUI Alert] Service Failed (Max Retries Reached): {process_name}",
+                "body": f"Service '{process_name}' (ID: {process_id}) failed to start after exhausting all {retries} automatic restart attempts. Service stopped."
+            })
+
     async def stop_process(self, process_id: int, graceful: bool = True):
         pending = self.pending_restarts.pop(process_id, None)
         if pending:
@@ -1453,6 +1462,7 @@ class ProcessManager:
         prev_out_time_us = None
         has_had_activity = False
         start_time = datetime.utcnow()
+        recovery_notified = False
 
         try:
             while True:
@@ -1464,6 +1474,16 @@ class ProcessManager:
 
                 if not running:
                     break
+
+                if not recovery_notified:
+                    elapsed = (datetime.utcnow() - start_time).total_seconds()
+                    if elapsed > 60:
+                        recovery_notified = True
+                        with self.db_session_factory() as session:
+                            from database.models import MediaProcess
+                            mp = session.query(MediaProcess).get(process_id)
+                            if mp:
+                                self.notify_service_recovery(process_id, mp.name)
 
                 # Get system metrics
                 cpu = 0
@@ -1706,8 +1726,18 @@ class ProcessManager:
 
                         # Handle notification hook for unexpected exit
                         if was_unexpected and media_proc.type == 'service':
-                            is_initial = (self.restart_counts.get(process_id, 0) <= 1)
-                            self.notify_service_crash(process_id, media_proc.name, exit_code=exit_code, is_initial_crash=is_initial)
+                            current_restarts = self.restart_counts.get(process_id, 0)
+                            if not media_proc.watchdog_enabled or media_proc.watchdog_retries == 0:
+                                # No watchdog: notify single crash immediately
+                                self.notify_service_crash(process_id, media_proc.name, exit_code=exit_code, is_initial_crash=True)
+                            elif media_proc.watchdog_retries == -1:
+                                # Infinite retries: notify on initial crash (attempt 0), silence intermediate retries
+                                is_initial = (current_restarts == 0)
+                                self.notify_service_crash(process_id, media_proc.name, exit_code=exit_code, is_initial_crash=is_initial)
+                            else:
+                                # Finite retries (N > 0): mute intermediate retries.
+                                # Notification is sent ONLY when max retries is reached below.
+                                pass
 
                         # Handle automatic restart if enabled and unexpected
                         if was_unexpected and media_proc.type == 'service' and media_proc.watchdog_enabled:
@@ -1741,6 +1771,8 @@ class ProcessManager:
                                 )
                                 session.add(limit_log)
                                 session.commit()
+                                # Notify finite retry exhaustion (1 single email when max retries reached!)
+                                self.notify_service_exhausted(process_id, media_proc.name, retries=retries)
             except Exception as db_err:
                 self.logger.error(f"Watchdog cleanup database error for process {process_id}: {db_err}")
 
