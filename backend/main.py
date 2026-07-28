@@ -1433,8 +1433,6 @@ def get_system_capabilities():
     v4l2_details = f"Detected video nodes: {', '.join(v4l2_devices)}" if v4l2_available else "No video nodes found in /dev/video*"
 
     # ALSA
-    alsa_available = os.path.exists("/proc/asound/cards") or os.path.exists("/dev/snd")
-    alsa_details = "ALSA sound card node(s) present" if alsa_available else "No ALSA interface found"
     alsa_cards = []
     if os.path.exists("/proc/asound/cards"):
         try:
@@ -1449,6 +1447,9 @@ def get_system_capabilities():
             alsa_cards.sort()
         except Exception as e:
             logger.warning(f"Error parsing /proc/asound/cards: {e}")
+
+    alsa_available = len(alsa_cards) > 0
+    alsa_details = f"Detected ALSA sound card(s): {', '.join(alsa_cards)}" if alsa_available else "No physical or virtual ALSA sound cards detected"
 
     # DeckLink
     import glob
