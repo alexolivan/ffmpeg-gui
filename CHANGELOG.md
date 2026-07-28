@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-07-28
+
+### Added
+- Asynchronous Email Notifications & Alerting System (`NotificationManager` singleton with `asyncio.Queue` worker).
+- State-based failure coalescing for infinite retries (initial crash notice -> silent retry loop -> recovery email after >60s stability).
+- SMTP configuration & event trigger controls in Settings UI (Card 5).
+- `POST /api/notifications/test` endpoint and **TEST SMTP CONNECTION** button with real-time glassmorphic feedback alert banner.
+- Event notification hooks across `ProcessManager`, `TaskManager`, `BuildManager`, `CertificateManager`, and disk storage threshold monitor (>90%).
+
 ## [1.29.0] - 2026-07-27
 
 ### Added
