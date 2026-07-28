@@ -11,7 +11,7 @@ from PIL import Image
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from database.db import init_db, get_db, SessionLocal
 from database.models import FfmpegBuild, MediaProcess, ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
 from core.process_manager import ProcessManager
@@ -19,6 +19,8 @@ from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
 from core.sdk_manager import SdkManager
 from core.patch_manager import PatchManager
+from core.notification_manager import NotificationManager
+notification_manager = NotificationManager()
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -216,6 +218,34 @@ class ProcessUpdate(BaseModel):
             raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
         return v
 
+class NotificationSettings(BaseModel):
+    enabled: bool = False
+    smtp_host: str = "localhost"
+    smtp_port: int = 587
+    smtp_encryption: str = "tls"
+    smtp_user: str = ""
+    smtp_password: Optional[str] = ""
+    recipient_email: str = ""
+    notify_service_failures: bool = True
+    notify_build_results: bool = True
+    notify_task_failures: bool = True
+    notify_ssl_alerts: bool = True
+    notify_storage_alerts: bool = True
+
+class NotificationSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_encryption: Optional[str] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    recipient_email: Optional[str] = None
+    notify_service_failures: Optional[bool] = None
+    notify_build_results: Optional[bool] = None
+    notify_task_failures: Optional[bool] = None
+    notify_ssl_alerts: Optional[bool] = None
+    notify_storage_alerts: Optional[bool] = None
+
 class SettingsResponse(BaseModel):
     id: Optional[int] = None
     node_name: Optional[str] = None
@@ -257,6 +287,7 @@ class SettingsResponse(BaseModel):
     ssl_email: Optional[str] = None
     ssl_challenge_type: Optional[str] = "http-01"
     ssl_auto_renew: Optional[bool] = True
+    notifications: NotificationSettings = NotificationSettings()
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -288,6 +319,7 @@ class SettingsUpdate(BaseModel):
     logging_rotation_backup_count: Optional[int] = None
     logging_compression_enabled: Optional[bool] = None
     logging_retention_days: Optional[int] = None
+    notifications: Optional[NotificationSettingsUpdate] = None
 
     @validator('lcd_alias')
     def validate_lcd_alias(cls, v):
@@ -375,6 +407,22 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     ssl_challenge_type = "http-01"
     ssl_auto_renew = True
 
+    # Default notifications values
+    notifications_data = {
+        "enabled": False,
+        "smtp_host": "localhost",
+        "smtp_port": 587,
+        "smtp_encryption": "tls",
+        "smtp_user": "",
+        "smtp_password": "",
+        "recipient_email": "",
+        "notify_service_failures": True,
+        "notify_build_results": True,
+        "notify_task_failures": True,
+        "notify_ssl_alerts": True,
+        "notify_storage_alerts": True,
+    }
+
     if config_path and os.path.exists(config_path):
         try:
             import configparser
@@ -401,6 +449,28 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 ssl_email = ssl_cfg.get("email", fallback=ssl_email)
                 ssl_challenge_type = ssl_cfg.get("challenge_type", fallback=ssl_challenge_type)
                 try: ssl_auto_renew = ssl_cfg.getboolean("auto_renew", fallback=ssl_auto_renew)
+                except ValueError: pass
+            if "notifications" in config:
+                notif_cfg = config["notifications"]
+                try: notifications_data["enabled"] = notif_cfg.getboolean("enabled", fallback=notifications_data["enabled"])
+                except ValueError: pass
+                notifications_data["smtp_host"] = notif_cfg.get("smtp_host", fallback=notifications_data["smtp_host"])
+                try: notifications_data["smtp_port"] = notif_cfg.getint("smtp_port", fallback=notifications_data["smtp_port"])
+                except ValueError: pass
+                notifications_data["smtp_encryption"] = notif_cfg.get("smtp_encryption", fallback=notifications_data["smtp_encryption"])
+                notifications_data["smtp_user"] = notif_cfg.get("smtp_user", fallback=notifications_data["smtp_user"])
+                raw_pwd = notif_cfg.get("smtp_password", fallback="")
+                notifications_data["smtp_password"] = "*****" if raw_pwd else ""
+                notifications_data["recipient_email"] = notif_cfg.get("recipient_email", fallback=notifications_data["recipient_email"])
+                try: notifications_data["notify_service_failures"] = notif_cfg.getboolean("notify_service_failures", fallback=notifications_data["notify_service_failures"])
+                except ValueError: pass
+                try: notifications_data["notify_build_results"] = notif_cfg.getboolean("notify_build_results", fallback=notifications_data["notify_build_results"])
+                except ValueError: pass
+                try: notifications_data["notify_task_failures"] = notif_cfg.getboolean("notify_task_failures", fallback=notifications_data["notify_task_failures"])
+                except ValueError: pass
+                try: notifications_data["notify_ssl_alerts"] = notif_cfg.getboolean("notify_ssl_alerts", fallback=notifications_data["notify_ssl_alerts"])
+                except ValueError: pass
+                try: notifications_data["notify_storage_alerts"] = notif_cfg.getboolean("notify_storage_alerts", fallback=notifications_data["notify_storage_alerts"])
                 except ValueError: pass
             if "server" in config and "port" in config["server"]:
                 gui_port = int(config["server"]["port"])
@@ -566,6 +636,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["ssl_email"] = ssl_email
     res["ssl_challenge_type"] = ssl_challenge_type
     res["ssl_auto_renew"] = ssl_auto_renew
+    res["notifications"] = notifications_data
     
     return SettingsResponse(**res).model_dump()
 
@@ -848,6 +919,36 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
         with open(config_path, "w") as f:
             config.write(f)
 
+    # ── Handle Notification Settings update ──
+    if settings_in.notifications is not None:
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if not config_path:
+            config_path = "ffmpeg-gui.conf"
+
+        import configparser
+        config = configparser.ConfigParser()
+        if os.path.exists(config_path):
+            config.read(config_path)
+
+        if "notifications" not in config:
+            config["notifications"] = {}
+
+        notif_update = settings_in.notifications
+        for field, val in notif_update.model_dump(exclude_unset=True).items():
+            if val is not None:
+                if field == "smtp_password":
+                    if val != "*****":
+                        config["notifications"]["smtp_password"] = str(val)
+                elif isinstance(val, bool):
+                    config["notifications"][field] = str(val).lower()
+                else:
+                    config["notifications"][field] = str(val)
+
+        with open(config_path, "w") as f:
+            config.write(f)
+
+        notification_manager.load_config(dict(config["notifications"]))
+
     # ── Handle Network & SSL Settings update ──
     network_ssl_fields = [
         "bind_address", "http_port", "https_port", "ssl_enabled",
@@ -1016,6 +1117,15 @@ def execute_system_restart():
 def restart_panel(background_tasks: BackgroundTasks):
     background_tasks.add_task(execute_system_restart)
     return {"status": "ok", "message": "Panel is restarting"}
+
+
+@app.post("/notifications/test")
+@app.post("/api/notifications/test")
+def send_test_notification(payload: Optional[Dict[str, Any]] = None):
+    success, msg = notification_manager.send_test_email(override_config=payload)
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"success": success, "message": msg}
 
 
 @app.post("/login")
@@ -2062,11 +2172,32 @@ async def startup_event():
     asyncio.create_task(auto_start_services())
     await scheduler.start()
 
+    try:
+        config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+        if os.path.exists(config_path):
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            if "notifications" in config:
+                notification_manager.load_config(dict(config["notifications"]))
+    except Exception as e:
+        logger.error(f"Failed to load notification config on startup: {e}")
+
+    try:
+        notification_manager.start_worker()
+    except Exception as e:
+        logger.error(f"Failed to start notification worker on startup: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutdown: Stopping scheduler...")
     await scheduler.stop()
     
+    try:
+        notification_manager.stop_worker()
+    except Exception as e:
+        logger.error(f"Failed to stop notification worker on shutdown: {e}")
+
     global lcd_manager
     if lcd_manager:
         logger.info("Shutdown: Stopping LCD manager...")

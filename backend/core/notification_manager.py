@@ -49,9 +49,34 @@ class NotificationManager:
         else:
             data = {}
 
+        # Normalize inputs from dict or object
+        if "smtp_encryption" in data:
+            enc = str(data["smtp_encryption"]).lower()
+            if enc == "ssl":
+                new_config["use_ssl"] = True
+                new_config["use_tls"] = False
+            elif enc == "tls":
+                new_config["use_ssl"] = False
+                new_config["use_tls"] = True
+            elif enc in ("none", "disabled", "false"):
+                new_config["use_ssl"] = False
+                new_config["use_tls"] = False
+
+        if "recipient_email" in data and not data.get("recipient_emails"):
+            new_config["recipient_emails"] = data["recipient_email"]
+
         for key in new_config.keys():
             if key in data and data[key] is not None:
-                new_config[key] = data[key]
+                val = data[key]
+                if key == "smtp_port":
+                    try: val = int(val)
+                    except (ValueError, TypeError): pass
+                elif key in ("enabled", "use_tls", "use_ssl"):
+                    if isinstance(val, str):
+                        val = val.lower() in ("true", "1", "yes")
+                    else:
+                        val = bool(val)
+                new_config[key] = val
 
         # Normalize recipient_emails if provided as string
         recipients = new_config.get("recipient_emails")
