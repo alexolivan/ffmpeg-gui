@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, Query
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -1121,7 +1121,7 @@ def restart_panel(background_tasks: BackgroundTasks):
 
 @app.post("/notifications/test")
 @app.post("/api/notifications/test")
-def send_test_notification(payload: Optional[Dict[str, Any]] = None):
+def send_test_notification(payload: Optional[Dict[str, Any]] = Body(None)):
     success, msg = notification_manager.send_test_email(override_config=payload)
     if not success:
         raise HTTPException(status_code=400, detail=msg)
