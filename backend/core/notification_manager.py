@@ -43,18 +43,18 @@ class NotificationManager:
             "notify_storage_alerts": True,
         }
 
-    def load_config(self, config_input: Any) -> Dict[str, Any]:
-        """Loads and normalizes SMTP/Alert notification settings."""
+    def _normalize_config(self, config_input: Any) -> Dict[str, Any]:
+        """Normalizes raw configuration dictionary or object into internal config format."""
         new_config = self._default_config()
 
         if isinstance(config_input, dict):
-            data = config_input
+            data = dict(config_input)
         elif hasattr(config_input, "__dict__"):
             data = {k: v for k, v in config_input.__dict__.items() if not k.startswith("_")}
         else:
             data = {}
 
-        # Normalize inputs from dict or object
+        # Encryption mode mapping
         if "smtp_encryption" in data:
             enc = str(data["smtp_encryption"]).lower()
             if enc == "ssl":
@@ -67,10 +67,12 @@ class NotificationManager:
                 new_config["use_ssl"] = False
                 new_config["use_tls"] = False
 
-        if "recipient_email" in data and not data.get("recipient_emails"):
-            new_config["recipient_emails"] = data["recipient_email"]
+        # Handle recipient_email (singular) and recipient_emails (plural)
+        rec_data = data.get("recipient_emails") or data.get("recipient_email")
+        if rec_data is not None:
+            new_config["recipient_emails"] = rec_data
 
-        for key in new_config.keys():
+        for key in list(new_config.keys()):
             if key in data and data[key] is not None:
                 val = data[key]
                 if key == "smtp_port":
@@ -83,7 +85,7 @@ class NotificationManager:
                         val = bool(val)
                 new_config[key] = val
 
-        # Normalize recipient_emails if provided as string
+        # Normalize recipient_emails string into clean list
         recipients = new_config.get("recipient_emails")
         if isinstance(recipients, str):
             cleaned = [r.strip() for r in recipients.replace("\n", ",").split(",") if r.strip()]
@@ -91,7 +93,11 @@ class NotificationManager:
         elif isinstance(recipients, list):
             new_config["recipient_emails"] = [str(r).strip() for r in recipients if str(r).strip()]
 
-        self.config = new_config
+        return new_config
+
+    def load_config(self, config_input: Any) -> Dict[str, Any]:
+        """Loads and normalizes SMTP/Alert notification settings."""
+        self.config = self._normalize_config(config_input)
         return self.config
 
     def is_enabled(self) -> bool:
@@ -142,6 +148,8 @@ class NotificationManager:
     def _dispatch_email(self, config: Dict[str, Any], subject: str, body: str, recipients: Optional[List[str]] = None, html_body: Optional[str] = None) -> Tuple[bool, str]:
         sender = config.get("sender_email") or config.get("smtp_user") or "noreply@ffmpeg-gui.local"
         target_recipients = recipients or config.get("recipient_emails", [])
+        if isinstance(target_recipients, str):
+            target_recipients = [r.strip() for r in target_recipients.replace("\n", ",").split(",") if r.strip()]
 
         if not target_recipients:
             return False, "No recipient emails configured."
@@ -175,18 +183,15 @@ class NotificationManager:
 
     def send_test_email(self, override_config: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
         """Sends a test email immediately using current or overridden configuration."""
-        active_config = dict(self.config)
-        if override_config:
-            if isinstance(override_config, dict):
-                for k, v in override_config.items():
-                    if v is not None:
-                        active_config[k] = v
+        merged_raw = dict(self.config)
+        if override_config and isinstance(override_config, dict):
+            for k, v in override_config.items():
+                if v is not None:
+                    if k == "smtp_password" and v == "*****":
+                        continue
+                    merged_raw[k] = v
 
-        # Normalize recipients in active_config
-        recipients = active_config.get("recipient_emails")
-        if isinstance(recipients, str):
-            recipients = [r.strip() for r in recipients.replace("\n", ",").split(",") if r.strip()]
-            active_config["recipient_emails"] = recipients
+        active_config = self._normalize_config(merged_raw)
 
         subject = "[FFmpeg-GUI] Test Notification"
         body = (
