@@ -99,15 +99,20 @@ class AlsaManager:
         is_readonly = "r" in access_flags and "w" not in access_flags
         is_meter = is_readonly and ("meter" in name.lower() or "peak" in name.lower() or "level" in name.lower())
 
+        elem_str = str(elem_type).upper()
+        is_bool = elem_type == SND_CTL_ELEM_TYPE_BOOLEAN or elem_str == "BOOLEAN"
+        is_int = elem_type == SND_CTL_ELEM_TYPE_INTEGER or elem_str == "INTEGER"
+        is_enum = elem_type == SND_CTL_ELEM_TYPE_ENUMERATED or elem_str == "ENUMERATED"
+
         # Determine type
         if is_meter:
             ctrl_type = "meter"
-        elif elem_type == SND_CTL_ELEM_TYPE_BOOLEAN:
+        elif is_bool:
             ctrl_type = "mute" if "switch" in name.lower() or "mute" in name.lower() else "switch"
-        elif elem_type == SND_CTL_ELEM_TYPE_INTEGER:
-            ctrl_type = "volume" if "volume" in name.lower() or "level" in name.lower() or "gain" in name.lower() else "integer"
-        elif elem_type == SND_CTL_ELEM_TYPE_ENUMERATED:
-            ctrl_type = "route" if "route" in name.lower() or "source" in name.lower() or "input" in name.lower() else "enum"
+        elif is_int:
+            ctrl_type = "volume" if any(k in name.lower() for k in ["volume", "level", "gain", "playback", "capture", "master"]) else "integer"
+        elif is_enum:
+            ctrl_type = "route" if any(k in name.lower() for k in ["route", "source", "input", "enum", "select"]) else "enum"
         else:
             ctrl_type = "other"
 

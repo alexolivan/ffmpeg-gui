@@ -258,21 +258,22 @@ export const AlsaAudioSettingsCard: React.FC = () => {
           </div>
         </div>
 
-        {/* Sound Card Selector Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto max-w-full">
-          {cards.map((c) => (
-            <button
-              key={c.card_index}
-              onClick={() => setSelectedCardIdx(c.card_index)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
-                selectedCardIdx === c.card_index
-                  ? 'bg-brand-lime text-black font-bold shadow-lg shadow-brand-lime/20'
-                  : 'bg-[var(--input-bg)] text-text-secondary hover:text-text-primary border border-[var(--glass-border)]'
-              }`}
-            >
-              📻 Card {c.card_index}: {c.name || c.card_id}
-            </button>
-          ))}
+        {/* Sound Card Dropdown Selector */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-bold text-text-secondary uppercase tracking-wider whitespace-nowrap">
+            {t('settings.alsa.selectCard', 'Sound Card:')}
+          </label>
+          <select
+            value={selectedCardIdx}
+            onChange={(e) => setSelectedCardIdx(parseInt(e.target.value, 10))}
+            className="bg-[var(--input-bg)] text-text-primary border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-bold focus:outline-none focus:border-brand-lime shadow-sm min-w-[220px]"
+          >
+            {cards.map((c) => (
+              <option key={c.card_index} value={c.card_index}>
+                Card {c.card_index}: {c.name || c.card_id} ({c.driver || 'ALSA'})
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -444,9 +445,18 @@ const AlsaChannelStrip: React.FC<ChannelStripProps> = ({
   canvasRefSetter,
   endpointIcon,
 }) => {
-  const volCtrl = group.controls.find((c) => c.ctrl_type === 'volume');
-  const muteCtrl = group.controls.find((c) => c.ctrl_type === 'mute' || c.ctrl_type === 'switch');
-  const routeCtrl = group.controls.find((c) => c.ctrl_type === 'route' || c.ctrl_type === 'enum');
+  const volCtrl =
+    group.controls.find((c) => c.ctrl_type === 'volume' || c.ctrl_type === 'integer') ||
+    group.controls.find((c) => c.min !== undefined && c.max !== undefined && c.max > c.min);
+
+  const muteCtrl =
+    group.controls.find((c) => c.ctrl_type === 'mute' || c.ctrl_type === 'switch') ||
+    group.controls.find((c) => typeof c.values?.[0] === 'boolean');
+
+  const routeCtrl =
+    group.controls.find((c) => c.ctrl_type === 'route' || c.ctrl_type === 'enum') ||
+    group.controls.find((c) => c.items && c.items.length > 0);
+
   const meterCtrl = group.meters[0];
 
   const currentVol = volCtrl ? volCtrl.values[0] ?? 0 : 0;
