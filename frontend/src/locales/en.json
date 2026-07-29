@@ -66,7 +66,20 @@
       "general": "General",
       "lcd": "LCD Display",
       "storage": "Storage",
-      "security": "Network & Security"
+      "security": "Network & Security",
+      "alsa": "ALSA AUDIO"
+    },
+    "alsa": {
+      "title": "ALSA AUDIO HARDWARE MIXER",
+      "subtitle": "Broadcast 4-Quadrant Topological Signal Routing & Gain Control",
+      "noCardsTitle": "No Physical Sound Cards Detected",
+      "noCardsDesc": "No hardware or virtual ALSA sound cards were found on this system.",
+      "activeProcesses": "Active FFmpeg Bindings:",
+      "quadrant1": "1. VIRTUAL PLAYOUT (SOFTWARE INGESTION)",
+      "quadrant2": "2. HARDWARE OUTPUTS (PHYSICAL EGRESS)",
+      "quadrant3": "3. VIRTUAL CAPTURE (FFMPEG INGESTION)",
+      "quadrant4": "4. HARDWARE INPUTS (PHYSICAL INGESTION)",
+      "noControls": "No controls detected in this quadrant"
     },
     "restart": {
       "title": "Restart Required",

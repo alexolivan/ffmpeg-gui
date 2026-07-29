@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n/i18n';
 import { ShieldIcon, GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon } from '../Icons';
+import { AlsaAudioSettingsCard } from './settings/AlsaAudioSettingsCard';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
 
@@ -98,7 +99,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security' | 'alsa'>('general');
 
   const [storages, setStorages] = useState<any[]>([]);
   const [isLoadingStorages, setIsLoadingStorages] = useState(false);
@@ -863,6 +864,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <ShieldIcon size={14} />
           {t('settings.tabs.security', 'Security')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('alsa')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+            activeTab === 'alsa'
+              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span className="text-sm">🔊</span>
+          {t('settings.tabs.alsa', 'ALSA AUDIO')}
         </button>
       </div>
 
@@ -2266,6 +2279,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* TAB 5: ALSA Audio */}
+        {activeTab === 'alsa' && <AlsaAudioSettingsCard />}
       </div>
 
       {showRestartConfirm && (

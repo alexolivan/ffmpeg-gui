@@ -66,7 +66,20 @@
       "general": "General",
       "lcd": "Pantalla LCD",
       "storage": "Almacenamiento",
-      "security": "Red y Seguridad"
+      "security": "Red y Seguridad",
+      "alsa": "AUDIO ALSA"
+    },
+    "alsa": {
+      "title": "MEZCLADOR DE HARDWARE DE AUDIO ALSA",
+      "subtitle": "Enrutado Topológico Broadcast en 4 Cuadrantes y Control de Ganancia",
+      "noCardsTitle": "Sin Tarjetas de Sonido Físicas Detectadas",
+      "noCardsDesc": "No se encontraron tarjetas de sonido físicas o virtuales ALSA en este sistema.",
+      "activeProcesses": "Procesos FFmpeg Vinculados:",
+      "quadrant1": "1. VIRTUAL PLAYOUT (INGESTA SOFTWARE)",
+      "quadrant2": "2. HARDWARE OUTPUTS (SALIDA FÍSICA)",
+      "quadrant3": "3. VIRTUAL CAPTURE (INGESTA FFMPEG)",
+      "quadrant4": "4. HARDWARE INPUTS (ENTRADA FÍSICA)",
+      "noControls": "Sin controles detectados en este cuadrante"
     },
     "restart": {
       "title": "Reinicio Requerido",

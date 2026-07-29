@@ -21,6 +21,7 @@ from core.sdk_manager import SdkManager
 from core.patch_manager import PatchManager
 from core.notification_manager import NotificationManager
 notification_manager = NotificationManager()
+from core.alsa_manager import alsa_manager
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -4123,6 +4124,66 @@ def get_acme_challenge(token: str):
     if token in ACME_CHALLENGES:
         return PlainTextResponse(content=ACME_CHALLENGES[token])
     return PlainTextResponse(content=token)
+
+
+class AlsaControlUpdate(BaseModel):
+    card_index: int
+    numid: int
+    values: List[Any]
+
+
+@app.get("/api/settings/alsa/cards")
+def get_alsa_cards():
+    return alsa_manager.get_cards()
+
+
+@app.get("/api/settings/alsa/card/{card_index}/topology")
+def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
+    topology = alsa_manager.get_card_topology(card_index)
+
+    # Match active FFmpeg processes using ALSA cards
+    active_procs = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
+    alsa_badges = []
+
+    for proc in active_procs:
+        cmd_str = proc.ffmpeg_cmd or ""
+        if "-f alsa" in cmd_str or "hw:" in cmd_str:
+            card_pattern = f"hw:{card_index}"
+            if card_pattern in cmd_str or "hw:0" in cmd_str or "default" in cmd_str:
+                alsa_badges.append({
+                    "process_id": proc.id,
+                    "alias": proc.alias or proc.name or f"Process #{proc.id}",
+                    "status": proc.status
+                })
+
+    topology["active_processes"] = alsa_badges
+    return topology
+
+
+@app.post("/api/settings/alsa/control")
+def write_alsa_control(payload: AlsaControlUpdate):
+    success = alsa_manager.write_control_value(
+        card_idx=payload.card_index,
+        numid=payload.numid,
+        values=payload.values
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to write ALSA control value")
+    return {"status": "ok", "message": f"Control numid={payload.numid} updated successfully"}
+
+
+@app.websocket("/ws/alsa/meters/{card_index}")
+async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
+    await websocket.accept()
+    try:
+        while True:
+            meters = alsa_manager.read_meters(card_index)
+            await websocket.send_json({"meters": meters})
+            await asyncio.sleep(0.033)  # ~30Hz
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket client disconnected from ALSA meters card {card_index}")
+    except Exception as e:
+        logger.error(f"WebSocket ALSA meters error: {e}")
 
 
 # Mounting static files and SPA fallback

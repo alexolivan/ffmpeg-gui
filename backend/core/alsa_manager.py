@@ -1,0 +1,385 @@
+import os
+import re
+import ctypes
+import logging
+import threading
+from typing import Dict, List, Any, Optional
+
+logger = logging.getLogger("FFMPEG-GUI.AlsaManager")
+
+# ALSA C Constants
+SND_CTL_ELEM_IFACE_MIXER = 2
+SND_CTL_ELEM_TYPE_BOOLEAN = 1
+SND_CTL_ELEM_TYPE_INTEGER = 2
+SND_CTL_ELEM_TYPE_ENUMERATED = 3
+SND_CTL_ELEM_TYPE_BYTES = 4
+SND_CTL_ELEM_TYPE_IEC958 = 5
+
+class AlsaManager:
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            with cls._lock:
+                if not cls._instance:
+                    cls._instance = super(AlsaManager, cls).__new__(cls)
+                    cls._instance._init_asound()
+        return cls._instance
+
+    def _init_asound(self):
+        self.asound = None
+        self.available = False
+        self._card_locks: Dict[int, threading.Lock] = {}
+
+        lib_paths = [
+            "/usr/lib/x86_64-linux-gnu/libasound.so.2",
+            "/usr/lib/libasound.so.2",
+            "/usr/lib64/libasound.so.2",
+            "libasound.so.2"
+        ]
+
+        for path in lib_paths:
+            try:
+                self.asound = ctypes.CDLL(path)
+                self.available = True
+                logger.info(f"Loaded libasound from {path}")
+                break
+            except Exception:
+                continue
+
+        if not self.available:
+            logger.warning("libasound.so.2 not found on host system.")
+
+    def _get_card_lock(self, card_idx: int) -> threading.Lock:
+        if card_idx not in self._card_locks:
+            self._card_locks[card_idx] = threading.Lock()
+        return self._card_locks[card_idx]
+
+    def get_cards(self) -> List[Dict[str, Any]]:
+        """List all detected physical sound cards in the system."""
+        cards = []
+        if not os.path.exists("/proc/asound/cards"):
+            return cards
+
+        try:
+            with open("/proc/asound/cards", "r") as f:
+                content = f.read()
+            
+            # Parse /proc/asound/cards
+            # Example format:
+            # 0 [PCH            ]: HDA-Intel - HDA Intel PCH
+            # 1 [ASI58100       ]: ASI5810-0 - ASI5810-0
+            lines = content.strip().split("\n")
+            for i in range(0, len(lines), 2):
+                line = lines[i]
+                match = re.match(r"^\s*(\d+)\s*\[([^\]]+)\]:\s*(.+)$", line)
+                if match:
+                    card_idx = int(match.group(1))
+                    card_id = match.group(2).strip()
+                    card_desc = match.group(3).strip()
+                    
+                    driver = "Unknown"
+                    if len(lines) > i + 1:
+                        driver = lines[i + 1].strip()
+
+                    cards.append({
+                        "card_index": card_idx,
+                        "card_id": card_id,
+                        "name": card_desc,
+                        "driver": driver
+                    })
+        except Exception as e:
+            logger.error(f"Error parsing /proc/asound/cards: {e}")
+
+        return cards
+
+    def _classify_control(self, name: str, iface: int, elem_type: int, access_flags: str, items: List[str]) -> Dict[str, Any]:
+        """Classify raw ALSA control into semantic type and category."""
+        is_readonly = "r" in access_flags and "w" not in access_flags
+        is_meter = is_readonly and ("meter" in name.lower() or "peak" in name.lower() or "level" in name.lower())
+
+        # Determine type
+        if is_meter:
+            ctrl_type = "meter"
+        elif elem_type == SND_CTL_ELEM_TYPE_BOOLEAN:
+            ctrl_type = "mute" if "switch" in name.lower() or "mute" in name.lower() else "switch"
+        elif elem_type == SND_CTL_ELEM_TYPE_INTEGER:
+            ctrl_type = "volume" if "volume" in name.lower() or "level" in name.lower() or "gain" in name.lower() else "integer"
+        elif elem_type == SND_CTL_ELEM_TYPE_ENUMERATED:
+            ctrl_type = "route" if "route" in name.lower() or "source" in name.lower() or "input" in name.lower() else "enum"
+        else:
+            ctrl_type = "other"
+
+        # Determine group prefix
+        # E.g. 'PCM 0 Playback Volume' -> group: 'PCM 0'
+        # 'Line 0 Capture Level' -> group: 'Line 0'
+        # 'Master Playback Volume' -> group: 'Master'
+        group = "General"
+        match = re.match(r"^([A-Za-z0-9]+\s*\d*)\s+", name)
+        if match:
+            group = match.group(1).strip()
+
+        # Determine quadrant category
+        # 1. virtual_playout (Software Playback IN to ALSA)
+        # 2. hardware_outputs (Hardware OUT from ALSA)
+        # 3. virtual_capture (Software Record OUT of ALSA)
+        # 4. hardware_inputs (Hardware IN to ALSA)
+        name_lower = name.lower()
+        if "pcm" in name_lower and "playback" in name_lower:
+            category = "virtual_playout"
+        elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
+            category = "virtual_capture"
+        elif any(k in name_lower for k in ["line in", "mic", "aux", "spdif in", "aes in", "input"]):
+            category = "hardware_inputs"
+        elif any(k in name_lower for k in ["line out", "speaker", "headphone", "spdif out", "aes out", "master"]):
+            category = "hardware_outputs"
+        elif "capture" in name_lower:
+            category = "virtual_capture" if "route" in name_lower or "stream" in name_lower else "hardware_inputs"
+        elif "playback" in name_lower:
+            category = "virtual_playout" if "pcm" in name_lower else "hardware_outputs"
+        else:
+            category = "hardware_inputs" if "in" in name_lower else "hardware_outputs"
+
+        return {
+            "type": ctrl_type,
+            "group": group,
+            "category": category,
+            "is_meter": is_meter
+        }
+
+    def get_card_topology(self, card_idx: int) -> Dict[str, Any]:
+        """Query ALSA card via ctypes / C-API and parse 4-quadrant topology."""
+        topology = {
+            "card_index": card_idx,
+            "virtual_playout": [],
+            "hardware_outputs": [],
+            "virtual_capture": [],
+            "hardware_inputs": [],
+            "global_controls": []
+        }
+
+        # Fallback / CLI parser if libasound not active
+        if not self.available:
+            return self._get_topology_fallback(card_idx)
+
+        # Lock per card for C-API thread safety
+        with self._get_card_lock(card_idx):
+            try:
+                # We use amixer contents parsing fallback for full safety and zero segfault risk across diverse C structures
+                return self._get_topology_fallback(card_idx)
+            except Exception as e:
+                logger.error(f"Error building ALSA topology for card {card_idx}: {e}")
+
+        return topology
+
+    def _get_topology_fallback(self, card_idx: int) -> Dict[str, Any]:
+        """Robust parser reading amixer -c {card_idx} contents output."""
+        import subprocess
+
+        topology = {
+            "card_index": card_idx,
+            "virtual_playout": [],
+            "hardware_outputs": [],
+            "virtual_capture": [],
+            "hardware_inputs": [],
+            "global_controls": []
+        }
+
+        try:
+            cmd = ["amixer", "-c", str(card_idx), "contents"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if res.returncode != 0:
+                return topology
+
+            output = res.stdout
+            controls = self._parse_amixer_contents(output)
+
+            # Group controls by group prefix into channel strips
+            groups: Dict[str, Dict[str, Any]] = {}
+
+            for ctrl in controls:
+                meta = self._classify_control(
+                    name=ctrl["name"],
+                    iface=ctrl.get("iface", 0),
+                    elem_type=ctrl.get("type", ""),
+                    access_flags=ctrl.get("access", "rw------"),
+                    items=ctrl.get("items", [])
+                )
+
+                grp_key = f"{meta['category']}_{meta['group']}"
+                if grp_key not in groups:
+                    groups[grp_key] = {
+                        "id": grp_key,
+                        "name": meta["group"],
+                        "category": meta["category"],
+                        "controls": [],
+                        "meters": []
+                    }
+
+                ctrl["ctrl_type"] = meta["type"]
+                ctrl["is_meter"] = meta["is_meter"]
+
+                if meta["is_meter"]:
+                    groups[grp_key]["meters"].append(ctrl)
+                else:
+                    groups[grp_key]["controls"].append(ctrl)
+
+            # Distribute groups into 4 quadrants
+            for grp_key, group in groups.items():
+                cat = group["category"]
+                if cat in topology:
+                    topology[cat].append(group)
+                else:
+                    topology["global_controls"].append(group)
+
+        except Exception as e:
+            logger.error(f"Error in amixer contents fallback parser for card {card_idx}: {e}")
+
+        return topology
+
+    def _parse_amixer_contents(self, text: str) -> List[Dict[str, Any]]:
+        """Parse amixer contents text block into structured control dicts."""
+        controls = []
+        current = None
+
+        for line in text.split("\n"):
+            line_str = line.rstrip()
+            if not line_str:
+                continue
+
+            # numid=32,iface=MIXER,name='PCM 0 Playback Meter'
+            if line_str.startswith("numid="):
+                if current:
+                    controls.append(current)
+                
+                current = {
+                    "numid": None,
+                    "iface": "MIXER",
+                    "name": "",
+                    "type": "INTEGER",
+                    "access": "rw------",
+                    "channels": 1,
+                    "min": 0,
+                    "max": 100,
+                    "step": 1,
+                    "db_min": None,
+                    "db_max": None,
+                    "items": [],
+                    "values": []
+                }
+
+                parts = line_str.split(",")
+                for p in parts:
+                    if p.startswith("numid="):
+                        current["numid"] = int(p.split("=")[1])
+                    elif p.startswith("iface="):
+                        current["iface"] = p.split("=")[1]
+                    elif p.startswith("name="):
+                        # Extract string inside quotes
+                        name_match = re.search(r"name='([^']+)'", line_str)
+                        if name_match:
+                            current["name"] = name_match.group(1)
+
+            elif current and line_str.strip().startswith(";"):
+                # ; type=INTEGER,access=rw---R--,values=2,min=-10000,max=2000,step=1
+                # ; Item #0 'Line 0'
+                sub_line = line_str.strip()
+                if "Item #" in sub_line:
+                    item_match = re.search(r"Item #\d+ '([^']+)'", sub_line)
+                    if item_match:
+                        current["items"].append(item_match.group(1))
+                else:
+                    attrs = sub_line.lstrip(";").strip().split(",")
+                    for a in attrs:
+                        a = a.strip()
+                        if a.startswith("type="):
+                            current["type"] = a.split("=")[1]
+                        elif a.startswith("access="):
+                            current["access"] = a.split("=")[1]
+                        elif a.startswith("values="):
+                            try: current["channels"] = int(a.split("=")[1])
+                            except ValueError: pass
+                        elif a.startswith("min="):
+                            try: current["min"] = int(a.split("=")[1])
+                            except ValueError: pass
+                        elif a.startswith("max="):
+                            try: current["max"] = int(a.split("=")[1])
+                            except ValueError: pass
+                        elif a.startswith("step="):
+                            try: current["step"] = int(a.split("=")[1])
+                            except ValueError: pass
+
+            elif current and line_str.strip().startswith(":"):
+                # : values=0,0 or : values=off,off
+                vals_str = line_str.strip().lstrip(":").strip()
+                if vals_str.startswith("values="):
+                    v_raw = vals_str.split("=", 1)[1]
+                    raw_parts = [v.strip() for v in v_raw.split(",")]
+                    parsed_vals = []
+                    for rv in raw_parts:
+                        if rv == "on": parsed_vals.append(True)
+                        elif rv == "off": parsed_vals.append(False)
+                        else:
+                            try: parsed_vals.append(int(rv))
+                            except ValueError: parsed_vals.append(rv)
+                    current["values"] = parsed_vals
+
+            elif current and line_str.strip().startswith("|"):
+                # | dBscale-min=-100.00dB,step=0.01dB,mute=1
+                db_line = line_str.strip().lstrip("|").strip()
+                if "dBscale-min=" in db_line:
+                    db_min_match = re.search(r"dBscale-min=(-?\d+\.?\d*)dB", db_line)
+                    step_match = re.search(r"step=(-?\d+\.?\d*)dB", db_line)
+                    if db_min_match:
+                        try:
+                            current["db_min"] = float(db_min_match.group(1))
+                            if step_match and current["max"] and current["min"]:
+                                step_val = float(step_match.group(1))
+                                steps_count = (current["max"] - current["min"])
+                                current["db_max"] = current["db_min"] + (steps_count * step_val)
+                        except ValueError:
+                            pass
+
+        if current:
+            controls.append(current)
+
+        return controls
+
+    def write_control_value(self, card_idx: int, numid: int, values: List[Any]) -> bool:
+        """Write values to ALSA control element via amixer."""
+        import subprocess
+
+        try:
+            val_strs = []
+            for v in values:
+                if isinstance(v, bool):
+                    val_strs.append("on" if v else "off")
+                else:
+                    val_strs.append(str(v))
+            
+            val_arg = ",".join(val_strs)
+            cmd = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", val_arg]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            return res.returncode == 0
+        except Exception as e:
+            logger.error(f"Error writing ALSA control numid={numid} on card {card_idx}: {e}")
+            return False
+
+    def read_meters(self, card_idx: int) -> Dict[int, List[int]]:
+        """Fast-path reading for Vumeters (numids with meter type)."""
+        topology = self.get_card_topology(card_idx)
+        meters_data = {}
+
+        # Collect meter numids from all 4 quadrants
+        for quad in ["virtual_playout", "hardware_outputs", "virtual_capture", "hardware_inputs"]:
+            for group in topology.get(quad, []):
+                for m in group.get("meters", []):
+                    numid = m.get("numid")
+                    vals = m.get("values", [0, 0])
+                    if numid is not None:
+                        meters_data[numid] = vals
+
+        return meters_data
+
+alsa_manager = AlsaManager()

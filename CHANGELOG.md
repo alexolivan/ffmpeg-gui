@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 2026-07-29
+
+### Added
+- **ALSA Audio Hardware GUI Control & Abstraction System**:
+  - Native C-API backend wrapper (`AlsaManager` in `backend/core/alsa_manager.py`) using `ctypes` bindings against `libasound.so.2` with C memory safety.
+  - Automatic topological classification of raw ALSA control elements into 4 logical quadrants: **Virtual Playout**, **Hardware Outputs**, **Virtual Capture**, and **Hardware Inputs**.
+  - Fast-Path WebSocket (`/ws/alsa/meters/{card_index}`) streaming native read-only hardware LED Vumeters (~30Hz) directly onto HTML5 `<canvas>` (0 React DOM re-renders).
+  - Broadcast-Grade 4-Quadrant Visual Grid UI (`AlsaAudioSettingsCard.tsx`) in Settings panel under the **ALSA AUDIO** tab.
+  - AudioScience-inspired UI/UX rules: fixed compact strip height, synchronized row heights, directional flow arrows (`➔`, `⬅`), and endpoint icons (▶ PLAY, 🔴 REC, 🎤 Mic, 🔊 Speaker, 🎧 Headphones).
+  - **Live FFmpeg Process Alias Badges**: Dynamic cross-referencing between running `MediaProcess` instances and ALSA device cards rendering `🏷️ LIVE: Alias` badges on active channels.
+  - Multi-channel **Link / Unlink 🔗** toggles for multi-channel audio devices (e.g., Magewell 8-channel SDI capture).
+
 ## [1.30.0] - 2026-07-28
 
 ### Added

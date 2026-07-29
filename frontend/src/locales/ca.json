@@ -66,7 +66,20 @@
       "general": "General",
       "lcd": "Pantalla LCD",
       "storage": "Emmagatzematge",
-      "security": "Xarxa i Seguretat"
+      "security": "Xarxa i Seguretat",
+      "alsa": "ÀUDIO ALSA"
+    },
+    "alsa": {
+      "title": "MESCLADOR DE HARDWARE D'ÀUDIO ALSA",
+      "subtitle": "Encaminament Topològic Broadcast en 4 Quadrants i Control de Guany",
+      "noCardsTitle": "Sense Targetes de So Físiques Detectades",
+      "noCardsDesc": "No s'han trobat targetes de so físiques o virtuals ALSA en aquest sistema.",
+      "activeProcesses": "Processos FFmpeg Vinculats:",
+      "quadrant1": "1. VIRTUAL PLAYOUT (INGESTA SOFTWARE)",
+      "quadrant2": "2. HARDWARE OUTPUTS (SORTIDA FÍSICA)",
+      "quadrant3": "3. VIRTUAL CAPTURE (INGESTA FFMPEG)",
+      "quadrant4": "4. HARDWARE INPUTS (ENTRADA FÍSICA)",
+      "noControls": "Sense controls detectats en aquest quadrant"
     },
     "restart": {
       "title": "Reinici Requerit",
