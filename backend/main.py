@@ -4139,25 +4139,40 @@ def get_alsa_cards():
 
 @app.get("/api/settings/alsa/card/{card_index}/topology")
 def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
-    topology = alsa_manager.get_card_topology(card_index)
+    try:
+        topology = alsa_manager.get_card_topology(card_index)
 
-    # Match active FFmpeg processes using ALSA cards
-    active_procs = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
-    alsa_badges = []
+        # Match active FFmpeg processes using ALSA cards
+        alsa_badges = []
+        try:
+            active_procs = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
+            for proc in active_procs:
+                cmd_str = proc.ffmpeg_cmd or ""
+                if "-f alsa" in cmd_str or "hw:" in cmd_str:
+                    card_pattern = f"hw:{card_index}"
+                    if card_pattern in cmd_str or "hw:0" in cmd_str or "default" in cmd_str:
+                        alsa_badges.append({
+                            "process_id": proc.id,
+                            "alias": proc.alias or proc.name or f"Process #{proc.id}",
+                            "status": proc.status
+                        })
+        except Exception as proc_err:
+            logger.warning(f"Error matching active processes to ALSA card {card_index}: {proc_err}")
 
-    for proc in active_procs:
-        cmd_str = proc.ffmpeg_cmd or ""
-        if "-f alsa" in cmd_str or "hw:" in cmd_str:
-            card_pattern = f"hw:{card_index}"
-            if card_pattern in cmd_str or "hw:0" in cmd_str or "default" in cmd_str:
-                alsa_badges.append({
-                    "process_id": proc.id,
-                    "alias": proc.alias or proc.name or f"Process #{proc.id}",
-                    "status": proc.status
-                })
-
-    topology["active_processes"] = alsa_badges
-    return topology
+        topology["active_processes"] = alsa_badges
+        return topology
+    except Exception as e:
+        logger.error(f"Error generating ALSA topology for card {card_index}: {e}")
+        return {
+            "card_index": card_index,
+            "virtual_playout": [],
+            "hardware_outputs": [],
+            "virtual_capture": [],
+            "hardware_inputs": [],
+            "global_controls": [],
+            "active_processes": [],
+            "error": str(e)
+        }
 
 
 @app.post("/api/settings/alsa/control")

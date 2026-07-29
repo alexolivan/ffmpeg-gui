@@ -290,8 +290,8 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
       )}
 
-      {/* 4-QUADRANT BROADCAST GRID LAYOUT */}
-      <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-stretch">
+      {/* 4-QUADRANT BROADCAST GRID LAYOUT WITH CONTINUOUS AUDIO BUS */}
+      <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-stretch relative">
         
         {/* TOP-LEFT: VIRTUAL PLAYOUT */}
         <div className="lg:col-span-5 space-y-3">
@@ -322,11 +322,11 @@ export const AlsaAudioSettingsCard: React.FC = () => {
           </div>
         </div>
 
-        {/* CENTRAL BUS TRUNK COLUMN */}
-        <div className="lg:col-span-1 hidden lg:flex flex-col items-center justify-between py-6">
+        {/* CENTRAL AUDIO BUS COLUMN (Spans continuously across top and bottom rows) */}
+        <div className="lg:col-span-1 lg:row-span-3 hidden lg:flex flex-col items-center justify-between py-2 self-stretch">
           <div className="w-1.5 h-full bg-gradient-to-b from-brand-lime via-indigo-500 to-red-500 rounded-full opacity-60" />
-          <div className="my-2 px-1 py-3 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded text-[10px] font-mono text-text-secondary uppercase tracking-widest text-center rotate-180 [writing-mode:vertical-lr]">
-            CENTRAL SIGNAL TRUNK
+          <div className="my-3 px-1 py-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded text-[10px] font-mono font-bold text-text-secondary uppercase tracking-widest text-center rotate-180 [writing-mode:vertical-lr]">
+            AUDIO BUS
           </div>
           <div className="w-1.5 h-full bg-gradient-to-b from-red-500 via-indigo-500 to-brand-lime rounded-full opacity-60" />
         </div>
@@ -360,8 +360,9 @@ export const AlsaAudioSettingsCard: React.FC = () => {
           </div>
         </div>
 
-        {/* ROW SEPARATOR GAP */}
-        <div className="lg:col-span-11 h-2 my-2 border-b border-[var(--glass-border)]/40" />
+        {/* ROW SEPARATOR HORIZONTAL GAP */}
+        <div className="lg:col-span-5 h-2 my-1 border-b border-[var(--glass-border)]/40" />
+        <div className="lg:col-span-5 h-2 my-1 border-b border-[var(--glass-border)]/40 lg:col-start-7" />
 
         {/* BOTTOM-LEFT: VIRTUAL CAPTURE */}
         <div className="lg:col-span-5 space-y-3">
@@ -393,7 +394,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* BOTTOM-RIGHT: HARDWARE INPUTS */}
-        <div className="lg:col-span-5 space-y-3">
+        <div className="lg:col-span-5 space-y-3 lg:col-start-7">
           <div className="flex items-center justify-between text-xs font-bold text-text-primary border-b border-[var(--glass-border)] pb-2">
             <span className="text-amber-400/70 font-bold">⬅</span>
             <span className="flex items-center gap-1.5">

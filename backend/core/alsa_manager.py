@@ -334,11 +334,11 @@ class AlsaManager:
                     if db_min_match:
                         try:
                             current["db_min"] = float(db_min_match.group(1))
-                            if step_match and current["max"] and current["min"]:
+                            if step_match and current.get("max") is not None and current.get("min") is not None:
                                 step_val = float(step_match.group(1))
                                 steps_count = (current["max"] - current["min"])
                                 current["db_max"] = current["db_min"] + (steps_count * step_val)
-                        except ValueError:
+                        except Exception:
                             pass
 
         if current:
