@@ -242,21 +242,11 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
   return (
     <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-6 space-y-6">
-      {/* Card Header & Selector */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[var(--glass-border)] pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-brand-lime/10 border border-brand-lime/30 text-brand-lime font-bold text-lg">
-            🔊
-          </div>
-          <div>
-            <h3 className="text-base font-bold text-text-primary uppercase tracking-wider">
-              {t('settings.alsa.title', 'ALSA AUDIO HARDWARE MIXER')}
-            </h3>
-            <p className="text-xs text-text-secondary">
-              {t('settings.alsa.subtitle', 'Broadcast 4-Quadrant Topological Signal Routing & Gain Control')}
-            </p>
-          </div>
-        </div>
+      {/* Compact Card Header & Selector */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[var(--glass-border)] pb-3">
+        <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider">
+          {t('settings.alsa.title', 'ALSA AUDIO HARDWARE MIXER')}
+        </h3>
 
         {/* Sound Card Dropdown Selector */}
         <div className="flex items-center gap-2">
@@ -266,7 +256,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
           <select
             value={selectedCardIdx}
             onChange={(e) => setSelectedCardIdx(parseInt(e.target.value, 10))}
-            className="bg-[var(--input-bg)] text-text-primary border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-bold focus:outline-none focus:border-brand-lime shadow-sm min-w-[220px]"
+            className="bg-[var(--input-bg)] text-text-primary border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-brand-lime shadow-sm min-w-[200px]"
           >
             {cards.map((c) => (
               <option key={c.card_index} value={c.card_index}>
@@ -296,13 +286,6 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         
         {/* TOP-LEFT: VIRTUAL PLAYOUT */}
         <div className="lg:col-span-5 space-y-3">
-          <div className="flex items-center justify-between text-xs font-bold text-text-primary border-b border-[var(--glass-border)] pb-2">
-            <span className="flex items-center gap-1.5">
-              <span className="text-brand-lime">▶</span>
-              {t('settings.alsa.quadrant1', '1. VIRTUAL PLAYOUT (SOFTWARE INGESTION)')}
-            </span>
-            <span className="text-brand-lime/70 font-bold">➔</span>
-          </div>
           <div className="space-y-2.5">
             {topology?.virtual_playout.map((group) => (
               <AlsaChannelStrip
@@ -334,13 +317,6 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
         {/* TOP-RIGHT: HARDWARE OUTPUTS */}
         <div className="lg:col-span-5 space-y-3">
-          <div className="flex items-center justify-between text-xs font-bold text-text-primary border-b border-[var(--glass-border)] pb-2">
-            <span className="text-sky-400/70 font-bold">➔</span>
-            <span className="flex items-center gap-1.5">
-              <span className="text-sky-400">🔊</span>
-              {t('settings.alsa.quadrant2', '2. HARDWARE OUTPUTS (PHYSICAL EGRESS)')}
-            </span>
-          </div>
           <div className="space-y-2.5">
             {topology?.hardware_outputs.map((group) => (
               <AlsaChannelStrip
@@ -367,13 +343,6 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
         {/* BOTTOM-LEFT: VIRTUAL CAPTURE */}
         <div className="lg:col-span-5 space-y-3">
-          <div className="flex items-center justify-between text-xs font-bold text-text-primary border-b border-[var(--glass-border)] pb-2">
-            <span className="flex items-center gap-1.5">
-              <span className="text-red-400">🔴</span>
-              {t('settings.alsa.quadrant3', '3. VIRTUAL CAPTURE (FFMPEG INGESTION)')}
-            </span>
-            <span className="text-red-400/70 font-bold">⬅</span>
-          </div>
           <div className="space-y-2.5">
             {topology?.virtual_capture.map((group) => (
               <AlsaChannelStrip
@@ -396,13 +365,6 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
         {/* BOTTOM-RIGHT: HARDWARE INPUTS */}
         <div className="lg:col-span-5 space-y-3 lg:col-start-7">
-          <div className="flex items-center justify-between text-xs font-bold text-text-primary border-b border-[var(--glass-border)] pb-2">
-            <span className="text-amber-400/70 font-bold">⬅</span>
-            <span className="flex items-center gap-1.5">
-              <span className="text-amber-400">🎤</span>
-              {t('settings.alsa.quadrant4', '4. HARDWARE INPUTS (PHYSICAL INGESTION)')}
-            </span>
-          </div>
           <div className="space-y-2.5">
             {topology?.hardware_inputs.map((group) => (
               <AlsaChannelStrip
