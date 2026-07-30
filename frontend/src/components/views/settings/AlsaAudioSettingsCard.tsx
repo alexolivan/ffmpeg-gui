@@ -409,12 +409,30 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   canvasRefSetter,
   endpointIcon,
 }) => {
-  const [activePopup, setActivePopup] = useState<number | null>(null);
+  const [activePopup, setActivePopup] = useState<string | number | null>(null);
 
   const isVirtualPlayout = group.category === 'virtual_playout';
   const isHardwareOutputs = group.category === 'hardware_outputs';
   const isVirtualCapture = group.category === 'virtual_capture';
   const isHardwareInputs = group.category === 'hardware_inputs';
+
+  // Group controls into matrix vs direct controls
+  const matrixControls = group.controls.filter((c) => c.matrix_source);
+  const directControls = group.controls.filter((c) => !c.matrix_source);
+
+  // Group matrix controls by source name
+  const matrixSourcesMap: Record<string, { vol?: AlsaControl; mute?: AlsaControl }> = {};
+  matrixControls.forEach((c) => {
+    const src = c.matrix_source || 'Source';
+    if (!matrixSourcesMap[src]) matrixSourcesMap[src] = {};
+    if (c.ctrl_type === 'volume' || c.ctrl_type === 'integer' || (c.min !== undefined && c.max !== undefined)) {
+      matrixSourcesMap[src].vol = c;
+    } else if (c.ctrl_type === 'mute' || c.ctrl_type === 'switch' || typeof c.values?.[0] === 'boolean') {
+      matrixSourcesMap[src].mute = c;
+    }
+  });
+
+  const isMixerOpen = activePopup === 'mixer';
 
   return (
     <div className="h-12 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 flex items-center justify-between relative overflow-visible hover:border-brand-lime/40 transition-all">
@@ -424,7 +442,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
       {/* LEFT ENDPOINT */}
       <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1">
         {isVirtualPlayout && (
-          <span className="flex items-center gap-1 text-[11px] font-bold text-brand-lime bg-brand-lime/10 border border-brand-lime/30 px-1.5 py-0.5 rounded-full shadow-sm">
+          <span className="flex items-center gap-1 text-[11px] font-bold text-brand-lime bg-brand-lime/10 border border-brand-lime/30 px-2 py-0.5 rounded-full shadow-sm">
             ▶ <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
           </span>
         )}
@@ -436,7 +454,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
         )}
 
         {isVirtualCapture && (
-          <span className="flex items-center gap-1 text-[11px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded-full shadow-sm">
+          <span className="flex items-center gap-1 text-[11px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full shadow-sm">
             🔴 <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
           </span>
         )}
@@ -448,9 +466,111 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
         )}
       </div>
 
-      {/* SKEWER CONTROL NODES (MIDDLE BODY) */}
-      <div className="z-10 flex items-center gap-2 bg-[var(--input-bg)] px-2">
-        {group.controls.map((ctrl) => {
+      {/* SKEWER CONTROL NODES (MIDDLE BODY) - ICON-ONLY representation */}
+      <div className="z-10 flex items-center gap-2.5 bg-[var(--input-bg)] px-2">
+        
+        {/* MIXER MATRIX NODE (Single 🎛️ Icon for Output Sub-Mixers) */}
+        {Object.keys(matrixSourcesMap).length > 0 && (
+          <div className="relative">
+            <button
+              onClick={() => setActivePopup(isMixerOpen ? null : 'mixer')}
+              title={`Hardware Sub-Mixer Matrix (${Object.keys(matrixSourcesMap).length} Sources)`}
+              className={`p-1.5 rounded-lg border text-sm transition-all cursor-pointer shadow-sm ${
+                isMixerOpen
+                  ? 'bg-brand-lime/30 border-brand-lime text-brand-lime scale-110'
+                  : 'bg-[var(--bg-card)] border-[var(--glass-border)] hover:border-brand-lime text-text-primary'
+              }`}
+            >
+              🎛️
+            </button>
+
+            {/* VERTICAL MIXING CONSOLE POPOVER (MESA DE MEZCLAS) */}
+            {isMixerOpen && (
+              <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-2xl z-40 min-w-[280px] max-w-[90vw] backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 mb-3">
+                  <span className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                    <span>🎛️</span>
+                    <span>{group.name} Sub-Mixer Console</span>
+                  </span>
+                  <button
+                    onClick={() => setActivePopup(null)}
+                    className="text-text-secondary hover:text-text-primary text-xs font-bold px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Vertical Side-by-Side Channel Fader Strips */}
+                <div className="flex items-end justify-center gap-4 overflow-x-auto py-1">
+                  {Object.entries(matrixSourcesMap).map(([srcName, ctrlPair]) => {
+                    const volCtrl = ctrlPair.vol;
+                    const muteCtrl = ctrlPair.mute;
+
+                    const volVal = volCtrl?.values?.[0] ?? 0;
+                    const isMuted = muteCtrl ? !muteCtrl.values?.[0] : false;
+
+                    return (
+                      <div
+                        key={srcName}
+                        className="flex flex-col items-center gap-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2.5 min-w-[70px]"
+                      >
+                        {/* Source Label */}
+                        <div className="text-[10px] font-bold text-brand-lime font-mono truncate max-w-[65px] text-center" title={srcName}>
+                          {srcName}
+                        </div>
+
+                        {/* dB / Value readout */}
+                        <div className="text-[10px] font-mono font-bold text-text-primary">
+                          {volCtrl?.db_min !== undefined ? `${volVal}dB` : volVal}
+                        </div>
+
+                        {/* Vertical Range Slider (Fader) */}
+                        {volCtrl ? (
+                          <div className="h-28 flex items-center justify-center py-1">
+                            <input
+                              type="range"
+                              min={volCtrl.min ?? 0}
+                              max={volCtrl.max ?? 100}
+                              step={volCtrl.step ?? 1}
+                              value={volVal}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10);
+                                const vals = isLinked ? new Array(volCtrl.channels).fill(v) : [v, ...volCtrl.values.slice(1)];
+                                onControlChange(volCtrl.numid, vals);
+                              }}
+                              className="w-2.5 h-24 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded-lg cursor-pointer accent-brand-lime"
+                            />
+                          </div>
+                        ) : (
+                          <div className="h-28 flex items-center justify-center text-[10px] text-text-secondary/40">N/A</div>
+                        )}
+
+                        {/* Mute Toggle Button directly below Fader */}
+                        {muteCtrl ? (
+                          <button
+                            onClick={() => onControlChange(muteCtrl.numid, [!muteCtrl.values[0]])}
+                            className={`w-full py-1 rounded text-[10px] font-bold transition-all cursor-pointer border ${
+                              isMuted
+                                ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                                : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
+                            }`}
+                          >
+                            {isMuted ? 'MUTE' : 'ON'}
+                          </button>
+                        ) : (
+                          <div className="h-6" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* DIRECT (NON-MATRIX) CONTROLS - ICON ONLY */}
+        {directControls.map((ctrl) => {
           const isVol = ctrl.ctrl_type === 'volume' || ctrl.ctrl_type === 'integer' || (ctrl.min !== undefined && ctrl.max !== undefined && ctrl.max > ctrl.min);
           const isMute = ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' || typeof ctrl.values?.[0] === 'boolean';
           const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
@@ -465,8 +585,10 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                 key={ctrl.numid}
                 onClick={() => onControlChange(ctrl.numid, [!currentVal])}
                 title={`${ctrl.name}: ${isMutedState ? 'MUTED' : 'ACTIVE'}`}
-                className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer shadow-sm ${
-                  isMutedState ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40'
+                className={`p-1.5 rounded-lg border text-sm transition-all cursor-pointer shadow-sm ${
+                  isMutedState
+                    ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                    : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
                 }`}
               >
                 {isMutedState ? '🔇' : '🔊'}
@@ -480,20 +602,14 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                 <button
                   onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
                   title={`${ctrl.name}: ${currentVal} ${ctrl.db_min !== undefined ? 'dB' : ''}`}
-                  className="flex items-center gap-1 bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime px-2 py-0.5 rounded text-[10px] font-bold text-text-primary shadow-sm cursor-pointer"
+                  className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime text-sm text-text-primary shadow-sm cursor-pointer"
                 >
-                  <span>🎚️</span>
-                  {ctrl.matrix_source && (
-                    <span className="text-[9px] text-text-secondary uppercase font-semibold">{ctrl.matrix_source}:</span>
-                  )}
-                  <span className="font-mono text-brand-lime">
-                    {ctrl.db_min !== undefined ? `${currentVal}dB` : currentVal}
-                  </span>
+                  🎚️
                 </button>
 
-                {/* Inline Slider Popover */}
+                {/* Direct Slider Popover */}
                 {isOpen && (
-                  <div className="absolute bottom-7 left-1/2 -translate-x-1/2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 shadow-2xl z-30 flex flex-col items-center gap-1.5 min-w-[140px]">
+                  <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5 shadow-2xl z-30 flex flex-col items-center gap-1.5 min-w-[140px]">
                     <div className="flex items-center justify-between w-full text-[10px] font-bold text-text-secondary truncate px-1">
                       <span className="truncate">{ctrl.name}</span>
                       {ctrl.channels > 1 && (
@@ -533,30 +649,46 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
           if (isEnum && ctrl.items) {
             return (
               <div key={ctrl.numid} className="relative">
-                <select
-                  value={currentVal}
-                  onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
-                  title={ctrl.name}
-                  className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-text-primary text-[10px] font-bold rounded px-1.5 py-0.5 focus:outline-none focus:border-brand-lime max-w-[90px] truncate"
+                <button
+                  onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
+                  title={`${ctrl.name}: ${ctrl.items[currentVal] || currentVal}`}
+                  className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime text-sm text-text-primary shadow-sm cursor-pointer"
                 >
-                  {ctrl.items.map((item, idx) => (
-                    <option key={idx} value={idx}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
+                  🔀
+                </button>
+
+                {isOpen && (
+                  <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 shadow-2xl z-30 min-w-[120px]">
+                    <div className="text-[10px] font-bold text-text-secondary mb-1">{ctrl.name}</div>
+                    <select
+                      value={currentVal}
+                      onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
+                      className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[10px] font-bold rounded px-1.5 py-1 focus:outline-none focus:border-brand-lime w-full"
+                    >
+                      {ctrl.items.map((item, idx) => (
+                        <option key={idx} value={idx}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             );
           }
 
           return (
-            <span key={ctrl.numid} className="text-[10px] font-mono bg-[var(--glass-border)]/40 px-1 py-0.5 rounded text-text-secondary" title={ctrl.name}>
-              ⚙️ {ctrl.name}
-            </span>
+            <button
+              key={ctrl.numid}
+              title={ctrl.name}
+              className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] text-sm text-text-secondary"
+            >
+              ⚙️
+            </button>
           );
         })}
 
-        {/* Meters Node */}
+        {/* Canvas LED Meters Node */}
         {group.meters.map((meter) => (
           <div key={meter.numid} className="flex items-center gap-1">
             <canvas
@@ -578,7 +710,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
         )}
 
         {isHardwareOutputs && (
-          <span className="flex items-center gap-1 text-[11px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/30 px-1.5 py-0.5 rounded-full shadow-sm">
+          <span className="flex items-center gap-1 text-[11px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded-full shadow-sm">
             ► <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
             <span>{endpointIcon}</span>
           </span>
@@ -591,7 +723,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
         )}
 
         {isHardwareInputs && (
-          <span className="flex items-center gap-1 text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-full shadow-sm">
+          <span className="flex items-center gap-1 text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full shadow-sm">
             <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
             <span>{endpointIcon}</span>
           </span>
