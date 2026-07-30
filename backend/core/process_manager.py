@@ -124,34 +124,19 @@ class ProcessManager:
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
             
-            if not debug_mode:
-                # Normal / Decoupled mode
-                log_file_desc = open(log_path, "w")
-                try:
-                    proc = await asyncio.create_subprocess_exec(
-                        *cmd,
-                        stdout=asyncio.subprocess.DEVNULL,
-                        stderr=log_file_desc,
-                        stdin=asyncio.subprocess.PIPE,
-                        env=sub_env
-                    )
-                finally:
-                    log_file_desc.close()
-            else:
-                # Debug / Piped mode
-                try:
-                    with open(log_path, "wb") as f:
-                        pass
-                except Exception as file_err:
-                    self.logger.error(f"Failed to truncate log file: {file_err}")
-                    
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.PIPE,
-                    stdin=asyncio.subprocess.PIPE,
-                    env=sub_env
-                )
+            try:
+                with open(log_path, "wb") as f:
+                    pass
+            except Exception as file_err:
+                self.logger.error(f"Failed to truncate log file: {file_err}")
+                
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+                stdin=asyncio.subprocess.PIPE,
+                env=sub_env
+            )
             
             self.processes[process_id] = proc
             
@@ -165,8 +150,7 @@ class ProcessManager:
                     session.commit()
             
             # Start watchdog and log reader tasks
-            if debug_mode:
-                asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
+            asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
             self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, proc))
             
         except Exception as e:
@@ -375,7 +359,7 @@ class ProcessManager:
                               "use_secondary_input": false,
                               "input1": {...}, "input2": {...} }
         """
-        cmd = [ffmpeg_bin, "-hide_banner", "-y"]
+        cmd = [ffmpeg_bin, "-nostdin", "-hide_banner", "-y"]
         
         import copy
         input_cfg = copy.deepcopy(media_proc.input_config)
@@ -801,16 +785,11 @@ class ProcessManager:
             preview_path = os.path.join(previews_dir, f"preview_{media_proc.id}.jpg")
             
             try:
-                if original_vf_str:
-                    if original_remains_vram:
-                        preview_vf = f"{original_vf_str},hwdownload,format=nv12,fps=1,scale=480:-1"
-                    else:
-                        preview_vf = f"{original_vf_str},fps=1,scale=480:-1"
+                if is_vram or (try_remains := getattr(locals(), 'original_remains_vram', False)):
+                    preview_vf = "hwdownload,format=nv12,fps=1,scale=480:-1"
                 else:
                     preview_vf = "fps=1,scale=480:-1"
-                    if is_vram:
-                        preview_vf = "fps=1,hwdownload,format=nv12,scale=480:-1"
-            except NameError:
+            except Exception:
                 preview_vf = "fps=1,scale=480:-1"
                 
             cmd += [
@@ -1325,9 +1304,16 @@ class ProcessManager:
                 self.logger.error(f"Failed to open log file {log_path} for writing: {e}")
                 
         try:
+            import inspect
             buffer = bytearray()
             while True:
-                chunk = await proc.stderr.read(4096)
+                if proc is None or proc.stderr is None:
+                    break
+                read_res = proc.stderr.read(4096)
+                if inspect.isawaitable(read_res):
+                    chunk = await read_res
+                else:
+                    chunk = read_res
                 if not chunk:
                     if buffer:
                         msg = buffer.decode('utf-8', errors='replace').strip()
