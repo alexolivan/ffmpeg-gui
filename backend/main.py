@@ -4137,27 +4137,104 @@ def get_alsa_cards():
     return alsa_manager.get_cards()
 
 
+def is_cmd_using_alsa_card(cmd_str: str, card_index: int, card_id: str) -> bool:
+    if not cmd_str:
+        return False
+    
+    cmd_lower = str(cmd_str).lower()
+    
+    has_alsa_driver = "-f alsa" in cmd_lower or "alsa" in cmd_lower or "hw:" in cmd_lower or "plughw:" in cmd_lower or "dsnoop:" in cmd_lower or "dmix:" in cmd_lower
+    if not has_alsa_driver:
+        return False
+
+    c_idx_str = str(card_index)
+    c_id_lower = str(card_id).lower()
+    
+    patterns = [
+        f"hw:{c_idx_str}",
+        f"plughw:{c_idx_str}",
+        f"dsnoop:{c_idx_str}",
+        f"dmix:{c_idx_str}",
+        f"hw:{c_id_lower}",
+        f"plughw:{c_id_lower}",
+        f"card={c_id_lower}",
+        f"card={c_idx_str}",
+        f"hw:{c_idx_str},",
+        f"hw:{c_idx_str}."
+    ]
+    
+    for pat in patterns:
+        if pat in cmd_lower:
+            return True
+            
+    if card_index == 0 and ("default" in cmd_lower or "sysdefault" in cmd_lower or "hw:0" in cmd_lower or "-f alsa" in cmd_lower):
+        return True
+        
+    return False
+
+
 @app.get("/api/settings/alsa/card/{card_index}/topology")
 def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
     try:
         topology = alsa_manager.get_card_topology(card_index)
 
-        # Match active FFmpeg processes using ALSA cards
+        cards = alsa_manager.get_cards()
+        target_card = next((c for c in cards if c["card_index"] == card_index), None)
+        card_id = target_card["card_id"] if target_card else f"hw:{card_index}"
+
         alsa_badges = []
+
+        # 1. Active Services (MediaProcess)
         try:
-            active_procs = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
+            active_procs = db.query(MediaProcess).filter(MediaProcess.status.in_(["running", "active", "starting"])).all()
             for proc in active_procs:
-                cmd_str = proc.ffmpeg_cmd or ""
-                if "-f alsa" in cmd_str or "hw:" in cmd_str:
-                    card_pattern = f"hw:{card_index}"
-                    if card_pattern in cmd_str or "hw:0" in cmd_str or "default" in cmd_str:
-                        alsa_badges.append({
-                            "process_id": proc.id,
-                            "alias": proc.alias or proc.name or f"Process #{proc.id}",
-                            "status": proc.status
-                        })
+                cmd_str = ""
+                if proc.id in process_manager.processes:
+                    proc_info = process_manager.processes[proc.id]
+                    cmd_str = proc_info.get("cmd_str", "") or proc.ffmpeg_cmd or ""
+                else:
+                    cmd_str = proc.ffmpeg_cmd or ""
+
+                if not cmd_str and proc.params_json:
+                    try:
+                        cmd_str = process_manager._build_ffmpeg_cmd(proc, process_manager.ffmpeg_path)
+                    except Exception:
+                        pass
+
+                if is_cmd_using_alsa_card(cmd_str, card_index, card_id):
+                    alsa_badges.append({
+                        "process_id": proc.id,
+                        "alias": proc.alias or proc.name or f"Service #{proc.id}",
+                        "status": proc.status,
+                        "type": "service"
+                    })
         except Exception as proc_err:
-            logger.warning(f"Error matching active processes to ALSA card {card_index}: {proc_err}")
+            logger.warning(f"Error matching active services to ALSA card {card_index}: {proc_err}")
+
+        # 2. Active Tasks (TaskExecution / ScheduledTask)
+        try:
+            active_execs = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "in_progress", "starting"])).all()
+            for task_exec in active_execs:
+                task = task_exec.task
+                cmd_str = ""
+                if task:
+                    try:
+                        ffmpeg_bin = task_manager._detect_ffmpeg()
+                        cmd_str = task_manager._build_ffmpeg_cmd(task, ffmpeg_bin, None)
+                    except Exception:
+                        cmd_str = str(task.params_json or "")
+
+                task_alias = (task.alias if task else None) or (task.name if task else None) or f"Task #{task_exec.id}"
+
+                if is_cmd_using_alsa_card(cmd_str, card_index, card_id):
+                    alsa_badges.append({
+                        "process_id": task_exec.id,
+                        "alias": task_alias,
+                        "status": task_exec.status,
+                        "type": "task"
+                    })
+        except Exception as task_err:
+            logger.warning(f"Error matching active tasks to ALSA card {card_index}: {task_err}")
 
         topology["active_processes"] = alsa_badges
         return topology
