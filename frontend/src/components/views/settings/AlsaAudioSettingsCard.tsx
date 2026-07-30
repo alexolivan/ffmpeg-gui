@@ -319,6 +319,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
+                activeProcesses={topology?.active_processes}
                 onControlChange={handleControlChange}
                 isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
@@ -350,6 +351,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
+                activeProcesses={topology?.active_processes}
                 onControlChange={handleControlChange}
                 isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
@@ -376,6 +378,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
+                activeProcesses={topology?.active_processes}
                 onControlChange={handleControlChange}
                 isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
@@ -398,6 +401,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
+                activeProcesses={topology?.active_processes}
                 onControlChange={handleControlChange}
                 isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
@@ -1166,9 +1170,9 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
           <span>{group.name}</span>
         </span>
 
-        {/* RIGHT: FFMPEG ACTIVE PROCESS ALIASES (OR IDLE) */}
+        {/* RIGHT: FFMPEG ACTIVE PROCESS ALIASES (ONLY WHEN RUNNING) */}
         <div className="flex items-center gap-2">
-          {activeProcesses && activeProcesses.length > 0 ? (
+          {activeProcesses && activeProcesses.length > 0 && (
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] text-brand-lime font-semibold uppercase">FFmpeg:</span>
               {activeProcesses.map((proc) => (
@@ -1181,10 +1185,6 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                 </span>
               ))}
             </div>
-          ) : (
-            <span className="text-text-secondary/30 text-[9px] italic font-sans">
-              -
-            </span>
           )}
         </div>
       </div>
