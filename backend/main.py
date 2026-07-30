@@ -4137,39 +4137,49 @@ def get_alsa_cards():
     return alsa_manager.get_cards()
 
 
-def is_cmd_using_alsa_card(cmd_str: str, card_index: int, card_id: str) -> bool:
-    if not cmd_str:
+def is_cmd_using_alsa_card(cmd_str: str, config_json_str: str, card_index: int, card_id: str) -> bool:
+    combined_str = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
+    if not combined_str.strip():
         return False
     
-    cmd_lower = str(cmd_str).lower()
-    
-    has_alsa_driver = "-f alsa" in cmd_lower or "alsa" in cmd_lower or "hw:" in cmd_lower or "plughw:" in cmd_lower or "dsnoop:" in cmd_lower or "dmix:" in cmd_lower
+    # Check for ALSA driver / sound card keywords
+    has_alsa_driver = (
+        "-f alsa" in combined_str or 
+        "alsa" in combined_str or 
+        "hw:" in combined_str or 
+        "plughw:" in combined_str or 
+        "dsnoop:" in combined_str or 
+        "dmix:" in combined_str or 
+        "asihpi" in combined_str or 
+        "subdevice" in combined_str
+    )
     if not has_alsa_driver:
         return False
 
     c_idx_str = str(card_index)
     c_id_lower = str(card_id).lower()
     
-    patterns = [
+    # Matches hw:0, hw:0,0, hw:0,0,0, ASI58100, card=ASI58100, etc.
+    card_patterns = [
         f"hw:{c_idx_str}",
         f"plughw:{c_idx_str}",
         f"dsnoop:{c_idx_str}",
         f"dmix:{c_idx_str}",
-        f"hw:{c_id_lower}",
-        f"plughw:{c_id_lower}",
         f"card={c_id_lower}",
         f"card={c_idx_str}",
-        f"hw:{c_idx_str},",
-        f"hw:{c_idx_str}."
+        c_id_lower
     ]
     
-    for pat in patterns:
-        if pat in cmd_lower:
+    for pat in card_patterns:
+        if pat in combined_str:
             return True
             
-    if card_index == 0 and ("default" in cmd_lower or "sysdefault" in cmd_lower or "hw:0" in cmd_lower or "-f alsa" in cmd_lower):
-        return True
-        
+    # Fallback for card 0 if default / sysdefault / alsa is used without specifying a non-zero card
+    if card_index == 0:
+        other_cards = [f"hw:{i}" for i in range(1, 16)] + [f"plughw:{i}" for i in range(1, 16)]
+        if not any(oc in combined_str for oc in other_cards):
+            return True
+
     return False
 
 
@@ -4189,19 +4199,25 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
             active_procs = db.query(MediaProcess).filter(MediaProcess.status.in_(["running", "active", "starting"])).all()
             for proc in active_procs:
                 cmd_str = ""
-                if proc.id in process_manager.processes:
-                    proc_info = process_manager.processes[proc.id]
-                    cmd_str = proc_info.get("cmd_str", "") or proc.ffmpeg_cmd or ""
-                else:
-                    cmd_str = proc.ffmpeg_cmd or ""
+                try:
+                    ffmpeg_bin = process_manager.ffmpeg_path
+                    if proc.ffmpeg_build_id:
+                        build = db.query(FfmpegBuild).get(proc.ffmpeg_build_id)
+                        if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+                            ffmpeg_bin = build.ffmpeg_binary
+                    cmd_list = process_manager._build_ffmpeg_cmd(proc, ffmpeg_bin)
+                    cmd_str = shlex.join(cmd_list)
+                except Exception as build_err:
+                    logger.debug(f"Could not build command for service {proc.id}: {build_err}")
 
-                if not cmd_str and proc.params_json:
-                    try:
-                        cmd_str = process_manager._build_ffmpeg_cmd(proc, process_manager.ffmpeg_path)
-                    except Exception:
-                        pass
+                config_json_str = json.dumps({
+                    "input": proc.input_config,
+                    "output": proc.output_config,
+                    "codec": proc.codec_config,
+                    "last_started": proc.last_started_config
+                }, default=str)
 
-                if is_cmd_using_alsa_card(cmd_str, card_index, card_id):
+                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id):
                     alsa_badges.append({
                         "process_id": proc.id,
                         "alias": proc.alias or proc.name or f"Service #{proc.id}",
@@ -4217,16 +4233,24 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
             for task_exec in active_execs:
                 task = task_exec.task
                 cmd_str = ""
+                config_json_str = ""
                 if task:
                     try:
                         ffmpeg_bin = task_manager._detect_ffmpeg()
-                        cmd_str = task_manager._build_ffmpeg_cmd(task, ffmpeg_bin, None)
+                        cmd_list = task_manager._build_ffmpeg_cmd(task, ffmpeg_bin, None)
+                        cmd_str = shlex.join(cmd_list)
                     except Exception:
-                        cmd_str = str(task.params_json or "")
+                        pass
+
+                    config_json_str = json.dumps({
+                        "input": getattr(task, "input_config", None),
+                        "output": getattr(task, "output_config", None),
+                        "params": getattr(task, "params_json", None)
+                    }, default=str)
 
                 task_alias = (task.alias if task else None) or (task.name if task else None) or f"Task #{task_exec.id}"
 
-                if is_cmd_using_alsa_card(cmd_str, card_index, card_id):
+                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id):
                     alsa_badges.append({
                         "process_id": task_exec.id,
                         "alias": task_alias,
