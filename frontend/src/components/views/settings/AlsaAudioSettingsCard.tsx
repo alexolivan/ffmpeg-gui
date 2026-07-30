@@ -291,13 +291,13 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         {/* TOP-LEFT: VIRTUAL PLAYOUT */}
         <div className="lg:col-span-5 space-y-2">
           <div className="space-y-2">
-            {topology?.virtual_playout.map((group) => (
+            {topology?.virtual_playout?.map((group) => (
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
                 onControlChange={handleControlChange}
-                isLinked={linkedChannels[group.controls[0]?.numid] || false}
-                onToggleLink={() => group.controls[0] && toggleChannelLink(group.controls[0].numid)}
+                isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
+                onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
               />
@@ -322,13 +322,13 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         {/* TOP-RIGHT: HARDWARE OUTPUTS */}
         <div className="lg:col-span-5 space-y-2">
           <div className="space-y-2">
-            {topology?.hardware_outputs.map((group) => (
+            {topology?.hardware_outputs?.map((group) => (
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
                 onControlChange={handleControlChange}
-                isLinked={linkedChannels[group.controls[0]?.numid] || false}
-                onToggleLink={() => group.controls[0] && toggleChannelLink(group.controls[0].numid)}
+                isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
+                onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
               />
@@ -348,13 +348,13 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         {/* BOTTOM-LEFT: VIRTUAL CAPTURE */}
         <div className="lg:col-span-5 space-y-2">
           <div className="space-y-2">
-            {topology?.virtual_capture.map((group) => (
+            {topology?.virtual_capture?.map((group) => (
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
                 onControlChange={handleControlChange}
-                isLinked={linkedChannels[group.controls[0]?.numid] || false}
-                onToggleLink={() => group.controls[0] && toggleChannelLink(group.controls[0].numid)}
+                isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
+                onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
               />
@@ -370,13 +370,13 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         {/* BOTTOM-RIGHT: HARDWARE INPUTS */}
         <div className="lg:col-span-5 space-y-2 lg:col-start-7">
           <div className="space-y-2">
-            {topology?.hardware_inputs.map((group) => (
+            {topology?.hardware_inputs?.map((group) => (
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
                 onControlChange={handleControlChange}
-                isLinked={linkedChannels[group.controls[0]?.numid] || false}
-                onToggleLink={() => group.controls[0] && toggleChannelLink(group.controls[0].numid)}
+                isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
+                onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
               />
@@ -408,7 +408,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                   <span>⏱️ {group.name}</span>
                 </div>
                 <div className="flex flex-col gap-2">
-                  {group.controls.map((ctrl: AlsaControl) => {
+                  {(group?.controls || []).map((ctrl: AlsaControl) => {
                     const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
                     const currentVal = ctrl.values?.[0] ?? 0;
 
@@ -495,11 +495,15 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   const isVirtualCapture = group.category === 'virtual_capture';
   const isHardwareInputs = group.category === 'hardware_inputs';
 
+  const controls = group?.controls || [];
+  const meters = group?.meters || [];
+
   // Separate matrix crosspoint controls (controls with explicit matrix_source) from direct controls
   const matrixControls: AlsaControl[] = [];
   const directControls: AlsaControl[] = [];
 
-  group.controls.forEach((c) => {
+  controls.forEach((c) => {
+    if (!c) return;
     if (c.matrix_source) {
       matrixControls.push(c);
     } else {
@@ -920,14 +924,18 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
 
         {/* SLOT 6: NON-CLICKABLE VUMETER NODE (📊) */}
         <div className="w-16 flex items-center justify-center">
-          {group.meters.length > 0 ? (
+          {meters.length > 0 && meters[0] ? (
             <div
-              title={`${group.meters[0].name} (ALSA Native Vumeter)`}
+              title={`${meters[0].name || 'Meter'} (ALSA Native Vumeter)`}
               className="flex items-center gap-1.5 bg-black/60 border border-[var(--glass-border)]/60 px-2 py-1 rounded-lg shadow-inner pointer-events-none select-none"
             >
               <span className="text-xs">📊</span>
               <canvas
-                ref={(el) => canvasRefSetter(group.meters[0].numid, el)}
+                ref={(el) => {
+                  if (meters[0]?.numid !== undefined) {
+                    canvasRefSetter(meters[0].numid, el);
+                  }
+                }}
                 width={36}
                 height={14}
                 className="rounded bg-black/80"
