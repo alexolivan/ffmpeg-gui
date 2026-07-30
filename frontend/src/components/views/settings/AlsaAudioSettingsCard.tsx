@@ -578,14 +578,21 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
     let src = c.matrix_source;
     if (!src) {
       let cleaned = c.name;
-      // Replace only the FIRST occurrence of group.name (the destination prefix)
-      const escapedGrpName = group.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      cleaned = cleaned.replace(new RegExp('^\\s*' + escapedGrpName + '\\s*', 'i'), '');
-
       const isMon = /monitor/i.test(cleaned);
+
+      // Strip control type noise words
       cleaned = cleaned.replace(/playback|capture|volume|switch|level|monitor|master/gi, '').trim();
 
-      src = cleaned ? (isMon ? `${cleaned} (Mon)` : cleaned) : (isMon ? `${group.name} (Mon)` : group.name);
+      // Remove EXACTLY ONE instance of destination group.name (regardless of whether it's first or second in c.name)
+      const escapedGrpName = group.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      cleaned = cleaned.replace(new RegExp('\\b' + escapedGrpName + '\\b', 'i'), '').trim();
+
+      // What remains in 'cleaned' IS the pure source name!
+      if (cleaned) {
+        src = isMon ? `${cleaned} (Mon)` : cleaned;
+      } else {
+        src = isMon ? `${group.name} (Mon)` : group.name;
+      }
     }
 
     if (!matrixSourcesMap[src]) matrixSourcesMap[src] = {};
