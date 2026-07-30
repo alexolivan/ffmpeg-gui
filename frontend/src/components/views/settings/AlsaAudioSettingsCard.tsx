@@ -763,13 +763,103 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
 
         {/* 2. DIRECT (NON-MATRIX) CONTROLS SEQUENTIALLY PACKED */}
         {directControls.map((ctrl) => {
+          const nameLower = ctrl.name.toLowerCase();
           const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
-          const isMute = !isEnum && (ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' || typeof ctrl.values?.[0] === 'boolean');
-          const isVol = !isEnum && !isMute && (ctrl.ctrl_type === 'volume' || ctrl.ctrl_type === 'integer' || (ctrl.min !== undefined && ctrl.max !== undefined && ctrl.max > ctrl.min));
+          const isStatus = nameLower.includes('status') || nameLower.includes('lock') || nameLower.includes('sync');
+          const isMute = !isEnum && !isStatus && (ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' || typeof ctrl.values?.[0] === 'boolean');
+          const isVol = !isEnum && !isStatus && !isMute && (ctrl.ctrl_type === 'volume' || ctrl.ctrl_type === 'integer' || (ctrl.min !== undefined && ctrl.max !== undefined && ctrl.max > ctrl.min));
 
           const isOpen = activePopup === ctrl.numid;
           const currentVal = ctrl.values?.[0] ?? 0;
           const isMutedState = isMute ? !currentVal : false;
+
+          // DIGITAL RECEIVER STATUS / LOCK INDICATOR NODE (e.g. Digital 0 Capture Status)
+          if (isStatus) {
+            const isLocked = (currentVal & 1) !== 0;
+            const hasParityErr = (currentVal & 4) !== 0;
+            const hasValErr = (currentVal & 8) !== 0;
+            const hasRateErr = (currentVal & 16) !== 0;
+
+            return (
+              <div key={ctrl.numid} className="w-9 flex items-center justify-center">
+                <div className="relative">
+                  <button
+                    onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
+                    title={`${ctrl.name}: ${isLocked ? 'LOCKED (Signal OK)' : 'NO LOCK (Signal Loss)'}`}
+                    className={`p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer ${
+                      isLocked
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:border-emerald-300'
+                        : 'bg-red-500/20 text-red-400 border-red-500/40 hover:border-red-300'
+                    }`}
+                  >
+                    {isLocked ? '🔒' : '🔓'}
+                  </button>
+
+                  {isOpen && createPortal(
+                    <div
+                      className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                      onClick={() => setActivePopup(null)}
+                    >
+                      <div
+                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-2xl min-w-[270px] max-w-[90vw] flex flex-col items-center gap-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2.5 gap-4">
+                          <span className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                            <span className="text-sm">{isLocked ? '🔒' : '🔓'}</span>
+                            <span>{ctrl.name}</span>
+                          </span>
+                          <button
+                            onClick={() => setActivePopup(null)}
+                            className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* Status Bitmask Breakdown Table */}
+                        <div className="w-full flex flex-col gap-2 font-mono text-[11px]">
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                            <span className="text-text-secondary">Receiver Lock (Bit 0):</span>
+                            <span className={`font-bold ${isLocked ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {isLocked ? '🟢 LOCKED' : '🔴 NO SIGNAL'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                            <span className="text-text-secondary">Parity Status (Bit 2):</span>
+                            <span className={`font-bold ${hasParityErr ? 'text-red-400' : 'text-emerald-400'}`}>
+                              {hasParityErr ? '❌ ERROR' : '✅ OK'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                            <span className="text-text-secondary">Frame Validity (Bit 3):</span>
+                            <span className={`font-bold ${hasValErr ? 'text-amber-400' : 'text-emerald-400'}`}>
+                              {hasValErr ? '⚠️ INVALID' : '✅ VALID'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                            <span className="text-text-secondary">Sample Rate Sync (Bit 4):</span>
+                            <span className={`font-bold ${hasRateErr ? 'text-amber-400' : 'text-emerald-400'}`}>
+                              {hasRateErr ? '⚠️ MISMATCH' : '✅ OK'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between px-2 pt-1 text-[10px] text-text-secondary">
+                            <span>Raw Bitmask:</span>
+                            <span className="font-mono">{currentVal} (0x{currentVal.toString(16).padStart(2, '0')})</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>,
+                    document.body
+                  )}
+                </div>
+              </div>
+            );
+          }
 
           if (isEnum && ctrl.items && ctrl.items.length > 0) {
             const nameLower = ctrl.name.toLowerCase();
