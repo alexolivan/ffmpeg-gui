@@ -575,12 +575,12 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   return (
     <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl flex flex-col overflow-visible hover:border-brand-lime/40 transition-all shadow-sm">
       {/* TOP TIER: SKEWER AXIS & ICONS (PURE GRAPHICS / NO TEXT) */}
-      <div className="h-10 px-3 flex items-center justify-between relative overflow-visible">
+      <div className="h-10 px-3 flex items-center justify-start relative overflow-visible">
         {/* Skewer Horizontal Axis Line */}
         <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-[2px] bg-[var(--glass-border)] opacity-70 pointer-events-none z-0" />
 
-        {/* LEFT ENDPOINT (DESTINATION FOR VIRTUAL CAPTURE & HARDWARE INPUTS) */}
-        <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1 min-w-[20px] justify-center">
+        {/* LEFT ENDPOINT (FIXED OFFSET FOR PERFECT ABACUS ALIGNMENT) */}
+        <div className="z-10 flex items-center justify-center gap-1.5 bg-[var(--input-bg)] px-1 w-9 shrink-0">
           {/* Virtual Capture Destination: REC badge + Left arrow pointing into REC badge */}
           {isVirtualCapture && (
             <span className="text-red-400 font-bold text-xs flex items-center gap-1" title="Virtual Capture Destination">
@@ -1033,7 +1033,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
         </div>
 
         {/* RIGHT ENDPOINT (DESTINATION FOR VIRTUAL PLAYOUT & HARDWARE OUTPUTS) */}
-        <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1 min-w-[20px] justify-center">
+        <div className="z-10 flex items-center justify-center gap-1.5 bg-[var(--input-bg)] px-1 ml-auto min-w-[36px] shrink-0">
           {/* Virtual Playout Destination: Right arrow pointing into Audio Bus */}
           {isVirtualPlayout && (
             <span className="text-brand-lime font-bold text-xs" title="Into Audio Bus">
