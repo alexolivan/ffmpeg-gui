@@ -4138,6 +4138,17 @@ def get_alsa_cards():
     return alsa_manager.get_cards()
 
 
+def extract_alsa_device_target(cmd_str: str, config_json_str: str) -> str:
+    combined = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
+    match = re.search(r'(?:hw|plughw|dsnoop|dmix):(\d+)(?:,(\d+))?(?:,(\d+))?', combined)
+    if match:
+        card = match.group(1)
+        device = match.group(2) if match.group(2) is not None else "0"
+        subdev = match.group(3) if match.group(3) is not None else "0"
+        return f"hw:{card},{device},{subdev}"
+    return ""
+
+
 def is_cmd_using_alsa_card(cmd_str: str, config_json_str: str, card_index: int, card_id: str) -> bool:
     combined_str = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
     if not combined_str.strip():
@@ -4223,7 +4234,9 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
                         "process_id": proc.id,
                         "alias": proc.alias or proc.name or f"Service #{proc.id}",
                         "status": proc.status,
-                        "type": "service"
+                        "type": "service",
+                        "device_target": extract_alsa_device_target(cmd_str, config_json_str),
+                        "cmd": cmd_str
                     })
         except Exception as proc_err:
             logger.warning(f"Error matching active services to ALSA card {card_index}: {proc_err}")
@@ -4256,7 +4269,9 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
                         "process_id": task_exec.id,
                         "alias": task_alias,
                         "status": task_exec.status,
-                        "type": "task"
+                        "type": "task",
+                        "device_target": extract_alsa_device_target(cmd_str, config_json_str),
+                        "cmd": cmd_str
                     })
         except Exception as task_err:
             logger.warning(f"Error matching active tasks to ALSA card {card_index}: {task_err}")

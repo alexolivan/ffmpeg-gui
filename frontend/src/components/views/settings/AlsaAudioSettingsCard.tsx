@@ -30,6 +30,9 @@ interface ActiveProcessBadge {
   process_id: number;
   alias: string;
   status: string;
+  type?: string;
+  device_target?: string;
+  cmd?: string;
 }
 
 interface AlsaTopology {
@@ -49,6 +52,48 @@ interface AlsaCard {
   name: string;
   driver: string;
 }
+
+const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadge[]) => {
+  if (!activeProcesses || activeProcesses.length === 0) return [];
+  const grpName = group.name.toLowerCase();
+  const numMatch = group.name.match(/\d+/);
+  const grpIndex = numMatch ? numMatch[0] : null;
+
+  const matched = activeProcesses.filter((proc) => {
+    const target = (proc.device_target || '').toLowerCase();
+    const cmd = (proc.cmd || '').toLowerCase();
+    const alias = (proc.alias || '').toLowerCase();
+
+    // 1. Direct name match (e.g. "line 0", "pcm 0", "digital 0")
+    if (target.includes(grpName) || cmd.includes(grpName) || alias.includes(grpName)) {
+      return true;
+    }
+
+    // 2. Subdevice index match (e.g. hw:0,0,0 or hw:0,0 for channel index "0"; hw:0,1,0 or hw:0,1 for channel index "1")
+    if (grpIndex !== null) {
+      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):\\d+,(${grpIndex})(?:,(\\d+))?\\b`, 'i');
+      if (subdevRegex.test(target) || subdevRegex.test(cmd)) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+
+  // If specific channel subdevice matching didn't yield a match, but there is only 1 active process on default card 0
+  if (matched.length === 0 && activeProcesses.length === 1) {
+    const singleProc = activeProcesses[0];
+    const target = (singleProc.device_target || '').toLowerCase();
+    const cmd = (singleProc.cmd || '').toLowerCase();
+
+    // If process uses default/sysdefault without explicit subdevice, map to PCM 0 / Line 0
+    if (grpIndex === "0" && (cmd.includes("default") || target.includes("default") || cmd.includes("-f alsa"))) {
+      return [singleProc];
+    }
+  }
+
+  return matched;
+};
 
 export const AlsaAudioSettingsCard: React.FC = () => {
   const { t } = useTranslation();
@@ -319,7 +364,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
-                activeProcesses={topology?.active_processes}
+                activeProcesses={getGroupProcesses(group, topology?.active_processes)}
                 onControlChange={handleControlChange}
                 isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
@@ -351,7 +396,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
-                activeProcesses={topology?.active_processes}
+                activeProcesses={getGroupProcesses(group, topology?.active_processes)}
                 onControlChange={handleControlChange}
                 isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
@@ -378,7 +423,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
-                activeProcesses={topology?.active_processes}
+                activeProcesses={getGroupProcesses(group, topology?.active_processes)}
                 onControlChange={handleControlChange}
                 isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
@@ -401,7 +446,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
-                activeProcesses={topology?.active_processes}
+                activeProcesses={getGroupProcesses(group, topology?.active_processes)}
                 onControlChange={handleControlChange}
                 isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
