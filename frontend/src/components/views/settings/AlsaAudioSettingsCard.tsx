@@ -448,26 +448,29 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   );
 };
 
-const formatControlValue = (ctrl?: AlsaControl, rawVal?: number): string => {
-  if (!ctrl || rawVal === undefined) return 'N/A';
+const formatControlValue = (ctrl?: AlsaControl, rawVal?: any): string => {
+  if (!ctrl || rawVal === undefined || rawVal === null) return 'N/A';
+
+  const numVal = Number(rawVal);
+  if (isNaN(numVal)) return `${rawVal}`;
 
   if (ctrl.db_min !== undefined) {
-    if (rawVal <= (ctrl.min ?? 0) && ctrl.db_min <= -50) {
+    if (numVal <= (ctrl.min ?? 0) && ctrl.db_min <= -50) {
       return '-∞ dB';
     }
     const isHundredths = Math.abs(ctrl.db_min) > 200;
-    const dbVal = isHundredths ? rawVal / 100 : rawVal;
+    const dbVal = isHundredths ? numVal / 100 : numVal;
     return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(1)} dB`;
   }
 
   const min = ctrl.min ?? 0;
   const max = ctrl.max ?? 100;
   if (max > min) {
-    const pct = Math.round(((rawVal - min) / (max - min)) * 100);
+    const pct = Math.round(((numVal - min) / (max - min)) * 100);
     return `${pct}%`;
   }
 
-  return `${rawVal}`;
+  return `${numVal}`;
 };
 
 interface ChannelStripProps {
