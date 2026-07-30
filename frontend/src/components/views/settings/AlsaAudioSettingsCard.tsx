@@ -417,13 +417,38 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   const isHardwareInputs = group.category === 'hardware_inputs';
 
   // Group controls into matrix vs direct controls
-  const matrixControls = group.controls.filter((c) => c.matrix_source);
-  const directControls = group.controls.filter((c) => !c.matrix_source);
+  const matrixControls: AlsaControl[] = [];
+  const directControls: AlsaControl[] = [];
+
+  group.controls.forEach((c) => {
+    const nameLower = c.name.toLowerCase();
+    const grpLower = group.name.toLowerCase();
+    const isMasterControl =
+      nameLower === `${grpLower} playback level` ||
+      nameLower === `${grpLower} playback volume` ||
+      nameLower === `${grpLower} playback switch` ||
+      nameLower === `master playback volume` ||
+      nameLower === `master playback switch`;
+
+    if (c.matrix_source || (isHardwareOutputs && !isMasterControl)) {
+      matrixControls.push(c);
+    } else {
+      directControls.push(c);
+    }
+  });
 
   // Group matrix controls by source name
   const matrixSourcesMap: Record<string, { vol?: AlsaControl; mute?: AlsaControl }> = {};
   matrixControls.forEach((c) => {
-    const src = c.matrix_source || 'Source';
+    let src = c.matrix_source;
+    if (!src) {
+      // Infer source name by stripping destination group name and keywords
+      let cleaned = c.name.replace(new RegExp(group.name, 'gi'), '');
+      const isMon = /monitor/i.test(cleaned);
+      cleaned = cleaned.replace(/playback|capture|volume|switch|level|monitor/gi, '').trim();
+      src = cleaned ? (isMon ? `${cleaned} (Monitor)` : cleaned) : 'Source';
+    }
+
     if (!matrixSourcesMap[src]) matrixSourcesMap[src] = {};
     if (c.ctrl_type === 'volume' || c.ctrl_type === 'integer' || (c.min !== undefined && c.max !== undefined)) {
       matrixSourcesMap[src].vol = c;

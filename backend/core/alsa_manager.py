@@ -120,8 +120,8 @@ class AlsaManager:
         # E.g. 'PCM 0 Line 0 Playback Volume' -> group: 'Line 0' (Dest), matrix_source: 'PCM 0' (Source)
         # 'Line 1 Line 0 Monitor Playback Volume' -> group: 'Line 0' (Dest), matrix_source: 'Line 1 (Monitor)'
         matrix_source = None
-        matrix_match = re.match(r"^([A-Za-z0-9]+\s+\d+)\s+([A-Za-z0-9]+\s+\d+)\s+(Monitor\s+)?(Playback|Capture)", name)
-        if matrix_match:
+        matrix_match = re.match(r"^([A-Za-z0-9/\-_]+(?:\s+\d+)?)\s+([A-Za-z0-9/\-_]+(?:\s+\d+)?)\s+(Monitor\s+)?(Playback|Capture)", name, re.IGNORECASE)
+        if matrix_match and matrix_match.group(1).lower() != matrix_match.group(2).lower() or matrix_match and matrix_match.group(3):
             source_name = matrix_match.group(1).strip()
             dest_name = matrix_match.group(2).strip()
             is_monitor = bool(matrix_match.group(3))
