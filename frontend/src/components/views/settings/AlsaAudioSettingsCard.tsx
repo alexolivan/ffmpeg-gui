@@ -245,7 +245,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
       {/* Compact Card Header & Selector */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[var(--glass-border)] pb-3">
         <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider">
-          {t('settings.alsa.title', 'ALSA AUDIO HARDWARE MIXER')}
+          {t('settings.alsa.title', 'HARDWARE MIXER')}
         </h3>
 
         {/* Sound Card Dropdown Selector */}
@@ -269,7 +269,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
       {/* Active Process Badges Banner */}
       {topology?.active_processes && topology.active_processes.length > 0 && (
-        <div className="bg-brand-lime/10 border border-brand-lime/30 rounded-lg p-3 flex items-center gap-2 text-xs text-brand-lime">
+        <div className="bg-brand-lime/10 border border-brand-lime/30 rounded-lg p-2.5 flex items-center gap-2 text-xs text-brand-lime">
           <span className="font-semibold">{t('settings.alsa.activeProcesses', 'Active FFmpeg Bindings:')}</span>
           <div className="flex flex-wrap items-center gap-2 ml-1">
             {topology.active_processes.map((proc) => (
@@ -285,10 +285,10 @@ export const AlsaAudioSettingsCard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-stretch relative">
         
         {/* TOP-LEFT: VIRTUAL PLAYOUT */}
-        <div className="lg:col-span-5 space-y-3">
-          <div className="space-y-2.5">
+        <div className="lg:col-span-5 space-y-2">
+          <div className="space-y-2">
             {topology?.virtual_playout.map((group) => (
-              <AlsaChannelStrip
+              <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
                 onControlChange={handleControlChange}
@@ -299,14 +299,14 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               />
             ))}
             {(!topology?.virtual_playout || topology.virtual_playout.length === 0) && (
-              <div className="h-16 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
+              <div className="h-12 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
                 {t('settings.alsa.noControls', 'No virtual playout streams detected')}
               </div>
             )}
           </div>
         </div>
 
-        {/* CENTRAL AUDIO BUS COLUMN (Spans continuously across top and bottom rows) */}
+        {/* CENTRAL AUDIO BUS COLUMN */}
         <div className="lg:col-span-1 lg:row-span-3 hidden lg:flex flex-col items-center justify-between py-2 self-stretch">
           <div className="w-1.5 h-full bg-gradient-to-b from-brand-lime via-indigo-500 to-red-500 rounded-full opacity-60" />
           <div className="my-3 px-1 py-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded text-[10px] font-mono font-bold text-text-secondary uppercase tracking-widest text-center rotate-180 [writing-mode:vertical-lr]">
@@ -316,10 +316,10 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* TOP-RIGHT: HARDWARE OUTPUTS */}
-        <div className="lg:col-span-5 space-y-3">
-          <div className="space-y-2.5">
+        <div className="lg:col-span-5 space-y-2">
+          <div className="space-y-2">
             {topology?.hardware_outputs.map((group) => (
-              <AlsaChannelStrip
+              <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
                 onControlChange={handleControlChange}
@@ -330,7 +330,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               />
             ))}
             {(!topology?.hardware_outputs || topology.hardware_outputs.length === 0) && (
-              <div className="h-16 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
+              <div className="h-12 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
                 {t('settings.alsa.noControls', 'No hardware outputs detected')}
               </div>
             )}
@@ -338,14 +338,14 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* ROW SEPARATOR HORIZONTAL GAP */}
-        <div className="lg:col-span-5 h-2 my-1 border-b border-[var(--glass-border)]/40" />
-        <div className="lg:col-span-5 h-2 my-1 border-b border-[var(--glass-border)]/40 lg:col-start-7" />
+        <div className="lg:col-span-5 h-1 my-0.5 border-b border-[var(--glass-border)]/40" />
+        <div className="lg:col-span-5 h-1 my-0.5 border-b border-[var(--glass-border)]/40 lg:col-start-7" />
 
         {/* BOTTOM-LEFT: VIRTUAL CAPTURE */}
-        <div className="lg:col-span-5 space-y-3">
-          <div className="space-y-2.5">
+        <div className="lg:col-span-5 space-y-2">
+          <div className="space-y-2">
             {topology?.virtual_capture.map((group) => (
-              <AlsaChannelStrip
+              <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
                 onControlChange={handleControlChange}
@@ -356,7 +356,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               />
             ))}
             {(!topology?.virtual_capture || topology.virtual_capture.length === 0) && (
-              <div className="h-16 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
+              <div className="h-12 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
                 {t('settings.alsa.noControls', 'No virtual capture streams detected')}
               </div>
             )}
@@ -364,10 +364,10 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* BOTTOM-RIGHT: HARDWARE INPUTS */}
-        <div className="lg:col-span-5 space-y-3 lg:col-start-7">
-          <div className="space-y-2.5">
+        <div className="lg:col-span-5 space-y-2 lg:col-start-7">
+          <div className="space-y-2">
             {topology?.hardware_inputs.map((group) => (
-              <AlsaChannelStrip
+              <AlsaSkewerChannelStrip
                 key={group.id}
                 group={group}
                 onControlChange={handleControlChange}
@@ -378,7 +378,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               />
             ))}
             {(!topology?.hardware_inputs || topology.hardware_inputs.length === 0) && (
-              <div className="h-16 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
+              <div className="h-12 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
                 {t('settings.alsa.noControls', 'No hardware inputs detected')}
               </div>
             )}
@@ -399,7 +399,8 @@ interface ChannelStripProps {
   endpointIcon: React.ReactNode;
 }
 
-const AlsaChannelStrip: React.FC<ChannelStripProps> = ({
+/* AudioScience Skewer (Brocheta) Channel Strip Component */
+const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   group,
   onControlChange,
   isLinked,
@@ -407,124 +408,191 @@ const AlsaChannelStrip: React.FC<ChannelStripProps> = ({
   canvasRefSetter,
   endpointIcon,
 }) => {
-  const volCtrl =
-    group.controls.find((c) => c.ctrl_type === 'volume' || c.ctrl_type === 'integer') ||
-    group.controls.find((c) => c.min !== undefined && c.max !== undefined && c.max > c.min);
+  const [activePopup, setActivePopup] = useState<number | null>(null);
 
-  const muteCtrl =
-    group.controls.find((c) => c.ctrl_type === 'mute' || c.ctrl_type === 'switch') ||
-    group.controls.find((c) => typeof c.values?.[0] === 'boolean');
-
-  const routeCtrl =
-    group.controls.find((c) => c.ctrl_type === 'route' || c.ctrl_type === 'enum') ||
-    group.controls.find((c) => c.items && c.items.length > 0);
-
-  const meterCtrl = group.meters[0];
-
-  const currentVol = volCtrl ? volCtrl.values[0] ?? 0 : 0;
-  const isMuted = muteCtrl ? !muteCtrl.values[0] : false;
-
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!volCtrl) return;
-    const newVal = parseInt(e.target.value, 10);
-    const newVals = isLinked ? new Array(volCtrl.channels).fill(newVal) : [newVal, ...volCtrl.values.slice(1)];
-    onControlChange(volCtrl.numid, newVals);
-  };
-
-  const handleMuteToggle = () => {
-    if (!muteCtrl) return;
-    const newMuteState = !muteCtrl.values[0];
-    onControlChange(muteCtrl.numid, [newMuteState]);
-  };
-
-  const handleRouteSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!routeCtrl) return;
-    const newIdx = parseInt(e.target.value, 10);
-    onControlChange(routeCtrl.numid, [newIdx]);
-  };
+  const isVirtualPlayout = group.category === 'virtual_playout';
+  const isHardwareOutputs = group.category === 'hardware_outputs';
+  const isVirtualCapture = group.category === 'virtual_capture';
+  const isHardwareInputs = group.category === 'hardware_inputs';
 
   return (
-    <div className="h-16 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 flex items-center justify-between gap-3 hover:border-brand-lime/40 transition-all duration-200">
-      
-      {/* Group Name & Endpoint Icon */}
-      <div className="flex items-center gap-2 min-w-[130px] max-w-[160px] truncate">
-        <div className="p-1.5 rounded bg-[var(--glass-border)]/30 text-text-primary">
-          {endpointIcon}
-        </div>
-        <span className="text-xs font-bold text-text-primary truncate" title={group.name}>
-          {group.name}
-        </span>
+    <div className="h-12 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 flex items-center justify-between relative overflow-visible hover:border-brand-lime/40 transition-all">
+      {/* Skewer Horizontal Axis Line */}
+      <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-[2px] bg-[var(--glass-border)] opacity-70 pointer-events-none z-0" />
+
+      {/* LEFT ENDPOINT */}
+      <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1">
+        {isVirtualPlayout && (
+          <span className="flex items-center gap-1 text-[11px] font-bold text-brand-lime bg-brand-lime/10 border border-brand-lime/30 px-1.5 py-0.5 rounded-full shadow-sm">
+            ▶ <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
+          </span>
+        )}
+
+        {isHardwareOutputs && (
+          <span className="text-sky-400 font-bold text-xs" title="From Audio Bus">
+            ➔
+          </span>
+        )}
+
+        {isVirtualCapture && (
+          <span className="flex items-center gap-1 text-[11px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded-full shadow-sm">
+            🔴 <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
+          </span>
+        )}
+
+        {isHardwareInputs && (
+          <span className="text-amber-400 font-bold text-xs" title="Into Audio Bus">
+            ◄
+          </span>
+        )}
       </div>
 
-      {/* Route / Mode Selector */}
-      {routeCtrl && routeCtrl.items && (
-        <select
-          value={routeCtrl.values[0] ?? 0}
-          onChange={handleRouteSelect}
-          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-[11px] text-text-primary focus:outline-none focus:border-brand-lime max-w-[110px]"
-        >
-          {routeCtrl.items.map((item, idx) => (
-            <option key={idx} value={idx}>
-              {item}
-            </option>
-          ))}
-        </select>
-      )}
+      {/* SKEWER CONTROL NODES (MIDDLE BODY) */}
+      <div className="z-10 flex items-center gap-2 bg-[var(--input-bg)] px-2">
+        {group.controls.map((ctrl) => {
+          const isVol = ctrl.ctrl_type === 'volume' || ctrl.ctrl_type === 'integer' || (ctrl.min !== undefined && ctrl.max !== undefined && ctrl.max > ctrl.min);
+          const isMute = ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' || typeof ctrl.values?.[0] === 'boolean';
+          const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
 
-      {/* Multi-channel Link Toggle */}
-      {volCtrl && volCtrl.channels > 1 && (
-        <button
-          onClick={onToggleLink}
-          title={isLinked ? 'Unlink channels' : 'Link channels'}
-          className={`p-1 rounded text-xs transition-colors cursor-pointer ${
-            isLinked ? 'bg-brand-lime/20 text-brand-lime' : 'text-text-secondary hover:text-text-primary'
-          }`}
-        >
-          {isLinked ? '🔗' : '🔓'}
-        </button>
-      )}
+          const isOpen = activePopup === ctrl.numid;
+          const currentVal = ctrl.values?.[0] ?? 0;
+          const isMutedState = isMute ? !currentVal : false;
 
-      {/* Volume Slider & dB readout */}
-      {volCtrl ? (
-        <div className="flex-1 flex items-center gap-2">
-          <input
-            type="range"
-            min={volCtrl.min ?? 0}
-            max={volCtrl.max ?? 100}
-            step={volCtrl.step ?? 1}
-            value={currentVol}
-            onChange={handleSliderChange}
-            className="w-full h-1.5 bg-[var(--glass-border)]/50 rounded-lg appearance-none cursor-pointer accent-brand-lime"
-          />
-          <span className="text-[10px] font-mono font-bold text-text-secondary w-12 text-right">
-            {volCtrl.db_min !== undefined ? `${currentVol} dB` : currentVol}
+          if (isMute) {
+            return (
+              <button
+                key={ctrl.numid}
+                onClick={() => onControlChange(ctrl.numid, [!currentVal])}
+                title={`${ctrl.name}: ${isMutedState ? 'MUTED' : 'ACTIVE'}`}
+                className={`px-1.5 py-0.5 rounded text-[11px] font-bold transition-all cursor-pointer shadow-sm ${
+                  isMutedState ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40'
+                }`}
+              >
+                {isMutedState ? '🔇' : '🔊'}
+              </button>
+            );
+          }
+
+          if (isVol) {
+            return (
+              <div key={ctrl.numid} className="relative">
+                <button
+                  onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
+                  title={`${ctrl.name}: ${currentVal} ${ctrl.db_min !== undefined ? 'dB' : ''}`}
+                  className="flex items-center gap-1 bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime px-2 py-0.5 rounded text-[10px] font-bold text-text-primary shadow-sm cursor-pointer"
+                >
+                  <span>🎚️</span>
+                  <span className="font-mono text-brand-lime">
+                    {ctrl.db_min !== undefined ? `${currentVal}dB` : currentVal}
+                  </span>
+                </button>
+
+                {/* Inline Slider Popover */}
+                {isOpen && (
+                  <div className="absolute bottom-7 left-1/2 -translate-x-1/2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 shadow-2xl z-30 flex flex-col items-center gap-1.5 min-w-[140px]">
+                    <div className="flex items-center justify-between w-full text-[10px] font-bold text-text-secondary truncate px-1">
+                      <span className="truncate">{ctrl.name}</span>
+                      {ctrl.channels > 1 && (
+                        <button
+                          onClick={onToggleLink}
+                          title={isLinked ? 'Unlink channels' : 'Link channels'}
+                          className="text-[11px] hover:scale-110 transition-transform cursor-pointer"
+                        >
+                          {isLinked ? '🔗' : '🔓'}
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="range"
+                      min={ctrl.min ?? 0}
+                      max={ctrl.max ?? 100}
+                      step={ctrl.step ?? 1}
+                      value={currentVal}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        const vals = isLinked ? new Array(ctrl.channels).fill(v) : [v, ...ctrl.values.slice(1)];
+                        onControlChange(ctrl.numid, vals);
+                      }}
+                      className="w-28 h-1.5 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-brand-lime"
+                    />
+                    <div className="flex items-center justify-between w-full text-[10px] font-mono text-text-secondary">
+                      <span>{ctrl.min ?? 0}</span>
+                      <span className="font-bold text-brand-lime">{currentVal}</span>
+                      <span>{ctrl.max ?? 100}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          if (isEnum && ctrl.items) {
+            return (
+              <div key={ctrl.numid} className="relative">
+                <select
+                  value={currentVal}
+                  onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
+                  title={ctrl.name}
+                  className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-text-primary text-[10px] font-bold rounded px-1.5 py-0.5 focus:outline-none focus:border-brand-lime max-w-[90px] truncate"
+                >
+                  {ctrl.items.map((item, idx) => (
+                    <option key={idx} value={idx}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            );
+          }
+
+          return (
+            <span key={ctrl.numid} className="text-[10px] font-mono bg-[var(--glass-border)]/40 px-1 py-0.5 rounded text-text-secondary" title={ctrl.name}>
+              ⚙️ {ctrl.name}
+            </span>
+          );
+        })}
+
+        {/* Meters Node */}
+        {group.meters.map((meter) => (
+          <div key={meter.numid} className="flex items-center gap-1">
+            <canvas
+              ref={(el) => canvasRefSetter(meter.numid, el)}
+              width={36}
+              height={16}
+              className="rounded bg-black/50 border border-[var(--glass-border)]/50"
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* RIGHT ENDPOINT */}
+      <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1">
+        {isVirtualPlayout && (
+          <span className="text-brand-lime font-bold text-xs" title="Into Audio Bus">
+            ►
           </span>
-        </div>
-      ) : (
-        <div className="flex-1 text-[11px] text-text-secondary/40 text-center">N/A</div>
-      )}
+        )}
 
-      {/* Mute Button */}
-      {muteCtrl && (
-        <button
-          onClick={handleMuteToggle}
-          className={`px-2 py-1 rounded text-[11px] font-bold transition-all cursor-pointer ${
-            isMuted ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-[var(--glass-border)]/40 text-text-secondary hover:text-text-primary'
-          }`}
-        >
-          {isMuted ? 'MUTED' : 'ON'}
-        </button>
-      )}
+        {isHardwareOutputs && (
+          <span className="flex items-center gap-1 text-[11px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/30 px-1.5 py-0.5 rounded-full shadow-sm">
+            ► <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
+            <span>{endpointIcon}</span>
+          </span>
+        )}
 
-      {/* Canvas LED Vumeter (renders only if native meter node exists) */}
-      {meterCtrl ? (
-        <canvas
-          ref={(el) => canvasRefSetter(meterCtrl.numid, el)}
-          width={60}
-          height={32}
-          className="rounded bg-black/40 border border-[var(--glass-border)]/40"
-        />
-      ) : null}
+        {isVirtualCapture && (
+          <span className="text-red-400 font-bold text-xs" title="From Audio Bus">
+            ◄
+          </span>
+        )}
+
+        {isHardwareInputs && (
+          <span className="flex items-center gap-1 text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-full shadow-sm">
+            <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
+            <span>{endpointIcon}</span>
+          </span>
+        )}
+      </div>
 
     </div>
   );
