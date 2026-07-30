@@ -648,14 +648,66 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
 
         {/* DIRECT (NON-MATRIX) CONTROLS - ICON ONLY */}
         {directControls.map((ctrl) => {
-          const isVol = ctrl.ctrl_type === 'volume' || ctrl.ctrl_type === 'integer' || (ctrl.min !== undefined && ctrl.max !== undefined && ctrl.max > ctrl.min);
-          const isMute = ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' || typeof ctrl.values?.[0] === 'boolean';
           const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
+          const isMute = !isEnum && (ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' || typeof ctrl.values?.[0] === 'boolean');
+          const isVol = !isEnum && !isMute && (ctrl.ctrl_type === 'volume' || ctrl.ctrl_type === 'integer' || (ctrl.min !== undefined && ctrl.max !== undefined && ctrl.max > ctrl.min));
 
           const isOpen = activePopup === ctrl.numid;
           const currentVal = ctrl.values?.[0] ?? 0;
           const isMutedState = isMute ? !currentVal : false;
 
+          // 1. ENUMERATED / ROUTE SELECTORS (Check FIRST so enum controls with min/max aren't treated as volume faders)
+          if (isEnum && ctrl.items && ctrl.items.length > 0) {
+            const nameLower = ctrl.name.toLowerCase();
+            const isModeCrossover = nameLower.includes('mode') || nameLower.includes('swap') || nameLower.includes('channel');
+            const isCaptureRoute = nameLower.includes('route') || nameLower.includes('source') || nameLower.includes('input');
+
+            const selectorIcon = isModeCrossover ? '🔀' : isCaptureRoute ? '📥' : '📋';
+            const selectorTitle = isModeCrossover
+              ? `Channel Mode / Crossover (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
+              : isCaptureRoute
+              ? `Capture Ingestion Source (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
+              : `${ctrl.name}: ${ctrl.items[currentVal] || currentVal}`;
+
+            return (
+              <div key={ctrl.numid} className="relative">
+                <button
+                  onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
+                  title={selectorTitle}
+                  className={`p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer ${
+                    isModeCrossover
+                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 hover:border-indigo-400'
+                      : isCaptureRoute
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:border-amber-400'
+                      : 'bg-[var(--bg-card)] border-[var(--glass-border)] text-text-primary hover:border-brand-lime'
+                  }`}
+                >
+                  {selectorIcon}
+                </button>
+
+                {isOpen && (
+                  <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-3 shadow-2xl z-40 min-w-[170px] backdrop-blur-md">
+                    <div className="text-[10px] font-bold text-text-secondary mb-1.5 truncate uppercase tracking-wider">
+                      {ctrl.name}
+                    </div>
+                    <select
+                      value={currentVal}
+                      onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
+                      className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-lime w-full cursor-pointer"
+                    >
+                      {ctrl.items.map((item, idx) => (
+                        <option key={idx} value={idx}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // 2. MUTE / SWITCH TOGGLES
           if (isMute) {
             return (
               <button
@@ -673,6 +725,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
             );
           }
 
+          // 3. VOLUME / LEVEL SLIDERS
           if (isVol) {
             return (
               <div key={ctrl.numid} className="relative">
@@ -717,56 +770,6 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                       <span className="font-bold text-brand-lime">{currentVal}</span>
                       <span>{ctrl.max ?? 100}</span>
                     </div>
-                  </div>
-                )}
-              </div>
-            );
-          }
-
-          if (isEnum && ctrl.items) {
-            const nameLower = ctrl.name.toLowerCase();
-            const isModeCrossover = nameLower.includes('mode') || nameLower.includes('swap') || nameLower.includes('channel');
-            const isCaptureRoute = nameLower.includes('route') || nameLower.includes('source') || nameLower.includes('input');
-
-            const selectorIcon = isModeCrossover ? '🔀' : isCaptureRoute ? '📥' : '📋';
-            const selectorTitle = isModeCrossover
-              ? `Channel Mode / Crossover (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
-              : isCaptureRoute
-              ? `Capture Ingestion Source (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
-              : `${ctrl.name}: ${ctrl.items[currentVal] || currentVal}`;
-
-            return (
-              <div key={ctrl.numid} className="relative">
-                <button
-                  onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
-                  title={selectorTitle}
-                  className={`p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer ${
-                    isModeCrossover
-                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 hover:border-indigo-400'
-                      : isCaptureRoute
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:border-amber-400'
-                      : 'bg-[var(--bg-card)] border-[var(--glass-border)] text-text-primary hover:border-brand-lime'
-                  }`}
-                >
-                  {selectorIcon}
-                </button>
-
-                {isOpen && (
-                  <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-3 shadow-2xl z-40 min-w-[160px] backdrop-blur-md">
-                    <div className="text-[10px] font-bold text-text-secondary mb-1.5 truncate uppercase tracking-wider">
-                      {ctrl.name}
-                    </div>
-                    <select
-                      value={currentVal}
-                      onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
-                      className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-lime w-full cursor-pointer"
-                    >
-                      {ctrl.items.map((item, idx) => (
-                        <option key={idx} value={idx}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
                   </div>
                 )}
               </div>
