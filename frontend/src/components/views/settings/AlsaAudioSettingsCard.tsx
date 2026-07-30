@@ -578,10 +578,14 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
     let src = c.matrix_source;
     if (!src) {
       let cleaned = c.name;
-      cleaned = cleaned.replace(new RegExp(group.name, 'gi'), '');
+      // Replace only the FIRST occurrence of group.name (the destination prefix)
+      const escapedGrpName = group.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      cleaned = cleaned.replace(new RegExp('^\\s*' + escapedGrpName + '\\s*', 'i'), '');
+
       const isMon = /monitor/i.test(cleaned);
       cleaned = cleaned.replace(/playback|capture|volume|switch|level|monitor|master/gi, '').trim();
-      src = cleaned ? (isMon ? `${cleaned} (Mon)` : cleaned) : 'Source';
+
+      src = cleaned ? (isMon ? `${cleaned} (Mon)` : cleaned) : (isMon ? `${group.name} (Mon)` : group.name);
     }
 
     if (!matrixSourcesMap[src]) matrixSourcesMap[src] = {};
@@ -678,8 +682,11 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                               key={srcName}
                               className="flex flex-col items-center gap-1.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 min-w-[95px]"
                             >
-                              {/* Source Label */}
-                              <div className="text-[10px] font-bold text-brand-lime font-mono truncate max-w-[85px] text-center" title={srcName}>
+                              {/* Source Label (Multi-line wrap support with uniform h-8 height) */}
+                              <div
+                                className="h-8 flex items-center justify-center text-[10px] font-bold text-brand-lime font-mono leading-tight text-center whitespace-normal break-words w-full px-1 select-none"
+                                title={srcName}
+                              >
                                 {srcName}
                               </div>
 
