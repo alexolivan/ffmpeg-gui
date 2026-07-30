@@ -131,43 +131,67 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     wsRef.current = ws;
   };
 
-  // Render LED bars directly onto HTML5 <canvas> for 0 React DOM re-renders
+  // Render LED bars directly onto HTML5 <canvas> for 0 React DOM re-renders (supports both horizontal & vertical orientations)
   const renderCanvasMeters = (metersMap: Record<number, number[]>) => {
     Object.entries(metersMap).forEach(([numidStr, vals]) => {
       const numid = parseInt(numidStr, 10);
-      const canvas = canvasRefs.current[numid];
-      if (!canvas) return;
+      const canvasEntry = canvasRefs.current[numid];
+      if (!canvasEntry) return;
 
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      const canvases = Array.isArray(canvasEntry) ? canvasEntry : [canvasEntry];
 
-      const width = canvas.width;
-      const height = canvas.height;
-      ctx.clearRect(0, 0, width, height);
+      canvases.forEach((canvas) => {
+        if (!canvas) return;
 
-      const chCount = vals.length || 1;
-      const barHeight = Math.floor(height / chCount) - 2;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
-      vals.forEach((rawVal, chIdx) => {
-        // Normalize raw meter value (0 to 2147483647) to 0.0 -> 1.0
-        const norm = Math.min(1.0, Math.max(0.0, rawVal / 2147483647));
-        const fillWidth = Math.floor(width * norm);
+        const width = canvas.width;
+        const height = canvas.height;
+        ctx.clearRect(0, 0, width, height);
 
-        const y = chIdx * (barHeight + 2);
+        const isVertical = height > width;
+        const chCount = vals.length || 1;
 
-        // LED Gradient (Green -> Yellow -> Red)
-        const grad = ctx.createLinearGradient(0, 0, width, 0);
-        grad.addColorStop(0, '#22c55e');
-        grad.addColorStop(0.7, '#eab308');
-        grad.addColorStop(1, '#ef4444');
+        if (isVertical) {
+          const barWidth = Math.max(2, Math.floor(width / chCount) - 1);
+          vals.forEach((rawVal, chIdx) => {
+            const norm = Math.min(1.0, Math.max(0.0, rawVal / 2147483647));
+            const fillHeight = Math.floor(height * norm);
+            const x = chIdx * (barWidth + 1);
+            const y = height - fillHeight;
 
-        // Background slot
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.fillRect(0, y, width, barHeight);
+            // Vertical LED Gradient (Green at bottom -> Yellow -> Red at top)
+            const grad = ctx.createLinearGradient(0, height, 0, 0);
+            grad.addColorStop(0, '#22c55e');
+            grad.addColorStop(0.7, '#eab308');
+            grad.addColorStop(1, '#ef4444');
 
-        // Active LED level
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, y, fillWidth, barHeight);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.fillRect(x, 0, barWidth, height);
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(x, y, barWidth, fillHeight);
+          });
+        } else {
+          const barHeight = Math.floor(height / chCount) - 2;
+          vals.forEach((rawVal, chIdx) => {
+            const norm = Math.min(1.0, Math.max(0.0, rawVal / 2147483647));
+            const fillWidth = Math.floor(width * norm);
+            const y = chIdx * (barHeight + 2);
+
+            const grad = ctx.createLinearGradient(0, 0, width, 0);
+            grad.addColorStop(0, '#22c55e');
+            grad.addColorStop(0.7, '#eab308');
+            grad.addColorStop(1, '#ef4444');
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.fillRect(0, y, width, barHeight);
+
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, y, fillWidth, barHeight);
+          });
+        }
       });
     });
   };
@@ -598,7 +622,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
         </div>
 
         {/* SKEWER CONTROL NODES (MIDDLE BODY) - UNCONDITIONAL SEQUENTIAL ABACUS ALIGNMENT */}
-        <div className="z-10 flex items-center justify-start gap-2 bg-[var(--input-bg)] px-2">
+        <div className="z-10 flex items-center justify-start gap-1.5 bg-[var(--input-bg)] px-1">
           {/* 1. MIXER MATRIX NODE (🎛️) */}
           {Object.keys(matrixSourcesMap).length > 0 && (
             <div className="w-9 flex items-center justify-center">
@@ -966,7 +990,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                         onClick={() => setActivePopup(null)}
                       >
                         <div
-                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
+                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[150px] max-w-[90vw] flex flex-col items-center gap-3"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
@@ -980,23 +1004,31 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                               ✕
                             </button>
                           </div>
-                          <input
-                            type="range"
-                            min={ctrl.min ?? 0}
-                            max={ctrl.max ?? 100}
-                            step={ctrl.step ?? 1}
-                            value={currentVal}
-                            onChange={(e) => {
-                              const v = parseInt(e.target.value, 10);
-                              const vals = isLinked ? new Array(ctrl.channels).fill(v) : [v, ...ctrl.values.slice(1)];
-                              onControlChange(ctrl.numid, vals);
-                            }}
-                            className="w-36 h-2 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-brand-lime"
-                          />
-                          <div className="flex items-center justify-between w-full text-[10px] font-mono text-text-secondary">
-                            <span>{formatControlValue(ctrl, ctrl.min)}</span>
-                            <span className="font-bold text-brand-lime text-xs">{formatControlValue(ctrl, currentVal)}</span>
-                            <span>{formatControlValue(ctrl, ctrl.max)}</span>
+
+                          {/* 100% STRICT VERTICAL FADER MODAL */}
+                          <div className="flex flex-col items-center gap-2 py-2">
+                            <div className="text-[11px] font-mono font-bold text-brand-lime">
+                              {formatControlValue(ctrl, currentVal)}
+                            </div>
+                            <div className="h-32 flex items-center justify-center py-1">
+                              <input
+                                type="range"
+                                min={ctrl.min ?? 0}
+                                max={ctrl.max ?? 100}
+                                step={ctrl.step ?? 1}
+                                value={currentVal}
+                                onChange={(e) => {
+                                  const v = parseInt(e.target.value, 10);
+                                  const vals = isLinked ? new Array(ctrl.channels).fill(v) : [v, ...ctrl.values.slice(1)];
+                                  onControlChange(ctrl.numid, vals);
+                                }}
+                                className="w-2.5 h-28 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded-lg cursor-pointer accent-brand-lime"
+                              />
+                            </div>
+                            <div className="flex items-center justify-between w-full text-[9px] font-mono text-text-secondary gap-3">
+                              <span>{formatControlValue(ctrl, ctrl.min)}</span>
+                              <span>{formatControlValue(ctrl, ctrl.max)}</span>
+                            </div>
                           </div>
                         </div>
                       </div>,
@@ -1010,26 +1042,81 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
             return null;
           })}
 
-          {/* 3. NON-CLICKABLE VUMETER NODE (Pure LED Bars, 2 Icon Slots Width = 80px, No Icon) */}
-          {meters.length > 0 && meters[0] && (
-            <div className="w-[80px] flex items-center justify-center">
-              <div
-                title={`${meters[0].name || 'Meter'} (ALSA Native Vumeter)`}
-                className="w-full h-5 bg-black/80 border border-[var(--glass-border)] rounded-md px-1.5 py-0.5 flex items-center justify-center shadow-inner pointer-events-none select-none"
-              >
-                <canvas
-                  ref={(el) => {
-                    if (meters[0]?.numid !== undefined) {
-                      canvasRefSetter(meters[0].numid, el);
-                    }
-                  }}
-                  width={72}
-                  height={14}
-                  className="w-full h-full rounded bg-black/90"
-                />
+          {/* 3. CLICKABLE STANDARD SQUARE VUMETER NODE (w-9 h-8 Slot with Vertical LED Preview & Full-Height Vertical Modal) */}
+          {meters.length > 0 && meters[0] && (() => {
+            const meterCtrl = meters[0];
+            const isMeterOpen = activePopup === meterCtrl.numid;
+
+            return (
+              <div key={meterCtrl.numid} className="w-9 flex items-center justify-center">
+                <div className="relative">
+                  <button
+                    onClick={() => setActivePopup(isMeterOpen ? null : meterCtrl.numid)}
+                    title={`${meterCtrl.name || 'Peak Meter'} (Click for Vertical Meter Console)`}
+                    className={`w-9 h-8 rounded-lg border p-1 flex items-center justify-center transition-all cursor-pointer shadow-sm ${
+                      isMeterOpen
+                        ? 'bg-brand-lime/30 border-brand-lime scale-105'
+                        : 'bg-[var(--bg-card)] border-[var(--glass-border)] hover:border-brand-lime'
+                    }`}
+                  >
+                    <canvas
+                      ref={(el) => canvasRefSetter(meterCtrl.numid, el)}
+                      width={16}
+                      height={22}
+                      className="w-4 h-5 rounded bg-black/90"
+                    />
+                  </button>
+
+                  {/* FULL-SIZE VERTICAL PEAK METER CONSOLE PORTAL MODAL */}
+                  {isMeterOpen && createPortal(
+                    <div
+                      className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                      onClick={() => setActivePopup(null)}
+                    >
+                      <div
+                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-2xl min-w-[220px] max-w-[90vw] flex flex-col items-center gap-4"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2.5 gap-4">
+                          <span className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
+                            <span className="text-base">📊</span>
+                            <span>{meterCtrl.name || group.name + ' Peak Meter'}</span>
+                          </span>
+                          <button
+                            onClick={() => setActivePopup(null)}
+                            className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* Full-Height Vertical Stereo/Mono Peak Meter Bars */}
+                        <div className="flex items-center justify-center gap-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-4 min-w-[150px]">
+                          <div className="h-44 flex flex-col items-center justify-between font-mono text-[9px] text-text-secondary py-1 select-none">
+                            <span className="text-red-400 font-bold">0dB</span>
+                            <span>-6dB</span>
+                            <span>-12dB</span>
+                            <span className="text-amber-400 font-bold">-20dB</span>
+                            <span>-30dB</span>
+                            <span className="text-emerald-400 font-bold">-60dB</span>
+                          </div>
+                          <div className="h-44 bg-black/90 border border-[var(--glass-border)] rounded-lg p-1.5 flex items-center justify-center shadow-inner">
+                            <canvas
+                              ref={(el) => canvasRefSetter(meterCtrl.numid, el)}
+                              width={36}
+                              height={160}
+                              className="w-9 h-40 rounded"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>,
+                    document.body
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* RIGHT ENDPOINT (DESTINATION FOR VIRTUAL PLAYOUT & HARDWARE OUTPUTS) */}
