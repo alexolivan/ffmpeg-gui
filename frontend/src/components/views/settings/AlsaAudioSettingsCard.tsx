@@ -501,13 +501,34 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   const controls = group?.controls || [];
   const meters = group?.meters || [];
 
-  // Separate matrix crosspoint controls (controls with explicit matrix_source) from direct controls
+  // Separate matrix crosspoint controls (controls with explicit matrix_source or non-master output controls) from direct controls
   const matrixControls: AlsaControl[] = [];
   const directControls: AlsaControl[] = [];
 
   controls.forEach((c) => {
     if (!c) return;
-    if (c.matrix_source) {
+    const nameLower = c.name.toLowerCase();
+    const grpLower = group.name.toLowerCase();
+    const isMasterControl =
+      nameLower === `${grpLower} playback level` ||
+      nameLower === `${grpLower} playback volume` ||
+      nameLower === `${grpLower} playback switch` ||
+      nameLower === `${grpLower} master volume` ||
+      nameLower === `${grpLower} master level` ||
+      nameLower === `${grpLower} master switch` ||
+      nameLower === `master playback volume` ||
+      nameLower === `master playback switch` ||
+      nameLower === `master volume`;
+
+    const isVolOrMute =
+      c.ctrl_type === 'volume' ||
+      c.ctrl_type === 'integer' ||
+      c.ctrl_type === 'mute' ||
+      c.ctrl_type === 'switch' ||
+      typeof c.values?.[0] === 'boolean' ||
+      (c.min !== undefined && c.max !== undefined && c.max > c.min);
+
+    if (c.matrix_source || (isHardwareOutputs && !isMasterControl && isVolOrMute)) {
       matrixControls.push(c);
     } else {
       directControls.push(c);
@@ -517,7 +538,15 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   // Group matrix controls by source name
   const matrixSourcesMap: Record<string, { vol?: AlsaControl; mute?: AlsaControl }> = {};
   matrixControls.forEach((c) => {
-    const src = c.matrix_source || 'Source';
+    let src = c.matrix_source;
+    if (!src) {
+      let cleaned = c.name;
+      cleaned = cleaned.replace(new RegExp(group.name, 'gi'), '');
+      const isMon = /monitor/i.test(cleaned);
+      cleaned = cleaned.replace(/playback|capture|volume|switch|level|monitor|master/gi, '').trim();
+      src = cleaned ? (isMon ? `${cleaned} (Mon)` : cleaned) : 'Source';
+    }
+
     if (!matrixSourcesMap[src]) matrixSourcesMap[src] = {};
 
     const nameLower = c.name.toLowerCase();
