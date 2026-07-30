@@ -506,40 +506,92 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                     const volCtrl = ctrlPair.vol;
                     const muteCtrl = ctrlPair.mute;
 
-                    const volVal = volCtrl?.values?.[0] ?? 0;
+                    const volValL = volCtrl?.values?.[0] ?? 0;
+                    const volValR = volCtrl?.channels && volCtrl.channels > 1 ? (volCtrl.values?.[1] ?? volValL) : volValL;
                     const isMuted = muteCtrl ? !muteCtrl.values?.[0] : false;
+                    const isStereo = (volCtrl?.channels ?? 1) > 1;
 
                     return (
                       <div
                         key={srcName}
-                        className="flex flex-col items-center gap-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2.5 min-w-[70px]"
+                        className="flex flex-col items-center gap-1.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2.5 min-w-[85px]"
                       >
                         {/* Source Label */}
-                        <div className="text-[10px] font-bold text-brand-lime font-mono truncate max-w-[65px] text-center" title={srcName}>
+                        <div className="text-[10px] font-bold text-brand-lime font-mono truncate max-w-[75px] text-center" title={srcName}>
                           {srcName}
                         </div>
 
                         {/* dB / Value readout */}
                         <div className="text-[10px] font-mono font-bold text-text-primary">
-                          {volCtrl?.db_min !== undefined ? `${volVal}dB` : volVal}
+                          {volCtrl?.db_min !== undefined ? `${volValL}dB` : volValL}
+                          {isStereo && !isLinked && (
+                            <span className="text-text-secondary text-[9px] ml-0.5">/{volValR}</span>
+                          )}
                         </div>
 
-                        {/* Vertical Range Slider (Fader) */}
+                        {/* Vertical Range Sliders (Single for Mono, L/R Dual for Stereo) */}
                         {volCtrl ? (
-                          <div className="h-28 flex items-center justify-center py-1">
-                            <input
-                              type="range"
-                              min={volCtrl.min ?? 0}
-                              max={volCtrl.max ?? 100}
-                              step={volCtrl.step ?? 1}
-                              value={volVal}
-                              onChange={(e) => {
-                                const v = parseInt(e.target.value, 10);
-                                const vals = isLinked ? new Array(volCtrl.channels).fill(v) : [v, ...volCtrl.values.slice(1)];
-                                onControlChange(volCtrl.numid, vals);
-                              }}
-                              className="w-2.5 h-24 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded-lg cursor-pointer accent-brand-lime"
-                            />
+                          <div className="h-28 flex flex-col items-center justify-center py-1 gap-1">
+                            {isStereo ? (
+                              <div className="flex items-center gap-2">
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="text-[9px] font-mono font-bold text-text-secondary">L</span>
+                                  <input
+                                    type="range"
+                                    min={volCtrl.min ?? 0}
+                                    max={volCtrl.max ?? 100}
+                                    step={volCtrl.step ?? 1}
+                                    value={volValL}
+                                    onChange={(e) => {
+                                      const vL = parseInt(e.target.value, 10);
+                                      const newVals = isLinked ? new Array(volCtrl.channels).fill(vL) : [vL, volValR];
+                                      onControlChange(volCtrl.numid, newVals);
+                                    }}
+                                    className="w-2 h-20 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime"
+                                  />
+                                </div>
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="text-[9px] font-mono font-bold text-text-secondary">R</span>
+                                  <input
+                                    type="range"
+                                    min={volCtrl.min ?? 0}
+                                    max={volCtrl.max ?? 100}
+                                    step={volCtrl.step ?? 1}
+                                    value={volValR}
+                                    onChange={(e) => {
+                                      const vR = parseInt(e.target.value, 10);
+                                      const newVals = isLinked ? new Array(volCtrl.channels).fill(vR) : [volValL, vR];
+                                      onControlChange(volCtrl.numid, newVals);
+                                    }}
+                                    className="w-2 h-20 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime"
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <input
+                                type="range"
+                                min={volCtrl.min ?? 0}
+                                max={volCtrl.max ?? 100}
+                                step={volCtrl.step ?? 1}
+                                value={volValL}
+                                onChange={(e) => {
+                                  const v = parseInt(e.target.value, 10);
+                                  onControlChange(volCtrl.numid, [v]);
+                                }}
+                                className="w-2.5 h-24 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded-lg cursor-pointer accent-brand-lime"
+                              />
+                            )}
+
+                            {/* Stereo Link Button */}
+                            {isStereo && (
+                              <button
+                                onClick={onToggleLink}
+                                title={isLinked ? 'Unlink L/R Channels' : 'Link L/R Channels'}
+                                className="text-xs hover:scale-110 transition-transform cursor-pointer mt-0.5"
+                              >
+                                {isLinked ? '🔗' : '🔓'}
+                              </button>
+                            )}
                           </div>
                         ) : (
                           <div className="h-28 flex items-center justify-center text-[10px] text-text-secondary/40">N/A</div>
