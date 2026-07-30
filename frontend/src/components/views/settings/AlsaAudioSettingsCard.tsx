@@ -501,7 +501,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   const controls = group?.controls || [];
   const meters = group?.meters || [];
 
-  // Separate matrix crosspoint controls (controls with explicit matrix_source or non-master output controls) from direct controls
+  // Separate matrix crosspoint controls (controls with explicit matrix_source or crosstalk patterns) from direct controls
   const matrixControls: AlsaControl[] = [];
   const directControls: AlsaControl[] = [];
 
@@ -509,6 +509,18 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
     if (!c) return;
     const nameLower = c.name.toLowerCase();
     const grpLower = group.name.toLowerCase();
+
+    // ENUM/ROUTE selector controls (e.g., Digital 0 Playback Format) are ALWAYS direct controls, never matrix crosspoints
+    const isEnumOrRoute =
+      c.ctrl_type === 'enum' ||
+      c.ctrl_type === 'route' ||
+      (c.items && c.items.length > 0);
+
+    if (isEnumOrRoute) {
+      directControls.push(c);
+      return;
+    }
+
     const isMasterControl =
       nameLower === `${grpLower} playback level` ||
       nameLower === `${grpLower} playback volume` ||
@@ -520,15 +532,14 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
       nameLower === `master playback switch` ||
       nameLower === `master volume`;
 
-    const isVolOrMute =
-      c.ctrl_type === 'volume' ||
-      c.ctrl_type === 'integer' ||
-      c.ctrl_type === 'mute' ||
-      c.ctrl_type === 'switch' ||
-      typeof c.values?.[0] === 'boolean' ||
-      (c.min !== undefined && c.max !== undefined && c.max > c.min);
+    const isExplicitMatrix = !!c.matrix_source;
 
-    if (c.matrix_source || (isHardwareOutputs && !isMasterControl && isVolOrMute)) {
+    // Check if control has explicit double-entity crosstalk pattern (e.g., "Digital 0 Line 0 Monitor Playback Volume")
+    const hasCrosstalkPattern =
+      (nameLower.includes('pcm') || nameLower.includes('digital') || nameLower.includes('line') || nameLower.includes('mic') || nameLower.includes('aux')) &&
+      (nameLower.includes('monitor') || !!nameLower.match(/(pcm|digital|line|mic|aux)\s+\d+.*(pcm|digital|line|mic|aux)\s+\d+/i));
+
+    if (isExplicitMatrix || (isHardwareOutputs && !isMasterControl && hasCrosstalkPattern)) {
       matrixControls.push(c);
     } else {
       directControls.push(c);
