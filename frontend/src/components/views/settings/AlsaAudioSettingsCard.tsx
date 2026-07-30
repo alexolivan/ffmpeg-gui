@@ -475,6 +475,7 @@ const formatControlValue = (ctrl?: AlsaControl, rawVal?: any): string => {
 
 interface ChannelStripProps {
   group: AlsaGroup;
+  activeProcesses?: ActiveProcessBadge[];
   onControlChange: (numid: number, values: any[]) => void;
   isLinked: boolean;
   onToggleLink: () => void;
@@ -485,6 +486,7 @@ interface ChannelStripProps {
 /* AudioScience Skewer (Brocheta) Channel Strip Component */
 const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   group,
+  activeProcesses,
   onControlChange,
   isLinked,
   onToggleLink,
@@ -571,502 +573,532 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   const isMixerOpen = activePopup === 'mixer';
 
   return (
-    <div className="h-12 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 flex items-center justify-between relative overflow-visible hover:border-brand-lime/40 transition-all">
-      {/* Skewer Horizontal Axis Line */}
-      <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-[2px] bg-[var(--glass-border)] opacity-70 pointer-events-none z-0" />
+    <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl flex flex-col overflow-visible hover:border-brand-lime/40 transition-all shadow-sm">
+      {/* TOP TIER: SKEWER AXIS & ICONS (PURE GRAPHICS / NO TEXT) */}
+      <div className="h-10 px-3 flex items-center justify-between relative overflow-visible">
+        {/* Skewer Horizontal Axis Line */}
+        <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-[2px] bg-[var(--glass-border)] opacity-70 pointer-events-none z-0" />
 
-      {/* LEFT ENDPOINT */}
-      <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1">
-        {isVirtualPlayout && (
-          <span className="flex items-center gap-1 text-[11px] font-bold text-brand-lime bg-brand-lime/10 border border-brand-lime/30 px-2 py-0.5 rounded-full shadow-sm">
-            ▶ <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
-          </span>
-        )}
+        {/* LEFT ENDPOINT (PURE ICONS / BADGES) */}
+        <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1">
+          {isVirtualPlayout && (
+            <span className="text-brand-lime font-bold text-xs" title="Audio Bus Producer">
+              ▶
+            </span>
+          )}
 
-        {isVirtualCapture && (
-          <span className="flex items-center gap-1 text-[11px] font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full shadow-sm">
-            🔴 <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
-          </span>
-        )}
+          {isVirtualCapture && (
+            <span className="text-red-400 font-bold text-xs" title="Audio Bus Consumer">
+              🔴
+            </span>
+          )}
 
-        {isHardwareInputs && (
-          <span className="text-amber-400 font-bold text-xs" title="Into Audio Bus">
-            ◄
-          </span>
-        )}
-      </div>
+          {isHardwareInputs && (
+            <span className="text-amber-400 font-bold text-xs" title="Into Audio Bus">
+              ◄
+            </span>
+          )}
 
-      {/* SKEWER CONTROL NODES (MIDDLE BODY) - UNCONDITIONAL SEQUENTIAL ABACUS ALIGNMENT */}
-      <div className="z-10 flex items-center justify-start gap-2 bg-[var(--input-bg)] px-2">
-        {/* 1. MIXER MATRIX NODE (🎛️) */}
-        {Object.keys(matrixSourcesMap).length > 0 && (
-          <div className="w-9 flex items-center justify-center">
-            <div className="relative">
-              <button
-                onClick={() => setActivePopup(isMixerOpen ? null : 'mixer')}
-                title={`Hardware Sub-Mixer Matrix (${Object.keys(matrixSourcesMap).length} Sources)`}
-                className={`p-1.5 rounded-lg border text-sm transition-all cursor-pointer shadow-sm ${
-                  isMixerOpen
-                    ? 'bg-brand-lime/30 border-brand-lime text-brand-lime scale-110'
-                    : 'bg-[var(--bg-card)] border-[var(--glass-border)] hover:border-brand-lime text-text-primary'
-                }`}
-              >
-                🎛️
-              </button>
-
-              {/* VERTICAL MIXING CONSOLE FIXED CENTERED BACKDROP MODAL (PORTAL TO ROOT BODY) */}
-              {isMixerOpen && createPortal(
-                <div
-                  className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-                  onClick={() => setActivePopup(null)}
-                >
-                  <div
-                    className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-2xl max-w-[90vw] max-h-[85vh] overflow-auto"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2.5 mb-4 min-w-[280px]">
-                      <span className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
-                        <span className="text-base">🎛️</span>
-                        <span>{group.name} Sub-Mixer Console</span>
-                      </span>
-                      <button
-                        onClick={() => setActivePopup(null)}
-                        className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-1 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg hover:border-brand-lime transition-all cursor-pointer"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    {/* Vertical Side-by-Side Channel Fader Strips */}
-                    <div className="flex items-end justify-center gap-4 overflow-x-auto py-1">
-                      {Object.entries(matrixSourcesMap).map(([srcName, ctrlPair]) => {
-                        const volCtrl = ctrlPair.vol;
-                        const muteCtrl = ctrlPair.mute;
-
-                        const volValL = volCtrl?.values?.[0] ?? 0;
-                        const volValR = volCtrl?.channels && volCtrl.channels > 1 ? (volCtrl.values?.[1] ?? volValL) : volValL;
-                        const isMuted = muteCtrl ? !muteCtrl.values?.[0] : false;
-                        const isStereo = (volCtrl?.channels ?? 1) > 1;
-
-                        return (
-                          <div
-                            key={srcName}
-                            className="flex flex-col items-center gap-1.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 min-w-[95px]"
-                          >
-                            {/* Source Label */}
-                            <div className="text-[10px] font-bold text-brand-lime font-mono truncate max-w-[85px] text-center" title={srcName}>
-                              {srcName}
-                            </div>
-
-                            {/* Clean Formatted dB / Readout */}
-                            <div className="text-[10px] font-mono font-bold text-text-primary">
-                              {formatControlValue(volCtrl, volValL)}
-                              {isStereo && !isLinked && (
-                                <span className="text-text-secondary text-[9px] ml-0.5">/{formatControlValue(volCtrl, volValR)}</span>
-                              )}
-                            </div>
-
-                            {/* Vertical Range Sliders */}
-                            {volCtrl ? (
-                              <div className="h-28 flex flex-col items-center justify-center py-1 gap-1">
-                                {isStereo ? (
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex flex-col items-center gap-1">
-                                      <span className="text-[9px] font-mono font-bold text-text-secondary">L</span>
-                                      <input
-                                        type="range"
-                                        min={volCtrl.min ?? 0}
-                                        max={volCtrl.max ?? 100}
-                                        step={volCtrl.step ?? 1}
-                                        value={volValL}
-                                        onChange={(e) => {
-                                          const vL = parseInt(e.target.value, 10);
-                                          const newVals = isLinked ? new Array(volCtrl.channels).fill(vL) : [vL, volValR];
-                                          onControlChange(volCtrl.numid, newVals);
-                                        }}
-                                        className="w-2 h-20 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime"
-                                      />
-                                    </div>
-                                    <div className="flex flex-col items-center gap-1">
-                                      <span className="text-[9px] font-mono font-bold text-text-secondary">R</span>
-                                      <input
-                                        type="range"
-                                        min={volCtrl.min ?? 0}
-                                        max={volCtrl.max ?? 100}
-                                        step={volCtrl.step ?? 1}
-                                        value={volValR}
-                                        onChange={(e) => {
-                                          const vR = parseInt(e.target.value, 10);
-                                          const newVals = isLinked ? new Array(volCtrl.channels).fill(vR) : [volValL, vR];
-                                          onControlChange(volCtrl.numid, newVals);
-                                        }}
-                                        className="w-2 h-20 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime"
-                                      />
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <input
-                                    type="range"
-                                    min={volCtrl.min ?? 0}
-                                    max={volCtrl.max ?? 100}
-                                    step={volCtrl.step ?? 1}
-                                    value={volValL}
-                                    onChange={(e) => {
-                                      const v = parseInt(e.target.value, 10);
-                                      onControlChange(volCtrl.numid, [v]);
-                                    }}
-                                    className="w-2.5 h-24 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded-lg cursor-pointer accent-brand-lime"
-                                  />
-                                )}
-
-                                {/* Stereo Link Button */}
-                                {isStereo && (
-                                  <button
-                                    onClick={onToggleLink}
-                                    title={isLinked ? 'Unlink L/R Channels' : 'Link L/R Channels'}
-                                    className="text-xs hover:scale-110 transition-transform cursor-pointer mt-0.5"
-                                  >
-                                    {isLinked ? '🔗' : '🔓'}
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="h-28 flex items-center justify-center text-[10px] text-text-secondary/40">N/A</div>
-                            )}
-
-                            {/* Mute Toggle Button directly below Fader */}
-                            {muteCtrl ? (
-                              <button
-                                onClick={() => onControlChange(muteCtrl.numid, [!muteCtrl.values[0]])}
-                                className={`w-full py-1 rounded text-[10px] font-bold transition-all cursor-pointer border ${
-                                  isMuted
-                                    ? 'bg-red-500/20 text-red-400 border-red-500/40'
-                                    : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
-                                }`}
-                              >
-                                {isMuted ? 'MUTE' : 'ON'}
-                              </button>
-                            ) : (
-                              <div className="h-6 flex items-center justify-center text-[9px] text-text-secondary/30">-</div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>,
-                document.body
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 2. DIRECT (NON-MATRIX) CONTROLS SEQUENTIALLY PACKED */}
-        {directControls.map((ctrl) => {
-          const nameLower = ctrl.name.toLowerCase();
-          const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
-          const isStatus = nameLower.includes('status') || nameLower.includes('lock') || nameLower.includes('sync');
-          const isMute = !isEnum && !isStatus && (ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' || typeof ctrl.values?.[0] === 'boolean');
-          const isVol = !isEnum && !isStatus && !isMute && (ctrl.ctrl_type === 'volume' || ctrl.ctrl_type === 'integer' || (ctrl.min !== undefined && ctrl.max !== undefined && ctrl.max > ctrl.min));
-
-          const isOpen = activePopup === ctrl.numid;
-          const currentVal = ctrl.values?.[0] ?? 0;
-          const isMutedState = isMute ? !currentVal : false;
-
-          // DIGITAL RECEIVER STATUS / LOCK INDICATOR NODE (e.g. Digital 0 Capture Status)
-          if (isStatus) {
-            const isLocked = (currentVal & 1) !== 0;
-            const hasParityErr = (currentVal & 4) !== 0;
-            const hasValErr = (currentVal & 8) !== 0;
-            const hasRateErr = (currentVal & 16) !== 0;
-
-            return (
-              <div key={ctrl.numid} className="w-9 flex items-center justify-center">
-                <div className="relative">
-                  <button
-                    onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
-                    title={`${ctrl.name}: ${isLocked ? 'LOCKED (Signal OK)' : 'NO LOCK (Signal Loss)'}`}
-                    className={`p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer ${
-                      isLocked
-                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:border-emerald-300'
-                        : 'bg-red-500/20 text-red-400 border-red-500/40 hover:border-red-300'
-                    }`}
-                  >
-                    {isLocked ? '🔒' : '🔓'}
-                  </button>
-
-                  {isOpen && createPortal(
-                    <div
-                      className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-                      onClick={() => setActivePopup(null)}
-                    >
-                      <div
-                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-2xl min-w-[270px] max-w-[90vw] flex flex-col items-center gap-3"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2.5 gap-4">
-                          <span className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
-                            <span className="text-sm">{isLocked ? '🔒' : '🔓'}</span>
-                            <span>{ctrl.name}</span>
-                          </span>
-                          <button
-                            onClick={() => setActivePopup(null)}
-                            className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
-                          >
-                            ✕
-                          </button>
-                        </div>
-
-                        {/* Status Bitmask Breakdown Table */}
-                        <div className="w-full flex flex-col gap-2 font-mono text-[11px]">
-                          <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
-                            <span className="text-text-secondary">Receiver Lock (Bit 0):</span>
-                            <span className={`font-bold ${isLocked ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {isLocked ? '🟢 LOCKED' : '🔴 NO SIGNAL'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
-                            <span className="text-text-secondary">Parity Status (Bit 2):</span>
-                            <span className={`font-bold ${hasParityErr ? 'text-red-400' : 'text-emerald-400'}`}>
-                              {hasParityErr ? '❌ ERROR' : '✅ OK'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
-                            <span className="text-text-secondary">Frame Validity (Bit 3):</span>
-                            <span className={`font-bold ${hasValErr ? 'text-amber-400' : 'text-emerald-400'}`}>
-                              {hasValErr ? '⚠️ INVALID' : '✅ VALID'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
-                            <span className="text-text-secondary">Sample Rate Sync (Bit 4):</span>
-                            <span className={`font-bold ${hasRateErr ? 'text-amber-400' : 'text-emerald-400'}`}>
-                              {hasRateErr ? '⚠️ MISMATCH' : '✅ OK'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between px-2 pt-1 text-[10px] text-text-secondary">
-                            <span>Raw Bitmask:</span>
-                            <span className="font-mono">{currentVal} (0x{currentVal.toString(16).padStart(2, '0')})</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>,
-                    document.body
-                  )}
-                </div>
-              </div>
-            );
-          }
-
-          if (isEnum && ctrl.items && ctrl.items.length > 0) {
-            const nameLower = ctrl.name.toLowerCase();
-            const isModeCrossover = nameLower.includes('mode') || nameLower.includes('swap') || nameLower.includes('channel');
-            const isCaptureRoute = nameLower.includes('route') || nameLower.includes('source') || nameLower.includes('input');
-
-            const selectorIcon = isModeCrossover ? '🔀' : isCaptureRoute ? '📥' : '📋';
-            const selectorTitle = isModeCrossover
-              ? `Channel Mode / Crossover (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
-              : isCaptureRoute
-              ? `Capture Ingestion Source (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
-              : `${ctrl.name}: ${ctrl.items[currentVal] || currentVal}`;
-
-            return (
-              <div key={ctrl.numid} className="w-9 flex items-center justify-center">
-                <div className="relative">
-                  <button
-                    onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
-                    title={selectorTitle}
-                    className={`p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer ${
-                      isModeCrossover
-                        ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 hover:border-indigo-400'
-                        : isCaptureRoute
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:border-amber-400'
-                        : 'bg-[var(--bg-card)] border-[var(--glass-border)] text-text-primary hover:border-brand-lime'
-                    }`}
-                  >
-                    {selectorIcon}
-                  </button>
-
-                  {isOpen && createPortal(
-                    <div
-                      className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-                      onClick={() => setActivePopup(null)}
-                    >
-                      <div
-                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
-                          <span className="text-xs font-bold text-text-primary uppercase tracking-wider truncate">
-                            {ctrl.name}
-                          </span>
-                          <button
-                            onClick={() => setActivePopup(null)}
-                            className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                        <select
-                          value={currentVal}
-                          onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
-                          className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-brand-lime w-full cursor-pointer"
-                        >
-                          {ctrl.items.map((item, idx) => (
-                            <option key={idx} value={idx}>
-                              {item}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>,
-                    document.body
-                  )}
-                </div>
-              </div>
-            );
-          }
-
-          if (isMute) {
-            return (
-              <div key={ctrl.numid} className="w-9 flex items-center justify-center">
-                <button
-                  onClick={() => onControlChange(ctrl.numid, [!currentVal])}
-                  title={`${ctrl.name}: ${isMutedState ? 'MUTED' : 'ACTIVE'}`}
-                  className={`p-1.5 rounded-lg border text-sm transition-all cursor-pointer shadow-sm ${
-                    isMutedState
-                      ? 'bg-red-500/20 text-red-400 border-red-500/40'
-                      : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
-                  }`}
-                >
-                  {isMutedState ? '🔇' : '🔊'}
-                </button>
-              </div>
-            );
-          }
-
-          if (isVol) {
-            return (
-              <div key={ctrl.numid} className="w-9 flex items-center justify-center">
-                <div className="relative">
-                  <button
-                    onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
-                    title={`${ctrl.name}: ${formatControlValue(ctrl, currentVal)}`}
-                    className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime text-sm text-text-primary shadow-sm cursor-pointer"
-                  >
-                    🎚️
-                  </button>
-
-                  {isOpen && createPortal(
-                    <div
-                      className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-                      onClick={() => setActivePopup(null)}
-                    >
-                      <div
-                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
-                          <span className="text-xs font-bold text-text-primary uppercase tracking-wider truncate">
-                            {ctrl.name}
-                          </span>
-                          <button
-                            onClick={() => setActivePopup(null)}
-                            className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                        <input
-                          type="range"
-                          min={ctrl.min ?? 0}
-                          max={ctrl.max ?? 100}
-                          step={ctrl.step ?? 1}
-                          value={currentVal}
-                          onChange={(e) => {
-                            const v = parseInt(e.target.value, 10);
-                            const vals = isLinked ? new Array(ctrl.channels).fill(v) : [v, ...ctrl.values.slice(1)];
-                            onControlChange(ctrl.numid, vals);
-                          }}
-                          className="w-36 h-2 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-brand-lime"
-                        />
-                        <div className="flex items-center justify-between w-full text-[10px] font-mono text-text-secondary">
-                          <span>{formatControlValue(ctrl, ctrl.min)}</span>
-                          <span className="font-bold text-brand-lime text-xs">{formatControlValue(ctrl, currentVal)}</span>
-                          <span>{formatControlValue(ctrl, ctrl.max)}</span>
-                        </div>
-                      </div>
-                    </div>,
-                    document.body
-                  )}
-                </div>
-              </div>
-            );
-          }
-
-          return null;
-        })}
-
-        {/* 3. NON-CLICKABLE VUMETER NODE (📊) */}
-        {meters.length > 0 && meters[0] && (
-          <div className="w-14 flex items-center justify-center">
-            <div
-              title={`${meters[0].name || 'Meter'} (ALSA Native Vumeter)`}
-              className="flex items-center gap-1.5 bg-black/60 border border-[var(--glass-border)]/60 px-2 py-1 rounded-lg shadow-inner pointer-events-none select-none"
-            >
-              <span className="text-xs">📊</span>
-              <canvas
-                ref={(el) => {
-                  if (meters[0]?.numid !== undefined) {
-                    canvasRefSetter(meters[0].numid, el);
-                  }
-                }}
-                width={36}
-                height={14}
-                className="rounded bg-black/80"
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* RIGHT ENDPOINT */}
-      <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1">
-        {isVirtualPlayout && (
-          <span className="text-brand-lime font-bold text-xs" title="Into Audio Bus">
-            ►
-          </span>
-        )}
-
-        {isHardwareOutputs && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-sky-400 font-bold text-xs" title="Into Hardware Output Device">
+          {isHardwareOutputs && (
+            <span className="text-sky-400 font-bold text-xs" title="Hardware Output">
               ►
             </span>
-            <span className="flex items-center gap-1.5 text-[11px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2.5 py-0.5 rounded-full shadow-sm">
-              <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
-              <span className="text-xs">{endpointIcon}</span>
+          )}
+        </div>
+
+        {/* SKEWER CONTROL NODES (MIDDLE BODY) - UNCONDITIONAL SEQUENTIAL ABACUS ALIGNMENT */}
+        <div className="z-10 flex items-center justify-start gap-2 bg-[var(--input-bg)] px-2">
+          {/* 1. MIXER MATRIX NODE (🎛️) */}
+          {Object.keys(matrixSourcesMap).length > 0 && (
+            <div className="w-9 flex items-center justify-center">
+              <div className="relative">
+                <button
+                  onClick={() => setActivePopup(isMixerOpen ? null : 'mixer')}
+                  title={`Hardware Sub-Mixer Matrix (${Object.keys(matrixSourcesMap).length} Sources)`}
+                  className={`p-1.5 rounded-lg border text-sm transition-all cursor-pointer shadow-sm ${
+                    isMixerOpen
+                      ? 'bg-brand-lime/30 border-brand-lime text-brand-lime scale-110'
+                      : 'bg-[var(--bg-card)] border-[var(--glass-border)] hover:border-brand-lime text-text-primary'
+                  }`}
+                >
+                  🎛️
+                </button>
+
+                {/* VERTICAL MIXING CONSOLE FIXED CENTERED BACKDROP MODAL (PORTAL TO ROOT BODY) */}
+                {isMixerOpen && createPortal(
+                  <div
+                    className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                    onClick={() => setActivePopup(null)}
+                  >
+                    <div
+                      className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-2xl max-w-[90vw] max-h-[85vh] overflow-auto"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2.5 mb-4 min-w-[280px]">
+                        <span className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
+                          <span className="text-base">🎛️</span>
+                          <span>{group.name} Sub-Mixer Console</span>
+                        </span>
+                        <button
+                          onClick={() => setActivePopup(null)}
+                          className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-1 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg hover:border-brand-lime transition-all cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      {/* Vertical Side-by-Side Channel Fader Strips */}
+                      <div className="flex items-end justify-center gap-4 overflow-x-auto py-1">
+                        {Object.entries(matrixSourcesMap).map(([srcName, ctrlPair]) => {
+                          const volCtrl = ctrlPair.vol;
+                          const muteCtrl = ctrlPair.mute;
+
+                          const volValL = volCtrl?.values?.[0] ?? 0;
+                          const volValR = volCtrl?.channels && volCtrl.channels > 1 ? (volCtrl.values?.[1] ?? volValL) : volValL;
+                          const isMuted = muteCtrl ? !muteCtrl.values?.[0] : false;
+                          const isStereo = (volCtrl?.channels ?? 1) > 1;
+
+                          return (
+                            <div
+                              key={srcName}
+                              className="flex flex-col items-center gap-1.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 min-w-[95px]"
+                            >
+                              {/* Source Label */}
+                              <div className="text-[10px] font-bold text-brand-lime font-mono truncate max-w-[85px] text-center" title={srcName}>
+                                {srcName}
+                              </div>
+
+                              {/* Clean Formatted dB / Readout */}
+                              <div className="text-[10px] font-mono font-bold text-text-primary">
+                                {formatControlValue(volCtrl, volValL)}
+                                {isStereo && !isLinked && (
+                                  <span className="text-text-secondary text-[9px] ml-0.5">/{formatControlValue(volCtrl, volValR)}</span>
+                                )}
+                              </div>
+
+                              {/* Vertical Range Sliders */}
+                              {volCtrl ? (
+                                <div className="h-28 flex flex-col items-center justify-center py-1 gap-1">
+                                  {isStereo ? (
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex flex-col items-center gap-1">
+                                        <span className="text-[9px] font-mono font-bold text-text-secondary">L</span>
+                                        <input
+                                          type="range"
+                                          min={volCtrl.min ?? 0}
+                                          max={volCtrl.max ?? 100}
+                                          step={volCtrl.step ?? 1}
+                                          value={volValL}
+                                          onChange={(e) => {
+                                            const vL = parseInt(e.target.value, 10);
+                                            const newVals = isLinked ? new Array(volCtrl.channels).fill(vL) : [vL, volValR];
+                                            onControlChange(volCtrl.numid, newVals);
+                                          }}
+                                          className="w-2 h-20 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime"
+                                        />
+                                      </div>
+                                      <div className="flex flex-col items-center gap-1">
+                                        <span className="text-[9px] font-mono font-bold text-text-secondary">R</span>
+                                        <input
+                                          type="range"
+                                          min={volCtrl.min ?? 0}
+                                          max={volCtrl.max ?? 100}
+                                          step={volCtrl.step ?? 1}
+                                          value={volValR}
+                                          onChange={(e) => {
+                                            const vR = parseInt(e.target.value, 10);
+                                            const newVals = isLinked ? new Array(volCtrl.channels).fill(vR) : [volValL, vR];
+                                            onControlChange(volCtrl.numid, newVals);
+                                          }}
+                                          className="w-2 h-20 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime"
+                                        />
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <input
+                                      type="range"
+                                      min={volCtrl.min ?? 0}
+                                      max={volCtrl.max ?? 100}
+                                      step={volCtrl.step ?? 1}
+                                      value={volValL}
+                                      onChange={(e) => {
+                                        const v = parseInt(e.target.value, 10);
+                                        onControlChange(volCtrl.numid, [v]);
+                                      }}
+                                      className="w-2.5 h-24 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded-lg cursor-pointer accent-brand-lime"
+                                    />
+                                  )}
+
+                                  {/* Stereo Link Button */}
+                                  {isStereo && (
+                                    <button
+                                      onClick={onToggleLink}
+                                      title={isLinked ? 'Unlink L/R Channels' : 'Link L/R Channels'}
+                                      className="text-xs hover:scale-110 transition-transform cursor-pointer mt-0.5"
+                                    >
+                                      {isLinked ? '🔗' : '🔓'}
+                                    </button>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="h-28 flex items-center justify-center text-[10px] text-text-secondary/40">N/A</div>
+                              )}
+
+                              {/* Mute Toggle Button directly below Fader */}
+                              {muteCtrl ? (
+                                <button
+                                  onClick={() => onControlChange(muteCtrl.numid, [!muteCtrl.values[0]])}
+                                  className={`w-full py-1 rounded text-[10px] font-bold transition-all cursor-pointer border ${
+                                    isMuted
+                                      ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                                      : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
+                                  }`}
+                                >
+                                  {isMuted ? 'MUTE' : 'ON'}
+                                </button>
+                              ) : (
+                                <div className="h-6 flex items-center justify-center text-[9px] text-text-secondary/30">-</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>,
+                  document.body
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 2. DIRECT (NON-MATRIX) CONTROLS SEQUENTIALLY PACKED */}
+          {directControls.map((ctrl) => {
+            const nameLower = ctrl.name.toLowerCase();
+            const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
+            const isStatus = nameLower.includes('status') || nameLower.includes('lock') || nameLower.includes('sync');
+            const isMute = !isEnum && !isStatus && (ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' || typeof ctrl.values?.[0] === 'boolean');
+            const isVol = !isEnum && !isStatus && !isMute && (ctrl.ctrl_type === 'volume' || ctrl.ctrl_type === 'integer' || (ctrl.min !== undefined && ctrl.max !== undefined && ctrl.max > ctrl.min));
+
+            const isOpen = activePopup === ctrl.numid;
+            const currentVal = ctrl.values?.[0] ?? 0;
+            const isMutedState = isMute ? !currentVal : false;
+
+            // DIGITAL RECEIVER STATUS / LOCK INDICATOR NODE (e.g. Digital 0 Capture Status)
+            if (isStatus) {
+              const isLocked = (currentVal & 1) !== 0;
+              const hasParityErr = (currentVal & 4) !== 0;
+              const hasValErr = (currentVal & 8) !== 0;
+              const hasRateErr = (currentVal & 16) !== 0;
+
+              return (
+                <div key={ctrl.numid} className="w-9 flex items-center justify-center">
+                  <div className="relative">
+                    <button
+                      onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
+                      title={`${ctrl.name}: ${isLocked ? 'LOCKED (Signal OK)' : 'NO LOCK (Signal Loss)'}`}
+                      className={`p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer ${
+                        isLocked
+                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 hover:border-emerald-300'
+                          : 'bg-red-500/20 text-red-400 border-red-500/40 hover:border-red-300'
+                      }`}
+                    >
+                      {isLocked ? '🔒' : '🔓'}
+                    </button>
+
+                    {isOpen && createPortal(
+                      <div
+                        className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                        onClick={() => setActivePopup(null)}
+                      >
+                        <div
+                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-2xl min-w-[270px] max-w-[90vw] flex flex-col items-center gap-3"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2.5 gap-4">
+                            <span className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-1.5">
+                              <span className="text-sm">{isLocked ? '🔒' : '🔓'}</span>
+                              <span>{ctrl.name}</span>
+                            </span>
+                            <button
+                              onClick={() => setActivePopup(null)}
+                              className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </div>
+
+                          {/* Status Bitmask Breakdown Table */}
+                          <div className="w-full flex flex-col gap-2 font-mono text-[11px]">
+                            <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                              <span className="text-text-secondary">Receiver Lock (Bit 0):</span>
+                              <span className={`font-bold ${isLocked ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {isLocked ? '🟢 LOCKED' : '🔴 NO SIGNAL'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                              <span className="text-text-secondary">Parity Status (Bit 2):</span>
+                              <span className={`font-bold ${hasParityErr ? 'text-red-400' : 'text-emerald-400'}`}>
+                                {hasParityErr ? '❌ ERROR' : '✅ OK'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                              <span className="text-text-secondary">Frame Validity (Bit 3):</span>
+                              <span className={`font-bold ${hasValErr ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                {hasValErr ? '⚠️ INVALID' : '✅ VALID'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between p-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                              <span className="text-text-secondary">Sample Rate Sync (Bit 4):</span>
+                              <span className={`font-bold ${hasRateErr ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                {hasRateErr ? '⚠️ MISMATCH' : '✅ OK'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between px-2 pt-1 text-[10px] text-text-secondary">
+                              <span>Raw Bitmask:</span>
+                              <span className="font-mono">{currentVal} (0x{currentVal.toString(16).padStart(2, '0')})</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            if (isEnum && ctrl.items && ctrl.items.length > 0) {
+              const isModeCrossover = nameLower.includes('mode') || nameLower.includes('swap') || nameLower.includes('channel');
+              const isCaptureRoute = nameLower.includes('route') || nameLower.includes('source') || nameLower.includes('input');
+
+              const selectorIcon = isModeCrossover ? '🔀' : isCaptureRoute ? '📥' : '⚙️';
+              const selectorTitle = isModeCrossover
+                ? `Channel Mode / Crossover (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
+                : isCaptureRoute
+                ? `Capture Ingestion Source (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
+                : `${ctrl.name}: ${ctrl.items[currentVal] || currentVal}`;
+
+              return (
+                <div key={ctrl.numid} className="w-9 flex items-center justify-center">
+                  <div className="relative">
+                    <button
+                      onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
+                      title={selectorTitle}
+                      className={`p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer ${
+                        isModeCrossover
+                          ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 hover:border-indigo-400'
+                          : isCaptureRoute
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:border-amber-400'
+                          : 'bg-[var(--bg-card)] border-[var(--glass-border)] text-text-primary hover:border-brand-lime'
+                      }`}
+                    >
+                      {selectorIcon}
+                    </button>
+
+                    {isOpen && createPortal(
+                      <div
+                        className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                        onClick={() => setActivePopup(null)}
+                      >
+                        <div
+                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
+                            <span className="text-xs font-bold text-text-primary uppercase tracking-wider truncate">
+                              {ctrl.name}
+                            </span>
+                            <button
+                              onClick={() => setActivePopup(null)}
+                              className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <select
+                            value={currentVal}
+                            onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
+                            className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-brand-lime w-full cursor-pointer"
+                          >
+                            {ctrl.items.map((item, idx) => (
+                              <option key={idx} value={idx}>
+                                {item}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            if (isMute) {
+              return (
+                <div key={ctrl.numid} className="w-9 flex items-center justify-center">
+                  <button
+                    onClick={() => onControlChange(ctrl.numid, [!currentVal])}
+                    title={`${ctrl.name}: ${isMutedState ? 'MUTED' : 'ACTIVE'}`}
+                    className={`p-1.5 rounded-lg border text-sm transition-all cursor-pointer shadow-sm ${
+                      isMutedState
+                        ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                        : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
+                    }`}
+                  >
+                    {isMutedState ? '🔇' : '🔊'}
+                  </button>
+                </div>
+              );
+            }
+
+            if (isVol) {
+              return (
+                <div key={ctrl.numid} className="w-9 flex items-center justify-center">
+                  <div className="relative">
+                    <button
+                      onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
+                      title={`${ctrl.name}: ${formatControlValue(ctrl, currentVal)}`}
+                      className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime text-sm text-text-primary shadow-sm cursor-pointer"
+                    >
+                      🎚️
+                    </button>
+
+                    {isOpen && createPortal(
+                      <div
+                        className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                        onClick={() => setActivePopup(null)}
+                      >
+                        <div
+                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
+                            <span className="text-xs font-bold text-text-primary uppercase tracking-wider truncate">
+                              {ctrl.name}
+                            </span>
+                            <button
+                              onClick={() => setActivePopup(null)}
+                              className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                          <input
+                            type="range"
+                            min={ctrl.min ?? 0}
+                            max={ctrl.max ?? 100}
+                            step={ctrl.step ?? 1}
+                            value={currentVal}
+                            onChange={(e) => {
+                              const v = parseInt(e.target.value, 10);
+                              const vals = isLinked ? new Array(ctrl.channels).fill(v) : [v, ...ctrl.values.slice(1)];
+                              onControlChange(ctrl.numid, vals);
+                            }}
+                            className="w-36 h-2 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-brand-lime"
+                          />
+                          <div className="flex items-center justify-between w-full text-[10px] font-mono text-text-secondary">
+                            <span>{formatControlValue(ctrl, ctrl.min)}</span>
+                            <span className="font-bold text-brand-lime text-xs">{formatControlValue(ctrl, currentVal)}</span>
+                            <span>{formatControlValue(ctrl, ctrl.max)}</span>
+                          </div>
+                        </div>
+                      </div>,
+                      document.body
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
+          })}
+
+          {/* 3. NON-CLICKABLE VUMETER NODE (Pure LED Bars, 2 Icon Slots Width = 80px, No Icon) */}
+          {meters.length > 0 && meters[0] && (
+            <div className="w-[80px] flex items-center justify-center">
+              <div
+                title={`${meters[0].name || 'Meter'} (ALSA Native Vumeter)`}
+                className="w-full h-5 bg-black/80 border border-[var(--glass-border)] rounded-md px-1.5 py-0.5 flex items-center justify-center shadow-inner pointer-events-none select-none"
+              >
+                <canvas
+                  ref={(el) => {
+                    if (meters[0]?.numid !== undefined) {
+                      canvasRefSetter(meters[0].numid, el);
+                    }
+                  }}
+                  width={72}
+                  height={14}
+                  className="w-full h-full rounded bg-black/90"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT ENDPOINT (PURE ICONS / BADGES) */}
+        <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1">
+          {isVirtualPlayout && (
+            <span className="text-brand-lime font-bold text-xs" title="Into Audio Bus">
+              ►
             </span>
-          </div>
-        )}
+          )}
 
-        {isVirtualCapture && (
-          <span className="text-red-400 font-bold text-xs" title="From Audio Bus">
-            ◄
-          </span>
-        )}
+          {isHardwareOutputs && (
+            <span className="text-sky-400 font-bold text-sm flex items-center gap-1" title="Into Hardware Output Device">
+              <span className="text-xs">►</span>
+              <span>{endpointIcon}</span>
+            </span>
+          )}
 
-        {isHardwareInputs && (
-          <span className="flex items-center gap-1 text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full shadow-sm">
-            <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
-            <span>{endpointIcon}</span>
-          </span>
-        )}
+          {isVirtualCapture && (
+            <span className="text-red-400 font-bold text-xs" title="From Audio Bus">
+              ◄
+            </span>
+          )}
+
+          {isHardwareInputs && (
+            <span className="text-amber-400 font-bold text-sm" title="From Hardware Input Device">
+              {endpointIcon}
+            </span>
+          )}
+        </div>
       </div>
 
+      {/* BOTTOM TIER: SUBTEXT INFORMATION BAR (PURE TEXT ONLY) */}
+      <div className="h-5 px-3 bg-[var(--bg-card)]/70 border-t border-[var(--glass-border)]/40 rounded-b-xl flex items-center justify-between text-[10px] font-mono text-text-secondary select-none">
+        {/* LEFT: CHANNEL / CONTROL GROUP NAME */}
+        <span className="font-bold text-text-primary uppercase tracking-wider flex items-center gap-1">
+          <span>{group.name}</span>
+        </span>
+
+        {/* RIGHT: FFMPEG ACTIVE PROCESS ALIASES (OR IDLE) */}
+        <div className="flex items-center gap-2">
+          {activeProcesses && activeProcesses.length > 0 ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] text-brand-lime font-semibold uppercase">FFmpeg:</span>
+              {activeProcesses.map((proc) => (
+                <span
+                  key={proc.process_id}
+                  title={`Process #${proc.process_id} (${proc.status})`}
+                  className="bg-brand-lime/10 border border-brand-lime/30 text-brand-lime text-[9px] px-1.5 py-0.2 rounded font-mono font-bold"
+                >
+                  {proc.alias}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-text-secondary/30 text-[9px] italic font-sans">
+              -
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
