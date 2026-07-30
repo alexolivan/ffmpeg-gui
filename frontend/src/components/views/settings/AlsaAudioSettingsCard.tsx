@@ -724,23 +724,42 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
           }
 
           if (isEnum && ctrl.items) {
+            const nameLower = ctrl.name.toLowerCase();
+            const isModeCrossover = nameLower.includes('mode') || nameLower.includes('swap') || nameLower.includes('channel');
+            const isCaptureRoute = nameLower.includes('route') || nameLower.includes('source') || nameLower.includes('input');
+
+            const selectorIcon = isModeCrossover ? '🔀' : isCaptureRoute ? '📥' : '📋';
+            const selectorTitle = isModeCrossover
+              ? `Channel Mode / Crossover (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
+              : isCaptureRoute
+              ? `Capture Ingestion Source (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
+              : `${ctrl.name}: ${ctrl.items[currentVal] || currentVal}`;
+
             return (
               <div key={ctrl.numid} className="relative">
                 <button
                   onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
-                  title={`${ctrl.name}: ${ctrl.items[currentVal] || currentVal}`}
-                  className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime text-sm text-text-primary shadow-sm cursor-pointer"
+                  title={selectorTitle}
+                  className={`p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer ${
+                    isModeCrossover
+                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 hover:border-indigo-400'
+                      : isCaptureRoute
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:border-amber-400'
+                      : 'bg-[var(--bg-card)] border-[var(--glass-border)] text-text-primary hover:border-brand-lime'
+                  }`}
                 >
-                  🔀
+                  {selectorIcon}
                 </button>
 
                 {isOpen && (
-                  <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 shadow-2xl z-30 min-w-[120px]">
-                    <div className="text-[10px] font-bold text-text-secondary mb-1">{ctrl.name}</div>
+                  <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-3 shadow-2xl z-40 min-w-[160px] backdrop-blur-md">
+                    <div className="text-[10px] font-bold text-text-secondary mb-1.5 truncate uppercase tracking-wider">
+                      {ctrl.name}
+                    </div>
                     <select
                       value={currentVal}
                       onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
-                      className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[10px] font-bold rounded px-1.5 py-1 focus:outline-none focus:border-brand-lime w-full"
+                      className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-lime w-full cursor-pointer"
                     >
                       {ctrl.items.map((item, idx) => (
                         <option key={idx} value={idx}>
@@ -765,14 +784,19 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
           );
         })}
 
-        {/* Canvas LED Meters Node */}
+        {/* NON-CLICKABLE VUMETER NODES (📊) */}
         {group.meters.map((meter) => (
-          <div key={meter.numid} className="flex items-center gap-1">
+          <div
+            key={meter.numid}
+            title={`${meter.name} (ALSA Native Vumeter)`}
+            className="flex items-center gap-1.5 bg-black/60 border border-[var(--glass-border)]/60 px-2 py-1 rounded-lg shadow-inner pointer-events-none select-none"
+          >
+            <span className="text-xs">📊</span>
             <canvas
               ref={(el) => canvasRefSetter(meter.numid, el)}
               width={36}
-              height={16}
-              className="rounded bg-black/50 border border-[var(--glass-border)]/50"
+              height={14}
+              className="rounded bg-black/80"
             />
           </div>
         ))}
