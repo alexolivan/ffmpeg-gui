@@ -120,8 +120,16 @@ class AlsaManager:
         # E.g. 'PCM 0 Line 0 Playback Volume' -> group: 'Line 0' (Dest), matrix_source: 'PCM 0' (Source)
         # 'Line 1 Line 0 Monitor Playback Volume' -> group: 'Line 0' (Dest), matrix_source: 'Line 1 (Monitor)'
         matrix_source = None
-        matrix_match = re.match(r"^([A-Za-z0-9/\-_]+(?:\s+\d+)?)\s+([A-Za-z0-9/\-_]+(?:\s+\d+)?)\s+(Monitor\s+)?(Playback|Capture)", name, re.IGNORECASE)
-        if matrix_match and matrix_match.group(1).lower() != matrix_match.group(2).lower() or matrix_match and matrix_match.group(3):
+        
+        # Regex matching double entity prefixes (Source -> Destination)
+        prefix_pattern = r"(?:PCM\s+\d+|Line\s+\d+|Digital\s+\d+|Mic\s+\d+|Aux\s+\d+|AES\s+\d+|Speaker|Headphone|Master)"
+        matrix_match = re.match(
+            rf"^({prefix_pattern})\s+({prefix_pattern})\s+(Monitor\s+)?(Playback|Capture)",
+            name,
+            re.IGNORECASE
+        )
+
+        if matrix_match:
             source_name = matrix_match.group(1).strip()
             dest_name = matrix_match.group(2).strip()
             is_monitor = bool(matrix_match.group(3))
@@ -130,12 +138,14 @@ class AlsaManager:
             category = "hardware_outputs"
             matrix_source = f"{source_name} (Monitor)" if is_monitor else source_name
         else:
-            group = "General"
-            match = re.match(r"^([A-Za-z0-9]+\s*\d*)\s+", name)
+            # Single entity prefix matching
+            match = re.match(rf"^({prefix_pattern}|[A-Za-z0-9/\-_]+(?:\s+\d+)?)\s+", name, re.IGNORECASE)
             if match:
                 group = match.group(1).strip()
+            else:
+                group = "General"
 
-            # Determine quadrant category
+            # Determine quadrant category for single entity controls
             name_lower = name.lower()
             if "pcm" in name_lower and "playback" in name_lower:
                 category = "virtual_playout"

@@ -70,6 +70,29 @@ class TestAlsaManager(unittest.TestCase):
         self.assertEqual(res_line["category"], "hardware_inputs")
         self.assertEqual(res_line["group"], "Line 0")
 
+        # Test AudioScience Crosspoint Matrix Double-Name classification
+        res_matrix1 = self.mgr._classify_control(
+            name="PCM 0 Line 0 Playback Volume",
+            iface=2,
+            elem_type=2,
+            access_flags="rw---R--",
+            items=[]
+        )
+        self.assertEqual(res_matrix1["category"], "hardware_outputs")
+        self.assertEqual(res_matrix1["group"], "Line 0")
+        self.assertEqual(res_matrix1["matrix_source"], "PCM 0")
+
+        res_matrix2 = self.mgr._classify_control(
+            name="Line 0 Line 0 Monitor Playback Volume",
+            iface=2,
+            elem_type=2,
+            access_flags="rw---R--",
+            items=[]
+        )
+        self.assertEqual(res_matrix2["category"], "hardware_outputs")
+        self.assertEqual(res_matrix2["group"], "Line 0")
+        self.assertEqual(res_matrix2["matrix_source"], "Line 0 (Monitor)")
+
     def test_parse_amixer_contents(self):
         controls = self.mgr._parse_amixer_contents(SAMPLE_AMIXER_OUTPUT)
         self.assertEqual(len(controls), 5)
