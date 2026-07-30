@@ -556,11 +556,11 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
         )}
       </div>
 
-      {/* SKEWER CONTROL NODES (MIDDLE BODY) - ABACUS VERTICAL COLUMN ALIGNMENT */}
-      <div className="z-10 flex items-center justify-center gap-2 bg-[var(--input-bg)] px-2">
-        {/* SLOT 1: SUB-MIXER MATRIX (🎛️) */}
-        <div className="w-9 flex items-center justify-center">
-          {Object.keys(matrixSourcesMap).length > 0 ? (
+      {/* SKEWER CONTROL NODES (MIDDLE BODY) - UNCONDITIONAL SEQUENTIAL ABACUS ALIGNMENT */}
+      <div className="z-10 flex items-center justify-start gap-2 bg-[var(--input-bg)] px-2">
+        {/* 1. MIXER MATRIX NODE (🎛️) */}
+        {Object.keys(matrixSourcesMap).length > 0 && (
+          <div className="w-9 flex items-center justify-center">
             <div className="relative">
               <button
                 onClick={() => setActivePopup(isMixerOpen ? null : 'mixer')}
@@ -718,216 +718,171 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                 document.body
               )}
             </div>
-          ) : (
-            <div className="w-7 h-7" />
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* DIRECT (NON-MATRIX) CONTROLS */}
-        {(() => {
-          const enumControls = directControls.filter((c) => c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0));
-          const muteControls = directControls.filter((c) => c.ctrl_type === 'mute' || c.ctrl_type === 'switch' || typeof c.values?.[0] === 'boolean');
-          const volControls = directControls.filter((c) => c.ctrl_type === 'volume' || c.ctrl_type === 'integer' || (c.min !== undefined && c.max !== undefined && c.max > c.min));
+        {/* 2. DIRECT (NON-MATRIX) CONTROLS SEQUENTIALLY PACKED */}
+        {directControls.map((ctrl) => {
+          const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
+          const isMute = !isEnum && (ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' || typeof ctrl.values?.[0] === 'boolean');
+          const isVol = !isEnum && !isMute && (ctrl.ctrl_type === 'volume' || ctrl.ctrl_type === 'integer' || (ctrl.min !== undefined && ctrl.max !== undefined && ctrl.max > ctrl.min));
 
-          const modeCrossover = enumControls.find((c) => {
-            const nl = c.name.toLowerCase();
-            return nl.includes('mode') || nl.includes('swap') || nl.includes('channel');
-          });
-          const routeFormat = enumControls.find((c) => c !== modeCrossover);
+          const isOpen = activePopup === ctrl.numid;
+          const currentVal = ctrl.values?.[0] ?? 0;
+          const isMutedState = isMute ? !currentVal : false;
 
-          const mainVol = volControls[0];
-          const mainMute = muteControls[0];
+          if (isEnum && ctrl.items && ctrl.items.length > 0) {
+            const nameLower = ctrl.name.toLowerCase();
+            const isModeCrossover = nameLower.includes('mode') || nameLower.includes('swap') || nameLower.includes('channel');
+            const isCaptureRoute = nameLower.includes('route') || nameLower.includes('source') || nameLower.includes('input');
 
-          return (
-            <>
-              {/* SLOT 2: CHANNEL MODE / CROSSOVER (🔀) */}
-              <div className="w-9 flex items-center justify-center">
-                {modeCrossover ? (
-                  <div className="relative">
-                    <button
-                      onClick={() => setActivePopup(activePopup === modeCrossover.numid ? null : modeCrossover.numid)}
-                      title={`Channel Mode / Crossover (${modeCrossover.name}): ${modeCrossover.items?.[modeCrossover.values?.[0] ?? 0] || ''}`}
-                      className="p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer bg-indigo-500/20 text-indigo-300 border-indigo-500/40 hover:border-indigo-400"
-                    >
-                      🔀
-                    </button>
-                    {activePopup === modeCrossover.numid && createPortal(
-                      <div
-                        className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-                        onClick={() => setActivePopup(null)}
-                      >
-                        <div
-                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
-                            <span className="text-xs font-bold text-text-primary uppercase tracking-wider truncate">
-                              {modeCrossover.name}
-                            </span>
-                            <button
-                              onClick={() => setActivePopup(null)}
-                              className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                          <select
-                            value={modeCrossover.values?.[0] ?? 0}
-                            onChange={(e) => onControlChange(modeCrossover.numid, [parseInt(e.target.value, 10)])}
-                            className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-brand-lime w-full cursor-pointer"
-                          >
-                            {modeCrossover.items?.map((item, idx) => (
-                              <option key={idx} value={idx}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>,
-                      document.body
-                    )}
-                  </div>
-                ) : (
-                  <div className="w-7 h-7" />
-                )}
-              </div>
+            const selectorIcon = isModeCrossover ? '🔀' : isCaptureRoute ? '📥' : '📋';
+            const selectorTitle = isModeCrossover
+              ? `Channel Mode / Crossover (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
+              : isCaptureRoute
+              ? `Capture Ingestion Source (${ctrl.name}): ${ctrl.items[currentVal] || currentVal}`
+              : `${ctrl.name}: ${ctrl.items[currentVal] || currentVal}`;
 
-              {/* SLOT 3: INGEST ROUTE / FORMAT SELECTOR (📥 / 📋) */}
-              <div className="w-9 flex items-center justify-center">
-                {routeFormat ? (
-                  <div className="relative">
-                    <button
-                      onClick={() => setActivePopup(activePopup === routeFormat.numid ? null : routeFormat.numid)}
-                      title={`Route / Format (${routeFormat.name}): ${routeFormat.items?.[routeFormat.values?.[0] ?? 0] || ''}`}
-                      className="p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer bg-amber-500/20 text-amber-300 border-amber-500/40 hover:border-amber-400"
-                    >
-                      {routeFormat.name.toLowerCase().includes('route') ? '📥' : '📋'}
-                    </button>
-                    {activePopup === routeFormat.numid && createPortal(
-                      <div
-                        className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-                        onClick={() => setActivePopup(null)}
-                      >
-                        <div
-                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
-                            <span className="text-xs font-bold text-text-primary uppercase tracking-wider truncate">
-                              {routeFormat.name}
-                            </span>
-                            <button
-                              onClick={() => setActivePopup(null)}
-                              className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                          <select
-                            value={routeFormat.values?.[0] ?? 0}
-                            onChange={(e) => onControlChange(routeFormat.numid, [parseInt(e.target.value, 10)])}
-                            className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-brand-lime w-full cursor-pointer"
-                          >
-                            {routeFormat.items?.map((item, idx) => (
-                              <option key={idx} value={idx}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>,
-                      document.body
-                    )}
-                  </div>
-                ) : (
-                  <div className="w-7 h-7" />
-                )}
-              </div>
-
-              {/* SLOT 4: DIRECT / MASTER VOLUME SLIDER (🎚️) */}
-              <div className="w-9 flex items-center justify-center">
-                {mainVol ? (
-                  <div className="relative">
-                    <button
-                      onClick={() => setActivePopup(activePopup === mainVol.numid ? null : mainVol.numid)}
-                      title={`${mainVol.name}: ${formatControlValue(mainVol, mainVol.values?.[0])}`}
-                      className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime text-sm text-text-primary shadow-sm cursor-pointer"
-                    >
-                      🎚️
-                    </button>
-                    {activePopup === mainVol.numid && createPortal(
-                      <div
-                        className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-                        onClick={() => setActivePopup(null)}
-                      >
-                        <div
-                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
-                            <span className="text-xs font-bold text-text-primary uppercase tracking-wider truncate">
-                              {mainVol.name}
-                            </span>
-                            <button
-                              onClick={() => setActivePopup(null)}
-                              className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                          <input
-                            type="range"
-                            min={mainVol.min ?? 0}
-                            max={mainVol.max ?? 100}
-                            step={mainVol.step ?? 1}
-                            value={mainVol.values?.[0] ?? 0}
-                            onChange={(e) => {
-                              const v = parseInt(e.target.value, 10);
-                              const vals = isLinked ? new Array(mainVol.channels).fill(v) : [v, ...mainVol.values.slice(1)];
-                              onControlChange(mainVol.numid, vals);
-                            }}
-                            className="w-36 h-2 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-brand-lime"
-                          />
-                          <div className="flex items-center justify-between w-full text-[10px] font-mono text-text-secondary">
-                            <span>{formatControlValue(mainVol, mainVol.min)}</span>
-                            <span className="font-bold text-brand-lime text-xs">{formatControlValue(mainVol, mainVol.values?.[0])}</span>
-                            <span>{formatControlValue(mainVol, mainVol.max)}</span>
-                          </div>
-                        </div>
-                      </div>,
-                      document.body
-                    )}
-                  </div>
-                ) : (
-                  <div className="w-7 h-7" />
-                )}
-              </div>
-
-              {/* SLOT 5: DIRECT / MASTER MUTE TOGGLE (🔊 / 🔇) */}
-              <div className="w-9 flex items-center justify-center">
-                {mainMute ? (
+            return (
+              <div key={ctrl.numid} className="w-9 flex items-center justify-center">
+                <div className="relative">
                   <button
-                    onClick={() => onControlChange(mainMute.numid, [!mainMute.values?.[0]])}
-                    title={`${mainMute.name}: ${!mainMute.values?.[0] ? 'MUTED' : 'ACTIVE'}`}
-                    className={`p-1.5 rounded-lg border text-sm transition-all cursor-pointer shadow-sm ${
-                      !mainMute.values?.[0]
-                        ? 'bg-red-500/20 text-red-400 border-red-500/40'
-                        : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
+                    onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
+                    title={selectorTitle}
+                    className={`p-1.5 rounded-lg border text-sm shadow-sm transition-all cursor-pointer ${
+                      isModeCrossover
+                        ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 hover:border-indigo-400'
+                        : isCaptureRoute
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:border-amber-400'
+                        : 'bg-[var(--bg-card)] border-[var(--glass-border)] text-text-primary hover:border-brand-lime'
                     }`}
                   >
-                    {!mainMute.values?.[0] ? '🔇' : '🔊'}
+                    {selectorIcon}
                   </button>
-                ) : (
-                  <div className="w-7 h-7" />
-                )}
-              </div>
-            </>
-          );
-        })()}
 
-        {/* SLOT 6: NON-CLICKABLE VUMETER NODE (📊) */}
-        <div className="w-16 flex items-center justify-center">
-          {meters.length > 0 && meters[0] ? (
+                  {isOpen && createPortal(
+                    <div
+                      className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                      onClick={() => setActivePopup(null)}
+                    >
+                      <div
+                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
+                          <span className="text-xs font-bold text-text-primary uppercase tracking-wider truncate">
+                            {ctrl.name}
+                          </span>
+                          <button
+                            onClick={() => setActivePopup(null)}
+                            className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <select
+                          value={currentVal}
+                          onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
+                          className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-brand-lime w-full cursor-pointer"
+                        >
+                          {ctrl.items.map((item, idx) => (
+                            <option key={idx} value={idx}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>,
+                    document.body
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          if (isMute) {
+            return (
+              <div key={ctrl.numid} className="w-9 flex items-center justify-center">
+                <button
+                  onClick={() => onControlChange(ctrl.numid, [!currentVal])}
+                  title={`${ctrl.name}: ${isMutedState ? 'MUTED' : 'ACTIVE'}`}
+                  className={`p-1.5 rounded-lg border text-sm transition-all cursor-pointer shadow-sm ${
+                    isMutedState
+                      ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                      : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
+                  }`}
+                >
+                  {isMutedState ? '🔇' : '🔊'}
+                </button>
+              </div>
+            );
+          }
+
+          if (isVol) {
+            return (
+              <div key={ctrl.numid} className="w-9 flex items-center justify-center">
+                <div className="relative">
+                  <button
+                    onClick={() => setActivePopup(isOpen ? null : ctrl.numid)}
+                    title={`${ctrl.name}: ${formatControlValue(ctrl, currentVal)}`}
+                    className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime text-sm text-text-primary shadow-sm cursor-pointer"
+                  >
+                    🎚️
+                  </button>
+
+                  {isOpen && createPortal(
+                    <div
+                      className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+                      onClick={() => setActivePopup(null)}
+                    >
+                      <div
+                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
+                          <span className="text-xs font-bold text-text-primary uppercase tracking-wider truncate">
+                            {ctrl.name}
+                          </span>
+                          <button
+                            onClick={() => setActivePopup(null)}
+                            className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-0.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md hover:border-brand-lime transition-all cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <input
+                          type="range"
+                          min={ctrl.min ?? 0}
+                          max={ctrl.max ?? 100}
+                          step={ctrl.step ?? 1}
+                          value={currentVal}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10);
+                            const vals = isLinked ? new Array(ctrl.channels).fill(v) : [v, ...ctrl.values.slice(1)];
+                            onControlChange(ctrl.numid, vals);
+                          }}
+                          className="w-36 h-2 bg-[var(--glass-border)] rounded-lg appearance-none cursor-pointer accent-brand-lime"
+                        />
+                        <div className="flex items-center justify-between w-full text-[10px] font-mono text-text-secondary">
+                          <span>{formatControlValue(ctrl, ctrl.min)}</span>
+                          <span className="font-bold text-brand-lime text-xs">{formatControlValue(ctrl, currentVal)}</span>
+                          <span>{formatControlValue(ctrl, ctrl.max)}</span>
+                        </div>
+                      </div>
+                    </div>,
+                    document.body
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          return null;
+        })}
+
+        {/* 3. NON-CLICKABLE VUMETER NODE (📊) */}
+        {meters.length > 0 && meters[0] && (
+          <div className="w-14 flex items-center justify-center">
             <div
               title={`${meters[0].name || 'Meter'} (ALSA Native Vumeter)`}
               className="flex items-center gap-1.5 bg-black/60 border border-[var(--glass-border)]/60 px-2 py-1 rounded-lg shadow-inner pointer-events-none select-none"
@@ -944,10 +899,8 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                 className="rounded bg-black/80"
               />
             </div>
-          ) : (
-            <div className="w-14 h-7" />
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* RIGHT ENDPOINT */}
