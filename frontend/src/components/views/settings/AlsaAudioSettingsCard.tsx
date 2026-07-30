@@ -579,29 +579,20 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
         {/* Skewer Horizontal Axis Line */}
         <div className="absolute left-4 right-4 top-1/2 -translate-y-1/2 h-[2px] bg-[var(--glass-border)] opacity-70 pointer-events-none z-0" />
 
-        {/* LEFT ENDPOINT (PURE ICONS / BADGES) */}
-        <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1">
-          {isVirtualPlayout && (
-            <span className="text-brand-lime font-bold text-xs" title="Audio Bus Producer">
-              ▶
-            </span>
-          )}
-
+        {/* LEFT ENDPOINT (DESTINATION FOR VIRTUAL CAPTURE & HARDWARE INPUTS) */}
+        <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1 min-w-[20px] justify-center">
+          {/* Virtual Capture Destination: REC badge + Left arrow pointing into REC badge */}
           {isVirtualCapture && (
-            <span className="text-red-400 font-bold text-xs" title="Audio Bus Consumer">
-              🔴
+            <span className="text-red-400 font-bold text-xs flex items-center gap-1" title="Virtual Capture Destination">
+              <span className="text-xs">🔴</span>
+              <span className="text-xs">◄</span>
             </span>
           )}
 
+          {/* Hardware Inputs Destination: Left arrow pointing into Audio Bus */}
           {isHardwareInputs && (
             <span className="text-amber-400 font-bold text-xs" title="Into Audio Bus">
               ◄
-            </span>
-          )}
-
-          {isHardwareOutputs && (
-            <span className="text-sky-400 font-bold text-xs" title="Hardware Output">
-              ►
             </span>
           )}
         </div>
@@ -1041,14 +1032,16 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
           )}
         </div>
 
-        {/* RIGHT ENDPOINT (PURE ICONS / BADGES) */}
-        <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1">
+        {/* RIGHT ENDPOINT (DESTINATION FOR VIRTUAL PLAYOUT & HARDWARE OUTPUTS) */}
+        <div className="z-10 flex items-center gap-1.5 bg-[var(--input-bg)] px-1 min-w-[20px] justify-center">
+          {/* Virtual Playout Destination: Right arrow pointing into Audio Bus */}
           {isVirtualPlayout && (
             <span className="text-brand-lime font-bold text-xs" title="Into Audio Bus">
               ►
             </span>
           )}
 
+          {/* Hardware Outputs Destination: Right arrow + physical output device icon */}
           {isHardwareOutputs && (
             <span className="text-sky-400 font-bold text-sm flex items-center gap-1" title="Into Hardware Output Device">
               <span className="text-xs">►</span>
@@ -1056,12 +1049,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
             </span>
           )}
 
-          {isVirtualCapture && (
-            <span className="text-red-400 font-bold text-xs" title="From Audio Bus">
-              ◄
-            </span>
-          )}
-
+          {/* Hardware Inputs Origin: Physical input device icon (no arrow) */}
           {isHardwareInputs && (
             <span className="text-amber-400 font-bold text-sm" title="From Hardware Input Device">
               {endpointIcon}
