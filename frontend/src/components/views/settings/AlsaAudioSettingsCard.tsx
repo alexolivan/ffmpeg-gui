@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 interface AlsaControl {
@@ -214,11 +215,12 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     if (category === 'virtual_playout') return <span className="text-brand-lime font-bold">▶</span>;
     if (category === 'virtual_capture') return <span className="text-red-400 font-bold">🔴</span>;
 
-    if (nameLower.includes('mic')) return <span className="text-amber-400 font-bold">🎤</span>;
+    if (nameLower.includes('mic')) return <span className="text-amber-400 font-bold">🎙️</span>;
     if (nameLower.includes('speaker')) return <span className="text-sky-400 font-bold">🔊</span>;
     if (nameLower.includes('headphone')) return <span className="text-indigo-400 font-bold">🎧</span>;
+    if (nameLower.includes('spdif') || nameLower.includes('digital') || nameLower.includes('aes')) return <span className="text-emerald-400 font-bold">⚡</span>;
 
-    return <span className="text-emerald-400 font-bold">📻</span>;
+    return <span className="text-sky-400 font-bold">🔊</span>;
   };
 
   if (loading) {
@@ -558,14 +560,14 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
               🎛️
             </button>
 
-            {/* VERTICAL MIXING CONSOLE FIXED CENTERED BACKDROP MODAL */}
-            {isMixerOpen && (
+            {/* VERTICAL MIXING CONSOLE FIXED CENTERED BACKDROP MODAL (PORTAL TO ROOT BODY) */}
+            {isMixerOpen && createPortal(
               <div
-                className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
                 onClick={() => setActivePopup(null)}
               >
                 <div
-                  className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-2xl max-w-[90vw] max-h-[85vh] overflow-auto backdrop-blur-md"
+                  className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-2xl max-w-[90vw] max-h-[85vh] overflow-auto"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2.5 mb-4 min-w-[280px]">
@@ -698,7 +700,8 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                     })}
                   </div>
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
         )}
@@ -742,14 +745,14 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                   {selectorIcon}
                 </button>
 
-                {/* FIXED CENTERED BACKDROP MODAL */}
-                {isOpen && (
+                {/* FIXED CENTERED BACKDROP MODAL (PORTAL TO ROOT BODY) */}
+                {isOpen && createPortal(
                   <div
-                    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                    className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
                     onClick={() => setActivePopup(null)}
                   >
                     <div
-                      className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3 backdrop-blur-md"
+                      className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
@@ -776,7 +779,8 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                         ))}
                       </select>
                     </div>
-                  </div>
+                  </div>,
+                  document.body
                 )}
               </div>
             );
@@ -812,14 +816,14 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                   🎚️
                 </button>
 
-                {/* FIXED CENTERED BACKDROP MODAL */}
-                {isOpen && (
+                {/* FIXED CENTERED BACKDROP MODAL (PORTAL TO ROOT BODY) */}
+                {isOpen && createPortal(
                   <div
-                    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                    className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
                     onClick={() => setActivePopup(null)}
                   >
                     <div
-                      className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3 backdrop-blur-md"
+                      className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
@@ -864,7 +868,8 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                         <span>{ctrl.max ?? 100}</span>
                       </div>
                     </div>
-                  </div>
+                  </div>,
+                  document.body
                 )}
               </div>
             );
@@ -909,11 +914,12 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
 
         {isHardwareOutputs && (
           <div className="flex items-center gap-1.5">
-            <span className="flex items-center gap-1 text-[11px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded-full shadow-sm">
-              <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
+            <span className="text-sky-400 font-bold text-xs" title="Into Hardware Output Device">
+              ►
             </span>
-            <span className="text-sky-400 font-bold text-xs" title="Physical Audio Output Bus">
-              ➔
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2.5 py-0.5 rounded-full shadow-sm">
+              <span className="font-mono text-[10px] text-text-primary">{group.name}</span>
+              <span className="text-xs">{endpointIcon}</span>
             </span>
           </div>
         )}
