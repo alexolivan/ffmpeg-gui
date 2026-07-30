@@ -6,6 +6,7 @@ interface AlsaControl {
   name: string;
   ctrl_type: string; // 'volume', 'mute', 'switch', 'route', 'enum', 'meter'
   is_meter: boolean;
+  matrix_source?: string;
   min?: number;
   max?: number;
   step?: number;
@@ -482,6 +483,9 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                   className="flex items-center gap-1 bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime px-2 py-0.5 rounded text-[10px] font-bold text-text-primary shadow-sm cursor-pointer"
                 >
                   <span>🎚️</span>
+                  {ctrl.matrix_source && (
+                    <span className="text-[9px] text-text-secondary uppercase font-semibold">{ctrl.matrix_source}:</span>
+                  )}
                   <span className="font-mono text-brand-lime">
                     {ctrl.db_min !== undefined ? `${currentVal}dB` : currentVal}
                   </span>

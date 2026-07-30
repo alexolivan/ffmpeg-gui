@@ -116,41 +116,48 @@ class AlsaManager:
         else:
             ctrl_type = "other"
 
-        # Determine group prefix
-        # E.g. 'PCM 0 Playback Volume' -> group: 'PCM 0'
-        # 'Line 0 Capture Level' -> group: 'Line 0'
-        # 'Master Playback Volume' -> group: 'Master'
-        group = "General"
-        match = re.match(r"^([A-Za-z0-9]+\s*\d*)\s+", name)
-        if match:
-            group = match.group(1).strip()
-
-        # Determine quadrant category
-        # 1. virtual_playout (Software Playback IN to ALSA)
-        # 2. hardware_outputs (Hardware OUT from ALSA)
-        # 3. virtual_capture (Software Record OUT of ALSA)
-        # 4. hardware_inputs (Hardware IN to ALSA)
-        name_lower = name.lower()
-        if "pcm" in name_lower and "playback" in name_lower:
-            category = "virtual_playout"
-        elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
-            category = "virtual_capture"
-        elif any(k in name_lower for k in ["line in", "mic", "aux", "spdif in", "aes in", "input"]):
-            category = "hardware_inputs"
-        elif any(k in name_lower for k in ["line out", "speaker", "headphone", "spdif out", "aes out", "master"]):
+        # Determine group prefix & matrix source
+        # E.g. 'PCM 0 Line 0 Playback Volume' -> group: 'Line 0' (Dest), matrix_source: 'PCM 0' (Source)
+        # 'Line 1 Line 0 Monitor Playback Volume' -> group: 'Line 0' (Dest), matrix_source: 'Line 1 (Monitor)'
+        matrix_source = None
+        matrix_match = re.match(r"^([A-Za-z0-9]+\s+\d+)\s+([A-Za-z0-9]+\s+\d+)\s+(Monitor\s+)?(Playback|Capture)", name)
+        if matrix_match:
+            source_name = matrix_match.group(1).strip()
+            dest_name = matrix_match.group(2).strip()
+            is_monitor = bool(matrix_match.group(3))
+            
+            group = dest_name
             category = "hardware_outputs"
-        elif "capture" in name_lower:
-            category = "virtual_capture" if "route" in name_lower or "stream" in name_lower else "hardware_inputs"
-        elif "playback" in name_lower:
-            category = "virtual_playout" if "pcm" in name_lower else "hardware_outputs"
+            matrix_source = f"{source_name} (Monitor)" if is_monitor else source_name
         else:
-            category = "hardware_inputs" if "in" in name_lower else "hardware_outputs"
+            group = "General"
+            match = re.match(r"^([A-Za-z0-9]+\s*\d*)\s+", name)
+            if match:
+                group = match.group(1).strip()
+
+            # Determine quadrant category
+            name_lower = name.lower()
+            if "pcm" in name_lower and "playback" in name_lower:
+                category = "virtual_playout"
+            elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
+                category = "virtual_capture"
+            elif any(k in name_lower for k in ["line in", "mic", "aux", "spdif in", "aes in", "input"]):
+                category = "hardware_inputs"
+            elif any(k in name_lower for k in ["line out", "speaker", "headphone", "spdif out", "aes out", "master"]):
+                category = "hardware_outputs"
+            elif "capture" in name_lower:
+                category = "virtual_capture" if "route" in name_lower or "stream" in name_lower else "hardware_inputs"
+            elif "playback" in name_lower:
+                category = "virtual_playout" if "pcm" in name_lower else "hardware_outputs"
+            else:
+                category = "hardware_inputs" if "in" in name_lower else "hardware_outputs"
 
         return {
             "type": ctrl_type,
             "group": group,
             "category": category,
-            "is_meter": is_meter
+            "is_meter": is_meter,
+            "matrix_source": matrix_source
         }
 
     def get_card_topology(self, card_idx: int) -> Dict[str, Any]:
