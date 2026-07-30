@@ -793,7 +793,8 @@ class ProcessManager:
             
         # ── Secondary Preview Output ──
         is_service = getattr(media_proc, 'type', 'service') == 'service'
-        if is_service and has_video:
+        has_video_stream = has_video and codec_cfg.get('vcodec') != 'none'
+        if is_service and has_video_stream:
             from database.db import PREVIEWS_DIR
             previews_dir = PREVIEWS_DIR
             os.makedirs(previews_dir, exist_ok=True)
@@ -919,11 +920,13 @@ class ProcessManager:
             port = input_cfg.get('port', '9000')
             streamid = input_cfg.get('streamid', '')
             
-            from utils.process_utils import get_ffmpeg_version
-            version = get_ffmpeg_version(self.ffmpeg_path)
-            timeout_param = "timeout=5000000" if version >= 4.0 else "rw_timeout=5000000"
-            
-            url = f"srt://{host}:{port}?mode={mode}&latency={latency}&{timeout_param}"
+            url = f"srt://{host}:{port}?mode={mode}&latency={latency}"
+            if mode == 'caller' and network_timeout > 0:
+                from utils.process_utils import get_ffmpeg_version
+                version = get_ffmpeg_version(self.ffmpeg_path)
+                timeout_us = network_timeout * 1000000
+                timeout_param = f"timeout={timeout_us}" if version >= 4.0 else f"rw_timeout={timeout_us}"
+                url += f"&{timeout_param}"
             if streamid:
                 url += f"&streamid={streamid}"
             cmd += ["-i", url]
@@ -1233,11 +1236,7 @@ class ProcessManager:
             latency = output_cfg.get('latency', 200)
             streamid = output_cfg.get('streamid', '')
             
-            from utils.process_utils import get_ffmpeg_version
-            version = get_ffmpeg_version(self.ffmpeg_path)
-            timeout_param = "timeout=5000000" if version >= 4.0 else "rw_timeout=5000000"
-            
-            url = f"srt://{host}:{port}?mode={mode}&latency={latency}&{timeout_param}"
+            url = f"srt://{host}:{port}?mode={mode}&latency={latency}"
             if streamid:
                 url += f"&streamid={streamid}"
                 

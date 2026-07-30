@@ -51,10 +51,10 @@ class TestCommandGenerator(unittest.TestCase):
         cmd = self.pm._build_ffmpeg_cmd(media_proc, "ffmpeg")
         cmd_str = " ".join(cmd)
         
-        # Check input URL
-        self.assertIn("srt://1.2.3.4:9999?mode=caller&latency=150&timeout=5000000&streamid=input_id", cmd_str)
-        # Check output URL
-        self.assertIn("srt://0.0.0.0:8888?mode=listener&latency=200&timeout=5000000&streamid=output_id", cmd_str)
+        # Check input URL (caller with network_timeout=15s)
+        self.assertIn("srt://1.2.3.4:9999?mode=caller&latency=150&timeout=15000000&streamid=input_id", cmd_str)
+        # Check output URL (listener without 5s timeout)
+        self.assertIn("srt://0.0.0.0:8888?mode=listener&latency=200&streamid=output_id", cmd_str)
         # Check Annex B filter for H.264 into SRT/mpegts
         self.assertIn("-bsf:v h264_mp4toannexb", cmd_str)
 

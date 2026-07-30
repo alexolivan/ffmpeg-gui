@@ -886,11 +886,7 @@ class TaskManager:
             latency = output_cfg.get('latency', 200)
             streamid = output_cfg.get('streamid', '')
             
-            from utils.process_utils import get_ffmpeg_version
-            version = get_ffmpeg_version(self.ffmpeg_path)
-            timeout_param = "timeout=5000000" if version >= 4.0 else "rw_timeout=5000000"
-            
-            url = f"srt://{host}:{port}?mode={mode}&latency={latency}&{timeout_param}"
+            url = f"srt://{host}:{port}?mode={mode}&latency={latency}"
             if streamid:
                 url += f"&streamid={streamid}"
                 
