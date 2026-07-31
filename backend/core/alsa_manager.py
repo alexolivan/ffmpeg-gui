@@ -172,7 +172,9 @@ class AlsaManager:
 
             # Determine quadrant category for single entity controls
             name_lower = name.lower()
-            if any(k in name_lower for k in ["clock", "localrate", "rate", "sync", "pll"]):
+            if any(k in name_lower for k in ["auto-mute", "automute", "loopback", "channel mode", "jack select", "power-save", "powersave"]):
+                category = "global_controls"
+            elif any(k in name_lower for k in ["clock", "localrate", "rate", "sync", "pll"]):
                 category = "system_clock"
             elif "pcm" in name_lower and "playback" in name_lower:
                 category = "virtual_playout"

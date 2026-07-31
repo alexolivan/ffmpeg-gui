@@ -570,11 +570,21 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                             onChange={(e) => handleControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
                             className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-lime cursor-pointer w-full"
                           >
-                            {ctrl.items.map((item: string, idx: number) => (
-                              <option key={idx} value={idx}>
-                                {item}
-                              </option>
-                            ))}
+                            {ctrl.items.map((item: string, idx: number) => {
+                              let displayLabel = item;
+                              const cName = (ctrl.name || '').toLowerCase();
+                              if (cName.includes('auto-mute') || cName.includes('automute')) {
+                                if (item.toLowerCase() === 'enabled') displayLabel = 'Enabled (Auto-Mute Rear Speakers on Headphone Insert)';
+                                else if (item.toLowerCase() === 'disabled') displayLabel = 'Disabled (Simultaneous Headphone & Rear Output)';
+                                else if (item.toLowerCase().includes('line out')) displayLabel = 'Line Out Only (Mute Rear Line Out Only)';
+                                else if (item.toLowerCase().includes('speaker')) displayLabel = 'All Speaker Out (Mute All Rear Speakers)';
+                              }
+                              return (
+                                <option key={idx} value={idx}>
+                                  {displayLabel}
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
                       );
