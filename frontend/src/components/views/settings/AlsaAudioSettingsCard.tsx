@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -277,23 +277,24 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     });
   };
 
-  const handleControlChange = async (numid: number, values: any[]) => {
+  const handleControlChange = useCallback(async (numid: number, values: any[]) => {
     // Update local state optimistically
-    if (topology) {
+    setTopology((prevTopology) => {
+      if (!prevTopology) return prevTopology;
       const updateValuesInGroups = (groups: AlsaGroup[]) =>
         groups.map((g) => ({
           ...g,
           controls: g.controls.map((c) => (c.numid === numid ? { ...c, values } : c)),
         }));
 
-      setTopology({
-        ...topology,
-        virtual_playout: updateValuesInGroups(topology.virtual_playout),
-        hardware_outputs: updateValuesInGroups(topology.hardware_outputs),
-        virtual_capture: updateValuesInGroups(topology.virtual_capture),
-        hardware_inputs: updateValuesInGroups(topology.hardware_inputs),
-      });
-    }
+      return {
+        ...prevTopology,
+        virtual_playout: updateValuesInGroups(prevTopology.virtual_playout),
+        hardware_outputs: updateValuesInGroups(prevTopology.hardware_outputs),
+        virtual_capture: updateValuesInGroups(prevTopology.virtual_capture),
+        hardware_inputs: updateValuesInGroups(prevTopology.hardware_inputs),
+      };
+    });
 
     try {
       await fetch('/api/settings/alsa/control', {
@@ -308,7 +309,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     } catch (err) {
       console.error('Failed to write control:', err);
     }
-  };
+  }, [selectedCardIdx]);
 
   const toggleChannelLink = (numid: number) => {
     setLinkedChannels((prev) => ({ ...prev, [numid]: !prev[numid] }));
@@ -662,7 +663,7 @@ interface AlsaFaderUnitProps {
   heightClass?: string;
 }
 
-const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = ({
+const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = React.memo(({
   min,
   max,
   step,
@@ -720,7 +721,7 @@ const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = ({
       />
     </div>
   );
-};
+});
 
 interface AlsaStereoFaderPairProps {
   min: number;
@@ -733,7 +734,7 @@ interface AlsaStereoFaderPairProps {
   heightClass?: string;
 }
 
-const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = ({
+const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = React.memo(({
   min,
   max,
   step,
@@ -866,10 +867,10 @@ const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = ({
       </div>
     </div>
   );
-};
+});
 
 /* AudioScience Skewer (Brocheta) Channel Strip Component */
-const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
+const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
   group,
   activeProcesses,
   onControlChange,
@@ -1521,4 +1522,4 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
       </div>
     </div>
   );
-};
+});
