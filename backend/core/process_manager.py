@@ -1314,7 +1314,7 @@ class ProcessManager:
                     chunk = await read_res
                 else:
                     chunk = read_res
-                if not chunk:
+                if not chunk or not isinstance(chunk, (bytes, bytearray)):
                     if buffer:
                         msg = buffer.decode('utf-8', errors='replace').strip()
                         if msg:
