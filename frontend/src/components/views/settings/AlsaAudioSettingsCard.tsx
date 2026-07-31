@@ -46,6 +46,8 @@ interface AlsaTopology {
   hardware_inputs: AlsaGroup[];
   system_clock?: AlsaGroup[];
   jack_sensors?: AlsaGroup[];
+  iec958_controls?: AlsaGroup[];
+  pcm_capabilities?: AlsaGroup[];
   global_controls: AlsaGroup[];
   active_processes?: ActiveProcessBadge[];
 }

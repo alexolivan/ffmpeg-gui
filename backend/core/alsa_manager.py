@@ -110,6 +110,10 @@ class AlsaManager:
         # Detect IEC958 (S/PDIF / AES3) Digital Channel Status Metadata Controls
         is_iec958 = (elem_str == "IEC958" or "iec958" in name.lower())
 
+        # Detect iface=PCM capabilities & HDMI EDID/ELD Metadata Controls
+        iface_str = str(iface).upper()
+        is_pcm_capability = (iface_str == "PCM" or iface_str == "1" or "channel map" in name.lower() or name.lower().startswith("eld"))
+
         # Determine type
         if is_meter:
             ctrl_type = "meter"
@@ -117,6 +121,8 @@ class AlsaManager:
             ctrl_type = "jack_sensor"
         elif is_iec958:
             ctrl_type = "iec958"
+        elif is_pcm_capability:
+            ctrl_type = "pcm_capability"
         elif is_bool:
             ctrl_type = "mute" if "switch" in name.lower() or "mute" in name.lower() else "switch"
         elif is_int:
@@ -145,6 +151,9 @@ class AlsaManager:
         elif is_iec958:
             group = name
             category = "iec958_controls"
+        elif is_pcm_capability:
+            group = name
+            category = "pcm_capabilities"
         elif matrix_match:
             source_name = matrix_match.group(1).strip()
             dest_name = matrix_match.group(2).strip()
@@ -199,6 +208,7 @@ class AlsaManager:
             "system_clock": [],
             "jack_sensors": [],
             "iec958_controls": [],
+            "pcm_capabilities": [],
             "global_controls": []
         }
 
@@ -229,6 +239,7 @@ class AlsaManager:
             "system_clock": [],
             "jack_sensors": [],
             "iec958_controls": [],
+            "pcm_capabilities": [],
             "global_controls": []
         }
 
