@@ -722,6 +722,152 @@ const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = ({
   );
 };
 
+interface AlsaStereoFaderPairProps {
+  min: number;
+  max: number;
+  step: number;
+  volValL: number;
+  volValR: number;
+  isLinked: boolean;
+  onChangeCommit: (vals: number[]) => void;
+  heightClass?: string;
+}
+
+const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = ({
+  min,
+  max,
+  step,
+  volValL,
+  volValR,
+  isLinked,
+  onChangeCommit,
+  heightClass = "h-20"
+}) => {
+  const [valL, setValL] = useState<number>(volValL);
+  const [valR, setValR] = useState<number>(volValR);
+  const [strL, setStrL] = useState<string>(String(volValL));
+  const [strR, setStrR] = useState<string>(String(volValR));
+
+  useEffect(() => {
+    setValL(volValL);
+    setValR(volValR);
+    setStrL(String(volValL));
+    setStrR(String(volValR));
+  }, [volValL, volValR]);
+
+  const commit = (newL: number, newR: number) => {
+    const clampedL = Math.min(max, Math.max(min, isNaN(newL) ? min : newL));
+    const clampedR = Math.min(max, Math.max(min, isNaN(newR) ? min : newR));
+    setValL(clampedL);
+    setValR(clampedR);
+    setStrL(String(clampedL));
+    setStrR(String(clampedR));
+    onChangeCommit(isLinked ? [clampedL, clampedL] : [clampedL, clampedR]);
+  };
+
+  const handleDragL = (v: number) => {
+    setValL(v);
+    setStrL(String(v));
+    if (isLinked) {
+      setValR(v);
+      setStrR(String(v));
+    }
+  };
+
+  const handleDragR = (v: number) => {
+    setValR(v);
+    setStrR(String(v));
+    if (isLinked) {
+      setValL(v);
+      setStrL(String(v));
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* LEFT CHANNEL */}
+      <div className="flex flex-col items-center gap-1">
+        <span className="text-[9px] font-mono font-bold text-text-secondary">L</span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={valL}
+          onChange={(e) => handleDragL(parseInt(e.target.value, 10))}
+          onPointerUp={() => commit(valL, isLinked ? valL : valR)}
+          onMouseUp={() => commit(valL, isLinked ? valL : valR)}
+          onTouchEnd={() => commit(valL, isLinked ? valL : valR)}
+          className={`w-2 ${heightClass} [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime`}
+        />
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={strL}
+          onChange={(e) => {
+            const str = e.target.value;
+            setStrL(str);
+            if (isLinked) setStrR(str);
+          }}
+          onBlur={() => {
+            const parsedL = parseInt(strL, 10);
+            commit(parsedL, isLinked ? parsedL : parseInt(strR, 10));
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const parsedL = parseInt(strL, 10);
+              commit(parsedL, isLinked ? parsedL : parseInt(strR, 10));
+            }
+          }}
+          className="w-11 text-center bg-[var(--bg-card)] border border-[var(--glass-border)] rounded text-[9px] font-mono font-bold text-text-primary focus:outline-none focus:border-brand-lime py-0.5 px-0.5 mt-0.5"
+        />
+      </div>
+
+      {/* RIGHT CHANNEL */}
+      <div className="flex flex-col items-center gap-1">
+        <span className="text-[9px] font-mono font-bold text-text-secondary">R</span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={valR}
+          onChange={(e) => handleDragR(parseInt(e.target.value, 10))}
+          onPointerUp={() => commit(isLinked ? valR : valL, valR)}
+          onMouseUp={() => commit(isLinked ? valR : valL, valR)}
+          onTouchEnd={() => commit(isLinked ? valR : valL, valR)}
+          className={`w-2 ${heightClass} [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime`}
+        />
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={strR}
+          onChange={(e) => {
+            const str = e.target.value;
+            setStrR(str);
+            if (isLinked) setStrL(str);
+          }}
+          onBlur={() => {
+            const parsedR = parseInt(strR, 10);
+            commit(isLinked ? parsedR : parseInt(strL, 10), parsedR);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const parsedR = parseInt(strR, 10);
+              commit(isLinked ? parsedR : parseInt(strL, 10), parsedR);
+            }
+          }}
+          className="w-11 text-center bg-[var(--bg-card)] border border-[var(--glass-border)] rounded text-[9px] font-mono font-bold text-text-primary focus:outline-none focus:border-brand-lime py-0.5 px-0.5 mt-0.5"
+        />
+      </div>
+    </div>
+  );
+};
+
 /* AudioScience Skewer (Brocheta) Channel Strip Component */
 const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
   group,
@@ -924,32 +1070,18 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                               {volCtrl ? (
                                 <div className="flex flex-col items-center justify-center py-1 gap-1">
                                   {isStereo ? (
-                                    <div className="flex items-center gap-2">
-                                      <AlsaFaderUnit
-                                        min={volCtrl.min ?? 0}
-                                        max={volCtrl.max ?? 100}
-                                        step={volCtrl.step ?? 1}
-                                        value={volValL}
-                                        label="L"
-                                        heightClass="h-20"
-                                        onChangeCommit={(vL) => {
-                                          const newVals = isLinked ? new Array(volCtrl.channels).fill(vL) : [vL, volValR];
-                                          onControlChange(volCtrl.numid, newVals);
-                                        }}
-                                      />
-                                      <AlsaFaderUnit
-                                        min={volCtrl.min ?? 0}
-                                        max={volCtrl.max ?? 100}
-                                        step={volCtrl.step ?? 1}
-                                        value={volValR}
-                                        label="R"
-                                        heightClass="h-20"
-                                        onChangeCommit={(vR) => {
-                                          const newVals = isLinked ? new Array(volCtrl.channels).fill(vR) : [volValL, vR];
-                                          onControlChange(volCtrl.numid, newVals);
-                                        }}
-                                      />
-                                    </div>
+                                    <AlsaStereoFaderPair
+                                      min={volCtrl.min ?? 0}
+                                      max={volCtrl.max ?? 100}
+                                      step={volCtrl.step ?? 1}
+                                      volValL={volValL}
+                                      volValR={volValR}
+                                      isLinked={isLinked}
+                                      heightClass="h-20"
+                                      onChangeCommit={(vals) => {
+                                        onControlChange(volCtrl.numid, vals);
+                                      }}
+                                    />
                                   ) : (
                                     <AlsaFaderUnit
                                       min={volCtrl.min ?? 0}

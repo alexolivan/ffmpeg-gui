@@ -182,7 +182,7 @@ class AlsaManager:
                 category = "virtual_capture"
             elif any(k in name_lower for k in ["line", "digital", "aux", "spdif", "aes"]):
                 # Physical hardware connector lines (Line 0, Digital 0, Aux, S/PDIF, AES)
-                if "capture" in name_lower or "input" in name_lower or "in" in name_lower:
+                if re.search(r'\b(capture|input|in)\b', name_lower):
                     category = "hardware_inputs"
                 else:
                     category = "hardware_outputs"
@@ -429,6 +429,8 @@ class AlsaManager:
             for v in values:
                 if isinstance(v, bool):
                     val_strs.append("on" if v else "off")
+                elif isinstance(v, (float, int)):
+                    val_strs.append(str(int(v)))
                 else:
                     val_strs.append(str(v))
             
@@ -453,7 +455,7 @@ class AlsaManager:
                 if res_retry.returncode == 0:
                     return True
 
-            logger.warning(f"amixer cset numid={numid} failed: stdout='{res.stdout.strip()}' stderr='{res.stderr.strip()}'")
+            logger.warning(f"amixer cset numid={numid} failed on card {card_idx}: cmd={cmd}, stdout='{res.stdout.strip()}', stderr='{res.stderr.strip()}'")
             return False
         except Exception as e:
             logger.error(f"Error writing ALSA control numid={numid} on card {card_idx}: {e}")
