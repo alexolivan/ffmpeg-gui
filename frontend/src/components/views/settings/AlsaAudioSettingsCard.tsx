@@ -31,7 +31,10 @@ interface ActiveProcessBadge {
   alias: string;
   status: string;
   type?: string;
+  direction?: 'capture' | 'playout' | 'both';
   device_target?: string;
+  pcm_index?: number | null;
+  subdevice_index?: number | null;
   cmd?: string;
 }
 
@@ -57,42 +60,47 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
   if (!activeProcesses || activeProcesses.length === 0) return [];
   const grpName = group.name.toLowerCase();
   const numMatch = group.name.match(/\d+/);
-  const grpIndex = numMatch ? numMatch[0] : null;
+  const grpIndex = numMatch ? parseInt(numMatch[0], 10) : null;
 
-  const matched = activeProcesses.filter((proc) => {
+  const isPlayoutQuadrant = group.category === 'virtual_playout' || group.category === 'hardware_outputs';
+  const isCaptureQuadrant = group.category === 'virtual_capture' || group.category === 'hardware_inputs';
+
+  return activeProcesses.filter((proc) => {
+    // 1. Quadrant Direction Filtering
+    // Playout quadrants ONLY accept 'playout' or 'both' processes!
+    if (isPlayoutQuadrant && proc.direction === 'capture') return false;
+    // Capture quadrants ONLY accept 'capture' or 'both' processes!
+    if (isCaptureQuadrant && proc.direction === 'playout') return false;
+
+    // 2. Direct Explicit Name Match (e.g., alias/cmd contains "PCM 0", "Line 1", etc.)
     const target = (proc.device_target || '').toLowerCase();
     const cmd = (proc.cmd || '').toLowerCase();
     const alias = (proc.alias || '').toLowerCase();
 
-    // 1. Direct name match (e.g. "line 0", "pcm 0", "digital 0")
     if (target.includes(grpName) || cmd.includes(grpName) || alias.includes(grpName)) {
       return true;
     }
 
-    // 2. Subdevice index match (e.g. hw:0,0,0 or hw:0,0 for channel index "0"; hw:0,1,0 or hw:0,1 for channel index "1")
+    // 3. Exact PCM / Subdevice Index Match (e.g. hw:0,1,0 -> pcm_index = 1 matches "PCM 1" or "Line 1")
     if (grpIndex !== null) {
-      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):\\d+,(${grpIndex})(?:,(\\d+))?\\b`, 'i');
+      if (proc.pcm_index === grpIndex || proc.subdevice_index === grpIndex) {
+        return true;
+      }
+      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):\\d+,${grpIndex}(?:,\\d+)?\\b`, 'i');
       if (subdevRegex.test(target) || subdevRegex.test(cmd)) {
+        return true;
+      }
+    }
+
+    // 4. Default fallback for single process without explicit subdevice on PCM 0 / Line 0
+    if (grpIndex === 0 && activeProcesses.length === 1) {
+      if (cmd.includes("default") || target.includes("default") || (cmd.includes("-f alsa") && (proc.pcm_index === null || proc.pcm_index === undefined))) {
         return true;
       }
     }
 
     return false;
   });
-
-  // If specific channel subdevice matching didn't yield a match, but there is only 1 active process on default card 0
-  if (matched.length === 0 && activeProcesses.length === 1) {
-    const singleProc = activeProcesses[0];
-    const target = (singleProc.device_target || '').toLowerCase();
-    const cmd = (singleProc.cmd || '').toLowerCase();
-
-    // If process uses default/sysdefault without explicit subdevice, map to PCM 0 / Line 0
-    if (grpIndex === "0" && (cmd.includes("default") || target.includes("default") || cmd.includes("-f alsa"))) {
-      return [singleProc];
-    }
-  }
-
-  return matched;
 };
 
 export const AlsaAudioSettingsCard: React.FC = () => {

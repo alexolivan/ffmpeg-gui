@@ -4138,15 +4138,32 @@ def get_alsa_cards():
     return alsa_manager.get_cards()
 
 
-def extract_alsa_device_target(cmd_str: str, config_json_str: str) -> str:
-    combined = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
-    match = re.search(r'(?:hw|plughw|dsnoop|dmix):(\d+)(?:,(\d+))?(?:,(\d+))?', combined)
+def analyze_alsa_process_info(cmd_str: str, config_json_str: str) -> Dict[str, Any]:
+    cmd_lower = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
+
+    # Capture vs Playout detection
+    has_input = bool(re.search(r'-f\s+alsa[^\n\r]*?-i\b', cmd_lower) or re.search(r'-i\s+(?:hw|plughw|dsnoop|dmix|alsa):', cmd_lower))
+    has_output = bool(re.search(r'-f\s+alsa\s+(?:hw|plughw|dsnoop|dmix):', cmd_lower) or re.search(r'(?:hw|plughw|dsnoop|dmix):\d+[^\s]*\s*$', cmd_lower))
+
+    direction = "both" if (has_input and has_output) else ("capture" if has_input else "playout")
+
+    match = re.search(r'(?:hw|plughw|dsnoop|dmix):(?:card=)?(\d+)(?:,(\d+))?(?:,(\d+))?', cmd_lower)
+    device_target = ""
+    pcm_index = None
+    subdev_index = None
+
     if match:
         card = match.group(1)
-        device = match.group(2) if match.group(2) is not None else "0"
-        subdev = match.group(3) if match.group(3) is not None else "0"
-        return f"hw:{card},{device},{subdev}"
-    return ""
+        pcm_index = int(match.group(2)) if match.group(2) is not None else 0
+        subdev_index = int(match.group(3)) if match.group(3) is not None else 0
+        device_target = f"hw:{card},{pcm_index},{subdev_index}"
+
+    return {
+        "direction": direction,
+        "device_target": device_target,
+        "pcm_index": pcm_index,
+        "subdevice_index": subdev_index
+    }
 
 
 def is_cmd_using_alsa_card(cmd_str: str, config_json_str: str, card_index: int, card_id: str) -> bool:
@@ -4230,12 +4247,16 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
                 }, default=str)
 
                 if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id):
+                    info = analyze_alsa_process_info(cmd_str, config_json_str)
                     alsa_badges.append({
                         "process_id": proc.id,
                         "alias": proc.alias or proc.name or f"Service #{proc.id}",
                         "status": proc.status,
                         "type": "service",
-                        "device_target": extract_alsa_device_target(cmd_str, config_json_str),
+                        "direction": info["direction"],
+                        "device_target": info["device_target"],
+                        "pcm_index": info["pcm_index"],
+                        "subdevice_index": info["subdevice_index"],
                         "cmd": cmd_str
                     })
         except Exception as proc_err:
@@ -4265,14 +4286,20 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
                 task_alias = (task.alias if task else None) or (task.name if task else None) or f"Task #{task_exec.id}"
 
                 if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id):
+                    info = analyze_alsa_process_info(cmd_str, config_json_str)
                     alsa_badges.append({
                         "process_id": task_exec.id,
                         "alias": task_alias,
                         "status": task_exec.status,
                         "type": "task",
-                        "device_target": extract_alsa_device_target(cmd_str, config_json_str),
+                        "direction": info["direction"],
+                        "device_target": info["device_target"],
+                        "pcm_index": info["pcm_index"],
+                        "subdevice_index": info["subdevice_index"],
                         "cmd": cmd_str
                     })
+        except Exception as task_err:
+            logger.warning(f"Error matching active tasks to ALSA card {card_index}: {task_err}")
         except Exception as task_err:
             logger.warning(f"Error matching active tasks to ALSA card {card_index}: {task_err}")
 
