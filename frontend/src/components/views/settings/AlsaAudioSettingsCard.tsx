@@ -318,14 +318,24 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     const nameLower = groupName ? groupName.toLowerCase() : '';
 
     if (category === 'virtual_playout') return <span className="text-brand-lime font-bold">▶</span>;
-    if (category === 'virtual_capture') return <span className="text-red-400 font-bold">🔴</span>;
+    if (category === 'virtual_capture') return <span className="text-red-400 font-bold">🎙️</span>;
 
-    if (nameLower.includes('mic')) return <span className="text-amber-400 font-bold">🎙️</span>;
-    if (nameLower.includes('speaker')) return <span className="text-sky-400 font-bold">🔊</span>;
+    if (category === 'hardware_inputs' || nameLower.includes('input') || nameLower.includes('in') || nameLower.includes('mic')) {
+      if (nameLower.includes('spdif') || nameLower.includes('digital') || nameLower.includes('aes')) {
+        return <span className="text-emerald-400 font-bold">⚡</span>;
+      }
+      return <span className="text-amber-400 font-bold">🎙️</span>;
+    }
+
+    if (nameLower.includes('speaker') || nameLower.includes('line out') || nameLower.includes('front') || nameLower.includes('rear') || nameLower.includes('surround') || nameLower.includes('clfe')) {
+      return <span className="text-sky-400 font-bold">🔊</span>;
+    }
     if (nameLower.includes('headphone')) return <span className="text-indigo-400 font-bold">🎧</span>;
     if (nameLower.includes('spdif') || nameLower.includes('digital') || nameLower.includes('aes')) return <span className="text-emerald-400 font-bold">⚡</span>;
 
-    return <span className="text-sky-400 font-bold">🔊</span>;
+    if (category === 'hardware_outputs') return <span className="text-sky-400 font-bold">🔊</span>;
+
+    return <span className="text-amber-400 font-bold">🎙️</span>;
   };
 
   if (loading) {
