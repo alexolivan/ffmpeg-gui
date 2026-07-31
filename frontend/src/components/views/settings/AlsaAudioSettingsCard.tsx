@@ -45,6 +45,7 @@ interface AlsaTopology {
   virtual_capture: AlsaGroup[];
   hardware_inputs: AlsaGroup[];
   system_clock?: AlsaGroup[];
+  jack_sensors?: AlsaGroup[];
   global_controls: AlsaGroup[];
   active_processes?: ActiveProcessBadge[];
 }
@@ -383,6 +384,37 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 🏷️ {proc.alias}
               </span>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Hardware Connection Presence (Jack Sensing) Status Banner */}
+      {topology?.jack_sensors && topology.jack_sensors.length > 0 && (
+        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5 space-y-1.5 shadow-sm">
+          <div className="flex items-center gap-2 text-xs font-bold text-text-secondary">
+            <span>🔌 {t('settings.alsa.jackSensing', 'Hardware Physical Connectors Status (Jack Sensing):')}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {topology.jack_sensors.map((sensorGroup) => {
+              const ctrl = sensorGroup.controls?.[0];
+              const isConnected = ctrl?.values?.[0] === true || ctrl?.values?.[0] === 1;
+              return (
+                <div
+                  key={sensorGroup.id}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-mono flex items-center gap-1.5 border transition-all ${
+                    isConnected
+                      ? 'bg-brand-lime/10 border-brand-lime/30 text-brand-lime font-bold'
+                      : 'bg-[var(--input-bg)] border-[var(--glass-border)] text-text-secondary/60'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-brand-lime animate-pulse' : 'bg-text-secondary/40'}`} />
+                  <span>{sensorGroup.name}</span>
+                  <span className="text-[10px] uppercase font-mono opacity-80">
+                    ({isConnected ? 'CONNECTED' : 'UNPLUGGED'})
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

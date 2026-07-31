@@ -104,9 +104,14 @@ class AlsaManager:
         is_int = elem_type == SND_CTL_ELEM_TYPE_INTEGER or elem_str == "INTEGER"
         is_enum = elem_type == SND_CTL_ELEM_TYPE_ENUMERATED or elem_str == "ENUMERATED"
 
+        # Detect Read-Only Jack Sensing / Hardware Presence Sensors
+        is_jack_sensor = is_readonly and is_bool and ("jack" in name.lower() or "phantom" in name.lower() or "sense" in name.lower())
+
         # Determine type
         if is_meter:
             ctrl_type = "meter"
+        elif is_jack_sensor:
+            ctrl_type = "jack_sensor"
         elif is_bool:
             ctrl_type = "mute" if "switch" in name.lower() or "mute" in name.lower() else "switch"
         elif is_int:
@@ -129,7 +134,10 @@ class AlsaManager:
             re.IGNORECASE
         )
 
-        if matrix_match:
+        if is_jack_sensor:
+            group = name
+            category = "jack_sensors"
+        elif matrix_match:
             source_name = matrix_match.group(1).strip()
             dest_name = matrix_match.group(2).strip()
             is_monitor = bool(matrix_match.group(3))
@@ -180,6 +188,8 @@ class AlsaManager:
             "hardware_outputs": [],
             "virtual_capture": [],
             "hardware_inputs": [],
+            "system_clock": [],
+            "jack_sensors": [],
             "global_controls": []
         }
 
@@ -208,6 +218,7 @@ class AlsaManager:
             "virtual_capture": [],
             "hardware_inputs": [],
             "system_clock": [],
+            "jack_sensors": [],
             "global_controls": []
         }
 
