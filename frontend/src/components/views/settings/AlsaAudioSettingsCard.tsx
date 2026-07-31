@@ -108,9 +108,16 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
       if (subdevRegex.test(target) || subdevRegex.test(cmd)) {
         return true;
       }
+    } else {
+      // 4. Non-digitized group names (HDA Intel / Standard cards with "PCM", "Master", "Analog", "Front")
+      // If proc.pcm_index is 0 or unassigned, it maps to standard primary playout groups ("pcm", "master", "analog", "playback", "front")
+      const isStandardPrimaryGroup = /pcm|master|analog|playback|front/i.test(group.name);
+      if (isStandardPrimaryGroup && (proc.pcm_index === 0 || proc.pcm_index === null || proc.pcm_index === undefined)) {
+        return true;
+      }
     }
 
-    // 4. Default fallback for single process without explicit subdevice on PCM 0
+    // 5. Default fallback for single process without explicit subdevice on PCM 0
     if (grpIndex === 0 && activeProcesses.length === 1) {
       if (cmd.includes("default") || target.includes("default") || (cmd.includes("-f alsa") && (proc.pcm_index === null || proc.pcm_index === undefined))) {
         return true;
