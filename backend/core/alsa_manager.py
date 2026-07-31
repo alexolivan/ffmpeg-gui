@@ -94,7 +94,7 @@ class AlsaManager:
 
         return cards
 
-    def _classify_control(self, name: str, iface: int, elem_type: int, access_flags: str, items: List[str]) -> Dict[str, Any]:
+    def _classify_control(self, name: str, iface: int, elem_type: int, access_flags: str, items: List[str], index: int = 0) -> Dict[str, Any]:
         """Classify raw ALSA control into semantic type and category."""
         is_readonly = "r" in access_flags and "w" not in access_flags
         is_meter = is_readonly and ("meter" in name.lower() or "peak" in name.lower() or "level" in name.lower())
@@ -178,6 +178,9 @@ class AlsaManager:
                 category = "system_clock"
             elif "pcm" in name_lower and "playback" in name_lower:
                 category = "virtual_playout"
+            elif "input source" in name_lower or "capture source" in name_lower or "mic select" in name_lower:
+                category = "virtual_capture"
+                group = f"Capture {index}"
             elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
                 category = "virtual_capture"
             elif any(k in name_lower for k in ["line in", "mic", "aux", "spdif in", "aes in", "input"]):
@@ -185,7 +188,8 @@ class AlsaManager:
             elif any(k in name_lower for k in ["line out", "speaker", "headphone", "spdif out", "aes out", "master"]):
                 category = "hardware_outputs"
             elif "capture" in name_lower:
-                category = "virtual_capture" if "route" in name_lower or "stream" in name_lower else "hardware_inputs"
+                category = "virtual_capture"
+                group = f"Capture {index}"
             elif "playback" in name_lower:
                 category = "virtual_playout" if "pcm" in name_lower else "hardware_outputs"
             else:
@@ -263,7 +267,8 @@ class AlsaManager:
                     iface=ctrl.get("iface", 0),
                     elem_type=ctrl.get("type", ""),
                     access_flags=ctrl.get("access", "rw------"),
-                    items=ctrl.get("items", [])
+                    items=ctrl.get("items", []),
+                    index=ctrl.get("index", 0)
                 )
 
                 grp_key = f"{meta['category']}_{meta['group']}"
@@ -316,6 +321,7 @@ class AlsaManager:
                     "numid": None,
                     "iface": "MIXER",
                     "name": "",
+                    "index": 0,
                     "type": "INTEGER",
                     "access": "rw------",
                     "channels": 1,
@@ -334,6 +340,11 @@ class AlsaManager:
                         current["numid"] = int(p.split("=")[1])
                     elif p.startswith("iface="):
                         current["iface"] = p.split("=")[1]
+                    elif p.startswith("index="):
+                        try:
+                            current["index"] = int(p.split("=")[1])
+                        except ValueError:
+                            pass
                     elif p.startswith("name="):
                         # Extract string inside quotes
                         name_match = re.search(r"name='([^']+)'", line_str)
