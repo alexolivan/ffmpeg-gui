@@ -435,22 +435,22 @@ class AlsaManager:
                     val_strs.append(str(v))
             
             val_arg = ",".join(val_strs)
-            cmd = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", val_arg]
+            cmd = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", "--", val_arg]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
             if res.returncode == 0:
                 return True
 
-            # Retry 1: Auto-expand single value to dual channels (e.g., '28' -> '28,28')
+            # Retry 1: Auto-expand single value to dual channels (e.g., '-2' -> '-2,-2')
             if len(val_strs) == 1:
                 val_arg_expanded = f"{val_strs[0]},{val_strs[0]}"
-                cmd_retry = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", val_arg_expanded]
+                cmd_retry = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", "--", val_arg_expanded]
                 res_retry = subprocess.run(cmd_retry, capture_output=True, text=True, timeout=3)
                 if res_retry.returncode == 0:
                     return True
 
             # Retry 2: Truncate dual values to single channel if control is mono
             if len(val_strs) > 1:
-                cmd_retry = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", val_strs[0]]
+                cmd_retry = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", "--", val_strs[0]]
                 res_retry = subprocess.run(cmd_retry, capture_output=True, text=True, timeout=3)
                 if res_retry.returncode == 0:
                     return True
