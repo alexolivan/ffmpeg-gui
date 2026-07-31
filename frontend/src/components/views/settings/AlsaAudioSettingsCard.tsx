@@ -67,9 +67,7 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
 
   return activeProcesses.filter((proc) => {
     // 1. Quadrant Direction Filtering
-    // Playout quadrants ONLY accept 'playout' or 'both' processes!
     if (isPlayoutQuadrant && proc.direction === 'capture') return false;
-    // Capture quadrants ONLY accept 'capture' or 'both' processes!
     if (isCaptureQuadrant && proc.direction === 'playout') return false;
 
     // 2. Direct Explicit Name Match (e.g., alias/cmd contains "PCM 0", "Line 1", etc.)
@@ -81,12 +79,24 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
       return true;
     }
 
-    // 3. Exact PCM / Subdevice Index Match (e.g. hw:0,1,0 -> pcm_index = 1 matches "PCM 1" or "Line 1")
+    // 3. Channel Index Matching (Handling AudioScience hw:0,0,N stream hierarchy)
     if (grpIndex !== null) {
-      if (proc.pcm_index === grpIndex || proc.subdevice_index === grpIndex) {
-        return true;
+      // In AudioScience hw:card,device,stream (e.g. hw:0,0,1 or hw:0,0,2), subdevice_index (1 or 2) is the stream/channel index!
+      let effectiveChanIdx: number | null = null;
+      if (proc.subdevice_index !== null && proc.subdevice_index !== undefined && proc.subdevice_index > 0) {
+        effectiveChanIdx = proc.subdevice_index;
+      } else if (proc.pcm_index !== null && proc.pcm_index !== undefined) {
+        effectiveChanIdx = proc.pcm_index;
+      } else if (proc.subdevice_index === 0) {
+        effectiveChanIdx = 0;
       }
-      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):\\d+,${grpIndex}(?:,\\d+)?\\b`, 'i');
+
+      if (effectiveChanIdx !== null) {
+        return effectiveChanIdx === grpIndex;
+      }
+
+      // Regex fallback matching hw:0,0,grpIndex or hw:0,grpIndex
+      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):\\d+,(?:\\d+,)?${grpIndex}\\b`, 'i');
       if (subdevRegex.test(target) || subdevRegex.test(cmd)) {
         return true;
       }
