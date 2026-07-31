@@ -107,11 +107,16 @@ class AlsaManager:
         # Detect Read-Only Jack Sensing / Hardware Presence Sensors
         is_jack_sensor = is_readonly and is_bool and ("jack" in name.lower() or "phantom" in name.lower() or "sense" in name.lower())
 
+        # Detect IEC958 (S/PDIF / AES3) Digital Channel Status Metadata Controls
+        is_iec958 = (elem_str == "IEC958" or "iec958" in name.lower())
+
         # Determine type
         if is_meter:
             ctrl_type = "meter"
         elif is_jack_sensor:
             ctrl_type = "jack_sensor"
+        elif is_iec958:
+            ctrl_type = "iec958"
         elif is_bool:
             ctrl_type = "mute" if "switch" in name.lower() or "mute" in name.lower() else "switch"
         elif is_int:
@@ -137,6 +142,9 @@ class AlsaManager:
         if is_jack_sensor:
             group = name
             category = "jack_sensors"
+        elif is_iec958:
+            group = name
+            category = "iec958_controls"
         elif matrix_match:
             source_name = matrix_match.group(1).strip()
             dest_name = matrix_match.group(2).strip()
@@ -190,6 +198,7 @@ class AlsaManager:
             "hardware_inputs": [],
             "system_clock": [],
             "jack_sensors": [],
+            "iec958_controls": [],
             "global_controls": []
         }
 
@@ -219,6 +228,7 @@ class AlsaManager:
             "hardware_inputs": [],
             "system_clock": [],
             "jack_sensors": [],
+            "iec958_controls": [],
             "global_controls": []
         }
 

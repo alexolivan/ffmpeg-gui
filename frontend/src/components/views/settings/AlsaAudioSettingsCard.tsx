@@ -376,12 +376,12 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
       {/* Active Process Badges Banner */}
       {topology?.active_processes && topology.active_processes.length > 0 && (
-        <div className="bg-brand-lime/10 border border-brand-lime/30 rounded-lg p-2.5 flex items-center gap-2 text-xs text-brand-lime">
-          <span className="font-semibold">{t('settings.alsa.activeProcesses', 'Active FFmpeg Bindings:')}</span>
-          <div className="flex flex-wrap items-center gap-2 ml-1">
+        <div className="bg-brand-lime/10 border border-brand-lime/30 rounded-lg px-3 py-1.5 flex items-center gap-2 text-xs text-brand-lime shadow-sm">
+          <span className="font-bold text-[11px] uppercase tracking-wider whitespace-nowrap">🏷️ {t('settings.alsa.activeProcesses', 'Active Bindings:')}</span>
+          <div className="flex flex-wrap items-center gap-1.5 ml-1">
             {topology.active_processes.map((proc) => (
-              <span key={proc.process_id} className="bg-brand-lime/20 border border-brand-lime/40 px-2 py-0.5 rounded text-[11px] font-mono font-bold text-text-primary">
-                🏷️ {proc.alias}
+              <span key={proc.process_id} className="bg-brand-lime/20 border border-brand-lime/40 px-2 py-0.5 rounded text-[10px] font-mono font-bold text-text-primary">
+                {proc.alias}
               </span>
             ))}
           </div>
@@ -390,27 +390,36 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
       {/* Hardware Connection Presence (Jack Sensing) Status Banner */}
       {topology?.jack_sensors && topology.jack_sensors.length > 0 && (
-        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5 space-y-1.5 shadow-sm">
-          <div className="flex items-center gap-2 text-xs font-bold text-text-secondary">
-            <span>🔌 {t('settings.alsa.jackSensing', 'Hardware Physical Connectors Status (Jack Sensing):')}</span>
+        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-2 space-y-1.5 shadow-sm">
+          <div className="flex items-center justify-between text-[11px] font-bold text-text-secondary">
+            <span className="flex items-center gap-1.5">
+              <span>🔌</span>
+              <span className="uppercase tracking-wider">{t('settings.alsa.jackSensing', 'Jack Sensing Status:')}</span>
+            </span>
+            <span className="text-[10px] font-mono font-normal opacity-70">
+              {topology.jack_sensors.filter(s => s.controls?.[0]?.values?.[0] === true || s.controls?.[0]?.values?.[0] === 1).length} / {topology.jack_sensors.length} Active
+            </span>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5">
             {topology.jack_sensors.map((sensorGroup) => {
               const ctrl = sensorGroup.controls?.[0];
               const isConnected = ctrl?.values?.[0] === true || ctrl?.values?.[0] === 1;
               return (
                 <div
                   key={sensorGroup.id}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-mono flex items-center gap-1.5 border transition-all ${
+                  title={sensorGroup.name}
+                  className={`px-2 py-1 rounded text-[10px] font-mono flex items-center justify-between gap-1 border transition-all truncate ${
                     isConnected
                       ? 'bg-brand-lime/10 border-brand-lime/30 text-brand-lime font-bold'
-                      : 'bg-[var(--input-bg)] border-[var(--glass-border)] text-text-secondary/60'
+                      : 'bg-[var(--input-bg)]/60 border-[var(--glass-border)]/60 text-text-secondary/50'
                   }`}
                 >
-                  <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-brand-lime animate-pulse' : 'bg-text-secondary/40'}`} />
-                  <span>{sensorGroup.name}</span>
-                  <span className="text-[10px] uppercase font-mono opacity-80">
-                    ({isConnected ? 'CONNECTED' : 'UNPLUGGED'})
+                  <div className="flex items-center gap-1.5 min-w-0 truncate">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isConnected ? 'bg-brand-lime animate-pulse' : 'bg-text-secondary/40'}`} />
+                    <span className="truncate">{sensorGroup.name.replace(/\s+Jack$/i, '')}</span>
+                  </div>
+                  <span className="text-[9px] uppercase font-mono opacity-80 shrink-0">
+                    {isConnected ? 'ON' : 'OFF'}
                   </span>
                 </div>
               );
