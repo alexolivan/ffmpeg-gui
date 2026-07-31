@@ -178,15 +178,19 @@ class AlsaManager:
                 category = "system_clock"
             elif "pcm" in name_lower and "playback" in name_lower:
                 category = "virtual_playout"
+            elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
+                category = "virtual_capture"
+            elif any(k in name_lower for k in ["line", "digital", "aux", "spdif", "aes"]):
+                # Physical hardware connector lines (Line 0, Digital 0, Aux, S/PDIF, AES)
+                if "capture" in name_lower or "input" in name_lower or "in" in name_lower:
+                    category = "hardware_inputs"
+                else:
+                    category = "hardware_outputs"
             elif "input source" in name_lower or "capture source" in name_lower or "mic select" in name_lower:
                 category = "virtual_capture"
                 group = f"Capture {index}"
-            elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
-                category = "virtual_capture"
-            elif any(k in name_lower for k in ["line in", "mic", "aux", "spdif in", "aes in", "input"]):
+            elif any(k in name_lower for k in ["mic", "input"]):
                 category = "hardware_inputs"
-            elif any(k in name_lower for k in ["line out", "speaker", "headphone", "spdif out", "aes out", "master"]):
-                category = "hardware_outputs"
             elif "capture" in name_lower:
                 category = "virtual_capture"
                 group = f"Capture {index}"
