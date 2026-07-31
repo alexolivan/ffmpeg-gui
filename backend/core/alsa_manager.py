@@ -421,7 +421,7 @@ class AlsaManager:
         return controls
 
     def write_control_value(self, card_idx: int, numid: int, values: List[Any]) -> bool:
-        """Write values to ALSA control element via amixer."""
+        """Write values to ALSA control element via amixer with robust multi-channel fallback."""
         import subprocess
 
         try:
@@ -435,7 +435,26 @@ class AlsaManager:
             val_arg = ",".join(val_strs)
             cmd = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", val_arg]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
-            return res.returncode == 0
+            if res.returncode == 0:
+                return True
+
+            # Retry 1: Auto-expand single value to dual channels (e.g., '28' -> '28,28')
+            if len(val_strs) == 1:
+                val_arg_expanded = f"{val_strs[0]},{val_strs[0]}"
+                cmd_retry = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", val_arg_expanded]
+                res_retry = subprocess.run(cmd_retry, capture_output=True, text=True, timeout=3)
+                if res_retry.returncode == 0:
+                    return True
+
+            # Retry 2: Truncate dual values to single channel if control is mono
+            if len(val_strs) > 1:
+                cmd_retry = ["amixer", "-c", str(card_idx), "cset", f"numid={numid}", val_strs[0]]
+                res_retry = subprocess.run(cmd_retry, capture_output=True, text=True, timeout=3)
+                if res_retry.returncode == 0:
+                    return True
+
+            logger.warning(f"amixer cset numid={numid} failed: stdout='{res.stdout.strip()}' stderr='{res.stderr.strip()}'")
+            return False
         except Exception as e:
             logger.error(f"Error writing ALSA control numid={numid} on card {card_idx}: {e}")
             return False

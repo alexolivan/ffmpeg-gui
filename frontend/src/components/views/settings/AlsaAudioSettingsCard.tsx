@@ -452,7 +452,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 group={group}
                 activeProcesses={getGroupProcesses(group, topology?.active_processes)}
                 onControlChange={handleControlChange}
-                isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
+                isLinked={linkedChannels[group.controls?.[0]?.numid] !== false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
@@ -484,7 +484,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 group={group}
                 activeProcesses={getGroupProcesses(group, topology?.active_processes)}
                 onControlChange={handleControlChange}
-                isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
+                isLinked={linkedChannels[group.controls?.[0]?.numid] !== false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
@@ -511,7 +511,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 group={group}
                 activeProcesses={getGroupProcesses(group, topology?.active_processes)}
                 onControlChange={handleControlChange}
-                isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
+                isLinked={linkedChannels[group.controls?.[0]?.numid] !== false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
@@ -534,7 +534,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 group={group}
                 activeProcesses={getGroupProcesses(group, topology?.active_processes)}
                 onControlChange={handleControlChange}
-                isLinked={linkedChannels[group.controls?.[0]?.numid] || false}
+                isLinked={linkedChannels[group.controls?.[0]?.numid] !== false}
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
@@ -651,6 +651,76 @@ interface ChannelStripProps {
   canvasRefSetter: (numid: number, el: HTMLCanvasElement | null) => void;
   endpointIcon: React.ReactNode;
 }
+
+interface AlsaFaderUnitProps {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChangeCommit: (val: number) => void;
+  label?: string;
+  heightClass?: string;
+}
+
+const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = ({
+  min,
+  max,
+  step,
+  value,
+  onChangeCommit,
+  label,
+  heightClass = "h-20"
+}) => {
+  const [val, setVal] = useState<number>(value);
+  const [strVal, setStrVal] = useState<string>(String(value));
+
+  useEffect(() => {
+    setVal(value);
+    setStrVal(String(value));
+  }, [value]);
+
+  const commit = (targetVal: number) => {
+    const clamped = Math.min(max, Math.max(min, isNaN(targetVal) ? min : targetVal));
+    setVal(clamped);
+    setStrVal(String(clamped));
+    onChangeCommit(clamped);
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      {label && <span className="text-[9px] font-mono font-bold text-text-secondary">{label}</span>}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={val}
+        onChange={(e) => {
+          const v = parseInt(e.target.value, 10);
+          setVal(v);
+          setStrVal(String(v));
+        }}
+        onPointerUp={() => commit(val)}
+        onMouseUp={() => commit(val)}
+        onTouchEnd={() => commit(val)}
+        className={`w-2 ${heightClass} [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime`}
+      />
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        value={strVal}
+        onChange={(e) => setStrVal(e.target.value)}
+        onBlur={() => commit(parseInt(strVal, 10))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit(parseInt(strVal, 10));
+        }}
+        className="w-11 text-center bg-[var(--bg-card)] border border-[var(--glass-border)] rounded text-[9px] font-mono font-bold text-text-primary focus:outline-none focus:border-brand-lime py-0.5 px-0.5 mt-0.5"
+      />
+    </div>
+  );
+};
 
 /* AudioScience Skewer (Brocheta) Channel Strip Component */
 const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
@@ -852,54 +922,44 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
 
                               {/* Vertical Range Sliders */}
                               {volCtrl ? (
-                                <div className="h-28 flex flex-col items-center justify-center py-1 gap-1">
+                                <div className="flex flex-col items-center justify-center py-1 gap-1">
                                   {isStereo ? (
                                     <div className="flex items-center gap-2">
-                                      <div className="flex flex-col items-center gap-1">
-                                        <span className="text-[9px] font-mono font-bold text-text-secondary">L</span>
-                                        <input
-                                          type="range"
-                                          min={volCtrl.min ?? 0}
-                                          max={volCtrl.max ?? 100}
-                                          step={volCtrl.step ?? 1}
-                                          value={volValL}
-                                          onChange={(e) => {
-                                            const vL = parseInt(e.target.value, 10);
-                                            const newVals = isLinked ? new Array(volCtrl.channels).fill(vL) : [vL, volValR];
-                                            onControlChange(volCtrl.numid, newVals);
-                                          }}
-                                          className="w-2 h-20 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime"
-                                        />
-                                      </div>
-                                      <div className="flex flex-col items-center gap-1">
-                                        <span className="text-[9px] font-mono font-bold text-text-secondary">R</span>
-                                        <input
-                                          type="range"
-                                          min={volCtrl.min ?? 0}
-                                          max={volCtrl.max ?? 100}
-                                          step={volCtrl.step ?? 1}
-                                          value={volValR}
-                                          onChange={(e) => {
-                                            const vR = parseInt(e.target.value, 10);
-                                            const newVals = isLinked ? new Array(volCtrl.channels).fill(vR) : [volValL, vR];
-                                            onControlChange(volCtrl.numid, newVals);
-                                          }}
-                                          className="w-2 h-20 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime"
-                                        />
-                                      </div>
+                                      <AlsaFaderUnit
+                                        min={volCtrl.min ?? 0}
+                                        max={volCtrl.max ?? 100}
+                                        step={volCtrl.step ?? 1}
+                                        value={volValL}
+                                        label="L"
+                                        heightClass="h-20"
+                                        onChangeCommit={(vL) => {
+                                          const newVals = isLinked ? new Array(volCtrl.channels).fill(vL) : [vL, volValR];
+                                          onControlChange(volCtrl.numid, newVals);
+                                        }}
+                                      />
+                                      <AlsaFaderUnit
+                                        min={volCtrl.min ?? 0}
+                                        max={volCtrl.max ?? 100}
+                                        step={volCtrl.step ?? 1}
+                                        value={volValR}
+                                        label="R"
+                                        heightClass="h-20"
+                                        onChangeCommit={(vR) => {
+                                          const newVals = isLinked ? new Array(volCtrl.channels).fill(vR) : [volValL, vR];
+                                          onControlChange(volCtrl.numid, newVals);
+                                        }}
+                                      />
                                     </div>
                                   ) : (
-                                    <input
-                                      type="range"
+                                    <AlsaFaderUnit
                                       min={volCtrl.min ?? 0}
                                       max={volCtrl.max ?? 100}
                                       step={volCtrl.step ?? 1}
                                       value={volValL}
-                                      onChange={(e) => {
-                                        const v = parseInt(e.target.value, 10);
+                                      heightClass="h-24"
+                                      onChangeCommit={(v) => {
                                         onControlChange(volCtrl.numid, [v]);
                                       }}
-                                      className="w-2.5 h-24 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded-lg cursor-pointer accent-brand-lime"
                                     />
                                   )}
 
@@ -1169,19 +1229,17 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = ({
                             <div className="text-[11px] font-mono font-bold text-brand-lime">
                               {formatControlValue(ctrl, currentVal)}
                             </div>
-                            <div className="h-32 flex items-center justify-center py-1">
-                              <input
-                                type="range"
+                            <div className="flex items-center justify-center py-1">
+                              <AlsaFaderUnit
                                 min={ctrl.min ?? 0}
                                 max={ctrl.max ?? 100}
                                 step={ctrl.step ?? 1}
                                 value={currentVal}
-                                onChange={(e) => {
-                                  const v = parseInt(e.target.value, 10);
+                                heightClass="h-28"
+                                onChangeCommit={(v) => {
                                   const vals = isLinked ? new Array(ctrl.channels).fill(v) : [v, ...ctrl.values.slice(1)];
                                   onControlChange(ctrl.numid, vals);
                                 }}
-                                className="w-2.5 h-28 [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded-lg cursor-pointer accent-brand-lime"
                               />
                             </div>
                             <div className="flex items-center justify-between w-full text-[9px] font-mono text-text-secondary gap-3">
