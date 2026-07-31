@@ -58,19 +58,27 @@ interface AlsaCard {
 
 const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadge[]) => {
   if (!activeProcesses || activeProcesses.length === 0) return [];
+
+  // Direct software processes bind EXCLUSIVELY to Virtual PCM Streams (Left Column)!
+  // Physical connectors (Right Column: hardware_outputs, hardware_inputs) receive audio via internal matrix mixing,
+  // so software process PIDs should not be displayed on physical line connectors.
+  if (group.category === 'hardware_outputs' || group.category === 'hardware_inputs') {
+    return [];
+  }
+
   const grpName = group.name.toLowerCase();
   const numMatch = group.name.match(/\d+/);
   const grpIndex = numMatch ? parseInt(numMatch[0], 10) : null;
 
-  const isPlayoutQuadrant = group.category === 'virtual_playout' || group.category === 'hardware_outputs';
-  const isCaptureQuadrant = group.category === 'virtual_capture' || group.category === 'hardware_inputs';
+  const isPlayoutQuadrant = group.category === 'virtual_playout';
+  const isCaptureQuadrant = group.category === 'virtual_capture';
 
   return activeProcesses.filter((proc) => {
     // 1. Quadrant Direction Filtering
     if (isPlayoutQuadrant && proc.direction === 'capture') return false;
     if (isCaptureQuadrant && proc.direction === 'playout') return false;
 
-    // 2. Direct Explicit Name Match (e.g., alias/cmd contains "PCM 0", "Line 1", etc.)
+    // 2. Direct Explicit Name Match (e.g., alias/cmd contains "PCM 0", "PCM 1", etc.)
     const target = (proc.device_target || '').toLowerCase();
     const cmd = (proc.cmd || '').toLowerCase();
     const alias = (proc.alias || '').toLowerCase();
@@ -102,7 +110,7 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
       }
     }
 
-    // 4. Default fallback for single process without explicit subdevice on PCM 0 / Line 0
+    // 4. Default fallback for single process without explicit subdevice on PCM 0
     if (grpIndex === 0 && activeProcesses.length === 1) {
       if (cmd.includes("default") || target.includes("default") || (cmd.includes("-f alsa") && (proc.pcm_index === null || proc.pcm_index === undefined))) {
         return true;
