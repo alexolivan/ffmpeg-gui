@@ -624,17 +624,19 @@ const formatControlValue = (ctrl?: AlsaControl, rawVal?: any): string => {
   const numVal = Number(rawVal);
   if (isNaN(numVal)) return `${rawVal}`;
 
-  if (ctrl.db_min !== undefined) {
-    if (numVal <= (ctrl.min ?? 0) && ctrl.db_min <= -50) {
-      return '-∞ dB';
-    }
-    const isHundredths = Math.abs(ctrl.db_min) > 200;
-    const dbVal = isHundredths ? numVal / 100 : numVal;
-    return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(1)} dB`;
-  }
-
   const min = ctrl.min ?? 0;
   const max = ctrl.max ?? 100;
+  const isHundredths = Math.abs(min) >= 500 || Math.abs(max) >= 500 || (ctrl.db_min !== undefined && Math.abs(ctrl.db_min) > 200);
+
+  if (isHundredths || ctrl.db_min !== undefined) {
+    const scale = isHundredths ? 100 : 1;
+    const dbVal = numVal / scale;
+    if (dbVal <= (min / scale) && (min <= -5000 || (ctrl.db_min !== undefined && ctrl.db_min <= -50))) {
+      return '-∞ dB';
+    }
+    return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(0)} dB`;
+  }
+
   if (max > min) {
     const pct = Math.round(((numVal - min) / (max - min)) * 100);
     return `${pct}%`;
@@ -672,19 +674,28 @@ const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = React.memo(({
   label,
   heightClass = "h-20"
 }) => {
-  const [val, setVal] = useState<number>(value);
-  const [strVal, setStrVal] = useState<string>(String(value));
+  const isHundredths = Math.abs(min) >= 500 || Math.abs(max) >= 500;
+  const scale = isHundredths ? 100 : 1;
+
+  const minDisplay = Math.round(min / scale);
+  const maxDisplay = Math.round(max / scale);
+  const stepDisplay = isHundredths ? 1 : Math.max(1, step);
+  const initialDisplay = Math.round(value / scale);
+
+  const [val, setVal] = useState<number>(initialDisplay);
+  const [strVal, setStrVal] = useState<string>(String(initialDisplay));
 
   useEffect(() => {
-    setVal(value);
-    setStrVal(String(value));
-  }, [value]);
+    const disp = Math.round(value / scale);
+    setVal(disp);
+    setStrVal(String(disp));
+  }, [value, scale]);
 
-  const commit = (targetVal: number) => {
-    const clamped = Math.min(max, Math.max(min, isNaN(targetVal) ? min : targetVal));
-    setVal(clamped);
-    setStrVal(String(clamped));
-    onChangeCommit(clamped);
+  const commit = (targetDisplayVal: number) => {
+    const clampedDisp = Math.min(maxDisplay, Math.max(minDisplay, isNaN(targetDisplayVal) ? minDisplay : targetDisplayVal));
+    setVal(clampedDisp);
+    setStrVal(String(clampedDisp));
+    onChangeCommit(clampedDisp * scale);
   };
 
   return (
@@ -692,9 +703,9 @@ const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = React.memo(({
       {label && <span className="text-[9px] font-mono font-bold text-text-secondary">{label}</span>}
       <input
         type="range"
-        min={min}
-        max={max}
-        step={step}
+        min={minDisplay}
+        max={maxDisplay}
+        step={stepDisplay}
         value={val}
         onChange={(e) => {
           const v = parseInt(e.target.value, 10);
@@ -704,13 +715,14 @@ const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = React.memo(({
         onPointerUp={() => commit(val)}
         onMouseUp={() => commit(val)}
         onTouchEnd={() => commit(val)}
-        className={`w-2 ${heightClass} [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime`}
+        className={`w-2 ${heightClass} appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime`}
+        style={{ writingMode: 'vertical-lr', direction: 'rtl' }}
       />
       <input
         type="number"
-        min={min}
-        max={max}
-        step={step}
+        min={minDisplay}
+        max={maxDisplay}
+        step={stepDisplay}
         value={strVal}
         onChange={(e) => setStrVal(e.target.value)}
         onBlur={() => commit(parseInt(strVal, 10))}
@@ -744,26 +756,41 @@ const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = React.memo(({
   onChangeCommit,
   heightClass = "h-20"
 }) => {
-  const [valL, setValL] = useState<number>(volValL);
-  const [valR, setValR] = useState<number>(volValR);
-  const [strL, setStrL] = useState<string>(String(volValL));
-  const [strR, setStrR] = useState<string>(String(volValR));
+  const isHundredths = Math.abs(min) >= 500 || Math.abs(max) >= 500;
+  const scale = isHundredths ? 100 : 1;
+
+  const minDisplay = Math.round(min / scale);
+  const maxDisplay = Math.round(max / scale);
+  const stepDisplay = isHundredths ? 1 : Math.max(1, step);
+
+  const initL = Math.round(volValL / scale);
+  const initR = Math.round(volValR / scale);
+
+  const [valL, setValL] = useState<number>(initL);
+  const [valR, setValR] = useState<number>(initR);
+  const [strL, setStrL] = useState<string>(String(initL));
+  const [strR, setStrR] = useState<string>(String(initR));
 
   useEffect(() => {
-    setValL(volValL);
-    setValR(volValR);
-    setStrL(String(volValL));
-    setStrR(String(volValR));
-  }, [volValL, volValR]);
+    const dL = Math.round(volValL / scale);
+    const dR = Math.round(volValR / scale);
+    setValL(dL);
+    setValR(dR);
+    setStrL(String(dL));
+    setStrR(String(dR));
+  }, [volValL, volValR, scale]);
 
-  const commit = (newL: number, newR: number) => {
-    const clampedL = Math.min(max, Math.max(min, isNaN(newL) ? min : newL));
-    const clampedR = Math.min(max, Math.max(min, isNaN(newR) ? min : newR));
+  const commit = (dispL: number, dispR: number) => {
+    const clampedL = Math.min(maxDisplay, Math.max(minDisplay, isNaN(dispL) ? minDisplay : dispL));
+    const clampedR = Math.min(maxDisplay, Math.max(minDisplay, isNaN(dispR) ? minDisplay : dispR));
     setValL(clampedL);
     setValR(clampedR);
     setStrL(String(clampedL));
     setStrR(String(clampedR));
-    onChangeCommit(isLinked ? [clampedL, clampedL] : [clampedL, clampedR]);
+
+    const rawL = clampedL * scale;
+    const rawR = clampedR * scale;
+    onChangeCommit(isLinked ? [rawL, rawL] : [rawL, rawR]);
   };
 
   const handleDragL = (v: number) => {
@@ -791,21 +818,22 @@ const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = React.memo(({
         <span className="text-[9px] font-mono font-bold text-text-secondary">L</span>
         <input
           type="range"
-          min={min}
-          max={max}
-          step={step}
+          min={minDisplay}
+          max={maxDisplay}
+          step={stepDisplay}
           value={valL}
           onChange={(e) => handleDragL(parseInt(e.target.value, 10))}
           onPointerUp={() => commit(valL, isLinked ? valL : valR)}
           onMouseUp={() => commit(valL, isLinked ? valL : valR)}
           onTouchEnd={() => commit(valL, isLinked ? valL : valR)}
-          className={`w-2 ${heightClass} [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime`}
+          className={`w-2 ${heightClass} appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime`}
+          style={{ writingMode: 'vertical-lr', direction: 'rtl' }}
         />
         <input
           type="number"
-          min={min}
-          max={max}
-          step={step}
+          min={minDisplay}
+          max={maxDisplay}
+          step={stepDisplay}
           value={strL}
           onChange={(e) => {
             const str = e.target.value;
@@ -831,21 +859,22 @@ const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = React.memo(({
         <span className="text-[9px] font-mono font-bold text-text-secondary">R</span>
         <input
           type="range"
-          min={min}
-          max={max}
-          step={step}
+          min={minDisplay}
+          max={maxDisplay}
+          step={stepDisplay}
           value={valR}
           onChange={(e) => handleDragR(parseInt(e.target.value, 10))}
           onPointerUp={() => commit(isLinked ? valR : valL, valR)}
           onMouseUp={() => commit(isLinked ? valR : valL, valR)}
           onTouchEnd={() => commit(isLinked ? valR : valL, valR)}
-          className={`w-2 ${heightClass} [writing-mode:vertical-lr] [direction:rtl] appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime`}
+          className={`w-2 ${heightClass} appearance-none bg-[var(--glass-border)] rounded cursor-pointer accent-brand-lime`}
+          style={{ writingMode: 'vertical-lr', direction: 'rtl' }}
         />
         <input
           type="number"
-          min={min}
-          max={max}
-          step={step}
+          min={minDisplay}
+          max={maxDisplay}
+          step={stepDisplay}
           value={strR}
           onChange={(e) => {
             const str = e.target.value;
