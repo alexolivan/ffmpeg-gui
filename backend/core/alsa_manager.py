@@ -138,7 +138,7 @@ class AlsaManager:
         matrix_source = None
         
         # Regex matching double entity prefixes (Source -> Destination)
-        prefix_pattern = r"(?:PCM\s+\d+|Line\s+\d+|Digital\s+\d+|Mic\s+\d+|Aux\s+\d+|AES\s+\d+|Speaker|Headphone|Master)"
+        prefix_pattern = r"(?:PCM\s+\d+|Line\s+Out|Line\s+\d+|Digital\s+\d+|Mic\s+\d+|Aux\s+\d+|AES\s+\d+|Speaker|Headphone|Master)"
         matrix_match = re.match(
             rf"^({prefix_pattern})\s+({prefix_pattern})\s+(Monitor\s+)?(Playback|Capture)",
             name,
@@ -181,11 +181,11 @@ class AlsaManager:
             elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
                 category = "virtual_capture"
             elif any(k in name_lower for k in ["line", "digital", "aux", "spdif", "aes"]):
-                # Physical hardware connector lines (Line 0, Digital 0, Aux, S/PDIF, AES)
-                if re.search(r'\b(capture|input|in)\b', name_lower):
-                    category = "hardware_inputs"
-                else:
+                # Physical hardware connector lines (Line, Line Out, Digital, Aux, S/PDIF, AES)
+                if re.search(r'\b(out|output|playback)\b', name_lower):
                     category = "hardware_outputs"
+                else:
+                    category = "hardware_inputs"
             elif "input source" in name_lower or "capture source" in name_lower or "mic select" in name_lower:
                 category = "virtual_capture"
                 group = f"Capture {index}"

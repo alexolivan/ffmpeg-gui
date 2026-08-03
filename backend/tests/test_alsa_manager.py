@@ -70,6 +70,25 @@ class TestAlsaManager(unittest.TestCase):
         self.assertEqual(res_line["category"], "hardware_inputs")
         self.assertEqual(res_line["group"], "Line 0")
 
+        # Test standalone 'Line' vs 'Line Out'
+        res_standalone_line = self.mgr._classify_control(
+            name="Line Volume",
+            iface=2,
+            elem_type=2,
+            access_flags="rw---R--",
+            items=[]
+        )
+        self.assertEqual(res_standalone_line["category"], "hardware_inputs")
+
+        res_line_out = self.mgr._classify_control(
+            name="Line Out Playback Volume",
+            iface=2,
+            elem_type=2,
+            access_flags="rw---R--",
+            items=[]
+        )
+        self.assertEqual(res_line_out["category"], "hardware_outputs")
+
         # Test AudioScience Crosspoint Matrix Double-Name classification
         res_matrix1 = self.mgr._classify_control(
             name="PCM 0 Line 0 Playback Volume",
