@@ -977,6 +977,29 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
     }
   });
 
+  // Sort direct controls according to physical audio signal flow
+  directControls.sort((a, b) => {
+    const aName = a.name.toLowerCase();
+    const bName = b.name.toLowerCase();
+
+    const aIsBoost = aName.includes('boost') || aName.includes('preamp');
+    const bIsBoost = bName.includes('boost') || bName.includes('preamp');
+
+    if (isHardwareInputs) {
+      // In hardware_inputs: signal flows Right (Connector) -> Left (Bus)
+      // Boost pre-amp is nearest to Physical Connector (Rightmost)
+      if (aIsBoost && !bIsBoost) return 1;
+      if (!aIsBoost && bIsBoost) return -1;
+    } else {
+      // In hardware_outputs: signal flows Left (Bus) -> Right (Connector)
+      // Boost pre-amp is nearest to Bus (Leftmost)
+      if (aIsBoost && !bIsBoost) return -1;
+      if (!aIsBoost && bIsBoost) return 1;
+    }
+
+    return 0;
+  });
+
   // Group matrix controls by source name
   const matrixSourcesMap: Record<string, { vol?: AlsaControl; mute?: AlsaControl }> = {};
   matrixControls.forEach((c) => {
