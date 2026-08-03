@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.2] - 2026-08-03
+
+### Fixed
+- **Process Log History Retention Across Restarts**:
+  - **Preserved Stderr Trace Output**: Updated `ProcessManager.start_process()` to append restart headers (`--- PROCESS RESTART AT ... ---`) to `process_{id}.log` on automatic Watchdog restarts (`is_restart == True`), instead of wiping/truncating the log file to 0 bytes (`wb`).
+  - **Crash Diagnostic Visibility**: Ensures previous execution stderr traces are preserved in `data/logs/process_{id}.log` for troubleshooting process crashes.
+
 ## [1.34.1] - 2026-08-03
 
 ### Fixed

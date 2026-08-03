@@ -133,10 +133,16 @@ class ProcessManager:
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
             
             try:
-                with open(log_path, "wb") as f:
-                    pass
+                if is_restart:
+                    with open(log_path, "ab") as f:
+                        header = f"\n--- PROCESS RESTART AT {datetime.utcnow().isoformat()}Z (Attempt {self.restart_counts.get(process_id, 1)}) ---\n".encode("utf-8")
+                        f.write(header)
+                else:
+                    with open(log_path, "wb") as f:
+                        header = f"--- PROCESS LAUNCH AT {datetime.utcnow().isoformat()}Z ---\n".encode("utf-8")
+                        f.write(header)
             except Exception as file_err:
-                self.logger.error(f"Failed to truncate log file: {file_err}")
+                self.logger.error(f"Failed to prepare log file: {file_err}")
                 
             spawn_lock = self._get_spawn_lock()
             async with spawn_lock:
