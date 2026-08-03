@@ -13,6 +13,7 @@ interface AlsaControl {
   step?: number;
   db_min?: number;
   db_max?: number;
+  db_step?: number;
   channels: number;
   items?: string[];
   values: any[];
@@ -626,6 +627,19 @@ const formatControlValue = (ctrl?: AlsaControl, rawVal?: any): string => {
 
   const min = ctrl.min ?? 0;
   const max = ctrl.max ?? 100;
+
+  // Case 1: Control has explicit db_step and db_min from ALSA (e.g. Boost: min=0, max=3, db_min=0, db_step=12 -> 0, +12, +24, +36 dB)
+  if (ctrl.db_min !== undefined && ctrl.db_step !== undefined && ctrl.db_step > 0) {
+    const isHundredths = Math.abs(ctrl.db_step) >= 50 || Math.abs(ctrl.db_min) >= 500;
+    const scale = isHundredths ? 100 : 1;
+    const dbVal = (ctrl.db_min / scale) + (numVal - min) * (ctrl.db_step / scale);
+    if (dbVal <= (ctrl.db_min / scale) && ctrl.db_min <= -50) {
+      return '-∞ dB';
+    }
+    return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(0)} dB`;
+  }
+
+  // Case 2: AudioScience 0.01 dB hundredths integer scale (min=-10000, max=2000)
   const isHundredths = Math.abs(min) >= 500 || Math.abs(max) >= 500 || (ctrl.db_min !== undefined && Math.abs(ctrl.db_min) > 200);
 
   if (isHundredths || ctrl.db_min !== undefined) {
