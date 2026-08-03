@@ -176,8 +176,10 @@ class AlsaManager:
                 category = "global_controls"
             elif any(k in name_lower for k in ["clock", "localrate", "rate", "sync", "pll"]):
                 category = "system_clock"
-            elif "pcm" in name_lower and "playback" in name_lower:
+            elif any(k in name_lower for k in ["master", "pcm"]) and "playback" in name_lower or name_lower == "master":
                 category = "virtual_playout"
+                if "master" in name_lower:
+                    group = "Master"
             elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
                 category = "virtual_capture"
             elif any(k in name_lower for k in ["line", "digital", "aux", "spdif", "aes"]):

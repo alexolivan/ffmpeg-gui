@@ -50,6 +50,16 @@ class TestAlsaManager(unittest.TestCase):
         self.assertEqual(res_vol["group"], "PCM 0")
         self.assertFalse(res_vol["is_meter"])
 
+        res_master = self.mgr._classify_control(
+            name="Master Playback Volume",
+            iface=2,
+            elem_type=2,
+            access_flags="rw---R--",
+            items=[]
+        )
+        self.assertEqual(res_master["category"], "virtual_playout")
+        self.assertEqual(res_master["group"], "Master")
+
         res_meter = self.mgr._classify_control(
             name="PCM 0 Playback Meter",
             iface=2,
