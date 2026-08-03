@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.1] - 2026-08-03
+
+### Fixed
+- **FFmpeg Progress Log & Preview File Permissions (`Permission denied`)**:
+  - **`prepare_process_file_permissions` Helper**: Implemented automatic pre-flight file permission reset (`0o666` world read/write) for `/dev/shm/ffmpeg_progress_*.log`, `/tmp/ffmpeg_progress_*.log`, and `/tmp/ffmpeg-gui-previews/preview_*.jpg`.
+  - **Permission Conflict Prevention**: Prevents FFmpeg CLI option parser crash (`Failed to open progress URL... Permission denied`) when switching between manual terminal commands executed as `root` and systemd service daemon executed as unprivileged `ffmpeg-gui` user.
+
 ## [1.33.0] - 2026-08-03
 
 ### Added

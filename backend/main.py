@@ -31,7 +31,7 @@ import logging
 import asyncio
 import datetime
 from fastapi import BackgroundTasks
-from utils.process_utils import cleanup_rogue_processes
+from utils.process_utils import cleanup_rogue_processes, prepare_process_file_permissions
 from version import __version__ as backend_version
 from database.version import __schema_version__ as schema_version
 
@@ -2212,6 +2212,13 @@ async def startup_event():
                     p.bitrate = "0 kb/s"
                     p.speed = "0x"
             
+            all_processes = db.query(MediaProcess).all()
+            for p in all_processes:
+                try:
+                    prepare_process_file_permissions(process_id=p.id, logger=logger)
+                except Exception as p_err:
+                    logger.debug(f"Failed to prepare file permissions for process {p.id}: {p_err}")
+
             stale_executions = db.query(TaskExecution).filter(TaskExecution.status == "running").all()
             for ex in stale_executions:
                 ex.status = "interrupted"

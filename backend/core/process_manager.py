@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, Optional
 import json
 import collections
-from utils.process_utils import cleanup_rogue_processes
+from utils.process_utils import cleanup_rogue_processes, prepare_process_file_permissions
 
 class ProcessManager:
     def __init__(self, db_session_factory):
@@ -114,9 +114,10 @@ class ProcessManager:
             proc_name = media_proc.name
             session.commit()  # Save changes and release write lock immediately!
             
-        # Ensure log directory exists
+        # Ensure log directory exists and prepare file permissions for progress/preview files
         os.makedirs(logs_dir, exist_ok=True)
         log_path = os.path.join(logs_dir, f"process_{process_id}.log")
+        prepare_process_file_permissions(process_id=process_id, logger=self.logger)
 
         # 2. Spawn subprocess (outside of any database session locks)
         self.logger.info(f"Starting FFMPEG for {proc_name}: {shlex.join(cmd)}")

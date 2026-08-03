@@ -48,3 +48,27 @@ class TestProcessUtils(unittest.TestCase):
         cleanup_rogue_processes(active_pids={101})
         mock_proc1.send_signal.assert_not_called()  # Active, do not kill
         mock_proc2.send_signal.assert_called_once_with(signal.SIGKILL)  # Stale, kill
+
+    def test_prepare_process_file_permissions(self):
+        import os
+        from utils.process_utils import prepare_process_file_permissions
+        proc_id = 9999
+        prepare_process_file_permissions(process_id=proc_id)
+
+        shm_log = f"/dev/shm/ffmpeg_progress_{proc_id}.log"
+        tmp_log = f"/tmp/ffmpeg_progress_{proc_id}.log"
+        preview_img = f"/tmp/ffmpeg-gui-previews/preview_{proc_id}.jpg"
+
+        self.assertTrue(os.path.exists(shm_log) or os.path.exists(tmp_log))
+        if os.path.exists(shm_log):
+            mode = os.stat(shm_log).st_mode & 0o777
+            self.assertEqual(mode, 0o666)
+            os.remove(shm_log)
+        if os.path.exists(tmp_log):
+            mode = os.stat(tmp_log).st_mode & 0o777
+            self.assertEqual(mode, 0o666)
+            os.remove(tmp_log)
+        if os.path.exists(preview_img):
+            mode = os.stat(preview_img).st_mode & 0o777
+            self.assertEqual(mode, 0o666)
+            os.remove(preview_img)

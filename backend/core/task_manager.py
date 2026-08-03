@@ -7,7 +7,7 @@ from datetime import datetime
 import re
 from typing import Optional
 from database.models import ScheduledTask, TaskExecution, TaskExecutionLog, FfmpegBuild
-from utils.process_utils import cleanup_rogue_processes
+from utils.process_utils import cleanup_rogue_processes, prepare_process_file_permissions
 
 class TaskManager:
     def __init__(self, db_session_factory, ffmpeg_path="ffmpeg"):
@@ -98,6 +98,7 @@ class TaskManager:
             session.commit()  # Release write locks immediately before slow spawn!
             
         # 2. Spawn subprocess (outside database session)
+        prepare_process_file_permissions(execution_id=execution_id, logger=self.logger)
         self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
         try:
             sub_env = {**os.environ, "FFMPEG_GUI_EXECUTION_ID": str(execution_id)}

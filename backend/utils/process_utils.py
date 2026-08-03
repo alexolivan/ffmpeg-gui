@@ -64,3 +64,58 @@ def get_ffmpeg_version(binary_path: str = "ffmpeg") -> float:
         pass
     return 4.4  # Default fallback
 
+def prepare_process_file_permissions(process_id: int = None, execution_id: int = None, logger=None):
+    """
+    Ensures that temporary progress log files (/dev/shm/ffmpeg_progress_*.log, /tmp/ffmpeg_progress_*.log)
+    and preview images (/tmp/ffmpeg-gui-previews/preview_*.jpg) are safely reset with 0o666 (world read/write)
+    permissions before FFmpeg is executed. This prevents Permission Denied crashes when switching between systemd
+    service (ffmpeg-gui user) and manual terminal commands (root).
+    """
+    import os
+    preview_dir = "/tmp/ffmpeg-gui-previews"
+    try:
+        os.makedirs(preview_dir, mode=0o777, exist_ok=True)
+        try:
+            os.chmod(preview_dir, 0o777)
+        except Exception:
+            pass
+    except Exception as e:
+        if logger:
+            logger.warning(f"Could not create preview dir {preview_dir}: {e}")
+
+    target_files = []
+    if process_id is not None:
+        target_files.extend([
+            f"/dev/shm/ffmpeg_progress_{process_id}.log",
+            f"/tmp/ffmpeg_progress_{process_id}.log",
+            f"/tmp/ffmpeg-gui-previews/preview_{process_id}.jpg",
+        ])
+    if execution_id is not None:
+        target_files.extend([
+            f"/dev/shm/ffmpeg_progress_task_{execution_id}.log",
+            f"/tmp/ffmpeg_progress_task_{execution_id}.log",
+            f"/tmp/ffmpeg-gui-previews/preview_task_{execution_id}.jpg",
+        ])
+
+    for path in target_files:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception as err:
+            if logger:
+                logger.warning(f"Could not remove stale file {path}: {err}. Attempting truncate...")
+            try:
+                with open(path, "w") as f:
+                    pass
+            except Exception as trunc_err:
+                if logger:
+                    logger.error(f"Failed to truncate {path}: {trunc_err}")
+
+        try:
+            with open(path, "a") as f:
+                pass
+            os.chmod(path, 0o666)
+        except Exception as chmod_err:
+            if logger:
+                logger.debug(f"Could not chmod 0666 on {path}: {chmod_err}")
+
