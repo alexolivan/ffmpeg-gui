@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-08-03
+
+### Added
+- **ALSA Hardware Controls UX & Performance Refinements**:
+  - **Discrete Step Gain Selector (`⚡`)**: Low-step controls (`total_steps <= 6`, e.g. `Front Mic Boost Volume` `0..3`) render a dedicated discrete step button modal with real-time dB calculation (`0 dB`, `+12 dB`, `+24 dB`, `+36 dB`).
+  - **60 FPS Synchronous Linked Faders (`<AlsaStereoFaderPair>`)**: Synchronous 60 FPS drag rendering for stereo fader pairs with zero network latency or UI lag.
+  - **Smart dB Scale Normalization**: Automatic 0.01 dB scaling (`scale = 100`) for AudioScience & ALSA integer volume controls (`-10000` to `2000` mapped to `-100 dB` to `+20 dB` in 1 dB steps).
+  - **Physical Audio Signal Flow Alignment**: Re-ordered channel strip nodes so pre-amp `Boost` controls are positioned directly next to physical connector icons, following natural hardware signal flow (`Bus` -> `Volume` -> `Boost` -> `Connector`).
+  - **Master Playout Bus Reclassification**: Routed `Master` / `Master Playback Volume` controls on Intel HDA codecs to **Virtual Playout** (Top-Left Quadrant) for topological clarity.
+
+### Fixed
+- **ALSA `amixer cset` Negative Values**: Added `--` CLI option parser terminator to prevent negative numbers (`-2,-2`, `-10000`) from being rejected by `amixer`.
+- **`Line` vs `Line Out` Categorization**: Disambiguated `Line` (Hardware Inputs - Bottom Right) from `Line Out` (Hardware Outputs - Top Right).
+- **React INP Presentation Delay**: Optimized React render cycles with `React.memo` and `useCallback`, dropping INP presentation delay from 936ms to <16ms.
+- **Hardware Output Vumeter Regressions**: Restored peak meters in Top-Right Quadrant via strict word-boundary regex matching.
+
 ## [1.31.0] - 2026-07-29
 
 ### Added
