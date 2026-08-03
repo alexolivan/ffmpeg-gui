@@ -1354,6 +1354,20 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
             }
 
             if (isVol) {
+              const minVal = ctrl.min ?? 0;
+              const maxVal = ctrl.max ?? 100;
+              const stepVal = Math.max(1, ctrl.step ?? 1);
+              const totalSteps = Math.floor((maxVal - minVal) / stepVal) + 1;
+              const isDiscreteStep = totalSteps > 1 && totalSteps <= 6;
+
+              // Generate discrete step option values
+              const discreteOptions: number[] = [];
+              if (isDiscreteStep) {
+                for (let s = minVal; s <= maxVal; s += stepVal) {
+                  discreteOptions.push(s);
+                }
+              }
+
               return (
                 <div key={ctrl.numid} className="w-9 flex items-center justify-center">
                   <div className="relative">
@@ -1362,7 +1376,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
                       title={`${ctrl.name}: ${formatControlValue(ctrl, currentVal)}`}
                       className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime text-sm text-text-primary shadow-sm cursor-pointer"
                     >
-                      🎚️
+                      {isDiscreteStep ? '⚡' : '🎚️'}
                     </button>
 
                     {isOpen && createPortal(
@@ -1371,7 +1385,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
                         onClick={() => setActivePopup(null)}
                       >
                         <div
-                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[150px] max-w-[90vw] flex flex-col items-center gap-3"
+                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-4 shadow-2xl min-w-[200px] max-w-[90vw] flex flex-col items-center gap-3"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-between w-full border-b border-[var(--glass-border)] pb-2 gap-4">
@@ -1386,29 +1400,58 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
                             </button>
                           </div>
 
-                          {/* 100% STRICT VERTICAL FADER MODAL */}
-                          <div className="flex flex-col items-center gap-2 py-2">
-                            <div className="text-[11px] font-mono font-bold text-brand-lime">
-                              {formatControlValue(ctrl, currentVal)}
+                          {isDiscreteStep ? (
+                            /* DISCRETE COARSE STEP SELECTOR MODAL (e.g. Boost Gain / Hardware Step Select) */
+                            <div className="flex flex-col items-center gap-2 py-1 w-full">
+                              <span className="text-[10px] font-mono text-text-secondary uppercase">Select Hardware Gain Step:</span>
+                              <div className="flex flex-col gap-1.5 w-full">
+                                {discreteOptions.map((optVal) => {
+                                  const isSelected = currentVal === optVal;
+                                  return (
+                                    <button
+                                      key={optVal}
+                                      onClick={() => {
+                                        const vals = isLinked ? new Array(ctrl.channels).fill(optVal) : [optVal, ...ctrl.values.slice(1)];
+                                        onControlChange(ctrl.numid, vals);
+                                      }}
+                                      className={`w-full py-2 px-3 rounded-lg text-xs font-mono font-bold flex items-center justify-between transition-all cursor-pointer border ${
+                                        isSelected
+                                          ? 'bg-brand-lime/20 text-brand-lime border-brand-lime shadow-sm'
+                                          : 'bg-[var(--input-bg)] text-text-primary border-[var(--glass-border)] hover:border-brand-lime/50'
+                                      }`}
+                                    >
+                                      <span>{formatControlValue(ctrl, optVal)}</span>
+                                      {isSelected && <span>✓</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
-                            <div className="flex items-center justify-center py-1">
-                              <AlsaFaderUnit
-                                min={ctrl.min ?? 0}
-                                max={ctrl.max ?? 100}
-                                step={ctrl.step ?? 1}
-                                value={currentVal}
-                                heightClass="h-28"
-                                onChangeCommit={(v) => {
-                                  const vals = isLinked ? new Array(ctrl.channels).fill(v) : [v, ...ctrl.values.slice(1)];
-                                  onControlChange(ctrl.numid, vals);
-                                }}
-                              />
+                          ) : (
+                            /* CONTINUOUS FINE VOLUME FADER MODAL */
+                            <div className="flex flex-col items-center gap-2 py-2">
+                              <div className="text-[11px] font-mono font-bold text-brand-lime">
+                                {formatControlValue(ctrl, currentVal)}
+                              </div>
+                              <div className="flex items-center justify-center py-1">
+                                <AlsaFaderUnit
+                                  min={ctrl.min ?? 0}
+                                  max={ctrl.max ?? 100}
+                                  step={ctrl.step ?? 1}
+                                  value={currentVal}
+                                  heightClass="h-28"
+                                  onChangeCommit={(v) => {
+                                    const vals = isLinked ? new Array(ctrl.channels).fill(v) : [v, ...ctrl.values.slice(1)];
+                                    onControlChange(ctrl.numid, vals);
+                                  }}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between w-full text-[9px] font-mono text-text-secondary gap-3">
+                                <span>{formatControlValue(ctrl, ctrl.min)}</span>
+                                <span>{formatControlValue(ctrl, ctrl.max)}</span>
+                              </div>
                             </div>
-                            <div className="flex items-center justify-between w-full text-[9px] font-mono text-text-secondary gap-3">
-                              <span>{formatControlValue(ctrl, ctrl.min)}</span>
-                              <span>{formatControlValue(ctrl, ctrl.max)}</span>
-                            </div>
-                          </div>
+                          )}
                         </div>
                       </div>,
                       document.body
