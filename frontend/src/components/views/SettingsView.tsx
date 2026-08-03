@@ -158,6 +158,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [notifTestSuccess, setNotifTestSuccess] = useState(false);
   const [showNotifPassword, setShowNotifPassword] = useState(false);
 
+  // Watchdog & Startup Settings States
+  const [startupGraceDelay, setStartupGraceDelay] = useState(settings?.watchdog?.startup_grace_delay ?? 10);
+  const [networkWaitTimeout, setNetworkWaitTimeout] = useState(settings?.watchdog?.network_wait_timeout ?? 60);
+  const [watchdogMaxBackoff, setWatchdogMaxBackoff] = useState(settings?.watchdog?.watchdog_max_backoff ?? 30);
+
   useEffect(() => {
     setBindAddress(settings?.bind_address || '0.0.0.0');
     setGuiPort(settings?.gui_port || settings?.http_port || 8000);
@@ -182,6 +187,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setNotifyTaskFailures(notif?.notify_task_failures !== undefined ? !!notif?.notify_task_failures : true);
     setNotifySslAlerts(notif?.notify_ssl_alerts !== undefined ? !!notif?.notify_ssl_alerts : true);
     setNotifyStorageAlerts(notif?.notify_storage_alerts !== undefined ? !!notif?.notify_storage_alerts : true);
+    const wd = settings?.watchdog;
+    setStartupGraceDelay(wd?.startup_grace_delay ?? 10);
+    setNetworkWaitTimeout(wd?.network_wait_timeout ?? 60);
+    setWatchdogMaxBackoff(wd?.watchdog_max_backoff ?? 30);
   }, [
     settings?.bind_address,
     settings?.gui_port,
@@ -206,6 +215,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings?.notifications?.notify_task_failures,
     settings?.notifications?.notify_ssl_alerts,
     settings?.notifications?.notify_storage_alerts,
+    settings?.watchdog?.startup_grace_delay,
+    settings?.watchdog?.network_wait_timeout,
+    settings?.watchdog?.watchdog_max_backoff,
   ]);
 
   const fetchSslStatus = async () => {
@@ -642,6 +654,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     notifyTaskFailures !== (settings?.notifications?.notify_task_failures !== undefined ? !!settings?.notifications?.notify_task_failures : true) ||
     notifySslAlerts !== (settings?.notifications?.notify_ssl_alerts !== undefined ? !!settings?.notifications?.notify_ssl_alerts : true) ||
     notifyStorageAlerts !== (settings?.notifications?.notify_storage_alerts !== undefined ? !!settings?.notifications?.notify_storage_alerts : true) ||
+    Number(startupGraceDelay) !== Number(settings?.watchdog?.startup_grace_delay ?? 10) ||
+    Number(networkWaitTimeout) !== Number(settings?.watchdog?.network_wait_timeout ?? 60) ||
+    Number(watchdogMaxBackoff) !== Number(settings?.watchdog?.watchdog_max_backoff ?? 30) ||
     newPassword !== '' ||
     confirmPassword !== '';
 
@@ -709,6 +724,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           notify_task_failures: notifyTaskFailures,
           notify_ssl_alerts: notifySslAlerts,
           notify_storage_alerts: notifyStorageAlerts,
+        },
+        watchdog: {
+          startup_grace_delay: Number(startupGraceDelay),
+          network_wait_timeout: Number(networkWaitTimeout),
+          watchdog_max_backoff: Number(watchdogMaxBackoff),
         },
       };
 
@@ -1003,6 +1023,73 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            </div>
+
+            {/* TAB 1: General -> Watchdog & Startup Settings Card */}
+            <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
+              <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                <h4 className="text-amber-400 font-bold text-xs uppercase tracking-wider">
+                  {t('settings.watchdog.title', 'WATCHDOG & STARTUP TIMING')}
+                </h4>
+              </div>
+
+              <p className="text-xs text-text-secondary">
+                {t('settings.watchdog.description', 'Configure system boot grace delays, network pre-flight timeout checks, and watchdog exponential backoff limits.')}
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                    {t('settings.watchdog.startupGraceDelay', 'Startup Grace Delay (sec)')}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={300}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime font-mono"
+                    value={startupGraceDelay}
+                    onChange={(e) => setStartupGraceDelay(parseInt(e.target.value, 10) || 0)}
+                  />
+                  <span className="text-[9px] text-text-secondary/70 block">
+                    {t('settings.watchdog.startupGraceDelayHelp', 'Delay before auto-starting services on system boot')}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                    {t('settings.watchdog.networkWaitTimeout', 'Network Wait Timeout (sec)')}
+                  </label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={600}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime font-mono"
+                    value={networkWaitTimeout}
+                    onChange={(e) => setNetworkWaitTimeout(parseInt(e.target.value, 10) || 5)}
+                  />
+                  <span className="text-[9px] text-text-secondary/70 block">
+                    {t('settings.watchdog.networkWaitTimeoutHelp', 'Max time to wait for network/DNS route on boot')}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                    {t('settings.watchdog.watchdogMaxBackoff', 'Watchdog Max Backoff (sec)')}
+                  </label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={600}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime font-mono"
+                    value={watchdogMaxBackoff}
+                    onChange={(e) => setWatchdogMaxBackoff(parseInt(e.target.value, 10) || 5)}
+                  />
+                  <span className="text-[9px] text-text-secondary/70 block">
+                    {t('settings.watchdog.watchdogMaxBackoffHelp', 'Upper cap for exponential backoff retry interval')}
+                  </span>
                 </div>
               </div>
             </div>

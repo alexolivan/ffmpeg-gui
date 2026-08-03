@@ -1387,9 +1387,74 @@ class ProcessManager:
         except Exception:
             return False
 
-    async def _delayed_restart(self, process_id: int):
+    def get_watchdog_max_backoff(self) -> int:
+        config_path = os.environ.get("CONFIG_FILE_PATH", "ffmpeg-gui.conf")
+        if os.path.exists(config_path):
+            try:
+                import configparser
+                cfg = configparser.ConfigParser()
+                cfg.read(config_path)
+                if "watchdog" in cfg:
+                    return cfg.getint("watchdog", "watchdog_max_backoff", fallback=30)
+            except Exception:
+                pass
+        return 30
+
+    def get_network_wait_timeout(self) -> int:
+        config_path = os.environ.get("CONFIG_FILE_PATH", "ffmpeg-gui.conf")
+        if os.path.exists(config_path):
+            try:
+                import configparser
+                cfg = configparser.ConfigParser()
+                cfg.read(config_path)
+                if "watchdog" in cfg:
+                    return cfg.getint("watchdog", "network_wait_timeout", fallback=60)
+            except Exception:
+                pass
+        return 60
+
+    async def _async_check_network_readiness(self, input_config: dict, timeout: float = 60.0) -> bool:
+        """
+        Asynchronously check if a network-dependent input (RTMP, SRT, RTSP, HTTP, UDP) has network connectivity
+        and DNS resolution ready. Returns True if ready or non-network input.
+        """
+        if not input_config:
+            return True
+
+        url = str(input_config.get("url") or input_config.get("path") or "")
+        if not url:
+            return True
+
+        url_lower = url.lower()
+        is_network = any(url_lower.startswith(p) for p in ["rtmp://", "rtmps://", "srt://", "rtsp://", "http://", "https://", "udp://"])
+        if not is_network:
+            return True
+
+        import re
+        match = re.search(r'://([^/:\?]+)', url)
+        if not match:
+            return True
+
+        host = match.group(1)
+        if host in ["0.0.0.0", "127.0.0.1", "localhost"]:
+            return True
+
+        loop = asyncio.get_event_loop()
+        start_time = loop.time()
+        check_interval = 5.0
+
+        while loop.time() - start_time < timeout:
+            try:
+                await loop.getaddrinfo(host, None)
+                return True
+            except Exception:
+                await asyncio.sleep(check_interval)
+
+        return False
+
+    async def _delayed_restart(self, process_id: int, delay: float = 5.0):
         try:
-            await asyncio.sleep(5)
+            await asyncio.sleep(delay)
             if process_id in self.processes:
                 return
 
@@ -1398,6 +1463,13 @@ class ProcessManager:
                 media_proc = session.query(MediaProcess).get(process_id)
                 if not media_proc or media_proc.status == 'stopped':
                     self.logger.info(f"Watchdog: Process {process_id} status is stopped or deleted. Aborting restart.")
+                    return
+
+                # Pre-flight network readiness check
+                net_timeout = self.get_network_wait_timeout()
+                is_net_ready = await self._async_check_network_readiness(media_proc.input_config, timeout=net_timeout)
+                if not is_net_ready:
+                    self.logger.warning(f"Watchdog: Network/DNS not ready for process {process_id} after {net_timeout}s timeout. Aborting restart attempt.")
                     return
 
                 self.logger.info(f"Watchdog triggering restart for process {process_id}")
@@ -1725,11 +1797,16 @@ class ProcessManager:
                             if retries == -1 or current_restarts < retries:
                                 self.restart_counts[process_id] = current_restarts + 1
                                 media_proc.restart_count = self.restart_counts[process_id]
-                                self.logger.info(f"Watchdog: unexpectedly exited. Scheduling restart attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'}...")
+
+                                base_delay = 5
+                                max_cap = self.get_watchdog_max_backoff()
+                                backoff_delay = min(max_cap, base_delay * (2 ** max(0, self.restart_counts[process_id] - 1)))
+
+                                self.logger.info(f"Watchdog: unexpectedly exited. Scheduling restart attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'} in {backoff_delay}s...")
                                 restart_log = ProcessLog(
                                     process_id=process_id,
                                     level='WARNING',
-                                    message=f"Watchdog: Unexpected exit detected. Restarting (attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'}) in 5 seconds..."
+                                    message=f"Watchdog: Unexpected exit detected. Restarting (attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'}) in {backoff_delay} seconds..."
                                 )
                                 session.add(restart_log)
                                 session.commit()
@@ -1739,7 +1816,7 @@ class ProcessManager:
                                         old_task.cancel()
                                     except Exception:
                                         pass
-                                task = asyncio.create_task(self._delayed_restart(process_id))
+                                task = asyncio.create_task(self._delayed_restart(process_id, delay=backoff_delay))
                                 self.pending_restarts[process_id] = task
                             else:
                                 self.logger.warning(f"Watchdog: Max restart attempts ({retries}) reached for process {process_id}. Giving up.")

@@ -251,6 +251,16 @@ class NotificationSettingsUpdate(BaseModel):
     notify_ssl_alerts: Optional[bool] = None
     notify_storage_alerts: Optional[bool] = None
 
+class WatchdogSettings(BaseModel):
+    startup_grace_delay: int = 10
+    network_wait_timeout: int = 60
+    watchdog_max_backoff: int = 30
+
+class WatchdogSettingsUpdate(BaseModel):
+    startup_grace_delay: Optional[int] = None
+    network_wait_timeout: Optional[int] = None
+    watchdog_max_backoff: Optional[int] = None
+
 class SettingsResponse(BaseModel):
     id: Optional[int] = None
     node_name: Optional[str] = None
@@ -293,6 +303,7 @@ class SettingsResponse(BaseModel):
     ssl_challenge_type: Optional[str] = "http-01"
     ssl_auto_renew: Optional[bool] = True
     notifications: NotificationSettings = NotificationSettings()
+    watchdog: WatchdogSettings = WatchdogSettings()
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -325,6 +336,7 @@ class SettingsUpdate(BaseModel):
     logging_compression_enabled: Optional[bool] = None
     logging_retention_days: Optional[int] = None
     notifications: Optional[NotificationSettingsUpdate] = None
+    watchdog: Optional[WatchdogSettingsUpdate] = None
 
     @validator('lcd_alias')
     def validate_lcd_alias(cls, v):
@@ -429,6 +441,13 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
         "notify_storage_alerts": True,
     }
 
+    # Default watchdog values
+    watchdog_data = {
+        "startup_grace_delay": 10,
+        "network_wait_timeout": 60,
+        "watchdog_max_backoff": 30,
+    }
+
     if config_path and os.path.exists(config_path):
         try:
             import configparser
@@ -522,6 +541,14 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                     logging_retention_days = logging_cfg.getint("retention_days", logging_retention_days)
                 except ValueError:
                     pass
+            if "watchdog" in config:
+                wd_cfg = config["watchdog"]
+                try: watchdog_data["startup_grace_delay"] = wd_cfg.getint("startup_grace_delay", fallback=10)
+                except ValueError: pass
+                try: watchdog_data["network_wait_timeout"] = wd_cfg.getint("network_wait_timeout", fallback=60)
+                except ValueError: pass
+                try: watchdog_data["watchdog_max_backoff"] = wd_cfg.getint("watchdog_max_backoff", fallback=30)
+                except ValueError: pass
         except Exception as e:
             logger.error(f"Error reading settings from config file: {e}")
 
@@ -644,6 +671,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["ssl_challenge_type"] = ssl_challenge_type
     res["ssl_auto_renew"] = ssl_auto_renew
     res["notifications"] = notifications_data
+    res["watchdog"] = watchdog_data
     
     return SettingsResponse(**res).model_dump()
 
@@ -955,6 +983,28 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config.write(f)
 
         notification_manager.load_config(dict(config["notifications"]))
+
+    # ── Handle Watchdog Settings update ──
+    if settings_in.watchdog is not None:
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if not config_path:
+            config_path = "ffmpeg-gui.conf"
+
+        import configparser
+        config = configparser.ConfigParser()
+        if os.path.exists(config_path):
+            config.read(config_path)
+
+        if "watchdog" not in config:
+            config["watchdog"] = {}
+
+        wd_update = settings_in.watchdog
+        for field, val in wd_update.model_dump(exclude_unset=True).items():
+            if val is not None:
+                config["watchdog"][field] = str(val)
+
+        with open(config_path, "w") as f:
+            config.write(f)
 
     # ── Handle Network & SSL Settings update ──
     network_ssl_fields = [
@@ -2007,7 +2057,22 @@ async def telemetry_broadcast_loop():
         await asyncio.sleep(1)
 
 async def auto_start_services():
-    await asyncio.sleep(2)
+    config_path = os.environ.get("CONFIG_FILE_PATH")
+    if not config_path:
+        config_path = "ffmpeg-gui.conf"
+    startup_delay = 10
+    if os.path.exists(config_path):
+        try:
+            import configparser
+            cfg = configparser.ConfigParser()
+            cfg.read(config_path)
+            if "watchdog" in cfg:
+                startup_delay = cfg.getint("watchdog", "startup_grace_delay", fallback=10)
+        except Exception:
+            pass
+
+    logger.info(f"Watchdog / Auto-start: Waiting startup grace delay ({startup_delay}s)...")
+    await asyncio.sleep(startup_delay)
     logger.info("Watchdog / Auto-start: Initializing service startup checks...")
     service_ids = []
     with SessionLocal() as db:

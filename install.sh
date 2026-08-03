@@ -213,6 +213,11 @@ host = 0.0.0.0
 port = 8000
 log_file = /var/log/ffmpeg-gui/access.log
 database = /var/lib/ffmpeg-gui/ffmpeg_gui.db
+
+[watchdog]
+startup_grace_delay = 10
+network_wait_timeout = 60
+watchdog_max_backoff = 30
 EOF
     fi
 
@@ -230,6 +235,11 @@ else
 host = 0.0.0.0
 port = 8000
 database = $HOME/.local/share/ffmpeg-gui/ffmpeg_gui.db
+
+[watchdog]
+startup_grace_delay = 10
+network_wait_timeout = 60
+watchdog_max_backoff = 30
 EOF
     fi
 fi
@@ -245,7 +255,8 @@ if [ "$MODE" = "system" ]; then
     cat <<EOF > "$SERVICE_FILE"
 [Unit]
 Description=FFMPEG-GUI Orchestrator Service
-After=network.target
+After=network.target network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -273,7 +284,8 @@ else
     cat <<EOF > "$SERVICE_FILE"
 [Unit]
 Description=FFMPEG-GUI Orchestrator Service (User Space)
-After=network.target
+After=network.target network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple

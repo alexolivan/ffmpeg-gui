@@ -81,6 +81,16 @@
       "quadrant4": "4. HARDWARE INPUTS (PHYSICAL INGESTION)",
       "noControls": "No controls detected in this quadrant"
     },
+    "watchdog": {
+      "title": "WATCHDOG & STARTUP TIMING",
+      "description": "Configure system boot grace delays, network pre-flight timeout checks, and watchdog exponential backoff limits.",
+      "startupGraceDelay": "Startup Grace Delay (sec)",
+      "startupGraceDelayHelp": "Delay before auto-starting services on system boot",
+      "networkWaitTimeout": "Network Wait Timeout (sec)",
+      "networkWaitTimeoutHelp": "Max time to wait for network/DNS route on boot",
+      "watchdogMaxBackoff": "Watchdog Max Backoff (sec)",
+      "watchdogMaxBackoffHelp": "Upper cap for exponential backoff retry interval"
+    },
     "restart": {
       "title": "Restart Required",
       "reason_both": "A restart is required to apply the new GUI Port and Logging configurations. Click the \"Restart Panel\" button to apply.",

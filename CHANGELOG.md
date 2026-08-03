@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2026-08-03
+
+### Added
+- **Boot Reliability & Network Pre-Flight Check**:
+  - **Systemd Network Wait Dependency**: Updated `install.sh` systemd unit templates (system & user space) with `After=network.target network-online.target` and `Wants=network-online.target` while strictly preserving `KillMode=process` so live 24/7 streams survive Web GUI panel restarts.
+  - **Asynchronous Network Pre-Flight Check (`_async_check_network_readiness`)**: Native 0-dependency network route and DNS resolution readiness check in `ProcessManager` before executing stream restarts.
+  - **Configurable Watchdog & Startup Settings**: Added `startup_grace_delay` (default 10s), `network_wait_timeout` (default 60s), and `watchdog_max_backoff` (default 30s) settings in `ffmpeg-gui.conf` and rendered in **WATCHDOG & STARTUP TIMING** card under `SettingsView` General tab.
+  - **i18n Multi-Language Translations**: Full translation support in English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`).
+
 ## [1.32.0] - 2026-08-03
 
 ### Added

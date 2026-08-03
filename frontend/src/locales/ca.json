@@ -81,6 +81,16 @@
       "quadrant4": "4. HARDWARE INPUTS (ENTRADA FÍSICA)",
       "noControls": "Sense controls detectats en aquest quadrant"
     },
+    "watchdog": {
+      "title": "WATCHDOG I TEMPS D'ARRANQUED",
+      "description": "Configura els temps de cortesia en l'arrencada del sistema, comprovació de xarxa/DNS i límits de backoff exponencial.",
+      "startupGraceDelay": "Temps de Cortesia en Arrencada (seg)",
+      "startupGraceDelayHelp": "Espera inicial abans d'auto-iniciar serveis després d'encendre la màquina",
+      "networkWaitTimeout": "Temps Màxim d'Espera de Xarxa (seg)",
+      "networkWaitTimeoutHelp": "Espera màxima per disposar de ruta de xarxa/DNS al boot",
+      "watchdogMaxBackoff": "Backoff Màxim del Watchdog (seg)",
+      "watchdogMaxBackoffHelp": "Límit màxim per a l'interval d'espera entre reintents"
+    },
     "restart": {
       "title": "Reinici Requerit",
       "reason_both": "Es requereix un reinici per aplicar les noves configuracions de Port GUI i Registres. Fes clic a \"Reiniciar Panell\" per aplicar.",

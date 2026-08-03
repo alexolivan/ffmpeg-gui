@@ -81,6 +81,16 @@
       "quadrant4": "4. HARDWARE INPUTS (ENTRADA FÍSICA)",
       "noControls": "Sin controles detectados en este cuadrante"
     },
+    "watchdog": {
+      "title": "WATCHDOG Y TIEMPOS DE ARRANQUE",
+      "description": "Configura los tiempos de cortesía en el arranque del sistema, comprobación de red/DNS y límites de backoff exponencial.",
+      "startupGraceDelay": "Tiempo de Cortesía en Arranque (seg)",
+      "startupGraceDelayHelp": "Espera inicial antes de auto-arrancar servicios tras encender la máquina",
+      "networkWaitTimeout": "Tiempo Máximo de Espera de Red (seg)",
+      "networkWaitTimeoutHelp": "Espera máxima para disponer de ruta de red/DNS en el boot",
+      "watchdogMaxBackoff": "Backoff Máximo del Watchdog (seg)",
+      "watchdogMaxBackoffHelp": "Límite tope para el intervalo de espera entre reintentos"
+    },
     "restart": {
       "title": "Reinicio Requerido",
       "reason_both": "Se requiere un reinicio para aplicar las nuevas configuraciones de Puerto GUI y Logs. Haz clic en \"Reiniciar Panel\" para aplicar.",
