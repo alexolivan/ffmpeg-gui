@@ -448,6 +448,7 @@ class TaskManager:
                     cmd += ["-map", "0:a"]
 
             # Video processing
+            is_vram = False
             if not has_video:
                 cmd += ["-vn"]
             else:
@@ -566,25 +567,14 @@ class TaskManager:
             self._append_output(cmd, task.output_config, codec_cfg)
 
         # ── Secondary Preview Output ──
-        if execution_id and has_video:
+        if execution_id and has_video and not is_vram:
             import os
             from database.db import PREVIEWS_DIR
             previews_dir = PREVIEWS_DIR
             os.makedirs(previews_dir, exist_ok=True)
             preview_path = os.path.join(previews_dir, f"preview_task_{execution_id}.jpg")
             
-            try:
-                if final_vf:
-                    if remains_vram:
-                        preview_vf = f"{final_vf},hwdownload,format=nv12,fps=1,scale=480:-1"
-                    else:
-                        preview_vf = f"{final_vf},fps=1,scale=480:-1"
-                else:
-                    preview_vf = "fps=1,scale=480:-1"
-                    if is_vram:
-                        preview_vf = "fps=1,hwdownload,format=nv12,scale=480:-1"
-            except NameError:
-                preview_vf = "fps=1,scale=480:-1"
+            preview_vf = "fps=1,scale=480:-1"
                 
             cmd += [
                 "-map", "0:v",

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.1] - 2026-08-03
+
+### Fixed
+- **CUDA VRAM Dual-Filtergraph Preview Crash (`-map 0:v ... preview_X.jpg`)**:
+  - **Embedded Secondary Preview Guard**: Disabled embedding secondary preview JPEG outputs (`-map 0:v -c:v mjpeg -vf hwdownload...`) into main FFmpeg CLI arguments for CUDA/VRAM accelerated streams (`is_vram == True`). This prevents dual-filtering CUDA hardware surface context corruption that caused FFmpeg to crash after 4 seconds (~100 frames).
+  - **Progress Log Path Fallback**: Fixed cosmetic progress log path evaluation (`/dev/shm/ffmpeg_progress_None.log`) when constructing preview commands for unsaved processes.
+
 ## [1.34.0] - 2026-08-03
 
 ### Fixed

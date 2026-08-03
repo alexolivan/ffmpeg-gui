@@ -789,19 +789,15 @@ class ProcessManager:
         # ── Secondary Preview Output ──
         is_service = getattr(media_proc, 'type', 'service') == 'service'
         has_video_stream = has_video and codec_cfg.get('vcodec') != 'none'
-        if is_service and has_video_stream:
+        # Do not append secondary preview output for VRAM/CUDA hwaccel streams to avoid dual-filtering CUDA frame crashes
+        if is_service and has_video_stream and not is_vram:
             from database.db import PREVIEWS_DIR
             previews_dir = PREVIEWS_DIR
             os.makedirs(previews_dir, exist_ok=True)
-            preview_path = os.path.join(previews_dir, f"preview_{media_proc.id}.jpg")
+            proc_id_str = getattr(media_proc, 'id', None) or "preview"
+            preview_path = os.path.join(previews_dir, f"preview_{proc_id_str}.jpg")
             
-            try:
-                if is_vram or (try_remains := getattr(locals(), 'original_remains_vram', False)):
-                    preview_vf = "hwdownload,format=nv12,fps=1,scale=480:-1"
-                else:
-                    preview_vf = "fps=1,scale=480:-1"
-            except Exception:
-                preview_vf = "fps=1,scale=480:-1"
+            preview_vf = "fps=1,scale=480:-1"
                 
             cmd += [
                 "-map", "0:v",
@@ -812,12 +808,18 @@ class ProcessManager:
             ]
 
         # Append -progress to the FFmpeg command line
-        process_id = media_proc.id
+        process_id = getattr(media_proc, 'id', None)
         shm_dir = "/dev/shm"
-        if os.path.exists(shm_dir) and os.access(shm_dir, os.W_OK):
-            progress_file_path = f"/dev/shm/ffmpeg_progress_{process_id}.log"
+        if process_id is not None:
+            if os.path.exists(shm_dir) and os.access(shm_dir, os.W_OK):
+                progress_file_path = f"/dev/shm/ffmpeg_progress_{process_id}.log"
+            else:
+                progress_file_path = f"/tmp/ffmpeg_progress_{process_id}.log"
         else:
-            progress_file_path = f"/tmp/ffmpeg_progress_{process_id}.log"
+            if os.path.exists(shm_dir) and os.access(shm_dir, os.W_OK):
+                progress_file_path = "/dev/shm/ffmpeg_progress_preview.log"
+            else:
+                progress_file_path = "/tmp/ffmpeg_progress_preview.log"
             
         cmd += ["-progress", progress_file_path]
 
