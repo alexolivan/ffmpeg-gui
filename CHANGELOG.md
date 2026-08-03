@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.3] - 2026-08-03
+
+### Fixed
+- **Command CLI Preview Progress Path Matching (`process_id`)**:
+  - **URL Parameter Propagation**: Updated `POST /processes/preview-cmd` API and `ProcessConfigForm.tsx` to pass and evaluate `process_id` when previewing an existing process command line.
+  - **Accurate CLI Display**: Ensures `-progress /dev/shm/ffmpeg_progress_{id}.log` is accurately displayed in the CLI preview modal for saved processes instead of falling back to `_preview.log`.
+
 ## [1.34.2] - 2026-08-03
 
 ### Fixed

@@ -3021,13 +3021,14 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
     return db_proc
 
 @app.post("/processes/preview-cmd")
-def preview_command(proc_in: ProcessCreate, db: Session = Depends(get_db)):
+def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
     # Sanitize configs for preview
     input_cfg = dict(proc_in.input_config)
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
     sanitize_process_config_data(input_cfg, filter_cfg)
 
     db_proc = MediaProcess(
+        id=process_id,
         name=proc_in.name,
         type=proc_in.type,
         input_config=input_cfg,

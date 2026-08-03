@@ -654,7 +654,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   const handlePreview = async () => {
     if (!validateConfig()) return;
     setIsPreviewing(true);
-    const previewUrl = isTask ? '/tasks/preview-cmd' : '/processes/preview-cmd';
+    const previewUrl = isTask
+      ? '/tasks/preview-cmd'
+      : (initialConfig?.id ? `/processes/preview-cmd?process_id=${initialConfig.id}` : '/processes/preview-cmd');
     const payload = {
       ...createPayload(),
       ...(!isTask ? { type: 'service' } : {})
