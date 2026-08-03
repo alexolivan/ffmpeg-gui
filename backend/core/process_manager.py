@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Dict, Optional
 import json
 import collections
+import random
 from utils.process_utils import cleanup_rogue_processes, prepare_process_file_permissions
 
 class ProcessManager:
@@ -1810,8 +1811,8 @@ class ProcessManager:
 
                                 base_delay = 5
                                 max_cap = self.get_watchdog_max_backoff()
-                                # Add process-specific jitter to break lockstep concurrent retries
-                                jitter = (process_id % 5) * 1.0
+                                # Add random jitter (0.5s - 2.5s) to break lockstep concurrent retries
+                                jitter = round(random.uniform(0.5, 2.5), 1)
                                 backoff_delay = min(max_cap, base_delay * (2 ** max(0, self.restart_counts[process_id] - 1))) + jitter
 
                                 self.logger.info(f"Watchdog: unexpectedly exited. Scheduling restart attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'} in {backoff_delay}s...")
