@@ -23,6 +23,12 @@ class ProcessManager:
         self.db_session_factory = db_session_factory
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
+        self._spawn_lock: Optional[asyncio.Lock] = None
+
+    def _get_spawn_lock(self) -> asyncio.Lock:
+        if self._spawn_lock is None:
+            self._spawn_lock = asyncio.Lock()
+        return self._spawn_lock
 
     def _detect_ffmpeg(self):
         local_bin = os.path.abspath("./ffmpeg_bin/bin/ffmpeg")
@@ -131,15 +137,18 @@ class ProcessManager:
             except Exception as file_err:
                 self.logger.error(f"Failed to truncate log file: {file_err}")
                 
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.PIPE,
-                stdin=asyncio.subprocess.PIPE,
-                env=sub_env
-            )
-            
-            self.processes[process_id] = proc
+            spawn_lock = self._get_spawn_lock()
+            async with spawn_lock:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.PIPE,
+                    stdin=asyncio.subprocess.PIPE,
+                    env=sub_env
+                )
+                self.processes[process_id] = proc
+                # Short hardware initialization grace gap to allow CUDA / DeckLink / NVENC drivers to bind
+                await asyncio.sleep(1.0)
             
             # 3. Update PID and status in a second short database transaction
             with self.db_session_factory() as session:
@@ -1801,7 +1810,9 @@ class ProcessManager:
 
                                 base_delay = 5
                                 max_cap = self.get_watchdog_max_backoff()
-                                backoff_delay = min(max_cap, base_delay * (2 ** max(0, self.restart_counts[process_id] - 1)))
+                                # Add process-specific jitter to break lockstep concurrent retries
+                                jitter = (process_id % 5) * 1.0
+                                backoff_delay = min(max_cap, base_delay * (2 ** max(0, self.restart_counts[process_id] - 1))) + jitter
 
                                 self.logger.info(f"Watchdog: unexpectedly exited. Scheduling restart attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'} in {backoff_delay}s...")
                                 restart_log = ProcessLog(

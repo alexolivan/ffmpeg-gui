@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2026-08-03
+
+### Fixed
+- **Boot Concurrency & Hardware Driver Race Conditions (CUDA / NVENC / DeckLink)**:
+  - **Global Async Subprocess Spawn Lock (`_spawn_lock`)**: Serialized process spawning in `ProcessManager` with a 1.0s hardware initialization grace gap so multiple FFmpeg instances never contend for CUDA driver contexts (`cuInit`) or DeckLink PCIe hardware locks at the exact same millisecond.
+  - **Staggered Auto-Start Loop**: Added a 2.0s staggered delay between auto-started services in `auto_start_services()` on boot, preventing boot-time hardware lock contention.
+  - **Anti-Lockstep Watchdog Jitter**: Added process-specific backoff jitter (`(process_id % 5) * 1.0s`) to `_watchdog`, breaking synchronized lockstep restart loops when multiple services crash simultaneously.
+
 ## [1.33.1] - 2026-08-03
 
 ### Fixed

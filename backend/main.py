@@ -2091,6 +2091,8 @@ async def auto_start_services():
         logger.info(f"Auto-starting service with ID: {s_id}")
         try:
             await process_manager.start_process(s_id)
+            # Stagger startup between services so CUDA / DeckLink / NVENC drivers initialize without race conditions
+            await asyncio.sleep(2.0)
         except Exception as e:
             logger.error(f"Failed to auto-start service {s_id}: {e}")
 
