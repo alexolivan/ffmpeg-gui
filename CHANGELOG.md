@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.0] - 2026-08-04
+
+### Added
+- **ALSA Control Matrix Active Route Badge (`AlsaAudioSettingsCard.tsx`)**:
+  - **Subtext Bar ROUTE Badge**: Added an amber/orange badge (`ROUTE: [Source Name]`) in the bottom subtext bar of ALSA channel strips displaying the currently selected capture/routing input at a glance.
+  - **Preserved Abacus Grid Alignment**: Kept router control buttons strictly text-free and homogeneous (`w-9 h-8`) to maintain perfect horizontal icon alignment.
+  - **Color Palette Consistency**: Matched the amber/orange route badge palette to hardware audio input channels for visual distinction against green FFmpeg process tags.
+
 ## [1.37.0] - 2026-08-04
 
 ### Added

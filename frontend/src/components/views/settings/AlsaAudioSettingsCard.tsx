@@ -1035,6 +1035,18 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
 
   const isMixerOpen = activePopup === 'mixer';
 
+  // Find active routing control value (if any)
+  const routeCtrl = group.controls.find(
+    (c) => (c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0)) &&
+           (c.name.toLowerCase().includes('route') || c.name.toLowerCase().includes('source') || c.name.toLowerCase().includes('input'))
+  ) || group.controls.find(
+    (c) => c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0)
+  );
+
+  const activeRouteName = routeCtrl && routeCtrl.items && routeCtrl.items[routeCtrl.values?.[0] ?? 0]
+    ? routeCtrl.items[routeCtrl.values?.[0] ?? 0]
+    : null;
+
   return (
     <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl flex flex-col overflow-visible hover:border-brand-lime/40 transition-all shadow-sm">
       {/* TOP TIER: SKEWER AXIS & ICONS (PURE GRAPHICS / NO TEXT) */}
@@ -1611,8 +1623,20 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
           <span>{group.name}</span>
         </span>
 
-        {/* RIGHT: FFMPEG ACTIVE PROCESS ALIASES (ONLY WHEN RUNNING) */}
+        {/* RIGHT: ROUTING SOURCE BADGE & FFMPEG ACTIVE PROCESS ALIASES */}
         <div className="flex items-center gap-2">
+          {activeRouteName && (
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] text-amber-400 font-semibold uppercase">Route:</span>
+              <span
+                title={`Active Audio Route Source: ${activeRouteName}`}
+                className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[9px] px-1.5 py-0.2 rounded font-mono font-bold truncate max-w-[140px]"
+              >
+                {activeRouteName}
+              </span>
+            </div>
+          )}
+
           {activeProcesses && activeProcesses.length > 0 && (
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] text-brand-lime font-semibold uppercase">FFmpeg:</span>
