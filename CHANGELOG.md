@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.36.1] - 2026-08-04
+
+### Fixed
+- **Systemd Unit Update Automation (`update.sh`)**:
+  - **Always Update Unit File**: Updated `update.sh` to overwrite `/etc/systemd/system/nvidia-uvm-init.service` with the latest resilient cross-distro unit definition even if the file already exists on the machine.
+
 ## [1.36.0] - 2026-08-04
 
 ### Added
