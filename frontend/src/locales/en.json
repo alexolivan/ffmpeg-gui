@@ -150,7 +150,10 @@
       "backupCount": "Backup Count",
       "enableCompression": "Enable Compression",
       "compressionDesc": "Compress backup logs (.gz)",
-      "retentionDays": "Retention Days"
+      "retentionDays": "Retention Days",
+      "timestampTz": "Log Timestamp Format",
+      "timestampTzUtc": "UTC (Universal Coordinated Time - Standard)",
+      "timestampTzLocal": "Local Machine Timezone (Offset)"
     },
     "lcd": {
       "title": "LCD display & Serial Driver",

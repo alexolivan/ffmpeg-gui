@@ -290,6 +290,7 @@ class SettingsResponse(BaseModel):
     logging_rotation_backup_count: Optional[int] = None
     logging_compression_enabled: Optional[bool] = None
     logging_retention_days: Optional[int] = None
+    logging_timestamp_tz: Optional[str] = "utc"
     language: str = "en"
     theme: str = "studio-dark"
     bind_address: Optional[str] = "0.0.0.0"
@@ -335,6 +336,7 @@ class SettingsUpdate(BaseModel):
     logging_rotation_backup_count: Optional[int] = None
     logging_compression_enabled: Optional[bool] = None
     logging_retention_days: Optional[int] = None
+    logging_timestamp_tz: Optional[str] = None
     notifications: Optional[NotificationSettingsUpdate] = None
     watchdog: Optional[WatchdogSettingsUpdate] = None
 
@@ -411,6 +413,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     logging_rotation_backup_count = 5
     logging_compression_enabled = False
     logging_retention_days = 30
+    logging_timestamp_tz = "utc"
 
     # Default network & SSL values
     bind_address = "0.0.0.0"
@@ -541,6 +544,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                     logging_retention_days = logging_cfg.getint("retention_days", logging_retention_days)
                 except ValueError:
                     pass
+                logging_timestamp_tz = logging_cfg.get("timestamp_tz", logging_timestamp_tz)
             if "watchdog" in config:
                 wd_cfg = config["watchdog"]
                 try: watchdog_data["startup_grace_delay"] = wd_cfg.getint("startup_grace_delay", fallback=10)
@@ -658,6 +662,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["logging_rotation_backup_count"] = logging_rotation_backup_count
     res["logging_compression_enabled"] = logging_compression_enabled
     res["logging_retention_days"] = logging_retention_days
+    res["logging_timestamp_tz"] = logging_timestamp_tz
     res["language"] = language
     res["theme"] = theme
     res["bind_address"] = bind_address
@@ -950,6 +955,8 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config["logging"]["compression_enabled"] = str(settings_in.logging_compression_enabled).lower()
         if settings_in.logging_retention_days is not None:
             config["logging"]["retention_days"] = str(settings_in.logging_retention_days)
+        if settings_in.logging_timestamp_tz is not None:
+            config["logging"]["timestamp_tz"] = settings_in.logging_timestamp_tz
             
         with open(config_path, "w") as f:
             config.write(f)

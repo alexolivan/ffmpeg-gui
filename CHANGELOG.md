@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.0] - 2026-08-04
+
+### Added
+- **Log Timestamp Timezone Setting (`logging_timestamp_tz`)**:
+  - **Settings UI Control**: Added **Log Timestamp Format** dropdown selector in **Settings -> General -> LOGGING CONFIGURATION** with options for `UTC (Universal Coordinated Time - Standard)` and `Local Machine Timezone (Offset)`.
+  - **Backend Persistence & Logging**: Persisted `timestamp_tz = utc | local` in `ffmpeg-gui.conf` and updated `ProcessManager` to format process launch and restart log headers according to user timezone preference.
+  - **Multilingual Support**: Added translation keys across `en.json`, `es.json`, and `ca.json` with 100% key parity.
+
 ## [1.36.1] - 2026-08-04
 
 ### Fixed

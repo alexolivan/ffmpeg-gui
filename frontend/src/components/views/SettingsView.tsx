@@ -500,6 +500,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [loggingRotationBackupCount, setLoggingRotationBackupCount] = useState<number>(settings.logging_rotation_backup_count || 5);
   const [loggingCompressionEnabled, setLoggingCompressionEnabled] = useState<boolean>(settings.logging_compression_enabled || false);
   const [loggingRetentionDays, setLoggingRetentionDays] = useState<number>(settings.logging_retention_days || 7);
+  const [loggingTimestampTz, setLoggingTimestampTz] = useState<string>(settings.logging_timestamp_tz || 'utc');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
@@ -522,6 +523,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setLoggingRotationBackupCount(settings.logging_rotation_backup_count || 5);
     setLoggingCompressionEnabled(settings.logging_compression_enabled || false);
     setLoggingRetentionDays(settings.logging_retention_days || 7);
+    setLoggingTimestampTz(settings.logging_timestamp_tz || 'utc');
   }, [
     settings.theme,
     settings.language,
@@ -536,7 +538,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings.logging_rotation_max_bytes,
     settings.logging_rotation_backup_count,
     settings.logging_compression_enabled,
-    settings.logging_retention_days
+    settings.logging_retention_days,
+    settings.logging_timestamp_tz
   ]);
 
   const handleSelectTheme = (themeKey: string) => {
@@ -641,6 +644,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(loggingRotationBackupCount) !== Number(settings.logging_rotation_backup_count || 5) ||
     loggingCompressionEnabled !== (settings.logging_compression_enabled || false) ||
     Number(loggingRetentionDays) !== Number(settings.logging_retention_days || 7) ||
+    loggingTimestampTz !== (settings.logging_timestamp_tz || 'utc') ||
     notifEnabled !== !!settings?.notifications?.enabled ||
     smtpHost !== (settings?.notifications?.smtp_host || '') ||
     Number(smtpPort) !== Number(settings?.notifications?.smtp_port || 587) ||
@@ -710,6 +714,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         logging_rotation_backup_count: Number(loggingRotationBackupCount),
         logging_compression_enabled: loggingCompressionEnabled,
         logging_retention_days: Number(loggingRetentionDays),
+        logging_timestamp_tz: loggingTimestampTz,
         notifications: {
           enabled: notifEnabled,
           smtp_host: smtpHost,
@@ -1180,6 +1185,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <option value="journalctl" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">journalctl (journald console)</option>
                       <option value="file" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">file (log file only)</option>
                       <option value="both" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">both (console + log file)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.logging.timestampTz', 'Log Timestamp Format')}</label>
+                    <select
+                      value={loggingTimestampTz}
+                      onChange={e => setLoggingTimestampTz(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-[var(--text-primary)]"
+                    >
+                      <option value="utc" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.logging.timestampTzUtc', 'UTC (Universal Coordinated Time - Standard)')}</option>
+                      <option value="local" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.logging.timestampTzLocal', 'Local Machine Timezone (Offset)')}</option>
                     </select>
                   </div>
 

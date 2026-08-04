@@ -150,7 +150,10 @@
       "backupCount": "Nombre de Còpies de Seguretat",
       "enableCompression": "Habilitar Compressió",
       "compressionDesc": "Comprimir fitxers de registre (.gz)",
-      "retentionDays": "Dies de Retenció"
+      "retentionDays": "Dies de Retenció",
+      "timestampTz": "Format d'Hora als Logs",
+      "timestampTzUtc": "UTC (Temps Universal Coordinat - Estàndard)",
+      "timestampTzLocal": "Zona Horària Local de l'Equip (Offset)"
     },
     "lcd": {
       "title": "Pantalla LCD i Controladora Sèrie",

@@ -150,7 +150,10 @@
       "backupCount": "Cantidad de Respaldos",
       "enableCompression": "Habilitar Compresión",
       "compressionDesc": "Comprimir logs de respaldo (.gz)",
-      "retentionDays": "Días de Retención"
+      "retentionDays": "Días de Retención",
+      "timestampTz": "Formato de Hora en Logs",
+      "timestampTzUtc": "UTC (Tiempo Universal Coordinado - Estándar)",
+      "timestampTzLocal": "Zona Horaria Local del Equipo (Offset)"
     },
     "lcd": {
       "title": "Pantalla LCD y Driver Serie",

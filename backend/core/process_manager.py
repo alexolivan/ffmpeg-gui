@@ -134,13 +134,35 @@ class ProcessManager:
             
             try:
                 raw_cmd_str = shlex.join(cmd)
+                config_path = os.environ.get("CONFIG_FILE_PATH", "/etc/ffmpeg-gui/ffmpeg-gui.conf")
+                if not os.path.exists(config_path):
+                    config_path = "ffmpeg-gui.conf"
+                
+                tz_pref = "utc"
+                if os.path.exists(config_path):
+                    try:
+                        import configparser
+                        c_parser = configparser.ConfigParser()
+                        c_parser.read(config_path)
+                        tz_pref = c_parser.get("logging", "timestamp_tz", fallback="utc")
+                    except Exception:
+                        pass
+                
+                if tz_pref == "local":
+                    now_str = datetime.now().astimezone().isoformat()
+                else:
+                    from datetime import timezone
+                    now_str = datetime.now(timezone.utc).isoformat()
+                    if not now_str.endswith("Z") and not "+" in now_str:
+                        now_str += "Z"
+
                 if is_restart:
                     with open(log_path, "ab") as f:
-                        header = f"\n--- PROCESS RESTART AT {datetime.utcnow().isoformat()}Z (Attempt {self.restart_counts.get(process_id, 1)}) ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
+                        header = f"\n--- PROCESS RESTART AT {now_str} (Attempt {self.restart_counts.get(process_id, 1)}) ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
                         f.write(header)
                 else:
                     with open(log_path, "wb") as f:
-                        header = f"--- PROCESS LAUNCH AT {datetime.utcnow().isoformat()}Z ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
+                        header = f"--- PROCESS LAUNCH AT {now_str} ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
                         f.write(header)
             except Exception as file_err:
                 self.logger.error(f"Failed to prepare log file: {file_err}")
