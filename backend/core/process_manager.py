@@ -380,9 +380,9 @@ class ProcessManager:
         is_debug = getattr(media_proc, 'debug_mode', False)
         if type(is_debug).__name__ in ('MagicMock', 'Mock'):
             is_debug = False
-        cmd = [ffmpeg_bin, "-nostdin", "-hide_banner"]
+        cmd = [ffmpeg_bin, "-hide_banner"]
         if is_debug:
-            cmd += ["-loglevel", "debug"]
+            cmd += ["-loglevel", "info"]
         cmd += ["-y"]
         
         import copy

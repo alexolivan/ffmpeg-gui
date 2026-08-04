@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.1] - 2026-08-04
+
+### Fixed
+- **CLI Flag Adjustments (`-nostdin` removal & `-loglevel info`)**:
+  - **Removed `-nostdin`**: Removed `-nostdin` from `ProcessManager._build_ffmpeg_cmd()` to match standard terminal execution behavior.
+  - **Adjusted Log level**: Changed debug mode loglevel from `debug` to `info` to prevent FFmpeg CUDA hardware context from querying headless EGL/OpenGL interop symbols during initialization.
+
 ## [1.35.0] - 2026-08-04
 
 ### Added
