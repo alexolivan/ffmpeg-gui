@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.1] - 2026-08-04
+
+### Fixed
+- **Strict ROUTE Badge Target Filtering (`AlsaAudioSettingsCard.tsx`)**:
+  - **Capture PCM Quadrant Scoping**: Restricted `ROUTE:` badge rendering exclusively to PCM Capture ingestion channels (`isVirtualCapture` / bottom-left quadrant & hardware capture inputs).
+  - **Non-Route Enum Exclusion**: Filtered out non-routing Enum controls (crossover modes, channel swap, SPDIF vs AES/EBU digital format selectors) from appearing in the subtext `ROUTE:` badge.
+
 ## [1.38.0] - 2026-08-04
 
 ### Added

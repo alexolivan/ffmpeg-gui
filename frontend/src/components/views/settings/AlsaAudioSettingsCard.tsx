@@ -1035,15 +1035,25 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
 
   const isMixerOpen = activePopup === 'mixer';
 
-  // Find active routing control value (if any)
-  const routeCtrl = group.controls.find(
-    (c) => (c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0)) &&
-           (c.name.toLowerCase().includes('route') || c.name.toLowerCase().includes('source') || c.name.toLowerCase().includes('input'))
-  ) || group.controls.find(
-    (c) => c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0)
-  );
+  // Find active capture routing control value (strictly for capture route/source ingestion controls on capture channels)
+  const routeCtrl = group.controls.find((c) => {
+    if (!c) return false;
+    const isEnum = c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0);
+    if (!isEnum) return false;
+    const nameLower = c.name.toLowerCase();
 
-  const activeRouteName = routeCtrl && routeCtrl.items && routeCtrl.items[routeCtrl.values?.[0] ?? 0]
+    // Exclude crossover, channel swap, and digital format selectors (e.g. SPDIF, AES/EBU, Swap L/R, Mode)
+    if (nameLower.includes('mode') || nameLower.includes('swap') || nameLower.includes('format') || nameLower.includes('crossover')) {
+      return false;
+    }
+
+    // Explicit route or source ingestion selectors
+    return c.ctrl_type === 'route' || nameLower.includes('route') || nameLower.includes('source') || nameLower.includes('input');
+  });
+
+  // Only display ROUTE badge on capture channels (Virtual Capture / Bottom-Left quadrant or Hardware Input capture routes)
+  const isCaptureChannel = isVirtualCapture || isHardwareInputs;
+  const activeRouteName = isCaptureChannel && routeCtrl && routeCtrl.items && routeCtrl.items[routeCtrl.values?.[0] ?? 0]
     ? routeCtrl.items[routeCtrl.values?.[0] ?? 0]
     : null;
 
