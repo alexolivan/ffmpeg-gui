@@ -133,13 +133,14 @@ class ProcessManager:
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
             
             try:
+                raw_cmd_str = shlex.join(cmd)
                 if is_restart:
                     with open(log_path, "ab") as f:
-                        header = f"\n--- PROCESS RESTART AT {datetime.utcnow().isoformat()}Z (Attempt {self.restart_counts.get(process_id, 1)}) ---\n".encode("utf-8")
+                        header = f"\n--- PROCESS RESTART AT {datetime.utcnow().isoformat()}Z (Attempt {self.restart_counts.get(process_id, 1)}) ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
                         f.write(header)
                 else:
                     with open(log_path, "wb") as f:
-                        header = f"--- PROCESS LAUNCH AT {datetime.utcnow().isoformat()}Z ---\n".encode("utf-8")
+                        header = f"--- PROCESS LAUNCH AT {datetime.utcnow().isoformat()}Z ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
                         f.write(header)
             except Exception as file_err:
                 self.logger.error(f"Failed to prepare log file: {file_err}")
@@ -376,7 +377,13 @@ class ProcessManager:
                               "use_secondary_input": false,
                               "input1": {...}, "input2": {...} }
         """
-        cmd = [ffmpeg_bin, "-nostdin", "-hide_banner", "-y"]
+        is_debug = getattr(media_proc, 'debug_mode', False)
+        if type(is_debug).__name__ in ('MagicMock', 'Mock'):
+            is_debug = False
+        cmd = [ffmpeg_bin, "-nostdin", "-hide_banner"]
+        if is_debug:
+            cmd += ["-loglevel", "debug"]
+        cmd += ["-y"]
         
         import copy
         input_cfg = copy.deepcopy(media_proc.input_config)

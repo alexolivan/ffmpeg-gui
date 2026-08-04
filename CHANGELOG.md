@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.0] - 2026-08-04
+
+### Added
+- **Diagnostic CLI Command Audit & Debug Logging (`-loglevel debug`)**:
+  - **Exact CLI Command Audit Header**: Updated `ProcessManager.start_process()` to print the exact raw FFmpeg command line string (`EXACT CLI COMMAND:\n...`) at the very top of `process_{id}.log` for every process launch and restart.
+  - **FFmpeg Verbose Debug Mode**: Enabled `-loglevel debug` flag in `ProcessManager._build_ffmpeg_cmd()` whenever a process has **Debug Mode** enabled (`media_proc.debug_mode == True`).
+
 ## [1.34.3] - 2026-08-03
 
 ### Fixed
