@@ -380,7 +380,7 @@ class ProcessManager:
         is_debug = getattr(media_proc, 'debug_mode', False)
         if type(is_debug).__name__ in ('MagicMock', 'Mock'):
             is_debug = False
-        cmd = [ffmpeg_bin, "-hide_banner"]
+        cmd = [ffmpeg_bin, "-nostdin", "-hide_banner"]
         if is_debug:
             cmd += ["-loglevel", "info"]
         cmd += ["-y"]
@@ -802,15 +802,17 @@ class ProcessManager:
         # ── Secondary Preview Output ──
         is_service = getattr(media_proc, 'type', 'service') == 'service'
         has_video_stream = has_video and codec_cfg.get('vcodec') != 'none'
-        # Do not append secondary preview output for VRAM/CUDA hwaccel streams to avoid dual-filtering CUDA frame crashes
-        if is_service and has_video_stream and not is_vram:
+        if is_service and has_video_stream:
             from database.db import PREVIEWS_DIR
             previews_dir = PREVIEWS_DIR
             os.makedirs(previews_dir, exist_ok=True)
             proc_id_str = getattr(media_proc, 'id', None) or "preview"
             preview_path = os.path.join(previews_dir, f"preview_{proc_id_str}.jpg")
             
-            preview_vf = "fps=1,scale=480:-1"
+            if is_vram:
+                preview_vf = "hwdownload,format=nv12,fps=1,scale=480:-1"
+            else:
+                preview_vf = "fps=1,scale=480:-1"
                 
             cmd += [
                 "-map", "0:v",

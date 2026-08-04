@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.36.0] - 2026-08-04
+
+### Added
+- **Cross-Distro NVIDIA UVM Systemd Service (`nvidia-uvm-init.service`)**:
+  - **Boot Initialization**: Created `/etc/systemd/system/nvidia-uvm-init.service` oneshot systemd unit running `modprobe nvidia_uvm || nvidia-modprobe -u -c 0` as `root` before `ffmpeg-gui.service` starts.
+  - **Cross-Distro Resilience**: Added `ConditionPathExists=/proc/driver/nvidia` to ensure non-NVIDIA systems (VAAPI, Intel, AMD, CPU-only) skip the unit cleanly without error.
+  - **Lifecycle Automation**: Integrated creation, management, and cleanup in `install.sh`, `update.sh`, and `uninstall.sh`.
+
+### Fixed
+- **CUDA Secondary JPEG Preview Restoration**:
+  - **Restored Live Dashboard Thumbnails**: Re-enabled secondary 1 fps JPEG preview mapping for CUDA VRAM streams (`is_vram == True`) using `-vf hwdownload,format=nv12,fps=1,scale=480:-1`.
+
 ## [1.35.1] - 2026-08-04
 
 ### Fixed

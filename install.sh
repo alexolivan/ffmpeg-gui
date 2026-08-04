@@ -251,6 +251,25 @@ echo ""
 echo "[PHASE 5/5] Installing and Configuring Systemd Service..."
 
 if [ "$MODE" = "system" ]; then
+    if [ -d "/proc/driver/nvidia" ] || command -v nvidia-modprobe >/dev/null 2>&1; then
+        echo "NVIDIA GPU driver detected. Installing /etc/systemd/system/nvidia-uvm-init.service..."
+        cat <<EOF > /etc/systemd/system/nvidia-uvm-init.service
+[Unit]
+Description=Initialize NVIDIA UVM Device Nodes at Boot
+Before=ffmpeg-gui.service
+ConditionPathExists=/proc/driver/nvidia
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'modprobe nvidia_uvm 2>/dev/null || true; if command -v nvidia-modprobe >/dev/null 2>&1; then nvidia-modprobe -u -c 0; fi'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+        systemctl enable --now nvidia-uvm-init.service || true
+    fi
+
     SERVICE_FILE="/etc/systemd/system/ffmpeg-gui.service"
     cat <<EOF > "$SERVICE_FILE"
 [Unit]

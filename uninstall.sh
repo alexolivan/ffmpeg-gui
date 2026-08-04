@@ -55,6 +55,14 @@ if [ -f "/etc/systemd/system/ffmpeg-gui.service" ]; then
     systemctl stop ffmpeg-gui.service || true
     systemctl disable ffmpeg-gui.service || true
     rm -f /etc/systemd/system/ffmpeg-gui.service
+
+    if [ -f "/etc/systemd/system/nvidia-uvm-init.service" ]; then
+        echo "--> Removing nvidia-uvm-init.service..."
+        systemctl stop nvidia-uvm-init.service || true
+        systemctl disable nvidia-uvm-init.service || true
+        rm -f /etc/systemd/system/nvidia-uvm-init.service
+    fi
+
     systemctl daemon-reload
 
     if [ "$PURGE" = true ]; then
