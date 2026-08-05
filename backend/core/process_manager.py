@@ -235,19 +235,21 @@ class ProcessManager:
     async def stop_process(self, process_id: int, graceful: bool = True):
         self.stopping_processes.add(process_id)
         try:
-            pending = self.pending_restarts.pop(process_id, None)
-            if pending:
-                try:
-                    pending.cancel()
-                except Exception as e:
-                    self.logger.warning(f"Error cancelling pending restart task for process {process_id}: {e}")
-
             watchdog_task = self.watchdog_tasks.pop(process_id, None)
             if watchdog_task:
                 try:
                     watchdog_task.cancel()
-                except Exception as e:
-                    self.logger.warning(f"Error cancelling watchdog task for process {process_id}: {e}")
+                    await watchdog_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+            pending = self.pending_restarts.pop(process_id, None)
+            if pending:
+                try:
+                    pending.cancel()
+                    await pending
+                except (asyncio.CancelledError, Exception):
+                    pass
 
             proc = self.processes.get(process_id)
             self.restart_counts.pop(process_id, None)
@@ -1752,6 +1754,11 @@ class ProcessManager:
                     self.logger.error(f"Watchdog database error for process {process_id}: {db_err}")
 
                 await asyncio.sleep(2)
+        except asyncio.CancelledError:
+            self.logger.info(f"Watchdog for process {process_id} (PID {pid}) cancelled.")
+            if self.watchdog_tasks.get(process_id) == asyncio.current_task():
+                self.watchdog_tasks.pop(process_id, None)
+            return
         except psutil.NoSuchProcess:
             self.logger.warning(f"Watchdog: Process PID {pid} disappeared.")
         except Exception as loop_err:

@@ -99,14 +99,15 @@ class NginxAccessLogMiddleware:
                 elif key.lower() == b"user-agent":
                     user_agent = val.decode("utf-8")
             
-            log_line = f'{client_host} - {remote_user} [{time_local}] "{request_line}" {status_code[0]} {content_length[0]} "{referer}" "{user_agent}"'
-            logger.info(log_line)
+            console_msg = f'HTTP {request_line} -> {status_code[0]} ({client_host})'
+            logger.info(console_msg)
             
             access_log_path = os.getenv("ACCESS_LOG_PATH")
             if access_log_path:
                 try:
+                    nginx_line = f'{client_host} - {remote_user} [{time_local}] "{request_line}" {status_code[0]} {content_length[0]} "{referer}" "{user_agent}"'
                     with open(access_log_path, "a") as f:
-                        f.write(log_line + "\n")
+                        f.write(nginx_line + "\n")
                 except Exception:
                     pass
 
