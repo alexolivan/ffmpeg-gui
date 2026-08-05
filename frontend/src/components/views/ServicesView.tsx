@@ -49,6 +49,14 @@ const formatUptime = (lastStartStr: string | null): string => {
   return `${secs}s`;
 };
 
+const isActiveService = (p: any, actionPending: Record<number, string>) => {
+  if (p.type && p.type !== 'service') return false;
+  if (p.status === 'running') return true;
+  if (actionPending[p.id]) return true;
+  if (p.watchdog_enabled && p.restart_count > 0 && p.status !== 'stopped') return true;
+  return false;
+};
+
 export const ServicesView: React.FC<ServicesViewProps> = ({
   telemetry,
   actionPending,
@@ -97,17 +105,22 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         <div className="glass-card p-4 md:p-5">
           <h3 className="text-xl font-black mb-3 text-[var(--text-primary)]">{t('services.activeServicesRunning', 'ACTIVE SERVICES (RUNNING)')}</h3>
           <div className="space-y-2.5">
-            {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length === 0 ? (
+            {telemetry.filter(p => isActiveService(p, actionPending)).length === 0 ? (
               <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
                 {t('services.noRunningServices', 'No running services')}
               </div>
             ) : (
-              telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').map(proc => (
+              telemetry.filter(p => isActiveService(p, actionPending)).map(proc => (
                 <div key={proc.id} onClick={() => onSelectedProcess(proc)}
                   className="flex items-center justify-between p-3 bg-brand-lime/5 rounded-xl border border-brand-lime/10 cursor-pointer hover:bg-brand-lime/10 transition-colors">
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-brand-lime animate-pulse"></span>
+                      <span className={`w-2.5 h-2.5 rounded-full animate-pulse ${
+                        actionPending[proc.id] === 'starting' ? 'bg-blue-500' :
+                        actionPending[proc.id] === 'stopping' ? 'bg-brand-orange' :
+                        actionPending[proc.id] === 'restarting' ? 'bg-purple-500' :
+                        proc.status === 'running' ? 'bg-brand-lime' : 'bg-amber-500'
+                      }`}></span>
                       <span className="font-bold text-[var(--text-primary)]">
                         {proc.name}
                         {proc.alias && (
@@ -280,12 +293,12 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         <div className="glass-card p-4 md:p-5">
           <h3 className="text-xl font-black mb-3 text-text-secondary">{t('services.configuredServicesInactive', 'Configured Services (Inactive)')}</h3>
           <div className="space-y-2.5">
-            {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length === 0 ? (
+            {telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p, actionPending)).length === 0 ? (
               <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
                 {t('services.noInactiveServices', 'No inactive services')}
               </div>
             ) : (
-              telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').map(proc => {
+              telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p, actionPending)).map(proc => {
                 return (
                   <div key={proc.id} onClick={() => onSelectedProcess(proc)}
                     className="flex items-center justify-between p-3 bg-white/2 opacity-75 hover:opacity-100 rounded-xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">

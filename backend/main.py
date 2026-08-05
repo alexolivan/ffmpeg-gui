@@ -3347,7 +3347,9 @@ async def stop_process(process_id: int):
 @app.post("/processes/{process_id}/restart")
 async def restart_process(process_id: int):
     await process_manager.stop_process(process_id)
-    await process_manager.start_process(process_id)
+    # Short grace gap to allow hardware (ALSA/DeckLink) and network sockets to unbind cleanly
+    await asyncio.sleep(0.5)
+    await process_manager.start_process(process_id, is_restart=True)
     return {"status": "restarting", "process_id": process_id}
 
 def migrate_and_validate_profile(payload: dict, db: Session) -> dict:

@@ -633,6 +633,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         }
       } : {
         auto_start: config.auto_start,
+        startup_order: config.startup_order,
+        startup_delay: config.startup_delay,
         watchdog_enabled: config.watchdog_enabled,
         watchdog_retries: config.watchdog_retries,
         watchdog_min_speed: config.watchdog_min_speed,

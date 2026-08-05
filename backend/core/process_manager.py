@@ -18,6 +18,7 @@ class ProcessManager:
         self.restart_counts: Dict[int, int] = {}
         self.pending_restarts: Dict[int, asyncio.Task] = {}
         self.watchdog_tasks: Dict[int, asyncio.Task] = {}
+        self.stopping_processes: Set[int] = set()
         self.srt_has_had_activity: Dict[int, bool] = {}
         self.watchdog_stalled_since: Dict[int, Optional[datetime]] = {}
         self.watchdog_low_speed_since: Dict[int, Optional[datetime]] = {}
@@ -231,72 +232,76 @@ class ProcessManager:
             })
 
     async def stop_process(self, process_id: int, graceful: bool = True):
-        pending = self.pending_restarts.pop(process_id, None)
-        if pending:
-            try:
-                pending.cancel()
-            except Exception as e:
-                self.logger.warning(f"Error cancelling pending restart task for process {process_id}: {e}")
+        self.stopping_processes.add(process_id)
+        try:
+            pending = self.pending_restarts.pop(process_id, None)
+            if pending:
+                try:
+                    pending.cancel()
+                except Exception as e:
+                    self.logger.warning(f"Error cancelling pending restart task for process {process_id}: {e}")
 
-        watchdog_task = self.watchdog_tasks.pop(process_id, None)
-        if watchdog_task:
-            try:
-                watchdog_task.cancel()
-            except Exception as e:
-                self.logger.warning(f"Error cancelling watchdog task for process {process_id}: {e}")
+            watchdog_task = self.watchdog_tasks.pop(process_id, None)
+            if watchdog_task:
+                try:
+                    watchdog_task.cancel()
+                except Exception as e:
+                    self.logger.warning(f"Error cancelling watchdog task for process {process_id}: {e}")
 
-        proc = self.processes.get(process_id)
-        self.restart_counts.pop(process_id, None)
-        
-        if proc:
-            if graceful:
-                if proc.stdin:
+            proc = self.processes.get(process_id)
+            self.restart_counts.pop(process_id, None)
+            
+            if proc:
+                if graceful:
+                    if proc.stdin:
+                        try:
+                            proc.stdin.write(b'q')
+                            await proc.stdin.drain()
+                        except Exception as e:
+                            self.logger.warning(f"Failed to write 'q' to stdin for process {process_id}: {e}")
+                    
                     try:
-                        proc.stdin.write(b'q')
-                        await proc.stdin.drain()
-                    except Exception as e:
-                        self.logger.warning(f"Failed to write 'q' to stdin for process {process_id}: {e}")
+                        await asyncio.wait_for(proc.wait(), timeout=4.0)
+                    except asyncio.TimeoutError:
+                        self.logger.warning(f"Process {process_id} did not stop gracefully. Escalating to SIGTERM.")
                 
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=4.0)
-                except asyncio.TimeoutError:
-                    self.logger.warning(f"Process {process_id} did not stop gracefully. Escalating to SIGTERM.")
-            
-            if proc.returncode is None:
-                try:
-                    proc.terminate()
-                    await asyncio.wait_for(proc.wait(), timeout=3.0)
-                except asyncio.TimeoutError:
-                    self.logger.warning(f"Process {process_id} ignored SIGTERM. Escalating to SIGKILL.")
-                except Exception as e:
-                    self.logger.warning(f"Error terminating process {process_id}: {e}")
-            
-            if proc.returncode is None:
-                try:
-                    proc.kill()
-                    await asyncio.wait_for(proc.wait(), timeout=2.0)
-                except Exception as e:
-                    self.logger.error(f"Failed to kill process {process_id}: {e}")
-            
-            if process_id in self.processes:
-                del self.processes[process_id]
+                if proc.returncode is None:
+                    try:
+                        proc.terminate()
+                        await asyncio.wait_for(proc.wait(), timeout=3.0)
+                    except asyncio.TimeoutError:
+                        self.logger.warning(f"Process {process_id} ignored SIGTERM. Escalating to SIGKILL.")
+                    except Exception as e:
+                        self.logger.warning(f"Error terminating process {process_id}: {e}")
+                
+                if proc.returncode is None:
+                    try:
+                        proc.kill()
+                        await asyncio.wait_for(proc.wait(), timeout=2.0)
+                    except Exception as e:
+                        self.logger.error(f"Failed to kill process {process_id}: {e}")
+                
+                if process_id in self.processes:
+                    del self.processes[process_id]
 
-        cleanup_rogue_processes(process_id=process_id)
+            cleanup_rogue_processes(process_id=process_id)
 
-        with self.db_session_factory() as session:
-            from database.models import MediaProcess
-            media_proc = session.query(MediaProcess).get(process_id)
-            if media_proc:
-                media_proc.status = 'stopped'
-                media_proc.pid = None
-                media_proc.cpu_usage = 0
-                media_proc.ram_usage = 0
-                media_proc.fps = "0"
-                media_proc.bitrate = "0 kb/s"
-                media_proc.speed = "0x"
-                media_proc.last_stop = datetime.utcnow()
-                media_proc.restart_count = 0
-                session.commit()
+            with self.db_session_factory() as session:
+                from database.models import MediaProcess
+                media_proc = session.query(MediaProcess).get(process_id)
+                if media_proc:
+                    media_proc.status = 'stopped'
+                    media_proc.pid = None
+                    media_proc.cpu_usage = 0
+                    media_proc.ram_usage = 0
+                    media_proc.fps = "0"
+                    media_proc.bitrate = "0 kb/s"
+                    media_proc.speed = "0x"
+                    media_proc.last_stop = datetime.utcnow()
+                    media_proc.restart_count = 0
+                    session.commit()
+        finally:
+            self.stopping_processes.discard(process_id)
 
     def _resolve_storage_path(self, storage_id: Optional[int], relative_path: Optional[str]) -> Optional[str]:
         if not storage_id:
@@ -1752,7 +1757,8 @@ class ProcessManager:
             if self.watchdog_tasks.get(process_id) == asyncio.current_task():
                 self.watchdog_tasks.pop(process_id, None)
 
-            if process_id in self.processes:
+            was_unexpected = False
+            if process_id in self.processes and process_id not in self.stopping_processes:
                 was_unexpected = True
 
             if proc is not None:
