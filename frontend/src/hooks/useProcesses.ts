@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 
 const API = '';
 
 export function useProcesses() {
+  const { t } = useTranslation();
   const [telemetry, setTelemetry] = useState<any[]>([]);
   const [taskExecutions, setTaskExecutions] = useState<any[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<any[]>([]);
@@ -148,8 +150,14 @@ export function useProcesses() {
     }
   };
 
-  const handleStopService = async (procId: number) => {
+  const handleStopService = async (procId: number, procName?: string) => {
     if (actionPending[procId]) return;
+    const name = procName || telemetry.find(p => p.id === procId)?.name || 'Service';
+    const isConfirmed = window.confirm(
+      t('services.stopConfirm', `⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to stop "${name}"? Any active live stream connections (SRT/UDP/RTP/Icecast) will experience an immediate signal interruption.`, { name })
+    );
+    if (!isConfirmed) return;
+
     setActionPending(prev => ({ ...prev, [procId]: 'stopping' }));
     try {
       await fetch(`${API}/processes/${procId}/stop`, { method: 'POST' });
@@ -201,10 +209,11 @@ export function useProcesses() {
     }
   };
 
-  const handleRestartService = async (procId: number, procName: string) => {
+  const handleRestartService = async (procId: number, procName?: string) => {
     if (actionPending[procId]) return;
+    const name = procName || telemetry.find(p => p.id === procId)?.name || 'Service';
     const isConfirmed = window.confirm(
-      `⚠️ live broadcast WARNING:\n\nAre you sure you want to restart "${procName}"? Any active live stream connections (SRT/UDP/RTP) will drop and experience a temporary signal loss during restart.`
+      t('services.restartConfirm', `⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to restart "${name}"? Any active live stream connections (SRT/UDP/RTP/Icecast) will drop and experience a temporary signal loss during restart.`, { name })
     );
     if (!isConfirmed) return;
 

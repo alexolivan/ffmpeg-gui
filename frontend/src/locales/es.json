@@ -60,7 +60,9 @@
     "starting": "El servicio se está iniciando...",
     "stopping": "El servicio se está deteniendo...",
     "restarting": "El servicio se está reiniciando...",
-    "retrying": "Reintentando inicio..."
+    "retrying": "Reintentando inicio...",
+    "stopConfirm": "⚠️ ADVERTENCIA DE EMISIÓN EN DIRECTO:\n\n¿Estás seguro de que deseas detener \"{{name}}\"? Las conexiones de transmisión en directo activas (SRT/UDP/RTP/Icecast) sufrirán un corte inmediato de señal.",
+    "restartConfirm": "⚠️ ADVERTENCIA DE EMISIÓN EN DIRECTO:\n\n¿Estás seguro de que deseas reiniciar \"{{name}}\"? Las conexiones de transmisión en directo activas (SRT/UDP/RTP/Icecast) sufrirán una pérdida temporal de señal durante el reinicio."
   },
   "settings": {
     "title": "Configuración",

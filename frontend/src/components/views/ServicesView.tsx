@@ -21,7 +21,7 @@ interface ServicesViewProps {
   onEditProcess: (proc: any) => void;
   onCloneProcess: (proc: any) => void;
   onStartService: (procId: number) => void;
-  onStopService: (procId: number) => void;
+  onStopService: (procId: number, procName?: string) => void;
   onRestartService: (procId: number, name: string) => void;
   onDeleteProcess: (proc: any) => void;
   onSelectedProcess: (proc: any) => void;
@@ -270,7 +270,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         disabled={actionPending[proc.id] === 'stopping'}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onStopService(proc.id);
+                          onStopService(proc.id, proc.name);
                         }}
                         className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
                         title="Stop Service (Abort/Kill)"

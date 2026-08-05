@@ -9,7 +9,7 @@ interface ProcessPreviewModalProps {
   onEditProcess: (proc: any) => void;
   onCloneProcess: (proc: any) => void;
   onStartService: (id: number) => void;
-  onStopService: (id: number) => void;
+  onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
   API: string;
 }
@@ -396,7 +396,7 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                 </button>
                 <button 
                   disabled={!!actionPending[currentProcess.id]}
-                  onClick={() => onStopService(currentProcess.id)}
+                  onClick={() => onStopService(currentProcess.id, currentProcess.name)}
                   className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-2 px-6 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center"
                 >
                   {actionPending[currentProcess.id] === 'stopping' && (

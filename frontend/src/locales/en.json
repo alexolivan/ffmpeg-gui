@@ -60,7 +60,9 @@
     "starting": "Service is starting...",
     "stopping": "Service is stopping...",
     "restarting": "Service is restarting...",
-    "retrying": "Retrying launch..."
+    "retrying": "Retrying launch...",
+    "stopConfirm": "⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to stop \"{{name}}\"? Any active live stream connections (SRT/UDP/RTP/Icecast) will experience an immediate signal interruption.",
+    "restartConfirm": "⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to restart \"{{name}}\"? Any active live stream connections (SRT/UDP/RTP/Icecast) will drop and experience a temporary signal loss during restart."
   },
   "settings": {
     "title": "Settings",
