@@ -36,6 +36,23 @@ export function useProcesses() {
       const msg = JSON.parse(event.data);
       if (msg.type === 'telemetry') {
         setTelemetry(msg.data);
+        if (Array.isArray(msg.data)) {
+          setActionPending(prev => {
+            const next = { ...prev };
+            let changed = false;
+            msg.data.forEach((p: any) => {
+              const pending = next[p.id];
+              if (pending === 'stopping' && p.status === 'stopped') {
+                delete next[p.id];
+                changed = true;
+              } else if ((pending === 'starting' || pending === 'restarting') && p.status === 'running') {
+                delete next[p.id];
+                changed = true;
+              }
+            });
+            return changed ? next : prev;
+          });
+        }
         if (msg.task_executions) {
           setTaskExecutions(msg.task_executions);
         }
@@ -95,6 +112,7 @@ export function useProcesses() {
   const [actionPending, setActionPending] = useState<Record<number, 'starting' | 'stopping' | 'restarting'>>({});
 
   const handleStartService = async (procId: number) => {
+    if (actionPending[procId]) return;
     const proc = telemetry.find(p => p.id === procId);
     if (proc && proc.debug_mode) {
       try {
@@ -131,6 +149,7 @@ export function useProcesses() {
   };
 
   const handleStopService = async (procId: number) => {
+    if (actionPending[procId]) return;
     setActionPending(prev => ({ ...prev, [procId]: 'stopping' }));
     try {
       await fetch(`${API}/processes/${procId}/stop`, { method: 'POST' });
@@ -183,6 +202,7 @@ export function useProcesses() {
   };
 
   const handleRestartService = async (procId: number, procName: string) => {
+    if (actionPending[procId]) return;
     const isConfirmed = window.confirm(
       `⚠️ live broadcast WARNING:\n\nAre you sure you want to restart "${procName}"? Any active live stream connections (SRT/UDP/RTP) will drop and experience a temporary signal loss during restart.`
     );

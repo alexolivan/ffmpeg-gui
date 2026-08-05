@@ -386,21 +386,6 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           )}
                         </button>
                         <button
-                          disabled={actionPending[proc.id] === 'stopping'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onStopService(proc.id);
-                          }}
-                          className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                          title="Stop Service (Abort/Kill)"
-                        >
-                          {actionPending[proc.id] === 'stopping' ? (
-                            <RefreshIcon size={16} className="animate-spin text-brand-orange" />
-                          ) : (
-                            <StopIcon size={16} />
-                          )}
-                        </button>
-                        <button
                           disabled={!!actionPending[proc.id]}
                           onClick={(e) => {
                             e.stopPropagation();
