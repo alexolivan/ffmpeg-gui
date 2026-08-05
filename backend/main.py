@@ -43,6 +43,10 @@ import time
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("FFMPEG-GUI")
 
+# Disable uvicorn's raw access logger to prevent duplicate access logs (handled by NginxAccessLogMiddleware)
+logging.getLogger("uvicorn.access").disabled = True
+logging.getLogger("uvicorn.access").propagate = False
+
 class NginxAccessLogMiddleware:
     def __init__(self, app):
         self.app = app

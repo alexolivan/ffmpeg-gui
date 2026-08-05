@@ -261,7 +261,7 @@ class ProcessManager:
                             pass
                     
                     try:
-                        await asyncio.wait_for(proc.wait(), timeout=0.2)
+                        await asyncio.wait_for(proc.wait(), timeout=1.5)
                     except asyncio.TimeoutError:
                         pass
                 
@@ -1757,21 +1757,19 @@ class ProcessManager:
             if self.watchdog_tasks.get(process_id) == asyncio.current_task():
                 self.watchdog_tasks.pop(process_id, None)
 
-            was_unexpected = False
-            if process_id in self.processes and process_id not in self.stopping_processes:
-                was_unexpected = True
-
             if proc is not None:
                 await proc.wait()
                 exit_code = proc.returncode
             else:
                 exit_code = 0
 
-            # If this process is no longer tracked as the active process for process_id,
-            # do not overwrite status/pid in the DB.
-            if self.processes.get(process_id) is not proc:
-                self.logger.info(f"Watchdog for process {process_id} (PID {pid}) exiting without DB update (replaced or stopped).")
+            # If process was stopped/restarted intentionally or replaced by a new process instance,
+            # exit cleanly without overwriting DB state or triggering false watchdog recovery.
+            if self.processes.get(process_id) is not proc or process_id in self.stopping_processes:
+                self.logger.info(f"Watchdog for process {process_id} (PID {pid}) exiting cleanly without DB update (replaced or stopped).")
                 return
+
+            was_unexpected = True
 
             try:
                 with self.db_session_factory() as session:
