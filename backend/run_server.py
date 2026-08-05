@@ -250,18 +250,19 @@ def main():
                 port=https_port,
                 ssl_keyfile=ssl_keyfile,
                 ssl_certfile=ssl_certfile,
-                log_config=log_config
+                log_config=log_config,
+                access_log=False
             )
             https_server = uvicorn.Server(https_config)
             threading.Thread(target=https_server.run, daemon=True).start()
 
             print(f"Starting FFMPEG-GUI HTTP Server on http://{host}:{port}...")
-            uvicorn.run("main:app", host=host, port=port, log_config=log_config)
+            uvicorn.run("main:app", host=host, port=port, log_config=log_config, access_log=False)
         else:
-            uvicorn.run("main:app", host=host, port=https_port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile, log_config=log_config)
+            uvicorn.run("main:app", host=host, port=https_port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile, log_config=log_config, access_log=False)
     else:
         print(f"Starting FFMPEG-GUI HTTP Server on http://{host}:{port}...")
-        uvicorn.run("main:app", host=host, port=port, log_config=log_config)
+        uvicorn.run("main:app", host=host, port=port, log_config=log_config, access_log=False)
 
 if __name__ == "__main__":
     main()
