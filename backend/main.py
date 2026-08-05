@@ -99,9 +99,6 @@ class NginxAccessLogMiddleware:
                 elif key.lower() == b"user-agent":
                     user_agent = val.decode("utf-8")
             
-            console_msg = f'HTTP {request_line} -> {status_code[0]} ({client_host})'
-            logger.info(console_msg)
-            
             access_log_path = os.getenv("ACCESS_LOG_PATH")
             if access_log_path:
                 try:
@@ -110,6 +107,9 @@ class NginxAccessLogMiddleware:
                         f.write(nginx_line + "\n")
                 except Exception:
                     pass
+            else:
+                console_msg = f'HTTP {request_line} -> {status_code[0]} ({client_host})'
+                logger.info(console_msg)
 
 app = FastAPI(title="FFMPEG Orchestrator API")
 
