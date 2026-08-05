@@ -167,6 +167,8 @@ class ProcessCreate(BaseModel):
     filter_config: Optional[dict] = None
     ffmpeg_build_id: Optional[int] = None
     auto_start: Optional[bool] = False
+    startup_order: Optional[int] = 1
+    startup_delay: Optional[int] = 0
     watchdog_enabled: Optional[bool] = False
     watchdog_retries: Optional[int] = 5
     watchdog_min_speed: Optional[float] = None
@@ -198,6 +200,8 @@ class ProcessUpdate(BaseModel):
     filter_config: Optional[dict] = None
     ffmpeg_build_id: Optional[int] = None
     auto_start: Optional[bool] = None
+    startup_order: Optional[int] = None
+    startup_delay: Optional[int] = None
     watchdog_enabled: Optional[bool] = None
     watchdog_retries: Optional[int] = None
     watchdog_min_speed: Optional[float] = None
@@ -1926,6 +1930,8 @@ async def telemetry_broadcast_loop():
                         "codec_config": p.codec_config,
                         "filter_config": p.filter_config,
                         "auto_start": p.auto_start,
+                        "startup_order": getattr(p, 'startup_order', 1) or 1,
+                        "startup_delay": getattr(p, 'startup_delay', 0) or 0,
                         "watchdog_enabled": p.watchdog_enabled,
                         "watchdog_retries": p.watchdog_retries,
                         "watchdog_min_speed": p.watchdog_min_speed,
@@ -2067,41 +2073,73 @@ async def auto_start_services():
     config_path = os.environ.get("CONFIG_FILE_PATH")
     if not config_path:
         config_path = "ffmpeg-gui.conf"
-    startup_delay = 10
+    grace_delay = 10
     if os.path.exists(config_path):
         try:
             import configparser
             cfg = configparser.ConfigParser()
             cfg.read(config_path)
             if "watchdog" in cfg:
-                startup_delay = cfg.getint("watchdog", "startup_grace_delay", fallback=10)
+                grace_delay = cfg.getint("watchdog", "startup_grace_delay", fallback=10)
         except Exception:
             pass
 
-    logger.info(f"Watchdog / Auto-start: Waiting startup grace delay ({startup_delay}s)...")
-    await asyncio.sleep(startup_delay)
+    logger.info(f"Watchdog / Auto-start: Waiting startup grace delay ({grace_delay}s)...")
+    await asyncio.sleep(grace_delay)
     logger.info("Watchdog / Auto-start: Initializing service startup checks...")
-    service_ids = []
+    
     with SessionLocal() as db:
         from database.models import MediaProcess
         services = db.query(MediaProcess).filter(
             MediaProcess.type == 'service',
             MediaProcess.auto_start == True
         ).all()
-        service_ids = [service.id for service in services]
+        sorted_services = sorted(
+            services,
+            key=lambda s: (
+                s.startup_order if getattr(s, 'startup_order', None) is not None else 1,
+                s.startup_delay if getattr(s, 'startup_delay', None) is not None else 0,
+                s.id
+            )
+        )
+        service_data = [
+            {
+                "id": s.id,
+                "name": s.name,
+                "order": getattr(s, 'startup_order', 1) or 1,
+                "delay": getattr(s, 'startup_delay', 0) or 0
+            }
+            for s in sorted_services
+        ]
         
-    for s_id in service_ids:
+    import random
+    current_order = None
+    for s_info in service_data:
+        s_id = s_info["id"]
+        s_name = s_info["name"]
+        s_order = s_info["order"]
+        s_delay = s_info["delay"]
+
         if s_id in process_manager.processes:
-            logger.info(f"Auto-start: Service ID {s_id} is already running/reattached. Skipping auto-start.")
+            logger.info(f"Auto-start: Service '{s_name}' (ID {s_id}) is already running/reattached. Skipping auto-start.")
             continue
             
-        logger.info(f"Auto-starting service with ID: {s_id}")
+        if current_order is not None and s_order != current_order:
+            logger.info(f"Auto-start: Moving to Boot Order Tier #{s_order}...")
+        current_order = s_order
+
+        if s_delay > 0:
+            logger.info(f"Auto-start [Order #{s_order}]: Service '{s_name}' (ID {s_id}) waiting configured startup delay ({s_delay}s)...")
+            await asyncio.sleep(s_delay)
+
+        jitter = random.uniform(0.05, 0.25)
+        await asyncio.sleep(jitter)
+
+        logger.info(f"Auto-starting service '{s_name}' (ID: {s_id}, Order #{s_order}, Delay: {s_delay}s)")
         try:
             await process_manager.start_process(s_id)
-            # Stagger startup between services so CUDA / DeckLink / NVENC drivers initialize without race conditions
-            await asyncio.sleep(2.0)
         except Exception as e:
-            logger.error(f"Failed to auto-start service {s_id}: {e}")
+            logger.error(f"Failed to auto-start service {s_id} ({s_name}): {e}")
 
 # Global LCD Manager instance
 lcd_manager = None
@@ -2971,6 +3009,8 @@ def list_processes(db: Session = Depends(get_db)):
             "codec_config": p.codec_config,
             "filter_config": p.filter_config,
             "auto_start": p.auto_start,
+            "startup_order": getattr(p, 'startup_order', 1) or 1,
+            "startup_delay": getattr(p, 'startup_delay', 0) or 0,
             "watchdog_enabled": p.watchdog_enabled,
             "watchdog_retries": p.watchdog_retries,
             "watchdog_min_speed": p.watchdog_min_speed,
@@ -3013,6 +3053,8 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         filter_config=filter_cfg if proc_in.filter_config is not None else None,
         ffmpeg_build_id=build_id,
         auto_start=proc_in.auto_start,
+        startup_order=proc_in.startup_order if proc_in.startup_order is not None else 1,
+        startup_delay=proc_in.startup_delay if proc_in.startup_delay is not None else 0,
         watchdog_enabled=proc_in.watchdog_enabled,
         watchdog_retries=proc_in.watchdog_retries,
         watchdog_min_speed=proc_in.watchdog_min_speed,
@@ -3086,6 +3128,8 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.codec_config is not None: db_proc.codec_config = proc_in.codec_config
     if proc_in.ffmpeg_build_id is not None: db_proc.ffmpeg_build_id = proc_in.ffmpeg_build_id
     if proc_in.auto_start is not None: db_proc.auto_start = proc_in.auto_start
+    if proc_in.startup_order is not None: db_proc.startup_order = proc_in.startup_order
+    if proc_in.startup_delay is not None: db_proc.startup_delay = proc_in.startup_delay
     if proc_in.watchdog_enabled is not None: db_proc.watchdog_enabled = proc_in.watchdog_enabled
     if proc_in.watchdog_retries is not None: db_proc.watchdog_retries = proc_in.watchdog_retries
     if proc_in.watchdog_min_speed is not None: db_proc.watchdog_min_speed = proc_in.watchdog_min_speed
@@ -3384,6 +3428,8 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "filter_config": proc.filter_config,
             "ffmpeg_build_id": proc.ffmpeg_build_id,
             "auto_start": proc.auto_start,
+            "startup_order": getattr(proc, 'startup_order', 1) or 1,
+            "startup_delay": getattr(proc, 'startup_delay', 0) or 0,
             "watchdog_enabled": proc.watchdog_enabled,
             "watchdog_retries": proc.watchdog_retries,
             "watchdog_min_speed": proc.watchdog_min_speed,
@@ -3408,6 +3454,8 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         filter_config=profile.get('filter_config', {}),
         ffmpeg_build_id=profile.get('ffmpeg_build_id'),
         auto_start=profile.get('auto_start', False),
+        startup_order=profile.get('startup_order', 1),
+        startup_delay=profile.get('startup_delay', 0),
         watchdog_enabled=profile.get('watchdog_enabled', False),
         watchdog_retries=profile.get('watchdog_retries', 5),
         watchdog_min_speed=profile.get('watchdog_min_speed'),

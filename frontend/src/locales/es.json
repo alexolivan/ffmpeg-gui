@@ -50,9 +50,17 @@
     "noRunningServices": "No hay servicios en ejecución",
     "configuredServicesInactive": "Servicios Configurados (Inactivos)",
     "noInactiveServices": "No hay servicios inactivos",
-    "editServiceSettings": "Editar Ajustes del Servicio",
+    "editServiceSettings": "Editar Configuración del Servicio",
     "cloneService": "Clonar Servicio",
-    "exportService": "Exportar Servicio"
+    "exportService": "Exportar Servicio",
+    "startupOrder": "Orden de Arranque",
+    "startupDelay": "Retardo de Arranque (s)",
+    "startupOrderDesc": "Prioridad de arranque en boot (1 = máxima prioridad)",
+    "startupDelayDesc": "Retardo en segundos previo al inicio del proceso",
+    "starting": "El servicio se está iniciando...",
+    "stopping": "El servicio se está deteniendo...",
+    "restarting": "El servicio se está reiniciando...",
+    "retrying": "Reintentando inicio..."
   },
   "settings": {
     "title": "Configuración",

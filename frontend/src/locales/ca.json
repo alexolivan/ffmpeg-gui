@@ -50,9 +50,17 @@
     "noRunningServices": "No hi ha serveis en execució",
     "configuredServicesInactive": "Serveis Configurats (Inactius)",
     "noInactiveServices": "No hi ha serveis inactius",
-    "editServiceSettings": "Editar Ajustos del Servei",
+    "editServiceSettings": "Editar Configuració del Servei",
     "cloneService": "Clonar Servei",
-    "exportService": "Exportar Servei"
+    "exportService": "Exportar Servei",
+    "startupOrder": "Ordre d'Arrencada",
+    "startupDelay": "Retard d'Arrencada (s)",
+    "startupOrderDesc": "Prioritat d'arrencada en boot (1 = màxima prioritat)",
+    "startupDelayDesc": "Retard en segons previ a l'inici del procés",
+    "starting": "El servei s'està iniciant...",
+    "stopping": "El servei s'està aturant...",
+    "restarting": "El servei s'està reiniciant...",
+    "retrying": "Reintentant inici..."
   },
   "settings": {
     "title": "Configuració",

@@ -122,8 +122,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         </span>
                       )}
                       {proc.auto_start && (
-                        <span className="text-[9px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Auto-starts on system boot">
-                          <LightningIcon size={10} /> BOOT
+                        <span className="text-[9px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title={`Auto-starts on boot (Order #${proc.startup_order || 1}${proc.startup_delay ? `, Delay ${proc.startup_delay}s` : ''})`}>
+                          <LightningIcon size={10} /> BOOT (#{proc.startup_order || 1}{proc.startup_delay ? ` | ${proc.startup_delay}s` : ''})
                         </span>
                       )}
                       {proc.watchdog_enabled && (
@@ -136,7 +136,22 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           DEBUG
                         </span>
                       )}
-                      {proc.watchdog_enabled && proc.restart_count > 0 && (
+                      {actionPending[proc.id] === 'starting' && (
+                        <span className="text-[9px] bg-blue-500/20 border border-blue-500/40 text-blue-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
+                          <RefreshIcon size={10} className="animate-spin" /> {t('services.starting', 'Service is starting...')}
+                        </span>
+                      )}
+                      {actionPending[proc.id] === 'stopping' && (
+                        <span className="text-[9px] bg-brand-orange/20 border border-brand-orange/40 text-brand-orange px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
+                          <RefreshIcon size={10} className="animate-spin" /> {t('services.stopping', 'Service is stopping...')}
+                        </span>
+                      )}
+                      {actionPending[proc.id] === 'restarting' && (
+                        <span className="text-[9px] bg-purple-500/20 border border-purple-500/40 text-purple-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
+                          <RefreshIcon size={10} className="animate-spin" /> {t('services.restarting', 'Service is restarting...')}
+                        </span>
+                      )}
+                      {proc.watchdog_enabled && proc.restart_count > 0 && proc.status === 'running' && (
                         <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1" title={`Watchdog rescued this service ${proc.restart_count} times`}>
                           ⚠️ RESCUED {proc.restart_count}/{proc.watchdog_retries === -1 ? '∞' : proc.watchdog_retries}
                         </span>
@@ -239,13 +254,13 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         <RefreshIcon size={16} className={actionPending[proc.id] === 'restarting' ? 'animate-spin' : ''} />
                       </button>
                       <button
-                        disabled={!!actionPending[proc.id]}
+                        disabled={actionPending[proc.id] === 'stopping'}
                         onClick={(e) => {
                           e.stopPropagation();
                           onStopService(proc.id);
                         }}
                         className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                        title="Stop Service"
+                        title="Stop Service (Abort/Kill)"
                       >
                         {actionPending[proc.id] === 'stopping' ? (
                           <RefreshIcon size={16} className="animate-spin text-brand-orange" />
@@ -286,8 +301,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                           )}
                         </span>
                         {proc.auto_start && (
-                          <span className="text-[9px] bg-blue-500/20 text-blue-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Auto-starts on system boot">
-                            <LightningIcon size={10} /> BOOT
+                          <span className="text-[9px] bg-blue-500/20 text-blue-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title={`Auto-starts on boot (Order #${proc.startup_order || 1}${proc.startup_delay ? `, Delay ${proc.startup_delay}s` : ''})`}>
+                            <LightningIcon size={10} /> BOOT (#{proc.startup_order || 1}{proc.startup_delay ? ` | ${proc.startup_delay}s` : ''})
                           </span>
                         )}
                         {proc.watchdog_enabled && (
@@ -300,9 +315,29 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                             DEBUG
                           </span>
                         )}
-                        {proc.status === 'error' && (
-                          <span className="text-[9px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title={proc.watchdog_enabled && proc.restart_count ? `Watchdog retried ${proc.restart_count}/${proc.watchdog_retries} times before stopping` : "Process exited with error / stopped abnormally"}>
-                            ⚠ ABNORMAL END {proc.watchdog_enabled && proc.restart_count > 0 && `(${proc.restart_count}/${proc.watchdog_retries})`}
+                        {actionPending[proc.id] === 'starting' && (
+                          <span className="text-[9px] bg-blue-500/20 border border-blue-500/40 text-blue-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
+                            <RefreshIcon size={10} className="animate-spin" /> {t('services.starting', 'Service is starting...')}
+                          </span>
+                        )}
+                        {actionPending[proc.id] === 'stopping' && (
+                          <span className="text-[9px] bg-brand-orange/20 border border-brand-orange/40 text-brand-orange px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
+                            <RefreshIcon size={10} className="animate-spin" /> {t('services.stopping', 'Service is stopping...')}
+                          </span>
+                        )}
+                        {actionPending[proc.id] === 'restarting' && (
+                          <span className="text-[9px] bg-purple-500/20 border border-purple-500/40 text-purple-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
+                            <RefreshIcon size={10} className="animate-spin" /> {t('services.restarting', 'Service is restarting...')}
+                          </span>
+                        )}
+                        {proc.watchdog_enabled && proc.restart_count > 0 && actionPending[proc.id] !== 'stopping' && (
+                          <span className="text-[9px] bg-amber-500/20 border border-amber-500/40 text-amber-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
+                            ⚠️ {t('services.retrying', 'Retrying launch...')} ({proc.restart_count}/{proc.watchdog_retries === -1 ? '∞' : proc.watchdog_retries})
+                          </span>
+                        )}
+                        {proc.status === 'error' && (!proc.restart_count || !proc.watchdog_enabled) && (
+                          <span className="text-[9px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Process exited with error / stopped abnormally">
+                            ⚠ ABNORMAL END
                           </span>
                         )}
                       </div>
@@ -323,7 +358,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                     <div className="flex gap-4 items-center">
                       <div className="flex gap-2">
                         <button
-                          disabled={!!actionPending[proc.id]}
+                          disabled={actionPending[proc.id] === 'starting' || actionPending[proc.id] === 'stopping'}
                           onClick={(e) => {
                             e.stopPropagation();
                             onStartService(proc.id);
@@ -335,6 +370,21 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                             <RefreshIcon size={16} className="animate-spin text-brand-lime" />
                           ) : (
                             <PlayIcon size={16} />
+                          )}
+                        </button>
+                        <button
+                          disabled={actionPending[proc.id] === 'stopping'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onStopService(proc.id);
+                          }}
+                          className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                          title="Stop Service (Abort/Kill)"
+                        >
+                          {actionPending[proc.id] === 'stopping' ? (
+                            <RefreshIcon size={16} className="animate-spin text-brand-orange" />
+                          ) : (
+                            <StopIcon size={16} />
                           )}
                         </button>
                         <button

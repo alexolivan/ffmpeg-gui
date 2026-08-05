@@ -84,6 +84,8 @@ interface ProcessConfig {
   output: OutputConfig;
 
   auto_start: boolean;
+  startup_order: number;
+  startup_delay: number;
   watchdog_enabled: boolean;
   watchdog_retries: number;
   watchdog_min_speed: number | null;
@@ -422,6 +424,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         },
         output: Object.keys(outputCfg).length > 0 ? outputCfg : { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
         auto_start: !!initialConfig.auto_start,
+        startup_order: initialConfig.startup_order ?? 1,
+        startup_delay: initialConfig.startup_delay ?? 0,
         watchdog_enabled: !!initialConfig.watchdog_enabled,
         watchdog_retries: initialConfig.watchdog_retries ?? 5,
         watchdog_min_speed: initialConfig.watchdog_min_speed !== undefined ? initialConfig.watchdog_min_speed : null,
@@ -469,6 +473,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       },
       output: { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
       auto_start: false,
+      startup_order: 1,
+      startup_delay: 0,
       watchdog_enabled: false,
       watchdog_retries: 5,
       watchdog_min_speed: null,
@@ -1444,6 +1450,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
               ) : (
                 <LifecycleFormSection
                   auto_start={config.auto_start}
+                  startup_order={config.startup_order}
+                  startup_delay={config.startup_delay}
                   watchdog_enabled={config.watchdog_enabled}
                   watchdog_retries={config.watchdog_retries}
                   watchdog_min_speed={config.watchdog_min_speed}

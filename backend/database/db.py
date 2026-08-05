@@ -29,6 +29,10 @@ def init_db():
             
             if "auto_start" not in columns:
                 conn.execute(text("ALTER TABLE media_processes ADD COLUMN auto_start BOOLEAN DEFAULT 0"))
+            if "startup_order" not in columns:
+                conn.execute(text("ALTER TABLE media_processes ADD COLUMN startup_order INTEGER DEFAULT 1"))
+            if "startup_delay" not in columns:
+                conn.execute(text("ALTER TABLE media_processes ADD COLUMN startup_delay INTEGER DEFAULT 0"))
             if "watchdog_enabled" not in columns:
                 conn.execute(text("ALTER TABLE media_processes ADD COLUMN watchdog_enabled BOOLEAN DEFAULT 0"))
             if "watchdog_retries" not in columns:

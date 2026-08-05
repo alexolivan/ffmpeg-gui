@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 2026-08-05
+
+### Added
+- **Proxmox-Style Boot Startup Order & Startup Delay (`auto_start_services`)**:
+  - **Startup Order Priority**: Added integer field `startup_order` (default `1`) to specify boot launch hierarchy (order 1 launches before order 2).
+  - **Per-Service Startup Delay**: Added integer field `startup_delay` (seconds) to introduce a custom wait time prior to initiating process execution.
+  - **Micro-Randomization Jitter**: Added jitter (50ms - 250ms) between process launches to prevent CUDA / DeckLink / NVENC hardware driver race conditions on concurrent starts.
+  - **BOOT Card Badges**: Displayed `BOOT (#Order | Delay)` tags on service cards.
+
+### Fixed
+- **Service Card State Transition Feedback & Always-Available STOP Control (`ServicesView.tsx`)**:
+  - **Real-Time State Transition Banners**: Added color-coded pulsing badges on service cards during state transitions (*"Service is starting..."*, *"Service is stopping..."*, *"Service is restarting..."*, *"Retrying launch..."*).
+  - **Always-Available STOP Control**: Guaranteed that the STOP button is ALWAYS rendered and clickable across all process states (including while retrying launch loops or starting up) to allow instant process abortion.
+
 ## [1.38.1] - 2026-08-04
 
 ### Fixed

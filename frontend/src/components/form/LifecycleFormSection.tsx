@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 
 interface LifecycleFormSectionProps {
   auto_start: boolean;
+  startup_order?: number;
+  startup_delay?: number;
   watchdog_enabled: boolean;
   watchdog_retries: number;
   watchdog_min_speed: number | null;
@@ -12,6 +14,8 @@ interface LifecycleFormSectionProps {
   logsStorages: any[];
   onChange: (updates: {
     auto_start?: boolean;
+    startup_order?: number;
+    startup_delay?: number;
     watchdog_enabled?: boolean;
     watchdog_retries?: number;
     watchdog_min_speed?: number | null;
@@ -23,6 +27,8 @@ interface LifecycleFormSectionProps {
 
 export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
   auto_start,
+  startup_order = 1,
+  startup_delay = 0,
   watchdog_enabled,
   watchdog_retries,
   watchdog_min_speed,
@@ -42,20 +48,63 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
       </div>
 
       {/* Auto Start Toggle */}
-      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold text-white">{t('lifecycle.autoStart', 'Auto-start on boot')}</span>
-          <span className="text-[10px] text-text-secondary">{t('lifecycle.autoStartDesc', 'Launch this service automatically when the application starts.')}</span>
+      <div className="flex flex-col p-2 bg-white/5 rounded-lg border border-white/5 gap-2">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold text-white">{t('lifecycle.autoStart', 'Auto-start on boot')}</span>
+            <span className="text-[10px] text-text-secondary">{t('lifecycle.autoStartDesc', 'Launch this service automatically when the application starts.')}</span>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={auto_start}
+              onChange={e => onChange({ auto_start: e.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
+          </label>
         </div>
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={auto_start}
-            onChange={e => onChange({ auto_start: e.target.checked })}
-            className="sr-only peer"
-          />
-          <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
-        </label>
+
+        {/* Proxmox-Style Startup Order and Delay (visible when BOOT enabled) */}
+        {auto_start && (
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5 animate-in fade-in duration-200">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-[var(--text-primary)]">
+                {t('services.startupOrder', 'Startup Order')}
+              </label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={startup_order}
+                onChange={e => onChange({ startup_order: Math.max(1, parseInt(e.target.value) || 1) })}
+                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md px-2.5 py-1 text-xs font-mono text-[var(--text-primary)] focus:border-brand-lime focus:outline-none"
+                placeholder="1"
+              />
+              <span className="text-[9px] text-text-secondary">
+                {t('services.startupOrderDesc', 'Boot execution priority (1 = highest priority)')}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-[var(--text-primary)]">
+                {t('services.startupDelay', 'Startup Delay (s)')}
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={startup_delay}
+                onChange={e => onChange({ startup_delay: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-md px-2.5 py-1 text-xs font-mono text-[var(--text-primary)] focus:border-brand-lime focus:outline-none"
+                placeholder="0"
+              />
+              <span className="text-[9px] text-text-secondary">
+                {t('services.startupDelayDesc', 'Delay in seconds before initiating launch')}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Watchdog Toggle */}

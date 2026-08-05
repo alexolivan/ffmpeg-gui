@@ -87,6 +87,8 @@ class MediaProcess(Base):
 
     # Configuration toggles & snapshot
     auto_start = Column(Boolean, default=False)
+    startup_order = Column(Integer, default=1)
+    startup_delay = Column(Integer, default=0)
     watchdog_enabled = Column(Boolean, default=False)
     watchdog_retries = Column(Integer, default=5)
     watchdog_min_speed = Column(Float, nullable=True, default=None)

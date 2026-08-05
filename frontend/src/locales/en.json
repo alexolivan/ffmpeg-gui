@@ -52,7 +52,15 @@
     "noInactiveServices": "No inactive services",
     "editServiceSettings": "Edit Service Settings",
     "cloneService": "Clone Service",
-    "exportService": "Export Service"
+    "exportService": "Export Service",
+    "startupOrder": "Startup Order",
+    "startupDelay": "Startup Delay (s)",
+    "startupOrderDesc": "Boot execution priority (1 = highest priority)",
+    "startupDelayDesc": "Delay in seconds before initiating launch",
+    "starting": "Service is starting...",
+    "stopping": "Service is stopping...",
+    "restarting": "Service is restarting...",
+    "retrying": "Retrying launch..."
   },
   "settings": {
     "title": "Settings",
