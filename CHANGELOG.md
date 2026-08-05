@@ -13,11 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Per-Service Startup Delay**: Added integer field `startup_delay` (seconds) to introduce a custom wait time prior to initiating process execution.
   - **Micro-Randomization Jitter**: Added jitter (50ms - 250ms) between process launches to prevent CUDA / DeckLink / NVENC hardware driver race conditions on concurrent starts.
   - **BOOT Card Badges**: Displayed `BOOT (#Order | Delay)` tags on service cards.
+- **STOP Service Confirmation Warning Popup**:
+  - **UX Parity & Live Stream Safeguard**: Added confirmation dialog on service STOP actions warning the user of immediate live stream signal interruption.
+  - **Multi-Language i18n**: Added `stopConfirm` and `restartConfirm` translation keys across `en.json`, `es.json`, and `ca.json`.
 
 ### Fixed
-- **Service Card State Transition Feedback & Always-Available STOP Control (`ServicesView.tsx`)**:
-  - **Real-Time State Transition Banners**: Added color-coded pulsing badges on service cards during state transitions (*"Service is starting..."*, *"Service is stopping..."*, *"Service is restarting..."*, *"Retrying launch..."*).
-  - **Always-Available STOP Control**: Guaranteed that the STOP button is ALWAYS rendered and clickable across all process states (including while retrying launch loops or starting up) to allow instant process abortion.
+- **Synchronous Watchdog Cancellation Protocol (`process_manager.py`)**:
+  - **Synchronous Task Death**: Updated `stop_process()` to synchronously await `watchdog_task.cancel()`, ensuring the watchdog task is completely dead before sub-process termination.
+  - **PID-Tracked Intentional Stop Set**: Added `stopped_pids` set tracking and explicit `asyncio.CancelledError` handling in `_watchdog()` to eliminate false crash recovery alerts (*"Watchdog: unexpectedly exited. Scheduling restart attempt 1/inf"*).
+- **Single-Source HTTP Access Logging (`main.py`)**:
+  - **Duplicate Log Suppression**: Attached `logging.NullHandler()` to `uvicorn.access` and bypassed `logger.info()` in `NginxAccessLogMiddleware` when `ACCESS_LOG_PATH` is configured, preventing duplicate log file writes.
+- **Inactive Service UI Cleanup & Instant Telemetry Sync (`ServicesView.tsx`, `useProcesses.ts`)**:
+  - **Inactive Card Control Cleanup**: Removed redundant STOP button from the `Configured Services (Inactive)` card list.
+  - **Instant State Clearing**: Updated WebSocket telemetry listener in `useProcesses.ts` to clear `actionPending` instantly upon target status match (`stopped` or `running`), eliminating UI card freeze during state transitions.
 
 ## [1.38.1] - 2026-08-04
 
