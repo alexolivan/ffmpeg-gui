@@ -120,11 +120,13 @@ export function useProcesses() {
     } catch (err) {
       console.error("Error starting process:", err);
     } finally {
-      setActionPending(prev => {
-        const next = { ...prev };
-        delete next[procId];
-        return next;
-      });
+      setTimeout(() => {
+        setActionPending(prev => {
+          const next = { ...prev };
+          delete next[procId];
+          return next;
+        });
+      }, 3500);
     }
   };
 
@@ -135,11 +137,13 @@ export function useProcesses() {
     } catch (err) {
       console.error("Error stopping process:", err);
     } finally {
-      setActionPending(prev => {
-        const next = { ...prev };
-        delete next[procId];
-        return next;
-      });
+      setTimeout(() => {
+        setActionPending(prev => {
+          const next = { ...prev };
+          delete next[procId];
+          return next;
+        });
+      }, 2000);
     }
   };
 
@@ -158,6 +162,8 @@ export function useProcesses() {
           filter_config: proc.filter_config,
           ffmpeg_build_id: proc.ffmpeg_build_id,
           auto_start: proc.auto_start,
+          startup_order: proc.startup_order,
+          startup_delay: proc.startup_delay,
           watchdog_enabled: proc.watchdog_enabled,
           watchdog_retries: proc.watchdog_retries,
           watchdog_min_speed: proc.watchdog_min_speed,
@@ -189,11 +195,13 @@ export function useProcesses() {
     } catch (err) {
       console.error("Error restarting process:", err);
     } finally {
-      setActionPending(prev => {
-        const next = { ...prev };
-        delete next[procId];
-        return next;
-      });
+      setTimeout(() => {
+        setActionPending(prev => {
+          const next = { ...prev };
+          delete next[procId];
+          return next;
+        });
+      }, 3500);
     }
   };
 

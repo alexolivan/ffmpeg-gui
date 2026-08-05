@@ -257,18 +257,18 @@ class ProcessManager:
                         try:
                             proc.stdin.write(b'q')
                             await proc.stdin.drain()
-                        except Exception as e:
-                            self.logger.warning(f"Failed to write 'q' to stdin for process {process_id}: {e}")
+                        except Exception:
+                            pass
                     
                     try:
-                        await asyncio.wait_for(proc.wait(), timeout=4.0)
+                        await asyncio.wait_for(proc.wait(), timeout=0.2)
                     except asyncio.TimeoutError:
-                        self.logger.warning(f"Process {process_id} did not stop gracefully. Escalating to SIGTERM.")
+                        pass
                 
                 if proc.returncode is None:
                     try:
                         proc.terminate()
-                        await asyncio.wait_for(proc.wait(), timeout=3.0)
+                        await asyncio.wait_for(proc.wait(), timeout=2.0)
                     except asyncio.TimeoutError:
                         self.logger.warning(f"Process {process_id} ignored SIGTERM. Escalating to SIGKILL.")
                     except Exception as e:
