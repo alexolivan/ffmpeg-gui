@@ -19,6 +19,7 @@ class ProcessManager:
         self.pending_restarts: Dict[int, asyncio.Task] = {}
         self.watchdog_tasks: Dict[int, asyncio.Task] = {}
         self.stopping_processes: Set[int] = set()
+        self.stopped_pids: Set[int] = set()
         self.srt_has_had_activity: Dict[int, bool] = {}
         self.watchdog_stalled_since: Dict[int, Optional[datetime]] = {}
         self.watchdog_low_speed_since: Dict[int, Optional[datetime]] = {}
@@ -252,6 +253,8 @@ class ProcessManager:
             self.restart_counts.pop(process_id, None)
             
             if proc:
+                if hasattr(proc, 'pid') and proc.pid:
+                    self.stopped_pids.add(proc.pid)
                 if graceful:
                     if proc.stdin:
                         try:
@@ -1765,7 +1768,10 @@ class ProcessManager:
 
             # If process was stopped/restarted intentionally or replaced by a new process instance,
             # exit cleanly without overwriting DB state or triggering false watchdog recovery.
-            if self.processes.get(process_id) is not proc or process_id in self.stopping_processes:
+            is_intentional_stop = pid in self.stopped_pids or process_id in self.stopping_processes or self.processes.get(process_id) is not proc
+            self.stopped_pids.discard(pid)
+
+            if is_intentional_stop:
                 self.logger.info(f"Watchdog for process {process_id} (PID {pid}) exiting cleanly without DB update (replaced or stopped).")
                 return
 
