@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 2026-08-06
+
+### Changed
+- **ProcessManager as SSOT for FFmpeg Command Generation (`task_manager.py`, `process_manager.py`)**:
+  - `TaskManager._build_ffmpeg_cmd` now fully delegates to `ProcessManager._build_ffmpeg_cmd`, eliminating ~620 lines of duplicated command-generation logic that had diverged from the richer service command builder.
+  - Tasks now benefit from all ProcessManager features: multi-input format, filter graph, hwaccel, fps_mode, MPEGTS metadata, SRT/UDP/ALSA/HLS outputs, and secondary MJPEG preview output.
+  - Fixed `_append_output` to accept `limit_sec` parameter and propagate it correctly through the call chain.
+  - Fixed preview file naming: tasks produce `preview_task_{execution_id}.jpg` (unique per execution run), services produce `preview_{proc.id}.jpg`.
+  - Added generic `lavfi` input type to `ProcessManager._append_input` to support ScheduledTask input configs using full lavfi expressions in the `path` field.
+
 ## [1.42.0] - 2026-08-06
 
 ### Added
