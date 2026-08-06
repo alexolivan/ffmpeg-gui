@@ -237,7 +237,7 @@ class ProcessManager:
                 "body": f"Service '{process_name}' (ID: {process_id}) failed to start after exhausting all {retries} automatic restart attempts. Service stopped."
             })
 
-    async def stop_process(self, process_id: int, graceful: bool = True):
+    async def stop_process(self, process_id: int, graceful: bool = True, is_restart: bool = False):
         self.stopping_processes.add(process_id)
         try:
             watchdog_task = self.watchdog_tasks.pop(process_id, None)
@@ -300,7 +300,7 @@ class ProcessManager:
                 from database.models import MediaProcess
                 media_proc = session.query(MediaProcess).get(process_id)
                 if media_proc:
-                    media_proc.status = 'stopped'
+                    media_proc.status = 'restarting' if is_restart else 'stopped'
                     media_proc.pid = None
                     media_proc.cpu_usage = 0
                     media_proc.ram_usage = 0
