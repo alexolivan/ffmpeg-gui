@@ -637,7 +637,13 @@
     "runHistory": "Run History",
     "inputLabel": "Input:",
     "outputLabel": "Output:",
-    "systemSslTaskName": "System SSL/TLS Certificate Auto-Renewal Routine"
+    "systemSslTaskName": "System SSL/TLS Certificate Auto-Renewal Routine",
+    "activeScheduledTasks": "Active & Scheduled Tasks",
+    "configuredTasksDisabled": "Configured Tasks (Disabled / Standby)",
+    "noActiveTasks": "No active scheduled tasks.",
+    "noDisabledTasks": "No disabled tasks.",
+    "enableTask": "Enable Task",
+    "disableTask": "Disable Task"
   },
   "sdks": {
     "modalTitle": "SDK INVENTORY & LIFECYCLE",

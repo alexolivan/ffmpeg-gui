@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0] - 2026-08-06
+
+### Added
+- **Scheduled Tasks Enable/Disable Toggle & 2-Stack UI Parity**:
+  - **Enable/Disable State Toggle**: Added `is_active` toggle switch on scheduled task cards to enable or disable recurring cron triggers without deleting the task.
+  - **2-Stack Visual Layout**: Restructured `ScheduledTasks.tsx` into two distinct card stacks matching `ServicesView.tsx`: **Active & Scheduled Tasks (Enabled)** vs **Configured Tasks (Disabled / Standby)**.
+  - **On-Demand Testing from Disabled Stack**: Enabled the **RUN NOW** button on disabled tasks so operators can test transcode pipelines on-demand without enabling production cron schedules.
+  - **Safe Cloning & Import Staging**: Set `is_active = False` by default when cloning or importing tasks, staging new tasks safely in the Disabled stack for audit prior to activation.
+
+### Fixed
+- **Audio-Only Telemetry Tag Scoping (`ServicesView.tsx`, `ProcessPreviewModal.tsx`)**:
+  - Added `hasVideo` helper strictly hiding FPS tags for audio-only streams (e.g. Icecast playouts).
+- **Telemetry Card Digit Length Flickering**:
+  - Applied `font-mono tabular-nums` and fixed `min-w-[...]` width containers on telemetry numbers (`CPU`, `RAM`, `FPS`, `Bitrate`, `Speed`).
+- **Process Restart Status Preservation (`process_manager.py`, `main.py`)**:
+  - Preserved `status = 'restarting'` in DB during restart lifecycle to eliminate UI card flickering between Active and Inactive lists.
+
 ## [1.39.0] - 2026-08-05
 
 ### Added

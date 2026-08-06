@@ -637,7 +637,13 @@
     "runHistory": "Historial",
     "inputLabel": "Origen:",
     "outputLabel": "Destino:",
-    "systemSslTaskName": "Rutina de Renovación Automática de Certificados SSL/TLS del Sistema"
+    "systemSslTaskName": "Rutina de Renovación Automática de Certificados SSL/TLS del Sistema",
+    "activeScheduledTasks": "Tareas Activas y Programadas",
+    "configuredTasksDisabled": "Tareas Configuradas (Desactivadas / En Espera)",
+    "noActiveTasks": "No hay tareas activas programadas.",
+    "noDisabledTasks": "No hay tareas desactivadas.",
+    "enableTask": "Activar Tarea",
+    "disableTask": "Desactivar Tarea"
   },
   "sdks": {
     "modalTitle": "INVENTARIO Y CICLO DE VIDA DE SDKs",
