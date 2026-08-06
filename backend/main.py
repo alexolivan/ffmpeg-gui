@@ -2241,12 +2241,13 @@ async def startup_event():
                 build.build_log_summary = "Build aborted (server restarted)"
                 logger.info(f"Cleaned up stale build profile ID {build.id} on startup.")
             
-            running_processes = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
-            for p in running_processes:
-                if p.pid and psutil.pid_exists(p.pid):
+            non_stopped_processes = db.query(MediaProcess).filter(MediaProcess.status.in_(["running", "starting", "restarting", "error"])).all()
+            for p in non_stopped_processes:
+                if p.status == "running" and p.pid and psutil.pid_exists(p.pid):
                     if p.debug_mode:
                         logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is in debug mode. Cannot re-attach live pipes. Marking as stopped to force restart.")
                         p.status = "stopped"
+                        p.restart_count = 0
                         p.pid = None
                         p.cpu_usage = 0
                         p.ram_usage = 0
@@ -2258,8 +2259,9 @@ async def startup_event():
                         process_manager.reattach_process(p.id, p.pid)
                         active_pids.add(p.pid)
                 else:
-                    logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is NOT alive in OS. Cleaning up.")
+                    logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is NOT alive in OS (status was {p.status}). Cleaning up.")
                     p.status = "stopped"
+                    p.restart_count = 0
                     p.pid = None
                     p.cpu_usage = 0
                     p.ram_usage = 0

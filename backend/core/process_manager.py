@@ -1897,6 +1897,15 @@ class ProcessManager:
                                     message=f"Watchdog: Max restart attempts ({retries}) reached. Service stopped."
                                 )
                                 session.add(limit_log)
+                                media_proc.status = 'stopped'
+                                media_proc.restart_count = 0
+                                media_proc.pid = None
+                                media_proc.cpu_usage = 0
+                                media_proc.ram_usage = 0
+                                media_proc.fps = "0"
+                                media_proc.bitrate = "0 kb/s"
+                                media_proc.speed = "0x"
+                                self.restart_counts.pop(process_id, None)
                                 session.commit()
                                 # Notify finite retry exhaustion (1 single email when max retries reached!)
                                 self.notify_service_exhausted(process_id, media_proc.name, retries=retries)
