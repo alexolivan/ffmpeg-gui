@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-08-06
+
+### Added
+- **ALSA Audio Hardware Output Support in Task Manager (`task_manager.py`)**:
+  - Fixed `_build_ffmpeg_cmd` in `backend/core/task_manager.py` to support `output_type == 'alsa'` (`-f alsa <device>`), matching `process_manager.py` so scheduled tasks configured to output to ALSA soundcards render complete FFmpeg commands.
+- **Task Retry Policy & Automatic Watchdog Rescue Loop (`task_manager.py`)**:
+  - Implemented automatic retry handling in `task_manager.py` reading `task.retry_policy` (`max_retries`, `retry_delay`). When a task execution fails or hangs, it automatically increments `retry_count`, logs progress, waits `retry_delay` seconds, and restarts execution until retries are exhausted.
+- **Unified Task Card UX & Realtime Telemetry (`ScheduledTasks.tsx`)**:
+  - Redesigned task cards in `ScheduledTasks.tsx` to display live telemetry (`PID`, `CPU`, `RAM`, `FPS`, `Bitrate`, `Speed`) directly on the card during execution, matching the service cards design.
+  - Added live `ABORT` button and `RESCUED X/Y` / `🛡️ WATCHDOG (N)` badges directly on task cards.
+  - Removed the redundant top "Realtime Execution Monitor" block, unifying the entire tasks view.
+
 ## [1.41.1] - 2026-08-06
 
 ### Fixed
