@@ -863,20 +863,24 @@ class ProcessManager:
                 "-y", preview_path
             ]
 
-        # Append -progress to the FFmpeg command line
-        process_id = getattr(media_proc, 'id', None)
+        # Append -progress to the FFmpeg command line.
+        # Naming scheme to avoid collisions:
+        #   Tasks   → ffmpeg_progress_{execution_id}t.log  (unique per execution run)
+        #   Services → ffmpeg_progress_{proc.id}s.log       (unique per live process)
+        #   Fallback → ffmpeg_progress_preview.log
         shm_dir = "/dev/shm"
-        if process_id is not None:
-            if os.path.exists(shm_dir) and os.access(shm_dir, os.W_OK):
-                progress_file_path = f"/dev/shm/ffmpeg_progress_{process_id}.log"
-            else:
-                progress_file_path = f"/tmp/ffmpeg_progress_{process_id}.log"
+        use_shm = os.path.exists(shm_dir) and os.access(shm_dir, os.W_OK)
+        base_dir = shm_dir if use_shm else "/tmp"
+
+        if execution_id is not None:
+            progress_file_path = f"{base_dir}/ffmpeg_progress_{execution_id}t.log"
         else:
-            if os.path.exists(shm_dir) and os.access(shm_dir, os.W_OK):
-                progress_file_path = "/dev/shm/ffmpeg_progress_preview.log"
+            process_id = getattr(media_proc, 'id', None)
+            if process_id is not None:
+                progress_file_path = f"{base_dir}/ffmpeg_progress_{process_id}s.log"
             else:
-                progress_file_path = "/tmp/ffmpeg_progress_preview.log"
-            
+                progress_file_path = f"{base_dir}/ffmpeg_progress_preview.log"
+
         cmd += ["-progress", progress_file_path]
 
         return cmd
@@ -1570,9 +1574,9 @@ class ProcessManager:
             self.logger.error(f"Watchdog: No PID found for process {process_id}")
             return
 
-        # Access progress log file
-        shm_path = f"/dev/shm/ffmpeg_progress_{process_id}.log"
-        tmp_path = f"/tmp/ffmpeg_progress_{process_id}.log"
+        # Access progress log file (Xs suffix = service)
+        shm_path = f"/dev/shm/ffmpeg_progress_{process_id}s.log"
+        tmp_path = f"/tmp/ffmpeg_progress_{process_id}s.log"
         if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK):
             progress_log_path = shm_path
         else:

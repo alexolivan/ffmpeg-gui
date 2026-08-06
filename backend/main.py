@@ -3256,8 +3256,8 @@ def download_process_log(process_id: int, db: Session = Depends(get_db)):
 def get_process_progress(process_id: int):
     # Path fallbacks
     paths = [
-        f"/dev/shm/ffmpeg_progress_{process_id}.log",
-        f"/tmp/ffmpeg_progress_{process_id}.log"
+        f"/dev/shm/ffmpeg_progress_{process_id}s.log",
+        f"/tmp/ffmpeg_progress_{process_id}s.log"
     ]
     
     # Default values

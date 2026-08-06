@@ -86,14 +86,14 @@ def prepare_process_file_permissions(process_id: int = None, execution_id: int =
     target_files = []
     if process_id is not None:
         target_files.extend([
-            f"/dev/shm/ffmpeg_progress_{process_id}.log",
-            f"/tmp/ffmpeg_progress_{process_id}.log",
+            f"/dev/shm/ffmpeg_progress_{process_id}s.log",
+            f"/tmp/ffmpeg_progress_{process_id}s.log",
             f"/tmp/ffmpeg-gui-previews/preview_{process_id}.jpg",
         ])
     if execution_id is not None:
         target_files.extend([
-            f"/dev/shm/ffmpeg_progress_task_{execution_id}.log",
-            f"/tmp/ffmpeg_progress_task_{execution_id}.log",
+            f"/dev/shm/ffmpeg_progress_{execution_id}t.log",
+            f"/tmp/ffmpeg_progress_{execution_id}t.log",
             f"/tmp/ffmpeg-gui-previews/preview_task_{execution_id}.jpg",
         ])
 

@@ -207,8 +207,8 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
         self.manager.processes[media_proc.id] = stub_proc
 
         import os
-        shm_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}.log"
-        tmp_path = f"/tmp/ffmpeg_progress_{media_proc.id}.log"
+        shm_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}s.log"
+        tmp_path = f"/tmp/ffmpeg_progress_{media_proc.id}s.log"
         if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK):
             progress_path = shm_path
         else:
@@ -428,8 +428,8 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
         self.manager.processes[media_proc.id] = stub_proc
 
         import os
-        shm_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}.log"
-        tmp_path = f"/tmp/ffmpeg_progress_{media_proc.id}.log"
+        shm_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}s.log"
+        tmp_path = f"/tmp/ffmpeg_progress_{media_proc.id}s.log"
         if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK):
             progress_path = shm_path
         else:
@@ -532,7 +532,7 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
         self.manager.processes[media_proc.id] = stub_proc
 
         import os
-        progress_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}.log"
+        progress_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}s.log"
         def write_progress(speed="1.0x", frame=100, out_time_us=10000000):
             with open(progress_path, "w") as f:
                 f.write(f"frame={frame}\n")
