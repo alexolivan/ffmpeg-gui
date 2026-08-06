@@ -624,6 +624,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         overlays: config.filters.overlays || [],
       },
       ...(isTask ? {
+        is_active: config.is_active !== undefined ? config.is_active : true,
         schedule_type: config.schedule_type,
         schedule_cron: config.schedule_type === 'recurring' ? config.schedule_cron : null,
         schedule_datetime: config.schedule_type === 'one_shot' && config.schedule_datetime ? new Date(config.schedule_datetime).toISOString() : null,

@@ -647,7 +647,9 @@
     "clearHistory": "Borrar Histórico",
     "clearHistoryConfirm": "¿Estás seguro de que deseas eliminar todo el historial de ejecuciones y registros de esta tarea?",
     "taskActiveLabel": "Activar Programación de Tarea",
-    "taskActiveDesc": "Cuando esté activada, el programador automático ejecutará esta tarea según su horario."
+    "taskActiveDesc": "Cuando esté activada, el programador automático ejecutará esta tarea según su horario.",
+    "triggerAndScheduling": "Disparador y Programación",
+    "taskScheduleStatus": "Estado de Programación"
   },
   "sdks": {
     "modalTitle": "INVENTARIO Y CICLO DE VIDA DE SDKs",

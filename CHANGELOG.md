@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.1] - 2026-08-06
+
+### Fixed
+- **Task Form Modal Activation Persistence (`ProcessConfigForm.tsx`)**:
+  - Fixed `createPayload()` in `ProcessConfigForm.tsx` to explicitly include `is_active: config.is_active` in the JSON payload sent to `onSubmit` when `isTask === true`, ensuring changes to `is_active` persist when saving task edits in the modal form.
+- **Toggle Switch UX Redesign (`SchedulingFormSection.tsx`)**:
+  - Replaced button badge with the standard, intuitive `peer-checked` toggle switch component matching `LifecycleFormSection.tsx` with `Task Schedule Status: Enabled / Disabled` label for visual parity.
+
 ## [1.41.0] - 2026-08-06
 
 ### Added

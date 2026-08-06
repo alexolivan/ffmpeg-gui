@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface SchedulingFormSectionProps {
   is_active?: boolean;
@@ -35,31 +36,35 @@ export const SchedulingFormSection: React.FC<SchedulingFormSectionProps> = ({
   retry_delay,
   onChange,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="glass-card p-2.5 !rounded-lg space-y-2">
       <div className="flex items-center gap-1.5 mb-1.5">
         <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-        <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Trigger & Scheduling</h4>
+        <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('tasks.triggerAndScheduling', 'Trigger & Scheduling')}</h4>
       </div>
 
-      {/* Task Schedule Activation Toggle */}
-      <div className="flex items-center justify-between p-2.5 bg-white/5 border border-white/10 rounded-lg mb-2">
-        <div>
-          <div className="text-xs font-bold text-[var(--text-primary)]">Enable Task Schedule</div>
-          <div className="text-[10px] text-text-secondary">When enabled, the automated scheduler will execute this task according to its schedule.</div>
+      {/* Task Schedule Activation Toggle Switch */}
+      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-[var(--text-primary)]">{t('tasks.taskScheduleStatus', 'Task Schedule Status')}</span>
+          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+            is_active ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/30' : 'bg-white/10 text-text-secondary border border-white/10'
+          }`}>
+            {is_active ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')}
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={() => onChange({ is_active: !is_active })}
-          className={`px-3 py-1 rounded-full text-xs font-black transition-all border flex items-center gap-1.5 ${
-            is_active
-              ? 'bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20'
-              : 'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10'
-          }`}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${is_active ? 'bg-green-400' : 'bg-white/20'}`} />
-          {is_active ? 'Active' : 'Disabled'}
-        </button>
+
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={is_active}
+            onChange={(e) => onChange({ is_active: e.target.checked })}
+            className="sr-only peer"
+          />
+          <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime" />
+        </label>
       </div>
 
       {/* Trigger Mechanism */}

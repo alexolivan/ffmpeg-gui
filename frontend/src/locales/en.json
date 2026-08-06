@@ -647,7 +647,9 @@
     "clearHistory": "Clear History",
     "clearHistoryConfirm": "Are you sure you want to delete all execution history and logs for this task?",
     "taskActiveLabel": "Enable Task Schedule",
-    "taskActiveDesc": "When enabled, the automated scheduler will execute this task according to its schedule."
+    "taskActiveDesc": "When enabled, the automated scheduler will execute this task according to its schedule.",
+    "triggerAndScheduling": "Trigger & Scheduling",
+    "taskScheduleStatus": "Task Schedule Status"
   },
   "sdks": {
     "modalTitle": "SDK INVENTORY & LIFECYCLE",

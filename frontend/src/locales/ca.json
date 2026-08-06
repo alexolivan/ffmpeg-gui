@@ -647,7 +647,9 @@
     "clearHistory": "Esborrar Històric",
     "clearHistoryConfirm": "Estàs segur que vols eliminar tot l'historial d'execucions i registres d'aquesta tasca?",
     "taskActiveLabel": "Activar Programació de Tasca",
-    "taskActiveDesc": "Quan estigui activada, el programador automàtic executarà aquesta tasca segons el seu horari."
+    "taskActiveDesc": "Quan estigui activada, el programador automàtic executarà aquesta tasca segons el seu horari.",
+    "triggerAndScheduling": "Disparador i Programació",
+    "taskScheduleStatus": "Estat de Programació"
   },
   "sdks": {
     "modalTitle": "INVENTARI I CICLE DE VIDA DE SDKs",
