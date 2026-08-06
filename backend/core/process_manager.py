@@ -1564,6 +1564,7 @@ class ProcessManager:
             progress_log_path = tmp_path
 
         was_unexpected = False
+        is_cancelled = False
         self.watchdog_stalled_since[process_id] = None
         self.watchdog_low_speed_since[process_id] = None
 
@@ -1755,10 +1756,8 @@ class ProcessManager:
 
                 await asyncio.sleep(2)
         except asyncio.CancelledError:
+            is_cancelled = True
             self.logger.info(f"Watchdog for process {process_id} (PID {pid}) cancelled.")
-            if self.watchdog_tasks.get(process_id) == asyncio.current_task():
-                self.watchdog_tasks.pop(process_id, None)
-            return
         except psutil.NoSuchProcess:
             self.logger.warning(f"Watchdog: Process PID {pid} disappeared.")
         except Exception as loop_err:
@@ -1766,6 +1765,9 @@ class ProcessManager:
         finally:
             if self.watchdog_tasks.get(process_id) == asyncio.current_task():
                 self.watchdog_tasks.pop(process_id, None)
+
+            if is_cancelled:
+                return
 
             if proc is not None:
                 await proc.wait()
