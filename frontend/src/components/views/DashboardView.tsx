@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BuildProfile } from '../../components/BuildProfileCard';
+import { isActiveService } from './ServicesView';
 
 interface DashboardViewProps {
   telemetry: any[];
@@ -135,13 +136,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
                 <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.activeServices')}</div>
                 <div className="font-black text-xl text-brand-lime">
-                  {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status === 'running').length}
+                  {telemetry.filter(p => (p.type === 'service' || !p.type) && isActiveService(p)).length}
                 </div>
               </div>
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
                 <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.inactiveServices')}</div>
                 <div className="font-black text-xl text-text-secondary">
-                  {telemetry.filter(p => (p.type === 'service' || !p.type) && p.status !== 'running').length}
+                  {telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p)).length}
                 </div>
               </div>
               <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">

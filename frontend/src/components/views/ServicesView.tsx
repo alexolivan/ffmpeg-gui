@@ -49,9 +49,9 @@ const formatUptime = (lastStartStr: string | null): string => {
   return `${secs}s`;
 };
 
-const isActiveService = (p: any, actionPending: Record<number, string>) => {
+export const isActiveService = (p: any, actionPending: Record<number, string> = {}) => {
   if (p.type && p.type !== 'service') return false;
-  if (p.status === 'running') return true;
+  if (p.status === 'running' || p.status === 'starting' || p.status === 'stopping' || p.status === 'restarting') return true;
   if (actionPending[p.id]) return true;
   if (p.watchdog_enabled && p.restart_count > 0 && p.status !== 'stopped') return true;
   return false;
