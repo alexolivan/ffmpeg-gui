@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { hasVideo as hasVideoHelper } from '../views/ServicesView';
 
 interface ProcessPreviewModalProps {
   selectedProcess: any;
@@ -30,9 +31,9 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const currentProcess = telemetry.find(p => p.id === selectedProcess.id) || selectedProcess;
-  const hasVideo = currentProcess.input_config?.has_video !== false;
+  const isVideoProcess = hasVideoHelper(currentProcess);
   const isRunning = currentProcess.status === 'running';
-  const showPreview = isRunning && hasVideo;
+  const showPreview = isRunning && isVideoProcess;
 
   const [progressData, setProgressData] = React.useState<any>(null);
 
@@ -137,8 +138,8 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                     <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.bitrate || '0 kb/s'}</div>
                   </div>
                   <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
-                    <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">FPS</div>
-                    <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.fps || '0'}</div>
+                    <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">{isVideoProcess ? 'FPS' : 'Stream'}</div>
+                    <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{isVideoProcess ? (currentProcess.fps || '0') : 'AUDIO ONLY'}</div>
                   </div>
                   <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                     <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Speed</div>
@@ -186,8 +187,8 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                   <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.bitrate || '0 kb/s'}</div>
                 </div>
                 <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
-                  <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">FPS</div>
-                  <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{currentProcess.fps || '0'}</div>
+                  <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">{isVideoProcess ? 'FPS' : 'Stream'}</div>
+                  <div className="font-bold font-mono text-sm text-[var(--text-primary)]">{isVideoProcess ? (currentProcess.fps || '0') : 'AUDIO ONLY'}</div>
                 </div>
                 <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 text-center">
                   <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Speed</div>
@@ -206,7 +207,7 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                 </div>
               </div>
 
-              {!hasVideo && isRunning && (
+              {!isVideoProcess && isRunning && (
                 <div className="p-5 bg-brand-blue/10 border border-brand-blue/20 rounded-2xl flex items-center gap-4 animate-in fade-in duration-300">
                   <span className="text-2xl">📻</span>
                   <div>

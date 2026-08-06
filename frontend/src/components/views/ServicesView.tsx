@@ -49,6 +49,19 @@ const formatUptime = (lastStartStr: string | null): string => {
   return `${secs}s`;
 };
 
+export const hasVideo = (proc: any): boolean => {
+  if (!proc) return true;
+  try {
+    const codecCfg = typeof proc.codec_config === 'string' ? JSON.parse(proc.codec_config) : (proc.codec_config || {});
+    if (codecCfg.vcodec && codecCfg.vcodec !== 'none') return true;
+    const inputCfg = typeof proc.input_config === 'string' ? JSON.parse(proc.input_config) : (proc.input_config || {});
+    if (inputCfg.has_video === true) return true;
+    if (inputCfg.has_video === false) return false;
+    if (!codecCfg.vcodec || codecCfg.vcodec === 'none') return false;
+  } catch {}
+  return true;
+};
+
 export const isActiveService = (p: any, actionPending: Record<number, string> = {}) => {
   if (p.type && p.type !== 'service') return false;
   if (p.status === 'running' || p.status === 'starting' || p.status === 'stopping' || p.status === 'restarting') return true;
@@ -178,30 +191,30 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         Output: <code className="text-[var(--text-primary)] font-mono">{formatOutputDesc(proc.output_config)}</code>
                       </p>
                     </div>
-                    <div className="flex gap-4 mt-1 text-xs text-text-secondary flex-wrap items-center">
-                      <span>PID: <strong className="text-[var(--text-primary)] font-mono">{proc.pid || 'N/A'}</strong></span>
+                    <div className="flex gap-x-3 gap-y-1 mt-1 text-xs text-text-secondary flex-wrap items-center font-mono tabular-nums">
+                      <span>PID: <strong className="text-[var(--text-primary)] inline-block min-w-[5ch]">{proc.pid || 'N/A'}</strong></span>
                       <span className="opacity-20 select-none">|</span>
-                      <span>Uptime: <strong className="text-[var(--text-primary)] font-mono">{formatUptime(proc.last_start)}</strong></span>
+                      <span>Uptime: <strong className="text-[var(--text-primary)] inline-block min-w-[6ch]">{formatUptime(proc.last_start)}</strong></span>
                       <span className="opacity-20 select-none">|</span>
-                      <span>CPU: <strong className="text-[var(--text-primary)]">{proc.cpu || 0}%</strong></span>
+                      <span>CPU: <strong className="text-[var(--text-primary)] inline-block min-w-[4ch] text-right">{proc.cpu || 0}%</strong></span>
                       <span className="opacity-20 select-none">|</span>
-                      <span>RAM: <strong className="text-[var(--text-primary)]">{proc.ram || 0} MB</strong></span>
-                      {proc.fps && proc.fps !== '0' && proc.fps !== '0.0' && (
+                      <span>RAM: <strong className="text-[var(--text-primary)] inline-block min-w-[6ch] text-right">{proc.ram || 0} MB</strong></span>
+                      {hasVideo(proc) && proc.fps && proc.fps !== '0' && proc.fps !== '0.0' && (
                         <>
                           <span className="opacity-20 select-none">|</span>
-                          <span>FPS: <strong className="text-[var(--text-primary)]">{proc.fps}</strong></span>
+                          <span>FPS: <strong className="text-[var(--text-primary)] inline-block min-w-[4ch] text-right">{proc.fps}</strong></span>
                         </>
                       )}
                       {proc.bitrate && proc.bitrate !== 'N/A' && proc.bitrate !== '0 kb/s' && proc.bitrate !== '0.0kbits/s' && (
                         <>
                           <span className="opacity-20 select-none">|</span>
-                          <span>Bitrate: <strong className="text-[var(--text-primary)]">{proc.bitrate}</strong></span>
+                          <span>Bitrate: <strong className="text-[var(--text-primary)] inline-block min-w-[9ch] text-right">{proc.bitrate}</strong></span>
                         </>
                       )}
                       {proc.speed && proc.speed !== '0x' && proc.speed !== '0.00x' && proc.speed !== 'N/A' && (
                         <>
                           <span className="opacity-20 select-none">|</span>
-                          <span>Speed: <strong className="text-[var(--text-primary)]">{proc.speed}</strong></span>
+                          <span>Speed: <strong className="text-[var(--text-primary)] inline-block min-w-[5ch] text-right">{proc.speed}</strong></span>
                         </>
                       )}
                     </div>

@@ -189,6 +189,11 @@ class ProcessManager:
                     media_proc.pid = proc.pid
                     media_proc.status = 'running'
                     media_proc.last_start = datetime.utcnow()
+                    media_proc.fps = "0"
+                    media_proc.bitrate = "0 kb/s"
+                    media_proc.speed = "0x"
+                    media_proc.cpu_usage = 0
+                    media_proc.ram_usage = 0
                     session.commit()
             
             # Start watchdog and log reader tasks
