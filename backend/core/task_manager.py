@@ -1203,6 +1203,24 @@ class TaskManager:
                     
         log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")
 
+        # Clean up expired TaskExecution records from SQLite database
+        try:
+            with self.db_session_factory() as session:
+                from database.models import TaskExecution
+                cutoff = datetime.utcnow() - timedelta(days=retention_days)
+                expired_execs = session.query(TaskExecution).filter(
+                    TaskExecution.started_at.isnot(None),
+                    TaskExecution.started_at < cutoff,
+                    TaskExecution.status.in_(["finished", "stopped", "error", "interrupted"])
+                ).all()
+                if expired_execs:
+                    for ex in expired_execs:
+                        session.delete(ex)
+                    session.commit()
+                    log_info(f"Purged {len(expired_execs)} TaskExecution database records older than {retention_days} days.")
+        except Exception as db_clean_err:
+            log_error(f"Failed to prune old task execution records from DB: {db_clean_err}")
+
     async def _execute_ssl_renew(self, log_info, log_error):
         from services.cert_manager import CertificateManager
         cert_mgr = CertificateManager()

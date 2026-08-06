@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.0] - 2026-08-06
+
+### Added
+- **Task Form Modal Activation Toggle (`ProcessConfigForm.tsx`, `SchedulingFormSection.tsx`)**:
+  - Added `Enable Task Schedule` (`is_active`) toggle switch inside the Task Creation/Editing Modal General tab, allowing operators to set schedule activation state when creating or modifying tasks.
+- **Manual Task Execution History Purge (`DELETE /tasks/{task_id}/executions`)**:
+  - **Clear History Endpoint**: Added backend endpoint `@app.delete("/tasks/{task_id}/executions")` to delete all historical execution logs for a specific task.
+  - **UI Purge Button**: Added **"CLEAR HISTORY"** button (with confirmation warning dialog) in the Task Run History modal (`ScheduledTasks.tsx`).
+- **Automated Database Task Log Retention Cleanup (`_execute_log_rotate`)**:
+  - Extended system task `system://log_rotate` in `task_manager.py` to automatically purge SQLite `TaskExecution` records older than `retention_days` (default 30 days).
+
 ## [1.40.0] - 2026-08-06
 
 ### Added

@@ -3993,6 +3993,19 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success", "message": f"Task {task_id} and its executions deleted."}
 
+@app.delete("/tasks/{task_id}/executions")
+def clear_task_executions(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(ScheduledTask).get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    executions = db.query(TaskExecution).filter(TaskExecution.task_id == task_id).all()
+    count = len(executions)
+    for exec_item in executions:
+        db.delete(exec_item)
+    db.commit()
+    return {"status": "success", "message": f"Cleared {count} execution records for task {task_id}."}
+
 @app.post("/tasks/{task_id}/trigger")
 async def trigger_task(task_id: int, db: Session = Depends(get_db)):
     task = db.query(ScheduledTask).get(task_id)

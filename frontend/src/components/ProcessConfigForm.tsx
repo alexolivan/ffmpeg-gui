@@ -102,6 +102,7 @@ interface ProcessConfig {
   network_timeout: number | null;
   debug_mode: boolean;
   log_storage_id: number | null;
+  is_active?: boolean;
 }
 
 interface ProcessConfigFormProps {
@@ -440,7 +441,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         retry_delay: initialConfig.retry_policy?.retry_delay ?? 10,
         network_timeout: initialConfig.network_timeout ?? 15,
         debug_mode: !!initialConfig.debug_mode,
-        log_storage_id: initialConfig.log_storage_id ?? null
+        log_storage_id: initialConfig.log_storage_id ?? null,
+        is_active: initialConfig.is_active !== undefined ? initialConfig.is_active : true,
       };
     }
     return {
@@ -489,7 +491,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       retry_delay: 10,
       network_timeout: 15,
       debug_mode: false,
-      log_storage_id: null
+      log_storage_id: null,
+      is_active: true,
     };
   };
 
@@ -1439,6 +1442,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {isTask ? (
                 <SchedulingFormSection
+                  is_active={config.is_active}
                   schedule_type={config.schedule_type}
                   schedule_cron={config.schedule_cron}
                   schedule_datetime={config.schedule_datetime}

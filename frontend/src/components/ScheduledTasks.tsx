@@ -95,6 +95,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     } catch {}
   };
 
+  const handleClearTaskHistory = async (taskId: number) => {
+    if (!window.confirm(t('tasks.clearHistoryConfirm', 'Are you sure you want to delete all execution history and logs for this task?'))) {
+      return;
+    }
+    try {
+      const r = await fetch(`${API}/tasks/${taskId}/executions`, { method: 'DELETE' });
+      if (r.ok) {
+        viewTaskDetails(taskId);
+        fetchTasks();
+      }
+    } catch {}
+  };
+
   // Poll task details if open (to get updated execution list)
   useEffect(() => {
     if (!selectedTaskDetails) return;
@@ -108,7 +121,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const handleSaveTask = async (payload: any) => {
     const finalPayload = {
       ...payload,
-      is_active: editingTask ? editingTask.is_active : true
+      is_active: payload.is_active !== undefined ? payload.is_active : (editingTask ? editingTask.is_active : true)
     };
     try {
       const url = editingTask ? `${API}/tasks/${editingTask.id}` : `${API}/tasks`;
@@ -785,15 +798,30 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
             >
               ✕
             </button>
-            <h3 className="text-2xl font-black mb-1">
-              {selectedTaskDetails.task.name}
-              {selectedTaskDetails.task.alias && (
-                <span className="text-sm font-semibold text-text-secondary ml-2 opacity-80" title={`LCD Alias: ${selectedTaskDetails.task.alias}`}>
-                  [{selectedTaskDetails.task.alias}]
-                </span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pr-8">
+              <div>
+                <h3 className="text-2xl font-black mb-1">
+                  {selectedTaskDetails.task.name}
+                  {selectedTaskDetails.task.alias && (
+                    <span className="text-sm font-semibold text-text-secondary ml-2 opacity-80" title={`LCD Alias: ${selectedTaskDetails.task.alias}`}>
+                      [{selectedTaskDetails.task.alias}]
+                    </span>
+                  )}
+                </h3>
+                <p className="text-text-secondary text-sm">Execution History & Diagnostics</p>
+              </div>
+
+              {selectedTaskDetails.executions.length > 0 && (
+                <button
+                  onClick={() => handleClearTaskHistory(selectedTaskDetails.task.id)}
+                  className="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/20 flex items-center gap-2 transition-all self-start sm:self-auto"
+                  title={t('tasks.clearHistory', 'Clear History')}
+                >
+                  <TrashIcon size={14} />
+                  {t('tasks.clearHistory', 'CLEAR HISTORY')}
+                </button>
               )}
-            </h3>
-            <p className="text-text-secondary text-sm mb-6">Execution History & Diagnostics</p>
+            </div>
 
             <div className="space-y-4">
               {selectedTaskDetails.executions.length === 0 ? (

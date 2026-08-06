@@ -643,7 +643,11 @@
     "noActiveTasks": "No hi ha tasques actives programades.",
     "noDisabledTasks": "No hi ha tasques desactivades.",
     "enableTask": "Activar Tasca",
-    "disableTask": "Desactivar Tasca"
+    "disableTask": "Desactivar Tasca",
+    "clearHistory": "Esborrar Històric",
+    "clearHistoryConfirm": "Estàs segur que vols eliminar tot l'historial d'execucions i registres d'aquesta tasca?",
+    "taskActiveLabel": "Activar Programació de Tasca",
+    "taskActiveDesc": "Quan estigui activada, el programador automàtic executarà aquesta tasca segons el seu horari."
   },
   "sdks": {
     "modalTitle": "INVENTARI I CICLE DE VIDA DE SDKs",

@@ -643,7 +643,11 @@
     "noActiveTasks": "No active scheduled tasks.",
     "noDisabledTasks": "No disabled tasks.",
     "enableTask": "Enable Task",
-    "disableTask": "Disable Task"
+    "disableTask": "Disable Task",
+    "clearHistory": "Clear History",
+    "clearHistoryConfirm": "Are you sure you want to delete all execution history and logs for this task?",
+    "taskActiveLabel": "Enable Task Schedule",
+    "taskActiveDesc": "When enabled, the automated scheduler will execute this task according to its schedule."
   },
   "sdks": {
     "modalTitle": "SDK INVENTORY & LIFECYCLE",

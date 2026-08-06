@@ -643,7 +643,11 @@
     "noActiveTasks": "No hay tareas activas programadas.",
     "noDisabledTasks": "No hay tareas desactivadas.",
     "enableTask": "Activar Tarea",
-    "disableTask": "Desactivar Tarea"
+    "disableTask": "Desactivar Tarea",
+    "clearHistory": "Borrar Histórico",
+    "clearHistoryConfirm": "¿Estás seguro de que deseas eliminar todo el historial de ejecuciones y registros de esta tarea?",
+    "taskActiveLabel": "Activar Programación de Tarea",
+    "taskActiveDesc": "Cuando esté activada, el programador automático ejecutará esta tarea según su horario."
   },
   "sdks": {
     "modalTitle": "INVENTARIO Y CICLO DE VIDA DE SDKs",

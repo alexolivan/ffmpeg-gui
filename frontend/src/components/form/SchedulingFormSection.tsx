@@ -1,6 +1,7 @@
 import React from 'react';
 
 interface SchedulingFormSectionProps {
+  is_active?: boolean;
   schedule_type: string;
   schedule_cron: string;
   schedule_datetime: string;
@@ -10,6 +11,7 @@ interface SchedulingFormSectionProps {
   retry_max: number;
   retry_delay: number;
   onChange: (updates: {
+    is_active?: boolean;
     schedule_type?: string;
     schedule_cron?: string;
     schedule_datetime?: string;
@@ -22,6 +24,7 @@ interface SchedulingFormSectionProps {
 }
 
 export const SchedulingFormSection: React.FC<SchedulingFormSectionProps> = ({
+  is_active = true,
   schedule_type,
   schedule_cron,
   schedule_datetime,
@@ -37,6 +40,26 @@ export const SchedulingFormSection: React.FC<SchedulingFormSectionProps> = ({
       <div className="flex items-center gap-1.5 mb-1.5">
         <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
         <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">Trigger & Scheduling</h4>
+      </div>
+
+      {/* Task Schedule Activation Toggle */}
+      <div className="flex items-center justify-between p-2.5 bg-white/5 border border-white/10 rounded-lg mb-2">
+        <div>
+          <div className="text-xs font-bold text-[var(--text-primary)]">Enable Task Schedule</div>
+          <div className="text-[10px] text-text-secondary">When enabled, the automated scheduler will execute this task according to its schedule.</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange({ is_active: !is_active })}
+          className={`px-3 py-1 rounded-full text-xs font-black transition-all border flex items-center gap-1.5 ${
+            is_active
+              ? 'bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20'
+              : 'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10'
+          }`}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${is_active ? 'bg-green-400' : 'bg-white/20'}`} />
+          {is_active ? 'Active' : 'Disabled'}
+        </button>
       </div>
 
       {/* Trigger Mechanism */}
