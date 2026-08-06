@@ -405,7 +405,7 @@ class ProcessManager:
                 if not os.path.exists(path):
                     raise FileNotFoundError(f"Overlay image does not exist: {path}")
 
-    def _build_ffmpeg_cmd(self, media_proc, ffmpeg_bin):
+    def _build_ffmpeg_cmd(self, media_proc, ffmpeg_bin, limit_sec=None, execution_id=None):
         """Build the ffmpeg command line from the process configuration.
         
         Supports two input_config formats:
@@ -834,7 +834,7 @@ class ProcessManager:
 
             # ── Output ──
             self._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
-            self._append_output(cmd, output_cfg, codec_cfg)
+            self._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec)
             
         # ── Secondary Preview Output ──
         is_service = getattr(media_proc, 'type', 'service') == 'service'
@@ -843,8 +843,12 @@ class ProcessManager:
             from database.db import PREVIEWS_DIR
             previews_dir = PREVIEWS_DIR
             os.makedirs(previews_dir, exist_ok=True)
-            proc_id_str = getattr(media_proc, 'id', None) or "preview"
-            preview_path = os.path.join(previews_dir, f"preview_{proc_id_str}.jpg")
+            # Tasks: preview keyed by execution_id (unique per run); Services: by proc.id
+            if execution_id is not None:
+                preview_path = os.path.join(previews_dir, f"preview_task_{execution_id}.jpg")
+            else:
+                proc_id_str = getattr(media_proc, 'id', None) or "preview"
+                preview_path = os.path.join(previews_dir, f"preview_{proc_id_str}.jpg")
             
             if is_vram:
                 preview_vf = "hwdownload,format=nv12,fps=1,scale=480:-1"
@@ -1010,6 +1014,9 @@ class ProcessManager:
             cmd += ["-f", "v4l2", "-i", device]
         elif input_type in ('http_audio', 'rtmp', 'rtsp', 'hls', 'http'):
             cmd += ["-i", input_cfg.get('path', '')]
+        elif input_type == 'lavfi':
+            # Generic lavfi: full expression in 'path' field (e.g. "testsrc=duration=1:size=176x144:rate=1")
+            cmd += ["-f", "lavfi", "-i", input_cfg.get('path', 'testsrc')]
         elif input_type == 'lavfi_video':
             pattern = input_cfg.get('pattern', 'testsrc')
             size = input_cfg.get('size')
@@ -1203,7 +1210,7 @@ class ProcessManager:
             if params.get('vbr'):
                 cmd += [f"-vbr:a:{idx}", params['vbr']]
 
-    def _append_output(self, cmd: list, output_cfg: dict, codec_cfg: dict):
+    def _append_output(self, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None):
         """Append output destination to the command."""
         output_type = output_cfg.get('type')
         
@@ -1257,7 +1264,10 @@ class ProcessManager:
                 flags.append("system_b")
             if flags:
                 cmd += ["-mpegts_flags", "+".join(flags)]
-                
+
+        if limit_sec is not None and int(limit_sec) > 0:
+            cmd += ["-t", str(int(limit_sec))]
+
         if output_type == 'file':
             path = output_cfg.get('path', 'output.mp4')
             if is_mpegts:
