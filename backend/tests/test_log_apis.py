@@ -172,8 +172,8 @@ class TestLogAPIs(unittest.TestCase):
         self.assertEqual(default_data["drop_frames"], 0)
         self.assertEqual(default_data["progress"], "N/A")
         
-        # 2. File exists (we will write to /tmp/ffmpeg_progress_{proc_id}.log)
-        tmp_progress_path = f"/tmp/ffmpeg_progress_{proc_id}.log"
+        # 2. File exists (we will write to /tmp/ffmpeg_progress_{proc_id}s.log)
+        tmp_progress_path = f"/tmp/ffmpeg_progress_{proc_id}s.log"
         progress_content = """frame=523
 fps=29.97
 bitrate=4500.2kbits/s
