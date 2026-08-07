@@ -3723,10 +3723,17 @@ def list_tasks(db: Session = Depends(get_db)):
             "last_execution": {
                 "id": last_exec.id,
                 "status": last_exec.status,
+                "pid": last_exec.pid,
                 "started_at": last_exec.started_at.isoformat() if last_exec.started_at else None,
                 "stopped_at": last_exec.stopped_at.isoformat() if last_exec.stopped_at else None,
                 "exit_code": last_exec.exit_code,
                 "error_message": last_exec.error_message,
+                "cpu": last_exec.cpu_usage,
+                "ram": last_exec.ram_usage,
+                "fps": last_exec.fps,
+                "bitrate": last_exec.bitrate,
+                "speed": last_exec.speed,
+                "retry_count": getattr(last_exec, 'retry_count', 0),
             } if last_exec else None
         })
     return res

@@ -396,8 +396,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           ) : (
             <div className="divide-y divide-white/5">
               {tasks.filter(t => t.is_active).map(task => {
-                const isRunning = task.last_execution && (task.last_execution.status === 'running' || task.last_execution.status === 'retrying');
-                const exec = task.last_execution;
+                const liveExec = taskExecutions.find((e: any) => e.task_id === task.id && (e.status === 'running' || e.status === 'retrying'));
+                const exec = liveExec || task.last_execution;
+                const isRunning = exec && (exec.status === 'running' || exec.status === 'retrying');
                 return (
                   <div 
                     key={task.id} 
