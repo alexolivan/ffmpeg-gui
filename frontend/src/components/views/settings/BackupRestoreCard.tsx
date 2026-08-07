@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ExportIcon, ImportIcon, ShieldIcon } from '../../Icons';
+import { ExportIcon, ImportIcon, ShieldIcon, GearIcon, ServerIcon } from '../../Icons';
 
 interface BackupRestoreCardProps {
   API: string;
@@ -9,12 +9,17 @@ interface BackupRestoreCardProps {
 export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => {
   const { t } = useTranslation();
 
-  // Export States
-  const [exportSystemSettings, setExportSystemSettings] = useState(true);
+  // Granular Export Toggles
+  const [exportGuiGeneral, setExportGuiGeneral] = useState(true);
+  const [exportGuiNetworkSsl, setExportGuiNetworkSsl] = useState(true);
+  const [exportLcdDisplay, setExportLcdDisplay] = useState(true);
+  const [exportLoggingRetention, setExportLoggingRetention] = useState(true);
+  const [exportWatchdogGrace, setExportWatchdogGrace] = useState(true);
   const [exportServices, setExportServices] = useState(true);
   const [exportTasks, setExportTasks] = useState(true);
   const [exportStorageVolumes, setExportStorageVolumes] = useState(true);
   const [exportNotifications, setExportNotifications] = useState(true);
+
   const [isExporting, setIsExporting] = useState(false);
 
   // Import States
@@ -25,11 +30,27 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
   const [isImporting, setIsImporting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  const handleSelectAll = (val: boolean) => {
+    setExportGuiGeneral(val);
+    setExportGuiNetworkSsl(val);
+    setExportLcdDisplay(val);
+    setExportLoggingRetention(val);
+    setExportWatchdogGrace(val);
+    setExportServices(val);
+    setExportTasks(val);
+    setExportStorageVolumes(val);
+    setExportNotifications(val);
+  };
+
   const handleExportBackup = async () => {
     setIsExporting(true);
     try {
       const payload = {
-        system_settings: exportSystemSettings,
+        gui_general: exportGuiGeneral,
+        gui_network_ssl: exportGuiNetworkSsl,
+        lcd_display: exportLcdDisplay,
+        logging_retention: exportLoggingRetention,
+        watchdog_grace: exportWatchdogGrace,
         services: exportServices,
         tasks: exportTasks,
         storage_volumes: exportStorageVolumes,
@@ -110,7 +131,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
       }
 
       const counts = result.imported || {};
-      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('settings.tabs.general', 'Settings')}: ${counts.system_settings ? '✓' : '-'}, ${t('nav.services', 'Services')}: ${counts.services || 0}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0})`;
+      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('nav.services', 'Services')}: ${counts.services || 0}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0})`;
       setImportSuccess(summaryMsg);
       setImportFile(null);
       setImportData(null);
@@ -121,11 +142,13 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
     }
   };
 
+  const anyExportSelected = exportGuiGeneral || exportGuiNetworkSsl || exportLcdDisplay || exportLoggingRetention || exportWatchdogGrace || exportServices || exportTasks || exportStorageVolumes || exportNotifications;
+
   return (
     <div className="space-y-6">
-      {/* CARD 1: EXPORT CONFIGURATION */}
+      {/* CARD 1: GRANULAR EXPORT CONFIGURATION */}
       <div className="glass-card p-6 border-[var(--glass-border)] shadow-xl relative overflow-hidden">
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-[var(--glass-border)]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-[var(--glass-border)]">
           <div className="flex items-center gap-2.5">
             <ExportIcon size={20} className="text-brand-lime" />
             <div>
@@ -133,83 +156,176 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 {t('settings.backup.exportTitle', 'Export System Backup (.json)')}
               </h2>
               <p className="text-xs text-text-secondary mt-0.5">
-                {t('settings.backup.exportDesc', 'Select configuration sections to include in your downloadable JSON backup file.')}
+                {t('settings.backup.exportDesc', 'Select specific configuration subsections to include in your downloadable JSON backup file.')}
               </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleSelectAll(true)}
+              className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-brand-lime border border-white/10"
+            >
+              Select All
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelectAll(false)}
+              className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-text-secondary border border-white/10"
+            >
+              Deselect All
+            </button>
+          </div>
+        </div>
+
+        {/* Category 1: Panel & Interface */}
+        <div className="space-y-4 mb-5">
+          <div>
+            <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <GearIcon size={12} /> Panel Preferences & Branding
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportGuiGeneral}
+                  onChange={(e) => setExportGuiGeneral(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">General Panel & Theme</span>
+                  <span className="text-[10px] text-text-secondary truncate block">Language, theme, node name, logo text</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportGuiNetworkSsl}
+                  onChange={(e) => setExportGuiNetworkSsl(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">Network Ports & SSL/TLS</span>
+                  <span className="text-[10px] text-text-secondary truncate block">HTTP/HTTPS ports, listen address & SSL</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportLcdDisplay}
+                  onChange={(e) => setExportLcdDisplay(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">LCD Hardware & LEDs</span>
+                  <span className="text-[10px] text-text-secondary truncate block">CrystalFontz LCD port, brightness & LED profiles</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Category 2: Logging & Watchdog */}
+          <div>
+            <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <ShieldIcon size={12} /> System Maintenance & Watchdog
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportLoggingRetention}
+                  onChange={(e) => setExportLoggingRetention(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">Log Retention & Storage</span>
+                  <span className="text-[10px] text-text-secondary truncate block">Retention days, rotation limits & compression</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportWatchdogGrace}
+                  onChange={(e) => setExportWatchdogGrace(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">Watchdog Startup Delays</span>
+                  <span className="text-[10px] text-text-secondary truncate block">Grace delays, backoff & network wait timeouts</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportNotifications}
+                  onChange={(e) => setExportNotifications(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">Email Notifications</span>
+                  <span className="text-[10px] text-text-secondary truncate block">SMTP server, credentials & alert triggers</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Category 3: Streaming, Tasks & Storage */}
+          <div>
+            <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <ServerIcon size={12} /> Media Pipeline & Automation
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportServices}
+                  onChange={(e) => setExportServices(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">{t('nav.services', 'Media Services')}</span>
+                  <span className="text-[10px] text-text-secondary truncate block">FFmpeg streaming pipelines & codecs</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportTasks}
+                  onChange={(e) => setExportTasks(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">{t('nav.tasks', 'Scheduled Tasks')}</span>
+                  <span className="text-[10px] text-text-secondary truncate block">Cron & one-shot automation routines</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportStorageVolumes}
+                  onChange={(e) => setExportStorageVolumes(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">{t('settings.tabs.storage', 'Storage Volumes')}</span>
+                  <span className="text-[10px] text-text-secondary truncate block">Media directories & mount paths</span>
+                </div>
+              </label>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-5">
-          <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
-            <input
-              type="checkbox"
-              checked={exportSystemSettings}
-              onChange={(e) => setExportSystemSettings(e.target.checked)}
-              className="accent-brand-lime w-4 h-4 rounded"
-            />
-            <div className="text-xs">
-              <span className="font-bold text-[var(--text-primary)] block">{t('settings.tabs.general', 'System Settings')}</span>
-              <span className="text-[10px] text-text-secondary">{t('settings.backup.sectionSystemDesc', 'Core panel, language, theme, logging')}</span>
-            </div>
-          </label>
-
-          <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
-            <input
-              type="checkbox"
-              checked={exportServices}
-              onChange={(e) => setExportServices(e.target.checked)}
-              className="accent-brand-lime w-4 h-4 rounded"
-            />
-            <div className="text-xs">
-              <span className="font-bold text-[var(--text-primary)] block">{t('nav.services', 'Media Services')}</span>
-              <span className="text-[10px] text-text-secondary">{t('settings.backup.sectionServicesDesc', 'FFmpeg streaming services & watchdog')}</span>
-            </div>
-          </label>
-
-          <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
-            <input
-              type="checkbox"
-              checked={exportTasks}
-              onChange={(e) => setExportTasks(e.target.checked)}
-              className="accent-brand-lime w-4 h-4 rounded"
-            />
-            <div className="text-xs">
-              <span className="font-bold text-[var(--text-primary)] block">{t('nav.tasks', 'Scheduled Tasks')}</span>
-              <span className="text-[10px] text-text-secondary">{t('settings.backup.sectionTasksDesc', 'Cron & one-shot automation routines')}</span>
-            </div>
-          </label>
-
-          <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
-            <input
-              type="checkbox"
-              checked={exportStorageVolumes}
-              onChange={(e) => setExportStorageVolumes(e.target.checked)}
-              className="accent-brand-lime w-4 h-4 rounded"
-            />
-            <div className="text-xs">
-              <span className="font-bold text-[var(--text-primary)] block">{t('settings.tabs.storage', 'Storage Volumes')}</span>
-              <span className="text-[10px] text-text-secondary">{t('settings.backup.sectionStorageDesc', 'Storage directories & mount paths')}</span>
-            </div>
-          </label>
-
-          <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
-            <input
-              type="checkbox"
-              checked={exportNotifications}
-              onChange={(e) => setExportNotifications(e.target.checked)}
-              className="accent-brand-lime w-4 h-4 rounded"
-            />
-            <div className="text-xs">
-              <span className="font-bold text-[var(--text-primary)] block">{t('settings.backup.sectionNotificationsTitle', 'Notifications')}</span>
-              <span className="text-[10px] text-text-secondary">{t('settings.backup.sectionNotificationsDesc', 'SMTP email server & alert triggers')}</span>
-            </div>
-          </label>
-        </div>
-
         <button
-          disabled={isExporting || (!exportSystemSettings && !exportServices && !exportTasks && !exportStorageVolumes && !exportNotifications)}
+          disabled={isExporting || !anyExportSelected}
           onClick={handleExportBackup}
-          className="pill-button bg-brand-lime text-black font-bold py-2.5 px-6 hover:bg-brand-lime/90 disabled:opacity-50 flex items-center gap-2"
+          className="pill-button bg-brand-lime text-black font-bold py-2.5 px-6 hover:bg-brand-lime/90 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
         >
           <ExportIcon size={16} />
           {isExporting ? t('settings.backup.exporting', 'GENERATING BACKUP...') : t('settings.backup.exportBtn', 'EXPORT BACKUP (.JSON)')}
@@ -271,8 +387,12 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
                 <div className="p-2 rounded bg-white/5 border border-white/5">
-                  <span className="text-[10px] text-text-secondary block">System Settings</span>
-                  <strong className="text-[var(--text-primary)]">{importData.sections?.system_settings ? '✓ Present' : 'None'}</strong>
+                  <span className="text-[10px] text-text-secondary block">GUI General & Theme</span>
+                  <strong className="text-[var(--text-primary)]">{importData.sections?.gui_general || importData.sections?.system_settings ? '✓ Present' : 'None'}</strong>
+                </div>
+                <div className="p-2 rounded bg-white/5 border border-white/5">
+                  <span className="text-[10px] text-text-secondary block">LCD Hardware</span>
+                  <strong className="text-[var(--text-primary)]">{importData.sections?.lcd_display ? '✓ Present' : 'None'}</strong>
                 </div>
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">Services</span>
@@ -281,10 +401,6 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">Tasks</span>
                   <strong className="text-[var(--text-primary)]">{importData.sections?.tasks?.length || 0} entries</strong>
-                </div>
-                <div className="p-2 rounded bg-white/5 border border-white/5">
-                  <span className="text-[10px] text-text-secondary block">Storage Volumes</span>
-                  <strong className="text-[var(--text-primary)]">{importData.sections?.storage_volumes?.length || 0} entries</strong>
                 </div>
               </div>
 
@@ -298,7 +414,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
               <button
                 onClick={() => setShowConfirmModal(true)}
                 disabled={isImporting}
-                className="pill-button bg-brand-orange text-black font-bold py-2.5 px-6 hover:bg-brand-orange/90 disabled:opacity-50 flex items-center gap-2"
+                className="pill-button bg-brand-orange text-black font-bold py-2.5 px-6 hover:bg-brand-orange/90 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
               >
                 <ImportIcon size={16} />
                 {t('settings.backup.restoreBtn', 'RESTORE BACKUP CONFIGURATION')}
@@ -321,13 +437,13 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setShowConfirmModal(false)}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 rounded-lg text-xs font-bold uppercase tracking-wider"
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer"
               >
                 {t('common.cancel', 'Cancel')}
               </button>
               <button
                 onClick={handleConfirmImport}
-                className="px-4 py-2 bg-brand-orange text-black font-bold rounded-lg text-xs uppercase tracking-wider hover:bg-brand-orange/90 shadow-lg shadow-brand-orange/20"
+                className="px-4 py-2 bg-brand-orange text-black font-bold rounded-lg text-xs uppercase tracking-wider hover:bg-brand-orange/90 shadow-lg shadow-brand-orange/20 cursor-pointer"
               >
                 {t('settings.backup.confirmBtn', 'Confirm Restore')}
               </button>

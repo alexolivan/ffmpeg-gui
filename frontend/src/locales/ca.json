@@ -80,9 +80,9 @@
       "general": "General",
       "lcd": "Pantalla LCD",
       "storage": "Emmagatzematge",
-      "security": "Xarxa i Seguretat",
-      "alsa": "ÀUDIO ALSA",
-      "backup": "CÒPIA DE SEGURETAT I RESTAURACIÓ"
+      "security": "Seguretat",
+      "alsa": "Àudio ALSA",
+      "backup": "Còpia de Seguretat"
     },
     "alsa": {
       "title": "MESCLADOR DE HARDWARE D'ÀUDIO ALSA",

@@ -80,9 +80,9 @@
       "general": "General",
       "lcd": "Pantalla LCD",
       "storage": "Almacenamiento",
-      "security": "Red y Seguridad",
-      "alsa": "AUDIO ALSA",
-      "backup": "COPIA DE SEGURIDAD Y RESTAURACIÓN"
+      "security": "Seguridad",
+      "alsa": "Audio ALSA",
+      "backup": "Copia de Seguridad"
     },
     "alsa": {
       "title": "MEZCLADOR DE HARDWARE DE AUDIO ALSA",
