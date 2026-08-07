@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { hasVideo as hasVideoHelper } from '../views/ServicesView';
 
 interface ProcessPreviewModalProps {
@@ -28,6 +29,7 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
   onRestartService,
   API,
 }) => {
+  const { t } = useTranslation();
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const currentProcess = telemetry.find(p => p.id === selectedProcess.id) || selectedProcess;
@@ -378,6 +380,22 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
               className="pill-button bg-white/10 hover:bg-white/15 text-xs py-2 px-6 disabled:opacity-50 disabled:pointer-events-none"
             >
               CLONE SERVICE
+            </button>
+            <button 
+              disabled={!!actionPending[currentProcess.id]}
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${API}/processes/${currentProcess.id}/clone-as-task`, { method: 'POST' });
+                  if (!res.ok) throw new Error('Failed to clone service as task');
+                  alert(t('common.clonedSuccess', 'Cloned successfully!'));
+                  onClose();
+                } catch (err: any) {
+                  alert(err.message || 'Error cloning service as task');
+                }
+              }}
+              className="pill-button bg-brand-lime/10 hover:bg-brand-lime/20 text-brand-lime border border-brand-lime/20 text-xs font-bold py-2 px-4 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              COPY AS TASK
             </button>
             {currentProcess.status === 'running' ? (
               <>
