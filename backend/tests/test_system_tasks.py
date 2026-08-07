@@ -136,3 +136,23 @@ class TestSystemTasks(unittest.IsolatedAsyncioTestCase):
         # Cleanup test records
         self.db.delete(execution)
         self.db.commit()
+
+    async def test_execute_on_boot_cleanup(self):
+        from database.models import ProcessLog
+        cutoff_old = datetime.datetime.utcnow() - datetime.timedelta(days=40)
+        
+        old_log = ProcessLog(
+            process_id=1,
+            timestamp=cutoff_old,
+            level="ERROR",
+            message="Old process log to be purged"
+        )
+        self.db.add(old_log)
+        self.db.commit()
+        self.db.refresh(old_log)
+        old_log_id = old_log.id
+
+        await self.manager.execute_on_boot_cleanup()
+
+        purged = self.db.query(ProcessLog).filter(ProcessLog.id == old_log_id).first()
+        self.assertIsNone(purged, "ProcessLog older than 30 days should be purged on boot cleanup")

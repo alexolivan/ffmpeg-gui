@@ -2314,6 +2314,7 @@ async def startup_event():
 
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
+    asyncio.create_task(task_manager.execute_on_boot_cleanup())
     await scheduler.start()
 
     try:

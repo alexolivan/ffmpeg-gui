@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.2] - 2026-08-07
+
+### Added
+- **On-Boot Retention Cleanup & Maintenance Routine (`task_manager.py`, `main.py`)**:
+  - Implemented `TaskManager.execute_on_boot_cleanup()` triggered asynchronously during backend server startup (`startup_event`).
+  - Guarantees log rotation and database retention cleanup runs on every boot even if machines were powered off during scheduled midnight cron (`system://log_rotate`).
+  - Extended retention cleanup to purge expired `ProcessLog` database records and orphaned `/dev/shm` / `/tmp` progress logs older than 1 day.
+
 ## [1.43.1] - 2026-08-07
 
 ### Fixed
