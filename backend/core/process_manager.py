@@ -766,17 +766,42 @@ class ProcessManager:
                                     else:
                                         self.watchdog_low_speed_since[process_id] = None
 
-                            # Compare with previous iteration
-                            # Treat frame as matching if it's absent (None) in both.
-                            # If a video stream gets its first frame, we reset the baseline to avoid false matches.
-                            if prev_out_time_us is None or (frame is not None and prev_frame is None):
-                                prev_frame = frame
-                                prev_out_time_us = out_time_us
-                                self.watchdog_stalled_since[process_id] = None
-                            else:
-                                if frame == prev_frame and out_time_us == prev_out_time_us:
-                                    # They have NOT changed
-                                    if has_had_activity:
+                            # Check startup stall (process running for > network_wait_timeout with zero activity/frames)
+                            elapsed_since_start = (datetime.utcnow() - start_time).total_seconds()
+                            net_timeout_cfg = self.get_network_wait_timeout()
+                            if media_proc.type == 'service' and media_proc.watchdog_enabled and not has_had_activity:
+                                if elapsed_since_start > net_timeout_cfg:
+                                    log_msg = f"Watchdog: Service failed to produce any frames/progress after {int(elapsed_since_start)}s (hung at startup/network connection). Force killing..."
+                                    self.logger.error(log_msg)
+                                    from database.models import ProcessLog
+                                    log = ProcessLog(
+                                        process_id=process_id,
+                                        level='ERROR',
+                                        message=log_msg
+                                    )
+                                    session.add(log)
+                                    session.commit()
+
+                                    if proc is not None:
+                                        try:
+                                            proc.kill()
+                                        except Exception as kerr:
+                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
+                                    else:
+                                        import signal
+                                        try:
+                                            os.kill(pid, signal.SIGKILL)
+                                        except Exception as kerr:
+                                            self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
+
+                            # Compare with previous iteration when activity is present
+                            if has_had_activity:
+                                if prev_out_time_us is None:
+                                    prev_frame = frame
+                                    prev_out_time_us = out_time_us
+                                    self.watchdog_stalled_since[process_id] = None
+                                else:
+                                    if frame == prev_frame and out_time_us == prev_out_time_us:
                                         if self.watchdog_stalled_since.get(process_id) is None:
                                             self.watchdog_stalled_since[process_id] = datetime.utcnow()
                                         elif (datetime.utcnow() - self.watchdog_stalled_since[process_id]).total_seconds() > 15:
@@ -807,11 +832,11 @@ class ProcessManager:
                                                         self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
 
                                                 self.watchdog_stalled_since[process_id] = None
-                                else:
-                                    # They have changed
-                                    self.watchdog_stalled_since[process_id] = None
-                                    prev_frame = frame
-                                    prev_out_time_us = out_time_us
+                                    else:
+                                        # They have changed
+                                        self.watchdog_stalled_since[process_id] = None
+                                        prev_frame = frame
+                                        prev_out_time_us = out_time_us
                 except Exception as db_err:
                     self.logger.error(f"Watchdog database error for process {process_id}: {db_err}")
 
