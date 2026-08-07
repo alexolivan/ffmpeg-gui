@@ -440,6 +440,23 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                         </button>
                         <button
                           disabled={!!actionPending[proc.id]}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const res = await fetch(`${API}/processes/${proc.id}/clone-as-task`, { method: 'POST' });
+                              if (!res.ok) throw new Error('Failed to clone service as task');
+                              alert(t('common.clonedSuccess', 'Cloned successfully!'));
+                            } catch (err: any) {
+                              alert(err.message || 'Error cloning service as task');
+                            }
+                          }}
+                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-lime disabled:opacity-50 disabled:pointer-events-none"
+                          title={t('services.cloneAsTask', 'Copy as Task')}
+                        >
+                          <CalendarIcon size={16} />
+                        </button>
+                        <button
+                          disabled={!!actionPending[proc.id]}
                           onClick={(e) => {
                             e.stopPropagation();
                             fetch(`${API}/processes/${proc.id}/export`)
