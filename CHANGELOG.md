@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.1] - 2026-08-07
+
+### Fixed
+- **Watchdog Startup Hang Detection (`process_manager.py`)**:
+  - Fixed a critical watchdog deadlock where services hanging during startup (e.g. SRT caller socket connection or network stall before producing frames) resulted in an empty progress log file (`0 bytes`), causing `has_had_activity` to remain `False` and bypassing the watchdog stall check indefinitely.
+  - Added startup stall timeout evaluation: if a service produces no frames/progress after `network_wait_timeout` (60s default), the watchdog logs an error and force kills the process to trigger automatic recovery.
+- **Task Execution Telemetry Payload (`main.py`, `ScheduledTasks.tsx`)**:
+  - Restored missing `pid`, `cpu`, `ram`, `fps`, `bitrate`, `speed`, and `retry_count` fields in `GET /tasks` HTTP API response payload (`last_execution`).
+  - Bound WebSocket live telemetry stream (`taskExecutions`) to active task cards in `ScheduledTasks.tsx` for real-time rendering.
+
+### Refactored
+- **Standalone `FFmpegCommandBuilder` (`core/builders/ffmpeg_builder.py`)**:
+  - Extracted FFmpeg CLI command building logic from `ProcessManager` into a dedicated, stateless `FFmpegCommandBuilder` class.
+  - Decoupled `TaskManager` from `ProcessManager` instance creation, ensuring both managers call `FFmpegCommandBuilder.build_cmd` cleanly.
+
 ## [1.43.0] - 2026-08-06
 
 ### Changed

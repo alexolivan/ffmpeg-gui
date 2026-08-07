@@ -593,3 +593,76 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
                 os.remove(progress_path)
             self.db.delete(media_proc)
             self.db.commit()
+
+    @patch("psutil.Process")
+    @patch("psutil.pid_exists")
+    async def test_watchdog_kills_on_startup_hang(self, mock_pid_exists, mock_psutil_class):
+        mock_pid_exists.return_value = True
+        
+        class StubProc:
+            def __init__(self):
+                self.pid = 98765
+                self.returncode = None
+                self.kill_called = False
+            def kill(self):
+                self.kill_called = True
+                self.returncode = -9
+            async def wait(self):
+                return self.returncode
+
+        stub_proc = StubProc()
+
+        media_proc = MediaProcess(
+            name="Test Startup Hang Process",
+            type="service",
+            input_config={"type": "srt", "host": "1.2.3.4", "port": "9000"},
+            output_config={"type": "file", "path": "/tmp/test_hang.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="running",
+            watchdog_enabled=True,
+            watchdog_retries=3
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        import os
+        shm_dir = "/dev/shm"
+        use_shm = os.path.exists(shm_dir) and os.access(shm_dir, os.W_OK)
+        base_dir = shm_dir if use_shm else "/tmp"
+        progress_path = f"{base_dir}/ffmpeg_progress_{media_proc.id}s.log"
+        open(progress_path, "w").close()
+
+        try:
+            mock_p = MagicMock()
+            mock_p.cpu_percent.return_value = 3.0
+            mock_p.memory_info.return_value.rss = 200 * 1024 * 1024
+            mock_psutil_class.return_value = mock_p
+
+            now = datetime.utcnow()
+            time_points = [
+                now,                        # Init
+                now,                        # Loop 1 start
+                now + timedelta(seconds=65), # Loop 1 check (65s > 60s network_wait_timeout)
+            ]
+            time_iter = iter(time_points)
+            def mock_utcnow():
+                try:
+                    return next(time_iter)
+                except StopIteration:
+                    return datetime.utcnow() + timedelta(seconds=500)
+
+            with patch("core.process_manager.datetime") as mock_dt:
+                mock_dt.utcnow = mock_utcnow
+                mock_dt.fromisoformat = datetime.fromisoformat
+
+                await self.manager._watchdog(media_proc.id, stub_proc)
+
+            self.assertTrue(stub_proc.kill_called)
+
+        finally:
+            if os.path.exists(progress_path):
+                os.remove(progress_path)
+            self.db.delete(media_proc)
+            self.db.commit()
+
