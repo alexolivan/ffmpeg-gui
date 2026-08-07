@@ -81,7 +81,8 @@
       "lcd": "Pantalla LCD",
       "storage": "Emmagatzematge",
       "security": "Xarxa i Seguretat",
-      "alsa": "ÀUDIO ALSA"
+      "alsa": "ÀUDIO ALSA",
+      "backup": "CÒPIA DE SEGURETAT I RESTAURACIÓ"
     },
     "alsa": {
       "title": "MESCLADOR DE HARDWARE D'ÀUDIO ALSA",
@@ -271,6 +272,28 @@
       "notifyTaskFailures": "Errades de Tasca (Errors en Tasques Programades)",
       "notifySslAlerts": "Alertes SSL (Avisos de Caducitat i Renovacions)",
       "notifyStorageAlerts": "Alertes d'Emmagatzematge (Avisos d'Espai Escàs)"
+    },
+    "backup": {
+      "exportTitle": "Exportar Còpia de Seguretat del Sistema (.json)",
+      "exportDesc": "Selecciona les seccions de configuració a incloure en el teu fitxer JSON descarregable.",
+      "sectionSystemDesc": "Panel central, idioma, tema, registres",
+      "sectionServicesDesc": "Serveis d emissió FFmpeg i watchdog",
+      "sectionTasksDesc": "Rutines d automatització cron i puntuals",
+      "sectionStorageDesc": "Directoris d emmagatzematge i rutes muntades",
+      "sectionNotificationsTitle": "Notificacions",
+      "sectionNotificationsDesc": "Servidor de correu SMTP i alertes",
+      "exporting": "GENERANT CÒPIA...",
+      "exportBtn": "EXPORTAR CÒPIA DE SEGURETAT (.JSON)",
+      "importTitle": "Restaurar Còpia de Seguretat",
+      "importDesc": "Penja un fitxer JSON de retorn exportat prèviament per a restaurar la configuració del sistema, serveis i tasques.",
+      "selectBackupFile": "SELECCIONAR FITXER DE RETORN (.JSON)",
+      "warningWarning": "Advertència: Restaurar aquesta còpia crearà o actualitzarà entrades en la base de dades SQLite i la configuració del sistema.",
+      "restoreBtn": "RESTAURAR CONFIGURACIÓ DE RETORN",
+      "confirmTitle": "Confirmar Restauració de Còpia",
+      "confirmDesc": "Estàs segur que vols restaurar aquesta configuració? S inseriran els serveis i tasques inexistents i s actualitzaran les preferències.",
+      "confirmBtn": "Confirmar Restauració",
+      "importSuccess": "Còpia de seguretat restaurada amb èxit!",
+      "invalidBackupFormat": "Format de còpia de seguretat no vàlid. Falta la signatura ffmpeg-gui."
     }
   },
   "dashboard": {

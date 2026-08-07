@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.45.0] - 2026-08-07
+
+### Added
+- **Backup & Restore System - pfSense Style (`main.py`, `SettingsView.tsx`, `BackupRestoreCard.tsx`)**:
+  - Implemented `POST /api/backup/export` endpoint with toggle selection for system settings, media services, scheduled tasks, storage volumes, and notifications.
+  - Implemented `POST /api/backup/import` endpoint for atomic JSON backup restoration in SQLite and `.conf` configuration file.
+  - Added dedicated **"BACKUP & RESTORE"** sub-tab in `SettingsView.tsx` with interactive export toggles, `.json` file dropzone/uploader, metadata preview box, warning banner, and confirmation modal.
+  - Created unit test suite `test_backup_restore_api.py` (`1/1 test PASSED`).
+  - Added full i18n key parity across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`).
+
 ## [1.44.0] - 2026-08-07
 
 ### Added

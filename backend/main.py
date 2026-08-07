@@ -249,6 +249,19 @@ class NotificationSettings(BaseModel):
     notify_ssl_alerts: bool = True
     notify_storage_alerts: bool = True
 
+class BackupExportRequest(BaseModel):
+    system_settings: bool = True
+    services: bool = True
+    tasks: bool = True
+    storage_volumes: bool = True
+    notifications: bool = True
+
+class BackupImportPayload(BaseModel):
+    app: str
+    version: str
+    exported_at: Optional[str] = None
+    sections: dict
+
 class NotificationSettingsUpdate(BaseModel):
     enabled: Optional[bool] = None
     smtp_host: Optional[str] = None
@@ -1203,6 +1216,223 @@ def send_test_notification(payload: Optional[Dict[str, Any]] = Body(None)):
     if not success:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": success, "message": msg}
+
+@app.post("/api/backup/export")
+def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
+    sections = {}
+
+    if req.system_settings:
+        config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+        conf_dict = {}
+        if os.path.exists(config_path):
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            for s in config.sections():
+                conf_dict[s] = dict(config[s])
+        sections["system_settings"] = conf_dict
+
+    if req.notifications:
+        config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+        notif_dict = {}
+        if os.path.exists(config_path):
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(config_path)
+            if "notifications" in config:
+                notif_dict = dict(config["notifications"])
+                if "smtp_password" in notif_dict and notif_dict["smtp_password"]:
+                    notif_dict["smtp_password"] = "*****"
+        sections["notifications"] = notif_dict
+
+    if req.services:
+        procs = db.query(MediaProcess).filter(MediaProcess.type == "service").all()
+        sections["services"] = [
+            {
+                "name": p.name,
+                "input_config": p.input_config,
+                "output_config": p.output_config,
+                "codec_config": p.codec_config,
+                "filter_config": p.filter_config,
+                "auto_start": p.auto_start,
+                "startup_order": p.startup_order,
+                "startup_delay": p.startup_delay,
+                "watchdog_enabled": p.watchdog_enabled,
+                "watchdog_retries": p.watchdog_retries,
+                "watchdog_min_speed": p.watchdog_min_speed,
+                "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+                "alias": p.alias,
+                "network_timeout": p.network_timeout,
+                "debug_mode": p.debug_mode,
+            }
+            for p in procs
+        ]
+
+    if req.tasks:
+        tasks = db.query(ScheduledTask).filter(ScheduledTask.is_system == False).all()
+        sections["tasks"] = [
+            {
+                "name": t.name,
+                "input_config": t.input_config,
+                "output_config": t.output_config,
+                "codec_config": t.codec_config,
+                "filter_config": t.filter_config,
+                "schedule_type": t.schedule_type,
+                "schedule_cron": t.schedule_cron,
+                "schedule_datetime": t.schedule_datetime.isoformat() if t.schedule_datetime else None,
+                "duration_type": t.duration_type,
+                "duration_seconds": t.duration_seconds,
+                "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
+                "is_active": t.is_active,
+                "retry_policy": t.retry_policy,
+                "alias": t.alias,
+            }
+            for t in tasks
+        ]
+
+    if req.storage_volumes:
+        storages = db.query(Storage).all()
+        sections["storage_volumes"] = [
+            {
+                "name": s.name,
+                "path": s.path,
+                "type": s.type,
+                "is_default": s.is_default
+            }
+            for s in storages
+        ]
+
+    return {
+        "app": "ffmpeg-gui",
+        "version": backend_version,
+        "exported_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "sections": sections
+    }
+
+
+@app.post("/api/backup/import")
+def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_db)):
+    if payload.app != "ffmpeg-gui":
+        raise HTTPException(status_code=400, detail="Invalid backup file app identifier")
+
+    imported_summary = {"system_settings": False, "services": 0, "tasks": 0, "storage_volumes": 0, "notifications": False}
+    sections = payload.sections or {}
+
+    config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+
+    # Restore system_settings & notifications in config file
+    if "system_settings" in sections or "notifications" in sections:
+        import configparser
+        config = configparser.ConfigParser()
+        if os.path.exists(config_path):
+            config.read(config_path)
+
+        if "system_settings" in sections and isinstance(sections["system_settings"], dict):
+            for sec_name, sec_vals in sections["system_settings"].items():
+                if isinstance(sec_vals, dict):
+                    if sec_name not in config:
+                        config[sec_name] = {}
+                    for k, v in sec_vals.items():
+                        config.set(sec_name, k, str(v))
+            imported_summary["system_settings"] = True
+
+        if "notifications" in sections and isinstance(sections["notifications"], dict):
+            if "notifications" not in config:
+                config["notifications"] = {}
+            for k, v in sections["notifications"].items():
+                if k == "smtp_password" and v == "*****":
+                    continue  # Keep existing password if masked
+                config.set("notifications", k, str(v))
+            notification_manager.load_config(dict(config["notifications"]))
+            imported_summary["notifications"] = True
+
+        with open(config_path, "w") as f:
+            config.write(f)
+
+    # Restore Storage Volumes
+    if "storage_volumes" in sections and isinstance(sections["storage_volumes"], list):
+        for s_data in sections["storage_volumes"]:
+            existing = db.query(Storage).filter(Storage.path == s_data.get("path")).first()
+            if not existing:
+                st = Storage(
+                    name=s_data.get("name"),
+                    path=s_data.get("path"),
+                    type=s_data.get("type", "generic"),
+                    is_default=s_data.get("is_default", False)
+                )
+                db.add(st)
+                imported_summary["storage_volumes"] += 1
+
+    # Restore Services
+    if "services" in sections and isinstance(sections["services"], list):
+        for p_data in sections["services"]:
+            existing = db.query(MediaProcess).filter(MediaProcess.name == p_data.get("name")).first()
+            if not existing:
+                proc = MediaProcess(
+                    name=p_data.get("name"),
+                    type="service",
+                    status="stopped",
+                    input_config=p_data.get("input_config") or {},
+                    output_config=p_data.get("output_config") or {},
+                    codec_config=p_data.get("codec_config") or {},
+                    filter_config=p_data.get("filter_config") or {},
+                    auto_start=p_data.get("auto_start", False),
+                    startup_order=p_data.get("startup_order", 1),
+                    startup_delay=p_data.get("startup_delay", 0),
+                    watchdog_enabled=p_data.get("watchdog_enabled", True),
+                    watchdog_retries=p_data.get("watchdog_retries", 3),
+                    watchdog_min_speed=p_data.get("watchdog_min_speed", 0.85),
+                    watchdog_min_speed_duration=p_data.get("watchdog_min_speed_duration", 30),
+                    alias=p_data.get("alias"),
+                    network_timeout=p_data.get("network_timeout", 30),
+                    debug_mode=p_data.get("debug_mode", False),
+                )
+                db.add(proc)
+                imported_summary["services"] += 1
+
+    # Restore Scheduled Tasks
+    if "tasks" in sections and isinstance(sections["tasks"], list):
+        for t_data in sections["tasks"]:
+            existing = db.query(ScheduledTask).filter(ScheduledTask.name == t_data.get("name")).first()
+            if not existing:
+                sched_dt = None
+                if t_data.get("schedule_datetime"):
+                    try:
+                        sched_dt = datetime.datetime.fromisoformat(t_data["schedule_datetime"])
+                    except Exception:
+                        pass
+                dur_end = None
+                if t_data.get("duration_end_time"):
+                    try:
+                        dur_end = datetime.datetime.fromisoformat(t_data["duration_end_time"])
+                    except Exception:
+                        pass
+                task = ScheduledTask(
+                    name=t_data.get("name"),
+                    command="ffmpeg",
+                    input_config=t_data.get("input_config") or {},
+                    output_config=t_data.get("output_config") or {},
+                    codec_config=t_data.get("codec_config") or {},
+                    filter_config=t_data.get("filter_config") or {},
+                    schedule_type=t_data.get("schedule_type", "manual"),
+                    schedule_cron=t_data.get("schedule_cron"),
+                    schedule_datetime=sched_dt,
+                    duration_type=t_data.get("duration_type", "timer"),
+                    duration_seconds=t_data.get("duration_seconds", 3600),
+                    duration_end_time=dur_end,
+                    is_active=t_data.get("is_active", False),
+                    retry_policy=t_data.get("retry_policy", {"max_retries": 3, "retry_delay": 5}),
+                    alias=t_data.get("alias"),
+                )
+                db.add(task)
+                imported_summary["tasks"] += 1
+
+    db.commit()
+    return {
+        "status": "success",
+        "message": "Backup configuration imported successfully",
+        "imported": imported_summary
+    }
 
 
 @app.post("/login")

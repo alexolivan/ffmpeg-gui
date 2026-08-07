@@ -81,7 +81,8 @@
       "lcd": "LCD Display",
       "storage": "Storage",
       "security": "Network & Security",
-      "alsa": "ALSA AUDIO"
+      "alsa": "ALSA AUDIO",
+      "backup": "BACKUP & RESTORE"
     },
     "alsa": {
       "title": "ALSA AUDIO HARDWARE MIXER",
@@ -271,6 +272,28 @@
       "notifyTaskFailures": "Task Failures (Scheduled Job Errors)",
       "notifySslAlerts": "SSL Alerts (Expiration Warnings & Renewals)",
       "notifyStorageAlerts": "Storage Alerts (Low Disk Space Threshold Warnings)"
+    },
+    "backup": {
+      "exportTitle": "Export System Backup (.json)",
+      "exportDesc": "Select configuration sections to include in your downloadable JSON backup file.",
+      "sectionSystemDesc": "Core panel, language, theme, logging",
+      "sectionServicesDesc": "FFmpeg streaming services & watchdog",
+      "sectionTasksDesc": "Cron & one-shot automation routines",
+      "sectionStorageDesc": "Storage directories & mount paths",
+      "sectionNotificationsTitle": "Notifications",
+      "sectionNotificationsDesc": "SMTP email server & alert triggers",
+      "exporting": "GENERATING BACKUP...",
+      "exportBtn": "EXPORT BACKUP (.JSON)",
+      "importTitle": "Restore System Backup",
+      "importDesc": "Upload a previously exported JSON backup file to restore system configuration, services, and tasks.",
+      "selectBackupFile": "SELECT BACKUP FILE (.JSON)",
+      "warningWarning": "Warning: Restoring this backup will merge or create non-existing entries in SQLite database and system configuration.",
+      "restoreBtn": "RESTORE BACKUP CONFIGURATION",
+      "confirmTitle": "Confirm Restore Backup",
+      "confirmDesc": "Are you sure you want to restore this configuration? Non-existing services and tasks will be inserted and system preferences updated.",
+      "confirmBtn": "Confirm Restore",
+      "importSuccess": "Backup restored successfully!",
+      "invalidBackupFormat": "Invalid backup file format. Missing ffmpeg-gui signature."
     }
   },
   "dashboard": {
