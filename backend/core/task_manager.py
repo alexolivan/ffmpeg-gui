@@ -225,9 +225,10 @@ class TaskManager:
                     raise FileNotFoundError(f"Overlay image does not exist: {path}")
 
     def _build_ffmpeg_cmd(self, task, ffmpeg_bin, limit_sec=None, execution_id=None):
-        from core.process_manager import ProcessManager
-        pm = ProcessManager(self.db_session_factory)
-        return pm._build_ffmpeg_cmd(task, ffmpeg_bin, limit_sec=limit_sec, execution_id=execution_id)
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+        return FFmpegCommandBuilder.build_cmd(
+            task, ffmpeg_bin, limit_sec=limit_sec, execution_id=execution_id, db_session_factory=self.db_session_factory
+        )
 
     async def stop_execution(self, execution_id: int, status="stopped", error_msg=None):
         proc = self.running_processes.get(execution_id)
