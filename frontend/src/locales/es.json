@@ -26,7 +26,8 @@
     "setDefault": "ESTABLECER PREDETERMINADO",
     "cancelUpload": "✕ Cancelar subida",
     "loading": "Cargando...",
-    "waiting": "Esperando señal de entrada..."
+    "waiting": "Esperando señal de entrada...",
+    "clonedSuccess": "¡Clonado con éxito!"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -64,7 +65,8 @@
     "restarting": "El servicio se está reiniciando...",
     "retrying": "Reintentando inicio...",
     "stopConfirm": "⚠️ ADVERTENCIA DE EMISIÓN EN DIRECTO:\n\n¿Estás seguro de que deseas detener \"{{name}}\"? Las conexiones de transmisión en directo activas (SRT/UDP/RTP/Icecast) sufrirán un corte inmediato de señal.",
-    "restartConfirm": "⚠️ ADVERTENCIA DE EMISIÓN EN DIRECTO:\n\n¿Estás seguro de que deseas reiniciar \"{{name}}\"? Las conexiones de transmisión en directo activas (SRT/UDP/RTP/Icecast) sufrirán una pérdida temporal de señal durante el reinicio."
+    "restartConfirm": "⚠️ ADVERTENCIA DE EMISIÓN EN DIRECTO:\n\n¿Estás seguro de que deseas reiniciar \"{{name}}\"? Las conexiones de transmisión en directo activas (SRT/UDP/RTP/Icecast) sufrirán una pérdida temporal de señal durante el reinicio.",
+    "cloneAsTask": "Copiar como Tarea"
   },
   "settings": {
     "title": "Configuración",
@@ -778,7 +780,8 @@
     "taskActiveLabel": "Activar Programación de Tarea",
     "taskActiveDesc": "Cuando esté activada, el programador automático ejecutará esta tarea según su horario.",
     "triggerAndScheduling": "Disparador y Programación",
-    "taskScheduleStatus": "Estado de Programación"
+    "taskScheduleStatus": "Estado de Programación",
+    "cloneAsService": "Copiar como Servicio"
   },
   "sdks": {
     "modalTitle": "INVENTARIO Y CICLO DE VIDA DE SDKs",

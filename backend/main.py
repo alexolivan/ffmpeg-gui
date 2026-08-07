@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 import re
 import json
+import copy
 import shutil
 import uuid
 import shlex
@@ -3194,6 +3195,39 @@ async def delete_process(process_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "deleted", "process_id": process_id}
 
+@app.post("/processes/{process_id}/clone-as-task")
+def clone_process_as_task(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    new_task_name = f"Copy of {db_proc.name}"
+    
+    input_cfg = copy.deepcopy(db_proc.input_config or {})
+    output_cfg = copy.deepcopy(db_proc.output_config or {})
+    codec_cfg = copy.deepcopy(db_proc.codec_config or {})
+    filter_cfg = copy.deepcopy(db_proc.filter_config or {})
+
+    new_task = ScheduledTask(
+        name=new_task_name,
+        command="ffmpeg",
+        schedule_type="manual",
+        schedule_cron=None,
+        is_active=False,
+        is_system=False,
+        duration_type="timer",
+        duration_seconds=3600,
+        input_config=input_cfg,
+        output_config=output_cfg,
+        codec_config=codec_cfg,
+        filter_config=filter_cfg,
+        retry_policy={"max_retries": 3, "retry_delay": 5}
+    )
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return new_task
+
 @app.get("/api/processes/{process_id}/log-exists")
 def get_process_log_exists(process_id: int, db: Session = Depends(get_db)):
     db_proc = db.query(MediaProcess).get(process_id)
@@ -3830,6 +3864,45 @@ def export_single_task(task_id: int, db: Session = Depends(get_db)):
             "alias": t.alias,
         }
     }
+
+@app.post("/tasks/{task_id}/clone-as-service")
+def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
+    db_task = db.query(ScheduledTask).get(task_id)
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    new_proc_name = f"Copy of {db_task.name}"
+    
+    input_cfg = copy.deepcopy(db_task.input_config or {})
+    output_cfg = copy.deepcopy(db_task.output_config or {})
+    codec_cfg = copy.deepcopy(db_task.codec_config or {})
+    filter_cfg = copy.deepcopy(db_task.filter_config or {})
+
+    # Ensure realtime flag for file inputs when cloned as a service
+    for input_key, input_val in input_cfg.items():
+        if isinstance(input_val, dict) and input_val.get('type') == 'file':
+            input_val['re'] = True
+
+    new_proc = MediaProcess(
+        name=new_proc_name,
+        type="service",
+        status="stopped",
+        auto_start=False,
+        restart_count=0,
+        ffmpeg_build_id=db_task.ffmpeg_build_id,
+        input_config=input_cfg,
+        output_config=output_cfg,
+        codec_config=codec_cfg,
+        filter_config=filter_cfg,
+        watchdog_enabled=True,
+        watchdog_retries=3,
+        watchdog_min_speed=0.85,
+        watchdog_min_speed_duration=30
+    )
+    db.add(new_proc)
+    db.commit()
+    db.refresh(new_proc)
+    return new_proc
 
 @app.post("/tasks/preview-cmd")
 def preview_task_command(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):

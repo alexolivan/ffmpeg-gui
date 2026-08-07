@@ -26,7 +26,8 @@
     "setDefault": "SET DEFAULT",
     "cancelUpload": "✕ Cancel upload",
     "loading": "Loading...",
-    "waiting": "Waiting for input signal..."
+    "waiting": "Waiting for input signal...",
+    "clonedSuccess": "Cloned successfully!"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -64,7 +65,8 @@
     "restarting": "Service is restarting...",
     "retrying": "Retrying launch...",
     "stopConfirm": "⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to stop \"{{name}}\"? Any active live stream connections (SRT/UDP/RTP/Icecast) will experience an immediate signal interruption.",
-    "restartConfirm": "⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to restart \"{{name}}\"? Any active live stream connections (SRT/UDP/RTP/Icecast) will drop and experience a temporary signal loss during restart."
+    "restartConfirm": "⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to restart \"{{name}}\"? Any active live stream connections (SRT/UDP/RTP/Icecast) will drop and experience a temporary signal loss during restart.",
+    "cloneAsTask": "Copy as Task"
   },
   "settings": {
     "title": "Settings",
@@ -778,7 +780,8 @@
     "taskActiveLabel": "Enable Task Schedule",
     "taskActiveDesc": "When enabled, the automated scheduler will execute this task according to its schedule.",
     "triggerAndScheduling": "Trigger & Scheduling",
-    "taskScheduleStatus": "Task Schedule Status"
+    "taskScheduleStatus": "Task Schedule Status",
+    "cloneAsService": "Copy as Service"
   },
   "sdks": {
     "modalTitle": "SDK INVENTORY & LIFECYCLE",
