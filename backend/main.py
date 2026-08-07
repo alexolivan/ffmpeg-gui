@@ -250,7 +250,11 @@ class NotificationSettings(BaseModel):
     notify_storage_alerts: bool = True
 
 class BackupExportRequest(BaseModel):
-    system_settings: bool = True
+    gui_general: bool = True
+    gui_network_ssl: bool = True
+    lcd_display: bool = True
+    logging_retention: bool = True
+    watchdog_grace: bool = True
     services: bool = True
     tasks: bool = True
     storage_volumes: bool = True
@@ -1220,31 +1224,67 @@ def send_test_notification(payload: Optional[Dict[str, Any]] = Body(None)):
 @app.post("/api/backup/export")
 def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     sections = {}
+    config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+    import configparser
+    config = configparser.ConfigParser()
+    if os.path.exists(config_path):
+        config.read(config_path)
 
-    if req.system_settings:
-        config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
-        conf_dict = {}
-        if os.path.exists(config_path):
-            import configparser
-            config = configparser.ConfigParser()
-            config.read(config_path)
-            for s in config.sections():
-                conf_dict[s] = dict(config[s])
-        sections["system_settings"] = conf_dict
+    # 1. General Panel
+    if req.gui_general:
+        gen_dict = {}
+        if "general" in config:
+            for k in ["language", "theme", "node_name", "logo_text", "lcd_alias", "gui_password"]:
+                if k in config["general"]:
+                    gen_dict[k] = config["general"][k]
+        sections["gui_general"] = gen_dict
 
+    # 2. Network & SSL
+    if req.gui_network_ssl:
+        net_dict = {}
+        if "general" in config:
+            for k in ["bind_address", "gui_port", "http_port", "https_port", "ssl_enabled", "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email", "ssl_challenge_type"]:
+                if k in config["general"]:
+                    net_dict[k] = config["general"][k]
+        sections["gui_network_ssl"] = net_dict
+
+    # 3. LCD Display
+    if req.lcd_display:
+        lcd_dict = {}
+        if "lcd" in config:
+            lcd_dict = dict(config["lcd"])
+        elif "general" in config:
+            for k in ["lcd_enabled", "lcd_port", "lcd_model", "lcd_brightness", "lcd_dim_brightness", "lcd_dim_timeout", "lcd_led0_profile", "lcd_led1_profile", "lcd_led2_profile", "lcd_led3_profile"]:
+                if k in config["general"]:
+                    lcd_dict[k] = config["general"][k]
+        sections["lcd_display"] = lcd_dict
+
+    # 4. Logging & Retention
+    if req.logging_retention:
+        log_dict = {}
+        if "general" in config:
+            for k in ["logging_mode", "logging_storage_id", "logging_relative_path", "logging_rotation_enabled", "logging_rotation_max_bytes", "logging_rotation_backup_count", "logging_compression_enabled", "logging_retention_days", "logging_timestamp_tz"]:
+                if k in config["general"]:
+                    log_dict[k] = config["general"][k]
+        sections["logging_retention"] = log_dict
+
+    # 5. Watchdog & Grace Delay
+    if req.watchdog_grace:
+        wd_dict = {}
+        if "watchdog" in config:
+            wd_dict = dict(config["watchdog"])
+        sections["watchdog_grace"] = wd_dict
+
+    # 6. Notifications
     if req.notifications:
-        config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
         notif_dict = {}
-        if os.path.exists(config_path):
-            import configparser
-            config = configparser.ConfigParser()
-            config.read(config_path)
-            if "notifications" in config:
-                notif_dict = dict(config["notifications"])
-                if "smtp_password" in notif_dict and notif_dict["smtp_password"]:
-                    notif_dict["smtp_password"] = "*****"
+        if "notifications" in config:
+            notif_dict = dict(config["notifications"])
+            if "smtp_password" in notif_dict and notif_dict["smtp_password"]:
+                notif_dict["smtp_password"] = "*****"
         sections["notifications"] = notif_dict
 
+    # 7. Services
     if req.services:
         procs = db.query(MediaProcess).filter(MediaProcess.type == "service").all()
         sections["services"] = [
@@ -1268,6 +1308,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for p in procs
         ]
 
+    # 8. Scheduled Tasks
     if req.tasks:
         tasks = db.query(ScheduledTask).filter(ScheduledTask.is_system == False).all()
         sections["tasks"] = [
@@ -1290,6 +1331,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for t in tasks
         ]
 
+    # 9. Storage Volumes
     if req.storage_volumes:
         storages = db.query(Storage).all()
         sections["storage_volumes"] = [
@@ -1315,39 +1357,80 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
     if payload.app != "ffmpeg-gui":
         raise HTTPException(status_code=400, detail="Invalid backup file app identifier")
 
-    imported_summary = {"system_settings": False, "services": 0, "tasks": 0, "storage_volumes": 0, "notifications": False}
+    imported_summary = {
+        "gui_general": False,
+        "gui_network_ssl": False,
+        "lcd_display": False,
+        "logging_retention": False,
+        "watchdog_grace": False,
+        "services": 0,
+        "tasks": 0,
+        "storage_volumes": 0,
+        "notifications": False
+    }
     sections = payload.sections or {}
-
     config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
 
-    # Restore system_settings & notifications in config file
-    if "system_settings" in sections or "notifications" in sections:
-        import configparser
-        config = configparser.ConfigParser()
-        if os.path.exists(config_path):
-            config.read(config_path)
+    import configparser
+    config = configparser.ConfigParser()
+    if os.path.exists(config_path):
+        config.read(config_path)
 
-        if "system_settings" in sections and isinstance(sections["system_settings"], dict):
-            for sec_name, sec_vals in sections["system_settings"].items():
-                if isinstance(sec_vals, dict):
-                    if sec_name not in config:
-                        config[sec_name] = {}
-                    for k, v in sec_vals.items():
-                        config.set(sec_name, k, str(v))
-            imported_summary["system_settings"] = True
+    if "general" not in config:
+        config["general"] = {}
+    if "lcd" not in config:
+        config["lcd"] = {}
+    if "watchdog" not in config:
+        config["watchdog"] = {}
+    if "notifications" not in config:
+        config["notifications"] = {}
 
-        if "notifications" in sections and isinstance(sections["notifications"], dict):
-            if "notifications" not in config:
-                config["notifications"] = {}
-            for k, v in sections["notifications"].items():
-                if k == "smtp_password" and v == "*****":
-                    continue  # Keep existing password if masked
-                config.set("notifications", k, str(v))
-            notification_manager.load_config(dict(config["notifications"]))
-            imported_summary["notifications"] = True
+    # Legacy system_settings
+    if "system_settings" in sections and isinstance(sections["system_settings"], dict):
+        for sec_name, sec_vals in sections["system_settings"].items():
+            if isinstance(sec_vals, dict):
+                if sec_name not in config:
+                    config[sec_name] = {}
+                for k, v in sec_vals.items():
+                    config.set(sec_name, k, str(v))
+        imported_summary["gui_general"] = True
 
-        with open(config_path, "w") as f:
-            config.write(f)
+    # Granular subsections
+    if "gui_general" in sections and isinstance(sections["gui_general"], dict):
+        for k, v in sections["gui_general"].items():
+            config.set("general", k, str(v))
+        imported_summary["gui_general"] = True
+
+    if "gui_network_ssl" in sections and isinstance(sections["gui_network_ssl"], dict):
+        for k, v in sections["gui_network_ssl"].items():
+            config.set("general", k, str(v))
+        imported_summary["gui_network_ssl"] = True
+
+    if "lcd_display" in sections and isinstance(sections["lcd_display"], dict):
+        for k, v in sections["lcd_display"].items():
+            config.set("lcd", k, str(v))
+        imported_summary["lcd_display"] = True
+
+    if "logging_retention" in sections and isinstance(sections["logging_retention"], dict):
+        for k, v in sections["logging_retention"].items():
+            config.set("general", k, str(v))
+        imported_summary["logging_retention"] = True
+
+    if "watchdog_grace" in sections and isinstance(sections["watchdog_grace"], dict):
+        for k, v in sections["watchdog_grace"].items():
+            config.set("watchdog", k, str(v))
+        imported_summary["watchdog_grace"] = True
+
+    if "notifications" in sections and isinstance(sections["notifications"], dict):
+        for k, v in sections["notifications"].items():
+            if k == "smtp_password" and v == "*****":
+                continue
+            config.set("notifications", k, str(v))
+        notification_manager.load_config(dict(config["notifications"]))
+        imported_summary["notifications"] = True
+
+    with open(config_path, "w") as f:
+        config.write(f)
 
     # Restore Storage Volumes
     if "storage_volumes" in sections and isinstance(sections["storage_volumes"], list):

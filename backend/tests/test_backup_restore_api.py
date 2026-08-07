@@ -43,7 +43,11 @@ class TestBackupRestoreAPI(unittest.TestCase):
 
         # 1. Export
         export_payload = {
-            "system_settings": True,
+            "gui_general": True,
+            "gui_network_ssl": True,
+            "lcd_display": True,
+            "logging_retention": True,
+            "watchdog_grace": True,
             "services": True,
             "tasks": True,
             "storage_volumes": True,
@@ -54,6 +58,8 @@ class TestBackupRestoreAPI(unittest.TestCase):
         data = res.json()
         self.assertEqual(data["app"], "ffmpeg-gui")
         self.assertIn("sections", data)
+        self.assertIn("gui_general", data["sections"])
+        self.assertIn("lcd_display", data["sections"])
         self.assertIn("services", data["sections"])
         self.assertIn("tasks", data["sections"])
 
