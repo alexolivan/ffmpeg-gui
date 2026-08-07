@@ -26,7 +26,8 @@
     "setDefault": "ESTABILIR PER DEFECTE",
     "cancelUpload": "✕ Cancel·lar pujada",
     "loading": "Carregant...",
-    "waiting": "Esperant senyal d'entrada..."
+    "waiting": "Esperant senyal d'entrada...",
+    "clonedSuccess": "Clonat amb èxit!"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -64,7 +65,8 @@
     "restarting": "El servei s'està reiniciant...",
     "retrying": "Reintentant inici...",
     "stopConfirm": "⚠️ ADVERTÈNCIA D'EMISSIÓ EN DIRECTE:\n\nEstàs segur que vols aturar \"{{name}}\"? Les connexions de transmissió en directe actives (SRT/UDP/RTP/Icecast) patiran un tall immediat de senyal.",
-    "restartConfirm": "⚠️ ADVERTÈNCIA D'EMISSIÓ EN DIRECTE:\n\nEstàs segur que vols reiniciar \"{{name}}\"? Les connexions de transmissió en directe actives (SRT/UDP/RTP/Icecast) patiran una pèrdua temporal de senyal durant el reinici."
+    "restartConfirm": "⚠️ ADVERTÈNCIA D'EMISSIÓ EN DIRECTE:\n\nEstàs segur que vols reiniciar \"{{name}}\"? Les connexions de transmissió en directe actives (SRT/UDP/RTP/Icecast) patiran una pèrdua temporal de senyal durant el reinici.",
+    "cloneAsTask": "Copiar com a Tasca"
   },
   "settings": {
     "title": "Configuració",
@@ -778,7 +780,8 @@
     "taskActiveLabel": "Activar Programació de Tasca",
     "taskActiveDesc": "Quan estigui activada, el programador automàtic executarà aquesta tasca segons el seu horari.",
     "triggerAndScheduling": "Disparador i Programació",
-    "taskScheduleStatus": "Estat de Programació"
+    "taskScheduleStatus": "Estat de Programació",
+    "cloneAsService": "Copiar com a Servei"
   },
   "sdks": {
     "modalTitle": "INVENTARI I CICLE DE VIDA DE SDKs",

@@ -11,7 +11,8 @@ import {
   PencilIcon, 
   TrashIcon, 
   SourceIcon, 
-  StopIcon 
+  StopIcon,
+  ServerIcon
 } from './Icons';
 
 interface ScheduledTasksProps {
@@ -591,6 +592,24 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             title="Clone Task"
                           >
                             <ClipboardIcon size={16} />
+                          </button>
+
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`${API}/tasks/${task.id}/clone-as-service`, { method: 'POST' });
+                                if (!res.ok) throw new Error('Failed to clone task as service');
+                                alert(t('common.clonedSuccess', 'Cloned successfully!'));
+                                fetchTasks();
+                              } catch (err: any) {
+                                alert(err.message || 'Error cloning task as service');
+                              }
+                            }}
+                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-orange disabled:opacity-50 disabled:pointer-events-none"
+                            title={t('tasks.cloneAsService', 'Copy as Service')}
+                          >
+                            <ServerIcon size={16} />
                           </button>
 
                           <button 

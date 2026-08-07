@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.0] - 2026-08-07
+
+### Added
+- **Bilateral Service & Task Cloning (`main.py`, `ServicesView.tsx`, `ScheduledTasks.tsx`)**:
+  - Implemented `POST /processes/{id}/clone-as-task` endpoint to duplicate a live or stopped `MediaProcess` into a `ScheduledTask` with safe default manual scheduling and safety execution runtime.
+  - Implemented `POST /tasks/{id}/clone-as-service` endpoint to duplicate a `ScheduledTask` into a `MediaProcess` service with automatic realtime input handling (`-re` for file inputs) and watchdog auto-recovery defaults.
+  - Added interactive **"Copy as Task"** (`services.cloneAsTask`) button on service cards in `ServicesView.tsx`.
+  - Added interactive **"Copy as Service"** (`tasks.cloneAsService`) button on task cards in `ScheduledTasks.tsx`.
+
 ## [1.43.3] - 2026-08-07
 
 ### Fixed
