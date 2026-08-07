@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.3] - 2026-08-07
+
+### Fixed
+- **i18n Missing Translations Completion (`en.json`, `es.json`, `ca.json`)**:
+  - Registered 142 missing translation keys across `sources.*`, `destinations.*`, `forge.*`, `settings.*`, and `common.*` namespaces in English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`).
+  - Restored 100% key parity (744 keys) across all supported languages per Rule X.
+  - Eliminated raw un-translated i18n keys in FFmpeg command forge UI (`InputSourcePanel.tsx`, `DestinationPanel.tsx`, `ProcessConfigForm.tsx`, `SettingsView.tsx`, `AlsaAudioSettingsCard.tsx`).
+
 ## [1.43.2] - 2026-08-07
 
 ### Added
