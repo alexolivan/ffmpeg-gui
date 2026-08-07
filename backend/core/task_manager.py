@@ -458,82 +458,39 @@ class TaskManager:
             self.logger.error(f"Failed to save system task execution results: {db_err}")
 
     async def _execute_log_rotate(self, log_info, log_error):
+        import time
         config_path = os.environ.get("CONFIG_FILE_PATH")
-        if not config_path:
-            log_info("CONFIG_FILE_PATH environment variable not set. Using defaults (no file logging).")
-            return
-            
-        if not os.path.exists(config_path):
-            log_info(f"Config file not found at: {config_path}")
-            return
-            
-        import configparser
-        config = configparser.ConfigParser()
-        config.read(config_path)
-        
+        retention_days = 30
         logging_mode = "both"
         logging_file_path = None
-        retention_days = 30
-        
-        if "logging" in config:
-            logging_cfg = config["logging"]
-            logging_mode = logging_cfg.get("mode", logging_mode)
-            logging_file_path = logging_cfg.get("file_path", logging_file_path)
+
+        if config_path and os.path.exists(config_path):
             try:
-                retention_days = logging_cfg.getint("retention_days", 30)
-            except Exception:
-                pass
-        
-        if "server" in config and not logging_file_path:
-            logging_file_path = config["server"].get("log_file", None)
-            
-        use_file = bool(logging_file_path and logging_mode in ("file", "both"))
-        if not use_file:
-            log_info(f"File logging is not active or path is not set (mode={logging_mode}, path={logging_file_path}). Nothing to clean up.")
-            return
-
-        abs_log_path = os.path.abspath(logging_file_path)
-        log_dir = os.path.dirname(abs_log_path)
-        log_filename = os.path.basename(abs_log_path)
-        
-        log_info(f"Logging directory to scan: {log_dir}")
-        log_info(f"Log filename prefix: {log_filename}")
-        log_info(f"Retention days: {retention_days}")
-        
-        if not os.path.exists(log_dir):
-            log_info(f"Directory {log_dir} does not exist. Nothing to clean up.")
-            return
-            
-        import time
-        now = time.time()
-        deleted_count = 0
-        preserved_count = 0
-        
-        for name in os.listdir(log_dir):
-            if name.startswith(log_filename) and name.endswith(".gz"):
-                file_path = os.path.join(log_dir, name)
-                if not os.path.isfile(file_path):
-                    continue
-                mtime = os.path.getmtime(file_path)
-                age_days = (now - mtime) / (24 * 3600)
-                if age_days > retention_days:
+                import configparser
+                config = configparser.ConfigParser()
+                config.read(config_path)
+                if "logging" in config:
+                    logging_cfg = config["logging"]
+                    logging_mode = logging_cfg.get("mode", logging_mode)
+                    logging_file_path = logging_cfg.get("file_path", logging_file_path)
                     try:
-                        os.remove(file_path)
-                        log_info(f"Deleted expired rotated log file: {name} (age: {age_days:.1f} days)")
-                        deleted_count += 1
-                    except Exception as e:
-                        log_error(f"Failed to delete {name}: {e}")
-                else:
-                    log_info(f"Preserved rotated log file: {name} (age: {age_days:.1f} days)")
-                    preserved_count += 1
-                    
-        log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")
+                        retention_days = logging_cfg.getint("retention_days", 30)
+                    except Exception:
+                        pass
+                if "server" in config and not logging_file_path:
+                    logging_file_path = config["server"].get("log_file", None)
+            except Exception as cfg_err:
+                log_error(f"Error reading config for log rotation: {cfg_err}")
 
-        # Clean up expired TaskExecution records from SQLite database
+        log_info(f"Retention days: {retention_days}")
+
+        # 1. Clean up expired TaskExecution and ProcessLog records from SQLite database
         try:
             with self.db_session_factory() as session:
-                from database.models import TaskExecution
+                from datetime import datetime, timedelta
+                from database.models import TaskExecution, ProcessLog
                 cutoff = datetime.utcnow() - timedelta(days=retention_days)
+                
                 expired_execs = session.query(TaskExecution).filter(
                     TaskExecution.started_at.isnot(None),
                     TaskExecution.started_at < cutoff,
@@ -544,8 +501,80 @@ class TaskManager:
                         session.delete(ex)
                     session.commit()
                     log_info(f"Purged {len(expired_execs)} TaskExecution database records older than {retention_days} days.")
+
+                expired_logs = session.query(ProcessLog).filter(
+                    ProcessLog.timestamp < cutoff
+                ).all()
+                if expired_logs:
+                    for pl in expired_logs:
+                        session.delete(pl)
+                    session.commit()
+                    log_info(f"Purged {len(expired_logs)} ProcessLog database records older than {retention_days} days.")
         except Exception as db_clean_err:
-            log_error(f"Failed to prune old task execution records from DB: {db_clean_err}")
+            log_error(f"Failed to prune old task/process log records from DB: {db_clean_err}")
+
+        # 2. Clean up rotated log files (.gz) if file logging is configured
+        use_file = bool(logging_file_path and logging_mode in ("file", "both"))
+        if use_file and os.path.exists(os.path.dirname(os.path.abspath(logging_file_path))):
+            abs_log_path = os.path.abspath(logging_file_path)
+            log_dir = os.path.dirname(abs_log_path)
+            log_filename = os.path.basename(abs_log_path)
+            
+            import time
+            now = time.time()
+            deleted_count = 0
+            preserved_count = 0
+            
+            for name in os.listdir(log_dir):
+                if name.startswith(log_filename) and name.endswith(".gz"):
+                    file_path = os.path.join(log_dir, name)
+                    if not os.path.isfile(file_path):
+                        continue
+                    mtime = os.path.getmtime(file_path)
+                    age_days = (now - mtime) / (24 * 3600)
+                    if age_days > retention_days:
+                        try:
+                            os.remove(file_path)
+                            log_info(f"Deleted expired rotated log file: {name} (age: {age_days:.1f} days)")
+                            deleted_count += 1
+                        except Exception as e:
+                            log_error(f"Failed to delete {name}: {e}")
+                    else:
+                        log_info(f"Preserved rotated log file: {name} (age: {age_days:.1f} days)")
+                        preserved_count += 1
+            log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")
+
+        # Clean up orphaned temporary progress logs in /dev/shm or /tmp older than 1 day
+        for temp_dir in ["/dev/shm", "/tmp"]:
+            if os.path.exists(temp_dir) and os.access(temp_dir, os.W_OK):
+                try:
+                    now_ts = time.time()
+                    for fname in os.listdir(temp_dir):
+                        if fname.startswith("ffmpeg_progress_") and fname.endswith(".log"):
+                            fpath = os.path.join(temp_dir, fname)
+                            if os.path.isfile(fpath):
+                                f_age = (now_ts - os.path.getmtime(fpath)) / (24 * 3600)
+                                if f_age > 1:
+                                    try:
+                                        os.remove(fpath)
+                                        log_info(f"Cleaned up orphaned progress log: {fname}")
+                                    except Exception:
+                                        pass
+                except Exception as t_err:
+                    log_error(f"Failed to clean temporary progress files in {temp_dir}: {t_err}")
+
+    async def execute_on_boot_cleanup(self):
+        """Run system retention cleanup asynchronously on server boot."""
+        self.logger.info("TaskManager: Executing on-boot system retention & log cleanup...")
+        def log_info(msg):
+            self.logger.info(f"[OnBootCleanup] {msg}")
+        def log_error(msg):
+            self.logger.error(f"[OnBootCleanup] {msg}")
+        try:
+            await self._execute_log_rotate(log_info, log_error)
+            self.logger.info("TaskManager: On-boot system retention & log cleanup completed.")
+        except Exception as e:
+            self.logger.error(f"TaskManager: On-boot cleanup encountered an error: {e}")
 
     async def _execute_ssl_renew(self, log_info, log_error):
         from services.cert_manager import CertificateManager
