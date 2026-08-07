@@ -81,7 +81,8 @@
       "lcd": "Pantalla LCD",
       "storage": "Almacenamiento",
       "security": "Red y Seguridad",
-      "alsa": "AUDIO ALSA"
+      "alsa": "AUDIO ALSA",
+      "backup": "COPIA DE SEGURIDAD Y RESTAURACIÓN"
     },
     "alsa": {
       "title": "MEZCLADOR DE HARDWARE DE AUDIO ALSA",
@@ -271,6 +272,28 @@
       "notifyTaskFailures": "Fallos de Tarea (Errores en Tareas Programadas)",
       "notifySslAlerts": "Alertas SSL (Avisos de Caducidad y Renovaciones)",
       "notifyStorageAlerts": "Alertas de Almacenamiento (Avisos de Espacio Escaso)"
+    },
+    "backup": {
+      "exportTitle": "Exportar Copia de Seguridad del Sistema (.json)",
+      "exportDesc": "Selecciona las secciones de configuración a incluir en tu archivo JSON descargable.",
+      "sectionSystemDesc": "Panel central, idioma, tema, registros",
+      "sectionServicesDesc": "Servicios de emisión FFmpeg y watchdog",
+      "sectionTasksDesc": "Rutinas de automatización cron y puntuales",
+      "sectionStorageDesc": "Directorios de almacenamiento y rutas montadas",
+      "sectionNotificationsTitle": "Notificaciones",
+      "sectionNotificationsDesc": "Servidor de correo SMTP y alertas",
+      "exporting": "GENERANDO COPIA...",
+      "exportBtn": "EXPORTAR COPIA DE SEGURIDAD (.JSON)",
+      "importTitle": "Restaurar Copia de Seguridad",
+      "importDesc": "Sube un archivo JSON de respaldo exportado previamente para restaurar la configuración del sistema, servicios y tareas.",
+      "selectBackupFile": "SELECCIONAR ARCHIVO DE RESPALDO (.JSON)",
+      "warningWarning": "Advertencia: Restaurar esta copia creará o actualizará entradas en la base de datos SQLite y la configuración del sistema.",
+      "restoreBtn": "RESTAURAR CONFIGURACIÓN DE RESPALDO",
+      "confirmTitle": "Confirmar Restauración de Copia",
+      "confirmDesc": "¿Estás seguro de que deseas restaurar esta configuración? Se insertarán los servicios y tareas inexistentes y se actualizarán las preferencias.",
+      "confirmBtn": "Confirmar Restauración",
+      "importSuccess": "¡Copia de seguridad restaurada con éxito!",
+      "invalidBackupFormat": "Formato de copia de seguridad no válido. Falta la firma ffmpeg-gui."
     }
   },
   "dashboard": {
