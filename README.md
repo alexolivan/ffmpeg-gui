@@ -66,3 +66,9 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Backend**: FastAPI (Python), SQLite (SQLAlchemy), and Uvicorn.
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS, and `react-i18next`.
 - **System Wrapper**: Integrates with systemd service units running in user-space or system-wide space.
+
+---
+
+## Development Note
+
+This project has been developed entirely in pair-programming using AI agent tools (collaborating with Google DeepMind's Antigravity coding assistant).
