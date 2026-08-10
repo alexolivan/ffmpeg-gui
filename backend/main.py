@@ -2585,6 +2585,9 @@ async def startup_event():
             
             all_processes = db.query(MediaProcess).all()
             for p in all_processes:
+                if p.id in process_manager.processes or (p.status == "running" and p.pid and psutil.pid_exists(p.pid)):
+                    logger.info(f"Startup: Skipping file permissions reset for running process '{p.name}' (ID: {p.id}) to preserve active progress logs.")
+                    continue
                 try:
                     prepare_process_file_permissions(process_id=p.id, logger=logger)
                 except Exception as p_err:

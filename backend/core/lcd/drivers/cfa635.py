@@ -15,6 +15,10 @@ class Cfa635Driver(LCDDisplayInterface):
 
     def disconnect(self) -> None:
         if self.ser and self.ser.is_open:
+            try:
+                self.ser.flush()
+            except Exception:
+                pass
             self.ser.close()
 
     def _calculate_crc(self, data: bytes) -> int:
