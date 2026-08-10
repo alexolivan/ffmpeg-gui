@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n/i18n';
-import { ShieldIcon, GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon } from '../Icons';
+import { ShieldIcon, GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon, ExportIcon } from '../Icons';
 import { AlsaAudioSettingsCard } from './settings/AlsaAudioSettingsCard';
+import { BackupRestoreCard } from './settings/BackupRestoreCard';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
 
@@ -99,7 +100,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security' | 'alsa'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security' | 'alsa' | 'backup'>('general');
 
   const [storages, setStorages] = useState<any[]>([]);
   const [isLoadingStorages, setIsLoadingStorages] = useState(false);
@@ -841,11 +842,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </header>
 
       {/* Tabs selector */}
-      <div className="flex gap-1 mb-3 shrink-0 border-b border-[var(--glass-border)] pb-2">
+      <div className="flex items-center gap-1.5 mb-3 shrink-0 border-b border-[var(--glass-border)] pb-2 overflow-x-auto custom-scrollbar flex-nowrap min-w-0">
         <button
           type="button"
           onClick={() => setActiveTab('general')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'general'
               ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
@@ -857,7 +858,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('lcd')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'lcd'
               ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
@@ -869,7 +870,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('storage')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'storage'
               ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
@@ -881,7 +882,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('security')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'security'
               ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
@@ -893,7 +894,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('alsa')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'alsa'
               ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
@@ -901,6 +902,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <span className="text-sm">🔊</span>
           {t('settings.tabs.alsa', 'ALSA AUDIO')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('backup')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+            activeTab === 'backup'
+              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <ExportIcon size={14} />
+          {t('settings.tabs.backup', 'BACKUP & RESTORE')}
         </button>
       </div>
 
@@ -2386,6 +2399,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* TAB 5: ALSA Audio */}
         {activeTab === 'alsa' && <AlsaAudioSettingsCard />}
+
+        {/* TAB 6: Backup & Restore */}
+        {activeTab === 'backup' && <BackupRestoreCard API={API} />}
       </div>
 
       {showRestartConfirm && (

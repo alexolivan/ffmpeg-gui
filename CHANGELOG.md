@@ -5,6 +5,114 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.45.0] - 2026-08-07
+
+### Added
+- **Backup & Restore System - pfSense Style (`main.py`, `SettingsView.tsx`, `BackupRestoreCard.tsx`)**:
+  - Implemented `POST /api/backup/export` endpoint with toggle selection for system settings, media services, scheduled tasks, storage volumes, and notifications.
+  - Implemented `POST /api/backup/import` endpoint for atomic JSON backup restoration in SQLite and `.conf` configuration file.
+  - Added dedicated **"BACKUP & RESTORE"** sub-tab in `SettingsView.tsx` with interactive export toggles, `.json` file dropzone/uploader, metadata preview box, warning banner, and confirmation modal.
+  - Created unit test suite `test_backup_restore_api.py` (`1/1 test PASSED`).
+  - Added full i18n key parity across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`).
+
+## [1.44.0] - 2026-08-07
+
+### Added
+- **Bilateral Service & Task Cloning (`main.py`, `ServicesView.tsx`, `ScheduledTasks.tsx`)**:
+  - Implemented `POST /processes/{id}/clone-as-task` endpoint to duplicate a live or stopped `MediaProcess` into a `ScheduledTask` with safe default manual scheduling and safety execution runtime.
+  - Implemented `POST /tasks/{id}/clone-as-service` endpoint to duplicate a `ScheduledTask` into a `MediaProcess` service with automatic realtime input handling (`-re` for file inputs) and watchdog auto-recovery defaults.
+  - Added interactive **"Copy as Task"** (`services.cloneAsTask`) button on service cards in `ServicesView.tsx`.
+  - Added interactive **"Copy as Service"** (`tasks.cloneAsService`) button on task cards in `ScheduledTasks.tsx`.
+
+## [1.43.3] - 2026-08-07
+
+### Fixed
+- **i18n Missing Translations Completion (`en.json`, `es.json`, `ca.json`)**:
+  - Registered 142 missing translation keys across `sources.*`, `destinations.*`, `forge.*`, `settings.*`, and `common.*` namespaces in English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`).
+  - Restored 100% key parity (744 keys) across all supported languages per Rule X.
+  - Eliminated raw un-translated i18n keys in FFmpeg command forge UI (`InputSourcePanel.tsx`, `DestinationPanel.tsx`, `ProcessConfigForm.tsx`, `SettingsView.tsx`, `AlsaAudioSettingsCard.tsx`).
+
+## [1.43.2] - 2026-08-07
+
+### Added
+- **On-Boot Retention Cleanup & Maintenance Routine (`task_manager.py`, `main.py`)**:
+  - Implemented `TaskManager.execute_on_boot_cleanup()` triggered asynchronously during backend server startup (`startup_event`).
+  - Guarantees log rotation and database retention cleanup runs on every boot even if machines were powered off during scheduled midnight cron (`system://log_rotate`).
+  - Extended retention cleanup to purge expired `ProcessLog` database records and orphaned `/dev/shm` / `/tmp` progress logs older than 1 day.
+
+## [1.43.1] - 2026-08-07
+
+### Fixed
+- **Watchdog Startup Hang Detection (`process_manager.py`)**:
+  - Fixed a critical watchdog deadlock where services hanging during startup (e.g. SRT caller socket connection or network stall before producing frames) resulted in an empty progress log file (`0 bytes`), causing `has_had_activity` to remain `False` and bypassing the watchdog stall check indefinitely.
+  - Added startup stall timeout evaluation: if a service produces no frames/progress after `network_wait_timeout` (60s default), the watchdog logs an error and force kills the process to trigger automatic recovery.
+- **Task Execution Telemetry Payload (`main.py`, `ScheduledTasks.tsx`)**:
+  - Restored missing `pid`, `cpu`, `ram`, `fps`, `bitrate`, `speed`, and `retry_count` fields in `GET /tasks` HTTP API response payload (`last_execution`).
+  - Bound WebSocket live telemetry stream (`taskExecutions`) to active task cards in `ScheduledTasks.tsx` for real-time rendering.
+
+### Refactored
+- **Standalone `FFmpegCommandBuilder` (`core/builders/ffmpeg_builder.py`)**:
+  - Extracted FFmpeg CLI command building logic from `ProcessManager` into a dedicated, stateless `FFmpegCommandBuilder` class.
+  - Decoupled `TaskManager` from `ProcessManager` instance creation, ensuring both managers call `FFmpegCommandBuilder.build_cmd` cleanly.
+
+## [1.43.0] - 2026-08-06
+
+### Changed
+- **ProcessManager as SSOT for FFmpeg Command Generation (`task_manager.py`, `process_manager.py`)**:
+  - `TaskManager._build_ffmpeg_cmd` now fully delegates to `ProcessManager._build_ffmpeg_cmd`, eliminating ~620 lines of duplicated command-generation logic that had diverged from the richer service command builder.
+  - Tasks now benefit from all ProcessManager features: multi-input format, filter graph, hwaccel, fps_mode, MPEGTS metadata, SRT/UDP/ALSA/HLS outputs, and secondary MJPEG preview output.
+  - Fixed `_append_output` to accept `limit_sec` parameter and propagate it correctly through the call chain.
+  - Fixed preview file naming: tasks produce `preview_task_{execution_id}.jpg` (unique per execution run), services produce `preview_{proc.id}.jpg`.
+  - Added generic `lavfi` input type to `ProcessManager._append_input` to support ScheduledTask input configs using full lavfi expressions in the `path` field.
+
+## [1.42.0] - 2026-08-06
+
+### Added
+- **ALSA Audio Hardware Output Support in Task Manager (`task_manager.py`)**:
+  - Fixed `_build_ffmpeg_cmd` in `backend/core/task_manager.py` to support `output_type == 'alsa'` (`-f alsa <device>`), matching `process_manager.py` so scheduled tasks configured to output to ALSA soundcards render complete FFmpeg commands.
+- **Task Retry Policy & Automatic Watchdog Rescue Loop (`task_manager.py`)**:
+  - Implemented automatic retry handling in `task_manager.py` reading `task.retry_policy` (`max_retries`, `retry_delay`). When a task execution fails or hangs, it automatically increments `retry_count`, logs progress, waits `retry_delay` seconds, and restarts execution until retries are exhausted.
+- **Unified Task Card UX & Realtime Telemetry (`ScheduledTasks.tsx`)**:
+  - Redesigned task cards in `ScheduledTasks.tsx` to display live telemetry (`PID`, `CPU`, `RAM`, `FPS`, `Bitrate`, `Speed`) directly on the card during execution, matching the service cards design.
+  - Added live `ABORT` button and `RESCUED X/Y` / `🛡️ WATCHDOG (N)` badges directly on task cards.
+  - Removed the redundant top "Realtime Execution Monitor" block, unifying the entire tasks view.
+
+## [1.41.1] - 2026-08-06
+
+### Fixed
+- **Task Form Modal Activation Persistence (`ProcessConfigForm.tsx`)**:
+  - Fixed `createPayload()` in `ProcessConfigForm.tsx` to explicitly include `is_active: config.is_active` in the JSON payload sent to `onSubmit` when `isTask === true`, ensuring changes to `is_active` persist when saving task edits in the modal form.
+- **Toggle Switch UX Redesign (`SchedulingFormSection.tsx`)**:
+  - Replaced button badge with the standard, intuitive `peer-checked` toggle switch component matching `LifecycleFormSection.tsx` with `Task Schedule Status: Enabled / Disabled` label for visual parity.
+
+## [1.41.0] - 2026-08-06
+
+### Added
+- **Task Form Modal Activation Toggle (`ProcessConfigForm.tsx`, `SchedulingFormSection.tsx`)**:
+  - Added `Enable Task Schedule` (`is_active`) toggle switch inside the Task Creation/Editing Modal General tab, allowing operators to set schedule activation state when creating or modifying tasks.
+- **Manual Task Execution History Purge (`DELETE /tasks/{task_id}/executions`)**:
+  - **Clear History Endpoint**: Added backend endpoint `@app.delete("/tasks/{task_id}/executions")` to delete all historical execution logs for a specific task.
+  - **UI Purge Button**: Added **"CLEAR HISTORY"** button (with confirmation warning dialog) in the Task Run History modal (`ScheduledTasks.tsx`).
+- **Automated Database Task Log Retention Cleanup (`_execute_log_rotate`)**:
+  - Extended system task `system://log_rotate` in `task_manager.py` to automatically purge SQLite `TaskExecution` records older than `retention_days` (default 30 days).
+
+## [1.40.0] - 2026-08-06
+
+### Added
+- **Scheduled Tasks Enable/Disable Toggle & 2-Stack UI Parity**:
+  - **Enable/Disable State Toggle**: Added `is_active` toggle switch on scheduled task cards to enable or disable recurring cron triggers without deleting the task.
+  - **2-Stack Visual Layout**: Restructured `ScheduledTasks.tsx` into two distinct card stacks matching `ServicesView.tsx`: **Active & Scheduled Tasks (Enabled)** vs **Configured Tasks (Disabled / Standby)**.
+  - **On-Demand Testing from Disabled Stack**: Enabled the **RUN NOW** button on disabled tasks so operators can test transcode pipelines on-demand without enabling production cron schedules.
+  - **Safe Cloning & Import Staging**: Set `is_active = False` by default when cloning or importing tasks, staging new tasks safely in the Disabled stack for audit prior to activation.
+
+### Fixed
+- **Audio-Only Telemetry Tag Scoping (`ServicesView.tsx`, `ProcessPreviewModal.tsx`)**:
+  - Added `hasVideo` helper strictly hiding FPS tags for audio-only streams (e.g. Icecast playouts).
+- **Telemetry Card Digit Length Flickering**:
+  - Applied `font-mono tabular-nums` and fixed `min-w-[...]` width containers on telemetry numbers (`CPU`, `RAM`, `FPS`, `Bitrate`, `Speed`).
+- **Process Restart Status Preservation (`process_manager.py`, `main.py`)**:
+  - Preserved `status = 'restarting'` in DB during restart lifecycle to eliminate UI card flickering between Active and Inactive lists.
+
 ## [1.39.0] - 2026-08-05
 
 ### Added

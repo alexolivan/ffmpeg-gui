@@ -49,20 +49,44 @@ else
 fi
 
 # ---------------------------------------------------------
-# [PHASE 1.5/3] Verifying System Capabilities
+# [PHASE 1.5/3] Verifying Systemd Service Units & Capabilities
 # ---------------------------------------------------------
-if [ "$EUID" -eq 0 ]; then
-    if [ -f "/etc/systemd/system/ffmpeg-gui.service" ]; then
-        if ! grep -q "AmbientCapabilities=CAP_NET_BIND_SERVICE" "/etc/systemd/system/ffmpeg-gui.service"; then
-            echo "--> Ensuring systemd service capabilities (CAP_NET_BIND_SERVICE)..."
+echo ""
+echo "[PHASE 1.5/3] Verifying Systemd Service Units..."
+
+# 1. System-wide service check
+SYSTEM_SERVICE="/etc/systemd/system/ffmpeg-gui.service"
+if [ -f "$SYSTEM_SERVICE" ]; then
+    # Ensure KillMode=process
+    if ! grep -q "KillMode=process" "$SYSTEM_SERVICE"; then
+        echo "--> Ensuring KillMode=process is configured in system-wide service..."
+        if [ "$EUID" -eq 0 ]; then
+            sed -i '/\[Service\]/a KillMode=process' "$SYSTEM_SERVICE"
+            systemctl daemon-reload
+        else
+            sudo sed -i '/\[Service\]/a KillMode=process' "$SYSTEM_SERVICE"
+            sudo systemctl daemon-reload
+        fi
+    fi
+    
+    # Ensure CAP_NET_BIND_SERVICE capabilities
+    if ! grep -q "AmbientCapabilities=CAP_NET_BIND_SERVICE" "$SYSTEM_SERVICE"; then
+        echo "--> Ensuring systemd service capabilities (CAP_NET_BIND_SERVICE)..."
+        if [ "$EUID" -eq 0 ]; then
             if [ -f "$PROJ_DIR/scripts/setup-port-capabilities.sh" ]; then
                 bash "$PROJ_DIR/scripts/setup-port-capabilities.sh" || true
             fi
+        else
+            if [ -f "$PROJ_DIR/scripts/setup-port-capabilities.sh" ]; then
+                sudo bash "$PROJ_DIR/scripts/setup-port-capabilities.sh" || true
+            fi
         fi
-        
-        # Ensure NVIDIA UVM systemd initialization unit exists if NVIDIA driver present
-        if [ -d "/proc/driver/nvidia" ] || command -v nvidia-modprobe >/dev/null 2>&1; then
-            echo "--> NVIDIA GPU driver detected. Ensuring /etc/systemd/system/nvidia-uvm-init.service is up to date..."
+    fi
+
+    # Ensure NVIDIA UVM systemd initialization unit exists if NVIDIA driver present
+    if [ -d "/proc/driver/nvidia" ] || command -v nvidia-modprobe >/dev/null 2>&1; then
+        echo "--> NVIDIA GPU driver detected. Ensuring /etc/systemd/system/nvidia-uvm-init.service is up to date..."
+        if [ "$EUID" -eq 0 ]; then
             cat <<EOF > /etc/systemd/system/nvidia-uvm-init.service
 [Unit]
 Description=Initialize NVIDIA UVM Device Nodes at Boot
@@ -78,7 +102,34 @@ WantedBy=multi-user.target
 EOF
             systemctl daemon-reload
             systemctl enable --now nvidia-uvm-init.service || true
+        else
+            sudo bash -c 'cat <<EOF > /etc/systemd/system/nvidia-uvm-init.service
+[Unit]
+Description=Initialize NVIDIA UVM Device Nodes at Boot
+Before=ffmpeg-gui.service
+ConditionPathExists=/proc/driver/nvidia
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '\''modprobe nvidia_uvm 2>/dev/null || true; if command -v nvidia-modprobe >/dev/null 2>&1; then nvidia-modprobe -u -c 0; fi'\''
+
+[Install]
+WantedBy=multi-user.target
+EOF'
+            sudo systemctl daemon-reload
+            sudo systemctl enable --now nvidia-uvm-init.service || true
         fi
+    fi
+fi
+
+# 2. User-space service check
+USER_SERVICE="$HOME/.config/systemd/user/ffmpeg-gui.service"
+if [ -f "$USER_SERVICE" ]; then
+    # Ensure KillMode=process
+    if ! grep -q "KillMode=process" "$USER_SERVICE"; then
+        echo "--> Ensuring KillMode=process is configured in user-space service..."
+        sed -i '/\[Service\]/a KillMode=process' "$USER_SERVICE"
+        systemctl --user daemon-reload
     fi
 fi
 

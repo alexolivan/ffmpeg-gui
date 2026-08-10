@@ -55,8 +55,8 @@ class TestProcessUtils(unittest.TestCase):
         proc_id = 9999
         prepare_process_file_permissions(process_id=proc_id)
 
-        shm_log = f"/dev/shm/ffmpeg_progress_{proc_id}.log"
-        tmp_log = f"/tmp/ffmpeg_progress_{proc_id}.log"
+        shm_log = f"/dev/shm/ffmpeg_progress_{proc_id}s.log"
+        tmp_log = f"/tmp/ffmpeg_progress_{proc_id}s.log"
         preview_img = f"/tmp/ffmpeg-gui-previews/preview_{proc_id}.jpg"
 
         self.assertTrue(os.path.exists(shm_log) or os.path.exists(tmp_log))

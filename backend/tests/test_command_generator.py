@@ -329,7 +329,7 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-progress", cmd)
         progress_idx = cmd.index("-progress")
         progress_val = cmd[progress_idx + 1]
-        self.assertTrue(progress_val.endswith("ffmpeg_progress_500.log"))
+        self.assertTrue(progress_val.endswith("ffmpeg_progress_500s.log"))
         
     def test_network_timeouts_command_generation(self):
         # HTTP / HLS

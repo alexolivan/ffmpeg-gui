@@ -11,7 +11,8 @@ import {
   PencilIcon, 
   TrashIcon, 
   SourceIcon, 
-  StopIcon 
+  StopIcon,
+  ServerIcon
 } from './Icons';
 
 interface ScheduledTasksProps {
@@ -39,6 +40,12 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
   // File import reference
   const importFileRef = useRef<HTMLInputElement>(null);
+
+  const hasVideoTask = (task: any) => {
+    const isAudioOnlyCodec = task.codec_config?.vcodec === 'none';
+    const hasVideoInput = task.input_config?.has_video !== false;
+    return hasVideoInput && !isAudioOnlyCodec;
+  };
 
   const fetchTasks = async (silent = false) => {
     try {
@@ -95,6 +102,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     } catch {}
   };
 
+  const handleClearTaskHistory = async (taskId: number) => {
+    if (!window.confirm(t('tasks.clearHistoryConfirm', 'Are you sure you want to delete all execution history and logs for this task?'))) {
+      return;
+    }
+    try {
+      const r = await fetch(`${API}/tasks/${taskId}/executions`, { method: 'DELETE' });
+      if (r.ok) {
+        viewTaskDetails(taskId);
+        fetchTasks();
+      }
+    } catch {}
+  };
+
   // Poll task details if open (to get updated execution list)
   useEffect(() => {
     if (!selectedTaskDetails) return;
@@ -108,7 +128,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const handleSaveTask = async (payload: any) => {
     const finalPayload = {
       ...payload,
-      is_active: editingTask ? editingTask.is_active : true
+      is_active: payload.is_active !== undefined ? payload.is_active : (editingTask ? editingTask.is_active : true)
     };
     try {
       const url = editingTask ? `${API}/tasks/${editingTask.id}` : `${API}/tasks`;
@@ -211,7 +231,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         body: JSON.stringify({
           name: `${task.name} (Copy)`,
           alias: task.alias ? `${task.alias.slice(0, 7)}_copy`.slice(0, 12) : null,
-          is_active: task.is_active,
+          is_active: false,
           input_config: task.input_config,
           output_config: task.output_config,
           codec_config: task.codec_config,
@@ -235,6 +255,21 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       }
     } catch (err) {
       console.error("Error cloning task:", err);
+    }
+  };
+
+  const handleToggleTaskActive = async (taskId: number, currentActive: boolean) => {
+    try {
+      const res = await fetch(`${API}/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !currentActive })
+      });
+      if (res.ok) {
+        fetchTasks();
+      }
+    } catch (err) {
+      console.error("Error toggling task active state:", err);
     }
   };
 
@@ -267,18 +302,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     reader.readAsText(file);
   };
 
-  const handleToggleActive = async (task: any) => {
-    try {
-      const r = await fetch(`${API}/tasks/${task.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: !task.is_active })
-      });
-      if (r.ok) {
-        fetchTasks();
-      }
-    } catch {}
-  };
 
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
@@ -357,260 +380,527 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         </div>
       </div>
 
-      {/* ACTIVE RUNNING EXECUTIONS ROW */}
-      {taskExecutions.length > 0 && (
-        <div className="glass-card p-4 bg-brand-lime/5 border-brand-lime/20 animate-in fade-in slide-in-from-top-2 duration-300">
-          <h3 className="text-sm font-black uppercase text-brand-lime tracking-widest mb-2.5 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-brand-lime animate-ping"></span>
-            Realtime Execution Monitor
-          </h3>
-          <div className="space-y-4">
-            {taskExecutions.map(exec => (
-              <div 
-                key={exec.id} 
-                onClick={() => setViewingLogsExecutionId(exec.id)}
-                className="flex flex-col md:flex-row md:items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 gap-4 cursor-pointer hover:bg-white/10 transition-colors"
-              >
-                <div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-[var(--text-primary)]">{exec.task_name}</span>
-                    <span className="text-xs font-mono text-white/40">#run-{exec.id}</span>
-                  </div>
-                  <div className="flex gap-4 mt-1 text-xs text-text-secondary flex-wrap items-center">
-                    <span>PID: <strong className="text-[var(--text-primary)] font-mono">{exec.pid || 'N/A'}</strong></span>
-                    <span className="opacity-20 select-none">|</span>
-                    <span>CPU: <strong className="text-[var(--text-primary)]">{exec.cpu}%</strong></span>
-                    <span>RAM: <strong className="text-[var(--text-primary)]">{exec.ram} MB</strong></span>
-                    {exec.fps && <span>FPS: <strong className="text-[var(--text-primary)]">{exec.fps}</strong></span>}
-                    {exec.bitrate && <span>Bitrate: <strong className="text-[var(--text-primary)]">{exec.bitrate}</strong></span>}
-                    {exec.speed && <span>Speed: <strong className="text-[var(--text-primary)]">{exec.speed}</strong></span>}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setViewingLogsExecutionId(exec.id);
-                    }}
-                    className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 text-xs py-1.5 px-4"
+      {/* TASKS LIST - TWO STACKS (ACTIVE VS DISABLED) */}
+      <div className="space-y-6">
+        {/* Active & Scheduled Tasks */}
+        <div className="glass-card p-4 md:p-5 bg-white/5 border-white/5">
+          <h2 className="text-xl font-bold mb-3 text-[var(--text-primary)]">{t('tasks.activeScheduledTasks', 'Active & Scheduled Tasks')}</h2>
+          
+          {loading ? (
+            <div className="py-12 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
+          ) : error ? (
+            <div className="py-8 text-center text-red-400 font-bold border border-red-500/20 rounded-2xl bg-red-500/5">{error}</div>
+          ) : tasks.filter(t => t.is_active).length === 0 ? (
+            <div className="py-12 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
+              {t('tasks.noActiveTasks', 'No active scheduled tasks.')}
+            </div>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {tasks.filter(t => t.is_active).map(task => {
+                const liveExec = taskExecutions.find((e: any) => e.task_id === task.id && (e.status === 'running' || e.status === 'retrying'));
+                const exec = liveExec || task.last_execution;
+                const isRunning = exec && (exec.status === 'running' || exec.status === 'retrying');
+                return (
+                  <div 
+                    key={task.id} 
+                    className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all px-2 ${
+                      isRunning
+                        ? 'border border-brand-lime/30 rounded-xl bg-brand-lime/[0.02] px-3 my-1 shadow-sm shadow-brand-lime/5'
+                        : task.is_system 
+                          ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1 shadow-sm shadow-brand-orange/5' 
+                          : 'hover:bg-white/[0.01]'
+                    }`}
                   >
-                    CLI LOGS
-                  </button>
-                  <button 
-                    disabled={execStopPending[exec.id]}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleStopExecution(exec.id);
-                    }}
-                    className="pill-button bg-red-500 text-white font-bold hover:bg-red-600 text-xs py-1.5 px-4 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center"
-                  >
-                    {execStopPending[exec.id] && (
-                      <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-1.5" />
-                    )}
-                    {execStopPending[exec.id] ? 'ABORTING...' : 'ABORT'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* TASKS LIST */}
-      <div className="glass-card p-4 md:p-5 bg-white/5 border-white/5">
-        <h2 className="text-xl font-bold mb-3">{t('tasks.taskJobConfigurations', 'Task Job Configurations')}</h2>
-        
-        {loading ? (
-          <div className="py-20 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
-        ) : error ? (
-          <div className="py-12 text-center text-red-400 font-bold border border-red-500/20 rounded-2xl bg-red-500/5">{error}</div>
-        ) : tasks.length === 0 ? (
-          <div className="py-20 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
-            {t('tasks.noScheduledTasks', 'No scheduled tasks defined. Click "Create Task" to configure your first automated FFmpeg run.')}
-          </div>
-        ) : (
-          <div className="divide-y divide-white/5">
-            {tasks.map(task => (
-              <div 
-                key={task.id} 
-                className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all px-2 ${
-                  !task.is_active ? 'opacity-50 grayscale-[30%] hover:opacity-80' : ''
-                } ${
-                  task.is_system 
-                    ? task.is_active 
-                      ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1 shadow-sm shadow-brand-orange/5' 
-                      : 'border border-white/10 rounded-xl bg-white/[0.01] px-3 my-1'
-                    : 'hover:bg-white/[0.01]'
-                }`}
-              >
-                <div className="flex-1 space-y-0.5 min-w-0">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h3 className={`font-bold text-lg truncate ${task.is_active ? 'text-[var(--text-primary)]' : 'text-text-secondary'}`}>
-                      {task.is_system && (task.name === 'System Log Rotation and Retention Cleanup' || task.command === 'system://log_rotate')
-                        ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
-                        : task.is_system && (task.name === 'System SSL/TLS Certificate Auto-Renewal Routine' || task.command === 'system://ssl_renew')
-                        ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
-                        : task.name}
-                      {task.alias && (
-                        <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
-                          [{task.alias}]
+                    <div className="flex-1 space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h3 className="font-bold text-lg truncate text-[var(--text-primary)]">
+                          {task.is_system && (task.name === 'System Log Rotation and Retention Cleanup' || task.command === 'system://log_rotate')
+                            ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
+                            : task.is_system && (task.name === 'System SSL/TLS Certificate Auto-Renewal Routine' || task.command === 'system://ssl_renew')
+                            ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
+                            : task.name}
+                          {task.alias && (
+                            <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
+                              [{task.alias}]
+                            </span>
+                          )}
+                        </h3>
+                        {task.is_system && (
+                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
+                            {t('tasks.systemBadge', 'SYSTEM')}
+                          </span>
+                        )}
+                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                          task.schedule_type === 'recurring' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' :
+                          task.schedule_type === 'one_shot' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
+                          'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
+                        }`}>
+                          {task.schedule_type === 'recurring' ? t('tasks.scheduleTypes.recurring', 'recurring') :
+                           task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
+                           task.schedule_type}
                         </span>
-                      )}
-                    </h3>
-                    {task.is_system && (
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                        task.is_active 
-                          ? 'bg-brand-orange/15 text-brand-orange border border-brand-orange/30' 
-                          : 'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
-                      }`}>
-                        {t('tasks.systemBadge', 'SYSTEM')}
-                      </span>
-                    )}
-                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
-                      task.schedule_type === 'recurring' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' :
-                      task.schedule_type === 'one_shot' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
-                      'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
-                    }`}>
-                      {task.schedule_type === 'recurring' ? t('tasks.scheduleTypes.recurring', 'recurring') :
-                       task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
-                       task.schedule_type}
-                    </span>
-                    {task.is_system ? (
-                      <span 
-                        title="Managed via Settings > General > Logging"
-                        className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help ${
-                          task.is_active 
-                            ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                            : 'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>
-                        {task.is_active ? t('common.enabled', 'Active') : t('common.disabled', 'Disabled')}
-                      </span>
-                    ) : (
-                      <button 
-                        onClick={() => handleToggleActive(task)}
-                        className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 ${
-                          task.is_active 
-                            ? 'bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20' 
-                            : 'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${task.is_active ? 'bg-green-400' : 'bg-white/20'}`}></span>
-                        {task.is_active ? t('common.enabled', 'Active') : t('common.disabled', 'Disabled')}
-                      </button>
-                    )}
-                  </div>
+                        {isRunning && (
+                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-lime text-black animate-pulse">
+                            {exec.status}
+                          </span>
+                        )}
+                        {exec?.retry_count > 0 && (
+                          <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
+                            ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
+                          </span>
+                        )}
+                        {task.retry_policy?.max_retries > 0 && (!exec || exec.retry_count === 0 || exec.status !== 'running') && (
+                          <span className="text-[9px] bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-2 py-0.5 rounded font-black flex items-center gap-1" title={`Watchdog active (${task.retry_policy.max_retries} max retries)`}>
+                            🛡️ WATCHDOG ({task.retry_policy.max_retries})
+                          </span>
+                        )}
+                        {task.is_system ? (
+                          <span 
+                            title="Managed via Settings > General > Logging"
+                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-green-500/10 text-green-400 border-green-500/20"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                            {t('common.enabled', 'Active')}
+                          </span>
+                        ) : (
+                          <button 
+                            onClick={() => handleToggleTaskActive(task.id, task.is_active)}
+                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20"
+                            title={t('tasks.disableTask', 'Disable Task')}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                            {t('common.enabled', 'Active')}
+                          </button>
+                        )}
+                      </div>
 
-                  <div className="text-xs text-text-secondary space-y-1">
-                    {task.is_system ? (
-                      <p className="truncate">
-                        {t('tasks.systemActionLabel', 'System Action:')} <strong className={task.is_active ? "text-brand-orange font-medium" : "text-text-secondary font-medium"}>{t('tasks.systemLogTaskRoutine', 'Log Retention & Cleanup Routine')}</strong>
-                      </p>
-                    ) : (
-                      <>
-                        <p className="truncate">
-                          {t('tasks.inputLabel', 'Input:')} <code className="text-[var(--text-primary)] font-mono">{formatInputDesc(task.input_config)}</code>
-                        </p>
-                        <p className="truncate">
-                          {t('tasks.outputLabel', 'Output:')} <code className="text-[var(--text-primary)] font-mono">{formatOutputDesc(task.output_config)}</code>
-                        </p>
-                      </>
-                    )}
-                    {task.schedule_type === 'recurring' && (
-                      <p>
-                        {t('tasks.cronExpressionLabel', 'Cron Expression:')} <code className="text-brand-lime font-mono">{task.schedule_cron}</code>
-                      </p>
-                    )}
-                    {task.schedule_type === 'one_shot' && (
-                      <p>
-                        {t('tasks.targetDateLabel', 'Target Date:')} <strong className="text-[var(--text-primary)]">{new Date(task.schedule_datetime).toLocaleString()}</strong>
-                      </p>
-                    )}
-                    {task.is_active && task.next_run && (
-                      <p>
-                        {t('tasks.nextExecutionLabel', 'Next execution:')} <strong className="text-brand-orange">{new Date(task.next_run).toLocaleString()}</strong>
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  {task.last_execution ? (
-                    <div className="text-right hidden lg:block mr-2">
-                      <div className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution')}</div>
-                      <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md mt-1 ${getStatusBadgeClass(task.last_execution.status)}`}>
-                        {task.last_execution.status}
-                      </span>
+                      <div className="text-xs text-text-secondary space-y-1">
+                        {task.is_system ? (
+                          <p className="truncate">
+                            {t('tasks.systemActionLabel', 'System Action:')} <strong className="text-brand-orange font-medium">{t('tasks.systemLogTaskRoutine', 'Log Retention & Cleanup Routine')}</strong>
+                          </p>
+                        ) : (
+                          <>
+                            <p className="truncate">
+                              {t('tasks.inputLabel', 'Input:')} <code className="text-[var(--text-primary)] font-mono">{formatInputDesc(task.input_config)}</code>
+                            </p>
+                            <p className="truncate">
+                              {t('tasks.outputLabel', 'Output:')} <code className="text-[var(--text-primary)] font-mono">{formatOutputDesc(task.output_config)}</code>
+                            </p>
+                          </>
+                        )}
+                        {isRunning ? (
+                          <div className="flex gap-x-3 gap-y-1 mt-1 text-xs text-text-secondary flex-wrap items-center font-mono tabular-nums">
+                            <span>PID: <strong className="text-[var(--text-primary)] inline-block min-w-[5ch]">{exec.pid || 'N/A'}</strong></span>
+                            <span className="opacity-20 select-none">|</span>
+                            <span>CPU: <strong className="text-[var(--text-primary)] inline-block min-w-[4ch] text-right">{exec.cpu || 0}%</strong></span>
+                            <span className="opacity-20 select-none">|</span>
+                            <span>RAM: <strong className="text-[var(--text-primary)] inline-block min-w-[6ch] text-right">{exec.ram || 0} MB</strong></span>
+                            {hasVideoTask(task) && exec.fps && exec.fps !== '0' && exec.fps !== '0.0' && exec.fps !== 'N/A' && (
+                              <>
+                                <span className="opacity-20 select-none">|</span>
+                                <span>FPS: <strong className="text-[var(--text-primary)] inline-block min-w-[4ch] text-right">{exec.fps}</strong></span>
+                              </>
+                            )}
+                            {exec.bitrate && exec.bitrate !== 'N/A' && exec.bitrate !== '0 kb/s' && exec.bitrate !== '0.0kbits/s' && (
+                              <>
+                                <span className="opacity-20 select-none">|</span>
+                                <span>Bitrate: <strong className="text-[var(--text-primary)] inline-block min-w-[9ch] text-right">{exec.bitrate}</strong></span>
+                              </>
+                            )}
+                            {exec.speed && exec.speed !== '0x' && exec.speed !== '0.00x' && exec.speed !== 'N/A' && (
+                              <>
+                                <span className="opacity-20 select-none">|</span>
+                                <span>Speed: <strong className="text-[var(--text-primary)] inline-block min-w-[5ch] text-right">{exec.speed}</strong></span>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            {task.schedule_type === 'recurring' && (
+                              <p>
+                                {t('tasks.cronExpressionLabel', 'Cron Expression:')} <code className="text-brand-lime font-mono">{task.schedule_cron}</code>
+                              </p>
+                            )}
+                            {task.schedule_type === 'one_shot' && (
+                              <p>
+                                {t('tasks.targetDateLabel', 'Target Date:')} <strong className="text-[var(--text-primary)]">{new Date(task.schedule_datetime).toLocaleString()}</strong>
+                              </p>
+                            )}
+                            {task.next_run && (
+                              <p>
+                                {t('tasks.nextExecutionLabel', 'Next execution:')} <strong className="text-brand-orange">{new Date(task.next_run).toLocaleString()}</strong>
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
-                  ) : null}
 
-                  <button 
-                    disabled={taskTriggerPending[task.id]}
-                    onClick={() => viewTaskDetails(task.id)}
-                    className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs py-2 px-4 hover:border-brand-lime/40 disabled:opacity-50 disabled:pointer-events-none"
+                    <div className="flex flex-wrap items-center gap-3">
+                      {exec && !isRunning ? (
+                        <div className="text-right hidden lg:block mr-2">
+                          <div className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution')}</div>
+                          <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md mt-1 ${getStatusBadgeClass(exec.status)}`}>
+                            {exec.status}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      <button 
+                        disabled={taskTriggerPending[task.id]}
+                        onClick={() => viewTaskDetails(task.id)}
+                        className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs py-2 px-4 hover:border-brand-lime/40 disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {t('tasks.runHistory', 'RUN HISTORY')}
+                      </button>
+                      
+                      {isRunning ? (
+                        <button 
+                          disabled={execStopPending[exec.id]}
+                          onClick={() => handleStopExecution(exec.id)}
+                          className="pill-button bg-red-500 text-white font-bold hover:bg-red-600 text-xs py-2 px-4 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+                          title="Abort Execution"
+                        >
+                          {execStopPending[exec.id] && (
+                            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                          )}
+                          {execStopPending[exec.id] ? 'ABORTING...' : 'ABORT'}
+                        </button>
+                      ) : (
+                        <button 
+                          disabled={taskTriggerPending[task.id]}
+                          onClick={() => handleTriggerTask(task.id)}
+                          className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+                          title="Run Now"
+                        >
+                          {taskTriggerPending[task.id] ? (
+                            <span className="w-3 h-3 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
+                          ) : (
+                            <LightningIcon size={12} />
+                          )}
+                          {taskTriggerPending[task.id] ? 'TRIGGERING...' : 'RUN NOW'}
+                        </button>
+                      )}
+
+                      {!task.is_system && (
+                        <>
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={() => handleCloneTask(task)}
+                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                            title="Clone Task"
+                          >
+                            <ClipboardIcon size={16} />
+                          </button>
+
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`${API}/tasks/${task.id}/clone-as-service`, { method: 'POST' });
+                                if (!res.ok) throw new Error('Failed to clone task as service');
+                                alert(t('common.clonedSuccess', 'Cloned successfully!'));
+                                fetchTasks();
+                              } catch (err: any) {
+                                alert(err.message || 'Error cloning task as service');
+                              }
+                            }}
+                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-orange disabled:opacity-50 disabled:pointer-events-none"
+                            title={t('tasks.cloneAsService', 'Copy as Service')}
+                          >
+                            <ServerIcon size={16} />
+                          </button>
+
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={() => handleExportTask(task)}
+                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                            title="Export Task"
+                          >
+                            <ExportIcon size={16} />
+                          </button>
+
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={() => handleEditClick(task)}
+                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                            title="Edit Task"
+                          >
+                            <PencilIcon size={16} />
+                          </button>
+
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={() => handleDeleteTask(task.id)}
+                            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                            title="Delete Task"
+                          >
+                            <TrashIcon size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Configured Tasks (Disabled / Standby) */}
+        <div className="glass-card p-4 md:p-5 bg-white/5 border-white/5">
+          <h2 className="text-xl font-bold mb-3 text-text-secondary">{t('tasks.configuredTasksDisabled', 'Configured Tasks (Disabled / Standby)')}</h2>
+          
+          {loading ? (
+            <div className="py-12 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
+          ) : tasks.filter(t => !t.is_active).length === 0 ? (
+            <div className="py-12 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
+              {t('tasks.noDisabledTasks', 'No disabled tasks.')}
+            </div>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {tasks.filter(t => !t.is_active).map(task => {
+                const isRunning = task.last_execution && (task.last_execution.status === 'running' || task.last_execution.status === 'retrying');
+                const exec = task.last_execution;
+                return (
+                  <div 
+                    key={task.id} 
+                    className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all px-2 opacity-75 hover:opacity-100 ${
+                      isRunning
+                        ? 'border border-brand-lime/30 rounded-xl bg-brand-lime/[0.02] px-3 my-1 shadow-sm shadow-brand-lime/5'
+                        : task.is_system 
+                          ? 'border border-white/10 rounded-xl bg-white/[0.01] px-3 my-1'
+                          : 'hover:bg-white/[0.01]'
+                    }`}
                   >
-                    {t('tasks.runHistory', 'RUN HISTORY')}
-                  </button>
-                  
-                  <button 
-                    disabled={!task.is_active || taskTriggerPending[task.id]}
-                    onClick={() => handleTriggerTask(task.id)}
-                    className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
-                    title={!task.is_active ? 'Task is currently disabled' : 'Run Now'}
-                  >
-                    {taskTriggerPending[task.id] ? (
-                      <span className="w-3 h-3 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
-                    ) : (
-                      <LightningIcon size={12} />
-                    )}
-                    {taskTriggerPending[task.id] ? 'TRIGGERING...' : 'RUN NOW'}
-                  </button>
+                    <div className="flex-1 space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h3 className="font-bold text-lg truncate text-text-secondary">
+                          {task.is_system && (task.name === 'System Log Rotation and Retention Cleanup' || task.command === 'system://log_rotate')
+                            ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
+                            : task.is_system && (task.name === 'System SSL/TLS Certificate Auto-Renewal Routine' || task.command === 'system://ssl_renew')
+                            ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
+                            : task.name}
+                          {task.alias && (
+                            <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
+                              [{task.alias}]
+                            </span>
+                          )}
+                        </h3>
+                        {task.is_system && (
+                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
+                            {t('tasks.systemBadge', 'SYSTEM')}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
+                          {task.schedule_type === 'recurring' ? t('tasks.scheduleTypes.recurring', 'recurring') :
+                           task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
+                           task.schedule_type}
+                        </span>
+                        {isRunning && (
+                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-lime text-black animate-pulse">
+                            {exec.status}
+                          </span>
+                        )}
+                        {exec?.retry_count > 0 && (
+                          <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
+                            ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
+                          </span>
+                        )}
+                        {task.retry_policy?.max_retries > 0 && (!exec || exec.retry_count === 0 || exec.status !== 'running') && (
+                          <span className="text-[9px] bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-2 py-0.5 rounded font-black flex items-center gap-1" title={`Watchdog active (${task.retry_policy.max_retries} max retries)`}>
+                            🛡️ WATCHDOG ({task.retry_policy.max_retries})
+                          </span>
+                        )}
+                        {task.is_system ? (
+                          <span 
+                            title="Managed via Settings > General > Logging"
+                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>
+                            {t('common.disabled', 'Disabled')}
+                          </span>
+                        ) : (
+                          <button 
+                            onClick={() => handleToggleTaskActive(task.id, task.is_active)}
+                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10"
+                            title={t('tasks.enableTask', 'Enable Task')}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>
+                            {t('common.disabled', 'Disabled')}
+                          </button>
+                        )}
+                      </div>
 
-                  {!task.is_system && (
-                    <>
+                      <div className="text-xs text-text-secondary space-y-1">
+                        {task.is_system ? (
+                          <p className="truncate">
+                            {t('tasks.systemActionLabel', 'System Action:')} <strong className="text-text-secondary font-medium">{t('tasks.systemLogTaskRoutine', 'Log Retention & Cleanup Routine')}</strong>
+                          </p>
+                        ) : (
+                          <>
+                            <p className="truncate">
+                              {t('tasks.inputLabel', 'Input:')} <code className="text-text-secondary font-mono">{formatInputDesc(task.input_config)}</code>
+                            </p>
+                            <p className="truncate">
+                              {t('tasks.outputLabel', 'Output:')} <code className="text-text-secondary font-mono">{formatOutputDesc(task.output_config)}</code>
+                            </p>
+                          </>
+                        )}
+                        {isRunning ? (
+                          <div className="flex gap-x-3 gap-y-1 mt-1 text-xs text-text-secondary flex-wrap items-center font-mono tabular-nums">
+                            <span>PID: <strong className="text-[var(--text-primary)] inline-block min-w-[5ch]">{exec.pid || 'N/A'}</strong></span>
+                            <span className="opacity-20 select-none">|</span>
+                            <span>CPU: <strong className="text-[var(--text-primary)] inline-block min-w-[4ch] text-right">{exec.cpu || 0}%</strong></span>
+                            <span className="opacity-20 select-none">|</span>
+                            <span>RAM: <strong className="text-[var(--text-primary)] inline-block min-w-[6ch] text-right">{exec.ram || 0} MB</strong></span>
+                            {hasVideoTask(task) && exec.fps && exec.fps !== '0' && exec.fps !== '0.0' && exec.fps !== 'N/A' && (
+                              <>
+                                <span className="opacity-20 select-none">|</span>
+                                <span>FPS: <strong className="text-[var(--text-primary)] inline-block min-w-[4ch] text-right">{exec.fps}</strong></span>
+                              </>
+                            )}
+                            {exec.bitrate && exec.bitrate !== 'N/A' && exec.bitrate !== '0 kb/s' && exec.bitrate !== '0.0kbits/s' && (
+                              <>
+                                <span className="opacity-20 select-none">|</span>
+                                <span>Bitrate: <strong className="text-[var(--text-primary)] inline-block min-w-[9ch] text-right">{exec.bitrate}</strong></span>
+                              </>
+                            )}
+                            {exec.speed && exec.speed !== '0x' && exec.speed !== '0.00x' && exec.speed !== 'N/A' && (
+                              <>
+                                <span className="opacity-20 select-none">|</span>
+                                <span>Speed: <strong className="text-[var(--text-primary)] inline-block min-w-[5ch] text-right">{exec.speed}</strong></span>
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <>
+                            {task.schedule_type === 'recurring' && (
+                              <p>
+                                {t('tasks.cronExpressionLabel', 'Cron Expression:')} <code className="text-text-secondary font-mono">{task.schedule_cron}</code>
+                              </p>
+                            )}
+                            {task.schedule_type === 'one_shot' && (
+                              <p>
+                                {t('tasks.targetDateLabel', 'Target Date:')} <strong className="text-text-secondary">{new Date(task.schedule_datetime).toLocaleString()}</strong>
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      {exec && !isRunning ? (
+                        <div className="text-right hidden lg:block mr-2">
+                          <div className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution')}</div>
+                          <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md mt-1 ${getStatusBadgeClass(exec.status)}`}>
+                            {exec.status}
+                          </span>
+                        </div>
+                      ) : null}
+
                       <button 
                         disabled={taskTriggerPending[task.id]}
-                        onClick={() => handleCloneTask(task)}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                        title="Clone Task"
+                        onClick={() => viewTaskDetails(task.id)}
+                        className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs py-2 px-4 hover:border-brand-lime/40 disabled:opacity-50 disabled:pointer-events-none"
                       >
-                        <ClipboardIcon size={16} />
+                        {t('tasks.runHistory', 'RUN HISTORY')}
                       </button>
+                      
+                      {isRunning ? (
+                        <button 
+                          disabled={execStopPending[exec.id]}
+                          onClick={() => handleStopExecution(exec.id)}
+                          className="pill-button bg-red-500 text-white font-bold hover:bg-red-600 text-xs py-2 px-4 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+                          title="Abort Execution"
+                        >
+                          {execStopPending[exec.id] && (
+                            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                          )}
+                          {execStopPending[exec.id] ? 'ABORTING...' : 'ABORT'}
+                        </button>
+                      ) : (
+                        <button 
+                          disabled={taskTriggerPending[task.id]}
+                          onClick={() => handleTriggerTask(task.id)}
+                          className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+                          title="Run Now (Test Execution)"
+                        >
+                          {taskTriggerPending[task.id] ? (
+                            <span className="w-3 h-3 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
+                          ) : (
+                            <LightningIcon size={12} />
+                          )}
+                          {taskTriggerPending[task.id] ? 'TRIGGERING...' : 'RUN NOW'}
+                        </button>
+                      )}
 
-                      <button 
-                        disabled={taskTriggerPending[task.id]}
-                        onClick={() => handleExportTask(task)}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                        title="Export Task"
-                      >
-                        <ExportIcon size={16} />
-                      </button>
+                      {!task.is_system && (
+                        <>
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={() => handleCloneTask(task)}
+                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                            title="Clone Task"
+                          >
+                            <ClipboardIcon size={16} />
+                          </button>
 
-                      <button 
-                        disabled={taskTriggerPending[task.id]}
-                        onClick={() => handleEditClick(task)}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                        title="Edit Task"
-                      >
-                        <PencilIcon size={16} />
-                      </button>
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`${API}/tasks/${task.id}/clone-as-service`, { method: 'POST' });
+                                if (!res.ok) throw new Error('Failed to clone task as service');
+                                alert(t('common.clonedSuccess', 'Cloned successfully!'));
+                                fetchTasks();
+                              } catch (err: any) {
+                                alert(err.message || 'Error cloning task as service');
+                              }
+                            }}
+                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-orange disabled:opacity-50 disabled:pointer-events-none"
+                            title={t('tasks.cloneAsService', 'Copy as Service')}
+                          >
+                            <ServerIcon size={16} />
+                          </button>
 
-                      <button 
-                        disabled={taskTriggerPending[task.id]}
-                        onClick={() => handleDeleteTask(task.id)}
-                        className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                        title="Delete Task"
-                      >
-                        <TrashIcon size={16} />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={() => handleExportTask(task)}
+                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                            title="Export Task"
+                          >
+                            <ExportIcon size={16} />
+                          </button>
+
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={() => handleEditClick(task)}
+                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                            title="Edit Task"
+                          >
+                            <PencilIcon size={16} />
+                          </button>
+
+                          <button 
+                            disabled={taskTriggerPending[task.id]}
+                            onClick={() => handleDeleteTask(task.id)}
+                            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                            title="Delete Task"
+                          >
+                            <TrashIcon size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* TASK DETAIL / HISTORY SIDE/MODAL WINDOW */}
@@ -623,15 +913,30 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
             >
               ✕
             </button>
-            <h3 className="text-2xl font-black mb-1">
-              {selectedTaskDetails.task.name}
-              {selectedTaskDetails.task.alias && (
-                <span className="text-sm font-semibold text-text-secondary ml-2 opacity-80" title={`LCD Alias: ${selectedTaskDetails.task.alias}`}>
-                  [{selectedTaskDetails.task.alias}]
-                </span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pr-8">
+              <div>
+                <h3 className="text-2xl font-black mb-1">
+                  {selectedTaskDetails.task.name}
+                  {selectedTaskDetails.task.alias && (
+                    <span className="text-sm font-semibold text-text-secondary ml-2 opacity-80" title={`LCD Alias: ${selectedTaskDetails.task.alias}`}>
+                      [{selectedTaskDetails.task.alias}]
+                    </span>
+                  )}
+                </h3>
+                <p className="text-text-secondary text-sm">Execution History & Diagnostics</p>
+              </div>
+
+              {selectedTaskDetails.executions.length > 0 && (
+                <button
+                  onClick={() => handleClearTaskHistory(selectedTaskDetails.task.id)}
+                  className="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/20 flex items-center gap-2 transition-all self-start sm:self-auto"
+                  title={t('tasks.clearHistory', 'Clear History')}
+                >
+                  <TrashIcon size={14} />
+                  {t('tasks.clearHistory', 'CLEAR HISTORY')}
+                </button>
               )}
-            </h3>
-            <p className="text-text-secondary text-sm mb-6">Execution History & Diagnostics</p>
+            </div>
 
             <div className="space-y-4">
               {selectedTaskDetails.executions.length === 0 ? (

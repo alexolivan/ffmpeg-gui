@@ -224,715 +224,11 @@ class TaskManager:
                 if not os.path.exists(path):
                     raise FileNotFoundError(f"Overlay image does not exist: {path}")
 
-    def _build_ffmpeg_cmd(self, task, ffmpeg_bin, limit_sec, execution_id=None):
-        cmd = [ffmpeg_bin, "-hide_banner", "-y"]
-        
-        import copy
-        from typing import Optional
-        input_cfg = copy.deepcopy(task.input_config)
-        codec_cfg = task.codec_config
-        filter_cfg = copy.deepcopy(task.filter_config or {})
-        output_cfg = copy.deepcopy(task.output_config)
-        
-        self._resolve_config_paths(input_cfg, output_cfg, filter_cfg)
-        advanced = filter_cfg.get('advanced', {})
-
-        is_new_format = 'input1' in input_cfg
-        primary_input_type = (
-            input_cfg['input1'].get('type', '') if is_new_format
-            else input_cfg.get('type', '')
+    def _build_ffmpeg_cmd(self, task, ffmpeg_bin, limit_sec=None, execution_id=None):
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+        return FFmpegCommandBuilder.build_cmd(
+            task, ffmpeg_bin, limit_sec=limit_sec, execution_id=execution_id, db_session_factory=self.db_session_factory
         )
-
-        # Threads
-        threads = advanced.get('threads', 0)
-        if threads and int(threads) > 0:
-            cmd += ["-threads", str(int(threads))]
-
-        # Hardware acceleration (legacy fallback)
-        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
-        is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
-
-        has_input_level_hwdec = False
-        if is_hw_supported:
-            if is_new_format:
-                p_hw = input_cfg.get('input1', {}).get('hwaccel', 'none')
-                s_hw = input_cfg.get('input2', {}).get('hwaccel', 'none')
-                if (p_hw and p_hw != 'none') or (s_hw and s_hw != 'none'):
-                    has_input_level_hwdec = True
-
-        if is_hw_supported and not has_input_level_hwdec:
-            hwaccel = advanced.get('hwaccel', 'none')
-            if hwaccel and hwaccel != 'none':
-                cmd += ["-hwaccel", hwaccel]
-                hwaccel_out = advanced.get('hwaccel_output_format', hwaccel)
-                cmd += ["-hwaccel_output_format", hwaccel_out]
-
-        # Probe size
-        probesize = advanced.get('probesize', '')
-        if probesize:
-            cmd += ["-probesize", str(probesize)]
-
-        # Thread queue size
-        tqs = advanced.get('thread_queue_size', 0)
-        if tqs and int(tqs) > 0:
-            cmd += ["-thread_queue_size", str(int(tqs))]
-
-        # Realtime flag (-re): throttles input read to native framerate.
-        _SELF_PACED_INPUTS = {'file', 'lavfi_video', 'lavfi_audio'}
-        realtime = advanced.get('realtime')
-        if realtime is None:
-            realtime = limit_sec is not None and primary_input_type in _SELF_PACED_INPUTS
-        if realtime:
-            cmd += ["-re"]
-
-        # Stream loop (-stream_loop)
-        stream_loop = advanced.get('stream_loop')
-        if stream_loop is not None and primary_input_type == 'file':
-            cmd += ["-stream_loop", str(int(stream_loop))]
-
-        # Inputs
-        if is_new_format:
-            has_video = input_cfg.get('has_video', True)
-            has_audio = input_cfg.get('has_audio', True)
-            use_secondary = input_cfg.get('use_secondary_input', False)
-            
-            self._append_input(cmd, input_cfg['input1'])
-            if use_secondary and 'input2' in input_cfg:
-                self._append_input(cmd, input_cfg['input2'])
-        else:
-            has_video = True
-            has_audio = True
-            use_secondary = False
-            self._append_input(cmd, input_cfg)
-
-        # ── HLS ABR detection ──
-        output_cfg = task.output_config
-        variants = output_cfg.get('variants', [])
-        is_abr = output_cfg.get('type') == 'hls' and len(variants) > 0
-
-        if is_abr:
-            vcodec = codec_cfg.get('vcodec', 'libx264')
-            video_params = codec_cfg.get('video_params', {})
-            hwaccel = advanced.get('hwaccel', 'none')
-            
-            # Video variant scale and mapping
-            if not has_video:
-                cmd += ["-vn"]
-            else:
-                for idx, v in enumerate(variants):
-                    cmd += ["-map", "0:v"]
-                    
-                    # Video filters
-                    scale_filter = "scale"
-                    if hwaccel == 'vaapi':
-                        scale_filter = "scale_vaapi"
-                    elif hwaccel in ('cuda', 'npp'):
-                        scale_filter = "scale_npp"
-                        
-                    vf_list = []
-                    if filter_cfg.get('deinterlace'):
-                        vf_list.append("yadif")
-                    vf_list.append(f"{scale_filter}={v['resolution']}")
-                    if filter_cfg.get('framerate'):
-                        vf_list.append(f"fps={filter_cfg['framerate']}")
-                        
-                    if vcodec in ('h264_vaapi', 'hevc_vaapi') and hwaccel != 'vaapi':
-                        vf_list.append("format=nv12")
-                        vf_list.append("hwupload")
-                        
-                    cmd += [f"-filter:v:{idx}", ",".join(vf_list)]
-                    cmd += [f"-c:v:{idx}", vcodec]
-                    
-                    self._append_video_codec_params_indexed(cmd, vcodec, video_params, idx, v['video_bitrate'])
-
-            # Audio variant mapping (deduplication)
-            if not has_audio:
-                cmd += ["-an"]
-            else:
-                acodec = codec_cfg.get('acodec', 'aac')
-                audio_params = codec_cfg.get('audio_params', {})
-                
-                unique_audios = list(dict.fromkeys([v['audio_bitrate'] for v in variants if v.get('audio_bitrate')]))
-                if not unique_audios:
-                    unique_audios = [audio_params.get('b:a', '128k')]
-                
-                audio_map_idx = 1 if (is_new_format and use_secondary) else 0
-                for idx, audio_bitrate in enumerate(unique_audios):
-                    cmd += ["-map", f"{audio_map_idx}:a"]
-                    cmd += [f"-c:a:{idx}", acodec]
-                    self._append_audio_codec_params_indexed(cmd, acodec, audio_params, idx, audio_bitrate)
-
-            # Output Muxer ABR
-            path = output_cfg.get('path', '')
-            method = output_cfg.get('hls_method', 'local')
-            hls_time = output_cfg.get('hls_time', 2)
-            hls_list_size = output_cfg.get('hls_list_size', 5)
-            hls_delete = output_cfg.get('hls_delete_segments', True)
-            headers = output_cfg.get('headers', '')
-            
-            cmd += ["-f", "hls"]
-            cmd += ["-hls_time", str(hls_time)]
-            cmd += ["-hls_list_size", str(hls_list_size)]
-            
-            cmd += ["-master_pl_name", "master.m3u8"]
-            
-            # Map stream configs to index mappings
-            unique_audios = list(dict.fromkeys([v['audio_bitrate'] for v in variants if v.get('audio_bitrate')]))
-            if not unique_audios:
-                unique_audios = [audio_params.get('b:a', '128k')]
-                
-            stream_maps = []
-            for idx, v in enumerate(variants):
-                a_bitrate = v.get('audio_bitrate', unique_audios[0])
-                try:
-                    a_idx = unique_audios.index(a_bitrate)
-                except ValueError:
-                    a_idx = 0
-                if has_audio:
-                    stream_maps.append(f"v:{idx},a:{a_idx}")
-                else:
-                    stream_maps.append(f"v:{idx}")
-                    
-            cmd += ["-var_stream_map", " ".join(stream_maps)]
-            
-            if path.endswith('.m3u8'):
-                base_path = path[:-5]
-                segment_pattern = f"{base_path}_%v_%03d.ts"
-                variant_playlist = f"{base_path}_%v.m3u8"
-            else:
-                segment_pattern = f"{path}_%v_%03d.ts"
-                variant_playlist = f"{path}_%v.m3u8"
-                
-            if method in ('PUT', 'POST'):
-                cmd += ["-method", method]
-                if headers:
-                    formatted_headers = headers.strip()
-                    if not formatted_headers.endswith('\r\n'):
-                        formatted_headers += '\r\n'
-                    cmd += ["-headers", formatted_headers]
-            else:
-                if hls_delete:
-                    cmd += ["-hls_flags", "delete_segments"]
-                cmd += ["-hls_segment_filename", segment_pattern]
-            
-            if limit_sec:
-                cmd += ["-t", str(limit_sec)]
-                
-            cmd += [variant_playlist]
-
-        else:
-            # ── Stream mapping (with custom mapping support) ──
-            video_map = None
-            audio_map = None
-            if is_new_format:
-                video_map = input_cfg['input1'].get('video_map')
-                audio_map = input_cfg['input1'].get('audio_map')
-            else:
-                video_map = input_cfg.get('video_map')
-                audio_map = input_cfg.get('audio_map')
-                
-            if video_map and has_video:
-                cmd += ["-map", video_map]
-            elif has_video:
-                if is_new_format and use_secondary:
-                    cmd += ["-map", "0:v"]
-                else:
-                    cmd += ["-map", "0:v"]
-                    
-            if audio_map and has_audio:
-                cmd += ["-map", audio_map]
-            elif has_audio:
-                if is_new_format and use_secondary:
-                    cmd += ["-map", "1:a"]
-                else:
-                    cmd += ["-map", "0:a"]
-
-            # Video processing
-            is_vram = False
-            if not has_video:
-                cmd += ["-vn"]
-            else:
-                from core.filter_graph import FilterGraphBuilder
-                
-                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
-                is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
-
-                frames_destination = 'cpu'
-                if is_hw_supported:
-                    if is_new_format:
-                        frames_destination = input_cfg['input1'].get('frames_destination', 'cpu')
-                    else:
-                        frames_destination = input_cfg.get('frames_destination', 'cpu')
-                    
-                hwaccel = 'none'
-                if is_hw_supported:
-                    if is_new_format:
-                        hwaccel = input_cfg['input1'].get('hwaccel', 'none')
-                    else:
-                        hwaccel = input_cfg.get('hwaccel', 'none')
-                
-                if is_hw_supported and hwaccel == 'none':
-                    hwaccel = advanced.get('hwaccel', 'none')
-
-                is_vram = (frames_destination == 'vram')
-                if hwaccel == 'none' or not is_hw_supported:
-                    is_vram = False
-                    
-                vf_str, remains_vram = FilterGraphBuilder.build_video_filters(
-                    input_cfg, filter_cfg, is_vram, hwaccel
-                )
-                
-                vf_list = []
-                if vf_str:
-                    vf_list.append(vf_str)
-                    
-                if filter_cfg.get('framerate'):
-                    if remains_vram:
-                        vf_list.append("hwdownload")
-                        vf_list.append("format=nv12")
-                        remains_vram = False
-                    vf_list.append(f"fps={filter_cfg['framerate']}")
-                    
-                vcodec = codec_cfg.get('vcodec', 'libx264')
-                output_type = output_cfg.get('type')
-                
-                needs_cpu_frames = (
-                    output_type in ('decklink', 'ndi') or
-                    vcodec in ('libx264', 'libx265', 'rawvideo', 'wrapped_avframe')
-                )
-                
-                if remains_vram and needs_cpu_frames:
-                    vf_list.append("hwdownload")
-                    vf_list.append("format=nv12")
-                    remains_vram = False
-                    
-                if output_type == 'decklink':
-                    if output_cfg.get('video_size'):
-                        size_arg = output_cfg['video_size'].replace('x', ':')
-                        vf_list.append(f"scale={size_arg}")
-                    if output_cfg.get('framerate'):
-                        vf_list.append(f"fps={output_cfg['framerate']}")
-                    vf_list.append("format=yuv422p")
-                elif output_type == 'ndi':
-                    vf_list.append("format=uyvy422")
-                    
-                is_hw_encoder = vcodec in ('h264_vaapi', 'hevc_vaapi', 'h264_qsv', 'hevc_qsv')
-                if not remains_vram and is_hw_encoder:
-                    vf_list.append("format=nv12")
-                    vf_list.append("hwupload")
-                    remains_vram = True
-                    
-                final_vf = ",".join(vf_list) if vf_list else ""
-                if final_vf:
-                    cmd += ["-vf", final_vf]
-
-                # Video codec
-                if output_type == 'decklink' and vcodec == 'rawvideo':
-                    cmd += ["-c:v", "wrapped_avframe"]
-                else:
-                    cmd += ["-c:v", vcodec]
-                
-                # Video codec parameters (new format)
-                video_params = codec_cfg.get('video_params', {})
-                if video_params:
-                    self._append_video_codec_params(cmd, vcodec, video_params)
-                else:
-                    if vcodec == 'libx264':
-                        cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
-                    if codec_cfg.get('bitrate'):
-                        cmd += ["-b:v", codec_cfg['bitrate']]
-
-            # Audio processing
-            if not has_audio:
-                cmd += ["-an"]
-            else:
-                from core.filter_graph import FilterGraphBuilder
-                af_str = FilterGraphBuilder.build_audio_filters(filter_cfg)
-                if af_str:
-                    cmd += ["-af", af_str]
-                    
-                acodec = codec_cfg.get('acodec', 'aac')
-                cmd += ["-c:a", acodec]
-                
-                # Audio codec parameters (new format)
-                audio_params = codec_cfg.get('audio_params', {})
-                if audio_params:
-                    self._append_audio_codec_params(cmd, acodec, audio_params)
-
-            # Native duration limit (placed before output)
-            if limit_sec:
-                cmd += ["-t", str(limit_sec)]
-
-            # Output
-            self._append_output(cmd, task.output_config, codec_cfg)
-
-        # ── Secondary Preview Output ──
-        if execution_id and has_video and not is_vram:
-            import os
-            from database.db import PREVIEWS_DIR
-            previews_dir = PREVIEWS_DIR
-            os.makedirs(previews_dir, exist_ok=True)
-            preview_path = os.path.join(previews_dir, f"preview_task_{execution_id}.jpg")
-            
-            preview_vf = "fps=1,scale=480:-1"
-                
-            cmd += [
-                "-map", "0:v",
-                "-c:v", "mjpeg",
-                "-vf", preview_vf,
-            ]
-            if limit_sec:
-                cmd += ["-t", str(limit_sec)]
-            cmd += [
-                "-update", "1",
-                "-y", preview_path
-            ]
-
-        return cmd
-
-    def _append_input(self, cmd: list, input_cfg: dict):
-        input_type = input_cfg.get('type')
-        
-        # Input-specific hardware acceleration (only for supported compressed streams)
-        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
-        hwaccel = 'none'
-        if input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
-            hwaccel = input_cfg.get('hwaccel', 'none')
-            
-        if hwaccel and hwaccel != 'none':
-            cmd += ["-hwaccel", hwaccel]
-            hwaccel_out = input_cfg.get('hwaccel_output_format', '')
-            if not hwaccel_out:
-                hwaccel_out = hwaccel
-            if hwaccel_out and hwaccel_out != 'none':
-                cmd += ["-hwaccel_output_format", hwaccel_out]
-        if input_type == 'file':
-            cmd += ["-i", input_cfg.get('path', '')]
-        elif input_type == 'lavfi':
-            cmd += ["-f", "lavfi", "-i", input_cfg.get('path', 'testsrc')]
-        elif input_type == 'lavfi_video':
-            pattern = input_cfg.get('pattern', 'testsrc')
-            size = input_cfg.get('size')
-            rate = input_cfg.get('rate')
-            lavfi_str = pattern
-            params = []
-            if size: params.append(f"size={size}")
-            if rate: params.append(f"rate={rate}")
-            if params:
-                if '=' in pattern:
-                    lavfi_str = f"{pattern}:{':'.join(params)}"
-                else:
-                    lavfi_str = f"{pattern}={':'.join(params)}"
-            cmd += ["-f", "lavfi", "-i", lavfi_str]
-        elif input_type == 'lavfi_audio':
-            pattern = input_cfg.get('pattern', 'sine')
-            frequency = input_cfg.get('frequency')
-            lavfi_str = pattern
-            if pattern == 'sine' and frequency:
-                lavfi_str = f"sine=frequency={frequency}"
-            cmd += ["-f", "lavfi", "-i", lavfi_str]
-        elif input_type == 'srt':
-            mode = input_cfg.get('mode', 'caller')
-            latency = input_cfg.get('latency', 250)
-            host = input_cfg.get('host') or ('0.0.0.0' if mode == 'listener' else '127.0.0.1')
-            port = input_cfg.get('port', '9000')
-            streamid = input_cfg.get('streamid', '')
-            
-            from utils.process_utils import get_ffmpeg_version
-            version = get_ffmpeg_version(self.ffmpeg_path)
-            timeout_param = "timeout=5000000" if version >= 4.0 else "rw_timeout=5000000"
-            
-            url = f"srt://{host}:{port}?mode={mode}&latency={latency}&{timeout_param}"
-            if streamid:
-                url += f"&streamid={streamid}"
-            cmd += ["-i", url]
-        elif input_type == 'udp':
-            host = input_cfg.get('host', '')
-            port = input_cfg.get('port', '1234')
-            cmd += ["-i", f"udp://{host}:{port}?fifo_size=1000000"]
-        elif input_type == 'rtp':
-            host = input_cfg.get('host', '')
-            port = input_cfg.get('port', '5004')
-            cmd += ["-i", f"rtp://{host}:{port}"]
-        elif input_type == 'ndi':
-            name = input_cfg.get('name', '')
-            cmd += ["-f", "libndi_newtek", "-i", name]
-        elif input_type == 'decklink':
-            video_input = input_cfg.get('video_input')
-            if video_input and video_input != 'unset':
-                cmd += ["-video_input", video_input]
-            audio_input = input_cfg.get('audio_input')
-            if audio_input and audio_input != 'unset':
-                cmd += ["-audio_input", audio_input]
-            format_code = input_cfg.get('format_code')
-            if format_code and format_code != 'unset':
-                cmd += ["-format_code", format_code]
-            cmd += ["-f", "decklink", "-i", input_cfg.get('device', '')]
-        elif input_type == 'alsa':
-            device = input_cfg.get('device', 'hw:0,0')
-            cmd += ["-f", "alsa", "-i", device]
-        elif input_type == 'v4l2':
-            device = input_cfg.get('device', '/dev/video0')
-            pixel_format = input_cfg.get('pixel_format')
-            size = input_cfg.get('size')
-            if pixel_format:
-                cmd += ["-input_format", pixel_format]
-            if size:
-                cmd += ["-video_size", size]
-            cmd += ["-f", "v4l2", "-i", device]
-
-    def _append_video_codec_params(self, cmd: list, vcodec: str, params: dict):
-        rc_mode = params.get('rc_mode', '')
-        if vcodec in ('libx264', 'libx265'):
-            if rc_mode == 'crf':
-                cmd += ["-crf", str(params.get('crf', 23))]
-            elif rc_mode in ('cbr', 'vbr'):
-                cmd += ["-b:v", params.get('bitrate', '4000k')]
-                if params.get('maxrate'): cmd += ["-maxrate", params['maxrate']]
-                if params.get('bufsize'): cmd += ["-bufsize", params['bufsize']]
-            if params.get('preset'): cmd += ["-preset", params['preset']]
-            tune = params.get('tune', 'none')
-            if tune and tune != 'none': cmd += ["-tune", tune]
-            if params.get('profile'): cmd += ["-profile:v", params['profile']]
-            if params.get('g'): cmd += ["-g", str(params['g'])]
-            if params.get('bf') is not None: cmd += ["-bf", str(params['bf'])]
-            cmd += ["-pix_fmt", params.get('pix_fmt', 'yuv420p')]
-            
-        elif vcodec == 'prores_ks':
-            if params.get('profile') is not None:
-                cmd += ["-profile:v", str(params['profile'])]
-            if params.get('vendor'):
-                cmd += ["-vendor", params['vendor']]
-                
-        elif vcodec == 'dnxhd':
-            profile = params.get('profile', 'dnxhr_hq')
-            if profile == 'dnxhd':
-                if params.get('bitrate'):
-                    cmd += ["-b:v", params['bitrate']]
-            else:
-                cmd += ["-profile:v", profile]
-                
-        elif vcodec in ('h264_vaapi', 'hevc_vaapi'):
-            cmd += ["-vaapi_device", "/dev/dri/renderD128"]
-            rc_mode_vaapi = params.get('rc_mode', 'CBR')
-            cmd += ["-rc_mode", rc_mode_vaapi]
-            if rc_mode_vaapi != 'CQP' and params.get('bitrate'):
-                cmd += ["-b:v", params['bitrate']]
-            if rc_mode_vaapi == 'CQP' and params.get('qp') is not None:
-                cmd += ["-qp", str(params['qp'])]
-            if params.get('profile'):
-                cmd += ["-profile:v", params['profile']]
-            if params.get('g'):
-                cmd += ["-g", str(params['g'])]
-                
-        elif vcodec in ('h264_qsv',):
-            if params.get('preset'):
-                cmd += ["-preset", params['preset']]
-            if params.get('bitrate'):
-                cmd += ["-b:v", params['bitrate']]
-            if params.get('global_quality') is not None:
-                cmd += ["-global_quality", str(params['global_quality'])]
-            if params.get('g'):
-                cmd += ["-g", str(params['g'])]
-                
-        elif vcodec in ('h264_nvenc', 'hevc_nvenc'):
-            if params.get('preset'):
-                cmd += ["-preset", params['preset']]
-            rc = params.get('rc', 'cbr')
-            cmd += ["-rc", rc]
-            if params.get('bitrate'):
-                cmd += ["-b:v", params['bitrate']]
-            if rc in ('constqp', 'vbr') and params.get('cq') is not None:
-                cmd += ["-cq", str(params['cq'])]
-            if params.get('profile'):
-                cmd += ["-profile:v", params['profile']]
-            if params.get('g'):
-                cmd += ["-g", str(params['g'])]
-            if params.get('bf') is not None:
-                cmd += ["-bf", str(params['bf'])]
-                
-        elif vcodec == 'rawvideo':
-            pix_fmt = params.get('pix_fmt', 'uyvy422')
-            cmd += ["-pix_fmt", pix_fmt]
-            
-        elif vcodec == 'v210':
-            pass
-
-    def _append_audio_codec_params(self, cmd: list, acodec: str, params: dict):
-        if params.get('b:a'): cmd += ["-b:a", params['b:a']]
-        if params.get('ac'): cmd += ["-ac", str(params['ac'])]
-        if params.get('ar'): cmd += ["-ar", str(params['ar'])]
-
-    def _append_video_codec_params_indexed(self, cmd: list, vcodec: str, params: dict, idx: int, bitrate: str):
-        """Append video codec-specific parameters to the command for a specific stream index."""
-        cmd += [f"-b:v:{idx}", bitrate]
-        rc_mode = params.get('rc_mode', '')
-        
-        if vcodec in ('libx264', 'libx265'):
-            if params.get('preset'):
-                cmd += [f"-preset:v:{idx}", params['preset']]
-            tune = params.get('tune', 'none')
-            if tune and tune != 'none':
-                cmd += [f"-tune:v:{idx}", tune]
-            if params.get('profile'):
-                cmd += [f"-profile:v:{idx}", params['profile']]
-            if params.get('g'):
-                cmd += [f"-g:v:{idx}", str(params['g'])]
-            if params.get('bf') is not None:
-                cmd += [f"-bf:v:{idx}", str(params['bf'])]
-            
-            pix_fmt = params.get('pix_fmt', 'yuv420p')
-            cmd += [f"-pix_fmt:v:{idx}", pix_fmt]
-            
-            if rc_mode == 'crf':
-                crf = params.get('crf', 23)
-                cmd += [f"-crf:v:{idx}", str(crf)]
-            elif rc_mode in ('cbr', 'vbr'):
-                if params.get('maxrate'):
-                    cmd += [f"-maxrate:v:{idx}", params['maxrate']]
-                if params.get('bufsize'):
-                    cmd += [f"-bufsize:v:{idx}", params['bufsize']]
-
-    def _append_audio_codec_params_indexed(self, cmd: list, acodec: str, params: dict, idx: int, bitrate: str):
-        """Append audio codec-specific parameters to the command for a specific stream index."""
-        cmd += [f"-b:a:{idx}", bitrate]
-        if params.get('ac'):
-            cmd += [f"-ac:a:{idx}", str(params['ac'])]
-        if params.get('ar'):
-            cmd += [f"-ar:a:{idx}", str(params['ar'])]
-
-    def _append_output(self, cmd: list, output_cfg: dict, codec_cfg: dict):
-        output_type = output_cfg.get('type')
-        
-        is_mpegts = (
-            output_type in ('udp', 'srt', 'rtp_mpegts') or 
-            (output_type == 'file' and output_cfg.get('container') == 'mpegts') or
-            (output_type == 'file' and output_cfg.get('path', '').endswith('.ts'))
-        )
-        
-        if is_mpegts:
-            vcodec = codec_cfg.get('vcodec', '').lower()
-            if '264' in vcodec or 'h264' in vcodec:
-                cmd += ["-bsf:v", "h264_mp4toannexb"]
-            elif '265' in vcodec or 'hevc' in vcodec or 'h256' in vcodec:
-                cmd += ["-bsf:v", "hevc_mp4toannexb"]
-                
-        def append_mpegts_options(cmd: list, cfg: dict):
-            if cfg.get('muxrate'):
-                cmd += ["-muxrate", str(cfg['muxrate'])]
-            
-            ts_id = cfg.get('transport_stream_id') or cfg.get('ts_id')
-            if ts_id is not None and ts_id != '':
-                cmd += ["-mpegts_transport_stream_id", str(ts_id)]
-                
-            net_id = cfg.get('original_network_id') or cfg.get('net_id')
-            if net_id is not None and net_id != '':
-                cmd += ["-mpegts_original_network_id", str(net_id)]
-                
-            service_id = cfg.get('service_id')
-            if service_id is not None and service_id != '':
-                cmd += ["-mpegts_service_id", str(service_id)]
-
-            for param, flag in [
-                ('pmt_start_pid', '-mpegts_pmt_start_pid'),
-                ('start_pid', '-mpegts_start_pid')
-            ]:
-                if cfg.get(param):
-                    cmd += [flag, str(cfg[param])]
-            if cfg.get('service_provider'):
-                cmd += ["-metadata", f"service_provider={cfg['service_provider']}"]
-            if cfg.get('service_name'):
-                cmd += ["-metadata", f"service_name={cfg['service_name']}"]
-            if cfg.get('service_type'):
-                cmd += ["-mpegts_service_type", str(cfg['service_type'])]
-            if cfg.get('audio_language'):
-                cmd += ["-metadata:s:a:0", f"language={cfg['audio_language']}"]
-            flags = []
-            if cfg.get('pat_pmt_at_frames'):
-                flags.append("pat_pmt_at_frames")
-            if cfg.get('system_b'):
-                flags.append("system_b")
-            if flags:
-                cmd += ["-mpegts_flags", "+".join(flags)]
-                
-        if output_type == 'file':
-            path = output_cfg.get('path', 'output.mp4')
-            if is_mpegts:
-                cmd += ["-f", "mpegts"]
-                append_mpegts_options(cmd, output_cfg)
-            cmd += [path]
-        elif output_type == 'udp':
-            host = output_cfg.get('host', '127.0.0.1')
-            port = output_cfg.get('port', '1234')
-            pkt_size = output_cfg.get('pkt_size', '1316')
-            url = f"udp://{host}:{port}"
-            if pkt_size:
-                url += f"?pkt_size={pkt_size}"
-            cmd += ["-f", "mpegts", url]
-            append_mpegts_options(cmd, output_cfg)
-        elif output_type == 'srt':
-            host = output_cfg.get('host', '127.0.0.1')
-            port = output_cfg.get('port', '1234')
-            mode = output_cfg.get('mode', 'caller')
-            latency = output_cfg.get('latency', 200)
-            streamid = output_cfg.get('streamid', '')
-            
-            url = f"srt://{host}:{port}?mode={mode}&latency={latency}"
-            if streamid:
-                url += f"&streamid={streamid}"
-                
-            cmd += ["-f", "mpegts", url]
-            append_mpegts_options(cmd, output_cfg)
-        elif output_type == 'rtp_mpegts':
-            host = output_cfg.get('host', '127.0.0.1')
-            port = output_cfg.get('port', '5004')
-            cmd += ["-f", "rtp_mpegts", f"rtp://{host}:{port}"]
-            append_mpegts_options(cmd, output_cfg)
-        elif output_type == 'rtmp':
-            cmd += ["-f", "flv", output_cfg.get('url', '')]
-        elif output_type == 'whip':
-            cmd += ["-f", "whip", output_cfg.get('url', '')]
-        elif output_type == 'ndi':
-            name = output_cfg.get('path', 'FFMPEG-OUTPUT')
-            cmd += ["-f", "libndi_newtek", "-ndi_name", name, "output.ndi"]
-        elif output_type == 'decklink':
-            device = output_cfg.get('device', 'DeckLink Mini Monitor')
-            cmd += ["-f", "decklink"]
-            format_code = output_cfg.get('format_code')
-            if format_code:
-                cmd += ["-format_code", format_code]
-                code_lower = format_code.lower()
-                if code_lower in ('pal', 'ntsc') or code_lower.startswith('hi'):
-                    if code_lower == 'ntsc':
-                        cmd += ["-field_order", "bb"]
-                    else:
-                        cmd += ["-field_order", "tt"]
-                else:
-                    cmd += ["-field_order", "progressive"]
-            cmd += [device]
-        elif output_type == 'rtp':
-            host = output_cfg.get('host', '127.0.0.1')
-            port = output_cfg.get('port', '5004')
-            cmd += ["-f", "rtp", f"rtp://{host}:{port}"]
-        elif output_type == 'icecast':
-            host = output_cfg.get('host', 'localhost')
-            port = output_cfg.get('port', '8000')
-            mount = output_cfg.get('icecast_mount', '/live')
-            password = output_cfg.get('icecast_password', 'hackme')
-            cmd += ["-f", "ogg", "-content_type", "application/ogg",
-                    f"icecast://source:{password}@{host}:{port}{mount}"]
-        elif output_type == 'hls':
-            path = output_cfg.get('path', '')
-            hls_time = output_cfg.get('hls_time', 2)
-            hls_list_size = output_cfg.get('hls_list_size', 5)
-            hls_delete = output_cfg.get('hls_delete_segments', True)
-
-            cmd += ["-f", "hls"]
-            cmd += ["-hls_time", str(hls_time)]
-            cmd += ["-hls_list_size", str(hls_list_size)]
-            if hls_delete:
-                cmd += ["-hls_flags", "delete_segments"]
-            cmd += [path]
 
     async def stop_execution(self, execution_id: int, status="stopped", error_msg=None):
         proc = self.running_processes.get(execution_id)
@@ -1063,21 +359,51 @@ class TaskManager:
             await proc.wait()
             exit_code = proc.returncode
             
+            should_retry = False
+            retry_delay = 10
+            max_retries = 0
+            
             with self.db_session_factory() as session:
                 execution = session.query(TaskExecution).get(execution_id)
                 if execution and execution.status == 'running':
-                    execution.status = 'finished' if exit_code == 0 else 'error'
-                    execution.exit_code = exit_code
-                    execution.stopped_at = datetime.utcnow()
-                    execution.pid = None
-                    execution.cpu_usage = 0
-                    execution.ram_usage = 0
-                    session.commit()
-                    if exit_code != 0:
-                        task_name = execution.task.name if execution.task else str(execution_id)
-                        self.notify_task_failure(execution_id, task_name, f"Exited with code {exit_code}")
+                    if exit_code == 0:
+                        execution.status = 'finished'
+                        execution.exit_code = 0
+                        execution.stopped_at = datetime.utcnow()
+                        execution.pid = None
+                        execution.cpu_usage = 0
+                        execution.ram_usage = 0
+                        session.commit()
+                    else:
+                        retry_policy = (execution.task.retry_policy or {}) if execution.task else {}
+                        max_retries = int(retry_policy.get('max_retries', 0) or 0)
+                        retry_delay = int(retry_policy.get('retry_delay', 10) or 10)
+                        current_retries = execution.retry_count or 0
+                        
+                        if current_retries < max_retries:
+                            should_retry = True
+                            execution.retry_count = current_retries + 1
+                            execution.status = 'retrying'
+                            execution.error_message = f"Failed with exit code {exit_code}. Retry {execution.retry_count}/{max_retries} scheduled in {retry_delay}s..."
+                            session.commit()
+                        else:
+                            execution.status = 'error'
+                            execution.exit_code = exit_code
+                            execution.stopped_at = datetime.utcnow()
+                            execution.pid = None
+                            execution.cpu_usage = 0
+                            execution.ram_usage = 0
+                            session.commit()
+                            task_name = execution.task.name if execution.task else str(execution_id)
+                            self.notify_task_failure(execution_id, task_name, f"Exited with code {exit_code} (All {max_retries} retries exhausted)")
+
             self.running_processes.pop(execution_id, None)
             self.last_activity.pop(execution_id, None)
+            
+            if should_retry:
+                self.logger.info(f"Task execution {execution_id} failed. Waiting {retry_delay}s before retry attempt...")
+                await asyncio.sleep(retry_delay)
+                asyncio.create_task(self.start_execution(execution_id))
 
     async def _run_system_task(self, execution_id: int, command: str):
         self.logger.info(f"Running system task {command} for execution {execution_id}")
@@ -1132,76 +458,123 @@ class TaskManager:
             self.logger.error(f"Failed to save system task execution results: {db_err}")
 
     async def _execute_log_rotate(self, log_info, log_error):
+        import time
         config_path = os.environ.get("CONFIG_FILE_PATH")
-        if not config_path:
-            log_info("CONFIG_FILE_PATH environment variable not set. Using defaults (no file logging).")
-            return
-            
-        if not os.path.exists(config_path):
-            log_info(f"Config file not found at: {config_path}")
-            return
-            
-        import configparser
-        config = configparser.ConfigParser()
-        config.read(config_path)
-        
+        retention_days = 30
         logging_mode = "both"
         logging_file_path = None
-        retention_days = 30
-        
-        if "logging" in config:
-            logging_cfg = config["logging"]
-            logging_mode = logging_cfg.get("mode", logging_mode)
-            logging_file_path = logging_cfg.get("file_path", logging_file_path)
-            try:
-                retention_days = logging_cfg.getint("retention_days", 30)
-            except Exception:
-                pass
-        
-        if "server" in config and not logging_file_path:
-            logging_file_path = config["server"].get("log_file", None)
-            
-        use_file = bool(logging_file_path and logging_mode in ("file", "both"))
-        if not use_file:
-            log_info(f"File logging is not active or path is not set (mode={logging_mode}, path={logging_file_path}). Nothing to clean up.")
-            return
 
-        abs_log_path = os.path.abspath(logging_file_path)
-        log_dir = os.path.dirname(abs_log_path)
-        log_filename = os.path.basename(abs_log_path)
-        
-        log_info(f"Logging directory to scan: {log_dir}")
-        log_info(f"Log filename prefix: {log_filename}")
-        log_info(f"Retention days: {retention_days}")
-        
-        if not os.path.exists(log_dir):
-            log_info(f"Directory {log_dir} does not exist. Nothing to clean up.")
-            return
-            
-        import time
-        now = time.time()
-        deleted_count = 0
-        preserved_count = 0
-        
-        for name in os.listdir(log_dir):
-            if name.startswith(log_filename) and name.endswith(".gz"):
-                file_path = os.path.join(log_dir, name)
-                if not os.path.isfile(file_path):
-                    continue
-                mtime = os.path.getmtime(file_path)
-                age_days = (now - mtime) / (24 * 3600)
-                if age_days > retention_days:
+        if config_path and os.path.exists(config_path):
+            try:
+                import configparser
+                config = configparser.ConfigParser()
+                config.read(config_path)
+                if "logging" in config:
+                    logging_cfg = config["logging"]
+                    logging_mode = logging_cfg.get("mode", logging_mode)
+                    logging_file_path = logging_cfg.get("file_path", logging_file_path)
                     try:
-                        os.remove(file_path)
-                        log_info(f"Deleted expired rotated log file: {name} (age: {age_days:.1f} days)")
-                        deleted_count += 1
-                    except Exception as e:
-                        log_error(f"Failed to delete {name}: {e}")
-                else:
-                    log_info(f"Preserved rotated log file: {name} (age: {age_days:.1f} days)")
-                    preserved_count += 1
-                    
-        log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")
+                        retention_days = logging_cfg.getint("retention_days", 30)
+                    except Exception:
+                        pass
+                if "server" in config and not logging_file_path:
+                    logging_file_path = config["server"].get("log_file", None)
+            except Exception as cfg_err:
+                log_error(f"Error reading config for log rotation: {cfg_err}")
+
+        log_info(f"Retention days: {retention_days}")
+
+        # 1. Clean up expired TaskExecution and ProcessLog records from SQLite database
+        try:
+            with self.db_session_factory() as session:
+                from datetime import datetime, timedelta
+                from database.models import TaskExecution, ProcessLog
+                cutoff = datetime.utcnow() - timedelta(days=retention_days)
+                
+                expired_execs = session.query(TaskExecution).filter(
+                    TaskExecution.started_at.isnot(None),
+                    TaskExecution.started_at < cutoff,
+                    TaskExecution.status.in_(["finished", "stopped", "error", "interrupted"])
+                ).all()
+                if expired_execs:
+                    for ex in expired_execs:
+                        session.delete(ex)
+                    session.commit()
+                    log_info(f"Purged {len(expired_execs)} TaskExecution database records older than {retention_days} days.")
+
+                expired_logs = session.query(ProcessLog).filter(
+                    ProcessLog.timestamp < cutoff
+                ).all()
+                if expired_logs:
+                    for pl in expired_logs:
+                        session.delete(pl)
+                    session.commit()
+                    log_info(f"Purged {len(expired_logs)} ProcessLog database records older than {retention_days} days.")
+        except Exception as db_clean_err:
+            log_error(f"Failed to prune old task/process log records from DB: {db_clean_err}")
+
+        # 2. Clean up rotated log files (.gz) if file logging is configured
+        use_file = bool(logging_file_path and logging_mode in ("file", "both"))
+        if use_file and os.path.exists(os.path.dirname(os.path.abspath(logging_file_path))):
+            abs_log_path = os.path.abspath(logging_file_path)
+            log_dir = os.path.dirname(abs_log_path)
+            log_filename = os.path.basename(abs_log_path)
+            
+            import time
+            now = time.time()
+            deleted_count = 0
+            preserved_count = 0
+            
+            for name in os.listdir(log_dir):
+                if name.startswith(log_filename) and name.endswith(".gz"):
+                    file_path = os.path.join(log_dir, name)
+                    if not os.path.isfile(file_path):
+                        continue
+                    mtime = os.path.getmtime(file_path)
+                    age_days = (now - mtime) / (24 * 3600)
+                    if age_days > retention_days:
+                        try:
+                            os.remove(file_path)
+                            log_info(f"Deleted expired rotated log file: {name} (age: {age_days:.1f} days)")
+                            deleted_count += 1
+                        except Exception as e:
+                            log_error(f"Failed to delete {name}: {e}")
+                    else:
+                        log_info(f"Preserved rotated log file: {name} (age: {age_days:.1f} days)")
+                        preserved_count += 1
+            log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")
+
+        # Clean up orphaned temporary progress logs in /dev/shm or /tmp older than 1 day
+        for temp_dir in ["/dev/shm", "/tmp"]:
+            if os.path.exists(temp_dir) and os.access(temp_dir, os.W_OK):
+                try:
+                    now_ts = time.time()
+                    for fname in os.listdir(temp_dir):
+                        if fname.startswith("ffmpeg_progress_") and fname.endswith(".log"):
+                            fpath = os.path.join(temp_dir, fname)
+                            if os.path.isfile(fpath):
+                                f_age = (now_ts - os.path.getmtime(fpath)) / (24 * 3600)
+                                if f_age > 1:
+                                    try:
+                                        os.remove(fpath)
+                                        log_info(f"Cleaned up orphaned progress log: {fname}")
+                                    except Exception:
+                                        pass
+                except Exception as t_err:
+                    log_error(f"Failed to clean temporary progress files in {temp_dir}: {t_err}")
+
+    async def execute_on_boot_cleanup(self):
+        """Run system retention cleanup asynchronously on server boot."""
+        self.logger.info("TaskManager: Executing on-boot system retention & log cleanup...")
+        def log_info(msg):
+            self.logger.info(f"[OnBootCleanup] {msg}")
+        def log_error(msg):
+            self.logger.error(f"[OnBootCleanup] {msg}")
+        try:
+            await self._execute_log_rotate(log_info, log_error)
+            self.logger.info("TaskManager: On-boot system retention & log cleanup completed.")
+        except Exception as e:
+            self.logger.error(f"TaskManager: On-boot cleanup encountered an error: {e}")
 
     async def _execute_ssl_renew(self, log_info, log_error):
         from services.cert_manager import CertificateManager

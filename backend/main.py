@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import os
 import re
 import json
+import copy
 import shutil
 import uuid
 import shlex
@@ -247,6 +248,23 @@ class NotificationSettings(BaseModel):
     notify_task_failures: bool = True
     notify_ssl_alerts: bool = True
     notify_storage_alerts: bool = True
+
+class BackupExportRequest(BaseModel):
+    gui_general: bool = True
+    gui_network_ssl: bool = True
+    lcd_display: bool = True
+    logging_retention: bool = True
+    watchdog_grace: bool = True
+    services: bool = True
+    tasks: bool = True
+    storage_volumes: bool = True
+    notifications: bool = True
+
+class BackupImportPayload(BaseModel):
+    app: str
+    version: str
+    exported_at: Optional[str] = None
+    sections: dict
 
 class NotificationSettingsUpdate(BaseModel):
     enabled: Optional[bool] = None
@@ -1202,6 +1220,302 @@ def send_test_notification(payload: Optional[Dict[str, Any]] = Body(None)):
     if not success:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": success, "message": msg}
+
+@app.post("/api/backup/export")
+def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
+    sections = {}
+    config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+    import configparser
+    config = configparser.ConfigParser()
+    if os.path.exists(config_path):
+        config.read(config_path)
+
+    # 1. General Panel
+    if req.gui_general:
+        gen_dict = {}
+        if "general" in config:
+            for k in ["language", "theme", "node_name", "logo_text", "lcd_alias", "gui_password"]:
+                if k in config["general"]:
+                    gen_dict[k] = config["general"][k]
+        sections["gui_general"] = gen_dict
+
+    # 2. Network & SSL
+    if req.gui_network_ssl:
+        net_dict = {}
+        if "general" in config:
+            for k in ["bind_address", "gui_port", "http_port", "https_port", "ssl_enabled", "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email", "ssl_challenge_type"]:
+                if k in config["general"]:
+                    net_dict[k] = config["general"][k]
+        sections["gui_network_ssl"] = net_dict
+
+    # 3. LCD Display
+    if req.lcd_display:
+        lcd_dict = {}
+        if "lcd" in config:
+            lcd_dict = dict(config["lcd"])
+        elif "general" in config:
+            for k in ["lcd_enabled", "lcd_port", "lcd_model", "lcd_brightness", "lcd_dim_brightness", "lcd_dim_timeout", "lcd_led0_profile", "lcd_led1_profile", "lcd_led2_profile", "lcd_led3_profile"]:
+                if k in config["general"]:
+                    lcd_dict[k] = config["general"][k]
+        sections["lcd_display"] = lcd_dict
+
+    # 4. Logging & Retention
+    if req.logging_retention:
+        log_dict = {}
+        if "general" in config:
+            for k in ["logging_mode", "logging_storage_id", "logging_relative_path", "logging_rotation_enabled", "logging_rotation_max_bytes", "logging_rotation_backup_count", "logging_compression_enabled", "logging_retention_days", "logging_timestamp_tz"]:
+                if k in config["general"]:
+                    log_dict[k] = config["general"][k]
+        sections["logging_retention"] = log_dict
+
+    # 5. Watchdog & Grace Delay
+    if req.watchdog_grace:
+        wd_dict = {}
+        if "watchdog" in config:
+            wd_dict = dict(config["watchdog"])
+        sections["watchdog_grace"] = wd_dict
+
+    # 6. Notifications
+    if req.notifications:
+        notif_dict = {}
+        if "notifications" in config:
+            notif_dict = dict(config["notifications"])
+            if "smtp_password" in notif_dict and notif_dict["smtp_password"]:
+                notif_dict["smtp_password"] = "*****"
+        sections["notifications"] = notif_dict
+
+    # 7. Services
+    if req.services:
+        procs = db.query(MediaProcess).filter(MediaProcess.type == "service").all()
+        sections["services"] = [
+            {
+                "name": p.name,
+                "input_config": p.input_config,
+                "output_config": p.output_config,
+                "codec_config": p.codec_config,
+                "filter_config": p.filter_config,
+                "auto_start": p.auto_start,
+                "startup_order": p.startup_order,
+                "startup_delay": p.startup_delay,
+                "watchdog_enabled": p.watchdog_enabled,
+                "watchdog_retries": p.watchdog_retries,
+                "watchdog_min_speed": p.watchdog_min_speed,
+                "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+                "alias": p.alias,
+                "network_timeout": p.network_timeout,
+                "debug_mode": p.debug_mode,
+            }
+            for p in procs
+        ]
+
+    # 8. Scheduled Tasks
+    if req.tasks:
+        tasks = db.query(ScheduledTask).filter(ScheduledTask.is_system == False).all()
+        sections["tasks"] = [
+            {
+                "name": t.name,
+                "input_config": t.input_config,
+                "output_config": t.output_config,
+                "codec_config": t.codec_config,
+                "filter_config": t.filter_config,
+                "schedule_type": t.schedule_type,
+                "schedule_cron": t.schedule_cron,
+                "schedule_datetime": t.schedule_datetime.isoformat() if t.schedule_datetime else None,
+                "duration_type": t.duration_type,
+                "duration_seconds": t.duration_seconds,
+                "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
+                "is_active": t.is_active,
+                "retry_policy": t.retry_policy,
+                "alias": t.alias,
+            }
+            for t in tasks
+        ]
+
+    # 9. Storage Volumes
+    if req.storage_volumes:
+        storages = db.query(Storage).all()
+        sections["storage_volumes"] = [
+            {
+                "name": s.name,
+                "path": s.path,
+                "type": s.type,
+                "is_default": s.is_default
+            }
+            for s in storages
+        ]
+
+    return {
+        "app": "ffmpeg-gui",
+        "version": backend_version,
+        "exported_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "sections": sections
+    }
+
+
+@app.post("/api/backup/import")
+def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_db)):
+    if payload.app != "ffmpeg-gui":
+        raise HTTPException(status_code=400, detail="Invalid backup file app identifier")
+
+    imported_summary = {
+        "gui_general": False,
+        "gui_network_ssl": False,
+        "lcd_display": False,
+        "logging_retention": False,
+        "watchdog_grace": False,
+        "services": 0,
+        "tasks": 0,
+        "storage_volumes": 0,
+        "notifications": False
+    }
+    sections = payload.sections or {}
+    config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+
+    import configparser
+    config = configparser.ConfigParser()
+    if os.path.exists(config_path):
+        config.read(config_path)
+
+    if "general" not in config:
+        config["general"] = {}
+    if "lcd" not in config:
+        config["lcd"] = {}
+    if "watchdog" not in config:
+        config["watchdog"] = {}
+    if "notifications" not in config:
+        config["notifications"] = {}
+
+    # Legacy system_settings
+    if "system_settings" in sections and isinstance(sections["system_settings"], dict):
+        for sec_name, sec_vals in sections["system_settings"].items():
+            if isinstance(sec_vals, dict):
+                if sec_name not in config:
+                    config[sec_name] = {}
+                for k, v in sec_vals.items():
+                    config.set(sec_name, k, str(v))
+        imported_summary["gui_general"] = True
+
+    # Granular subsections
+    if "gui_general" in sections and isinstance(sections["gui_general"], dict):
+        for k, v in sections["gui_general"].items():
+            config.set("general", k, str(v))
+        imported_summary["gui_general"] = True
+
+    if "gui_network_ssl" in sections and isinstance(sections["gui_network_ssl"], dict):
+        for k, v in sections["gui_network_ssl"].items():
+            config.set("general", k, str(v))
+        imported_summary["gui_network_ssl"] = True
+
+    if "lcd_display" in sections and isinstance(sections["lcd_display"], dict):
+        for k, v in sections["lcd_display"].items():
+            config.set("lcd", k, str(v))
+        imported_summary["lcd_display"] = True
+
+    if "logging_retention" in sections and isinstance(sections["logging_retention"], dict):
+        for k, v in sections["logging_retention"].items():
+            config.set("general", k, str(v))
+        imported_summary["logging_retention"] = True
+
+    if "watchdog_grace" in sections and isinstance(sections["watchdog_grace"], dict):
+        for k, v in sections["watchdog_grace"].items():
+            config.set("watchdog", k, str(v))
+        imported_summary["watchdog_grace"] = True
+
+    if "notifications" in sections and isinstance(sections["notifications"], dict):
+        for k, v in sections["notifications"].items():
+            if k == "smtp_password" and v == "*****":
+                continue
+            config.set("notifications", k, str(v))
+        notification_manager.load_config(dict(config["notifications"]))
+        imported_summary["notifications"] = True
+
+    with open(config_path, "w") as f:
+        config.write(f)
+
+    # Restore Storage Volumes
+    if "storage_volumes" in sections and isinstance(sections["storage_volumes"], list):
+        for s_data in sections["storage_volumes"]:
+            existing = db.query(Storage).filter(Storage.path == s_data.get("path")).first()
+            if not existing:
+                st = Storage(
+                    name=s_data.get("name"),
+                    path=s_data.get("path"),
+                    type=s_data.get("type", "generic"),
+                    is_default=s_data.get("is_default", False)
+                )
+                db.add(st)
+                imported_summary["storage_volumes"] += 1
+
+    # Restore Services
+    if "services" in sections and isinstance(sections["services"], list):
+        for p_data in sections["services"]:
+            existing = db.query(MediaProcess).filter(MediaProcess.name == p_data.get("name")).first()
+            if not existing:
+                proc = MediaProcess(
+                    name=p_data.get("name"),
+                    type="service",
+                    status="stopped",
+                    input_config=p_data.get("input_config") or {},
+                    output_config=p_data.get("output_config") or {},
+                    codec_config=p_data.get("codec_config") or {},
+                    filter_config=p_data.get("filter_config") or {},
+                    auto_start=p_data.get("auto_start", False),
+                    startup_order=p_data.get("startup_order", 1),
+                    startup_delay=p_data.get("startup_delay", 0),
+                    watchdog_enabled=p_data.get("watchdog_enabled", True),
+                    watchdog_retries=p_data.get("watchdog_retries", 3),
+                    watchdog_min_speed=p_data.get("watchdog_min_speed", 0.85),
+                    watchdog_min_speed_duration=p_data.get("watchdog_min_speed_duration", 30),
+                    alias=p_data.get("alias"),
+                    network_timeout=p_data.get("network_timeout", 30),
+                    debug_mode=p_data.get("debug_mode", False),
+                )
+                db.add(proc)
+                imported_summary["services"] += 1
+
+    # Restore Scheduled Tasks
+    if "tasks" in sections and isinstance(sections["tasks"], list):
+        for t_data in sections["tasks"]:
+            existing = db.query(ScheduledTask).filter(ScheduledTask.name == t_data.get("name")).first()
+            if not existing:
+                sched_dt = None
+                if t_data.get("schedule_datetime"):
+                    try:
+                        sched_dt = datetime.datetime.fromisoformat(t_data["schedule_datetime"])
+                    except Exception:
+                        pass
+                dur_end = None
+                if t_data.get("duration_end_time"):
+                    try:
+                        dur_end = datetime.datetime.fromisoformat(t_data["duration_end_time"])
+                    except Exception:
+                        pass
+                task = ScheduledTask(
+                    name=t_data.get("name"),
+                    command="ffmpeg",
+                    input_config=t_data.get("input_config") or {},
+                    output_config=t_data.get("output_config") or {},
+                    codec_config=t_data.get("codec_config") or {},
+                    filter_config=t_data.get("filter_config") or {},
+                    schedule_type=t_data.get("schedule_type", "manual"),
+                    schedule_cron=t_data.get("schedule_cron"),
+                    schedule_datetime=sched_dt,
+                    duration_type=t_data.get("duration_type", "timer"),
+                    duration_seconds=t_data.get("duration_seconds", 3600),
+                    duration_end_time=dur_end,
+                    is_active=t_data.get("is_active", False),
+                    retry_policy=t_data.get("retry_policy", {"max_retries": 3, "retry_delay": 5}),
+                    alias=t_data.get("alias"),
+                )
+                db.add(task)
+                imported_summary["tasks"] += 1
+
+    db.commit()
+    return {
+        "status": "success",
+        "message": "Backup configuration imported successfully",
+        "imported": imported_summary
+    }
 
 
 @app.post("/login")
@@ -2241,12 +2555,13 @@ async def startup_event():
                 build.build_log_summary = "Build aborted (server restarted)"
                 logger.info(f"Cleaned up stale build profile ID {build.id} on startup.")
             
-            running_processes = db.query(MediaProcess).filter(MediaProcess.status == "running").all()
-            for p in running_processes:
-                if p.pid and psutil.pid_exists(p.pid):
+            non_stopped_processes = db.query(MediaProcess).filter(MediaProcess.status.in_(["running", "starting", "restarting", "error"])).all()
+            for p in non_stopped_processes:
+                if p.status == "running" and p.pid and psutil.pid_exists(p.pid):
                     if p.debug_mode:
                         logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is in debug mode. Cannot re-attach live pipes. Marking as stopped to force restart.")
                         p.status = "stopped"
+                        p.restart_count = 0
                         p.pid = None
                         p.cpu_usage = 0
                         p.ram_usage = 0
@@ -2258,8 +2573,9 @@ async def startup_event():
                         process_manager.reattach_process(p.id, p.pid)
                         active_pids.add(p.pid)
                 else:
-                    logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is NOT alive in OS. Cleaning up.")
+                    logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is NOT alive in OS (status was {p.status}). Cleaning up.")
                     p.status = "stopped"
+                    p.restart_count = 0
                     p.pid = None
                     p.cpu_usage = 0
                     p.ram_usage = 0
@@ -2269,6 +2585,9 @@ async def startup_event():
             
             all_processes = db.query(MediaProcess).all()
             for p in all_processes:
+                if p.id in process_manager.processes or (p.status == "running" and p.pid and psutil.pid_exists(p.pid)):
+                    logger.info(f"Startup: Skipping file permissions reset for running process '{p.name}' (ID: {p.id}) to preserve active progress logs.")
+                    continue
                 try:
                     prepare_process_file_permissions(process_id=p.id, logger=logger)
                 except Exception as p_err:
@@ -2312,6 +2631,7 @@ async def startup_event():
 
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
+    asyncio.create_task(task_manager.execute_on_boot_cleanup())
     await scheduler.start()
 
     try:
@@ -3191,6 +3511,39 @@ async def delete_process(process_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "deleted", "process_id": process_id}
 
+@app.post("/processes/{process_id}/clone-as-task")
+def clone_process_as_task(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    new_task_name = f"Copy of {db_proc.name}"
+    
+    input_cfg = copy.deepcopy(db_proc.input_config or {})
+    output_cfg = copy.deepcopy(db_proc.output_config or {})
+    codec_cfg = copy.deepcopy(db_proc.codec_config or {})
+    filter_cfg = copy.deepcopy(db_proc.filter_config or {})
+
+    new_task = ScheduledTask(
+        name=new_task_name,
+        command="ffmpeg",
+        schedule_type="manual",
+        schedule_cron=None,
+        is_active=False,
+        is_system=False,
+        duration_type="timer",
+        duration_seconds=3600,
+        input_config=input_cfg,
+        output_config=output_cfg,
+        codec_config=codec_cfg,
+        filter_config=filter_cfg,
+        retry_policy={"max_retries": 3, "retry_delay": 5}
+    )
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return new_task
+
 @app.get("/api/processes/{process_id}/log-exists")
 def get_process_log_exists(process_id: int, db: Session = Depends(get_db)):
     db_proc = db.query(MediaProcess).get(process_id)
@@ -3254,8 +3607,8 @@ def download_process_log(process_id: int, db: Session = Depends(get_db)):
 def get_process_progress(process_id: int):
     # Path fallbacks
     paths = [
-        f"/dev/shm/ffmpeg_progress_{process_id}.log",
-        f"/tmp/ffmpeg_progress_{process_id}.log"
+        f"/dev/shm/ffmpeg_progress_{process_id}s.log",
+        f"/tmp/ffmpeg_progress_{process_id}s.log"
     ]
     
     # Default values
@@ -3354,7 +3707,7 @@ async def stop_process(process_id: int):
 
 @app.post("/processes/{process_id}/restart")
 async def restart_process(process_id: int):
-    await process_manager.stop_process(process_id)
+    await process_manager.stop_process(process_id, is_restart=True)
     # Short grace gap to allow hardware (ALSA/DeckLink) and network sockets to unbind cleanly
     await asyncio.sleep(0.5)
     await process_manager.start_process(process_id, is_restart=True)
@@ -3721,10 +4074,17 @@ def list_tasks(db: Session = Depends(get_db)):
             "last_execution": {
                 "id": last_exec.id,
                 "status": last_exec.status,
+                "pid": last_exec.pid,
                 "started_at": last_exec.started_at.isoformat() if last_exec.started_at else None,
                 "stopped_at": last_exec.stopped_at.isoformat() if last_exec.stopped_at else None,
                 "exit_code": last_exec.exit_code,
                 "error_message": last_exec.error_message,
+                "cpu": last_exec.cpu_usage,
+                "ram": last_exec.ram_usage,
+                "fps": last_exec.fps,
+                "bitrate": last_exec.bitrate,
+                "speed": last_exec.speed,
+                "retry_count": getattr(last_exec, 'retry_count', 0),
             } if last_exec else None
         })
     return res
@@ -3821,6 +4181,45 @@ def export_single_task(task_id: int, db: Session = Depends(get_db)):
         }
     }
 
+@app.post("/tasks/{task_id}/clone-as-service")
+def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
+    db_task = db.query(ScheduledTask).get(task_id)
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    new_proc_name = f"Copy of {db_task.name}"
+    
+    input_cfg = copy.deepcopy(db_task.input_config or {})
+    output_cfg = copy.deepcopy(db_task.output_config or {})
+    codec_cfg = copy.deepcopy(db_task.codec_config or {})
+    filter_cfg = copy.deepcopy(db_task.filter_config or {})
+
+    # Ensure realtime flag for file inputs when cloned as a service
+    for input_key, input_val in input_cfg.items():
+        if isinstance(input_val, dict) and input_val.get('type') == 'file':
+            input_val['re'] = True
+
+    new_proc = MediaProcess(
+        name=new_proc_name,
+        type="service",
+        status="stopped",
+        auto_start=False,
+        restart_count=0,
+        ffmpeg_build_id=db_task.ffmpeg_build_id,
+        input_config=input_cfg,
+        output_config=output_cfg,
+        codec_config=codec_cfg,
+        filter_config=filter_cfg,
+        watchdog_enabled=True,
+        watchdog_retries=3,
+        watchdog_min_speed=0.85,
+        watchdog_min_speed_duration=30
+    )
+    db.add(new_proc)
+    db.commit()
+    db.refresh(new_proc)
+    return new_proc
+
 @app.post("/tasks/preview-cmd")
 def preview_task_command(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
     db_task = ScheduledTask(
@@ -3874,7 +4273,7 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
             name=f"Imported: {td.get('name', 'Untitled')}",
             is_system=False,
             command=None,
-            is_active=td.get("is_active", True),
+            is_active=td.get("is_active", False),
             input_config=td.get("input_config", {}),
             output_config=td.get("output_config", {}),
             codec_config=td.get("codec_config", {}),
@@ -3990,6 +4389,19 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
     db.delete(task)
     db.commit()
     return {"status": "success", "message": f"Task {task_id} and its executions deleted."}
+
+@app.delete("/tasks/{task_id}/executions")
+def clear_task_executions(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(ScheduledTask).get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    executions = db.query(TaskExecution).filter(TaskExecution.task_id == task_id).all()
+    count = len(executions)
+    for exec_item in executions:
+        db.delete(exec_item)
+    db.commit()
+    return {"status": "success", "message": f"Cleared {count} execution records for task {task_id}."}
 
 @app.post("/tasks/{task_id}/trigger")
 async def trigger_task(task_id: int, db: Session = Depends(get_db)):

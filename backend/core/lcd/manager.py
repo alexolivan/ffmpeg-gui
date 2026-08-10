@@ -140,15 +140,25 @@ class LCDManager:
                         has_running = any(s.status == 'running' for s in services)
                         has_error = any(s.status == 'error' for s in services)
                         
-                        # 2. Check tasks in last 24 hours
+                        # 2. Check tasks in last 24 hours (latest execution per task)
                         from database.models import TaskExecution
                         from datetime import datetime, timedelta
+                        from sqlalchemy import func
                         limit = datetime.utcnow() - timedelta(hours=24)
                         has_running_task = db.query(TaskExecution).filter(TaskExecution.status == 'running').count() > 0
-                        has_failed_task = db.query(TaskExecution).filter(
-                            TaskExecution.status.in_(['error', 'failed']),
-                            TaskExecution.started_at >= limit
-                        ).count() > 0
+                        
+                        subquery = db.query(
+                            TaskExecution.task_id,
+                            func.max(TaskExecution.started_at).label('max_started')
+                        ).filter(TaskExecution.started_at >= limit).group_by(TaskExecution.task_id).subquery()
+                        
+                        latest_executions = db.query(TaskExecution).join(
+                            subquery,
+                            (TaskExecution.task_id == subquery.c.task_id) & 
+                            (TaskExecution.started_at == subquery.c.max_started)
+                        ).all()
+                        
+                        has_failed_task = any(ex.status in ('error', 'failed') for ex in latest_executions)
                         
                         self._cached_led_states["running_stream"] = has_running
                         self._cached_led_states["error_stream"] = has_error
