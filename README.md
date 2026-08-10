@@ -4,6 +4,10 @@ FFmpeg-GUI is a feature-rich orchestrator and management panel designed to compi
 
 Inspired by high-reliability systems and developer utility, it provides an intuitive wrapper around the FFmpeg CLI, turning complex console commands into visual, resilient, and manageable services.
 
+![Dashboard Overview](docs/assets/screenshot1.png)
+
+![Active Services](docs/assets/screenshot2.png)
+
 ---
 
 ## Core Features
@@ -17,11 +21,17 @@ Inspired by high-reliability systems and developer utility, it provides an intui
   - **Intel QuickSync (QSV) & VAAPI**: Hardware-accelerated transcoding support for Intel graphics processors.
   - **SRT (Secure Reliable Transport)**: Compiles with `libsrt` support.
 
+![FFmpeg Forge Builder](docs/assets/screenshot5.png)
+
 ### 📺 2. Media Services & Daemon Streams
 - **Persistent Pipelines**: Run RTMP, SRT (listener/caller), HLS, NDI, UDP, or ALSA audio streams as persistent background daemons.
 - **Boot Sequence Hierarchies**: Configure specific startup ordering and delay gaps to synchronize cross-dependent streams (e.g., waiting for an input stream to initialize before starting a transcoder).
 - **GPU/CPU Pipeline Diagramming**: An interactive resource pipeline diagram in the GUI that visually tracks GPU decoding, filtering, encoding, and CPU multiplexing flow.
 - **Live Frame Previews**: Periodically captures frame snapshots from active streams to monitor quality directly from the dashboard.
+
+![Hybrid GPU/CPU Transcode Pipeline](docs/assets/screenshot6.png)
+
+![Live Stream Preview & Logs](docs/assets/screenshot3.png)
 
 ### 🎨 3. Graphical Overlay Studio & Filters
 - **Visual Video Overlays**: Fully graphical editor to place, scale, and preview graphic overlays on top of video streams. Includes alignment assistants and dynamic canvas coordinates mapping.
@@ -30,6 +40,10 @@ Inspired by high-reliability systems and developer utility, it provides an intui
   - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping and crosspoint volume matrix routing.
   - Dynamic range compressors and expanders.
   - Multi-band equalizers (EQ) and ALSA loopback routing.
+
+![ALSA Audio Routing Matrix](docs/assets/screenshot8.png)
+
+![Graphic EQ & Dynamics Compressor](docs/assets/screenshot7.png)
 
 ### 🛡️ 4. Decoupled Watchdog Recovery
 - **Automatic Auto-Start**: Recovers crashed or disconnected streams automatically.
@@ -40,6 +54,8 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Automation Jobs**: Schedule recurring (cron-like) or one-shot encoding tasks (e.g., recording daily broadcasts, scheduled stream dumps).
 - **Safety Runtime Limits**: Define max duration timers to automatically clean up active tasks.
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
+
+![Scheduled Tasks & Cron Automation](docs/assets/screenshot4.png)
 
 ### 🔒 6. HTTPS & Let's Encrypt SSL Manager
 - **Automated SSL/TLS Certificates**: Request and renew Let's Encrypt certificates directly from the GUI panel.
@@ -70,6 +86,8 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ### 🌐 11. Styling & Localization
 - **Multi-Theme Engine**: 5 visual styles (Studio Dark, Cyberpunk Neon, Nordic Frost, Broadcast Light, Warm Paper) loaded instantly without page flash.
 - **Full Translations**: English, Spanish, and Catalan interfaces with 100% i18n parity.
+
+![Theme Switcher & Localization Settings](docs/assets/screenshot9.png)
 
 ---
 
