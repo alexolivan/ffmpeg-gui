@@ -14,6 +14,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
   - **Blackmagic DeckLink SDK**: Capture and playback support from professional PCIe hardware.
   - **NewTek NDI SDK**: High-quality IP video routing support.
   - **NVIDIA CUDA & NVENC/NVDEC**: Optional hardware-accelerated decoding/encoding integration (compiles cleanly on CPU-only hosts without NVIDIA hardware).
+  - **Intel QuickSync (QSV) & VAAPI**: Hardware-accelerated transcoding support for Intel graphics processors.
   - **SRT (Secure Reliable Transport)**: Compiles with `libsrt` support.
 
 ### 📺 2. Media Services & Daemon Streams
