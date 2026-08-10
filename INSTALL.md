@@ -1,6 +1,6 @@
 # Installation & Upgrade Guide
 
-This guide details the installation, capability configuration, upgrade, and uninstallation workflows for **FFmpeg-GUI**.
+This guide details the installation, dependency setup, and upgrade workflow for **FFmpeg-GUI**.
 
 ---
 
@@ -9,16 +9,17 @@ This guide details the installation, capability configuration, upgrade, and unin
 - **Operating System**: Linux (Ubuntu 20.04+ or Debian 11+ recommended).
 - **Python**: Version 3.10 or higher (with `venv` support).
 - **Node.js**: Version 18 or higher (with `npm`).
-- **Media Engine**: `ffmpeg` binary installed and accessible in the system path (compiled with required codecs like `libx264`, `libx265`, `nvenc`, etc.).
-- **Optional Hardware**:
-  - NVIDIA GPU with CUDA drivers configured.
+- **Compiler Tools**: `gcc`, `make`, `pkg-config`, and standard build utilities (required to compile custom FFmpeg binaries).
+- **Optional Hardware Tools**:
+  - NVIDIA proprietary drivers and CUDA toolkit (for NVENC/NVDEC hardware transcode).
   - CrystalFontz CFA635 USB LCD Display.
+  - Blackmagic DeckLink PCIe cards.
 
 ---
 
 ## 1. Installation
 
-FFmpeg-GUI provides an interactive `install.sh` script supporting two deployment modes.
+FFmpeg-GUI provides an interactive `install.sh` script supporting two execution contexts.
 
 To run the installation:
 ```bash
@@ -26,16 +27,16 @@ chmod +x install.sh
 ./install.sh
 ```
 
-### Option A: System-wide Service (Production Mode)
+### Option A: System-wide Service (Production Deployment)
 - **Target Location**: `/etc/systemd/system/ffmpeg-gui.service`
-- **Port Capabilities**: Configured automatically via `setcap` and systemd `AmbientCapabilities`. Allows binding to HTTP port 80 and HTTPS port 443 without running the Python application as root.
-- **Dedicated User**: Creates a system user/group `ffmpeg-gui:ffmpeg-gui` to run the daemon in isolation.
-- **NVIDIA GPU Support**: Installs `nvidia-uvm-init.service` to initialize GPU Unified Memory device nodes at boot before the orchestrator launches.
+- **Port Privilege Helper**: Grants `CAP_NET_BIND_SERVICE` capability to the virtual environment's python binary. This allows binding to privileged HTTP/HTTPS ports (80/443) without executing the backend process as root.
+- **Dedicated User**: Spawns a dedicated system user/group `ffmpeg-gui:ffmpeg-gui` to run the daemon in isolation.
+- **NVIDIA GPU Support**: Installs `nvidia-uvm-init.service` to initialize Unified Memory device nodes at boot, resolving CUDA driver binding delays before the orchestrator launches.
 
-### Option B: User-space Service (Development/Local Mode)
+### Option B: User-space Service (Local/Development Deployment)
 - **Target Location**: `$HOME/.config/systemd/user/ffmpeg-gui.service`
-- **Permissions**: Runs entirely under the current user's session without requiring root privileges.
-- **Port Limits**: Must bind to ports above 1024 (default port `8000`).
+- **Permissions**: Runs under the current user's session without requiring root privileges.
+- **Port Limitation**: Must bind to ports above 1024 (defaults to port `8000`).
 
 ---
 
@@ -46,7 +47,7 @@ To allow the Python application to bind to port 80/443 without root:
    ```bash
    sudo setcap cap_net_bind_service=+ep $(readlink -f venv/bin/python3)
    ```
-2. The systemd service includes:
+2. The systemd service unit includes:
    ```ini
    CapabilityBoundingSet=CAP_NET_BIND_SERVICE
    AmbientCapabilities=CAP_NET_BIND_SERVICE
@@ -58,7 +59,18 @@ To allow the Python application to bind to port 80/443 without root:
 
 ---
 
-## 3. Upgrading (Zero-Downtime Updater)
+## 3. Custom FFmpeg SDK Setup (NDI & DeckLink)
+
+The in-app compiler supports linking external SDKs for NDI and Blackmagic DeckLink:
+- **Automatic Retrieval**: When triggering a compilation in the panel, `SdkManager` handles downloading, extracting, and configuring the required files.
+- **Local Workspace**: SDK components are stored in the local workspace directory under:
+  - `data/sdks/decklink/<version>`
+  - `data/sdks/ndi/<version>`
+- **Compiler Flags**: The build manager automatically resolves cflags, libraries, and rpath dependencies for these directories during the FFmpeg compilation phase.
+
+---
+
+## 4. Upgrading (Zero-Downtime Updater)
 
 The `update.sh` script pulls the latest dependencies, builds the frontend, verifies systemd configurations, and restarts the service. 
 
@@ -82,7 +94,7 @@ To run the update:
 
 ---
 
-## 4. Uninstallation
+## 5. Uninstallation
 
 To remove all configuration files, database data, systemd services, and dependencies:
 
