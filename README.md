@@ -41,15 +41,20 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Safety Runtime Limits**: Define max duration timers to automatically clean up active tasks.
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
 
-### 💾 6. Granular Backup & Restore
+### 🔒 6. HTTPS & Let's Encrypt SSL Manager
+- **Automated SSL/TLS Certificates**: Request and renew Let's Encrypt certificates directly from the GUI panel.
+- **ACME Challenge Handler**: Integrated HTTP-01 challenge router (`/.well-known/acme-challenge/*`) for automated domain verification.
+- **Status & Monitoring**: Real-time display of certificate validity, domain bindings, and automated expiration warnings.
+
+### 💾 7. Granular Backup & Restore
 - **Selective Section Toggles**: Export and import specific configuration parts (e.g., only backing up media services and scheduled tasks while leaving SMTP credentials or network port configs unchanged).
 - **Format Verification**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions and config file updates.
 
-### 🔔 7. State-Based SMTP Notifications
+### 🔔 8. State-Based SMTP Notifications
 - **Alert Fatigue Prevention**: Stateful notification queue that filters redundant alerts. Emails are dispatched exclusively on initial stream crashes, recovery success, and final retry exhaustion.
 - **System Health Checks**: Active warnings for pending SSL/TLS certificate expirations and disk space utilization exceeding 90%.
 
-### 📟 8. CFA635 LCD Display Driver
+### 📟 9. CFA635 LCD Display Driver
 - **Serial LCD Integration**: Direct driver control for CrystalFontz CFA635 USB/Serial displays. Renders live CPU, RAM, active stream counts, locator beacons, and handles backlight dimming timeouts.
 - **Bicolor Status LEDs**: Maps physical LEDs to profile monitors:
   - Heartbeat status indicator.
@@ -57,7 +62,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
   - Task execution monitor (reflects latest execution results).
   - High-resource alerts.
 
-### 🌐 9. Styling & Localization
+### 🌐 10. Styling & Localization
 - **Multi-Theme Engine**: 5 visual styles (Studio Dark, Cyberpunk Neon, Nordic Frost, Broadcast Light, Warm Paper) loaded instantly without page flash.
 - **Full Translations**: English, Spanish, and Catalan interfaces with 100% i18n parity.
 
