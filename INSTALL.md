@@ -11,9 +11,11 @@ This guide details the installation, dependency setup, and upgrade workflow for 
 - **Node.js**: Version 18 or higher (with `npm`).
 - **Compiler Tools**: `gcc`, `make`, `pkg-config`, and standard build utilities (required to compile custom FFmpeg binaries).
 - **Optional Hardware Tools**:
-  - NVIDIA proprietary drivers and CUDA toolkit (for NVENC/NVDEC hardware transcode).
+  - NVIDIA GPU with proprietary drivers & CUDA toolkit (optional for hardware acceleration; system compiles and runs on CPU-only hosts without NVIDIA drivers).
+  - Blackmagic DeckLink PCIe cards (optional for physical SDI/HDMI feed captures).
+  - Magewell capture devices (HDMI/SDI capture routed via V4L2).
+  - AudioScience professional soundcards (ALSA audio matrix and topology controls).
   - CrystalFontz CFA635 USB LCD Display.
-  - Blackmagic DeckLink PCIe cards.
 
 ---
 
@@ -31,7 +33,7 @@ chmod +x install.sh
 - **Target Location**: `/etc/systemd/system/ffmpeg-gui.service`
 - **Port Privilege Helper**: Grants `CAP_NET_BIND_SERVICE` capability to the virtual environment's python binary. This allows binding to privileged HTTP/HTTPS ports (80/443) without executing the backend process as root.
 - **Dedicated User**: Spawns a dedicated system user/group `ffmpeg-gui:ffmpeg-gui` to run the daemon in isolation.
-- **NVIDIA GPU Support**: Installs `nvidia-uvm-init.service` to initialize Unified Memory device nodes at boot, resolving CUDA driver binding delays before the orchestrator launches.
+- **NVIDIA GPU Support**: The installer automatically detects if an NVIDIA GPU is present. If found, it installs `nvidia-uvm-init.service` to initialize Unified Memory device nodes at boot, resolving CUDA driver binding delays before the orchestrator launches. If no NVIDIA GPU is present, this unit is skipped, and the orchestrator runs on CPU.
 
 ### Option B: User-space Service (Local/Development Deployment)
 - **Target Location**: `$HOME/.config/systemd/user/ffmpeg-gui.service`

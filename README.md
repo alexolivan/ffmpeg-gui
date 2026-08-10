@@ -13,7 +13,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **External SDK Management**: Automated downloading, extraction, and compilation binding for proprietary or complex SDKs:
   - **Blackmagic DeckLink SDK**: Capture and playback support from professional PCIe hardware.
   - **NewTek NDI SDK**: High-quality IP video routing support.
-  - **NVIDIA CUDA & NVENC/NVDEC**: Hardware-accelerated decoding/encoding integration.
+  - **NVIDIA CUDA & NVENC/NVDEC**: Optional hardware-accelerated decoding/encoding integration (compiles cleanly on CPU-only hosts without NVIDIA hardware).
   - **SRT (Secure Reliable Transport)**: Compiles with `libsrt` support.
 
 ### 📺 2. Media Services & Daemon Streams
@@ -24,10 +24,11 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ### 🎨 3. Graphical Overlay Studio & Filters
 - **Visual Video Overlays**: Fully graphical editor to place, scale, and preview graphic overlays on top of video streams. Includes alignment assistants and dynamic canvas coordinates mapping.
-- **Integrated Audio Filters**: GUI controls to chain advanced audio filters:
+- **Professional AV Hardware & Filters**: GUI controls to configure capture hardware and chain advanced filters:
+  - **Magewell Capture Cards**: Reliable integration with HDMI/SDI input capture via V4L2.
+  - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping and crosspoint volume matrix routing.
   - Dynamic range compressors and expanders.
-  - Multi-band equalizers (EQ).
-  - ALSA capture loopbacks and channel matrix mapping.
+  - Multi-band equalizers (EQ) and ALSA loopback routing.
 
 ### 🛡️ 4. Decoupled Watchdog Recovery
 - **Automatic Auto-Start**: Recovers crashed or disconnected streams automatically.
