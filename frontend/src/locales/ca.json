@@ -66,7 +66,16 @@
     "retrying": "Reintentant inici...",
     "stopConfirm": "⚠️ ADVERTÈNCIA D'EMISSIÓ EN DIRECTE:\n\nEstàs segur que vols aturar \"{{name}}\"? Les connexions de transmissió en directe actives (SRT/UDP/RTP/Icecast) patiran un tall immediat de senyal.",
     "restartConfirm": "⚠️ ADVERTÈNCIA D'EMISSIÓ EN DIRECTE:\n\nEstàs segur que vols reiniciar \"{{name}}\"? Les connexions de transmissió en directe actives (SRT/UDP/RTP/Icecast) patiran una pèrdua temporal de senyal durant el reinici.",
-    "cloneAsTask": "Copiar com a Tasca"
+    "cloneAsTask": "Copiar com a Tasca",
+    "typeFfmpegStream": "Pipeline de Streaming FFmpeg",
+    "typeIcecastServer": "Servidor d'Àudio Icecast",
+    "typeKioskBrowser": "Navegador Web Kiosk",
+    "typeMediamtxHub": "Hub de Protocols MediaMTX",
+    "linkedImplicit": "Dependències Vinculades",
+    "autoManaged": "Autogestionat",
+    "refCount": "Consumidors",
+    "logsHistory": "Històric de Logs i Esdeveniments",
+    "viewLogs": "Veure Registres d'Esdeveniments"
   },
   "settings": {
     "title": "Configuració",

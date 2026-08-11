@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-beta] - 2026-08-11
+
+### Added
+- **Unified Multi-Type Service UI Card (`UnifiedServiceCard.tsx`)**:
+  - Modular React card component with dynamic slot rendering according to service types (`ffmpeg_stream`, `icecast_server`, `kiosk_browser`, `mediamtx_hub`).
+  - Preserved 100% of 1.X Services premium visual design (glassmorphic styling, hover glows, and rounded iconic control buttons: Play `▶`, Stop `⏹`, Restart `🔄`, Logs `📜`, Edit `✏`, Clone `📋`, Delete `🗑`).
+  - Added conditional action rendering: "Clone as Task" (`📋`) button is displayed exclusively for `ffmpeg_stream` services.
+  - Interactive card click triggers live inspection modal with big video snapshot, GPU/CPU pipeline diagram, and real-time streaming event logs.
+  - Integrated read-only implicit dependency badge (`🔗 Linked: Service Name (Auto-managed)`) showing live linked services and consumer reference counts.
+  - Added i18n keys for service types and implicit dependency labels across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`) with strict key parity.
+
 ## [2.0.0-alpha] - 2026-08-11
 
 ### Added

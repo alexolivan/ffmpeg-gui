@@ -1,6 +1,20 @@
 {
-  "current_task": "Hito 2.0-Alpha (Rediseño ER & Servicios Multitipo)",
+  "current_task": "Hito 2.0-Beta (Frontend Unificado & Slots Multitipo)",
   "step_active": "COMPLETED",
-  "files_touching": [],
-  "status": "COMPLETED"
+  "files_touching": [
+    "frontend/src/components/views/ServicesView.tsx",
+    "frontend/src/components/cards/UnifiedServiceCard.tsx",
+    "frontend/src/components/modals/ServiceDependenciesModal.tsx",
+    "frontend/src/types/index.ts",
+    "frontend/src/locales/en.json",
+    "frontend/src/locales/es.json",
+    "frontend/src/locales/ca.json"
+  ],
+  "status": "COMPLETED",
+  "tasks": [
+    "- [x] Paso 1: Definir tipos/interfaces de servicios multitipo e i18n en `en.json`, `es.json` y `ca.json`.",
+    "- [x] Paso 2: Crear el componente `UnifiedServiceCard.tsx` con slots dinámicos, estética 1.X, botones con iconos y badges de dependencias implícitas.",
+    "- [x] Paso 3: Integrar `UnifiedServiceCard` en `ServicesView.tsx` y `DashboardView.tsx`.",
+    "- [x] Paso 4: Validar compilación del frontend (`npm run build --prefix frontend`) y realizar commit."
+  ]
 }

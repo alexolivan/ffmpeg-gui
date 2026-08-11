@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { hasVideo as hasVideoHelper } from '../views/ServicesView';
+import { hasVideo as hasVideoHelper } from '../cards/UnifiedServiceCard';
 
 interface ProcessPreviewModalProps {
   selectedProcess: any;

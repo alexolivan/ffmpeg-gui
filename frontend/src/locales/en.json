@@ -66,7 +66,16 @@
     "retrying": "Retrying launch...",
     "stopConfirm": "⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to stop \"{{name}}\"? Any active live stream connections (SRT/UDP/RTP/Icecast) will experience an immediate signal interruption.",
     "restartConfirm": "⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to restart \"{{name}}\"? Any active live stream connections (SRT/UDP/RTP/Icecast) will drop and experience a temporary signal loss during restart.",
-    "cloneAsTask": "Copy as Task"
+    "cloneAsTask": "Copy as Task",
+    "typeFfmpegStream": "FFmpeg Stream Pipeline",
+    "typeIcecastServer": "Icecast Audio Server",
+    "typeKioskBrowser": "Kiosk WebView Browser",
+    "typeMediamtxHub": "MediaMTX Protocol Hub",
+    "linkedImplicit": "Linked Dependencies",
+    "autoManaged": "Auto-managed",
+    "refCount": "Consumers",
+    "logsHistory": "Logs & Event History",
+    "viewLogs": "View Event Logs"
   },
   "settings": {
     "title": "Settings",
