@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha] - 2026-08-11
+
+### Added
+- **Unified Services & Dependencies Engine (v2.0 Redesign)**:
+  - Replaced legacy `MediaProcess` model with a generic `Service` class storing configuration in a single, schema-agnostic `config` JSON column.
+  - Implemented automatic SQLite database migration converting historical `media_processes` records to `services` format on startup, bump schema version to `2.0.0`.
+  - Added reference-counting dependency tracking (`ServiceDependency` table) inside `ProcessManager`.
+  - Implemented `start_dependencies()` and `stop_unused_dependencies()` to auto-boot dependencies and auto-stop them when reference count falls to 0.
+  - Created native REST API endpoints under `/api/services` and `/api/services/{id}/dependencies`.
+  - Implemented backwards-compatible shims (Getter/Setter properties and module-level class aliases `MediaProcess = Service`, `ProcessLog = ServiceLog`) ensuring 100% functionality of legacy `/processes` endpoints and unit tests.
+
 ## [1.45.0] - 2026-08-07
 
 ### Added
