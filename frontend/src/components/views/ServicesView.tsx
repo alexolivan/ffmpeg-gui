@@ -50,7 +50,29 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   const { t } = useTranslation();
 
   const activeServices = telemetry.filter(p => isActiveService(p, actionPending));
-  const inactiveServices = telemetry.filter(p => !isActiveService(p, actionPending));
+  const inactiveServices = telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p, actionPending));
+
+  const handleExport = (proc: ServiceItem) => {
+    fetch(`${API}/processes/${proc.id}/export`)
+      .then(r => r.json())
+      .then(data => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${proc.name}_profile.json`;
+        a.click();
+      });
+  };
+
+  const handleCloneAsTask = async (proc: ServiceItem) => {
+    try {
+      const res = await fetch(`${API}/processes/${proc.id}/clone-as-task`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to clone service as task');
+      alert(t('common.clonedSuccess', 'Cloned successfully!'));
+    } catch (err: any) {
+      alert(err.message || 'Error cloning service as task');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -86,16 +108,16 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 
       <div className="space-y-6">
         {/* Active Running Services Section */}
-        <div>
-          <h3 className="text-lg font-black mb-3 text-[var(--text-primary)] tracking-wide">
+        <div className="glass-card p-4 md:p-5">
+          <h3 className="text-xl font-black mb-3 text-[var(--text-primary)]">
             {t('services.activeServicesRunning', 'ACTIVE SERVICES (RUNNING)')} ({activeServices.length})
           </h3>
           {activeServices.length === 0 ? (
-            <div className="text-[var(--text-secondary)] py-12 text-center border border-dashed border-[var(--glass-border)] rounded-2xl bg-[var(--bg-card)]">
+            <div className="text-[var(--text-secondary)] py-8 text-center border border-dashed border-white/5 rounded-2xl">
               {t('services.noRunningServices', 'No running services')}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2.5">
               {activeServices.map(proc => (
                 <UnifiedServiceCard
                   key={proc.id}
@@ -109,7 +131,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                   onCloneProcess={onCloneProcess}
                   onDeleteProcess={onDeleteProcess}
                   onSelectedProcess={onSelectedProcess}
-                  onViewLogs={onSelectedProcess}
+                  onExportProcess={handleExport}
+                  onCloneAsTask={handleCloneAsTask}
                   API={API}
                 />
               ))}
@@ -118,16 +141,16 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         </div>
 
         {/* Inactive Configured Services Section */}
-        <div>
-          <h3 className="text-lg font-black mb-3 text-[var(--text-secondary)] tracking-wide">
+        <div className="glass-card p-4 md:p-5">
+          <h3 className="text-xl font-black mb-3 text-[var(--text-secondary)]">
             {t('services.configuredServicesInactive', 'Configured Services (Inactive)')} ({inactiveServices.length})
           </h3>
           {inactiveServices.length === 0 ? (
-            <div className="text-[var(--text-secondary)] py-12 text-center border border-dashed border-[var(--glass-border)] rounded-2xl bg-[var(--bg-card)]">
+            <div className="text-[var(--text-secondary)] py-8 text-center border border-dashed border-white/5 rounded-2xl">
               {t('services.noInactiveServices', 'No inactive services')}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2.5">
               {inactiveServices.map(proc => (
                 <UnifiedServiceCard
                   key={proc.id}
@@ -141,7 +164,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
                   onCloneProcess={onCloneProcess}
                   onDeleteProcess={onDeleteProcess}
                   onSelectedProcess={onSelectedProcess}
-                  onViewLogs={onSelectedProcess}
+                  onExportProcess={handleExport}
+                  onCloneAsTask={handleCloneAsTask}
                   API={API}
                 />
               ))}

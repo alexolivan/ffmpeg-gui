@@ -12,6 +12,7 @@ import {
   TrashIcon, 
   SourceIcon, 
   StopIcon,
+  PlayIcon,
   ServerIcon
 } from './Icons';
 
@@ -550,36 +551,37 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                       <button 
                         disabled={taskTriggerPending[task.id]}
                         onClick={() => viewTaskDetails(task.id)}
-                        className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs py-2 px-4 hover:border-brand-lime/40 disabled:opacity-50 disabled:pointer-events-none"
+                        className="w-9 h-9 rounded-xl bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-[var(--glass-border)] transition-all flex items-center justify-center disabled:opacity-50"
+                        title={t('tasks.runHistory', 'View Run History')}
                       >
-                        {t('tasks.runHistory', 'RUN HISTORY')}
+                        📜
                       </button>
                       
                       {isRunning ? (
                         <button 
                           disabled={execStopPending[exec.id]}
                           onClick={() => handleStopExecution(exec.id)}
-                          className="pill-button bg-red-500 text-white font-bold hover:bg-red-600 text-xs py-2 px-4 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+                          className="w-9 h-9 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 flex items-center justify-center transition-all disabled:opacity-50"
                           title="Abort Execution"
                         >
-                          {execStopPending[exec.id] && (
-                            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                          {execStopPending[exec.id] ? (
+                            <span className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <StopIcon size={16} />
                           )}
-                          {execStopPending[exec.id] ? 'ABORTING...' : 'ABORT'}
                         </button>
                       ) : (
                         <button 
                           disabled={taskTriggerPending[task.id]}
                           onClick={() => handleTriggerTask(task.id)}
-                          className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+                          className="w-9 h-9 rounded-xl bg-brand-lime/10 text-brand-lime hover:bg-brand-lime/20 border border-brand-lime/30 flex items-center justify-center transition-all disabled:opacity-50"
                           title="Run Now"
                         >
                           {taskTriggerPending[task.id] ? (
-                            <span className="w-3 h-3 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
+                            <span className="w-4 h-4 border-2 border-brand-lime border-t-transparent rounded-full animate-spin" />
                           ) : (
-                            <LightningIcon size={12} />
+                            <PlayIcon size={16} />
                           )}
-                          {taskTriggerPending[task.id] ? 'TRIGGERING...' : 'RUN NOW'}
                         </button>
                       )}
 
