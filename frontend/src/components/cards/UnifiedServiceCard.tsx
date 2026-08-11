@@ -233,14 +233,14 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           <span className="opacity-20">|</span>
           <span>CPU: <strong className={cpu > 80 ? 'text-red-400 font-bold' : 'text-[var(--text-primary)]'}>{cpu}%</strong></span>
           <span className="opacity-20">|</span>
-          <span>RAM: <strong className="text-[var(--text-primary)]">{ram}%</strong></span>
+          <span>RAM: <strong className="text-[var(--text-primary)]">{ram} MB</strong></span>
           {isFfmpegStream && hasVideo(service) && fps && fps !== '0' && (
             <>
               <span className="opacity-20">|</span>
               <span>FPS: <strong className="text-[var(--text-primary)]">{fps}</strong></span>
             </>
           )}
-          {bitrate && bitrate !== '0 kb/s' && (
+          {bitrate && bitrate !== 'N/A' && bitrate !== '0 kb/s' && bitrate !== '0.0kbits/s' && (
             <>
               <span className="opacity-20">|</span>
               <span>Bitrate: <strong className="text-brand-lime font-bold">{bitrate}</strong></span>
