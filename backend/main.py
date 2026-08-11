@@ -4406,6 +4406,40 @@ def export_single_task(task_id: int, db: Session = Depends(get_db)):
         }
     }
 
+def _serialize_service(p) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "alias": p.alias,
+        "type": p.type,
+        "status": p.status,
+        "pid": p.pid,
+        "cpu": p.cpu_usage,
+        "ram": p.ram_usage,
+        "bitrate": p.bitrate,
+        "fps": p.fps,
+        "speed": p.speed,
+        "ffmpeg_build_id": p.ffmpeg_build_id,
+        "input_config": p.input_config,
+        "output_config": p.output_config,
+        "codec_config": p.codec_config,
+        "filter_config": p.filter_config,
+        "auto_start": p.auto_start,
+        "startup_order": getattr(p, 'startup_order', 1) or 1,
+        "startup_delay": getattr(p, 'startup_delay', 0) or 0,
+        "watchdog_enabled": p.watchdog_enabled,
+        "watchdog_retries": p.watchdog_retries,
+        "watchdog_min_speed": p.watchdog_min_speed,
+        "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+        "pending_changes": p.pending_changes,
+        "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
+        "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
+        "restart_count": p.restart_count,
+        "network_timeout": p.network_timeout,
+        "debug_mode": p.debug_mode,
+        "log_storage_id": p.log_storage_id,
+    }
+
 @app.post("/tasks/{task_id}/clone-as-service")
 def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
     db_task = db.query(ScheduledTask).get(task_id)
@@ -4443,7 +4477,7 @@ def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
     db.add(new_proc)
     db.commit()
     db.refresh(new_proc)
-    return new_proc
+    return _serialize_service(new_proc)
 
 @app.post("/tasks/preview-cmd")
 def preview_task_command(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
