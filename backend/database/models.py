@@ -230,10 +230,18 @@ class Service(Base):
         if self.status != 'running' or not self.last_started_config:
             return False
         
-        # Compare active configuration dictionary against what was started
         current_cfg = self.config or {}
-        started_cfg = self.last_started_config.get('config') or {}
-        return current_cfg != started_cfg
+        last_started = self.last_started_config
+        started_cfg = last_started.get('config') if isinstance(last_started, dict) and 'config' in last_started else last_started
+        if not isinstance(started_cfg, dict):
+            return False
+            
+        c_in, s_in = current_cfg.get('input_config'), started_cfg.get('input_config')
+        c_out, s_out = current_cfg.get('output_config'), started_cfg.get('output_config')
+        c_codec, s_codec = current_cfg.get('codec_config'), started_cfg.get('codec_config')
+        c_filter, s_filter = current_cfg.get('filter_config'), started_cfg.get('filter_config')
+        
+        return (c_in != s_in) or (c_out != s_out) or (c_codec != s_codec) or (c_filter != s_filter)
 
 
 class ServiceDependency(Base):
