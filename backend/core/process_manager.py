@@ -40,34 +40,71 @@ class ProcessManager:
             return local_bin
         return "ffmpeg"
 
+    def get_service_ref_count(self, provider_id: int) -> int:
+        active_running_service_ids = [sid for sid, p in self.processes.items() if p is not None]
+        with self.db_session_factory() as session:
+            from database.models import ServiceDependency
+            ref_count = session.query(ServiceDependency).filter(
+                ServiceDependency.provider_service_id == provider_id,
+                ServiceDependency.consumer_type == 'service',
+                ServiceDependency.consumer_id.in_(active_running_service_ids)
+            ).count() if active_running_service_ids else 0
+            return ref_count
+
+    async def start_dependencies(self, process_id: int):
+        with self.db_session_factory() as session:
+            from database.models import ServiceDependency
+            deps = session.query(ServiceDependency).filter(
+                ServiceDependency.consumer_type == 'service',
+                ServiceDependency.consumer_id == process_id
+            ).all()
+            provider_ids = [dep.provider_service_id for dep in deps]
+            
+        for provider_id in provider_ids:
+            if provider_id not in self.processes:
+                self.logger.info(f"Starting auto-managed dependency service {provider_id} for consumer service {process_id}")
+                await self.start_process(provider_id, is_restart=False)
+
+    async def stop_unused_dependencies(self, process_id: int):
+        with self.db_session_factory() as session:
+            from database.models import ServiceDependency
+            deps = session.query(ServiceDependency).filter(
+                ServiceDependency.consumer_type == 'service',
+                ServiceDependency.consumer_id == process_id
+            ).all()
+            auto_managed_deps = [dep for dep in deps if dep.is_auto_managed]
+            
+        for dep in auto_managed_deps:
+            provider_id = dep.provider_service_id
+            ref_count = self.get_service_ref_count(provider_id)
+            if ref_count == 0:
+                self.logger.info(f"Stopping unused dependency service {provider_id} (ref_count reached 0)")
+                await self.stop_process(provider_id)
+
     async def start_process(self, process_id: int, is_restart: bool = False):
         cleanup_rogue_processes(process_id=process_id)
+        
+        # Start auto-managed dependencies first
+        await self.start_dependencies(process_id)
         
         logs_dir = None
         debug_mode = False
         
         # 1. Fetch config and prepare snap in a quick database transaction
         with self.db_session_factory() as session:
-            from database.models import MediaProcess, FfmpegBuild, ProcessLog, Storage
-            media_proc = session.query(MediaProcess).get(process_id)
+            from database.models import Service, FfmpegBuild, ServiceLog, Storage
+            media_proc = session.query(Service).get(process_id)
             if not media_proc:
-                self.logger.error(f"Process {process_id} not found in DB")
+                self.logger.error(f"Service {process_id} not found in DB")
                 return
 
             # Clear old logs from DB to prevent mixing previous execution output
-            session.query(ProcessLog).filter(ProcessLog.process_id == process_id).delete()
+            session.query(ServiceLog).filter(ServiceLog.service_id == process_id).delete()
 
             # Save configuration snapshot at launch
             media_proc.last_started_config = {
                 "name": media_proc.name,
-                "ffmpeg_build_id": media_proc.ffmpeg_build_id,
-                "input_config": media_proc.input_config,
-                "output_config": media_proc.output_config,
-                "codec_config": media_proc.codec_config,
-                "filter_config": media_proc.filter_config,
-                "auto_start": media_proc.auto_start,
-                "watchdog_enabled": media_proc.watchdog_enabled,
-                "watchdog_retries": media_proc.watchdog_retries,
+                "config": media_proc.config
             }
             if not is_restart:
                 self.restart_counts.pop(process_id, None)
@@ -78,10 +115,13 @@ class ProcessManager:
             if pending and pending != asyncio.current_task():
                 pending.cancel()
 
+            cfg = media_proc.config or {}
+
             # Resolve log_storage
             log_storage_path = None
-            if media_proc.log_storage_id:
-                storage = session.query(Storage).get(media_proc.log_storage_id)
+            log_storage_id = cfg.get("log_storage_id")
+            if log_storage_id:
+                storage = session.query(Storage).get(log_storage_id)
                 if storage:
                     log_storage_path = storage.path
             
@@ -96,21 +136,22 @@ class ProcessManager:
                 log_storage_path = os.path.abspath("data/logs")
             
             logs_dir = log_storage_path
-            debug_mode = media_proc.debug_mode or False
+            debug_mode = cfg.get("debug_mode", False)
 
             # Determine which FFmpeg binary to use
             ffmpeg_bin = self.ffmpeg_path  # Default fallback
-            if media_proc.ffmpeg_build_id:
-                build = session.query(FfmpegBuild).get(media_proc.ffmpeg_build_id)
+            ffmpeg_build_id = cfg.get("ffmpeg_build_id")
+            if ffmpeg_build_id:
+                build = session.query(FfmpegBuild).get(ffmpeg_build_id)
                 if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
                     ffmpeg_bin = build.ffmpeg_binary
                     self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
 
             # Resolve and validate paths before starting
             import copy
-            val_input = copy.deepcopy(media_proc.input_config)
-            val_output = copy.deepcopy(media_proc.output_config)
-            val_filter = copy.deepcopy(media_proc.filter_config or {})
+            val_input = copy.deepcopy(cfg.get("input_config", {}))
+            val_output = copy.deepcopy(cfg.get("output_config", {}))
+            val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
             self._resolve_config_paths(val_input, val_output, val_filter)
             try:
                 self._validate_paths(val_input, val_output, val_filter)
@@ -184,7 +225,8 @@ class ProcessManager:
             
             # 3. Update PID and status in a second short database transaction
             with self.db_session_factory() as session:
-                media_proc = session.query(MediaProcess).get(process_id)
+                from database.models import Service
+                media_proc = session.query(Service).get(process_id)
                 if media_proc:
                     media_proc.pid = proc.pid
                     media_proc.status = 'running'
@@ -203,7 +245,8 @@ class ProcessManager:
         except Exception as e:
             self.logger.exception(f"Failed to start process {process_id}")
             with self.db_session_factory() as session:
-                media_proc = session.query(MediaProcess).get(process_id)
+                from database.models import Service
+                media_proc = session.query(Service).get(process_id)
                 if media_proc:
                     media_proc.status = 'error'
                     session.commit()
@@ -297,8 +340,8 @@ class ProcessManager:
             cleanup_rogue_processes(process_id=process_id)
 
             with self.db_session_factory() as session:
-                from database.models import MediaProcess
-                media_proc = session.query(MediaProcess).get(process_id)
+                from database.models import Service
+                media_proc = session.query(Service).get(process_id)
                 if media_proc:
                     media_proc.status = 'restarting' if is_restart else 'stopped'
                     media_proc.pid = None
@@ -310,6 +353,9 @@ class ProcessManager:
                     media_proc.last_stop = datetime.utcnow()
                     media_proc.restart_count = 0
                     session.commit()
+
+            # Stop any auto-managed dependencies that are no longer needed
+            await self.stop_unused_dependencies(process_id)
         finally:
             self.stopping_processes.discard(process_id)
 
@@ -485,8 +531,8 @@ class ProcessManager:
         if match:
             fps, bitrate, speed = match.groups()
             with self.db_session_factory() as session:
-                from database.models import MediaProcess
-                media_proc = session.query(MediaProcess).get(process_id)
+                from database.models import Service
+                media_proc = session.query(Service).get(process_id)
                 if media_proc:
                     media_proc.fps = fps if fps is not None else "N/A"
                     media_proc.bitrate = bitrate
@@ -580,22 +626,23 @@ class ProcessManager:
                 return
 
             with self.db_session_factory() as session:
-                from database.models import MediaProcess, ProcessLog
-                media_proc = session.query(MediaProcess).get(process_id)
+                from database.models import Service, ServiceLog
+                media_proc = session.query(Service).get(process_id)
                 if not media_proc or media_proc.status == 'stopped':
-                    self.logger.info(f"Watchdog: Process {process_id} status is stopped or deleted. Aborting restart.")
+                    self.logger.info(f"Watchdog: Service {process_id} status is stopped or deleted. Aborting restart.")
                     return
 
                 # Pre-flight network readiness check
                 net_timeout = self.get_network_wait_timeout()
-                is_net_ready = await self._async_check_network_readiness(media_proc.input_config, timeout=net_timeout)
+                cfg = media_proc.config or {}
+                is_net_ready = await self._async_check_network_readiness(cfg.get('input_config', {}), timeout=net_timeout)
                 if not is_net_ready:
-                    self.logger.warning(f"Watchdog: Network/DNS not ready for process {process_id} after {net_timeout}s timeout. Aborting restart attempt.")
+                    self.logger.warning(f"Watchdog: Network/DNS not ready for service {process_id} after {net_timeout}s timeout. Aborting restart attempt.")
                     return
 
-                self.logger.info(f"Watchdog triggering restart for process {process_id}")
-                log = ProcessLog(
-                    process_id=process_id,
+                self.logger.info(f"Watchdog triggering restart for service {process_id}")
+                log = ServiceLog(
+                    service_id=process_id,
                     level='INFO',
                     message="Watchdog: Triggering automatic restart."
                 )
@@ -702,8 +749,8 @@ class ProcessManager:
                 # Update database
                 try:
                     with self.db_session_factory() as session:
-                        from database.models import MediaProcess
-                        media_proc = session.query(MediaProcess).get(process_id)
+                        from database.models import Service
+                        media_proc = session.query(Service).get(process_id)
                         if media_proc:
                             media_proc.fps = fps if fps is not None else "0"
                             media_proc.bitrate = bitrate if bitrate is not None else "0 kb/s"
@@ -730,14 +777,18 @@ class ProcessManager:
                                 except ValueError:
                                     pass
 
-                            if media_proc.type == 'service' and media_proc.watchdog_enabled and media_proc.watchdog_min_speed is not None:
+                            cfg = media_proc.config or {}
+                            watchdog_enabled = cfg.get('watchdog_enabled', False)
+                            watchdog_min_speed = cfg.get('watchdog_min_speed')
+                            if getattr(media_proc, 'service_type', None) == 'ffmpeg_stream' and watchdog_enabled and watchdog_min_speed is not None:
                                 elapsed = (datetime.utcnow() - start_time).total_seconds()
                                 if elapsed > 30:
-                                    if speed_val is not None and speed_val < media_proc.watchdog_min_speed:
+                                    if speed_val is not None and speed_val < watchdog_min_speed:
                                         if self.watchdog_low_speed_since.get(process_id) is None:
                                             self.watchdog_low_speed_since[process_id] = datetime.utcnow()
                                         else:
-                                            duration = media_proc.watchdog_min_speed_duration if media_proc.watchdog_min_speed_duration is not None else 30
+                                            watchdog_min_speed_duration = cfg.get('watchdog_min_speed_duration', 30)
+                                            duration = watchdog_min_speed_duration if watchdog_min_speed_duration is not None else 30
                                             low_speed_duration = (datetime.utcnow() - self.watchdog_low_speed_since[process_id]).total_seconds()
                                             if low_speed_duration > duration:
                                                 log_msg = f"Watchdog: Stream speed ({speed_val}x) fell below minimum threshold ({media_proc.watchdog_min_speed}x) for more than {duration}s. Force killing..."
@@ -874,8 +925,8 @@ class ProcessManager:
 
             try:
                 with self.db_session_factory() as session:
-                    from database.models import MediaProcess, ProcessLog
-                    media_proc = session.query(MediaProcess).get(process_id)
+                    from database.models import Service, ServiceLog
+                    media_proc = session.query(Service).get(process_id)
                     if media_proc:
                         # Clean up stats
                         media_proc.cpu_usage = 0
@@ -884,23 +935,24 @@ class ProcessManager:
                         media_proc.bitrate = "0 kb/s"
                         media_proc.speed = "0x"
 
-                        if media_proc.type == 'batch':
-                            media_proc.status = 'finished' if exit_code == 0 else 'error'
-                        else:  # service
-                            will_restart = False
-                            if was_unexpected and media_proc.watchdog_enabled:
-                                retries = media_proc.watchdog_retries
-                                current_restarts = self.restart_counts.get(process_id, 0)
-                                if retries == -1 or current_restarts < retries:
-                                    will_restart = True
+                        cfg = media_proc.config or {}
+                        watchdog_enabled = cfg.get('watchdog_enabled', False)
+                        watchdog_retries = cfg.get('watchdog_retries', 5)
 
-                            if will_restart:
+                        will_restart = False
+                        if was_unexpected and watchdog_enabled:
+                            retries = watchdog_retries
+                            current_restarts = self.restart_counts.get(process_id, 0)
+                            if retries == -1 or current_restarts < retries:
+                                will_restart = True
+
+                        if will_restart:
+                            media_proc.status = 'error'
+                        else:
+                            if exit_code != 0:
                                 media_proc.status = 'error'
                             else:
-                                if exit_code != 0:
-                                    media_proc.status = 'error'
-                                else:
-                                    media_proc.status = 'stopped'
+                                media_proc.status = 'stopped'
 
                         media_proc.pid = None
                         media_proc.last_stop = datetime.utcnow()
@@ -912,8 +964,8 @@ class ProcessManager:
                             for entry in log_entries:
                                 ts_str = entry["timestamp"].rstrip("Z")
                                 ts = datetime.fromisoformat(ts_str)
-                                db_logs.append(ProcessLog(
-                                    process_id=process_id,
+                                db_logs.append(ServiceLog(
+                                    service_id=process_id,
                                     timestamp=ts,
                                     level=entry["level"],
                                     message=entry["message"]
@@ -922,8 +974,8 @@ class ProcessManager:
                                 session.add_all(db_logs)
 
                         # Log the exit summary
-                        log = ProcessLog(
-                            process_id=process_id,
+                        log = ServiceLog(
+                            service_id=process_id,
                             level='INFO' if exit_code == 0 else 'ERROR',
                             message=f"Process exited with code {exit_code}"
                         )
@@ -931,12 +983,12 @@ class ProcessManager:
                         session.commit()
 
                         # Handle notification hook for unexpected exit
-                        if was_unexpected and media_proc.type == 'service':
+                        if was_unexpected:
                             current_restarts = self.restart_counts.get(process_id, 0)
-                            if not media_proc.watchdog_enabled or media_proc.watchdog_retries == 0:
+                            if not watchdog_enabled or watchdog_retries == 0:
                                 # No watchdog: notify single crash immediately
                                 self.notify_service_crash(process_id, media_proc.name, exit_code=exit_code, is_initial_crash=True)
-                            elif media_proc.watchdog_retries == -1:
+                            elif watchdog_retries == -1:
                                 # Infinite retries: notify on initial crash (attempt 0), silence intermediate retries
                                 is_initial = (current_restarts == 0)
                                 self.notify_service_crash(process_id, media_proc.name, exit_code=exit_code, is_initial_crash=is_initial)
@@ -946,8 +998,8 @@ class ProcessManager:
                                 pass
 
                         # Handle automatic restart if enabled and unexpected
-                        if was_unexpected and media_proc.type == 'service' and media_proc.watchdog_enabled:
-                            retries = media_proc.watchdog_retries
+                        if was_unexpected and watchdog_enabled:
+                            retries = watchdog_retries
                             current_restarts = self.restart_counts.get(process_id, 0)
                             if retries == -1 or current_restarts < retries:
                                 self.restart_counts[process_id] = current_restarts + 1
@@ -960,8 +1012,8 @@ class ProcessManager:
                                 backoff_delay = min(max_cap, base_delay * (2 ** max(0, self.restart_counts[process_id] - 1))) + jitter
 
                                 self.logger.info(f"Watchdog: unexpectedly exited. Scheduling restart attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'} in {backoff_delay}s...")
-                                restart_log = ProcessLog(
-                                    process_id=process_id,
+                                restart_log = ServiceLog(
+                                    service_id=process_id,
                                     level='WARNING',
                                     message=f"Watchdog: Unexpected exit detected. Restarting (attempt {self.restart_counts[process_id]}/{retries if retries != -1 else 'inf'}) in {backoff_delay} seconds..."
                                 )
@@ -976,9 +1028,9 @@ class ProcessManager:
                                 task = asyncio.create_task(self._delayed_restart(process_id, delay=backoff_delay))
                                 self.pending_restarts[process_id] = task
                             else:
-                                self.logger.warning(f"Watchdog: Max restart attempts ({retries}) reached for process {process_id}. Giving up.")
-                                limit_log = ProcessLog(
-                                    process_id=process_id,
+                                self.logger.warning(f"Watchdog: Max restart attempts ({retries}) reached for service {process_id}. Giving up.")
+                                limit_log = ServiceLog(
+                                    service_id=process_id,
                                     level='ERROR',
                                     message=f"Watchdog: Max restart attempts ({retries}) reached. Service stopped."
                                 )
@@ -996,7 +1048,7 @@ class ProcessManager:
                                 # Notify finite retry exhaustion (1 single email when max retries reached!)
                                 self.notify_service_exhausted(process_id, media_proc.name, retries=retries)
             except Exception as db_err:
-                self.logger.error(f"Watchdog cleanup database error for process {process_id}: {db_err}")
+                self.logger.error(f"Watchdog cleanup database error for service {process_id}: {db_err}")
 
             # Clean up memory buffer and tracking flags
             self.srt_has_had_activity.pop(process_id, None)
@@ -1010,10 +1062,10 @@ class ProcessManager:
 
     def reattach_process(self, process_id: int, pid: int):
         with self.db_session_factory() as session:
-            from database.models import MediaProcess
-            media_proc = session.query(MediaProcess).get(process_id)
+            from database.models import Service
+            media_proc = session.query(Service).get(process_id)
             if not media_proc:
-                self.logger.error(f"Cannot reattach process {process_id}: not found in DB")
+                self.logger.error(f"Cannot reattach service {process_id}: not found in DB")
                 return
 
         self.processes[process_id] = None

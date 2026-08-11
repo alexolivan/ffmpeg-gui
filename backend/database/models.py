@@ -53,97 +53,230 @@ class FfmpegBuild(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     built_at = Column(DateTime, nullable=True)
 
-    # Reverse relationship to processes using this build
-    processes = relationship("MediaProcess", back_populates="ffmpeg_build")
-
     storage_id = Column(Integer, ForeignKey('storages.id'), nullable=True)
     storage = relationship("Storage", back_populates="builds")
 
 
-class MediaProcess(Base):
-    __tablename__ = 'media_processes'
+class Service(Base):
+    __tablename__ = 'services'
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    type = Column(String, nullable=False)  # 'service' or 'batch'
-    input_config = Column(JSON, nullable=False)
-    output_config = Column(JSON, nullable=False)
-    codec_config = Column(JSON, nullable=False)
-    filter_config = Column(JSON)
+    service_type = Column(String, nullable=False)  # 'ffmpeg_stream', 'kiosk_browser', 'icecast_server', 'mediamtx_hub'
+    config = Column(JSON, nullable=False)
+    is_active = Column(Boolean, default=True)
 
     status = Column(String, default='stopped')  # 'running', 'stopped', 'error', 'finished'
-    pid = Column(Integer)
-    last_start = Column(DateTime)
-    last_stop = Column(DateTime)
+    pid = Column(Integer, nullable=True)
+    last_start = Column(DateTime, nullable=True)
+    last_stop = Column(DateTime, nullable=True)
 
-    # Watchdog info
+    # Watchdog & stats info
     cpu_usage = Column(Integer, default=0)
     ram_usage = Column(Integer, default=0)
-    network_timeout = Column(Integer, default=15)
-    debug_mode = Column(Boolean, default=False)
-    log_storage_id = Column(Integer, ForeignKey('storages.id'), nullable=True)
-
-    log_storage = relationship("Storage", foreign_keys=[log_storage_id])
-
-    # Configuration toggles & snapshot
-    auto_start = Column(Boolean, default=False)
-    startup_order = Column(Integer, default=1)
-    startup_delay = Column(Integer, default=0)
-    watchdog_enabled = Column(Boolean, default=False)
-    watchdog_retries = Column(Integer, default=5)
-    watchdog_min_speed = Column(Float, nullable=True, default=None)
-    watchdog_min_speed_duration = Column(Integer, default=30)
     restart_count = Column(Integer, default=0)
     last_started_config = Column(JSON, nullable=True)
 
     # Real-time Stats
-    bitrate = Column(String)  # e.g. "4500 kb/s"
-    fps = Column(String)      # e.g. "25.0"
-    speed = Column(String)    # e.g. "1.02x"
-
-    # FK to the FFmpeg build profile used by this process
-    ffmpeg_build_id = Column(Integer, ForeignKey('ffmpeg_builds.id'), nullable=True)
-    ffmpeg_build = relationship("FfmpegBuild", back_populates="processes")
+    bitrate = Column(String, nullable=True)  # e.g. "4500 kb/s"
+    fps = Column(String, nullable=True)      # e.g. "25.0"
+    speed = Column(String, nullable=True)    # e.g. "1.02x"
 
     alias = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    def _set_config_key(self, key, val):
+        if not self.config:
+            self.config = {}
+        new_cfg = dict(self.config)
+        new_cfg[key] = val
+        self.config = new_cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(self, 'config')
+
+    @property
+    def type(self):
+        return 'service'
+
+    @type.setter
+    def type(self, val):
+        if val == 'service' and not self.service_type:
+            self.service_type = 'ffmpeg_stream'
+        elif val == 'batch' and not self.service_type:
+            self.service_type = 'ffmpeg_stream'
+
+    @property
+    def input_config(self):
+        return self.config.get('input_config', {}) if self.config else {}
+
+    @input_config.setter
+    def input_config(self, val):
+        self._set_config_key('input_config', val)
+
+    @property
+    def output_config(self):
+        return self.config.get('output_config', {}) if self.config else {}
+
+    @output_config.setter
+    def output_config(self, val):
+        self._set_config_key('output_config', val)
+
+    @property
+    def codec_config(self):
+        return self.config.get('codec_config', {}) if self.config else {}
+
+    @codec_config.setter
+    def codec_config(self, val):
+        self._set_config_key('codec_config', val)
+
+    @property
+    def filter_config(self):
+        return self.config.get('filter_config', {}) if self.config else {}
+
+    @filter_config.setter
+    def filter_config(self, val):
+        self._set_config_key('filter_config', val)
+
+    @property
+    def auto_start(self):
+        return self.config.get('auto_start', False) if self.config else False
+
+    @auto_start.setter
+    def auto_start(self, val):
+        self._set_config_key('auto_start', val)
+
+    @property
+    def startup_order(self):
+        return self.config.get('startup_order', 1) if self.config else 1
+
+    @startup_order.setter
+    def startup_order(self, val):
+        self._set_config_key('startup_order', val)
+
+    @property
+    def startup_delay(self):
+        return self.config.get('startup_delay', 0) if self.config else 0
+
+    @startup_delay.setter
+    def startup_delay(self, val):
+        self._set_config_key('startup_delay', val)
+
+    @property
+    def watchdog_enabled(self):
+        return self.config.get('watchdog_enabled', False) if self.config else False
+
+    @watchdog_enabled.setter
+    def watchdog_enabled(self, val):
+        self._set_config_key('watchdog_enabled', val)
+
+    @property
+    def watchdog_retries(self):
+        return self.config.get('watchdog_retries', 5) if self.config else 5
+
+    @watchdog_retries.setter
+    def watchdog_retries(self, val):
+        self._set_config_key('watchdog_retries', val)
+
+    @property
+    def watchdog_min_speed(self):
+        return self.config.get('watchdog_min_speed') if self.config else None
+
+    @watchdog_min_speed.setter
+    def watchdog_min_speed(self, val):
+        self._set_config_key('watchdog_min_speed', val)
+
+    @property
+    def watchdog_min_speed_duration(self):
+        return self.config.get('watchdog_min_speed_duration', 30) if self.config else 30
+
+    @watchdog_min_speed_duration.setter
+    def watchdog_min_speed_duration(self, val):
+        self._set_config_key('watchdog_min_speed_duration', val)
+
+    @property
+    def log_storage_id(self):
+        return self.config.get('log_storage_id') if self.config else None
+
+    @log_storage_id.setter
+    def log_storage_id(self, val):
+        self._set_config_key('log_storage_id', val)
+
+    @property
+    def ffmpeg_build_id(self):
+        return self.config.get('ffmpeg_build_id') if self.config else None
+
+    @ffmpeg_build_id.setter
+    def ffmpeg_build_id(self, val):
+        self._set_config_key('ffmpeg_build_id', val)
+
+    @property
+    def debug_mode(self):
+        return self.config.get('debug_mode', False) if self.config else False
+
+    @debug_mode.setter
+    def debug_mode(self, val):
+        self._set_config_key('debug_mode', val)
+
+    @property
+    def network_timeout(self):
+        return self.config.get('network_timeout', 15) if self.config else 15
+
+    @network_timeout.setter
+    def network_timeout(self, val):
+        self._set_config_key('network_timeout', val)
 
     @property
     def pending_changes(self) -> bool:
         if self.status != 'running' or not self.last_started_config:
             return False
         
-        # Compare only parameters that modify the ffmpeg execution command/environment
-        # (excluding administrative fields like name, auto_start, watchdog settings)
-        functional_keys = [
-            "ffmpeg_build_id",
-            "input_config",
-            "output_config",
-            "codec_config",
-            "filter_config"
-        ]
-        
-        for key in functional_keys:
-            current_val = getattr(self, key, None)
-            started_val = self.last_started_config.get(key, None)
-            if current_val != started_val:
-                return True
-        return False
+        # Compare active configuration dictionary against what was started
+        current_cfg = self.config or {}
+        started_cfg = self.last_started_config.get('config') or {}
+        return current_cfg != started_cfg
 
 
-class ProcessLog(Base):
-    __tablename__ = 'process_logs'
+class ServiceDependency(Base):
+    __tablename__ = 'service_dependencies'
 
     id = Column(Integer, primary_key=True)
-    process_id = Column(Integer, ForeignKey('media_processes.id'))
+    consumer_type = Column(String, nullable=False)  # 'service' or 'task'
+    consumer_id = Column(Integer, nullable=False)   # FK to services.id or scheduled_tasks.id
+    provider_service_id = Column(Integer, ForeignKey('services.id'), nullable=False)
+    is_auto_managed = Column(Boolean, default=True)
+
+    provider_service = relationship("Service", foreign_keys=[provider_service_id])
+
+
+class ServiceLog(Base):
+    __tablename__ = 'service_logs'
+
+    id = Column(Integer, primary_key=True)
+    service_id = Column(Integer, ForeignKey('services.id'))
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     level = Column(String)  # 'INFO', 'ERROR', 'DEBUG'
     message = Column(String)
 
-    process = relationship("MediaProcess", back_populates="logs")
+    service = relationship("Service", back_populates="logs")
+
+    def __init__(self, **kwargs):
+        if 'process_id' in kwargs:
+            kwargs['service_id'] = kwargs.pop('process_id')
+        super().__init__(**kwargs)
+
+    @property
+    def process_id(self):
+        return self.service_id
+
+    @process_id.setter
+    def process_id(self, val):
+        self.service_id = val
 
 
-MediaProcess.logs = relationship("ProcessLog", order_by=ProcessLog.id, back_populates="process")
+Service.logs = relationship("ServiceLog", order_by=ServiceLog.id, back_populates="service", cascade="all, delete-orphan")
+
+MediaProcess = Service
+ProcessLog = ServiceLog
 
 
 class SystemSettings(Base):

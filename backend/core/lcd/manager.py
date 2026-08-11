@@ -135,8 +135,8 @@ class LCDManager:
                     db = self.db_session_factory()
                     try:
                         # 1. Check streams/services
-                        from database.models import MediaProcess
-                        services = db.query(MediaProcess).filter(MediaProcess.type == 'service').all()
+                        from database.models import Service
+                        services = db.query(Service).filter(Service.service_type == 'ffmpeg_stream').all()
                         has_running = any(s.status == 'running' for s in services)
                         has_error = any(s.status == 'error' for s in services)
                         

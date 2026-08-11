@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
 from database.db import init_db, get_db, SessionLocal
-from database.models import FfmpegBuild, MediaProcess, ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
+from database.models import FfmpegBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
 from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
@@ -219,6 +219,48 @@ class ProcessUpdate(BaseModel):
     network_timeout: Optional[int] = None
     debug_mode: Optional[bool] = None
     log_storage_id: Optional[int] = None
+
+    @validator('alias')
+    def validate_alias(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 12:
+            raise ValueError("Alias must be 12 characters or less")
+        import re
+        if not re.match(r"^[a-zA-Z0-9\s\-_]+$", v):
+            raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
+        return v
+
+class ServiceCreate(BaseModel):
+    name: str
+    service_type: str
+    config: dict
+    is_active: Optional[bool] = True
+    alias: Optional[str] = None
+
+    @validator('alias')
+    def validate_alias(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 12:
+            raise ValueError("Alias must be 12 characters or less")
+        import re
+        if not re.match(r"^[a-zA-Z0-9\s\-_]+$", v):
+            raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
+        return v
+
+class ServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    service_type: Optional[str] = None
+    config: Optional[dict] = None
+    is_active: Optional[bool] = None
+    alias: Optional[str] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -1286,7 +1328,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
 
     # 7. Services
     if req.services:
-        procs = db.query(MediaProcess).filter(MediaProcess.type == "service").all()
+        procs = db.query(MediaProcess).filter(MediaProcess.service_type == "ffmpeg_stream").all()
         sections["services"] = [
             {
                 "name": p.name,
@@ -2411,10 +2453,9 @@ async def auto_start_services():
     logger.info("Watchdog / Auto-start: Initializing service startup checks...")
     
     with SessionLocal() as db:
-        from database.models import MediaProcess
         services = db.query(MediaProcess).filter(
-            MediaProcess.type == 'service',
-            MediaProcess.auto_start == True
+            MediaProcess.service_type == 'ffmpeg_stream',
+            MediaProcess.config["auto_start"].as_boolean() == True
         ).all()
         sorted_services = sorted(
             services,
@@ -3933,6 +3974,190 @@ async def get_preview(process_id: int, db: Session = Depends(get_db)):
         preview_manager.get_mjpeg_stream(media_proc.id, media_proc.input_config, is_running),
         media_type="multipart/x-mixed-replace; boundary=ffmpeg"
     )
+
+
+
+
+
+# ══════════════════════════════════════════════════════════════════
+# SERVICES (v2.0)
+# ══════════════════════════════════════════════════════════════════
+
+@app.get("/api/services")
+def list_services(db: Session = Depends(get_db)):
+    services = db.query(MediaProcess).all()
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "service_type": s.service_type,
+            "config": s.config,
+            "is_active": s.is_active,
+            "status": s.status,
+            "pid": s.pid,
+            "cpu": s.cpu_usage,
+            "ram": s.ram_usage,
+            "bitrate": s.bitrate,
+            "fps": s.fps,
+            "speed": s.speed,
+            "last_start": s.last_start.isoformat() + "Z" if s.last_start else None,
+            "last_stop": s.last_stop.isoformat() + "Z" if s.last_stop else None,
+            "restart_count": s.restart_count,
+            "pending_changes": s.pending_changes,
+        } for s in services
+    ]
+
+@app.post("/api/services")
+def create_service(svc_in: ServiceCreate, db: Session = Depends(get_db)):
+    svc = MediaProcess(
+        name=svc_in.name,
+        service_type=svc_in.service_type,
+        config=svc_in.config,
+        is_active=svc_in.is_active,
+        alias=svc_in.alias
+    )
+    db.add(svc)
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+@app.get("/api/services/{service_id}")
+def get_service(service_id: int, db: Session = Depends(get_db)):
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return svc
+
+@app.put("/api/services/{service_id}")
+def update_service(service_id: int, svc_in: ServiceUpdate, db: Session = Depends(get_db)):
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc_in.name is not None:
+        svc.name = svc_in.name
+    if svc_in.service_type is not None:
+        svc.service_type = svc_in.service_type
+    if svc_in.config is not None:
+        svc.config = svc_in.config
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(svc, 'config')
+    if svc_in.is_active is not None:
+        svc.is_active = svc_in.is_active
+    if svc_in.alias is not None:
+        svc.alias = svc_in.alias
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+@app.delete("/api/services/{service_id}")
+def delete_service(service_id: int, db: Session = Depends(get_db)):
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.status == 'running':
+        raise HTTPException(status_code=400, detail="Cannot delete a running service")
+    db.delete(svc)
+    db.commit()
+    return {"detail": "Service deleted"}
+
+@app.post("/api/services/{service_id}/start")
+async def start_service_endpoint(service_id: int):
+    await process_manager.start_process(service_id)
+    return {"status": "starting"}
+
+@app.post("/api/services/{service_id}/stop")
+async def stop_service_endpoint(service_id: int):
+    await process_manager.stop_process(service_id)
+    return {"status": "stopping"}
+
+@app.post("/api/services/{service_id}/restart")
+async def restart_service_endpoint(service_id: int):
+    await process_manager.stop_process(service_id)
+    await process_manager.start_process(service_id)
+    return {"status": "restarting"}
+
+@app.get("/api/services/{service_id}/logs")
+def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(get_db)):
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    from database.models import ServiceLog
+    logs = db.query(ServiceLog).filter(ServiceLog.service_id == service_id).order_by(ServiceLog.id.desc()).limit(limit).all()
+    return [{"timestamp": l.timestamp.isoformat() + "Z", "level": l.level, "message": l.message} for l in reversed(logs)]
+
+@app.get("/api/services/{service_id}/preview")
+async def get_service_preview(service_id: int, db: Session = Depends(get_db)):
+    media_proc = db.query(MediaProcess).get(service_id)
+    if not media_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    is_running = media_proc.status == 'running'
+    input_config = media_proc.config.get("input_config", {}) if media_proc.config else {}
+    return StreamingResponse(
+        preview_manager.get_mjpeg_stream(media_proc.id, input_config, is_running),
+        media_type="multipart/x-mixed-replace; boundary=ffmpeg"
+    )
+
+@app.get("/api/services/{service_id}/dependencies")
+def list_service_dependencies(service_id: int, db: Session = Depends(get_db)):
+    from database.models import ServiceDependency
+    deps = db.query(ServiceDependency).filter(
+        ServiceDependency.consumer_type == 'service',
+        ServiceDependency.consumer_id == service_id
+    ).all()
+    return [
+        {
+            "id": d.id,
+            "provider_service_id": d.provider_service_id,
+            "is_auto_managed": d.is_auto_managed,
+            "provider_name": d.provider_service.name if d.provider_service else "Unknown"
+        } for d in deps
+    ]
+
+@app.post("/api/services/{service_id}/dependencies")
+def add_service_dependency(
+    service_id: int, 
+    provider_service_id: int = Body(..., embed=True),
+    is_auto_managed: bool = Body(True, embed=True),
+    db: Session = Depends(get_db)
+):
+    from database.models import ServiceDependency
+    consumer = db.query(MediaProcess).get(service_id)
+    provider = db.query(MediaProcess).get(provider_service_id)
+    if not consumer or not provider:
+        raise HTTPException(status_code=404, detail="Consumer or provider service not found")
+        
+    exists = db.query(ServiceDependency).filter(
+        ServiceDependency.consumer_type == 'service',
+        ServiceDependency.consumer_id == service_id,
+        ServiceDependency.provider_service_id == provider_service_id
+    ).first()
+    if exists:
+        return exists
+
+    dep = ServiceDependency(
+        consumer_type='service',
+        consumer_id=service_id,
+        provider_service_id=provider_service_id,
+        is_auto_managed=is_auto_managed
+    )
+    db.add(dep)
+    db.commit()
+    db.refresh(dep)
+    return dep
+
+@app.delete("/api/services/{service_id}/dependencies/{provider_service_id}")
+def remove_service_dependency(service_id: int, provider_service_id: int, db: Session = Depends(get_db)):
+    from database.models import ServiceDependency
+    dep = db.query(ServiceDependency).filter(
+        ServiceDependency.consumer_type == 'service',
+        ServiceDependency.consumer_id == service_id,
+        ServiceDependency.provider_service_id == provider_service_id
+    ).first()
+    if not dep:
+        raise HTTPException(status_code=404, detail="Dependency not found")
+    db.delete(dep)
+    db.commit()
+    return {"detail": "Dependency removed"}
 
 
 @app.get("/tasks/executions/{execution_id}/preview")

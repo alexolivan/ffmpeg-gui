@@ -515,7 +515,29 @@ class FFmpegCommandBuilder:
     @classmethod
     def build_cmd(cls, media_proc, ffmpeg_bin: str, limit_sec=None, execution_id=None, db_session_factory=None) -> list:
         """Build the FFmpeg command line from a process or task model instance."""
-        is_debug = getattr(media_proc, 'debug_mode', False)
+        if hasattr(media_proc, 'config') and isinstance(media_proc.config, dict):
+            cfg = media_proc.config
+            input_cfg = copy.deepcopy(cfg.get('input_config', {}))
+            codec_cfg = copy.deepcopy(cfg.get('codec_config', {}))
+            filter_cfg = copy.deepcopy(cfg.get('filter_config', {}) or {})
+            output_cfg = copy.deepcopy(cfg.get('output_config', {}))
+            is_debug = cfg.get('debug_mode', False)
+            net_timeout = cfg.get('network_timeout', 15)
+        elif isinstance(media_proc, dict):
+            input_cfg = copy.deepcopy(media_proc.get('input_config', {}))
+            codec_cfg = copy.deepcopy(media_proc.get('codec_config', {}))
+            filter_cfg = copy.deepcopy(media_proc.get('filter_config', {}) or {})
+            output_cfg = copy.deepcopy(media_proc.get('output_config', {}))
+            is_debug = media_proc.get('debug_mode', False)
+            net_timeout = media_proc.get('network_timeout', 15)
+        else:
+            input_cfg = copy.deepcopy(getattr(media_proc, 'input_config', {}))
+            codec_cfg = copy.deepcopy(getattr(media_proc, 'codec_config', {}))
+            filter_cfg = copy.deepcopy(getattr(media_proc, 'filter_config', {}) or {})
+            output_cfg = copy.deepcopy(getattr(media_proc, 'output_config', {}))
+            is_debug = getattr(media_proc, 'debug_mode', False)
+            net_timeout = getattr(media_proc, 'network_timeout', 15)
+
         if type(is_debug).__name__ in ('MagicMock', 'Mock'):
             is_debug = False
         cmd = [ffmpeg_bin, "-nostdin", "-hide_banner"]
@@ -523,14 +545,8 @@ class FFmpegCommandBuilder:
             cmd += ["-loglevel", "info"]
         cmd += ["-y"]
         
-        input_cfg = copy.deepcopy(media_proc.input_config)
-        codec_cfg = media_proc.codec_config
-        filter_cfg = copy.deepcopy(media_proc.filter_config or {})
-        output_cfg = copy.deepcopy(media_proc.output_config)
-        
         cls._resolve_config_paths(input_cfg, output_cfg, filter_cfg, db_session_factory)
 
-        net_timeout = getattr(media_proc, 'network_timeout', 15)
         if type(net_timeout).__name__ in ('MagicMock', 'Mock'):
             net_timeout = input_cfg.get('network_timeout')
             if net_timeout is None:
@@ -898,6 +914,7 @@ class FFmpegCommandBuilder:
             cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec)
             
         is_service = getattr(media_proc, 'type', 'service') == 'service'
+        
         has_video_stream = has_video and codec_cfg.get('vcodec') != 'none'
         if is_service and has_video_stream:
             from database.db import PREVIEWS_DIR
@@ -931,7 +948,10 @@ class FFmpegCommandBuilder:
         else:
             process_id = getattr(media_proc, 'id', None)
             if process_id is not None:
-                progress_file_path = f"{base_dir}/ffmpeg_progress_{process_id}s.log"
+                if is_service:
+                    progress_file_path = f"{base_dir}/ffmpeg_progress_{process_id}s.log"
+                else:
+                    progress_file_path = f"{base_dir}/ffmpeg_progress_{process_id}t.log"
             else:
                 progress_file_path = f"{base_dir}/ffmpeg_progress_preview.log"
 
