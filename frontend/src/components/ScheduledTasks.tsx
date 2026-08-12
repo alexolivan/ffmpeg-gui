@@ -426,11 +426,11 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           )}
                         </h3>
                         {task.is_system && (
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
                             {t('tasks.systemBadge', 'SYSTEM')}
                           </span>
                         )}
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
                           task.schedule_type === 'recurring' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' :
                           task.schedule_type === 'one_shot' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
                           'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
@@ -439,11 +439,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                            task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
                            task.schedule_type}
                         </span>
-                        {isRunning && (
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-lime text-black animate-pulse">
-                            {exec.status}
-                          </span>
-                        )}
                         {exec?.retry_count > 0 && (
                           <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
                             ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
@@ -457,7 +452,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         {task.is_system ? (
                           <span 
                             title="Managed via Settings > General > Logging"
-                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-green-500/10 text-green-400 border-green-500/20"
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-green-500/10 text-green-400 border-green-500/20"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
                             {t('common.enabled', 'Active')}
@@ -465,7 +460,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         ) : (
                           <button 
                             onClick={() => handleToggleTaskActive(task.id, task.is_active)}
-                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20"
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20"
                             title={t('tasks.disableTask', 'Disable Task')}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
@@ -690,20 +685,15 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           )}
                         </h3>
                         {task.is_system && (
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
                             {t('tasks.systemBadge', 'SYSTEM')}
                           </span>
                         )}
-                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
+                        <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
                           {task.schedule_type === 'recurring' ? t('tasks.scheduleTypes.recurring', 'recurring') :
                            task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
                            task.schedule_type}
                         </span>
-                        {isRunning && (
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-lime text-black animate-pulse">
-                            {exec.status}
-                          </span>
-                        )}
                         {exec?.retry_count > 0 && (
                           <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
                             ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
@@ -717,7 +707,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         {task.is_system ? (
                           <span 
                             title="Managed via Settings > General > Logging"
-                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]"
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>
                             {t('common.disabled', 'Disabled')}
@@ -725,7 +715,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         ) : (
                           <button 
                             onClick={() => handleToggleTaskActive(task.id, task.is_active)}
-                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10"
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10"
                             title={t('tasks.enableTask', 'Enable Task')}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>

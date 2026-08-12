@@ -125,6 +125,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
   const isPending = !!actionPending;
+  const isRetrying = !!service.watchdog_enabled && (service.restart_count || 0) > 0 && service.status !== 'stopped';
 
   const cpu = telemetryItem?.cpu ?? service.cpu ?? 0;
   const ram = telemetryItem?.ram ?? service.ram ?? 0;
@@ -159,6 +160,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
             actionPending === 'starting' ? 'bg-blue-500 animate-pulse' :
             actionPending === 'stopping' ? 'bg-brand-orange animate-pulse' :
             actionPending === 'restarting' ? 'bg-purple-500 animate-pulse' :
+            isRetrying ? 'bg-brand-orange animate-pulse' :
             isRunning ? 'bg-brand-lime shadow-[0_0_6px_rgba(212,255,91,0.5)]' :
             isError ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]' :
             'bg-zinc-600'
@@ -209,6 +211,18 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               🔗 LINKED ({service.dependencies.length})
             </span>
           )}
+
+          {isRetrying && (
+            <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
+              ⚠️ {t('services.retrying', 'RETRYING')} ({service.restart_count}{service.watchdog_retries !== undefined && service.watchdog_retries !== null ? `/${service.watchdog_retries === -1 ? '∞' : service.watchdog_retries}` : ''})
+            </span>
+          )}
+
+          {service.status === 'error' && !isRetrying && (
+            <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Process exited with error / stopped abnormally">
+              ⚠ ABNORMAL END
+            </span>
+          )}
         </div>
 
         {/* I/O Description Details */}
@@ -227,7 +241,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
 
         {/* Compact Telemetry Strip */}
         <div className="flex gap-x-3 gap-y-1 mt-0.5 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
-          <span>PID: <strong className="text-[var(--text-primary)]">{pid || 'N/A'}</strong></span>
+          <span>PID: <strong className={isRunning && pid ? "text-[var(--text-primary)] font-bold" : "text-zinc-500 font-normal"}>{isRunning && pid ? pid : t('common.offline', 'OFFLINE')}</strong></span>
           <span className="opacity-20">|</span>
           <span>Uptime: <strong className="text-[var(--text-primary)]">{formatUptime(service.last_start)}</strong></span>
           <span className="opacity-20">|</span>
