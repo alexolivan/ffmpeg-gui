@@ -336,7 +336,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
         )}
 
         {/* Start / Stop Button */}
-        {isRunning ? (
+        {isRunning || isRetrying ? (
           <button
             disabled={actionPending === 'stopping'}
             onClick={() => onStopService(service.id, service.name)}
@@ -366,7 +366,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
 
         {/* Delete Button */}
         <button
-          disabled={isRunning || isPending}
+          disabled={isRunning || isRetrying || isPending}
           onClick={() => onDeleteProcess(service)}
           className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-30 disabled:pointer-events-none"
           title={t('common.delete', 'Delete Service')}

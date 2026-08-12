@@ -820,7 +820,14 @@ class ProcessManager:
                             # Check startup stall (process running for > network_wait_timeout with zero activity/frames)
                             elapsed_since_start = (datetime.utcnow() - start_time).total_seconds()
                             net_timeout_cfg = self.get_network_wait_timeout()
-                            if media_proc.type == 'service' and media_proc.watchdog_enabled and not has_had_activity:
+                            
+                            # Do not force kill listeners awaiting connections on startup (Rule XIII)
+                            cfg_str = str(media_proc.config or {}).lower()
+                            is_listener = ("mode=listener" in cfg_str) or \
+                                          (isinstance(media_proc.input_config, dict) and media_proc.input_config.get('mode') == 'listener') or \
+                                          (isinstance(media_proc.output_config, dict) and media_proc.output_config.get('mode') == 'listener')
+                                          
+                            if media_proc.type == 'service' and media_proc.watchdog_enabled and not has_had_activity and not is_listener:
                                 if elapsed_since_start > net_timeout_cfg:
                                     log_msg = f"Watchdog: Service failed to produce any frames/progress after {int(elapsed_since_start)}s (hung at startup/network connection). Force killing..."
                                     self.logger.error(log_msg)
