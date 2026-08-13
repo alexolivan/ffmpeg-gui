@@ -49,6 +49,17 @@ else
 fi
 
 # ---------------------------------------------------------
+# [PHASE 1.2/3] Checking & Running Database Migrations
+# ---------------------------------------------------------
+echo ""
+echo "[PHASE 1.2/3] Checking & Running Database Migrations..."
+if [ -d "$PROJ_DIR/venv" ]; then
+    if [ -f "$PROJ_DIR/backend/database/migration_v2.py" ]; then
+        "$PROJ_DIR/venv/bin/python3" "$PROJ_DIR/backend/database/migration_v2.py"
+    fi
+fi
+
+# ---------------------------------------------------------
 # [PHASE 1.5/3] Verifying Systemd Service Units & Capabilities
 # ---------------------------------------------------------
 echo ""
