@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-08-13
+
+### Added
+- **Unified Multi-Type Compilation Forge**:
+  - Replaced `FfmpegBuild` with a generic `SoftwareBuild` class and table `software_builds` storing clean, generic software compilation metadata.
+  - Implemented modular recipe compilers: `FFmpeg`, `Icecast2`, `MediaMTX`, and `Kiosk Cog`.
+  - Added software type dropdown selector in `BuildFormModal` with dynamic validation constraints and conditional tabs (GPU / SDK tabs only display for FFmpeg).
+  - Added dynamic software version tag lookup endpoint `/builds/tags/{software_type}`.
+  - Added `software_type` badge rendering on `BuildProfileCard` in the unified forge management panel.
+- **Off-Repo Existing Database Migration Utility**:
+  - Created a database schema migration script `scratch/migrate_builds.py` to upgrade test machines smoothly.
+
 ## [2.0.0-beta] - 2026-08-11
 
 ### Added

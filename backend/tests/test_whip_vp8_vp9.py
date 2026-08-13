@@ -15,6 +15,11 @@ class TestWhipVp8Vp9(unittest.IsolatedAsyncioTestCase):
         init_db()
         self.client = TestClient(app)
         self.db = SessionLocal()
+        # Clean up any potential leftover from a previous crash
+        leftover = self.db.query(FfmpegBuild).filter_by(name="Test WHIP VP8/VP9 Profile").first()
+        if leftover:
+            self.db.delete(leftover)
+            self.db.commit()
         self.test_builds = []
 
     async def asyncTearDown(self):

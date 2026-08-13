@@ -14,30 +14,26 @@ class SchemaInfo(Base):
     applied_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
-class FfmpegBuild(Base):
-    """Represents a named, versioned FFmpeg compilation profile.
+class SoftwareBuild(Base):
+    """Represents a named, versioned compilation profile of a service binary.
 
     Each build lives in an isolated directory and can coexist with others,
-    allowing users to maintain multiple FFmpeg+SDK combinations for
-    broadcast reliability (e.g. different DeckLink SDK versions).
+    allowing users to maintain multiple versions and options of different engines.
     """
-    __tablename__ = 'ffmpeg_builds'
+    __tablename__ = 'software_builds'
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
+    software_type = Column(String, nullable=False, default='ffmpeg')  # 'ffmpeg', 'icecast2', 'kiosk_cog', 'mediamtx'
+    version_tag = Column(String, nullable=False)  # main version (e.g. n7.1 or v1.6)
+    binary_path = Column(String, nullable=True)   # main compiled binary location
 
-    # Git tag versions selected by the user
-    ffmpeg_version = Column(String, nullable=False)
-    srt_version = Column(String, nullable=True)
-
-    # Build configuration (JSON for future extensibility)
+    # Build configuration
     build_options = Column(JSON, nullable=False)
     sdk_paths = Column(JSON, nullable=True)
 
-    # Filesystem paths (populated after compilation)
+    # Filesystem paths
     install_path = Column(String, nullable=False)
-    ffmpeg_binary = Column(String, nullable=True)
-    ffprobe_binary = Column(String, nullable=True)
 
     # Build lifecycle state
     status = Column(String, default='pending')
@@ -48,13 +44,67 @@ class FfmpegBuild(Base):
     # Auto-generated metadata
     disk_usage_mb = Column(Integer, nullable=True)
     build_log_summary = Column(String, nullable=True)
-    ffmpeg_version_output = Column(String, nullable=True)
+    version_output = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     built_at = Column(DateTime, nullable=True)
 
     storage_id = Column(Integer, ForeignKey('storages.id'), nullable=True)
     storage = relationship("Storage", back_populates="builds")
+
+    # ── Legacy/FFmpeg Compatibility Properties ────────────────────
+    @property
+    def ffmpeg_version(self):
+        return self.version_tag
+
+    @ffmpeg_version.setter
+    def ffmpeg_version(self, val):
+        self.version_tag = val
+
+    @property
+    def ffmpeg_binary(self):
+        return self.binary_path
+
+    @ffmpeg_binary.setter
+    def ffmpeg_binary(self, val):
+        self.binary_path = val
+
+    @property
+    def ffprobe_binary(self):
+        if self.binary_path:
+            import os
+            parent = os.path.dirname(self.binary_path)
+            candidate = os.path.join(parent, "ffprobe")
+            if os.path.exists(candidate):
+                return candidate
+        return None
+
+    @ffprobe_binary.setter
+    def ffprobe_binary(self, val):
+        pass
+
+    @property
+    def ffmpeg_version_output(self):
+        return self.version_output
+
+    @ffmpeg_version_output.setter
+    def ffmpeg_version_output(self, val):
+        self.version_output = val
+
+    @property
+    def srt_version(self):
+        if isinstance(self.build_options, dict):
+            return self.build_options.get('srt_version')
+        return None
+
+    @srt_version.setter
+    def srt_version(self, val):
+        if not isinstance(self.build_options, dict):
+            self.build_options = {}
+        self.build_options['srt_version'] = val
+
+
+FfmpegBuild = SoftwareBuild
 
 
 class Service(Base):
@@ -326,7 +376,7 @@ class ScheduledTask(Base):
     output_config = Column(JSON, nullable=False)
     codec_config = Column(JSON, nullable=False)
     filter_config = Column(JSON, nullable=True)
-    ffmpeg_build_id = Column(Integer, ForeignKey('ffmpeg_builds.id'), nullable=True)
+    ffmpeg_build_id = Column(Integer, ForeignKey('software_builds.id'), nullable=True)
 
     schedule_type = Column(String, nullable=False)  # 'manual', 'one_shot', 'recurring'
     schedule_cron = Column(String, nullable=True)
@@ -395,7 +445,7 @@ class Storage(Base):
     is_default = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-    builds = relationship("FfmpegBuild", back_populates="storage")
+    builds = relationship("SoftwareBuild", back_populates="storage")
 
 
 class InstalledSdk(Base):

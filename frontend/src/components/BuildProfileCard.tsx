@@ -14,11 +14,15 @@ export interface BuildProfile {
   is_default: boolean
   auto_clean?: boolean
   storage_id: number | null
-  build_options?: Record<string, boolean>
+  build_options?: Record<string, any>
   sdk_paths?: Record<string, string> | null
   build_log_summary: string | null
   ffmpeg_version_output?: string | null
   created_at?: string | null
+  software_type?: string
+  version_tag?: string
+  binary_path?: string
+  version_output?: string
 }
 
 interface BuildProfileCardProps {
@@ -118,47 +122,64 @@ export default function BuildProfileCard({
             <span className="text-brand-lime text-lg" title={t('forge.defaultBuildTitle', 'Default Build')}>★</span>
           )}
           <div>
-            <h4 className="text-lg font-bold text-[var(--text-primary)]">{build.name}</h4>
+            <div className="flex items-center gap-2">
+              <h4 className="text-lg font-bold text-[var(--text-primary)]">{build.name}</h4>
+              <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${
+                (build.software_type || 'ffmpeg') === 'ffmpeg'
+                  ? 'bg-brand-orange/10 text-brand-orange border-brand-orange/20'
+                  : (build.software_type || 'ffmpeg') === 'icecast2'
+                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                    : (build.software_type || 'ffmpeg') === 'mediamtx'
+                      ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                      : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+              }`}>
+                {build.software_type || 'ffmpeg'}
+              </span>
+            </div>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                FFmpeg {build.ffmpeg_version}
+                {build.ffmpeg_version || build.version_tag}
               </span>
-              {build.srt_version && (
-                <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                  SRT {build.srt_version}
-                </span>
-              )}
-              {build.build_options?.vaapi && (
-                <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                  VAAPI{build.sdk_paths?.vaapi ? ` ${build.sdk_paths.vaapi}` : ''}
-                </span>
-              )}
-              {isNdiEnabled && (
-                missingNdi ? (
-                  <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
-                    ⚠️ {t('forge.missingNdiBadge', 'Missing NDI SDK v{{version}}', { version: reqNdiVer || '?' })}
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                    NDI{reqNdiVer ? ` ${reqNdiVer}` : ''}
-                  </span>
-                )
-              )}
-              {isDecklinkEnabled && (
-                missingDecklink ? (
-                  <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
-                    ⚠️ {t('forge.missingDecklinkBadge', 'Missing DeckLink SDK v{{version}}', { version: reqDecklinkVer || '?' })}
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                    DeckLink{reqDecklinkVer ? ` ${reqDecklinkVer}` : ''}
-                  </span>
-                )
-              )}
-              {build.build_options?.nvenc && (
-                <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                  NVENC{build.sdk_paths?.nvenc_headers ? ` ${build.sdk_paths.nvenc_headers}` : ''}
-                </span>
+              {(build.software_type || 'ffmpeg') === 'ffmpeg' && (
+                <>
+                  {build.srt_version && (
+                    <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                      SRT {build.srt_version}
+                    </span>
+                  )}
+                  {build.build_options?.vaapi && (
+                    <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                      VAAPI{build.sdk_paths?.vaapi ? ` ${build.sdk_paths.vaapi}` : ''}
+                    </span>
+                  )}
+                  {isNdiEnabled && (
+                    missingNdi ? (
+                      <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
+                        ⚠️ {t('forge.missingNdiBadge', 'Missing NDI SDK v{{version}}', { version: reqNdiVer || '?' })}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                        NDI{reqNdiVer ? ` ${reqNdiVer}` : ''}
+                      </span>
+                    )
+                  )}
+                  {isDecklinkEnabled && (
+                    missingDecklink ? (
+                      <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
+                        ⚠️ {t('forge.missingDecklinkBadge', 'Missing DeckLink SDK v{{version}}', { version: reqDecklinkVer || '?' })}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                        DeckLink{reqDecklinkVer ? ` ${reqDecklinkVer}` : ''}
+                      </span>
+                    )
+                  )}
+                  {build.build_options?.nvenc && (
+                    <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                      NVENC{build.sdk_paths?.nvenc_headers ? ` ${build.sdk_paths.nvenc_headers}` : ''}
+                    </span>
+                  )}
+                </>
               )}
             </div>
           </div>

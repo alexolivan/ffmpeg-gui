@@ -157,6 +157,7 @@ class BuildCreate(BaseModel):
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = False
     storage_id: Optional[int] = None
+    software_type: Optional[str] = "ffmpeg"
 
 class BuildUpdate(BaseModel):
     name: Optional[str] = None
@@ -166,6 +167,7 @@ class BuildUpdate(BaseModel):
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = None
     storage_id: Optional[int] = None
+    software_type: Optional[str] = None
 
 class ProcessCreate(BaseModel):
     name: str
@@ -2894,6 +2896,29 @@ async def get_nvenc_tags():
     tags = await build_manager.fetch_available_tags("nvenc")
     return {"tags": tags}
 
+@app.get("/builds/tags/{software_type}")
+async def get_software_tags(software_type: str):
+    """List available tags for the specified software type."""
+    if software_type == "icecast2":
+        tags = await build_manager.fetch_available_tags("https://github.com/xiph/icecast-server.git")
+    elif software_type == "mediamtx":
+        tags = await build_manager.fetch_available_tags("https://github.com/bluenviron/mediamtx.git")
+    elif software_type == "kiosk_cog":
+        tags = await build_manager.fetch_available_tags("https://github.com/Igalia/cog.git")
+    else:
+        tags = await build_manager.fetch_available_tags(software_type)
+    
+    # Si por algún motivo no hay tags o falla, retornar un fallback básico
+    if not tags:
+        if software_type == "icecast2":
+            tags = ["2.4.4", "2.4.3", "2.4.2"]
+        elif software_type == "mediamtx":
+            tags = ["v1.9.0", "v1.8.0", "v1.7.0"]
+        elif software_type == "kiosk_cog":
+            tags = ["v0.18.0", "v0.16.0"]
+            
+    return {"tags": tags}
+
 @app.get("/builds/disk-info")
 def get_disk_info():
     """Get free space on the partition where builds are stored."""
@@ -3060,6 +3085,7 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         install_path="",  # Will be set after we have the ID
         status="pending",
         storage_id=data.storage_id,
+        software_type=data.software_type or "ffmpeg",
     )
     db.add(build)
     db.commit()
@@ -3127,6 +3153,8 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
         build.sdk_paths = data.sdk_paths
     if data.auto_clean is not None:
         build.auto_clean = data.auto_clean
+    if data.software_type is not None:
+        build.software_type = data.software_type
 
     db.commit()
     db.refresh(build)
@@ -3224,6 +3252,7 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                     log_callback=_log_callback,
                     auto_clean=build.auto_clean or False,
                     builds_root=storage_path,
+                    software_type=build.software_type or "ffmpeg",
                 )
                 # Persist results to DB
                 with SessionLocal() as session:
@@ -4198,6 +4227,10 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "created_at": build.created_at.isoformat() if build.created_at else None,
         "built_at": build.built_at.isoformat() if build.built_at else None,
         "storage_id": build.storage_id,
+        "software_type": build.software_type,
+        "version_tag": build.version_tag,
+        "binary_path": build.binary_path,
+        "version_output": build.version_output,
     }
 
 
