@@ -231,7 +231,7 @@ export default function BuildProfileCard({
       </div>
 
       {/* Iconic Action Buttons Bar */}
-      <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-white/5">
+      <div className="flex items-center justify-end gap-1.5 flex-wrap pt-3 border-t border-white/5">
         {/* Compile / Abort Button */}
         {build.status === 'building' ? (
           <button
@@ -318,7 +318,7 @@ export default function BuildProfileCard({
           onClick={() => onEdit(build)}
           disabled={build.status === 'building'}
           title={t('common.edit', 'EDIT')}
-          className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ml-auto ${
+          className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ${
             build.status === 'building' 
               ? 'opacity-30 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]' 
               : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 hover:border-brand-lime/40'
@@ -326,7 +326,6 @@ export default function BuildProfileCard({
         >
           <PencilIcon size={16} />
         </button>
-
         {/* Delete Button */}
         {build.status !== 'building' && (
           <button 
