@@ -106,7 +106,14 @@
       "noControls": "Sense controls en aquest quadrant",
       "selectCard": "Targeta de So:",
       "systemClockTitle": "Rellotge d'Àudio i Sincronització",
-      "jackSensing": "Estat Jack Sensing:"
+      "jackSensing": "Estat Jack Sensing:",
+      "matrixRouting": "Matriu i Encaminament",
+      "matrixModalTitle": "Matriu d'Encaminament Hardware",
+      "matrixModalSubtitle": "Configura el creuament d'entrades i guanys per a",
+      "cascadedFrom": "En cascada des de",
+      "masterMixerNode": "NODE MESCLADOR",
+      "slaveEndpoint": "SORTIDA ESCLAVA",
+      "noMatrixControls": "Sense controls de matriu disponibles per a aquest node"
     },
     "watchdog": {
       "title": "WATCHDOG I TEMPS D'ARRANQUED",

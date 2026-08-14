@@ -106,7 +106,14 @@
       "noControls": "No controls in this quadrant",
       "selectCard": "Sound Card:",
       "systemClockTitle": "Audio Clock & Timing",
-      "jackSensing": "Jack Sensing Status:"
+      "jackSensing": "Jack Sensing Status:",
+      "matrixRouting": "Matrix & Routing",
+      "matrixModalTitle": "Hardware Matrix Routing",
+      "matrixModalSubtitle": "Configure input crosspoint routing and gains for",
+      "cascadedFrom": "Cascaded from",
+      "masterMixerNode": "MIXER NODE",
+      "slaveEndpoint": "SLAVE ENDPOINT",
+      "noMatrixControls": "No matrix routing controls available for this node"
     },
     "watchdog": {
       "title": "WATCHDOG & STARTUP TIMING",

@@ -106,7 +106,14 @@
       "noControls": "Sin controles en este cuadrante",
       "selectCard": "Tarjeta de Sonido:",
       "systemClockTitle": "Reloj de Audio y Sincronización",
-      "jackSensing": "Estado Jack Sensing:"
+      "jackSensing": "Estado Jack Sensing:",
+      "matrixRouting": "Matriz y Enrutado",
+      "matrixModalTitle": "Matriz de Enrutado Hardware",
+      "matrixModalSubtitle": "Configura el cruce de entradas y ganancias para",
+      "cascadedFrom": "En cascada desde",
+      "masterMixerNode": "NODO MEZCLADOR",
+      "slaveEndpoint": "SALIDA ESCLAVA",
+      "noMatrixControls": "Sin controles de matriz disponibles para este nodo"
     },
     "watchdog": {
       "title": "WATCHDOG Y TIEMPOS DE ARRANQUE",

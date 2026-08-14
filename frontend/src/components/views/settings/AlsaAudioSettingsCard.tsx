@@ -132,6 +132,200 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
   });
 };
 
+interface GroupedOutputNode {
+  id: string;
+  masterGroup: AlsaGroup;
+  slaveGroups: AlsaGroup[];
+  hasMatrixControls: boolean;
+}
+
+const groupHardwareOutputs = (groups?: AlsaGroup[]): GroupedOutputNode[] => {
+  if (!groups || groups.length === 0) return [];
+
+  const grouped: GroupedOutputNode[] = [];
+  const processedIds = new Set<string>();
+
+  const isMasterCandidate = (name: string) => {
+    const n = name.toLowerCase();
+    return /^line\s+\d+$/i.test(n) || n === 'line' || n === 'line out' || n === 'master' || n === 'pcm' || n === 'front';
+  };
+
+  const getChannelIndex = (name: string): number | null => {
+    const m = name.match(/\d+/);
+    return m ? parseInt(m[0], 10) : null;
+  };
+
+  groups.forEach((g) => {
+    if (processedIds.has(g.id)) return;
+
+    if (isMasterCandidate(g.name)) {
+      processedIds.add(g.id);
+      const chIdx = getChannelIndex(g.name);
+      const slaves: AlsaGroup[] = [];
+
+      groups.forEach((other) => {
+        if (processedIds.has(other.id) || other.id === g.id) return;
+        const otherIdx = getChannelIndex(other.name);
+
+        if (chIdx !== null && otherIdx !== null && chIdx === otherIdx) {
+          slaves.push(other);
+          processedIds.add(other.id);
+        } else if (chIdx === null && (other.name.toLowerCase().includes('headphone') || other.name.toLowerCase().includes('spdif') || other.name.toLowerCase().includes('iec958') || other.name.toLowerCase().includes('surround') || other.name.toLowerCase().includes('center'))) {
+          slaves.push(other);
+          processedIds.add(other.id);
+        }
+      });
+
+      const hasMatrixControls = (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0));
+
+      grouped.push({
+        id: g.id,
+        masterGroup: g,
+        slaveGroups: slaves,
+        hasMatrixControls
+      });
+    }
+  });
+
+  groups.forEach((g) => {
+    if (!processedIds.has(g.id)) {
+      processedIds.add(g.id);
+      const hasMatrixControls = (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0));
+      grouped.push({
+        id: g.id,
+        masterGroup: g,
+        slaveGroups: [],
+        hasMatrixControls
+      });
+    }
+  });
+
+  return grouped;
+};
+
+const AlsaMatrixRoutingModal: React.FC<{
+  group: AlsaGroup;
+  onClose: () => void;
+  onControlChange: (numid: number, values: any[]) => void;
+}> = ({ group, onClose, onControlChange }) => {
+  const { t } = useTranslation();
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-[var(--glass-border)] flex items-center justify-between bg-[var(--input-bg)]">
+          <div className="flex items-center gap-2.5">
+            <span className="text-brand-orange text-lg font-bold">🎛️</span>
+            <div>
+              <h3 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                {group.name} — {t('settings.alsa.matrixModalTitle', 'Hardware Matrix Routing')}
+              </h3>
+              <p className="text-[11px] text-[var(--text-secondary)]">
+                {t('settings.alsa.matrixModalSubtitle', 'Configure input crosspoint routing and gains for')} {group.name}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center font-bold text-sm transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-5 overflow-y-auto space-y-4 custom-scrollbar">
+          {(group.controls || []).length === 0 ? (
+            <div className="text-center py-8 text-xs text-[var(--text-secondary)]">
+              {t('settings.alsa.noMatrixControls', 'No matrix routing controls available for this node')}
+            </div>
+          ) : (
+            group.controls.map((ctrl) => {
+              const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
+              const currentVal = ctrl.values?.[0] ?? 0;
+
+              return (
+                <div key={ctrl.numid} className="bg-[var(--input-bg)]/60 border border-[var(--glass-border)] rounded-xl p-3.5 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-[var(--text-primary)]">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-brand-orange font-mono">#{ctrl.numid}</span>
+                      <span>{ctrl.name}</span>
+                    </span>
+                    {ctrl.matrix_source && (
+                      <span className="text-[10px] bg-brand-orange/15 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-mono font-bold">
+                        Source: {ctrl.matrix_source}
+                      </span>
+                    )}
+                  </div>
+
+                  {isEnum && ctrl.items ? (
+                    <div className="space-y-1">
+                      <select
+                        value={currentVal}
+                        onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
+                        className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-brand-lime cursor-pointer"
+                      >
+                        {ctrl.items.map((item, idx) => (
+                          <option key={idx} value={idx}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' ? (
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-xs text-[var(--text-secondary)]">{t('common.status', 'Status')}</span>
+                      <button
+                        onClick={() => onControlChange(ctrl.numid, [currentVal === 1 || currentVal === true ? 0 : 1])}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all ${
+                          currentVal === 1 || currentVal === true
+                            ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40'
+                            : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                        }`}
+                      >
+                        {currentVal === 1 || currentVal === true ? 'ON / ACTIVE' : 'OFF / MUTED'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex justify-between text-xs font-mono text-[var(--text-secondary)]">
+                        <span>{ctrl.min ?? 0}</span>
+                        <span className="font-bold text-brand-lime">{currentVal}</span>
+                        <span>{ctrl.max ?? 100}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={ctrl.min ?? 0}
+                        max={ctrl.max ?? 100}
+                        step={ctrl.step || 1}
+                        value={currentVal}
+                        onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
+                        className="w-full accent-brand-lime cursor-pointer"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-[var(--glass-border)] bg-[var(--input-bg)] flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-1.5 bg-brand-orange text-black font-black rounded-lg text-xs hover:scale-105 transition-transform"
+          >
+            {t('common.close', 'Close')}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 export const AlsaAudioSettingsCard: React.FC = () => {
   const { t } = useTranslation();
   const [cards, setCards] = useState<AlsaCard[]>([]);
@@ -139,6 +333,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const [topology, setTopology] = useState<AlsaTopology | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [linkedChannels, setLinkedChannels] = useState<Record<number, boolean>>({});
+  const [selectedMatrixGroup, setSelectedMatrixGroup] = useState<AlsaGroup | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
@@ -478,19 +673,63 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* TOP-RIGHT: HARDWARE OUTPUTS */}
-        <div className="lg:col-span-5 space-y-2">
-          <div className="space-y-2">
-            {topology?.hardware_outputs?.map((group) => (
-              <AlsaSkewerChannelStrip
-                key={group.id}
-                group={group}
-                activeProcesses={getGroupProcesses(group, topology?.active_processes)}
-                onControlChange={handleControlChange}
-                isLinked={linkedChannels[group.controls?.[0]?.numid] !== false}
-                onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
-                canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
-                endpointIcon={getEndpointIcon(group.category, group.name)}
-              />
+        <div className="lg:col-span-5 space-y-3">
+          <div className="space-y-3">
+            {groupHardwareOutputs(topology?.hardware_outputs).map((node) => (
+              <div 
+                key={node.id} 
+                className="bg-[var(--input-bg)]/40 border border-[var(--glass-border)] rounded-xl p-3 space-y-2.5 shadow-sm hover:border-brand-orange/30 transition-all"
+              >
+                {/* Shared Master Mixer Node Header Bar */}
+                <div className="flex items-center justify-between border-b border-[var(--glass-border)]/50 pb-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-brand-orange font-bold text-xs shrink-0">🎛️</span>
+                    <span className="text-[11px] font-mono font-bold text-[var(--text-primary)] uppercase tracking-wider truncate">
+                      {node.masterGroup.name} {t('settings.alsa.masterMixerNode', 'MIXER NODE')}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedMatrixGroup(node.masterGroup)}
+                    className="px-2.5 py-1 bg-brand-orange/15 hover:bg-brand-orange/25 border border-brand-orange/30 rounded-lg text-[10px] font-bold text-brand-orange transition-all flex items-center gap-1 shrink-0"
+                    title={t('settings.alsa.matrixRouting', 'Matrix & Routing')}
+                  >
+                    <span>⚙️</span> {t('settings.alsa.matrixRouting', 'Matrix & Routing')}
+                  </button>
+                </div>
+
+                {/* Parallel Branch Tree */}
+                <div className="pl-2 border-l-2 border-brand-orange/40 space-y-2">
+                  {/* Master Endpoint Strip */}
+                  <AlsaSkewerChannelStrip
+                    group={node.masterGroup}
+                    activeProcesses={getGroupProcesses(node.masterGroup, topology?.active_processes)}
+                    onControlChange={handleControlChange}
+                    isLinked={linkedChannels[node.masterGroup.controls?.[0]?.numid] !== false}
+                    onToggleLink={() => node.masterGroup.controls?.[0] && toggleChannelLink(node.masterGroup.controls[0].numid)}
+                    canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
+                    endpointIcon={getEndpointIcon(node.masterGroup.category, node.masterGroup.name)}
+                  />
+
+                  {/* Slave Endpoints */}
+                  {node.slaveGroups.map((slave) => (
+                    <div key={slave.id} className="relative pl-3">
+                      <div className="absolute -left-2 top-4 w-3 h-0.5 bg-brand-orange/40" />
+                      <div className="text-[9px] font-mono font-bold text-[var(--text-secondary)] opacity-75 mb-0.5">
+                        ↳ {t('settings.alsa.slaveEndpoint', 'SLAVE ENDPOINT')} ({t('settings.alsa.cascadedFrom', 'Cascaded from')} {node.masterGroup.name})
+                      </div>
+                      <AlsaSkewerChannelStrip
+                        group={slave}
+                        activeProcesses={getGroupProcesses(slave, topology?.active_processes)}
+                        onControlChange={handleControlChange}
+                        isLinked={linkedChannels[slave.controls?.[0]?.numid] !== false}
+                        onToggleLink={() => slave.controls?.[0] && toggleChannelLink(slave.controls[0].numid)}
+                        canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
+                        endpointIcon={getEndpointIcon(slave.category, slave.name)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
             ))}
             {(!topology?.hardware_outputs || topology.hardware_outputs.length === 0) && (
               <div className="h-12 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
@@ -551,6 +790,15 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
       </div>
+
+      {/* MATRIX ROUTING MODAL */}
+      {selectedMatrixGroup && (
+        <AlsaMatrixRoutingModal
+          group={selectedMatrixGroup}
+          onClose={() => setSelectedMatrixGroup(null)}
+          onControlChange={handleControlChange}
+        />
+      )}
 
       {/* BASE ZONE: SYSTEM & CLOCK COMMON CONTROLS */}
       {((topology?.system_clock && topology.system_clock.length > 0) || (topology?.global_controls && topology.global_controls.length > 0)) && (
