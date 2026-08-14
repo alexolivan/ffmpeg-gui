@@ -218,12 +218,18 @@ class FfmpegRecipe(BaseRecipe):
                 if not os.path.exists(local_patch_path):
                     local_patch_path = os.path.join(system_patches_dir, custom_patch_file)
             else:
-                default_patch_name = "system_ffmpeg_7.patch" if version_tag.startswith("7.") else "system_ffmpeg_6.patch"
+                clean_ver = str(version_tag).lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+                try:
+                    major = int(clean_ver.split('.')[0])
+                except Exception:
+                    major = 7
+                default_patch_name = "system_ffmpeg_7.patch" if major >= 7 else "system_ffmpeg_6.patch"
                 local_patch_path = os.path.join(system_patches_dir, default_patch_name)
 
             if os.path.exists(local_patch_path):
                 patch_file = os.path.join(src_path, "ndi.patch")
                 shutil.copy2(local_patch_path, patch_file)
+                await log_callback(f"Applying NDI patch ({os.path.basename(local_patch_path)}) for FFmpeg version {version_tag}...\n")
                 await self.runner._run_logged_cmd(
                     ["git", "apply", "--ignore-whitespace", "--whitespace=nowarn", patch_file],
                     log_callback,
