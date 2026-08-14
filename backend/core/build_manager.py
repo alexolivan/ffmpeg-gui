@@ -313,13 +313,18 @@ class BuildManager:
     async def validate_build(self, binary_path: str, software_type: str = "ffmpeg") -> dict:
         """Validate the compiled binary using its recipe."""
         if not binary_path or not os.path.isfile(binary_path):
-            return {"valid": False, "error": "Binary not found"}
+            return {"valid": False, "error": f"Binary not found: {binary_path}"}
 
         try:
-            output = await self._get_command_output([ffmpeg_binary, "-version"])
-            return {"valid": True, "output": output}
-        except Exception as exc:
-            return {"valid": False, "error": str(exc)}
+            from forge.recipes import get_recipe
+            recipe = get_recipe(software_type, self.workspace_root, runner=self)
+            return await recipe.validate(binary_path)
+        except Exception:
+            try:
+                output = await self._get_command_output([binary_path, "-version"])
+                return {"valid": True, "output": output}
+            except Exception as exc:
+                return {"valid": False, "error": str(exc)}
 
     # ── Source cleanup ────────────────────────────────────────────
 

@@ -76,5 +76,13 @@ class TestCompileLogsAndClean(unittest.TestCase):
             self.assertEqual(msg1, "Line 1 of logs\n")
             self.assertEqual(msg2, "Line 2 of logs\n")
 
+    @patch("main.build_manager.validate_build", new_callable=AsyncMock)
+    def test_validate_build_endpoint(self, mock_validate):
+        mock_validate.return_value = {"valid": True, "output": "ffmpeg version 6.0"}
+        res = self.client.get(f"/builds/{self.build.id}/validate")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["valid"])
+        self.assertEqual(res.json()["output"], "ffmpeg version 6.0")
+
 if __name__ == "__main__":
     unittest.main()

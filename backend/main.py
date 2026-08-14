@@ -3367,14 +3367,17 @@ def clean_build_sources(build_id: int, db: Session = Depends(get_db)):
 
 @app.get("/builds/{build_id}/validate")
 async def validate_build(build_id: int, db: Session = Depends(get_db)):
-    """Run ffmpeg -version on the build's binary."""
+    """Run validation command on the build's binary."""
     build = db.query(FfmpegBuild).get(build_id)
     if not build:
         raise HTTPException(status_code=404, detail="Build profile not found")
 
-    result = await build_manager.validate_build(build.ffmpeg_binary)
+    result = await build_manager.validate_build(
+        binary_path=build.binary_path,
+        software_type=getattr(build, 'software_type', 'ffmpeg') or 'ffmpeg'
+    )
     if result.get("valid"):
-        build.ffmpeg_version_output = result["output"]
+        build.version_output = result["output"]
         db.commit()
     return result
 
