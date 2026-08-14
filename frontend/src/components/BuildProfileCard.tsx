@@ -132,17 +132,6 @@ export default function BuildProfileCard({
             <span className="text-brand-lime text-base" title={t('forge.defaultBuildTitle', 'Default Build')}>★</span>
           )}
           <h4 className="text-base font-bold text-[var(--text-primary)] truncate">{build.name}</h4>
-          <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
-            (build.software_type || 'ffmpeg') === 'ffmpeg'
-              ? 'bg-brand-orange/10 text-brand-orange border-brand-orange/20'
-              : (build.software_type || 'ffmpeg') === 'icecast2'
-                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                : (build.software_type || 'ffmpeg') === 'mediamtx'
-                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                  : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
-          }`}>
-            {build.software_type || 'ffmpeg'}
-          </span>
         </div>
 
         {/* Status Indicator */}

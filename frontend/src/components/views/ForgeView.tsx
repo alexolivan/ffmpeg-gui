@@ -11,7 +11,8 @@ import {
   ForgeIcon, 
   ClipboardIcon,
   RefreshIcon,
-  PackageIcon
+  PackageIcon,
+  FfmpegLogoIcon
 } from '../Icons';
 import { BuildSdksModal } from '../modals/BuildSdksModal';
 
@@ -263,7 +264,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
           }`}
         >
-          <ForgeIcon size={16} /> FFmpeg
+          <FfmpegLogoIcon size={16} /> FFmpeg
         </button>
       </div>
 

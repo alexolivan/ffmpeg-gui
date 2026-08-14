@@ -517,4 +517,23 @@ export const BroomIcon: React.FC<IconProps> = ({ size = 16, className = '', ...p
   </svg>
 );
 
+export const FfmpegLogoIcon: React.FC<IconProps> = ({ size = 16, className = '', ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <path d="M4 4h16v3H8v3h10v3H8v7H4V4z" fill="#00B00F" stroke="none" />
+    <path d="M9 10h11v3H9v-3z" fill="#007808" stroke="none" />
+  </svg>
+);
+
 
