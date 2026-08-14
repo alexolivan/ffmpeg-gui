@@ -199,17 +199,31 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   }
 
   // Unified Single Master Mixer Node for Intel HDA / Realtek / Consumer Soundcards
-  const isPhysicalEndpoint = (g: AlsaGroup) => {
+  const isPhysicalOutputEndpoint = (g: AlsaGroup) => {
     const n = g.name.toLowerCase().trim();
-    return n === 'line out' || n === 'front' || n.includes('headphone') || n.includes('speaker') || n.includes('surround') || n.includes('center') || n.includes('lfe') || n.includes('clfe') || n.includes('side') || n.includes('rear') || n.includes('spdif') || n.includes('iec958');
+    if (n.includes('mic') || n.includes('input')) return false;
+    return (
+      n === 'line out' ||
+      n === 'front' ||
+      n.includes('headphone') ||
+      n.includes('speaker') ||
+      n.includes('surround') ||
+      n.includes('center') ||
+      n.includes('lfe') ||
+      n.includes('clfe') ||
+      n.includes('side') ||
+      n.includes('spdif') ||
+      n.includes('iec958')
+    );
   };
 
-  const physicalEndpoints = groups.filter(isPhysicalEndpoint);
+  const physicalEndpoints = groups.filter(isPhysicalOutputEndpoint);
   const validEndpoints = physicalEndpoints.length > 0 ? physicalEndpoints : groups;
 
   const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out' || g.name.toLowerCase().trim() === 'front') || validEndpoints[0];
   const slaveEndpoints = validEndpoints.filter(g => g.id !== masterEndpoint.id);
 
+  // Matrix controls for modal (Master Playback, PCM, Front Mic Monitor, Rear Mic Monitor, Line Monitor)
   const allCardMatrixControls: AlsaControl[] = [];
   const controlNumids = new Set<number>();
 
@@ -222,18 +236,54 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
     });
   });
 
-  const unifiedMasterNode: AlsaGroup = {
-    ...masterEndpoint,
-    name: masterEndpoint.name.toLowerCase().trim() === 'master' ? 'Master' : masterEndpoint.name,
-    controls: allCardMatrixControls
-  };
-
   return [{
-    id: 'unified_master_mixer',
-    masterGroup: unifiedMasterNode,
+    id: masterEndpoint.id,
+    masterGroup: {
+      ...masterEndpoint,
+      // Pass matrix controls for modal without overriding native channel strip controls
+      matrixControls: allCardMatrixControls
+    } as any,
     slaveGroups: slaveEndpoints,
     hasMatrixControls: allCardMatrixControls.length > 0
   }];
+};
+
+const formatControlValue = (ctrl?: AlsaControl, rawVal?: any): string => {
+  if (!ctrl || rawVal === undefined || rawVal === null) return 'N/A';
+
+  const numVal = Number(rawVal);
+  if (isNaN(numVal)) return `${rawVal}`;
+
+  const min = ctrl.min ?? 0;
+  const max = ctrl.max ?? 100;
+
+  if (ctrl.db_min !== undefined && ctrl.db_step !== undefined && ctrl.db_step > 0) {
+    const isHundredths = Math.abs(ctrl.db_step) >= 50 || Math.abs(ctrl.db_min) >= 500;
+    const scale = isHundredths ? 100 : 1;
+    const dbVal = (ctrl.db_min / scale) + (numVal - min) * (ctrl.db_step / scale);
+    if (dbVal <= (ctrl.db_min / scale) && ctrl.db_min <= -50) {
+      return '-∞ dB';
+    }
+    return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(0)} dB`;
+  }
+
+  const isHundredths = Math.abs(min) >= 500 || Math.abs(max) >= 500 || (ctrl.db_min !== undefined && Math.abs(ctrl.db_min) > 200);
+
+  if (isHundredths || ctrl.db_min !== undefined) {
+    const scale = isHundredths ? 100 : 1;
+    const dbVal = numVal / scale;
+    if (dbVal <= (min / scale) && (min <= -5000 || (ctrl.db_min !== undefined && ctrl.db_min <= -50))) {
+      return '-∞ dB';
+    }
+    return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(0)} dB`;
+  }
+
+  if (max > min) {
+    const pct = Math.round(((numVal - min) / (max - min)) * 100);
+    return `${pct}%`;
+  }
+
+  return `${numVal}`;
 };
 
 const AlsaMatrixRoutingModal: React.FC<{
@@ -242,19 +292,25 @@ const AlsaMatrixRoutingModal: React.FC<{
   onControlChange: (numid: number, values: any[]) => void;
 }> = ({ group, onClose, onControlChange }) => {
   const { t } = useTranslation();
+  const controlsToRender: AlsaControl[] = (group as any).matrixControls || group.controls || [];
+
+  const volumeControls = controlsToRender.filter(c => c.ctrl_type === 'volume' || (c.min !== undefined && c.max !== undefined && c.max > c.min));
+  const enumAndSwitchControls = controlsToRender.filter(c => c.ctrl_type === 'enum' || c.ctrl_type === 'route' || c.ctrl_type === 'mute' || c.ctrl_type === 'switch' || (c.items && c.items.length > 0));
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-[var(--glass-border)] flex items-center justify-between bg-[var(--input-bg)]">
-          <div className="flex items-center gap-2.5">
-            <span className="text-brand-orange text-lg font-bold">🎛️</span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
+      <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Console Header */}
+        <div className="px-6 py-4 border-b border-[var(--glass-border)] flex items-center justify-between bg-[var(--input-bg)]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-orange/15 border border-brand-orange/30 flex items-center justify-center text-brand-orange text-lg">
+              🎛️
+            </div>
             <div>
-              <h3 className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider">
+              <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider">
                 {group.name} — {t('settings.alsa.matrixModalTitle', 'Hardware Matrix Routing')}
               </h3>
-              <p className="text-[11px] text-[var(--text-secondary)]">
+              <p className="text-xs text-[var(--text-secondary)]">
                 {t('settings.alsa.matrixModalSubtitle', 'Configure input crosspoint routing and gains for')} {group.name}
               </p>
             </div>
@@ -267,88 +323,123 @@ const AlsaMatrixRoutingModal: React.FC<{
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-5 overflow-y-auto space-y-4 custom-scrollbar">
-          {(group.controls || []).length === 0 ? (
-            <div className="text-center py-8 text-xs text-[var(--text-secondary)]">
+        {/* Console Body */}
+        <div className="p-6 overflow-y-auto space-y-6 custom-scrollbar">
+          {/* Top Rack: Switches & Routing Selectors */}
+          {enumAndSwitchControls.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-[var(--text-secondary)]">
+                🎚️ {t('settings.alsa.routingRack', 'ROUTING & SWITCH RACK')}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {enumAndSwitchControls.map((ctrl) => {
+                  const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
+                  const currentVal = ctrl.values?.[0] ?? 0;
+
+                  return (
+                    <div key={ctrl.numid} className="bg-[var(--input-bg)]/60 border border-[var(--glass-border)] rounded-xl p-3 flex flex-col justify-between gap-2 shadow-sm">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-[var(--text-primary)]">
+                        <span className="truncate">{ctrl.name}</span>
+                        {ctrl.matrix_source && (
+                          <span className="text-[9px] bg-brand-orange/15 text-brand-orange border border-brand-orange/30 px-1.5 py-0.5 rounded font-mono font-bold shrink-0 ml-1">
+                            {ctrl.matrix_source}
+                          </span>
+                        )}
+                      </div>
+
+                      {isEnum && ctrl.items ? (
+                        <select
+                          value={currentVal}
+                          onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
+                          className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs font-bold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-lime cursor-pointer"
+                        >
+                          {ctrl.items.map((item, idx) => (
+                            <option key={idx} value={idx}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <button
+                          onClick={() => onControlChange(ctrl.numid, [currentVal === 1 || currentVal === true ? 0 : 1])}
+                          className={`w-full py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                            currentVal === 1 || currentVal === true
+                              ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40'
+                              : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                          }`}
+                        >
+                          {currentVal === 1 || currentVal === true ? 'ON / ACTIVE' : 'OFF / MUTED'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Fader Rack: Vertical Console Channels */}
+          {volumeControls.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-[var(--text-secondary)]">
+                🎛️ {t('settings.alsa.faderConsole', 'CROSSPOINT GAIN CONSOLE')}
+              </div>
+              <div className="flex items-start gap-4 overflow-x-auto pb-4 custom-scrollbar">
+                {volumeControls.map((ctrl) => {
+                  const currentVal = ctrl.values?.[0] ?? 0;
+                  const displayDb = formatControlValue(ctrl, currentVal);
+
+                  return (
+                    <div
+                      key={ctrl.numid}
+                      className="bg-[var(--input-bg)]/80 border border-[var(--glass-border)] rounded-2xl p-4 flex flex-col items-center gap-3 shrink-0 min-w-[120px] max-w-[140px] shadow-md hover:border-brand-orange/40 transition-all"
+                    >
+                      <div className="text-center w-full min-h-[32px] flex flex-col justify-center">
+                        <span className="text-[11px] font-bold text-[var(--text-primary)] truncate block" title={ctrl.name}>
+                          {ctrl.name}
+                        </span>
+                        {ctrl.matrix_source && (
+                          <span className="text-[9px] text-brand-orange font-mono font-bold block truncate">
+                            {ctrl.matrix_source}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* dB Value Badge */}
+                      <div className="px-2 py-1 rounded bg-[var(--bg-card)] border border-[var(--glass-border)] text-xs font-mono font-bold text-brand-lime shadow-inner">
+                        {displayDb}
+                      </div>
+
+                      {/* Vertical Fader */}
+                      <div className="py-2">
+                        <AlsaFaderUnit
+                          min={ctrl.min ?? 0}
+                          max={ctrl.max ?? 100}
+                          step={ctrl.step || 1}
+                          value={currentVal}
+                          onChangeCommit={(val) => onControlChange(ctrl.numid, [val])}
+                          heightClass="h-44"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {controlsToRender.length === 0 && (
+            <div className="text-center py-12 text-xs text-[var(--text-secondary)]">
               {t('settings.alsa.noMatrixControls', 'No matrix routing controls available for this node')}
             </div>
-          ) : (
-            group.controls.map((ctrl) => {
-              const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
-              const currentVal = ctrl.values?.[0] ?? 0;
-
-              return (
-                <div key={ctrl.numid} className="bg-[var(--input-bg)]/60 border border-[var(--glass-border)] rounded-xl p-3.5 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-[var(--text-primary)]">
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-brand-orange font-mono">#{ctrl.numid}</span>
-                      <span>{ctrl.name}</span>
-                    </span>
-                    {ctrl.matrix_source && (
-                      <span className="text-[10px] bg-brand-orange/15 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-mono font-bold">
-                        Source: {ctrl.matrix_source}
-                      </span>
-                    )}
-                  </div>
-
-                  {isEnum && ctrl.items ? (
-                    <div className="space-y-1">
-                      <select
-                        value={currentVal}
-                        onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
-                        className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-brand-lime cursor-pointer"
-                      >
-                        {ctrl.items.map((item, idx) => (
-                          <option key={idx} value={idx}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : ctrl.ctrl_type === 'mute' || ctrl.ctrl_type === 'switch' ? (
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-xs text-[var(--text-secondary)]">{t('common.status', 'Status')}</span>
-                      <button
-                        onClick={() => onControlChange(ctrl.numid, [currentVal === 1 || currentVal === true ? 0 : 1])}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold uppercase transition-all ${
-                          currentVal === 1 || currentVal === true
-                            ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40'
-                            : 'bg-red-500/20 text-red-400 border border-red-500/40'
-                        }`}
-                      >
-                        {currentVal === 1 || currentVal === true ? 'ON / ACTIVE' : 'OFF / MUTED'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5 pt-1">
-                      <div className="flex justify-between text-xs font-mono text-[var(--text-secondary)]">
-                        <span>{ctrl.min ?? 0}</span>
-                        <span className="font-bold text-brand-lime">{currentVal}</span>
-                        <span>{ctrl.max ?? 100}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={ctrl.min ?? 0}
-                        max={ctrl.max ?? 100}
-                        step={ctrl.step || 1}
-                        value={currentVal}
-                        onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
-                        className="w-full accent-brand-lime cursor-pointer"
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-[var(--glass-border)] bg-[var(--input-bg)] flex justify-end">
+        {/* Console Footer */}
+        <div className="px-6 py-3.5 border-t border-[var(--glass-border)] bg-[var(--input-bg)] flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-brand-orange text-black font-black rounded-lg text-xs hover:scale-105 transition-transform"
+            className="px-5 py-2 bg-brand-orange text-black font-black rounded-xl text-xs hover:scale-105 transition-transform"
           >
             {t('common.close', 'Close')}
           </button>
@@ -900,45 +991,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   );
 };
 
-const formatControlValue = (ctrl?: AlsaControl, rawVal?: any): string => {
-  if (!ctrl || rawVal === undefined || rawVal === null) return 'N/A';
 
-  const numVal = Number(rawVal);
-  if (isNaN(numVal)) return `${rawVal}`;
-
-  const min = ctrl.min ?? 0;
-  const max = ctrl.max ?? 100;
-
-  // Case 1: Control has explicit db_step and db_min from ALSA (e.g. Boost: min=0, max=3, db_min=0, db_step=12 -> 0, +12, +24, +36 dB)
-  if (ctrl.db_min !== undefined && ctrl.db_step !== undefined && ctrl.db_step > 0) {
-    const isHundredths = Math.abs(ctrl.db_step) >= 50 || Math.abs(ctrl.db_min) >= 500;
-    const scale = isHundredths ? 100 : 1;
-    const dbVal = (ctrl.db_min / scale) + (numVal - min) * (ctrl.db_step / scale);
-    if (dbVal <= (ctrl.db_min / scale) && ctrl.db_min <= -50) {
-      return '-∞ dB';
-    }
-    return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(0)} dB`;
-  }
-
-  // Case 2: AudioScience 0.01 dB hundredths integer scale (min=-10000, max=2000)
-  const isHundredths = Math.abs(min) >= 500 || Math.abs(max) >= 500 || (ctrl.db_min !== undefined && Math.abs(ctrl.db_min) > 200);
-
-  if (isHundredths || ctrl.db_min !== undefined) {
-    const scale = isHundredths ? 100 : 1;
-    const dbVal = numVal / scale;
-    if (dbVal <= (min / scale) && (min <= -5000 || (ctrl.db_min !== undefined && ctrl.db_min <= -50))) {
-      return '-∞ dB';
-    }
-    return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(0)} dB`;
-  }
-
-  if (max > min) {
-    const pct = Math.round(((numVal - min) / (max - min)) * 100);
-    return `${pct}%`;
-  }
-
-  return `${numVal}`;
-};
 
 interface ChannelStripProps {
   group: AlsaGroup;
