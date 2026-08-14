@@ -122,220 +122,227 @@ export default function BuildProfileCard({
   const style = STATUS_STYLES[build.status] || STATUS_STYLES.pending
 
   return (
-    <div className={`glass-card p-6 border transition-all duration-300 ${
+    <div className={`glass-card p-5 border transition-all duration-300 ${
       build.is_default ? 'border-brand-lime/30' : 'border-[var(--glass-border)]'
     } hover:border-brand-lime/30`}>
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
+      {/* 1. Top Header Bar */}
+      <div className="flex items-center justify-between gap-3 mb-3 pb-3 border-b border-[var(--glass-border)]">
+        <div className="flex items-center gap-2.5 min-w-0">
           {build.is_default && (
-            <span className="text-brand-lime text-lg" title={t('forge.defaultBuildTitle', 'Default Build')}>★</span>
+            <span className="text-brand-lime text-base" title={t('forge.defaultBuildTitle', 'Default Build')}>★</span>
           )}
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="text-lg font-bold text-[var(--text-primary)]">{build.name}</h4>
-              <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${
-                (build.software_type || 'ffmpeg') === 'ffmpeg'
-                  ? 'bg-brand-orange/10 text-brand-orange border-brand-orange/20'
-                  : (build.software_type || 'ffmpeg') === 'icecast2'
-                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                    : (build.software_type || 'ffmpeg') === 'mediamtx'
-                      ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                      : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
-              }`}>
-                {build.software_type || 'ffmpeg'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                {build.ffmpeg_version || build.version_tag}
-              </span>
-              {(build.software_type || 'ffmpeg') === 'ffmpeg' && (
-                <>
-                  {build.srt_version && (
-                    <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                      SRT {build.srt_version}
-                    </span>
-                  )}
-                  {build.build_options?.vaapi && (
-                    <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                      VAAPI{build.sdk_paths?.vaapi ? ` ${build.sdk_paths.vaapi}` : ''}
-                    </span>
-                  )}
-                  {isNdiEnabled && (
-                    missingNdi ? (
-                      <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
-                        ⚠️ {t('forge.missingNdiBadge', 'Missing NDI SDK v{{version}}', { version: reqNdiVer || '?' })}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                        NDI{reqNdiVer ? ` ${reqNdiVer}` : ''}
-                      </span>
-                    )
-                  )}
-                  {isDecklinkEnabled && (
-                    missingDecklink ? (
-                      <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
-                        ⚠️ {t('forge.missingDecklinkBadge', 'Missing DeckLink SDK v{{version}}', { version: reqDecklinkVer || '?' })}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                        DeckLink{reqDecklinkVer ? ` ${reqDecklinkVer}` : ''}
-                      </span>
-                    )
-                  )}
-                  {build.build_options?.nvenc && (
-                    <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-                      NVENC{build.sdk_paths?.nvenc_headers ? ` ${build.sdk_paths.nvenc_headers}` : ''}
-                    </span>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+          <h4 className="text-base font-bold text-[var(--text-primary)] truncate">{build.name}</h4>
+          <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
+            (build.software_type || 'ffmpeg') === 'ffmpeg'
+              ? 'bg-brand-orange/10 text-brand-orange border-brand-orange/20'
+              : (build.software_type || 'ffmpeg') === 'icecast2'
+                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                : (build.software_type || 'ffmpeg') === 'mediamtx'
+                  ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                  : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+          }`}>
+            {build.software_type || 'ffmpeg'}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Status Indicator */}
+        <div className="flex items-center gap-2 shrink-0">
           <span className={`w-2 h-2 rounded-full ${style.dot}`}></span>
-          <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full ${style.badge}`}>
+          <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full ${style.badge}`}>
             {style.label}
           </span>
         </div>
       </div>
 
-      {/* Metadata Row */}
-      <div className="flex items-center gap-6 text-[11px] text-text-secondary mb-5 border-t border-[var(--glass-border)] pt-4">
-        <div>
-          <span className="uppercase tracking-widest text-[9px] block mb-0.5">{t('forge.built', 'Built')}</span>
-          <span className="text-[var(--text-primary)] opacity-80 font-mono">{formatDate(build.built_at)}</span>
-        </div>
-        <div>
-          <span className="uppercase tracking-widest text-[9px] block mb-0.5">{t('forge.size', 'Size')}</span>
-          <span className="text-[var(--text-primary)] opacity-80 font-mono">
-            {build.disk_usage_mb != null ? `${build.disk_usage_mb} MB` : '—'}
-          </span>
-        </div>
-        {build.sources_cleaned ? (
-          <div className="text-brand-lime/80 text-[9px] uppercase tracking-widest font-bold">
-            ✓ {t('forge.sourcesCleaned', 'Sources cleaned')}
+      {/* 2. Main Card Body (Left Info & Metadata / Right Controls) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        
+        {/* Left Area: Compact Multi-line Info & Metadata */}
+        <div className="space-y-2 flex-grow min-w-0">
+          
+          {/* Line 1: Version Tag & Feature Badges */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+              {build.ffmpeg_version || build.version_tag}
+            </span>
+            {(build.software_type || 'ffmpeg') === 'ffmpeg' && (
+              <>
+                {build.srt_version && (
+                  <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                    SRT {build.srt_version}
+                  </span>
+                )}
+                {build.build_options?.vaapi && (
+                  <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                    VAAPI{build.sdk_paths?.vaapi ? ` ${build.sdk_paths.vaapi}` : ''}
+                  </span>
+                )}
+                {isNdiEnabled && (
+                  missingNdi ? (
+                    <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
+                      ⚠️ {t('forge.missingNdiBadge', 'Missing NDI SDK v{{version}}', { version: reqNdiVer || '?' })}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                      NDI{reqNdiVer ? ` ${reqNdiVer}` : ''}
+                    </span>
+                  )
+                )}
+                {isDecklinkEnabled && (
+                  missingDecklink ? (
+                    <span className="text-[10px] font-mono bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold">
+                      ⚠️ {t('forge.missingDecklinkBadge', 'Missing DeckLink SDK v{{version}}', { version: reqDecklinkVer || '?' })}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                      DeckLink{reqDecklinkVer ? ` ${reqDecklinkVer}` : ''}
+                    </span>
+                  )
+                )}
+                {build.build_options?.nvenc && (
+                  <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
+                    NVENC{build.sdk_paths?.nvenc_headers ? ` ${build.sdk_paths.nvenc_headers}` : ''}
+                  </span>
+                )}
+              </>
+            )}
           </div>
-        ) : build.auto_clean ? (
-          <div className="text-brand-orange/80 text-[9px] uppercase tracking-widest font-bold">
-            ⚡ {t('forge.autoCleanActive', 'Auto-clean active')}
-          </div>
-        ) : null}
-        {build.build_log_summary && build.status === 'failed' && (
-          <div className="text-red-400 text-[10px] truncate max-w-xs" title={build.build_log_summary}>
-            ⚠ {build.build_log_summary}
-          </div>
-        )}
-      </div>
 
-      {/* Iconic Action Buttons Bar */}
-      <div className="flex items-center justify-end gap-1.5 flex-wrap pt-3 border-t border-white/5">
-        {/* Compile / Abort Button */}
-        {build.status === 'building' ? (
-          <button
-            onClick={() => onStop(build.id)}
-            title={t('forge.abort', 'ABORT')}
-            className="w-9 h-9 rounded-xl bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 flex items-center justify-center transition-all hover:scale-105 animate-pulse"
-          >
-            <StopIcon size={16} />
-          </button>
-        ) : (
-          <button
-            onClick={() => !hasMissingSdk && onCompile(build.id)}
-            disabled={isAnyBuilding || hasMissingSdk}
-            title={hasMissingSdk ? t('forge.missingSdkCompileTooltip', 'Required SDK version is missing and must be uploaded via Manage SDKs.') : (build.status === 'ready' ? t('forge.recompile', 'RECOMPILE') : build.status === 'failed' ? t('forge.retryBuild', 'RETRY BUILD') : t('forge.compile', 'COMPILE'))}
-            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ${
-              isAnyBuilding || hasMissingSdk
-                ? 'opacity-40 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]'
-                : build.status === 'failed' 
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' 
-                  : 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 hover:bg-brand-orange/30'
-            }`}
-          >
-            <PlayIcon size={16} />
-          </button>
-        )}
+          {/* Line 2: Key-Value Details Strip */}
+          <div className="flex gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
+            <span>Built: <strong className="text-[var(--text-primary)]">{formatDate(build.built_at)}</strong></span>
+            <span className="opacity-20">|</span>
+            <span>Size: <strong className="text-[var(--text-primary)]">{build.disk_usage_mb != null ? `${build.disk_usage_mb} MB` : '—'}</strong></span>
+            
+            {build.sources_cleaned && (
+              <>
+                <span className="opacity-20">|</span>
+                <span className="text-brand-lime/90 font-bold">✓ {t('forge.sourcesCleaned', 'Sources cleaned')}</span>
+              </>
+            )}
+            {build.auto_clean && !build.sources_cleaned && (
+              <>
+                <span className="opacity-20">|</span>
+                <span className="text-brand-orange/90 font-bold">⚡ {t('forge.autoCleanActive', 'Auto-clean active')}</span>
+              </>
+            )}
+            {build.build_log_summary && build.status === 'failed' && (
+              <>
+                <span className="opacity-20">|</span>
+                <span className="text-red-400 font-bold truncate max-w-xs" title={build.build_log_summary}>⚠ {build.build_log_summary}</span>
+              </>
+            )}
+          </div>
+        </div>
 
-        {build.status === 'ready' && (
-          <>
-            {/* Validate Button */}
-            <button 
-              onClick={() => onValidate(build.id)}
-              title={t('forge.validate', 'VALIDATE')}
-              className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
+        {/* Right Area: Compact Iconic Control Button Bar */}
+        <div className="flex items-center gap-1.5 mt-3 lg:mt-0 flex-shrink-0">
+          {/* Compile / Abort Button */}
+          {build.status === 'building' ? (
+            <button
+              onClick={() => onStop(build.id)}
+              title={t('forge.abort', 'ABORT')}
+              className="w-9 h-9 rounded-xl bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 flex items-center justify-center transition-all hover:scale-105 animate-pulse"
             >
-              <CheckIcon size={16} />
+              <StopIcon size={16} />
             </button>
+          ) : (
+            <button
+              onClick={() => !hasMissingSdk && onCompile(build.id)}
+              disabled={isAnyBuilding || hasMissingSdk}
+              title={hasMissingSdk ? t('forge.missingSdkCompileTooltip', 'Required SDK version is missing and must be uploaded via Manage SDKs.') : (build.status === 'ready' ? t('forge.recompile', 'RECOMPILE') : build.status === 'failed' ? t('forge.retryBuild', 'RETRY BUILD') : t('forge.compile', 'COMPILE'))}
+              className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ${
+                isAnyBuilding || hasMissingSdk
+                  ? 'opacity-40 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]'
+                  : build.status === 'failed' 
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' 
+                    : 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 hover:bg-brand-orange/30'
+              }`}
+            >
+              <PlayIcon size={16} />
+            </button>
+          )}
 
-            {/* Clean Src Button */}
-            {!build.sources_cleaned && (
+          {build.status === 'ready' && (
+            <>
+              {/* Validate Button */}
               <button 
-                onClick={() => onCleanSources(build.id)}
-                title={t('forge.cleanSrc', 'CLEAN SRC')}
+                onClick={() => onValidate(build.id)}
+                title={t('forge.validate', 'VALIDATE')}
                 className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
               >
-                <BroomIcon size={16} />
+                <CheckIcon size={16} />
               </button>
-            )}
 
-            {/* Set Default Button */}
-            {!build.is_default && (
-              <button 
-                onClick={() => onSetDefault(build.id)}
-                title={t('common.setDefault', 'SET DEFAULT')}
-                className="w-9 h-9 rounded-xl bg-brand-lime/10 text-brand-lime hover:bg-brand-lime/20 border border-brand-lime/30 flex items-center justify-center transition-all hover:scale-105"
-              >
-                <StarIcon size={16} />
-              </button>
-            )}
-          </>
-        )}
+              {/* Clean Src Button */}
+              {!build.sources_cleaned && (
+                <button 
+                  onClick={() => onCleanSources(build.id)}
+                  title={t('forge.cleanSrc', 'CLEAN SRC')}
+                  className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
+                >
+                  <BroomIcon size={16} />
+                </button>
+              )}
 
-        {/* View Logs Button */}
-        {(build.status === 'building' || build.status === 'ready' || build.status === 'failed') && (
+              {/* Set Default Button */}
+              {!build.is_default && (
+                <button 
+                  onClick={() => onSetDefault(build.id)}
+                  title={t('common.setDefault', 'SET DEFAULT')}
+                  className="w-9 h-9 rounded-xl bg-brand-lime/10 text-brand-lime hover:bg-brand-lime/20 border border-brand-lime/30 flex items-center justify-center transition-all hover:scale-105"
+                >
+                  <StarIcon size={16} />
+                </button>
+              )}
+            </>
+          )}
+
+          {/* View Logs Button */}
+          {(build.status === 'building' || build.status === 'ready' || build.status === 'failed') && (
+            <button 
+              onClick={() => onViewLogs(build.id)}
+              title={t('forge.viewLogs', 'VIEW LOGS')}
+              className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
+            >
+              📜
+            </button>
+          )}
+
+          {/* Export Recipe Button */}
           <button 
-            onClick={() => onViewLogs(build.id)}
-            title={t('forge.viewLogs', 'VIEW LOGS')}
+            onClick={() => onExport(build.id)}
+            title={t('forge.exportRecipe', 'EXPORT RECIPE')}
             className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
           >
-            📜
+            <ExportIcon size={16} />
           </button>
-        )}
 
-        {/* Export Recipe Button */}
-        <button 
-          onClick={() => onExport(build.id)}
-          title={t('forge.exportRecipe', 'EXPORT RECIPE')}
-          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
-        >
-          <ExportIcon size={16} />
-        </button>
-
-        {/* Edit Button */}
-        <button
-          onClick={() => onEdit(build)}
-          disabled={build.status === 'building'}
-          title={t('common.edit', 'EDIT')}
-          className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ${
-            build.status === 'building' 
-              ? 'opacity-30 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]' 
-              : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 hover:border-brand-lime/40'
-          }`}
-        >
-          <PencilIcon size={16} />
-        </button>
-        {/* Delete Button */}
-        {build.status !== 'building' && (
-          <button 
-            onClick={() => onDelete(build.id)}
-            title={t('common.delete', 'DELETE')}
-            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105"
+          {/* Edit Button */}
+          <button
+            onClick={() => onEdit(build)}
+            disabled={build.status === 'building'}
+            title={t('common.edit', 'EDIT')}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ${
+              build.status === 'building' 
+                ? 'opacity-30 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]' 
+                : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 hover:border-brand-lime/40'
+            }`}
           >
-            <TrashIcon size={16} />
+            <PencilIcon size={16} />
           </button>
-        )}
+
+          {/* Delete Button */}
+          {build.status !== 'building' && (
+            <button 
+              onClick={() => onDelete(build.id)}
+              title={t('common.delete', 'DELETE')}
+              className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105"
+            >
+              <TrashIcon size={16} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
