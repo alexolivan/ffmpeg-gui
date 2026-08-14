@@ -299,22 +299,16 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
           
           {activeTab === 'general' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              {/* Software Type Selector */}
+              {/* Software Type Selector (Locked to FFmpeg for v2.0 initial release) */}
               <div>
                 <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">{t('forge.softwareType', 'Software Type')}</label>
                 <select
-                  disabled={isEditing}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none disabled:opacity-50 text-[var(--text-primary)]"
+                  disabled={true}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none opacity-80 text-[var(--text-primary)] cursor-not-allowed"
                   value={softwareType}
-                  onChange={e => {
-                    setSoftwareType(e.target.value);
-                    setFfmpegVersion(''); // Reset selected version tag
-                  }}
+                  onChange={e => setSoftwareType(e.target.value)}
                 >
                   <option value="ffmpeg" className="text-black">{t('forge.ffmpegOption', 'FFmpeg (Video / Audio Muxer)')}</option>
-                  <option value="icecast2" className="text-black">{t('forge.icecastOption', 'Icecast2 (Audio Streaming Server)')}</option>
-                  <option value="mediamtx" className="text-black">{t('forge.mediamtxOption', 'MediaMTX (RTSP/RTMP/SRT/WebRTC Hub)')}</option>
-                  <option value="kiosk_cog" className="text-black">{t('forge.kioskOption', 'Kiosk Cog (WPE WebKit Browser Launcher)')}</option>
                 </select>
               </div>
 
