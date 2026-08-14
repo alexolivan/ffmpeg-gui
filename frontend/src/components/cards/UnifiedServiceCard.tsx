@@ -125,7 +125,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
   const isPending = !!actionPending;
-  const isRetrying = !!service.watchdog_enabled && (service.restart_count || 0) > 0 && service.status !== 'stopped';
+  const isRetrying = !!service.watchdog_enabled && (service.restart_count || 0) > 0 && service.status !== 'running' && service.status !== 'stopped';
 
   const cpu = telemetryItem?.cpu ?? service.cpu ?? 0;
   const ram = telemetryItem?.ram ?? service.ram ?? 0;
@@ -177,7 +177,15 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           </span>
 
           {/* Service Type Tag */}
-          <span className="text-[9px] uppercase font-mono px-2 py-0.5 rounded bg-zinc-800 border border-[var(--glass-border)] text-[var(--text-secondary)]">
+          <span className={`text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-bold ${
+            serviceType === 'ffmpeg_stream' 
+              ? 'bg-brand-orange/10 text-brand-orange border-brand-orange/30' 
+              : serviceType === 'icecast_server' 
+              ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' 
+              : serviceType === 'kiosk_browser' 
+              ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' 
+              : 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+          }`}>
             {serviceType === 'ffmpeg_stream' 
               ? 'FFmpeg' 
               : serviceType === 'icecast_server' 
@@ -201,8 +209,11 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           )}
 
           {service.watchdog_enabled && (
-            <span className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Monitored by system watchdog">
-              <ShieldIcon size={10} /> WATCHDOG
+            <span 
+              className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" 
+              title={`Monitored by system watchdog${service.restart_count ? ` (${t('services.restartCount', 'Restarts')}: ${service.restart_count})` : ''}`}
+            >
+              <ShieldIcon size={10} /> WATCHDOG{service.restart_count && service.restart_count > 0 ? ` (${service.restart_count})` : ''}
             </span>
           )}
 
