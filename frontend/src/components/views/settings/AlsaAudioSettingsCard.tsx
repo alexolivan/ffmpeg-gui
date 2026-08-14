@@ -146,8 +146,10 @@ const groupHardwareOutputs = (groups?: AlsaGroup[]): GroupedOutputNode[] => {
   const processedIds = new Set<string>();
 
   const isMasterCandidate = (name: string) => {
-    const n = name.toLowerCase();
-    return /^line\s+\d+$/i.test(n) || n === 'line' || n === 'line out' || n === 'master' || n === 'pcm' || n === 'front';
+    const n = name.toLowerCase().trim();
+    if (/^line\s+\d+$/i.test(n)) return true;
+    if (n === 'line out' || n === 'front' || n === 'master out' || n === 'main') return true;
+    return false;
   };
 
   const getChannelIndex = (name: string): number | null => {
@@ -166,11 +168,23 @@ const groupHardwareOutputs = (groups?: AlsaGroup[]): GroupedOutputNode[] => {
       groups.forEach((other) => {
         if (processedIds.has(other.id) || other.id === g.id) return;
         const otherIdx = getChannelIndex(other.name);
+        const otherLower = other.name.toLowerCase().trim();
 
         if (chIdx !== null && otherIdx !== null && chIdx === otherIdx) {
           slaves.push(other);
           processedIds.add(other.id);
-        } else if (chIdx === null && (other.name.toLowerCase().includes('headphone') || other.name.toLowerCase().includes('spdif') || other.name.toLowerCase().includes('iec958') || other.name.toLowerCase().includes('surround') || other.name.toLowerCase().includes('center'))) {
+        } else if (chIdx === null && (
+          otherLower.includes('headphone') ||
+          otherLower.includes('speaker') ||
+          otherLower.includes('spdif') ||
+          otherLower.includes('iec958') ||
+          otherLower.includes('surround') ||
+          otherLower.includes('center') ||
+          otherLower.includes('lfe') ||
+          otherLower.includes('clfe') ||
+          otherLower.includes('side') ||
+          otherLower.includes('rear')
+        )) {
           slaves.push(other);
           processedIds.add(other.id);
         }
