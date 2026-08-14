@@ -364,20 +364,20 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   return (
     <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-6 space-y-6">
       {/* Compact Card Header & Selector */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[var(--glass-border)] pb-3">
-        <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider">
-          {t('settings.alsa.title', 'HARDWARE MIXER')}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[var(--glass-border)] pb-3 min-w-0">
+        <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider shrink-0">
+          {t('settings.alsa.title', 'ALSA MIXER')}
         </h3>
 
         {/* Sound Card Dropdown Selector */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-bold text-text-secondary uppercase tracking-wider whitespace-nowrap">
+        <div className="flex items-center gap-2 max-w-full min-w-0">
+          <label className="text-xs font-bold text-text-secondary uppercase tracking-wider whitespace-nowrap shrink-0">
             {t('settings.alsa.selectCard', 'Sound Card:')}
           </label>
           <select
             value={selectedCardIdx}
             onChange={(e) => setSelectedCardIdx(parseInt(e.target.value, 10))}
-            className="bg-[var(--input-bg)] text-text-primary border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-brand-lime shadow-sm min-w-[200px]"
+            className="bg-[var(--input-bg)] text-text-primary border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-brand-lime shadow-sm min-w-0 truncate max-w-xs sm:max-w-md"
           >
             {cards.map((c) => (
               <option key={c.card_index} value={c.card_index}>

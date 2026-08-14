@@ -94,19 +94,19 @@
       "backup": "Còpia de Seguretat"
     },
     "alsa": {
-      "title": "MESCLADOR DE HARDWARE D'ÀUDIO ALSA",
-      "subtitle": "Encaminament Topològic Broadcast en 4 Quadrants i Control de Guany",
-      "noCardsTitle": "Sense Targetes de So Físiques Detectades",
-      "noCardsDesc": "No s'han trobat targetes de so físiques o virtuals ALSA en aquest sistema.",
-      "activeProcesses": "Processos FFmpeg Vinculats:",
+      "title": "MESCLADOR ALSA",
+      "subtitle": "Encaminament Broadcast en 4 Quadrants i Control de Guany",
+      "noCardsTitle": "Sense Targetes de So Detectades",
+      "noCardsDesc": "No s'han trobat targetes de so ALSA en aquest sistema.",
+      "activeProcesses": "Processos Vinculats:",
       "quadrant1": "1. VIRTUAL PLAYOUT (INGESTA SOFTWARE)",
-      "quadrant2": "2. HARDWARE OUTPUTS (SORTIDA FÍSICA)",
+      "quadrant2": "2. SORTIDES FÍSIQUES (HARDWARE)",
       "quadrant3": "3. VIRTUAL CAPTURE (INGESTA FFMPEG)",
-      "quadrant4": "4. HARDWARE INPUTS (ENTRADA FÍSICA)",
-      "noControls": "Sense controls detectats en aquest quadrant",
-      "selectCard": "Seleccionar Targeta de So / Dispositiu d'Àudio",
-      "systemClockTitle": "Rellotge d'Àudio i Sincronització Mestra",
-      "jackSensing": "Detecció Automàtica de Connectors Jack"
+      "quadrant4": "4. ENTRADES FÍSIQUES (HARDWARE)",
+      "noControls": "Sense controls en aquest quadrant",
+      "selectCard": "Targeta de So:",
+      "systemClockTitle": "Rellotge d'Àudio i Sincronització",
+      "jackSensing": "Estat Jack Sensing:"
     },
     "watchdog": {
       "title": "WATCHDOG I TEMPS D'ARRANQUED",

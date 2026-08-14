@@ -94,19 +94,19 @@
       "backup": "Copia de Seguridad"
     },
     "alsa": {
-      "title": "MEZCLADOR DE HARDWARE DE AUDIO ALSA",
-      "subtitle": "Enrutado Topológico Broadcast en 4 Cuadrantes y Control de Ganancia",
-      "noCardsTitle": "Sin Tarjetas de Sonido Físicas Detectadas",
-      "noCardsDesc": "No se encontraron tarjetas de sonido físicas o virtuales ALSA en este sistema.",
-      "activeProcesses": "Procesos FFmpeg Vinculados:",
+      "title": "MEZCLADOR ALSA",
+      "subtitle": "Enrutado Broadcast en 4 Cuadrantes y Control de Ganancia",
+      "noCardsTitle": "Sin Tarjetas de Sonido Detectadas",
+      "noCardsDesc": "No se encontraron tarjetas de sonido ALSA en este sistema.",
+      "activeProcesses": "Procesos Vinculados:",
       "quadrant1": "1. VIRTUAL PLAYOUT (INGESTA SOFTWARE)",
-      "quadrant2": "2. HARDWARE OUTPUTS (SALIDA FÍSICA)",
+      "quadrant2": "2. SALIDAS FÍSICAS (HARDWARE)",
       "quadrant3": "3. VIRTUAL CAPTURE (INGESTA FFMPEG)",
-      "quadrant4": "4. HARDWARE INPUTS (ENTRADA FÍSICA)",
-      "noControls": "Sin controles detectados en este cuadrante",
-      "selectCard": "Seleccionar Tarjeta de Sonido / Dispositivo de Audio",
-      "systemClockTitle": "Reloj de Audio y Sincronización Maestra",
-      "jackSensing": "Detección Automática de Conectores Jack"
+      "quadrant4": "4. ENTRADAS FÍSICAS (HARDWARE)",
+      "noControls": "Sin controles en este cuadrante",
+      "selectCard": "Tarjeta de Sonido:",
+      "systemClockTitle": "Reloj de Audio y Sincronización",
+      "jackSensing": "Estado Jack Sensing:"
     },
     "watchdog": {
       "title": "WATCHDOG Y TIEMPOS DE ARRANQUE",
