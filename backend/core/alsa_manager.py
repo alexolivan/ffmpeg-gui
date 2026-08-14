@@ -310,6 +310,16 @@ class AlsaManager:
                 else:
                     topology["global_controls"].append(group)
 
+            # Ensure virtual_playout contains a virtual PCM stream node (Master / PCM 0) for software process binding (FFmpeg: foo)
+            if not topology["virtual_playout"]:
+                topology["virtual_playout"].append({
+                    "id": f"virtual_playout_PCM_{card_idx}",
+                    "name": "Master",
+                    "category": "virtual_playout",
+                    "controls": [],
+                    "meters": []
+                })
+
         except Exception as e:
             logger.error(f"Error in amixer contents fallback parser for card {card_idx}: {e}")
 
