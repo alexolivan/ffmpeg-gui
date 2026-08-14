@@ -2,14 +2,52 @@ import sqlite3
 import json
 import os
 import sys
+import configparser
 
-def migrate():
-    # Permitir pasar la ruta de la base de datos como argumento o usar la por defecto
-    db_path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("DATABASE_PATH", "backend/ffmpeg_gui.db")
-    
+def get_candidate_db_paths():
+    paths = []
+    if len(sys.argv) > 1:
+        paths.append(sys.argv[1])
+    if os.environ.get("DATABASE_PATH"):
+        paths.append(os.environ["DATABASE_PATH"])
+        
+    config_paths = [
+        "/etc/ffmpeg-gui/ffmpeg-gui.conf",
+        os.path.expanduser("~/.config/ffmpeg-gui/ffmpeg-gui.conf"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ffmpeg-gui.conf")
+    ]
+    for cp in config_paths:
+        if os.path.exists(cp):
+            try:
+                cfg = configparser.ConfigParser()
+                cfg.read(cp)
+                if "server" in cfg and "database" in cfg["server"]:
+                    conf_db = os.path.abspath(cfg["server"]["database"])
+                    if conf_db not in paths:
+                        paths.append(conf_db)
+            except Exception as e:
+                print(f"Error leyendo {cp}: {e}")
+                
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    default_db = os.path.join(base_dir, "ffmpeg_gui.db")
+    if default_db not in paths:
+        paths.append(default_db)
+        
+    extra_candidates = [
+        "/etc/ffmpeg-gui/ffmpeg_gui.db",
+        "/var/lib/ffmpeg-gui/ffmpeg_gui.db",
+        os.path.expanduser("~/.config/ffmpeg-gui/ffmpeg_gui.db"),
+    ]
+    for ec in extra_candidates:
+        if os.path.exists(ec) and ec not in paths:
+            paths.append(ec)
+            
+    existing_paths = [p for p in paths if os.path.exists(p)]
+    return existing_paths if existing_paths else [default_db]
+
+def migrate_db_file(db_path):
     if not os.path.exists(db_path):
-        # Si no existe la BD, no hay nada que migrar, se creará limpia en la primera ejecución
-        print(f"Base de datos no encontrada en: {db_path}. Se creará limpia.")
+        print(f"Base de datos no encontrada en: {db_path}. Se omitirá.")
         return True
         
     print(f"Iniciando migración en: {db_path}")
@@ -31,21 +69,17 @@ def migrate():
         elif has_ffmpeg_builds and has_software_builds:
             print("Ambas tablas existen. Copiando datos de ffmpeg_builds a software_builds...")
             
-            # Obtener columnas de software_builds para asegurar mapeo correcto
             cursor.execute("PRAGMA table_info(software_builds)")
             target_cols = [row[1] for row in cursor.fetchall()]
             
             cursor.execute("PRAGMA table_info(ffmpeg_builds)")
             src_cols = [row[1] for row in cursor.fetchall()]
             
-            # Copiar registros individuales
             cursor.execute("SELECT * FROM ffmpeg_builds")
             rows = cursor.fetchall()
             for row in rows:
-                # Mapear valores por índice de columna de origen
                 row_dict = dict(zip(src_cols, row))
                 
-                # Preparar valores para insertar
                 insert_data = {
                     "id": row_dict.get("id"),
                     "name": row_dict.get("name"),
@@ -65,7 +99,6 @@ def migrate():
                     "storage_id": row_dict.get("storage_id"),
                 }
                 
-                # srt_version a build_options
                 try:
                     opts = json.loads(row_dict.get("build_options") or '{}')
                 except Exception:
@@ -75,7 +108,6 @@ def migrate():
                 insert_data["build_options"] = json.dumps(opts)
                 insert_data["sdk_paths"] = row_dict.get("sdk_paths")
                 
-                # Ignorar si ya existe el ID en software_builds
                 cursor.execute("SELECT id FROM software_builds WHERE id = ?", (insert_data["id"],))
                 if not cursor.fetchone():
                     cols_str = ", ".join(insert_data.keys())
@@ -85,7 +117,6 @@ def migrate():
                         tuple(insert_data.values())
                     )
             
-            # Borrar tabla antigua
             cursor.execute("DROP TABLE ffmpeg_builds")
             conn.commit()
             print("Copia completada y tabla ffmpeg_builds eliminada.")
@@ -96,7 +127,6 @@ def migrate():
             cursor.execute("PRAGMA table_info(software_builds)")
             columns = [row[1] for row in cursor.fetchall()]
             
-            # 3. Añadir columnas genéricas limpias si no existen
             if "software_type" not in columns:
                 print("Añadiendo columna: software_type...")
                 cursor.execute("ALTER TABLE software_builds ADD COLUMN software_type TEXT DEFAULT 'ffmpeg'")
@@ -111,15 +141,12 @@ def migrate():
                 cursor.execute("ALTER TABLE software_builds ADD COLUMN version_output TEXT DEFAULT NULL")
             conn.commit()
             
-            # 4. Volver a leer la info de columnas para mapear datos
             cursor.execute("PRAGMA table_info(software_builds)")
             columns = [row[1] for row in cursor.fetchall()]
             
-            # 5. Mapear y migrar datos de ffmpeg a campos genéricos
             cursor.execute("SELECT id, build_options FROM software_builds")
             builds = cursor.fetchall()
             
-            # Solo mapeamos desde columnas viejas si aún existen en la tabla
             has_ffmpeg_version = "ffmpeg_version" in columns
             has_ffmpeg_binary = "ffmpeg_binary" in columns
             has_ffmpeg_version_output = "ffmpeg_version_output" in columns
@@ -140,13 +167,11 @@ def migrate():
                     cursor.execute("SELECT srt_version FROM software_builds WHERE id = ?", (build_id,))
                     srt_ver = cursor.fetchone()[0]
                     
-                # Actualizar columnas genéricas
                 cursor.execute(
-                    "UPDATE software_builds SET version_tag = ?, binary_path = ?, version_output = ? WHERE id = ?",
+                    "UPDATE software_builds SET version_tag = COALESCE(version_tag, ?), binary_path = COALESCE(binary_path, ?), version_output = COALESCE(version_output, ?) WHERE id = ?",
                     (ff_ver, ff_bin, ff_ver_out, build_id)
                 )
                 
-                # Integrar srt_version dentro del JSON build_options
                 if srt_ver:
                     try:
                         opts = json.loads(build_opts_str or '{}')
@@ -160,8 +185,6 @@ def migrate():
                     
             conn.commit()
 
-            # 6. Opcionalmente, eliminar columnas legacy obsoletas si existen
-            # En SQLite 3.35.0+ es seguro hacer ALTER TABLE DROP COLUMN
             for col_to_drop in ["ffmpeg_version", "ffmpeg_binary", "ffmpeg_version_output", "srt_version"]:
                 if col_to_drop in columns:
                     try:
@@ -169,16 +192,26 @@ def migrate():
                         cursor.execute(f"ALTER TABLE software_builds DROP COLUMN {col_to_drop}")
                         conn.commit()
                     except Exception as drop_err:
-                        print(f"Advertencia: No se pudo eliminar la columna {col_to_drop} (seguramente versión antigua de SQLite): {drop_err}")
+                        print(f"Advertencia: No se pudo eliminar la columna {col_to_drop}: {drop_err}")
 
-        print("Migración de datos completada con éxito.")
+        print(f"Migración completada con éxito en {db_path}.")
         return True
     except Exception as e:
-        print(f"ERROR durante la migración: {e}")
+        print(f"ERROR durante la migración en {db_path}: {e}")
         conn.rollback()
         return False
     finally:
         conn.close()
+
+def migrate():
+    db_paths = get_candidate_db_paths()
+    print(f"Bases de datos candidatas a migrar: {db_paths}")
+    success_all = True
+    for db_path in db_paths:
+        res = migrate_db_file(db_path)
+        if not res:
+            success_all = False
+    return success_all
 
 if __name__ == "__main__":
     success = migrate()

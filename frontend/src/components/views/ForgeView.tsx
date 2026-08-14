@@ -196,7 +196,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 
   useEffect(() => {
     if ((showSdksModal || storages.length === 0) && API !== undefined) {
-      fetch(`${API}/storages`)
+      fetch(`${API}/settings/storages`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) setStorages(data);
