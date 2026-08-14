@@ -139,82 +139,101 @@ interface GroupedOutputNode {
   hasMatrixControls: boolean;
 }
 
-const groupHardwareOutputs = (groups?: AlsaGroup[]): GroupedOutputNode[] => {
+const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): GroupedOutputNode[] => {
   if (!groups || groups.length === 0) return [];
 
-  const grouped: GroupedOutputNode[] = [];
-  const processedIds = new Set<string>();
+  const isAudioScience = (cardDriver || '').toLowerCase().includes('asi') || groups.some(g => /^line\s+\d+$/i.test(g.name));
 
-  const isMasterCandidate = (name: string) => {
-    const n = name.toLowerCase().trim();
-    if (/^line\s+\d+$/i.test(n)) return true;
-    if (n === 'line out' || n === 'front' || n === 'master' || n === 'master out' || n === 'main') return true;
-    return false;
+  if (isAudioScience) {
+    const grouped: GroupedOutputNode[] = [];
+    const processedIds = new Set<string>();
+
+    const getChannelIndex = (name: string): number | null => {
+      const m = name.match(/\d+/);
+      return m ? parseInt(m[0], 10) : null;
+    };
+
+    groups.forEach((g) => {
+      if (processedIds.has(g.id)) return;
+
+      if (/^line\s+\d+$/i.test(g.name)) {
+        processedIds.add(g.id);
+        const chIdx = getChannelIndex(g.name);
+        const slaves: AlsaGroup[] = [];
+
+        groups.forEach((other) => {
+          if (processedIds.has(other.id) || other.id === g.id) return;
+          const otherIdx = getChannelIndex(other.name);
+
+          if (chIdx !== null && otherIdx !== null && chIdx === otherIdx) {
+            slaves.push(other);
+            processedIds.add(other.id);
+          }
+        });
+
+        const hasMatrixControls = (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0));
+
+        grouped.push({
+          id: g.id,
+          masterGroup: g,
+          slaveGroups: slaves,
+          hasMatrixControls
+        });
+      }
+    });
+
+    groups.forEach((g) => {
+      if (!processedIds.has(g.id)) {
+        processedIds.add(g.id);
+        const hasMatrixControls = (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0));
+        grouped.push({
+          id: g.id,
+          masterGroup: g,
+          slaveGroups: [],
+          hasMatrixControls
+        });
+      }
+    });
+
+    return grouped;
+  }
+
+  // Unified Single Master Mixer Node for Intel HDA / Realtek / Consumer Soundcards
+  const isPhysicalEndpoint = (g: AlsaGroup) => {
+    const n = g.name.toLowerCase().trim();
+    return n === 'line out' || n === 'front' || n.includes('headphone') || n.includes('speaker') || n.includes('surround') || n.includes('center') || n.includes('lfe') || n.includes('clfe') || n.includes('side') || n.includes('rear') || n.includes('spdif') || n.includes('iec958');
   };
 
-  const getChannelIndex = (name: string): number | null => {
-    const m = name.match(/\d+/);
-    return m ? parseInt(m[0], 10) : null;
+  const physicalEndpoints = groups.filter(isPhysicalEndpoint);
+  const validEndpoints = physicalEndpoints.length > 0 ? physicalEndpoints : groups;
+
+  const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out' || g.name.toLowerCase().trim() === 'front') || validEndpoints[0];
+  const slaveEndpoints = validEndpoints.filter(g => g.id !== masterEndpoint.id);
+
+  const allCardMatrixControls: AlsaControl[] = [];
+  const controlNumids = new Set<number>();
+
+  groups.forEach(g => {
+    (g.controls || []).forEach(ctrl => {
+      if (!controlNumids.has(ctrl.numid)) {
+        controlNumids.add(ctrl.numid);
+        allCardMatrixControls.push(ctrl);
+      }
+    });
+  });
+
+  const unifiedMasterNode: AlsaGroup = {
+    ...masterEndpoint,
+    name: masterEndpoint.name.toLowerCase().trim() === 'master' ? 'Master' : masterEndpoint.name,
+    controls: allCardMatrixControls
   };
 
-  groups.forEach((g) => {
-    if (processedIds.has(g.id)) return;
-
-    if (isMasterCandidate(g.name)) {
-      processedIds.add(g.id);
-      const chIdx = getChannelIndex(g.name);
-      const slaves: AlsaGroup[] = [];
-
-      groups.forEach((other) => {
-        if (processedIds.has(other.id) || other.id === g.id) return;
-        const otherIdx = getChannelIndex(other.name);
-        const otherLower = other.name.toLowerCase().trim();
-
-        if (chIdx !== null && otherIdx !== null && chIdx === otherIdx) {
-          slaves.push(other);
-          processedIds.add(other.id);
-        } else if (chIdx === null && (
-          otherLower.includes('headphone') ||
-          otherLower.includes('speaker') ||
-          otherLower.includes('spdif') ||
-          otherLower.includes('iec958') ||
-          otherLower.includes('surround') ||
-          otherLower.includes('center') ||
-          otherLower.includes('lfe') ||
-          otherLower.includes('clfe') ||
-          otherLower.includes('side') ||
-          otherLower.includes('rear')
-        )) {
-          slaves.push(other);
-          processedIds.add(other.id);
-        }
-      });
-
-      const hasMatrixControls = (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0));
-
-      grouped.push({
-        id: g.id,
-        masterGroup: g,
-        slaveGroups: slaves,
-        hasMatrixControls
-      });
-    }
-  });
-
-  groups.forEach((g) => {
-    if (!processedIds.has(g.id)) {
-      processedIds.add(g.id);
-      const hasMatrixControls = (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0));
-      grouped.push({
-        id: g.id,
-        masterGroup: g,
-        slaveGroups: [],
-        hasMatrixControls
-      });
-    }
-  });
-
-  return grouped;
+  return [{
+    id: 'unified_master_mixer',
+    masterGroup: unifiedMasterNode,
+    slaveGroups: slaveEndpoints,
+    hasMatrixControls: allCardMatrixControls.length > 0
+  }];
 };
 
 const AlsaMatrixRoutingModal: React.FC<{
@@ -689,7 +708,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         {/* TOP-RIGHT: HARDWARE OUTPUTS */}
         <div className="lg:col-span-5 space-y-3">
           <div className="space-y-3">
-            {groupHardwareOutputs(topology?.hardware_outputs).map((node) => (
+            {groupHardwareOutputs(topology?.hardware_outputs, cards.find(c => c.card_index === selectedCardIdx)?.driver).map((node) => (
               <div 
                 key={node.id} 
                 className="bg-[var(--input-bg)]/40 border border-[var(--glass-border)] rounded-xl p-3 space-y-2.5 shadow-sm hover:border-brand-orange/30 transition-all"
