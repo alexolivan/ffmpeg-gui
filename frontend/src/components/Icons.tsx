@@ -461,4 +461,60 @@ export const PackageIcon: React.FC<IconProps> = ({ size = 18, className = '', ..
   </svg>
 );
 
+export const StarIcon: React.FC<IconProps> = ({ size = 16, className = '', ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+);
+
+export const CheckIcon: React.FC<IconProps> = ({ size = 16, className = '', ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+export const BroomIcon: React.FC<IconProps> = ({ size = 16, className = '', ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <path d="M3 21l9-9" />
+    <path d="M12.22 9.78l5.56-5.56a2.5 2.5 0 0 1 3.54 3.54l-5.56 5.56" />
+    <path d="M10.5 13.5L4.5 19.5" />
+  </svg>
+);
+
 

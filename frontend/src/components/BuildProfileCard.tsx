@@ -1,6 +1,16 @@
 
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { 
+  PlayIcon, 
+  StopIcon, 
+  PencilIcon, 
+  TrashIcon, 
+  ExportIcon,
+  StarIcon,
+  CheckIcon,
+  BroomIcon
+} from './Icons'
 
 export interface BuildProfile {
   id: number
@@ -220,64 +230,112 @@ export default function BuildProfileCard({
         )}
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* Iconic Action Buttons Bar */}
+      <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-white/5">
+        {/* Compile / Abort Button */}
         {build.status === 'building' ? (
           <button
             onClick={() => onStop(build.id)}
-            className="pill-button bg-red-500/20 text-red-400 text-xs animate-pulse"
-          >{t('forge.abort', 'ABORT')}</button>
+            title={t('forge.abort', 'ABORT')}
+            className="w-9 h-9 rounded-xl bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 flex items-center justify-center transition-all hover:scale-105 animate-pulse"
+          >
+            <StopIcon size={16} />
+          </button>
         ) : (
           <button
             onClick={() => !hasMissingSdk && onCompile(build.id)}
             disabled={isAnyBuilding || hasMissingSdk}
-            title={hasMissingSdk ? t('forge.missingSdkCompileTooltip', 'Required SDK version is missing and must be uploaded via Manage SDKs.') : undefined}
-            className={`pill-button text-xs transition-all ${
+            title={hasMissingSdk ? t('forge.missingSdkCompileTooltip', 'Required SDK version is missing and must be uploaded via Manage SDKs.') : (build.status === 'ready' ? t('forge.recompile', 'RECOMPILE') : build.status === 'failed' ? t('forge.retryBuild', 'RETRY BUILD') : t('forge.compile', 'COMPILE'))}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ${
               isAnyBuilding || hasMissingSdk
-                ? 'opacity-40 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
+                ? 'opacity-40 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]'
                 : build.status === 'failed' 
                   ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' 
-                  : 'bg-brand-orange/20 text-brand-orange hover:bg-brand-orange/30'
+                  : 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 hover:bg-brand-orange/30'
             }`}
           >
-            {build.status === 'ready' ? t('forge.recompile', 'RECOMPILE') : build.status === 'failed' ? t('forge.retryBuild', 'RETRY BUILD') : t('forge.compile', 'COMPILE')}
+            <PlayIcon size={16} />
           </button>
         )}
 
         {build.status === 'ready' && (
           <>
-            <button onClick={() => onValidate(build.id)}
-              className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:border-brand-lime/40">{t('forge.validate', 'VALIDATE')}</button>
+            {/* Validate Button */}
+            <button 
+              onClick={() => onValidate(build.id)}
+              title={t('forge.validate', 'VALIDATE')}
+              className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
+            >
+              <CheckIcon size={16} />
+            </button>
+
+            {/* Clean Src Button */}
             {!build.sources_cleaned && (
-              <button onClick={() => onCleanSources(build.id)}
-                className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:border-brand-lime/40">{t('forge.cleanSrc', 'CLEAN SRC')}</button>
+              <button 
+                onClick={() => onCleanSources(build.id)}
+                title={t('forge.cleanSrc', 'CLEAN SRC')}
+                className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
+              >
+                <BroomIcon size={16} />
+              </button>
             )}
+
+            {/* Set Default Button */}
             {!build.is_default && (
-              <button onClick={() => onSetDefault(build.id)}
-                className="pill-button bg-brand-lime/10 text-brand-lime text-xs hover:bg-brand-lime/20 border border-brand-lime/30">{t('common.setDefault', 'SET DEFAULT')}</button>
+              <button 
+                onClick={() => onSetDefault(build.id)}
+                title={t('common.setDefault', 'SET DEFAULT')}
+                className="w-9 h-9 rounded-xl bg-brand-lime/10 text-brand-lime hover:bg-brand-lime/20 border border-brand-lime/30 flex items-center justify-center transition-all hover:scale-105"
+              >
+                <StarIcon size={16} />
+              </button>
             )}
           </>
         )}
 
+        {/* View Logs Button */}
         {(build.status === 'building' || build.status === 'ready' || build.status === 'failed') && (
-          <button onClick={() => onViewLogs(build.id)}
-            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:border-brand-lime/40">{t('forge.viewLogs', 'VIEW LOGS')}</button>
+          <button 
+            onClick={() => onViewLogs(build.id)}
+            title={t('forge.viewLogs', 'VIEW LOGS')}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
+          >
+            📜
+          </button>
         )}
 
-        <button onClick={() => onExport(build.id)}
-          className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:border-brand-lime/40">{t('forge.exportRecipe', 'EXPORT RECIPE')}</button>
+        {/* Export Recipe Button */}
+        <button 
+          onClick={() => onExport(build.id)}
+          title={t('forge.exportRecipe', 'EXPORT RECIPE')}
+          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
+        >
+          <ExportIcon size={16} />
+        </button>
 
+        {/* Edit Button */}
         <button
           onClick={() => onEdit(build)}
           disabled={build.status === 'building'}
-          className={`pill-button text-xs ml-auto ${build.status === 'building' ? 'opacity-30 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary' : 'bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40'}`}
+          title={t('common.edit', 'EDIT')}
+          className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ml-auto ${
+            build.status === 'building' 
+              ? 'opacity-30 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]' 
+              : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 hover:border-brand-lime/40'
+          }`}
         >
-          {t('common.edit', 'EDIT')}
+          <PencilIcon size={16} />
         </button>
 
+        {/* Delete Button */}
         {build.status !== 'building' && (
-          <button onClick={() => onDelete(build.id)}
-            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs hover:bg-red-500/10 hover:text-red-400">{t('common.delete', 'DELETE')}</button>
+          <button 
+            onClick={() => onDelete(build.id)}
+            title={t('common.delete', 'DELETE')}
+            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105"
+          >
+            <TrashIcon size={16} />
+          </button>
         )}
       </div>
     </div>

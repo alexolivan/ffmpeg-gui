@@ -527,20 +527,20 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                                 {t('tasks.nextExecutionLabel', 'Next execution:')} <strong className="text-brand-orange">{new Date(task.next_run).toLocaleString()}</strong>
                               </p>
                             )}
+                            {exec && !isRunning && (
+                              <p className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution:')}</span>
+                                <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${getStatusBadgeClass(exec.status)}`}>
+                                  {exec.status}
+                                </span>
+                              </p>
+                            )}
                           </>
                         )}
                       </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      {exec && !isRunning ? (
-                        <div className="text-right hidden lg:block mr-2">
-                          <div className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution')}</div>
-                          <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md mt-1 ${getStatusBadgeClass(exec.status)}`}>
-                            {exec.status}
-                          </span>
-                        </div>
-                      ) : null}
 
                       <button 
                         disabled={taskTriggerPending[task.id]}
@@ -772,9 +772,12 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                                 {t('tasks.cronExpressionLabel', 'Cron Expression:')} <code className="text-text-secondary font-mono">{task.schedule_cron}</code>
                               </p>
                             )}
-                            {task.schedule_type === 'one_shot' && (
-                              <p>
-                                {t('tasks.targetDateLabel', 'Target Date:')} <strong className="text-text-secondary">{new Date(task.schedule_datetime).toLocaleString()}</strong>
+                            {exec && !isRunning && (
+                              <p className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution:')}</span>
+                                <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${getStatusBadgeClass(exec.status)}`}>
+                                  {exec.status}
+                                </span>
                               </p>
                             )}
                           </>
@@ -783,14 +786,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      {exec && !isRunning ? (
-                        <div className="text-right hidden lg:block mr-2">
-                          <div className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution')}</div>
-                          <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md mt-1 ${getStatusBadgeClass(exec.status)}`}>
-                            {exec.status}
-                          </span>
-                        </div>
-                      ) : null}
 
                       <button 
                         disabled={taskTriggerPending[task.id]}
