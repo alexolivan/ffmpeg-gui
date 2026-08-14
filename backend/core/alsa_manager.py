@@ -176,14 +176,21 @@ class AlsaManager:
                 category = "global_controls"
             elif any(k in name_lower for k in ["clock", "localrate", "rate", "sync", "pll"]):
                 category = "system_clock"
-            elif any(k in name_lower for k in ["master", "pcm"]) and "playback" in name_lower or name_lower == "master":
+            elif "master" in name_lower and ("playback" in name_lower or name_lower == "master"):
+                # Master Playback controls the physical hardware output mixer!
+                category = "hardware_outputs"
+                group = "Master"
+            elif any(k in name_lower for k in ["mic", "line", "aux", "cd", "input"]) and "playback" in name_lower:
+                # Input monitoring controls (e.g. Front Mic Playback Volume, Line Playback Switch)
+                # regulate input pass-through into the hardware output mixer!
+                category = "hardware_outputs"
+                input_src = "Mic" if "mic" in name_lower else "Line" if "line" in name_lower else "Aux" if "aux" in name_lower else "CD"
+                matrix_source = f"{group} (Monitor)" if group != "General" else f"{input_src} (Monitor)"
+            elif "pcm" in name_lower and "playback" in name_lower:
                 category = "virtual_playout"
-                if "master" in name_lower:
-                    group = "Master"
             elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
                 category = "virtual_capture"
             elif any(k in name_lower for k in ["line", "digital", "aux", "spdif", "aes"]):
-                # Physical hardware connector lines (Line, Line Out, Digital, Aux, S/PDIF, AES)
                 if re.search(r'\b(out|output|playback)\b', name_lower):
                     category = "hardware_outputs"
                 else:
@@ -197,7 +204,7 @@ class AlsaManager:
                 category = "virtual_capture"
                 group = f"Capture {index}"
             elif "playback" in name_lower:
-                category = "virtual_playout" if "pcm" in name_lower else "hardware_outputs"
+                category = "hardware_outputs"
             else:
                 category = "hardware_inputs" if "in" in name_lower else "hardware_outputs"
 

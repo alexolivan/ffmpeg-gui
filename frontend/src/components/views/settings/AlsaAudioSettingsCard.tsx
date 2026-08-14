@@ -148,7 +148,7 @@ const groupHardwareOutputs = (groups?: AlsaGroup[]): GroupedOutputNode[] => {
   const isMasterCandidate = (name: string) => {
     const n = name.toLowerCase().trim();
     if (/^line\s+\d+$/i.test(n)) return true;
-    if (n === 'line out' || n === 'front' || n === 'master out' || n === 'main') return true;
+    if (n === 'line out' || n === 'front' || n === 'master' || n === 'master out' || n === 'main') return true;
     return false;
   };
 
