@@ -920,7 +920,12 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 </div>
 
                 {/* Parallel Branch Tree */}
-                <div className="space-y-2 relative pl-2">
+                <div className="space-y-2 relative pl-3">
+                  {/* Continuous Trunk Line connecting Mixer Header to Slaves */}
+                  {node.slaveGroups.length > 0 && (
+                    <div className="absolute left-0 top-0 bottom-5 w-0.5 bg-brand-orange/40" />
+                  )}
+
                   {/* Master Endpoint Strip */}
                   <AlsaSkewerChannelStrip
                     group={node.masterGroup}
@@ -936,15 +941,13 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                   {node.slaveGroups.map((slave, slaveIdx) => {
                     const isLastSlave = slaveIdx === node.slaveGroups.length - 1;
                     return (
-                      <div key={slave.id} className="relative pl-4">
-                        {/* Branch line connector from mixer header */}
-                        <div
-                          className={`absolute left-0 top-0 w-3 border-b-2 border-brand-orange/40 ${
-                            isLastSlave
-                              ? 'h-5 border-l-2 rounded-bl-md'
-                              : 'h-full border-l-2'
-                          }`}
-                        />
+                      <div key={slave.id} className="relative pl-2">
+                        {/* Branch line connector from trunk line */}
+                        {isLastSlave ? (
+                          <div className="absolute -left-3 top-0 h-5 w-3 border-l-2 border-b-2 border-brand-orange/40 rounded-bl-md" />
+                        ) : (
+                          <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-3 h-0.5 bg-brand-orange/40" />
+                        )}
                         <AlsaSkewerChannelStrip
                           group={slave}
                           activeProcesses={getGroupProcesses(slave, topology?.active_processes)}
