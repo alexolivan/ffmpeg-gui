@@ -292,33 +292,49 @@ const AlsaMatrixRoutingModal: React.FC<{
   onControlChange: (numid: number, values: any[]) => void;
 }> = ({ group, onClose, onControlChange }) => {
   const { t } = useTranslation();
+  const [modalLinked, setModalLinked] = useState<Record<number, boolean>>({});
   const controlsToRender: AlsaControl[] = (group as any).matrixControls || group.controls || [];
 
-  const volumeControls = controlsToRender.filter(c => c.ctrl_type === 'volume' || (c.min !== undefined && c.max !== undefined && c.max > c.min));
+  // Build matrixSourcesMap grouping controls into source channels (vol + mute pairs)
+  const matrixSourcesMap: Record<string, { vol?: AlsaControl; mute?: AlsaControl }> = {};
+  const standaloneControls: AlsaControl[] = [];
 
-  // Helper to find matching Mute/Switch control for a volume control
-  const findMatchingMute = (volCtrl: AlsaControl): AlsaControl | undefined => {
-    const baseName = volCtrl.name.toLowerCase().replace(/\s+(volume|gain)\b/i, '').trim();
-    return controlsToRender.find(c => {
-      if (c.numid === volCtrl.numid) return false;
-      const cName = c.name.toLowerCase().trim();
-      return (cName.includes(baseName) || baseName.includes(cName)) && 
-             (c.ctrl_type === 'mute' || c.ctrl_type === 'switch' || cName.includes('switch') || cName.includes('mute'));
-    });
-  };
+  controlsToRender.forEach((c) => {
+    if (!c) return;
 
-  // Collect paired mute control numids to exclude from top rack
-  const pairedMuteNumids = new Set<number>();
-  volumeControls.forEach(vol => {
-    const mute = findMatchingMute(vol);
-    if (mute) pairedMuteNumids.add(mute.numid);
+    const isVol = c.ctrl_type === 'volume' || c.ctrl_type === 'integer' || c.name.toLowerCase().includes('volume') || c.name.toLowerCase().includes('level');
+    const isMute = c.ctrl_type === 'mute' || c.ctrl_type === 'switch' || c.name.toLowerCase().includes('switch') || c.name.toLowerCase().includes('mute');
+
+    if (!isVol && !isMute) {
+      standaloneControls.push(c);
+      return;
+    }
+
+    let src = c.matrix_source;
+    if (!src) {
+      const isMon = c.name.toLowerCase().includes('monitor') || c.name.toLowerCase().includes('playback');
+      const cleaned = c.name
+        .replace(/Playback/gi, '')
+        .replace(/Volume/gi, '')
+        .replace(/Switch/gi, '')
+        .replace(/Mute/gi, '')
+        .replace(/Gain/gi, '')
+        .replace(/Control/gi, '')
+        .trim();
+
+      src = cleaned ? (isMon ? `${cleaned} (Mon)` : cleaned) : group.name;
+    }
+
+    if (!matrixSourcesMap[src]) matrixSourcesMap[src] = {};
+
+    if (isVol) {
+      matrixSourcesMap[src].vol = c;
+    } else if (isMute) {
+      matrixSourcesMap[src].mute = c;
+    }
   });
 
-  const enumAndSwitchControls = controlsToRender.filter(c => 
-    !pairedMuteNumids.has(c.numid) && 
-    !volumeControls.some(v => v.numid === c.numid) &&
-    (c.ctrl_type === 'enum' || c.ctrl_type === 'route' || c.ctrl_type === 'mute' || c.ctrl_type === 'switch' || (c.items && c.items.length > 0))
-  );
+  const matrixEntries = Object.entries(matrixSourcesMap);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
@@ -348,14 +364,14 @@ const AlsaMatrixRoutingModal: React.FC<{
 
         {/* Console Body */}
         <div className="p-6 overflow-y-auto space-y-6 custom-scrollbar">
-          {/* Top Rack: Unpaired Switches & Matrix Routing Selectors */}
-          {enumAndSwitchControls.length > 0 && (
+          {/* Top Rack: Standalone Selectors & Switches */}
+          {standaloneControls.length > 0 && (
             <div className="space-y-2">
               <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-[var(--text-secondary)]">
                 🎚️ {t('settings.alsa.routingRack', 'MATRIX ROUTING & SWITCH RACK')}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {enumAndSwitchControls.map((ctrl) => {
+                {standaloneControls.map((ctrl) => {
                   const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
                   const currentVal = ctrl.values?.[0] ?? 0;
 
@@ -401,59 +417,97 @@ const AlsaMatrixRoutingModal: React.FC<{
             </div>
           )}
 
-          {/* Fader Rack: Vertical Console Channels with Foot Mute Buttons & Horizontal Scroll */}
-          {volumeControls.length > 0 && (
+          {/* Fader Console: Vertical Channel Strips with L/R Stereo Faders, Link Buttons, and Foot Mutes */}
+          {matrixEntries.length > 0 && (
             <div className="space-y-2">
               <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-[var(--text-secondary)] flex items-center justify-between">
                 <span>🎛️ {t('settings.alsa.faderConsole', 'BROADCAST CROSSPOINT GAIN CONSOLE')}</span>
-                <span className="text-[9px] opacity-75">({volumeControls.length} CHANNELS)</span>
+                <span className="text-[9px] opacity-75">({matrixEntries.length} CHANNELS)</span>
               </div>
               
-              <div className="flex items-start gap-4 overflow-x-auto pb-4 pt-1 px-1 custom-scrollbar max-w-full">
-                {volumeControls.map((ctrl) => {
-                  const currentVal = ctrl.values?.[0] ?? 0;
-                  const displayDb = formatControlValue(ctrl, currentVal);
-                  const matchingMute = findMatchingMute(ctrl);
-                  const isMuted = matchingMute ? (matchingMute.values?.[0] === 0 || matchingMute.values?.[0] === false) : false;
+              <div className="flex items-end justify-start gap-4 overflow-x-auto pb-4 pt-1 px-1 custom-scrollbar max-w-full">
+                {matrixEntries.map(([srcName, ctrlPair]) => {
+                  const volCtrl = ctrlPair.vol;
+                  const muteCtrl = ctrlPair.mute;
+
+                  const volValL = volCtrl?.values?.[0] ?? 0;
+                  const volValR = volCtrl?.channels && volCtrl.channels > 1 ? (volCtrl.values?.[1] ?? volValL) : volValL;
+                  const isMuted = muteCtrl ? (muteCtrl.values?.[0] === 0 || muteCtrl.values?.[0] === false) : false;
+                  const isStereo = (volCtrl?.channels ?? 1) > 1;
+
+                  const isLinked = volCtrl ? (modalLinked[volCtrl.numid] !== false) : true;
+                  const toggleChannelLink = (numid: number) => {
+                    setModalLinked(prev => ({ ...prev, [numid]: !isLinked }));
+                  };
 
                   return (
                     <div
-                      key={ctrl.numid}
-                      className="bg-[var(--input-bg)]/90 border border-[var(--glass-border)] rounded-2xl p-3.5 flex flex-col items-center gap-2.5 shrink-0 w-32 shadow-md hover:border-brand-orange/40 transition-all"
+                      key={srcName}
+                      className="bg-[var(--input-bg)]/90 border border-[var(--glass-border)] rounded-2xl p-3 flex flex-col items-center gap-2 shrink-0 min-w-[105px] shadow-md hover:border-brand-orange/40 transition-all"
                     >
-                      {/* Channel Header */}
-                      <div className="text-center w-full min-h-[34px] flex flex-col justify-center border-b border-[var(--glass-border)]/40 pb-1.5">
-                        <span className="text-[11px] font-bold text-[var(--text-primary)] truncate block" title={ctrl.name}>
-                          {ctrl.name.replace(/\s+(volume|gain)\b/i, '')}
+                      {/* Channel Source Header */}
+                      <div className="text-center w-full min-h-[34px] flex flex-col justify-center border-b border-[var(--glass-border)]/40 pb-1">
+                        <span className="text-[11px] font-bold text-brand-lime font-mono truncate block" title={srcName}>
+                          {srcName}
                         </span>
-                        {ctrl.matrix_source && (
-                          <span className="text-[9px] text-brand-orange font-mono font-bold block truncate">
-                            {ctrl.matrix_source}
-                          </span>
+                      </div>
+
+                      {/* Formatted dB / Readout Badge */}
+                      <div className="text-[10px] font-mono font-bold text-[var(--text-primary)] px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--glass-border)] shadow-inner text-center w-full">
+                        {formatControlValue(volCtrl, volValL)}
+                        {isStereo && !isLinked && (
+                          <span className="text-[9px] text-[var(--text-secondary)] ml-0.5">/{formatControlValue(volCtrl, volValR)}</span>
                         )}
                       </div>
 
-                      {/* dB Readout Badge */}
-                      <div className="px-2 py-1 rounded bg-[var(--bg-card)] border border-[var(--glass-border)] text-xs font-mono font-bold text-brand-lime shadow-inner w-full text-center">
-                        {displayDb}
-                      </div>
+                      {/* Vertical Stereo Fader Pair */}
+                      {volCtrl ? (
+                        <div className="flex flex-col items-center justify-center py-1 gap-1">
+                          {isStereo ? (
+                            <AlsaStereoFaderPair
+                              min={volCtrl.min ?? 0}
+                              max={volCtrl.max ?? 100}
+                              step={volCtrl.step ?? 1}
+                              volValL={volValL}
+                              volValR={volValR}
+                              isLinked={isLinked}
+                              heightClass="h-40"
+                              onChangeCommit={(vals) => {
+                                onControlChange(volCtrl.numid, vals);
+                              }}
+                            />
+                          ) : (
+                            <AlsaFaderUnit
+                              min={volCtrl.min ?? 0}
+                              max={volCtrl.max ?? 100}
+                              step={volCtrl.step ?? 1}
+                              value={volValL}
+                              heightClass="h-40"
+                              onChangeCommit={(v) => {
+                                onControlChange(volCtrl.numid, [v]);
+                              }}
+                            />
+                          )}
 
-                      {/* Vertical Fader Strip */}
-                      <div className="py-1">
-                        <AlsaFaderUnit
-                          min={ctrl.min ?? 0}
-                          max={ctrl.max ?? 100}
-                          step={ctrl.step || 1}
-                          value={currentVal}
-                          onChangeCommit={(val) => onControlChange(ctrl.numid, [val])}
-                          heightClass="h-44"
-                        />
-                      </div>
+                          {/* Stereo L/R Link Toggle */}
+                          {isStereo && (
+                            <button
+                              onClick={() => toggleChannelLink(volCtrl.numid)}
+                              title={isLinked ? 'Unlink L/R Channels' : 'Link L/R Channels'}
+                              className="text-xs hover:scale-110 transition-transform cursor-pointer mt-0.5"
+                            >
+                              {isLinked ? '🔗' : '🔓'}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="h-44 flex items-center justify-center text-xs text-[var(--text-secondary)]/40">N/A</div>
+                      )}
 
-                      {/* Foot Mute Button */}
-                      {matchingMute ? (
+                      {/* Foot Mute Toggle Button */}
+                      {muteCtrl ? (
                         <button
-                          onClick={() => onControlChange(matchingMute.numid, [isMuted ? 1 : 0])}
+                          onClick={() => onControlChange(muteCtrl.numid, [isMuted ? 1 : 0])}
                           className={`w-full py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${
                             !isMuted
                               ? 'bg-brand-lime/20 text-brand-lime border-brand-lime/40 hover:bg-brand-lime/30'
@@ -472,7 +526,7 @@ const AlsaMatrixRoutingModal: React.FC<{
             </div>
           )}
 
-          {controlsToRender.length === 0 && (
+          {matrixEntries.length === 0 && standaloneControls.length === 0 && (
             <div className="text-center py-12 text-xs text-[var(--text-secondary)]">
               {t('settings.alsa.noMatrixControls', 'No matrix routing controls available for this node')}
             </div>
@@ -866,7 +920,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 </div>
 
                 {/* Parallel Branch Tree */}
-                <div className="pl-2 border-l-2 border-brand-orange/40 space-y-2">
+                <div className="space-y-2 relative pl-2">
                   {/* Master Endpoint Strip */}
                   <AlsaSkewerChannelStrip
                     group={node.masterGroup}
@@ -882,12 +936,15 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                   {node.slaveGroups.map((slave, slaveIdx) => {
                     const isLastSlave = slaveIdx === node.slaveGroups.length - 1;
                     return (
-                      <div key={slave.id} className="relative pl-3">
-                        <div className={`absolute -left-2 top-4 w-3 h-0.5 bg-brand-orange/40`} />
-                        <div className="text-[9px] font-mono font-bold text-[var(--text-secondary)] opacity-75 mb-0.5 flex items-center gap-1">
-                          <span className="text-brand-orange font-bold font-mono">{isLastSlave ? '└─' : '├─'}</span>
-                          <span>{t('settings.alsa.slaveEndpoint', 'SLAVE ENDPOINT')} ({t('settings.alsa.cascadedFrom', 'Cascaded from')} {node.masterGroup.name})</span>
-                        </div>
+                      <div key={slave.id} className="relative pl-4">
+                        {/* Branch line connector from mixer header */}
+                        <div
+                          className={`absolute left-0 top-0 w-3 border-b-2 border-brand-orange/40 ${
+                            isLastSlave
+                              ? 'h-5 border-l-2 rounded-bl-md'
+                              : 'h-full border-l-2'
+                          }`}
+                        />
                         <AlsaSkewerChannelStrip
                           group={slave}
                           activeProcesses={getGroupProcesses(slave, topology?.active_processes)}
