@@ -300,8 +300,9 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
     const n = g.name.toLowerCase().trim();
     if (n.includes('mic') || n.includes('input') || n === 'master' || n === 'general') return false;
     return (
-      n === 'line out' ||
-      n === 'front' ||
+      n.includes('line out') ||
+      n.includes('line playback') ||
+      n.includes('front') ||
       n.includes('headphone') ||
       n.includes('speaker') ||
       n.includes('surround') ||
@@ -319,15 +320,15 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
 
   // Root Master Endpoint: 'Line Out' for 2.0 cards, 'Front' for 4.0/5.1 cards
   const rawMasterEndpoint =
-    validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out') ||
-    validEndpoints.find(g => g.name.toLowerCase().trim() === 'front') ||
+    validEndpoints.find(g => g.name.toLowerCase().trim().includes('line out') || g.name.toLowerCase().trim().includes('line playback')) ||
+    validEndpoints.find(g => g.name.toLowerCase().trim().includes('front')) ||
     validEndpoints[0];
 
   // If ALSA reports 'Line Out' with no direct controls on 2.0 cards, merge 'Front' controls (Front Playback Volume) into Line Out
-  const frontGroup = groups.find(g => g.name.toLowerCase().trim() === 'front');
+  const frontGroup = groups.find(g => g.name.toLowerCase().trim().includes('front'));
 
   let masterControls = rawMasterEndpoint.controls || [];
-  if (rawMasterEndpoint.name.toLowerCase().trim() === 'line out' && frontGroup && frontGroup.id !== rawMasterEndpoint.id) {
+  if (rawMasterEndpoint.name.toLowerCase().trim().includes('line') && frontGroup && frontGroup.id !== rawMasterEndpoint.id) {
     const hasLineOutDirect = masterControls.some(c => c && !c.name.toLowerCase().includes('mic'));
     if (!hasLineOutDirect && frontGroup.controls) {
       masterControls = [...masterControls, ...frontGroup.controls];
@@ -343,7 +344,7 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const slaveEndpoints = validEndpoints.filter(g => {
     const gName = g.name.toLowerCase().trim();
     if (g.id === masterEndpoint.id) return false;
-    if (gName === 'front' && masterEndpoint.name.toLowerCase().trim() === 'line out') return false;
+    if (gName.includes('front') && masterEndpoint.name.toLowerCase().trim().includes('line')) return false;
     return true;
   });
 
