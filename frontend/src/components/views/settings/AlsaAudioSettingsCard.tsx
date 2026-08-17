@@ -334,7 +334,7 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   });
 
   // Matrix controls for Intel HDA modal (Master, PCM, Front Mic, Rear Mic, Line In, CD, Aux monitor gains)
-  // Exclude direct physical output volume/switch controls of slave endpoints (Speaker, Headphone, Surround, Center, LFE)
+  // Direct physical output endpoint levels (Front Playback Volume, Surround Playback Volume, Center, LFE, Speaker, Headphone) stay on their channel strips
   const allCardMatrixControls: AlsaControl[] = [];
   const controlNumids = new Set<number>();
 
@@ -344,13 +344,10 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
         const cName = ctrl.name.toLowerCase().trim();
         const isMasterCtrl = cName.includes('master');
 
-        // Check if control is a direct physical output level of a SLAVE endpoint
-        const isSlaveEndpointOutputLevel = validEndpoints.some(ep => {
-          if (ep.id === masterEndpoint.id) return false;
-          return isDirectOutputControl(ctrl, ep.name);
-        });
+        // Check if control is a direct physical output level of ANY endpoint (Front, Surround, Center, LFE, Speaker, Headphone)
+        const isEndpointOutputLevel = validEndpoints.some(ep => isDirectOutputControl(ctrl, ep.name));
 
-        if (isMasterCtrl || !isSlaveEndpointOutputLevel) {
+        if (isMasterCtrl || !isEndpointOutputLevel) {
           controlNumids.add(ctrl.numid);
           allCardMatrixControls.push(ctrl);
         }
@@ -1301,7 +1298,9 @@ const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = React.memo(({
 
   return (
     <div className="flex flex-col items-center gap-1">
-      {label && <span className="text-[9px] font-mono font-bold text-text-secondary">{label}</span>}
+      <span className="text-[9px] font-mono font-bold text-text-secondary select-none">
+        {label || <span className="opacity-0">M</span>}
+      </span>
       <input
         type="range"
         min={minDisplay}
