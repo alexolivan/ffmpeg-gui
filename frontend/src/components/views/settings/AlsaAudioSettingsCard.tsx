@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -344,46 +344,58 @@ const AlsaMatrixRoutingModal: React.FC<{
   const [modalLinked, setModalLinked] = useState<Record<number, boolean>>({});
   const controlsToRender: AlsaControl[] = (group as any).matrixControls || group.controls || [];
 
-  // Build matrixSourcesMap grouping controls into source channels (vol + mute pairs)
-  const matrixSourcesMap: Record<string, { vol?: AlsaControl; mute?: AlsaControl }> = {};
-  const standaloneControls: AlsaControl[] = [];
+  // Build matrixSourcesMap with useMemo for smooth 60fps UI responsiveness and clean AudioScience labels
+  const { matrixSourcesMap, standaloneControls } = useMemo(() => {
+    const map: Record<string, { vol?: AlsaControl; mute?: AlsaControl }> = {};
+    const standalone: AlsaControl[] = [];
 
-  controlsToRender.forEach((c) => {
-    if (!c) return;
+    controlsToRender.forEach((c) => {
+      if (!c) return;
 
-    const isVol = c.ctrl_type === 'volume' || c.ctrl_type === 'integer' || c.name.toLowerCase().includes('volume') || c.name.toLowerCase().includes('level');
-    const isMute = c.ctrl_type === 'mute' || c.ctrl_type === 'switch' || c.name.toLowerCase().includes('switch') || c.name.toLowerCase().includes('mute');
+      const isVol = c.ctrl_type === 'volume' || c.ctrl_type === 'integer' || c.name.toLowerCase().includes('volume') || c.name.toLowerCase().includes('level');
+      const isMute = c.ctrl_type === 'mute' || c.ctrl_type === 'switch' || c.name.toLowerCase().includes('switch') || c.name.toLowerCase().includes('mute');
 
-    if (!isVol && !isMute) {
-      standaloneControls.push(c);
-      return;
-    }
+      if (!isVol && !isMute) {
+        standalone.push(c);
+        return;
+      }
 
-    let src = c.matrix_source;
-    if (!src) {
-      const isMon = c.name.toLowerCase().includes('monitor') || c.name.toLowerCase().includes('playback');
-      const cleaned = c.name
-        .replace(/Playback/gi, '')
-        .replace(/Volume/gi, '')
-        .replace(/Switch/gi, '')
-        .replace(/Mute/gi, '')
-        .replace(/Gain/gi, '')
-        .replace(/Control/gi, '')
-        .trim();
+      let src = c.matrix_source;
+      if (!src) {
+        const grpPattern = new RegExp(`\\b${group.name}\\b`, 'gi');
+        let cleaned = c.name
+          .replace(grpPattern, '')
+          .replace(/Playback/gi, '')
+          .replace(/Volume/gi, '')
+          .replace(/Switch/gi, '')
+          .replace(/Mute/gi, '')
+          .replace(/Gain/gi, '')
+          .replace(/Control/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
 
-      src = cleaned ? (isMon ? `${cleaned} (Mon)` : cleaned) : group.name;
-    }
+        const isMon = c.name.toLowerCase().includes('monitor') || (c.name.toLowerCase().includes('playback') && !cleaned.toLowerCase().startsWith('pcm'));
 
-    if (!matrixSourcesMap[src]) matrixSourcesMap[src] = {};
+        if (cleaned) {
+          src = isMon && !cleaned.toLowerCase().includes('mon') ? `${cleaned} (Mon)` : cleaned;
+        } else {
+          src = isMon ? `${group.name} (Mon)` : group.name;
+        }
+      }
 
-    if (isVol) {
-      matrixSourcesMap[src].vol = c;
-    } else if (isMute) {
-      matrixSourcesMap[src].mute = c;
-    }
-  });
+      if (!map[src]) map[src] = {};
 
-  const matrixEntries = Object.entries(matrixSourcesMap);
+      if (isVol) {
+        map[src].vol = c;
+      } else if (isMute) {
+        map[src].mute = c;
+      }
+    });
+
+    return { matrixSourcesMap: map, standaloneControls: standalone };
+  }, [controlsToRender, group.name]);
+
+  const matrixEntries = useMemo(() => Object.entries(matrixSourcesMap), [matrixSourcesMap]);
 
   return createPortal(
     <div
@@ -417,7 +429,7 @@ const AlsaMatrixRoutingModal: React.FC<{
                 🎚️ {t('settings.alsa.routingRack', 'MATRIX ROUTING & SWITCH RACK')}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {standaloneControls.map((ctrl) => {
+                {standaloneControls.map((ctrl: AlsaControl) => {
                   const isEnum = ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0);
                   const currentVal = ctrl.values?.[0] ?? 0;
 
@@ -438,7 +450,7 @@ const AlsaMatrixRoutingModal: React.FC<{
                           onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
                           className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs font-bold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-lime cursor-pointer"
                         >
-                          {ctrl.items.map((item, idx) => (
+                          {ctrl.items.map((item: string, idx: number) => (
                             <option key={idx} value={idx}>
                               {item}
                             </option>
@@ -472,7 +484,7 @@ const AlsaMatrixRoutingModal: React.FC<{
               </div>
               
               <div className="flex items-end justify-start gap-4 overflow-x-auto py-1 custom-scrollbar max-w-full">
-                {matrixEntries.map(([srcName, ctrlPair]) => {
+                {matrixEntries.map(([srcName, ctrlPair]: [string, { vol?: AlsaControl; mute?: AlsaControl }]) => {
                   const volCtrl = ctrlPair.vol;
                   const muteCtrl = ctrlPair.mute;
 
