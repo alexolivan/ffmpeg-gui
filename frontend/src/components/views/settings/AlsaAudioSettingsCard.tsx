@@ -337,33 +337,30 @@ const AlsaMatrixRoutingModal: React.FC<{
   const matrixEntries = Object.entries(matrixSourcesMap);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Console Header */}
-        <div className="px-6 py-4 border-b border-[var(--glass-border)] flex items-center justify-between bg-[var(--input-bg)]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-brand-orange/15 border border-brand-orange/30 flex items-center justify-center text-brand-orange text-lg shadow-sm">
-              🎛️
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider">
-                {group.name} — {t('settings.alsa.matrixModalTitle', 'Hardware Matrix Routing Console')}
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)]">
-                {t('settings.alsa.matrixModalSubtitle', 'Configure input crosspoint routing and gains for')} {group.name}
-              </p>
-            </div>
-          </div>
+    <div
+      className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-2xl max-w-[90vw] max-h-[85vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2.5 mb-4 min-w-[280px]">
+          <span className="text-xs font-bold text-text-primary uppercase tracking-wider flex items-center gap-2">
+            <span className="text-base">🎛️</span>
+            <span>{group.name} Sub-Mixer Console</span>
+          </span>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center font-bold text-sm transition-colors"
+            className="text-text-secondary hover:text-text-primary text-xs font-bold px-2 py-1 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg hover:border-brand-lime transition-all cursor-pointer"
           >
             ✕
           </button>
         </div>
 
-        {/* Console Body */}
-        <div className="p-6 overflow-y-auto space-y-6 custom-scrollbar">
+        {/* Content Body */}
+        <div className="overflow-y-auto space-y-4 custom-scrollbar pr-1">
           {/* Top Rack: Standalone Selectors & Switches */}
           {standaloneControls.length > 0 && (
             <div className="space-y-2">
@@ -421,11 +418,11 @@ const AlsaMatrixRoutingModal: React.FC<{
           {matrixEntries.length > 0 && (
             <div className="space-y-2">
               <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-[var(--text-secondary)] flex items-center justify-between">
-                <span>🎛️ {t('settings.alsa.faderConsole', 'BROADCAST CROSSPOINT GAIN CONSOLE')}</span>
+                <span>🎛️ {t('settings.alsa.faderConsole', 'SUB-MIXER CHANNEL CONSOLE')}</span>
                 <span className="text-[9px] opacity-75">({matrixEntries.length} CHANNELS)</span>
               </div>
               
-              <div className="flex items-end justify-start gap-4 overflow-x-auto pb-4 pt-1 px-1 custom-scrollbar max-w-full">
+              <div className="flex items-end justify-start gap-4 overflow-x-auto py-1 custom-scrollbar max-w-full">
                 {matrixEntries.map(([srcName, ctrlPair]) => {
                   const volCtrl = ctrlPair.vol;
                   const muteCtrl = ctrlPair.mute;
@@ -443,20 +440,21 @@ const AlsaMatrixRoutingModal: React.FC<{
                   return (
                     <div
                       key={srcName}
-                      className="bg-[var(--input-bg)]/90 border border-[var(--glass-border)] rounded-2xl p-3 flex flex-col items-center gap-2 shrink-0 min-w-[105px] shadow-md hover:border-brand-orange/40 transition-all"
+                      className="flex flex-col items-center gap-1.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 min-w-[95px] shrink-0"
                     >
-                      {/* Channel Source Header */}
-                      <div className="text-center w-full min-h-[34px] flex flex-col justify-center border-b border-[var(--glass-border)]/40 pb-1">
-                        <span className="text-[11px] font-bold text-brand-lime font-mono truncate block" title={srcName}>
-                          {srcName}
-                        </span>
+                      {/* Source Label */}
+                      <div
+                        className="h-8 flex items-center justify-center text-[10px] font-bold text-brand-lime font-mono leading-tight text-center whitespace-normal break-words w-full px-1 select-none"
+                        title={srcName}
+                      >
+                        {srcName}
                       </div>
 
-                      {/* Formatted dB / Readout Badge */}
-                      <div className="text-[10px] font-mono font-bold text-[var(--text-primary)] px-2 py-0.5 rounded bg-[var(--bg-card)] border border-[var(--glass-border)] shadow-inner text-center w-full">
+                      {/* Clean Formatted dB / Readout Badge */}
+                      <div className="text-[10px] font-mono font-bold text-text-primary">
                         {formatControlValue(volCtrl, volValL)}
                         {isStereo && !isLinked && (
-                          <span className="text-[9px] text-[var(--text-secondary)] ml-0.5">/{formatControlValue(volCtrl, volValR)}</span>
+                          <span className="text-text-secondary text-[9px] ml-0.5">/{formatControlValue(volCtrl, volValR)}</span>
                         )}
                       </div>
 
@@ -471,7 +469,7 @@ const AlsaMatrixRoutingModal: React.FC<{
                               volValL={volValL}
                               volValR={volValR}
                               isLinked={isLinked}
-                              heightClass="h-40"
+                              heightClass="h-20"
                               onChangeCommit={(vals) => {
                                 onControlChange(volCtrl.numid, vals);
                               }}
@@ -482,14 +480,14 @@ const AlsaMatrixRoutingModal: React.FC<{
                               max={volCtrl.max ?? 100}
                               step={volCtrl.step ?? 1}
                               value={volValL}
-                              heightClass="h-40"
+                              heightClass="h-24"
                               onChangeCommit={(v) => {
                                 onControlChange(volCtrl.numid, [v]);
                               }}
                             />
                           )}
 
-                          {/* Stereo L/R Link Toggle */}
+                          {/* Stereo Link Button */}
                           {isStereo && (
                             <button
                               onClick={() => toggleChannelLink(volCtrl.numid)}
@@ -501,23 +499,23 @@ const AlsaMatrixRoutingModal: React.FC<{
                           )}
                         </div>
                       ) : (
-                        <div className="h-44 flex items-center justify-center text-xs text-[var(--text-secondary)]/40">N/A</div>
+                        <div className="h-28 flex items-center justify-center text-[10px] text-text-secondary/40">N/A</div>
                       )}
 
-                      {/* Foot Mute Toggle Button */}
+                      {/* Mute Toggle Button directly below Fader */}
                       {muteCtrl ? (
                         <button
                           onClick={() => onControlChange(muteCtrl.numid, [isMuted ? 1 : 0])}
-                          className={`w-full py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${
+                          className={`w-full py-1 rounded text-[10px] font-bold transition-all cursor-pointer border ${
                             !isMuted
                               ? 'bg-brand-lime/20 text-brand-lime border-brand-lime/40 hover:bg-brand-lime/30'
-                              : 'bg-red-500/25 text-red-400 border-red-500/40 hover:bg-red-500/35'
+                              : 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30'
                           }`}
                         >
-                          {!isMuted ? 'ON / ACTIVE' : 'MUTED'}
+                          {!isMuted ? 'ON' : 'MUTED'}
                         </button>
                       ) : (
-                        <div className="h-7" />
+                        <div className="h-6" />
                       )}
                     </div>
                   );
@@ -531,16 +529,6 @@ const AlsaMatrixRoutingModal: React.FC<{
               {t('settings.alsa.noMatrixControls', 'No matrix routing controls available for this node')}
             </div>
           )}
-        </div>
-
-        {/* Console Footer */}
-        <div className="px-6 py-3.5 border-t border-[var(--glass-border)] bg-[var(--input-bg)] flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-5 py-2 bg-brand-orange text-black font-black rounded-xl text-xs hover:scale-105 transition-transform"
-          >
-            {t('common.close', 'Close')}
-          </button>
         </div>
       </div>
     </div>,
@@ -935,6 +923,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                     onToggleLink={() => node.masterGroup.controls?.[0] && toggleChannelLink(node.masterGroup.controls[0].numid)}
                     canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                     endpointIcon={getEndpointIcon(node.masterGroup.category, node.masterGroup.name)}
+                    hideInlineMixerButton={true}
                   />
 
                   {/* Slave Endpoints */}
@@ -956,6 +945,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                           onToggleLink={() => slave.controls?.[0] && toggleChannelLink(slave.controls[0].numid)}
                           canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                           endpointIcon={getEndpointIcon(slave.category, slave.name)}
+                          hideInlineMixerButton={true}
                         />
                       </div>
                     );
@@ -1109,6 +1099,7 @@ interface ChannelStripProps {
   onToggleLink: () => void;
   canvasRefSetter: (numid: number, el: HTMLCanvasElement | null) => void;
   endpointIcon: React.ReactNode;
+  hideInlineMixerButton?: boolean;
 }
 
 interface AlsaFaderUnitProps {
@@ -1363,6 +1354,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
   onToggleLink,
   canvasRefSetter,
   endpointIcon,
+  hideInlineMixerButton = false,
 }) => {
   const [activePopup, setActivePopup] = useState<string | number | null>(null);
 
@@ -1527,7 +1519,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
         {/* SKEWER CONTROL NODES (MIDDLE BODY) - UNCONDITIONAL SEQUENTIAL ABACUS ALIGNMENT */}
         <div className="z-10 flex items-center justify-start gap-1.5 bg-[var(--input-bg)] px-1">
           {/* 1. MIXER MATRIX NODE (🎛️) */}
-          {Object.keys(matrixSourcesMap).length > 0 && (
+          {!hideInlineMixerButton && Object.keys(matrixSourcesMap).length > 0 && (
             <div className="w-9 flex items-center justify-center">
               <div className="relative">
                 <button
