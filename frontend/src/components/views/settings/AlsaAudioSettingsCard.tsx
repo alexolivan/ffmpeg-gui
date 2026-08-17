@@ -339,7 +339,7 @@ const AlsaMatrixRoutingModal: React.FC<{
   group: AlsaGroup;
   onClose: () => void;
   onControlChange: (numid: number, values: any[]) => void;
-}> = ({ group, onClose, onControlChange }) => {
+}> = React.memo(({ group, onClose, onControlChange }) => {
   const { t } = useTranslation();
   const [modalLinked, setModalLinked] = useState<Record<number, boolean>>({});
   const controlsToRender: AlsaControl[] = (group as any).matrixControls || group.controls || [];
@@ -595,7 +595,7 @@ const AlsaMatrixRoutingModal: React.FC<{
     </div>,
     document.body
   );
-};
+});
 
 export const AlsaAudioSettingsCard: React.FC = () => {
   const { t } = useTranslation();
@@ -1192,14 +1192,18 @@ const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = React.memo(({
 
   const [val, setVal] = useState<number>(initialDisplay);
   const [strVal, setStrVal] = useState<string>(String(initialDisplay));
+  const isDraggingRef = useRef<boolean>(false);
 
   useEffect(() => {
-    const disp = Math.round(value / scale);
-    setVal(disp);
-    setStrVal(String(disp));
+    if (!isDraggingRef.current) {
+      const disp = Math.round(value / scale);
+      setVal(disp);
+      setStrVal(String(disp));
+    }
   }, [value, scale]);
 
   const commit = (targetDisplayVal: number) => {
+    isDraggingRef.current = false;
     const clampedDisp = Math.min(maxDisplay, Math.max(minDisplay, isNaN(targetDisplayVal) ? minDisplay : targetDisplayVal));
     setVal(clampedDisp);
     setStrVal(String(clampedDisp));
@@ -1215,6 +1219,9 @@ const AlsaFaderUnit: React.FC<AlsaFaderUnitProps> = React.memo(({
         max={maxDisplay}
         step={stepDisplay}
         value={val}
+        onPointerDown={() => { isDraggingRef.current = true; }}
+        onMouseDown={() => { isDraggingRef.current = true; }}
+        onTouchStart={() => { isDraggingRef.current = true; }}
         onChange={(e) => {
           const v = parseInt(e.target.value, 10);
           setVal(v);
@@ -1278,17 +1285,21 @@ const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = React.memo(({
   const [valR, setValR] = useState<number>(initR);
   const [strL, setStrL] = useState<string>(String(initL));
   const [strR, setStrR] = useState<string>(String(initR));
+  const isDraggingRef = useRef<boolean>(false);
 
   useEffect(() => {
-    const dL = Math.round(volValL / scale);
-    const dR = Math.round(volValR / scale);
-    setValL(dL);
-    setValR(dR);
-    setStrL(String(dL));
-    setStrR(String(dR));
+    if (!isDraggingRef.current) {
+      const dL = Math.round(volValL / scale);
+      const dR = Math.round(volValR / scale);
+      setValL(dL);
+      setValR(dR);
+      setStrL(String(dL));
+      setStrR(String(dR));
+    }
   }, [volValL, volValR, scale]);
 
   const commit = (dispL: number, dispR: number) => {
+    isDraggingRef.current = false;
     const clampedL = Math.min(maxDisplay, Math.max(minDisplay, isNaN(dispL) ? minDisplay : dispL));
     const clampedR = Math.min(maxDisplay, Math.max(minDisplay, isNaN(dispR) ? minDisplay : dispR));
     setValL(clampedL);
@@ -1330,6 +1341,9 @@ const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = React.memo(({
           max={maxDisplay}
           step={stepDisplay}
           value={valL}
+          onPointerDown={() => { isDraggingRef.current = true; }}
+          onMouseDown={() => { isDraggingRef.current = true; }}
+          onTouchStart={() => { isDraggingRef.current = true; }}
           onChange={(e) => handleDragL(parseInt(e.target.value, 10))}
           onPointerUp={() => commit(valL, isLinked ? valL : valR)}
           onMouseUp={() => commit(valL, isLinked ? valL : valR)}
@@ -1371,6 +1385,9 @@ const AlsaStereoFaderPair: React.FC<AlsaStereoFaderPairProps> = React.memo(({
           max={maxDisplay}
           step={stepDisplay}
           value={valR}
+          onPointerDown={() => { isDraggingRef.current = true; }}
+          onMouseDown={() => { isDraggingRef.current = true; }}
+          onTouchStart={() => { isDraggingRef.current = true; }}
           onChange={(e) => handleDragR(parseInt(e.target.value, 10))}
           onPointerUp={() => commit(isLinked ? valR : valL, valR)}
           onMouseUp={() => commit(isLinked ? valR : valL, valR)}
