@@ -399,7 +399,7 @@ const AlsaMatrixRoutingModal: React.FC<{
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+      className="fixed inset-0 z-[9999] bg-black/80 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
@@ -605,6 +605,14 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [linkedChannels, setLinkedChannels] = useState<Record<number, boolean>>({});
   const [selectedMatrixGroup, setSelectedMatrixGroup] = useState<AlsaGroup | null>(null);
+
+  const selectedDriver = useMemo(() => {
+    return cards.find(c => c.card_index === selectedCardIdx)?.driver;
+  }, [cards, selectedCardIdx]);
+
+  const groupedHardwareNodes = useMemo(() => {
+    return groupHardwareOutputs(topology?.hardware_outputs, selectedDriver);
+  }, [topology?.hardware_outputs, selectedDriver]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
@@ -946,7 +954,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         {/* TOP-RIGHT: HARDWARE OUTPUTS */}
         <div className="lg:col-span-5 space-y-3">
           <div className="space-y-3">
-            {groupHardwareOutputs(topology?.hardware_outputs, cards.find(c => c.card_index === selectedCardIdx)?.driver).map((node) => (
+            {groupedHardwareNodes.map((node) => (
               <div 
                 key={node.id} 
                 className="bg-[var(--input-bg)]/40 border border-[var(--glass-border)] rounded-xl p-3 space-y-2.5 shadow-sm hover:border-brand-orange/30 transition-all"
