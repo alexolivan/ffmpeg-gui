@@ -138,7 +138,7 @@ class AlsaManager:
         matrix_source = None
         
         # Regex matching double entity prefixes (Source -> Destination)
-        prefix_pattern = r"(?:PCM\s+\d+|Line\s+Out|Line\s+\d+|Digital\s+\d+|Mic\s+\d+|Aux\s+\d+|AES\s+\d+|Speaker|Headphone|Master)"
+        prefix_pattern = r"(?:Front\s+Mic|Rear\s+Mic|Internal\s+Mic|Dock\s+Mic|Front\s+Headphone|Rear\s+Headphone|Line\s+Out|Line\s+In|PCM\s+\d+|Line\s+\d+|Digital\s+\d+|Mic\s+\d+|Aux\s+\d+|AES\s+\d+|Speaker|Headphone|Master)"
         matrix_match = re.match(
             rf"^({prefix_pattern})\s+({prefix_pattern})\s+(Monitor\s+)?(Playback|Capture)",
             name,
@@ -163,8 +163,8 @@ class AlsaManager:
             category = "hardware_outputs"
             matrix_source = f"{source_name} (Monitor)" if is_monitor else source_name
         else:
-            # Single entity prefix matching
-            match = re.match(rf"^({prefix_pattern}|[A-Za-z0-9/\-_]+(?:\s+\d+)?)\s+", name, re.IGNORECASE)
+            # Single entity prefix matching with support for compound names (Front Mic, Line Out, etc.)
+            match = re.match(rf"^({prefix_pattern}|[A-Za-z0-9/\-_]+(?:\s+[A-Za-z0-9/\-_]+)?(?:\s+\d+)?)\s+", name, re.IGNORECASE)
             if match:
                 group = match.group(1).strip()
             else:
