@@ -977,11 +977,11 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 </div>
 
                 {/* Parallel Branch Tree */}
-                <div className="space-y-2 relative pl-3">
+                <div className="space-y-2 relative">
                   {/* Master Endpoint Strip */}
-                  <div className="relative">
+                  <div className="relative pl-3">
                     {node.slaveGroups.length > 0 && (
-                      <div className="absolute left-0 top-0 h-full w-0.5 bg-brand-orange/40 pointer-events-none" />
+                      <div className="absolute left-0 top-0 h-[calc(100%+0.5rem)] w-0.5 bg-brand-orange/40 pointer-events-none" />
                     )}
                     <AlsaSkewerChannelStrip
                       group={node.masterGroup}
@@ -1001,12 +1001,12 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                     return (
                       <div key={slave.id} className="relative pl-3">
                         {isLastSlave ? (
-                          /* Final Slave: L-corner curve catching line from above and terminating cleanly without tail */
-                          <div className="absolute left-0 top-0 h-5 w-3 border-l-2 border-b-2 border-brand-orange/40 rounded-bl-md pointer-events-none" />
+                          /* Final Slave: L-corner curve bridging the gap from above and turning smoothly into the strip */
+                          <div className="absolute left-0 -top-2 h-[calc(50%+0.5rem)] w-3 border-l-2 border-b-2 border-brand-orange/40 rounded-bl-md pointer-events-none" />
                         ) : (
-                          /* Middle Slaves: Continuous vertical line through + horizontal T-branch */
+                          /* Middle Slaves: Continuous vertical line bridging top/bottom gaps + horizontal T-branch */
                           <>
-                            <div className="absolute left-0 top-0 h-full w-0.5 bg-brand-orange/40 pointer-events-none" />
+                            <div className="absolute left-0 -top-2 h-[calc(100%+0.5rem)] w-0.5 bg-brand-orange/40 pointer-events-none" />
                             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-0.5 bg-brand-orange/40 pointer-events-none" />
                           </>
                         )}
