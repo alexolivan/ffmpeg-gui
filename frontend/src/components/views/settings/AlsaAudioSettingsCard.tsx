@@ -247,6 +247,54 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
     return grouped;
   }
 
+  // Helper to determine if a control is a direct physical output endpoint level (should stay on channel strip, not in matrix modal)
+  const isDirectOutputControl = (ctrl: AlsaControl, groupName: string): boolean => {
+    if (!ctrl) return false;
+    const nameLower = ctrl.name.toLowerCase().trim();
+    const grpLower = groupName.toLowerCase().trim();
+
+    if (ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0)) {
+      return true;
+    }
+
+    if (
+      nameLower.includes('mic') ||
+      nameLower.includes('line in') ||
+      nameLower.includes('input') ||
+      nameLower.includes('pcm') ||
+      nameLower.includes('cd') ||
+      nameLower.includes('aux')
+    ) {
+      return false;
+    }
+
+    const physicalNames = [
+      'master',
+      'line out',
+      'headphone',
+      'headphones',
+      'speaker',
+      'speakers',
+      'front',
+      'surround',
+      'center',
+      'lfe',
+      'clfe',
+      'side',
+      grpLower
+    ];
+
+    return physicalNames.some(pName =>
+      nameLower === `${pName} playback volume` ||
+      nameLower === `${pName} playback switch` ||
+      nameLower === `${pName} playback level` ||
+      nameLower === `${pName} volume` ||
+      nameLower === `${pName} switch` ||
+      nameLower === `${pName} master volume` ||
+      nameLower === `${pName} master switch`
+    );
+  };
+
   // Unified Single Master Mixer Node for Intel HDA / Realtek / Consumer Soundcards
   const isPhysicalOutputEndpoint = (g: AlsaGroup) => {
     const n = g.name.toLowerCase().trim();
@@ -272,15 +320,20 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out' || g.name.toLowerCase().trim() === 'front') || validEndpoints[0];
   const slaveEndpoints = validEndpoints.filter(g => g.id !== masterEndpoint.id);
 
-  // Matrix controls for modal (Master Playback, PCM, Front Mic Monitor, Rear Mic Monitor, Line Monitor)
+  // Matrix controls for Intel HDA modal (PCM, Front Mic, Rear Mic, Line In, CD, Aux monitor gains)
+  // Exclude direct physical output volume/switch controls of endpoints
   const allCardMatrixControls: AlsaControl[] = [];
   const controlNumids = new Set<number>();
 
   groups.forEach(g => {
     (g.controls || []).forEach(ctrl => {
       if (!controlNumids.has(ctrl.numid)) {
-        controlNumids.add(ctrl.numid);
-        allCardMatrixControls.push(ctrl);
+        const isPhysicalOutputLevel = validEndpoints.some(ep => isDirectOutputControl(ctrl, ep.name)) || isDirectOutputControl(ctrl, 'master');
+
+        if (!isPhysicalOutputLevel) {
+          controlNumids.add(ctrl.numid);
+          allCardMatrixControls.push(ctrl);
+        }
       }
     });
   });
@@ -289,7 +342,6 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
     id: masterEndpoint.id,
     masterGroup: {
       ...masterEndpoint,
-      // Pass matrix controls for modal without overriding native channel strip controls
       matrixControls: allCardMatrixControls
     } as any,
     slaveGroups: slaveEndpoints,
@@ -1489,10 +1541,16 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
 
     const isExplicitMatrix = !!c.matrix_source;
 
-    // Check if control has explicit double-entity crosstalk pattern (e.g., "Digital 0 Line 0 Monitor Playback Volume")
+    // Check if control is an input monitor gain on hardware outputs (e.g. Front Mic, Rear Mic, Line, CD, Aux)
+    const isInputMonitorGain =
+      isHardwareOutputs &&
+      !isMasterControl &&
+      (nameLower.includes('mic') || nameLower.includes('line') || nameLower.includes('cd') || nameLower.includes('aux') || nameLower.includes('pcm'));
+
     const hasCrosstalkPattern =
-      (nameLower.includes('pcm') || nameLower.includes('digital') || nameLower.includes('line') || nameLower.includes('mic') || nameLower.includes('aux')) &&
-      (nameLower.includes('monitor') || !!nameLower.match(/(pcm|digital|line|mic|aux)\s+\d+.*(pcm|digital|line|mic|aux)\s+\d+/i));
+      isInputMonitorGain ||
+      ((nameLower.includes('pcm') || nameLower.includes('digital') || nameLower.includes('line') || nameLower.includes('mic') || nameLower.includes('aux')) &&
+      (nameLower.includes('monitor') || !!nameLower.match(/(pcm|digital|line|mic|aux)\s+\d+.*(pcm|digital|line|mic|aux)\s+\d+/i)));
 
     if (isExplicitMatrix || (isHardwareOutputs && !isMasterControl && hasCrosstalkPattern)) {
       matrixControls.push(c);

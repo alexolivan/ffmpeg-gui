@@ -2571,9 +2571,11 @@ def sanitize_database_processes(db: Session):
         filter_cfg = copy.deepcopy(p.filter_config) if p.filter_config else {}
         if sanitize_process_config_data(input_cfg, filter_cfg):
             p.input_config = input_cfg
-            p.filter_config = filter_cfg
-            flag_modified(p, "input_config")
-            flag_modified(p, "filter_config")
+            try:
+                flag_modified(p, "input_config")
+                flag_modified(p, "filter_config")
+            except Exception:
+                pass
             updated_count += 1
             
     if updated_count > 0:
@@ -3516,11 +3518,17 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if input_cfg:
         sanitize_process_config_data(input_cfg, filter_cfg or {})
         db_proc.input_config = input_cfg
-        flag_modified(db_proc, "input_config")
+        try:
+            flag_modified(db_proc, "input_config")
+        except Exception:
+            pass
         
     if filter_cfg is not None:
         db_proc.filter_config = filter_cfg
-        flag_modified(db_proc, "filter_config")
+        try:
+            flag_modified(db_proc, "filter_config")
+        except Exception:
+            pass
 
     output_cfg = proc_in.output_config if proc_in.output_config is not None else db_proc.output_config
     check_media_process_port_conflicts(input_cfg, output_cfg)
