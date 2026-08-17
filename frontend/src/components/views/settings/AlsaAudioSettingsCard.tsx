@@ -981,7 +981,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                   {/* Master Endpoint Strip */}
                   <div className="relative pl-3">
                     {node.slaveGroups.length > 0 && (
-                      <div className="absolute left-0 top-0 h-[calc(100%+0.5rem)] w-0.5 bg-brand-orange/40 pointer-events-none" />
+                      <div className="absolute left-0 top-0 h-full w-0.5 bg-brand-orange/40 pointer-events-none" />
                     )}
                     <AlsaSkewerChannelStrip
                       group={node.masterGroup}
