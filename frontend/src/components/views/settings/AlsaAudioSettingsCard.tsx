@@ -298,9 +298,8 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   // Unified Single Master Mixer Node for Intel HDA / Realtek / Consumer Soundcards
   const isPhysicalOutputEndpoint = (g: AlsaGroup) => {
     const n = g.name.toLowerCase().trim();
-    if (n.includes('mic') || n.includes('input')) return false;
+    if (n.includes('mic') || n.includes('input') || n === 'master' || n === 'general') return false;
     return (
-      n === 'master' ||
       n === 'line out' ||
       n === 'front' ||
       n.includes('headphone') ||
@@ -318,15 +317,35 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const physicalEndpoints = groups.filter(isPhysicalOutputEndpoint);
   const validEndpoints = physicalEndpoints.length > 0 ? physicalEndpoints : groups;
 
-  // Fallback chain: Master -> Line Out -> Front -> First Endpoint
-  const masterEndpoint =
-    validEndpoints.find(g => g.name.toLowerCase().trim() === 'master') ||
+  // Root Master Endpoint: 'Line Out' for 2.0 cards, 'Front' for 4.0/5.1 cards
+  const rawMasterEndpoint =
     validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out') ||
     validEndpoints.find(g => g.name.toLowerCase().trim() === 'front') ||
     validEndpoints[0];
 
-  // Slave endpoints: Include ALL other physical output endpoints (Front, Surround, Center, LFE, Headphone, Speaker)
-  const slaveEndpoints = validEndpoints.filter(g => g.id !== masterEndpoint.id);
+  // If ALSA reports 'Line Out' with no direct controls on 2.0 cards, merge 'Front' controls (Front Playback Volume) into Line Out
+  const frontGroup = groups.find(g => g.name.toLowerCase().trim() === 'front');
+
+  let masterControls = rawMasterEndpoint.controls || [];
+  if (rawMasterEndpoint.name.toLowerCase().trim() === 'line out' && frontGroup && frontGroup.id !== rawMasterEndpoint.id) {
+    const hasLineOutDirect = masterControls.some(c => c && !c.name.toLowerCase().includes('mic'));
+    if (!hasLineOutDirect && frontGroup.controls) {
+      masterControls = [...masterControls, ...frontGroup.controls];
+    }
+  }
+
+  const masterEndpoint = {
+    ...rawMasterEndpoint,
+    controls: masterControls
+  };
+
+  // Slave endpoints: Exclude masterEndpoint AND exclude 'Front' group if it was merged into Line Out on 2.0 cards
+  const slaveEndpoints = validEndpoints.filter(g => {
+    const gName = g.name.toLowerCase().trim();
+    if (g.id === masterEndpoint.id) return false;
+    if (gName === 'front' && masterEndpoint.name.toLowerCase().trim() === 'line out') return false;
+    return true;
+  });
 
   // Matrix controls for Intel HDA modal (Master, PCM, Front Mic, Rear Mic, Line In, CD, Aux monitor gains)
   // Direct physical output endpoint levels (Front Playback Volume, Surround Playback Volume, Center, LFE, Speaker, Headphone) stay on their channel strips
