@@ -171,13 +171,45 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
           }
         });
 
-        const hasMatrixControls = (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0));
+        const candidateControls: AlsaControl[] = [...(g.controls || [])];
+        slaves.forEach(s => {
+          (s.controls || []).forEach(c => {
+            if (c.matrix_source || c.name.toLowerCase().includes(g.name.toLowerCase())) {
+              candidateControls.push(c);
+            }
+          });
+        });
+
+        const matrixControls = candidateControls.filter((c) => {
+          if (!c) return false;
+          const nameLower = c.name.toLowerCase();
+          const grpLower = g.name.toLowerCase();
+
+          const isEnumOrRoute =
+            c.ctrl_type === 'enum' ||
+            c.ctrl_type === 'route' ||
+            (c.items && c.items.length > 0);
+
+          if (isEnumOrRoute) return false;
+
+          const isMasterControl =
+            nameLower === `${grpLower} playback level` ||
+            nameLower === `${grpLower} playback volume` ||
+            nameLower === `${grpLower} playback switch` ||
+            nameLower === `${grpLower} volume` ||
+            nameLower === `${grpLower} switch`;
+
+          return !isMasterControl;
+        });
 
         grouped.push({
           id: g.id,
-          masterGroup: g,
+          masterGroup: {
+            ...g,
+            matrixControls
+          } as any,
           slaveGroups: slaves,
-          hasMatrixControls
+          hasMatrixControls: matrixControls.length > 0 || (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route')
         });
       }
     });
@@ -185,12 +217,29 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
     groups.forEach((g) => {
       if (!processedIds.has(g.id)) {
         processedIds.add(g.id);
-        const hasMatrixControls = (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0));
+        const matrixControls = (g.controls || []).filter((c) => {
+          if (!c) return false;
+          const nameLower = c.name.toLowerCase();
+          const grpLower = g.name.toLowerCase();
+          const isEnumOrRoute = c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0);
+          if (isEnumOrRoute) return false;
+          const isMasterControl =
+            nameLower === `${grpLower} playback level` ||
+            nameLower === `${grpLower} playback volume` ||
+            nameLower === `${grpLower} playback switch` ||
+            nameLower === `${grpLower} volume` ||
+            nameLower === `${grpLower} switch`;
+          return !isMasterControl;
+        });
+
         grouped.push({
           id: g.id,
-          masterGroup: g,
+          masterGroup: {
+            ...g,
+            matrixControls
+          } as any,
           slaveGroups: [],
-          hasMatrixControls
+          hasMatrixControls: matrixControls.length > 0 || (g.controls || []).some(c => c.matrix_source || c.ctrl_type === 'enum' || c.ctrl_type === 'route')
         });
       }
     });
