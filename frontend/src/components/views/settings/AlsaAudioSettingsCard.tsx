@@ -317,7 +317,8 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const physicalEndpoints = groups.filter(isPhysicalOutputEndpoint);
   const validEndpoints = physicalEndpoints.length > 0 ? physicalEndpoints : groups;
 
-  const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out' || g.name.toLowerCase().trim() === 'front') || validEndpoints[0];
+  // On 4.0/5.1 cards, 'Front' is the primary L/R stereo output node. Prioritize 'Front' over 'Line Out'.
+  const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'front' || g.name.toLowerCase().trim() === 'line out') || validEndpoints[0];
 
   // Slave endpoints: Include all other physical output endpoints that have direct controls
   const slaveEndpoints = validEndpoints.filter(g => {
@@ -602,7 +603,7 @@ const AlsaMatrixRoutingModal: React.FC<{
                               volValL={volValL}
                               volValR={volValR}
                               isLinked={isLinked}
-                              heightClass="h-20"
+                              heightClass="h-24"
                               onChangeCommit={(vals) => {
                                 onControlChange(volCtrl.numid, vals);
                               }}
@@ -620,16 +621,20 @@ const AlsaMatrixRoutingModal: React.FC<{
                             />
                           )}
 
-                          {/* Stereo Link Button */}
-                          {isStereo && (
-                            <button
-                              onClick={() => toggleChannelLink(volCtrl.numid)}
-                              title={isLinked ? 'Unlink L/R Channels' : 'Link L/R Channels'}
-                              className="text-xs hover:scale-110 transition-transform cursor-pointer mt-0.5"
-                            >
-                              {isLinked ? '🔗' : '🔓'}
-                            </button>
-                          )}
+                          {/* Stereo Link Button Slot - Reserved h-6 height for 100% uniform console alignment */}
+                          <div className="h-6 flex items-center justify-center mt-0.5">
+                            {isStereo ? (
+                              <button
+                                onClick={() => toggleChannelLink(volCtrl.numid)}
+                                title={isLinked ? 'Unlink L/R Channels' : 'Link L/R Channels'}
+                                className="text-xs hover:scale-110 transition-transform cursor-pointer px-1 py-0.5"
+                              >
+                                {isLinked ? '🔗' : '🔓'}
+                              </button>
+                            ) : (
+                              <div className="h-4 w-4 opacity-0 pointer-events-none" />
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="h-28 flex items-center justify-center text-[10px] text-text-secondary/40">N/A</div>
