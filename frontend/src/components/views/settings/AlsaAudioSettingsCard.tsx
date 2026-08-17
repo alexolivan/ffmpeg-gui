@@ -317,8 +317,8 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const physicalEndpoints = groups.filter(isPhysicalOutputEndpoint);
   const validEndpoints = physicalEndpoints.length > 0 ? physicalEndpoints : groups;
 
-  // On 4.0/5.1 cards, 'Front' is the primary L/R stereo output node. Prioritize 'Front' over 'Line Out'.
-  const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'front' || g.name.toLowerCase().trim() === 'line out') || validEndpoints[0];
+  // Prioritize 'Master' or 'Line Out' as the root Mixer Node header bar so 'Front' is rendered as a clean channel strip in 4.0/5.1 cards
+  const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'master' || g.name.toLowerCase().trim() === 'line out') || validEndpoints[0];
 
   // Slave endpoints: Include all other physical output endpoints that have direct controls
   const slaveEndpoints = validEndpoints.filter(g => {
@@ -738,6 +738,24 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     }
   };
 
+  const updateJackSensorsRealtime = (jacksMap: Record<number, boolean>) => {
+    setTopology((prev) => {
+      if (!prev || !prev.jack_sensors) return prev;
+      let changed = false;
+      const newSensors = prev.jack_sensors.map((group) => {
+        const newControls = (group.controls || []).map((ctrl) => {
+          if (ctrl.numid in jacksMap && ctrl.values?.[0] !== jacksMap[ctrl.numid]) {
+            changed = true;
+            return { ...ctrl, values: [jacksMap[ctrl.numid]] };
+          }
+          return ctrl;
+        });
+        return { ...group, controls: newControls };
+      });
+      return changed ? { ...prev, jack_sensors: newSensors } : prev;
+    });
+  };
+
   const connectMeterWebSocket = (cardIdx: number) => {
     if (wsRef.current) {
       wsRef.current.close();
@@ -750,8 +768,13 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
-        if (payload && payload.meters) {
-          renderCanvasMeters(payload.meters);
+        if (payload) {
+          if (payload.meters) {
+            renderCanvasMeters(payload.meters);
+          }
+          if (payload.jacks) {
+            updateJackSensorsRealtime(payload.jacks);
+          }
         }
       } catch (e) {
         console.error('Error parsing meter WS message:', e);

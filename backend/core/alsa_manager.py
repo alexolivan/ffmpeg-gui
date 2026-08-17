@@ -497,4 +497,16 @@ class AlsaManager:
 
         return meters_data
 
+    def read_jack_sensors(self, card_idx: int) -> Dict[int, bool]:
+        """Fast-path reading for Jack Sensor states (numids in jack_sensors)."""
+        topology = self.get_card_topology(card_idx)
+        jacks_data = {}
+        for group in topology.get("jack_sensors", []):
+            for ctrl in group.get("controls", []):
+                numid = ctrl.get("numid")
+                vals = ctrl.get("values", [False])
+                if numid is not None:
+                    jacks_data[numid] = bool(vals[0]) if vals else False
+        return jacks_data
+
 alsa_manager = AlsaManager()

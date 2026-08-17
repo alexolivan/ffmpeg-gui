@@ -5193,7 +5193,8 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
     try:
         while True:
             meters = alsa_manager.read_meters(card_index)
-            await websocket.send_json({"meters": meters})
+            jacks = alsa_manager.read_jack_sensors(card_index)
+            await websocket.send_json({"meters": meters, "jacks": jacks})
             await asyncio.sleep(0.033)  # ~30Hz
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected from ALSA meters card {card_index}")
