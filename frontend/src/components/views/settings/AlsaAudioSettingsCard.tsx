@@ -300,6 +300,7 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
     const n = g.name.toLowerCase().trim();
     if (n.includes('mic') || n.includes('input')) return false;
     return (
+      n === 'master' ||
       n === 'line out' ||
       n === 'front' ||
       n.includes('headphone') ||
@@ -317,21 +318,15 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const physicalEndpoints = groups.filter(isPhysicalOutputEndpoint);
   const validEndpoints = physicalEndpoints.length > 0 ? physicalEndpoints : groups;
 
-  // Prioritize 'Master' or 'Line Out' as the root Mixer Node header bar so 'Front' is rendered as a clean channel strip in 4.0/5.1 cards
-  const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'master' || g.name.toLowerCase().trim() === 'line out') || validEndpoints[0];
+  // Fallback chain: Master -> Line Out -> Front -> First Endpoint
+  const masterEndpoint =
+    validEndpoints.find(g => g.name.toLowerCase().trim() === 'master') ||
+    validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out') ||
+    validEndpoints.find(g => g.name.toLowerCase().trim() === 'front') ||
+    validEndpoints[0];
 
-  // Slave endpoints: Include all other physical output endpoints that have direct controls
-  const slaveEndpoints = validEndpoints.filter(g => {
-    if (g.id === masterEndpoint.id) return false;
-
-    const hasDirectControls = (g.controls || []).some(ctrl => {
-      if (!ctrl) return false;
-      const cName = ctrl.name.toLowerCase();
-      const isInputMonitor = (cName.includes('mic') || cName.includes('line in') || cName.includes('input') || cName.includes('pcm') || cName.includes('cd') || cName.includes('aux'));
-      return !isInputMonitor;
-    });
-    return hasDirectControls;
-  });
+  // Slave endpoints: Include ALL other physical output endpoints (Front, Surround, Center, LFE, Headphone, Speaker)
+  const slaveEndpoints = validEndpoints.filter(g => g.id !== masterEndpoint.id);
 
   // Matrix controls for Intel HDA modal (Master, PCM, Front Mic, Rear Mic, Line In, CD, Aux monitor gains)
   // Direct physical output endpoint levels (Front Playback Volume, Surround Playback Volume, Center, LFE, Speaker, Headphone) stay on their channel strips
