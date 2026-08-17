@@ -921,9 +921,9 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
                 {/* Parallel Branch Tree */}
                 <div className="space-y-2 relative pl-3">
-                  {/* Continuous Trunk Line connecting Mixer Header to Slaves */}
-                  {node.slaveGroups.length > 0 && (
-                    <div className="absolute left-0 top-0 bottom-5 w-0.5 bg-brand-orange/40" />
+                  {/* Continuous Trunk Line connecting Master Header down to start of last slave */}
+                  {node.slaveGroups.length > 1 && (
+                    <div className="absolute left-0 top-4 bottom-7 w-0.5 bg-brand-orange/40 pointer-events-none" />
                   )}
 
                   {/* Master Endpoint Strip */}
@@ -942,11 +942,11 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                     const isLastSlave = slaveIdx === node.slaveGroups.length - 1;
                     return (
                       <div key={slave.id} className="relative pl-2">
-                        {/* Branch line connector from trunk line */}
+                        {/* Branch Line: Either L-corner (for final slave) OR T-branch (for middle slaves) */}
                         {isLastSlave ? (
-                          <div className="absolute -left-3 top-0 h-5 w-3 border-l-2 border-b-2 border-brand-orange/40 rounded-bl-md" />
+                          <div className="absolute -left-3 top-0 h-6 w-3 border-l-2 border-b-2 border-brand-orange/40 rounded-bl-md pointer-events-none" />
                         ) : (
-                          <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-3 h-0.5 bg-brand-orange/40" />
+                          <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-3 h-0.5 bg-brand-orange/40 pointer-events-none" />
                         )}
                         <AlsaSkewerChannelStrip
                           group={slave}
