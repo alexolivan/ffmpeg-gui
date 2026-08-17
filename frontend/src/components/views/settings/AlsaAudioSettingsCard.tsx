@@ -317,29 +317,11 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const physicalEndpoints = groups.filter(isPhysicalOutputEndpoint);
   const validEndpoints = physicalEndpoints.length > 0 ? physicalEndpoints : groups;
 
-  const rawMasterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out' || g.name.toLowerCase().trim() === 'front') || validEndpoints[0];
+  const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out' || g.name.toLowerCase().trim() === 'front') || validEndpoints[0];
 
-  // If ALSA reports 'Line Out' with no direct controls, merge 'Front' controls (Front Playback Volume) into Line Out
-  const frontGroup = validEndpoints.find(g => g.name.toLowerCase().trim() === 'front');
-
-  let masterControls = rawMasterEndpoint.controls || [];
-  if (rawMasterEndpoint.name.toLowerCase().trim() === 'line out' && frontGroup && frontGroup.id !== rawMasterEndpoint.id) {
-    const hasLineOutDirect = masterControls.some(c => c && !c.name.toLowerCase().includes('mic'));
-    if (!hasLineOutDirect && frontGroup.controls) {
-      masterControls = [...masterControls, ...frontGroup.controls];
-    }
-  }
-
-  const masterEndpoint = {
-    ...rawMasterEndpoint,
-    controls: masterControls
-  };
-
-  // Slave endpoints: Exclude masterEndpoint AND exclude 'Front' group if it was merged into Line Out
+  // Slave endpoints: Include all other physical output endpoints that have direct controls
   const slaveEndpoints = validEndpoints.filter(g => {
-    const gName = g.name.toLowerCase().trim();
     if (g.id === masterEndpoint.id) return false;
-    if (gName === 'front' && masterEndpoint.name.toLowerCase().trim() === 'line out') return false;
 
     const hasDirectControls = (g.controls || []).some(ctrl => {
       if (!ctrl) return false;
