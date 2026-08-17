@@ -318,19 +318,37 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const validEndpoints = physicalEndpoints.length > 0 ? physicalEndpoints : groups;
 
   const masterEndpoint = validEndpoints.find(g => g.name.toLowerCase().trim() === 'line out' || g.name.toLowerCase().trim() === 'front') || validEndpoints[0];
-  const slaveEndpoints = validEndpoints.filter(g => g.id !== masterEndpoint.id);
 
-  // Matrix controls for Intel HDA modal (PCM, Front Mic, Rear Mic, Line In, CD, Aux monitor gains)
-  // Exclude direct physical output volume/switch controls of endpoints
+  // Slave endpoints: Only include physical output endpoints that have direct controls (eliminates ghost strips like 'Front' on 2.0 cards)
+  const slaveEndpoints = validEndpoints.filter(g => {
+    if (g.id === masterEndpoint.id) return false;
+    const hasDirectControls = (g.controls || []).some(ctrl => {
+      if (!ctrl) return false;
+      const cName = ctrl.name.toLowerCase();
+      const isInputMonitor = (cName.includes('mic') || cName.includes('line in') || cName.includes('input') || cName.includes('pcm') || cName.includes('cd') || cName.includes('aux'));
+      return !isInputMonitor;
+    });
+    return hasDirectControls;
+  });
+
+  // Matrix controls for Intel HDA modal (Master, PCM, Front Mic, Rear Mic, Line In, CD, Aux monitor gains)
+  // Exclude direct physical output volume/switch controls of slave endpoints (Speaker, Headphone, Surround, Center, LFE)
   const allCardMatrixControls: AlsaControl[] = [];
   const controlNumids = new Set<number>();
 
   groups.forEach(g => {
     (g.controls || []).forEach(ctrl => {
       if (!controlNumids.has(ctrl.numid)) {
-        const isPhysicalOutputLevel = validEndpoints.some(ep => isDirectOutputControl(ctrl, ep.name)) || isDirectOutputControl(ctrl, 'master');
+        const cName = ctrl.name.toLowerCase().trim();
+        const isMasterCtrl = cName.includes('master');
 
-        if (!isPhysicalOutputLevel) {
+        // Check if control is a direct physical output level of a SLAVE endpoint
+        const isSlaveEndpointOutputLevel = validEndpoints.some(ep => {
+          if (ep.id === masterEndpoint.id) return false;
+          return isDirectOutputControl(ctrl, ep.name);
+        });
+
+        if (isMasterCtrl || !isSlaveEndpointOutputLevel) {
           controlNumids.add(ctrl.numid);
           allCardMatrixControls.push(ctrl);
         }
@@ -540,10 +558,11 @@ const AlsaMatrixRoutingModal: React.FC<{
                   const volCtrl = ctrlPair.vol;
                   const muteCtrl = ctrlPair.mute;
 
+                  const numChannels = volCtrl?.channels ?? (volCtrl?.values && volCtrl.values.length > 1 ? volCtrl.values.length : 1);
+                  const isStereo = numChannels > 1;
                   const volValL = volCtrl?.values?.[0] ?? 0;
-                  const volValR = volCtrl?.channels && volCtrl.channels > 1 ? (volCtrl.values?.[1] ?? volValL) : volValL;
+                  const volValR = isStereo ? (volCtrl?.values?.[1] ?? volValL) : volValL;
                   const isMuted = muteCtrl ? (muteCtrl.values?.[0] === 0 || muteCtrl.values?.[0] === false) : false;
-                  const isStereo = (volCtrl?.channels ?? 1) > 1;
 
                   const isLinked = volCtrl ? (modalLinked[volCtrl.numid] !== false) : true;
                   const toggleChannelLink = (numid: number) => {
