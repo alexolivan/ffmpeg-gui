@@ -473,39 +473,22 @@ class ProcessManager:
                 self.logger.error(f"Failed to open log file {log_path} for writing: {e}")
                 
         try:
-            import inspect
-            buffer = bytearray()
             while True:
                 if proc is None or proc.stderr is None:
                     break
-                read_res = proc.stderr.read(4096)
-                if inspect.isawaitable(read_res):
-                    chunk = await read_res
-                else:
-                    chunk = read_res
-                if not chunk or not isinstance(chunk, (bytes, bytearray)):
-                    if buffer:
-                        msg = buffer.decode('utf-8', errors='replace').strip()
-                        if msg:
-                            self._handle_log_msg(process_id, msg, status_re)
+                line_bytes = await proc.stderr.readline()
+                if not line_bytes:
                     break
                 
                 if log_file:
                     try:
-                        log_file.write(chunk)
+                        log_file.write(line_bytes)
                     except Exception as e:
                         self.logger.error(f"Error writing log chunk for process {process_id}: {e}")
                 
-                for b in chunk:
-                    char = bytes([b])
-                    if char in (b'\r', b'\n'):
-                        if buffer:
-                            msg = buffer.decode('utf-8', errors='replace').strip()
-                            buffer.clear()
-                            if msg:
-                                self._handle_log_msg(process_id, msg, status_re)
-                    else:
-                        buffer.extend(char)
+                msg = line_bytes.decode('utf-8', errors='replace').strip()
+                if msg:
+                    self._handle_log_msg(process_id, msg, status_re)
         finally:
             if log_file:
                 try:
