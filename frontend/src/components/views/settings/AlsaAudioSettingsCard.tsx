@@ -675,7 +675,12 @@ const AlsaMatrixRoutingModal: React.FC<{
                       {/* Mute Toggle Button directly below Fader */}
                       {muteCtrl ? (
                         <button
-                          onClick={() => onControlChange(muteCtrl.numid, [isMuted ? 1 : 0])}
+                          onClick={() => {
+                            const rawVal = muteCtrl.values?.[0] ?? 1;
+                            const isMuted = rawVal === 0 || rawVal === false;
+                            const nextVal = isMuted ? 1 : 0;
+                            onControlChange(muteCtrl.numid, [nextVal]);
+                          }}
                           className={`w-full py-1 rounded text-[10px] font-bold transition-all cursor-pointer border ${
                             !isMuted
                               ? 'bg-brand-lime/20 text-brand-lime border-brand-lime/40 hover:bg-brand-lime/30'
@@ -1897,14 +1902,19 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
                               {/* Mute Toggle Button directly below Fader */}
                               {muteCtrl ? (
                                 <button
-                                  onClick={() => onControlChange(muteCtrl.numid, [!muteCtrl.values[0]])}
+                                  onClick={() => {
+                                    const rawVal = muteCtrl.values?.[0] ?? 1;
+                                    const isMuted = rawVal === 0 || rawVal === false;
+                                    const nextVal = isMuted ? 1 : 0;
+                                    onControlChange(muteCtrl.numid, [nextVal]);
+                                  }}
                                   className={`w-full py-1 rounded text-[10px] font-bold transition-all cursor-pointer border ${
-                                    isMuted
-                                      ? 'bg-red-500/20 text-red-400 border-red-500/40'
-                                      : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
+                                    !isMuted
+                                      ? 'bg-brand-lime/20 text-brand-lime border-brand-lime/40 hover:bg-brand-lime/30'
+                                      : 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30'
                                   }`}
                                 >
-                                  {isMuted ? 'MUTE' : 'ON'}
+                                  {!isMuted ? 'ON' : 'MUTED'}
                                 </button>
                               ) : (
                                 <div className="h-6 flex items-center justify-center text-[9px] text-text-secondary/30">-</div>
@@ -2093,12 +2103,17 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
               return (
                 <div key={ctrl.numid} className="w-9 flex items-center justify-center">
                   <button
-                    onClick={() => onControlChange(ctrl.numid, [!currentVal])}
+                    onClick={() => {
+                      const rawVal = ctrl.values?.[0] ?? 1;
+                      const isMuted = rawVal === 0 || rawVal === false;
+                      const nextVal = isMuted ? 1 : 0;
+                      onControlChange(ctrl.numid, [nextVal]);
+                    }}
                     title={`${ctrl.name}: ${isMutedState ? 'MUTED' : 'ACTIVE'}`}
                     className={`p-1.5 rounded-lg border text-sm transition-all cursor-pointer shadow-sm ${
                       isMutedState
-                        ? 'bg-red-500/20 text-red-400 border-red-500/40'
-                        : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40'
+                        ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30'
+                        : 'bg-brand-lime/20 text-brand-lime border-brand-lime/40 hover:bg-brand-lime/30'
                     }`}
                   >
                     {isMutedState ? '🔇' : '🔊'}
