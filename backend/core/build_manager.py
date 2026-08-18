@@ -86,6 +86,8 @@ class BuildManager:
             "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
             "libssl": {"pkg": "openssl", "type": "required", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
             "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
+            "libmp3lame": {"pkg": "mp3lame", "type": "optional", "description": "Biblioteca LAME para codificación de audio MP3 (libmp3lame-dev)"},
+            "libvorbis": {"pkg": "vorbis", "type": "optional", "description": "Biblioteca Ogg Vorbis para codificación de audio (libvorbis-dev)"},
             "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"},
             "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)"},
             "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)"},
@@ -105,6 +107,18 @@ class BuildManager:
                     installed = True
                 except Exception:
                     installed = False
+
+            # Fallback header checks for packages without .pc files on Debian/Ubuntu (e.g. libmp3lame-dev)
+            if not installed and name == "libmp3lame":
+                for h_path in ["/usr/include/lame/lame.h", "/usr/include/lame.h", "/usr/local/include/lame/lame.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
+            elif not installed and name == "libvorbis":
+                for h_path in ["/usr/include/vorbis/codec.h", "/usr/local/include/vorbis/codec.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
             
             results[name] = {
                 "installed": installed,
@@ -232,17 +246,15 @@ class BuildManager:
     async def run_build(self, build_id: int, ffmpeg_version: str,
                         srt_version: str | None, options: dict,
                         sdk_paths: dict | None, sources_cleaned: bool,
-                        log_callback, auto_clean: bool = False, builds_root: str = None) -> dict:
-        """Execute the full build pipeline for a profile.
-
-        Returns a dict with build results (binary paths, version output, etc.)
-        """
+                        log_callback, auto_clean: bool = False, builds_root: str = None,
+                        software_type: str = "ffmpeg") -> dict:
+        """Execute the build pipeline using the appropriate recipe."""
         if self.is_building:
             await log_callback("ERROR: Build already in progress\n")
             return {"success": False, "error": "Build already in progress"}
 
-        # Validation for WHIP requirement (FFmpeg 8.0+)
-        if options.get("whip"):
+        # WHIP requirement validation for FFmpeg 8.0+
+        if software_type == "ffmpeg" and options.get("whip"):
             ver_str = ffmpeg_version.lstrip("n")
             if ver_str and ver_str[0].isdigit():
                 try:
@@ -263,376 +275,42 @@ class BuildManager:
             os.makedirs(src_path, exist_ok=True)
             os.makedirs(install_path, exist_ok=True)
 
-            # Auto-detect VAAPI version if enabled
-            if options.get("vaapi"):
-                try:
-                    proc = await asyncio.create_subprocess_exec(
-                        "pkg-config", "--modversion", "libva",
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    stdout, _ = await proc.communicate()
-                    libva_ver = stdout.decode().strip()
-                    if libva_ver:
-                        if sdk_paths is None:
-                            sdk_paths = {}
-                        sdk_paths["vaapi"] = libva_ver
-                except Exception as e:
-                    self.logger.error(f"Failed to detect libva version: {e}")
+            # Instanciar la receta modular correspondiente
+            from forge.recipes import get_recipe
+            recipe = get_recipe(software_type, builds_root or self.workspace_root, runner=self)
+            
+            # Incorporar srt_version a las opciones si es ffmpeg para la receta
+            if software_type == "ffmpeg" and srt_version:
+                options["srt_version"] = srt_version
 
-            # ── 1. LibSRT (if enabled) ────────────────────────────
-            if options.get("libsrt") and srt_version:
-                await log_callback("━━━ STAGE 1: LIBSRT BUILD ━━━\n")
-                srt_src = os.path.join(src_path, "srt")
+            res = await recipe.compile(
+                build_id=build_id,
+                version_tag=ffmpeg_version,
+                options=options,
+                sdk_paths=sdk_paths,
+                install_path=install_path,
+                log_callback=log_callback
+            )
 
-                if not os.path.exists(srt_src) or sources_cleaned:
-                    if os.path.exists(srt_src):
-                        shutil.rmtree(srt_src)
-                    await log_callback(
-                        f"Cloning LibSRT and checking out tag {srt_version}...\n"
-                    )
-                    await self._run_logged_cmd(
-                        ["git", "clone", self.SRT_GIT_URL, srt_src],
-                        log_callback,
-                    )
-                    await self._run_logged_cmd(
-                        ["git", "checkout", srt_version],
-                        log_callback,
-                        cwd=srt_src,
-                    )
-                else:
-                    await log_callback(
-                        f"SRT sources exist, checking out tag {srt_version}...\n"
-                    )
-                    self._clear_stale_git_locks(srt_src)
-                    await self._run_logged_cmd(
-                        ["git", "fetch", "--tags"], log_callback, cwd=srt_src
-                    )
-                    await self._run_logged_cmd(
-                        ["git", "checkout", srt_version],
-                        log_callback,
-                        cwd=srt_src,
-                    )
+            if res.get("success"):
+                # ── Auto-limpieza de fuentes si está activado ────────
+                if auto_clean and os.path.exists(src_path):
+                    await log_callback("\n━━━ AUTO-CLEAN ENABLED ━━━\n")
+                    await log_callback("Cleaning temporary build sources to save space...\n")
+                    self.clean_sources(build_id, builds_root)
+                    await log_callback("Sources cleaned successfully.\n")
 
-                srt_build_dir = os.path.join(srt_src, "build")
-                os.makedirs(srt_build_dir, exist_ok=True)
-
-                await self._run_logged_cmd(
-                    [
-                        "cmake", "..",
-                        f"-DCMAKE_INSTALL_PREFIX={install_path}",
-                        "-DENABLE_STATIC=ON",
-                    ],
-                    log_callback,
-                    cwd=srt_build_dir,
-                )
-                await self._run_logged_cmd(
-                    ["make", "-j4"], log_callback, cwd=srt_build_dir
-                )
-                await self._run_logged_cmd(
-                    ["make", "install"], log_callback, cwd=srt_build_dir
-                )
-                await log_callback("━━━ LIBSRT BUILD COMPLETE ━━━\n\n")
-
-            # ── 1.5 NVIDIA ffnvcodec headers (if enabled) ─────────
-            if options.get("nvenc"):
-                await log_callback("━━━ STAGE 1.5: NVIDIA NVENC HEADERS ━━━\n")
-                nv_src = os.path.join(src_path, "nv-codec-headers")
-                
-                # Determine correct ffnvcodec tag based on user selection
-                nv_tag = sdk_paths.get("nvenc_headers") if sdk_paths else None
-                if not nv_tag:
-                    nv_tag = self.get_ffnvcodec_tag(ffmpeg_version)
-                    await log_callback(f"⚠️ Warning: No explicit nv-codec-headers tag selected. Falling back to auto-detected compatibility tag: {nv_tag}\n")
-
-                if not os.path.exists(nv_src) or sources_cleaned:
-                    if os.path.exists(nv_src):
-                        shutil.rmtree(nv_src)
-                    await log_callback("Cloning ffnvcodec headers from GitHub...\n")
-                    await self._run_logged_cmd(
-                        ["git", "clone", "https://github.com/FFmpeg/nv-codec-headers.git", nv_src],
-                        log_callback,
-                    )
-                else:
-                    await log_callback("Fetching updates for nv-codec-headers...\n")
-                    self._clear_stale_git_locks(nv_src)
-                    await self._run_logged_cmd(
-                        ["git", "fetch", "--tags"], log_callback, cwd=nv_src
-                    )
-
-                if nv_tag:
-                    await log_callback(f"Checking out nv-codec-headers tag: {nv_tag}...\n")
-                    await self._run_logged_cmd(
-                        ["git", "checkout", "-f", nv_tag],
-                        log_callback,
-                        cwd=nv_src,
-                    )
-                else:
-                    await log_callback("Using latest master branch for nv-codec-headers...\n")
-                    await self._run_logged_cmd(
-                        ["git", "checkout", "-f", "master"],
-                        log_callback,
-                        cwd=nv_src,
-                    )
-                    await self._run_logged_cmd(
-                        ["git", "pull"],
-                        log_callback,
-                        cwd=nv_src,
-                    )
-
-                await log_callback("Installing ffnvcodec headers to install prefix...\n")
-                await self._run_logged_cmd(
-                    ["make", f"PREFIX={install_path}", "install"],
-                    log_callback,
-                    cwd=nv_src,
-                )
-                await log_callback("━━━ NVIDIA HEADERS COMPLETE ━━━\n\n")
-
-            # ── 2. FFmpeg ─────────────────────────────────────────
-            await log_callback("━━━ STAGE 2: FFMPEG BUILD ━━━\n")
-            ffmpeg_src = os.path.join(src_path, "ffmpeg")
-
-            if not os.path.exists(ffmpeg_src) or sources_cleaned:
-                if os.path.exists(ffmpeg_src):
-                    shutil.rmtree(ffmpeg_src)
-                await log_callback(
-                    f"Cloning FFmpeg and checking out tag {ffmpeg_version}...\n"
-                )
-                await self._run_logged_cmd(
-                    ["git", "clone", self.FFMPEG_GIT_URL, ffmpeg_src],
-                    log_callback,
-                )
-                await self._run_logged_cmd(
-                    ["git", "checkout", ffmpeg_version],
-                    log_callback,
-                    cwd=ffmpeg_src,
-                )
+                result = {
+                    "success": True,
+                    "ffmpeg_binary": res.get("binary_path") if software_type == "ffmpeg" else None,
+                    "ffprobe_binary": os.path.join(install_path, "bin", "ffprobe") if software_type == "ffmpeg" and os.path.isfile(os.path.join(install_path, "bin", "ffprobe")) else None,
+                    "binary_path": res.get("binary_path"),
+                    "version_output": res.get("version_output"),
+                    "disk_usage_mb": self.get_disk_usage(build_id, builds_root),
+                    "sdk_paths": res.get("sdk_paths", sdk_paths),
+                }
             else:
-                await log_callback(
-                    f"FFmpeg sources exist, running make clean and "
-                    f"checking out tag {ffmpeg_version}...\n"
-                )
-                # In-place recompilation: clean previous build artifacts
-                await self._run_logged_cmd(
-                    ["make", "clean"], log_callback, cwd=ffmpeg_src,
-                    ignore_errors=True,
-                )
-                self._clear_stale_git_locks(ffmpeg_src)
-                await self._run_logged_cmd(
-                    ["git", "fetch", "--tags"], log_callback, cwd=ffmpeg_src
-                )
-                await self._run_logged_cmd(
-                    ["git", "checkout", ffmpeg_version],
-                    log_callback,
-                    cwd=ffmpeg_src,
-                )
-
-            # Build configure flags
-            config_flags = [
-                f"--prefix={install_path}",
-                "--enable-gpl",
-                "--enable-nonfree",
-                "--enable-libx264",
-                "--enable-libx265",
-                "--enable-openssl",
-            ]
-            # Automatically enable libopus if available on the system
-            dep_check = self.check_dependencies()
-            if dep_check.get("dependencies", {}).get("libopus", {}).get("installed"):
-                config_flags.append("--enable-libopus")
-
-            # Automatically enable libvpx if available on the system
-            if dep_check.get("dependencies", {}).get("libvpx", {}).get("installed"):
-                config_flags.append("--enable-libvpx")
-
-            # Automatically enable libfreetype and libharfbuzz if available on the system (required for drawtext filter in FFmpeg 6.1+)
-            if dep_check.get("dependencies", {}).get("libfreetype", {}).get("installed"):
-                config_flags.append("--enable-libfreetype")
-            if dep_check.get("dependencies", {}).get("libharfbuzz", {}).get("installed"):
-                config_flags.append("--enable-libharfbuzz")
-            if dep_check.get("dependencies", {}).get("libfontconfig", {}).get("installed"):
-                config_flags.append("--enable-libfontconfig")
-            if dep_check.get("dependencies", {}).get("libfribidi", {}).get("installed"):
-                config_flags.append("--enable-libfribidi")
-
-            if options.get("libsrt"):
-                config_flags.append("--enable-libsrt")
-            if options.get("vaapi"):
-                config_flags.append("--enable-vaapi")
-
-            # DeckLink Integration (using the global versioned directory)
-            if options.get("decklink") and sdk_paths and sdk_paths.get("decklink"):
-                decklink_version = sdk_paths.get("decklink")
-                decklink_sdk_path = os.path.join(self.workspace_root, "data", "sdks", "decklink", decklink_version)
-                if not os.path.exists(decklink_sdk_path):
-                    raise FileNotFoundError(
-                        f"DeckLink SDK version '{decklink_version}' is not installed in the system. "
-                        "Please upload this version first."
-                    )
-                
-                decklink_include = os.path.join(decklink_sdk_path, "include")
-                config_flags.append("--enable-decklink")
-                config_flags.append(f"--extra-cflags=-I{decklink_include}")
-                config_flags.append(f"--extra-cxxflags=-I{decklink_include}")
-            
-            # NVIDIA NVENC
-            if options.get("nvenc"):
-                config_flags.append("--enable-nvenc")
-                config_flags.append("--enable-ffnvcodec")
-                if options.get("cuda_filters"):
-                    # Validate dependencies strictly
-                    dep_check = self.check_dependencies()
-                    clang_installed = dep_check["dependencies"].get("clang", {}).get("installed", False)
-                    npp_installed = dep_check["dependencies"].get("nvidia-cuda-dev", {}).get("installed", False)
-                    if not clang_installed or not npp_installed:
-                        raise RuntimeError(
-                            "Cannot compile NVIDIA CUDA Filters: missing dependencies. "
-                            "Please ensure Clang ('clang') and NVIDIA CUDA/NPP development headers ('nvidia-cuda-dev') are installed on the system."
-                        )
-                    config_flags.append("--enable-cuda-llvm")
-                    config_flags.append("--enable-libnpp")
-                    config_flags.append("--enable-nvdec")
-
-            # NDI Integration (using the global versioned directory + patch application)
-            if options.get("ndi") and sdk_paths and sdk_paths.get("ndi"):
-                ndi_version = sdk_paths.get("ndi")
-                ndi_sdk_path = os.path.join(self.workspace_root, "data", "sdks", "ndi", ndi_version)
-                if not os.path.exists(ndi_sdk_path):
-                    raise FileNotFoundError(
-                        f"NDI SDK version '{ndi_version}' is not installed in the system. "
-                        "Please upload this version first."
-                    )
-                
-                # Apply dynamic NDI patch
-                await log_callback("━━━ APPLYING NDI COMMUNITY PATCH ━━━\n")
-                custom_patch_file = sdk_paths.get("ndi_patch_file")
-                if os.path.basename(self.workspace_root) == "backend":
-                    system_patches_dir = os.path.join(self.workspace_root, "patches")
-                    user_patches_dir = os.path.join(self.workspace_root, "data", "patches")
-                else:
-                    system_patches_dir = os.path.join(self.workspace_root, "backend", "patches")
-                    user_patches_dir = os.path.join(self.workspace_root, "backend", "data", "patches")
-                
-                if custom_patch_file:
-                    # Look in user uploads first, fallback to system
-                    local_patch_path = os.path.join(user_patches_dir, custom_patch_file)
-                    if not os.path.exists(local_patch_path):
-                        local_patch_path = os.path.join(system_patches_dir, custom_patch_file)
-                    await log_callback(f"Using custom NDI patch: {custom_patch_file}\n")
-                else:
-                    if ffmpeg_version.startswith("7."):
-                        default_patch_name = "system_ffmpeg_7.patch"
-                    elif ffmpeg_version.startswith("6."):
-                        default_patch_name = "system_ffmpeg_6.patch"
-                    else:
-                        default_patch_name = "system_ffmpeg_7.patch"
-                    
-                    local_patch_path = os.path.join(system_patches_dir, default_patch_name)
-                    await log_callback(f"Using system default NDI patch: {default_patch_name}\n")
-                
-                if not os.path.exists(local_patch_path):
-                    raise ValueError(f"NDI patch file not found: {local_patch_path}")
-                
-                patch_file = os.path.join(src_path, "ndi.patch")
-                try:
-                    shutil.copy2(local_patch_path, patch_file)
-                    await log_callback("Loaded local patch. Checking application status...\n")
-                    
-                    # 1. Check if the patch can be applied cleanly (means not applied yet)
-                    proc_check = await asyncio.create_subprocess_exec(
-                        "git", "apply", "--check", "--ignore-whitespace", "--whitespace=nowarn", patch_file,
-                        cwd=ffmpeg_src,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    await proc_check.communicate()
-                    
-                    if proc_check.returncode == 0:
-                        await log_callback("Applying NDI community patch to FFmpeg codebase...\n")
-                        await self._run_logged_cmd(
-                            ["git", "apply", "--ignore-whitespace", "--whitespace=nowarn", patch_file],
-                            log_callback,
-                            cwd=ffmpeg_src,
-                        )
-                    else:
-                        # 2. Check if the patch has already been applied (reverse apply check succeeds)
-                        proc_rev_check = await asyncio.create_subprocess_exec(
-                            "git", "apply", "--check", "--reverse", "--ignore-whitespace", "--whitespace=nowarn", patch_file,
-                            cwd=ffmpeg_src,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE,
-                        )
-                        await proc_rev_check.communicate()
-                        
-                        if proc_rev_check.returncode == 0:
-                            await log_callback("NDI community patch is already applied to the codebase. Skipping application.\n")
-                        else:
-                            # Fallback to apply with ignore_errors if state is mixed
-                            await log_callback("WARNING: Patch is not clean and doesn't seem fully applied. Attempting application anyway...\n")
-                            await self._run_logged_cmd(
-                                ["git", "apply", "--ignore-whitespace", "--whitespace=nowarn", patch_file],
-                                log_callback,
-                                cwd=ffmpeg_src,
-                                ignore_errors=True,
-                            )
-                except Exception as patch_exc:
-                    await log_callback(f"WARNING: Error downloading/applying patch: {patch_exc}\n")
-
-                config_flags.append("--enable-libndi_newtek")
-                config_flags.append(f"--extra-cflags=-I{ndi_sdk_path}/include")
-                config_flags.append(f"--extra-ldflags=-L{ndi_sdk_path}/lib/x86_64-linux-gnu")
-                # Add RPATH to ensure the compiled ffmpeg binary can load the dynamic libndi.so correctly
-                config_flags.append(f"--extra-ldflags=-Wl,-rpath,{ndi_sdk_path}/lib/x86_64-linux-gnu")
-                config_flags.append("--extra-libs=-lavahi-client -lavahi-common")
-
-            # PKG_CONFIG_PATH for locally-compiled libs (e.g. LibSRT and ffnvcodec)
-            env = os.environ.copy()
-            install_lib_path = os.path.join(install_path, "lib")
-            env["PKG_CONFIG_PATH"] = os.path.join(install_lib_path, "pkgconfig")
-            
-            # Add RPATH so ffmpeg finds our local libs (like libsrt) at runtime
-            config_flags.append(f"--extra-ldflags=-Wl,-rpath,{install_lib_path}")
-
-            await self._run_logged_cmd(
-                ["./configure"] + config_flags,
-                log_callback,
-                cwd=ffmpeg_src,
-                env=env,
-            )
-            await self._run_logged_cmd(
-                ["make", "-j4"], log_callback, cwd=ffmpeg_src
-            )
-            await self._run_logged_cmd(
-                ["make", "install"], log_callback, cwd=ffmpeg_src
-            )
-            await log_callback("\n━━━ FFMPEG BUILD SUCCESSFUL ━━━\n")
-
-            # ── 3. Validate ───────────────────────────────────────
-            ffmpeg_bin = os.path.join(install_path, "bin", "ffmpeg")
-            ffprobe_bin = os.path.join(install_path, "bin", "ffprobe")
-
-            version_output = ""
-            if os.path.isfile(ffmpeg_bin):
-                version_output = await self._get_command_output(
-                    [ffmpeg_bin, "-version"]
-                )
-                await log_callback(f"\n{version_output}\n")
-
-            # ── 4. Auto-clean sources (if enabled) ────────────────
-            if auto_clean and os.path.exists(src_path):
-                await log_callback("\n━━━ AUTO-CLEAN ENABLED ━━━\n")
-                await log_callback("Cleaning temporary build sources to save space...\n")
-                self.clean_sources(build_id, builds_root)
-                await log_callback("Sources cleaned successfully.\n")
-
-            result = {
-                "success": True,
-                "ffmpeg_binary": ffmpeg_bin if os.path.isfile(ffmpeg_bin) else None,
-                "ffprobe_binary": ffprobe_bin if os.path.isfile(ffprobe_bin) else None,
-                "version_output": version_output,
-                "disk_usage_mb": self.get_disk_usage(build_id, builds_root),
-                "sdk_paths": sdk_paths,
-            }
+                result = {"success": False, "error": res.get("error", "Unknown build error")}
 
         except Exception as exc:
             error_msg = str(exc)
@@ -646,16 +324,21 @@ class BuildManager:
 
     # ── Build validation ──────────────────────────────────────────
 
-    async def validate_build(self, ffmpeg_binary: str) -> dict:
-        """Run `ffmpeg -version` and return the output."""
-        if not ffmpeg_binary or not os.path.isfile(ffmpeg_binary):
-            return {"valid": False, "error": "Binary not found"}
+    async def validate_build(self, binary_path: str, software_type: str = "ffmpeg") -> dict:
+        """Validate the compiled binary using its recipe."""
+        if not binary_path or not os.path.isfile(binary_path):
+            return {"valid": False, "error": f"Binary not found: {binary_path}"}
 
         try:
-            output = await self._get_command_output([ffmpeg_binary, "-version"])
-            return {"valid": True, "output": output}
-        except Exception as exc:
-            return {"valid": False, "error": str(exc)}
+            from forge.recipes import get_recipe
+            recipe = get_recipe(software_type, self.workspace_root, runner=self)
+            return await recipe.validate(binary_path)
+        except Exception:
+            try:
+                output = await self._get_command_output([binary_path, "-version"])
+                return {"valid": True, "output": output}
+            except Exception as exc:
+                return {"valid": False, "error": str(exc)}
 
     # ── Source cleanup ────────────────────────────────────────────
 

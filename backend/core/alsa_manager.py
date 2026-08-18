@@ -138,7 +138,7 @@ class AlsaManager:
         matrix_source = None
         
         # Regex matching double entity prefixes (Source -> Destination)
-        prefix_pattern = r"(?:PCM\s+\d+|Line\s+Out|Line\s+\d+|Digital\s+\d+|Mic\s+\d+|Aux\s+\d+|AES\s+\d+|Speaker|Headphone|Master)"
+        prefix_pattern = r"(?:Front\s+Mic|Rear\s+Mic|Internal\s+Mic|Dock\s+Mic|Front\s+Headphone|Rear\s+Headphone|Line\s+Out|Line\s+In|PCM\s+\d+|Line\s+\d+|Digital\s+\d+|Mic\s+\d+|Aux\s+\d+|AES\s+\d+|Speaker|Headphone|Master)"
         matrix_match = re.match(
             rf"^({prefix_pattern})\s+({prefix_pattern})\s+(Monitor\s+)?(Playback|Capture)",
             name,
@@ -163,8 +163,8 @@ class AlsaManager:
             category = "hardware_outputs"
             matrix_source = f"{source_name} (Monitor)" if is_monitor else source_name
         else:
-            # Single entity prefix matching
-            match = re.match(rf"^({prefix_pattern}|[A-Za-z0-9/\-_]+(?:\s+\d+)?)\s+", name, re.IGNORECASE)
+            # Single entity prefix matching with support for compound names (Front Mic, Line Out, etc.)
+            match = re.match(rf"^({prefix_pattern}|[A-Za-z0-9/\-_]+(?:\s+[A-Za-z0-9/\-_]+)?(?:\s+\d+)?)\s+", name, re.IGNORECASE)
             if match:
                 group = match.group(1).strip()
             else:
@@ -176,14 +176,21 @@ class AlsaManager:
                 category = "global_controls"
             elif any(k in name_lower for k in ["clock", "localrate", "rate", "sync", "pll"]):
                 category = "system_clock"
-            elif any(k in name_lower for k in ["master", "pcm"]) and "playback" in name_lower or name_lower == "master":
+            elif "master" in name_lower and ("playback" in name_lower or name_lower == "master"):
+                # Master Playback controls the physical hardware output mixer!
+                category = "hardware_outputs"
+                group = "Master"
+            elif any(k in name_lower for k in ["mic", "line", "aux", "cd", "input"]) and "playback" in name_lower:
+                # Input monitoring controls (e.g. Front Mic Playback Volume, Line Playback Switch)
+                # regulate input pass-through into the hardware output mixer!
+                category = "hardware_outputs"
+                input_src = "Mic" if "mic" in name_lower else "Line" if "line" in name_lower else "Aux" if "aux" in name_lower else "CD"
+                matrix_source = f"{group} (Monitor)" if group != "General" else f"{input_src} (Monitor)"
+            elif "pcm" in name_lower and "playback" in name_lower:
                 category = "virtual_playout"
-                if "master" in name_lower:
-                    group = "Master"
             elif "pcm" in name_lower and ("capture" in name_lower or "record" in name_lower):
                 category = "virtual_capture"
             elif any(k in name_lower for k in ["line", "digital", "aux", "spdif", "aes"]):
-                # Physical hardware connector lines (Line, Line Out, Digital, Aux, S/PDIF, AES)
                 if re.search(r'\b(out|output|playback)\b', name_lower):
                     category = "hardware_outputs"
                 else:
@@ -197,7 +204,7 @@ class AlsaManager:
                 category = "virtual_capture"
                 group = f"Capture {index}"
             elif "playback" in name_lower:
-                category = "virtual_playout" if "pcm" in name_lower else "hardware_outputs"
+                category = "hardware_outputs"
             else:
                 category = "hardware_inputs" if "in" in name_lower else "hardware_outputs"
 
@@ -302,6 +309,16 @@ class AlsaManager:
                     topology[cat].append(group)
                 else:
                     topology["global_controls"].append(group)
+
+            # Ensure virtual_playout contains a virtual PCM stream node (Master / PCM 0) for software process binding (FFmpeg: foo)
+            if not topology["virtual_playout"]:
+                topology["virtual_playout"].append({
+                    "id": f"virtual_playout_PCM_{card_idx}",
+                    "name": "Master",
+                    "category": "virtual_playout",
+                    "controls": [],
+                    "meters": []
+                })
 
         except Exception as e:
             logger.error(f"Error in amixer contents fallback parser for card {card_idx}: {e}")
@@ -479,5 +496,17 @@ class AlsaManager:
                         meters_data[numid] = vals
 
         return meters_data
+
+    def read_jack_sensors(self, card_idx: int) -> Dict[int, bool]:
+        """Fast-path reading for Jack Sensor states (numids in jack_sensors)."""
+        topology = self.get_card_topology(card_idx)
+        jacks_data = {}
+        for group in topology.get("jack_sensors", []):
+            for ctrl in group.get("controls", []):
+                numid = ctrl.get("numid")
+                vals = ctrl.get("values", [False])
+                if numid is not None:
+                    jacks_data[numid] = bool(vals[0]) if vals else False
+        return jacks_data
 
 alsa_manager = AlsaManager()

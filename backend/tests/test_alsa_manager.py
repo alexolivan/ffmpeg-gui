@@ -57,7 +57,7 @@ class TestAlsaManager(unittest.TestCase):
             access_flags="rw---R--",
             items=[]
         )
-        self.assertEqual(res_master["category"], "virtual_playout")
+        self.assertEqual(res_master["category"], "hardware_outputs")
         self.assertEqual(res_master["group"], "Master")
 
         res_meter = self.mgr._classify_control(

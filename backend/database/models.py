@@ -14,30 +14,26 @@ class SchemaInfo(Base):
     applied_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
-class FfmpegBuild(Base):
-    """Represents a named, versioned FFmpeg compilation profile.
+class SoftwareBuild(Base):
+    """Represents a named, versioned compilation profile of a service binary.
 
     Each build lives in an isolated directory and can coexist with others,
-    allowing users to maintain multiple FFmpeg+SDK combinations for
-    broadcast reliability (e.g. different DeckLink SDK versions).
+    allowing users to maintain multiple versions and options of different engines.
     """
-    __tablename__ = 'ffmpeg_builds'
+    __tablename__ = 'software_builds'
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
+    software_type = Column(String, nullable=False, default='ffmpeg')  # 'ffmpeg', 'icecast2', 'kiosk_cog', 'mediamtx'
+    version_tag = Column(String, nullable=False)  # main version (e.g. n7.1 or v1.6)
+    binary_path = Column(String, nullable=True)   # main compiled binary location
 
-    # Git tag versions selected by the user
-    ffmpeg_version = Column(String, nullable=False)
-    srt_version = Column(String, nullable=True)
-
-    # Build configuration (JSON for future extensibility)
+    # Build configuration
     build_options = Column(JSON, nullable=False)
     sdk_paths = Column(JSON, nullable=True)
 
-    # Filesystem paths (populated after compilation)
+    # Filesystem paths
     install_path = Column(String, nullable=False)
-    ffmpeg_binary = Column(String, nullable=True)
-    ffprobe_binary = Column(String, nullable=True)
 
     # Build lifecycle state
     status = Column(String, default='pending')
@@ -48,102 +44,297 @@ class FfmpegBuild(Base):
     # Auto-generated metadata
     disk_usage_mb = Column(Integer, nullable=True)
     build_log_summary = Column(String, nullable=True)
-    ffmpeg_version_output = Column(String, nullable=True)
+    version_output = Column(String, nullable=True)
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     built_at = Column(DateTime, nullable=True)
 
-    # Reverse relationship to processes using this build
-    processes = relationship("MediaProcess", back_populates="ffmpeg_build")
-
     storage_id = Column(Integer, ForeignKey('storages.id'), nullable=True)
     storage = relationship("Storage", back_populates="builds")
 
+    # ── Legacy/FFmpeg Compatibility Properties ────────────────────
+    @property
+    def ffmpeg_version(self):
+        return self.version_tag
 
-class MediaProcess(Base):
-    __tablename__ = 'media_processes'
+    @ffmpeg_version.setter
+    def ffmpeg_version(self, val):
+        self.version_tag = val
+
+    @property
+    def ffmpeg_binary(self):
+        return self.binary_path
+
+    @ffmpeg_binary.setter
+    def ffmpeg_binary(self, val):
+        self.binary_path = val
+
+    @property
+    def ffprobe_binary(self):
+        if self.binary_path:
+            import os
+            parent = os.path.dirname(self.binary_path)
+            candidate = os.path.join(parent, "ffprobe")
+            if os.path.exists(candidate):
+                return candidate
+        return None
+
+    @ffprobe_binary.setter
+    def ffprobe_binary(self, val):
+        pass
+
+    @property
+    def ffmpeg_version_output(self):
+        return self.version_output
+
+    @ffmpeg_version_output.setter
+    def ffmpeg_version_output(self, val):
+        self.version_output = val
+
+    @property
+    def srt_version(self):
+        if isinstance(self.build_options, dict):
+            return self.build_options.get('srt_version')
+        return None
+
+    @srt_version.setter
+    def srt_version(self, val):
+        if not isinstance(self.build_options, dict):
+            self.build_options = {}
+        self.build_options['srt_version'] = val
+
+
+FfmpegBuild = SoftwareBuild
+
+
+class Service(Base):
+    __tablename__ = 'services'
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    type = Column(String, nullable=False)  # 'service' or 'batch'
-    input_config = Column(JSON, nullable=False)
-    output_config = Column(JSON, nullable=False)
-    codec_config = Column(JSON, nullable=False)
-    filter_config = Column(JSON)
+    service_type = Column(String, nullable=False)  # 'ffmpeg_stream', 'kiosk_browser', 'icecast_server', 'mediamtx_hub'
+    config = Column(JSON, nullable=False)
+    is_active = Column(Boolean, default=True)
 
     status = Column(String, default='stopped')  # 'running', 'stopped', 'error', 'finished'
-    pid = Column(Integer)
-    last_start = Column(DateTime)
-    last_stop = Column(DateTime)
+    pid = Column(Integer, nullable=True)
+    last_start = Column(DateTime, nullable=True)
+    last_stop = Column(DateTime, nullable=True)
 
-    # Watchdog info
+    # Watchdog & stats info
     cpu_usage = Column(Integer, default=0)
     ram_usage = Column(Integer, default=0)
-    network_timeout = Column(Integer, default=15)
-    debug_mode = Column(Boolean, default=False)
-    log_storage_id = Column(Integer, ForeignKey('storages.id'), nullable=True)
-
-    log_storage = relationship("Storage", foreign_keys=[log_storage_id])
-
-    # Configuration toggles & snapshot
-    auto_start = Column(Boolean, default=False)
-    startup_order = Column(Integer, default=1)
-    startup_delay = Column(Integer, default=0)
-    watchdog_enabled = Column(Boolean, default=False)
-    watchdog_retries = Column(Integer, default=5)
-    watchdog_min_speed = Column(Float, nullable=True, default=None)
-    watchdog_min_speed_duration = Column(Integer, default=30)
     restart_count = Column(Integer, default=0)
     last_started_config = Column(JSON, nullable=True)
 
     # Real-time Stats
-    bitrate = Column(String)  # e.g. "4500 kb/s"
-    fps = Column(String)      # e.g. "25.0"
-    speed = Column(String)    # e.g. "1.02x"
-
-    # FK to the FFmpeg build profile used by this process
-    ffmpeg_build_id = Column(Integer, ForeignKey('ffmpeg_builds.id'), nullable=True)
-    ffmpeg_build = relationship("FfmpegBuild", back_populates="processes")
+    bitrate = Column(String, nullable=True)  # e.g. "4500 kb/s"
+    fps = Column(String, nullable=True)      # e.g. "25.0"
+    speed = Column(String, nullable=True)    # e.g. "1.02x"
 
     alias = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    def _set_config_key(self, key, val):
+        if not self.config:
+            self.config = {}
+        new_cfg = dict(self.config)
+        new_cfg[key] = val
+        self.config = new_cfg
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(self, 'config')
+
+    @property
+    def type(self):
+        return 'service'
+
+    @type.setter
+    def type(self, val):
+        if val == 'service' and not self.service_type:
+            self.service_type = 'ffmpeg_stream'
+        elif val == 'batch' and not self.service_type:
+            self.service_type = 'ffmpeg_stream'
+
+    @property
+    def input_config(self):
+        return self.config.get('input_config', {}) if self.config else {}
+
+    @input_config.setter
+    def input_config(self, val):
+        self._set_config_key('input_config', val)
+
+    @property
+    def output_config(self):
+        return self.config.get('output_config', {}) if self.config else {}
+
+    @output_config.setter
+    def output_config(self, val):
+        self._set_config_key('output_config', val)
+
+    @property
+    def codec_config(self):
+        return self.config.get('codec_config', {}) if self.config else {}
+
+    @codec_config.setter
+    def codec_config(self, val):
+        self._set_config_key('codec_config', val)
+
+    @property
+    def filter_config(self):
+        return self.config.get('filter_config', {}) if self.config else {}
+
+    @filter_config.setter
+    def filter_config(self, val):
+        self._set_config_key('filter_config', val)
+
+    @property
+    def auto_start(self):
+        return self.config.get('auto_start', False) if self.config else False
+
+    @auto_start.setter
+    def auto_start(self, val):
+        self._set_config_key('auto_start', val)
+
+    @property
+    def startup_order(self):
+        return self.config.get('startup_order', 1) if self.config else 1
+
+    @startup_order.setter
+    def startup_order(self, val):
+        self._set_config_key('startup_order', val)
+
+    @property
+    def startup_delay(self):
+        return self.config.get('startup_delay', 0) if self.config else 0
+
+    @startup_delay.setter
+    def startup_delay(self, val):
+        self._set_config_key('startup_delay', val)
+
+    @property
+    def watchdog_enabled(self):
+        return self.config.get('watchdog_enabled', False) if self.config else False
+
+    @watchdog_enabled.setter
+    def watchdog_enabled(self, val):
+        self._set_config_key('watchdog_enabled', val)
+
+    @property
+    def watchdog_retries(self):
+        return self.config.get('watchdog_retries', 5) if self.config else 5
+
+    @watchdog_retries.setter
+    def watchdog_retries(self, val):
+        self._set_config_key('watchdog_retries', val)
+
+    @property
+    def watchdog_min_speed(self):
+        return self.config.get('watchdog_min_speed') if self.config else None
+
+    @watchdog_min_speed.setter
+    def watchdog_min_speed(self, val):
+        self._set_config_key('watchdog_min_speed', val)
+
+    @property
+    def watchdog_min_speed_duration(self):
+        return self.config.get('watchdog_min_speed_duration', 30) if self.config else 30
+
+    @watchdog_min_speed_duration.setter
+    def watchdog_min_speed_duration(self, val):
+        self._set_config_key('watchdog_min_speed_duration', val)
+
+    @property
+    def log_storage_id(self):
+        return self.config.get('log_storage_id') if self.config else None
+
+    @log_storage_id.setter
+    def log_storage_id(self, val):
+        self._set_config_key('log_storage_id', val)
+
+    @property
+    def ffmpeg_build_id(self):
+        return self.config.get('ffmpeg_build_id') if self.config else None
+
+    @ffmpeg_build_id.setter
+    def ffmpeg_build_id(self, val):
+        self._set_config_key('ffmpeg_build_id', val)
+
+    @property
+    def debug_mode(self):
+        return self.config.get('debug_mode', False) if self.config else False
+
+    @debug_mode.setter
+    def debug_mode(self, val):
+        self._set_config_key('debug_mode', val)
+
+    @property
+    def network_timeout(self):
+        return self.config.get('network_timeout', 15) if self.config else 15
+
+    @network_timeout.setter
+    def network_timeout(self, val):
+        self._set_config_key('network_timeout', val)
 
     @property
     def pending_changes(self) -> bool:
         if self.status != 'running' or not self.last_started_config:
             return False
         
-        # Compare only parameters that modify the ffmpeg execution command/environment
-        # (excluding administrative fields like name, auto_start, watchdog settings)
-        functional_keys = [
-            "ffmpeg_build_id",
-            "input_config",
-            "output_config",
-            "codec_config",
-            "filter_config"
-        ]
+        current_cfg = self.config or {}
+        last_started = self.last_started_config
+        started_cfg = last_started.get('config') if isinstance(last_started, dict) and 'config' in last_started else last_started
+        if not isinstance(started_cfg, dict):
+            return False
+            
+        c_in, s_in = current_cfg.get('input_config'), started_cfg.get('input_config')
+        c_out, s_out = current_cfg.get('output_config'), started_cfg.get('output_config')
+        c_codec, s_codec = current_cfg.get('codec_config'), started_cfg.get('codec_config')
+        c_filter, s_filter = current_cfg.get('filter_config'), started_cfg.get('filter_config')
         
-        for key in functional_keys:
-            current_val = getattr(self, key, None)
-            started_val = self.last_started_config.get(key, None)
-            if current_val != started_val:
-                return True
-        return False
+        return (c_in != s_in) or (c_out != s_out) or (c_codec != s_codec) or (c_filter != s_filter)
 
 
-class ProcessLog(Base):
-    __tablename__ = 'process_logs'
+class ServiceDependency(Base):
+    __tablename__ = 'service_dependencies'
 
     id = Column(Integer, primary_key=True)
-    process_id = Column(Integer, ForeignKey('media_processes.id'))
+    consumer_type = Column(String, nullable=False)  # 'service' or 'task'
+    consumer_id = Column(Integer, nullable=False)   # FK to services.id or scheduled_tasks.id
+    provider_service_id = Column(Integer, ForeignKey('services.id'), nullable=False)
+    is_auto_managed = Column(Boolean, default=True)
+
+    provider_service = relationship("Service", foreign_keys=[provider_service_id])
+
+
+class ServiceLog(Base):
+    __tablename__ = 'service_logs'
+
+    id = Column(Integer, primary_key=True)
+    service_id = Column(Integer, ForeignKey('services.id'))
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     level = Column(String)  # 'INFO', 'ERROR', 'DEBUG'
     message = Column(String)
 
-    process = relationship("MediaProcess", back_populates="logs")
+    service = relationship("Service", back_populates="logs")
+
+    def __init__(self, **kwargs):
+        if 'process_id' in kwargs:
+            kwargs['service_id'] = kwargs.pop('process_id')
+        super().__init__(**kwargs)
+
+    @property
+    def process_id(self):
+        return self.service_id
+
+    @process_id.setter
+    def process_id(self, val):
+        self.service_id = val
 
 
-MediaProcess.logs = relationship("ProcessLog", order_by=ProcessLog.id, back_populates="process")
+Service.logs = relationship("ServiceLog", order_by=ServiceLog.id, back_populates="service", cascade="all, delete-orphan")
+
+MediaProcess = Service
+ProcessLog = ServiceLog
 
 
 class SystemSettings(Base):
@@ -185,7 +376,7 @@ class ScheduledTask(Base):
     output_config = Column(JSON, nullable=False)
     codec_config = Column(JSON, nullable=False)
     filter_config = Column(JSON, nullable=True)
-    ffmpeg_build_id = Column(Integer, ForeignKey('ffmpeg_builds.id'), nullable=True)
+    ffmpeg_build_id = Column(Integer, ForeignKey('software_builds.id'), nullable=True)
 
     schedule_type = Column(String, nullable=False)  # 'manual', 'one_shot', 'recurring'
     schedule_cron = Column(String, nullable=True)
@@ -254,7 +445,7 @@ class Storage(Base):
     is_default = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
-    builds = relationship("FfmpegBuild", back_populates="storage")
+    builds = relationship("SoftwareBuild", back_populates="storage")
 
 
 class InstalledSdk(Base):

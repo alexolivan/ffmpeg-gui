@@ -23,36 +23,97 @@ def init_db():
     try:
         Base.metadata.create_all(bind=engine)
         with engine.begin() as conn:
-            # Query media_processes columns using SQLAlchemy connection execution
-            result = conn.execute(text("PRAGMA table_info(media_processes)"))
-            columns = [row[1] for row in result.fetchall()]
-            
-            if "auto_start" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN auto_start BOOLEAN DEFAULT 0"))
-            if "startup_order" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN startup_order INTEGER DEFAULT 1"))
-            if "startup_delay" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN startup_delay INTEGER DEFAULT 0"))
-            if "watchdog_enabled" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN watchdog_enabled BOOLEAN DEFAULT 0"))
-            if "watchdog_retries" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN watchdog_retries INTEGER DEFAULT 5"))
-            if "last_started_config" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN last_started_config JSON DEFAULT NULL"))
-            if "alias" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN alias TEXT DEFAULT NULL"))
-            if "restart_count" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN restart_count INTEGER DEFAULT 0"))
-            if "network_timeout" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN network_timeout INTEGER DEFAULT 15"))
-            if "debug_mode" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN debug_mode BOOLEAN DEFAULT 0"))
-            if "log_storage_id" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN log_storage_id INTEGER REFERENCES storages(id)"))
-            if "watchdog_min_speed" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN watchdog_min_speed FLOAT DEFAULT NULL"))
-            if "watchdog_min_speed_duration" not in columns:
-                conn.execute(text("ALTER TABLE media_processes ADD COLUMN watchdog_min_speed_duration INTEGER DEFAULT 30"))
+            # 1. Migrate media_processes to services if it exists
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='media_processes'"))
+            if result.fetchone():
+                logger.info("Migrating media_processes table to services table...")
+                
+                # Fetch all columns info
+                cols_result = conn.execute(text("PRAGMA table_info(media_processes)"))
+                col_names = [r[1] for r in cols_result.fetchall()]
+                
+                # Fetch all processes
+                procs = conn.execute(text("SELECT * FROM media_processes")).fetchall()
+                
+                import json
+                for p in procs:
+                    row_dict = dict(zip(col_names, p))
+                    
+                    def parse_json(val):
+                        if isinstance(val, (dict, list)):
+                            return val
+                        if val:
+                            try:
+                                return json.loads(val)
+                            except Exception:
+                                pass
+                        return {}
+                        
+                    config_data = {
+                        "input_config": parse_json(row_dict.get("input_config")),
+                        "output_config": parse_json(row_dict.get("output_config")),
+                        "codec_config": parse_json(row_dict.get("codec_config")),
+                        "filter_config": parse_json(row_dict.get("filter_config")),
+                        "ffmpeg_build_id": row_dict.get("ffmpeg_build_id"),
+                        "network_timeout": row_dict.get("network_timeout", 15),
+                        "debug_mode": bool(row_dict.get("debug_mode", False)),
+                        "log_storage_id": row_dict.get("log_storage_id"),
+                        "auto_start": bool(row_dict.get("auto_start", False)),
+                        "startup_order": row_dict.get("startup_order", 1),
+                        "startup_delay": row_dict.get("startup_delay", 0),
+                        "watchdog_enabled": bool(row_dict.get("watchdog_enabled", False)),
+                        "watchdog_retries": row_dict.get("watchdog_retries", 5),
+                        "watchdog_min_speed": row_dict.get("watchdog_min_speed"),
+                        "watchdog_min_speed_duration": row_dict.get("watchdog_min_speed_duration", 30)
+                    }
+                    
+                    conn.execute(
+                        text("""
+                            INSERT INTO services (
+                                id, name, service_type, config, is_active, status, pid,
+                                last_start, last_stop, cpu_usage, ram_usage, restart_count,
+                                last_started_config, bitrate, fps, speed, alias, created_at
+                            ) VALUES (
+                                :id, :name, :service_type, :config, :is_active, :status, :pid,
+                                :last_start, :last_stop, :cpu_usage, :ram_usage, :restart_count,
+                                :last_started_config, :bitrate, :fps, :speed, :alias, :created_at
+                            )
+                        """),
+                        {
+                            "id": row_dict.get("id"),
+                            "name": row_dict.get("name"),
+                            "service_type": "ffmpeg_stream",
+                            "config": json.dumps(config_data),
+                            "is_active": True,
+                            "status": row_dict.get("status", "stopped"),
+                            "pid": row_dict.get("pid"),
+                            "last_start": row_dict.get("last_start"),
+                            "last_stop": row_dict.get("last_stop"),
+                            "cpu_usage": row_dict.get("cpu_usage", 0),
+                            "ram_usage": row_dict.get("ram_usage", 0),
+                            "restart_count": row_dict.get("restart_count", 0),
+                            "last_started_config": json.dumps(parse_json(row_dict.get("last_started_config"))) if row_dict.get("last_started_config") else None,
+                            "bitrate": row_dict.get("bitrate"),
+                            "fps": row_dict.get("fps"),
+                            "speed": row_dict.get("speed"),
+                            "alias": row_dict.get("alias"),
+                            "created_at": row_dict.get("created_at")
+                        }
+                    )
+                
+                # Check and migrate process_logs to service_logs
+                res_logs = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='process_logs'"))
+                if res_logs.fetchone():
+                    logger.info("Migrating process_logs to service_logs...")
+                    conn.execute(text("""
+                        INSERT INTO service_logs (id, service_id, timestamp, level, message)
+                        SELECT id, process_id, timestamp, level, message FROM process_logs
+                    """))
+                    conn.execute(text("DROP TABLE process_logs"))
+                
+                # Drop media_processes table
+                logger.info("Dropping media_processes table...")
+                conn.execute(text("DROP TABLE media_processes"))
                 
             # Migración para la tabla scheduled_tasks
             result = conn.execute(text("PRAGMA table_info(scheduled_tasks)"))
@@ -64,13 +125,13 @@ def init_db():
             if "command" not in task_columns:
                 conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN command TEXT DEFAULT NULL"))
             
-            # Migración para la columna auto_clean en ffmpeg_builds
-            result = conn.execute(text("PRAGMA table_info(ffmpeg_builds)"))
+            # Migración para la columna auto_clean en software_builds
+            result = conn.execute(text("PRAGMA table_info(software_builds)"))
             build_columns = [row[1] for row in result.fetchall()]
             if "auto_clean" not in build_columns:
-                conn.execute(text("ALTER TABLE ffmpeg_builds ADD COLUMN auto_clean BOOLEAN DEFAULT 0"))
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN auto_clean BOOLEAN DEFAULT 0"))
             if "storage_id" not in build_columns:
-                conn.execute(text("ALTER TABLE ffmpeg_builds ADD COLUMN storage_id INTEGER REFERENCES storages(id) NULL"))
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN storage_id INTEGER REFERENCES storages(id) NULL"))
                 
             # Migración para la tabla system_settings
             result = conn.execute(text("PRAGMA table_info(system_settings)"))

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
 from database.db import init_db, get_db, SessionLocal
-from database.models import FfmpegBuild, MediaProcess, ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
+from database.models import FfmpegBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
 from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
@@ -157,6 +157,7 @@ class BuildCreate(BaseModel):
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = False
     storage_id: Optional[int] = None
+    software_type: Optional[str] = "ffmpeg"
 
 class BuildUpdate(BaseModel):
     name: Optional[str] = None
@@ -166,6 +167,7 @@ class BuildUpdate(BaseModel):
     sdk_paths: Optional[dict] = None
     auto_clean: Optional[bool] = None
     storage_id: Optional[int] = None
+    software_type: Optional[str] = None
 
 class ProcessCreate(BaseModel):
     name: str
@@ -219,6 +221,48 @@ class ProcessUpdate(BaseModel):
     network_timeout: Optional[int] = None
     debug_mode: Optional[bool] = None
     log_storage_id: Optional[int] = None
+
+    @validator('alias')
+    def validate_alias(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 12:
+            raise ValueError("Alias must be 12 characters or less")
+        import re
+        if not re.match(r"^[a-zA-Z0-9\s\-_]+$", v):
+            raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
+        return v
+
+class ServiceCreate(BaseModel):
+    name: str
+    service_type: str
+    config: dict
+    is_active: Optional[bool] = True
+    alias: Optional[str] = None
+
+    @validator('alias')
+    def validate_alias(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return None
+        if len(v) > 12:
+            raise ValueError("Alias must be 12 characters or less")
+        import re
+        if not re.match(r"^[a-zA-Z0-9\s\-_]+$", v):
+            raise ValueError("Alias must contain only alphanumeric characters, spaces, dashes, or underscores")
+        return v
+
+class ServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    service_type: Optional[str] = None
+    config: Optional[dict] = None
+    is_active: Optional[bool] = None
+    alias: Optional[str] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -1286,7 +1330,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
 
     # 7. Services
     if req.services:
-        procs = db.query(MediaProcess).filter(MediaProcess.type == "service").all()
+        procs = db.query(MediaProcess).filter(MediaProcess.service_type == "ffmpeg_stream").all()
         sections["services"] = [
             {
                 "name": p.name,
@@ -2411,10 +2455,9 @@ async def auto_start_services():
     logger.info("Watchdog / Auto-start: Initializing service startup checks...")
     
     with SessionLocal() as db:
-        from database.models import MediaProcess
         services = db.query(MediaProcess).filter(
-            MediaProcess.type == 'service',
-            MediaProcess.auto_start == True
+            MediaProcess.service_type == 'ffmpeg_stream',
+            MediaProcess.config["auto_start"].as_boolean() == True
         ).all()
         sorted_services = sorted(
             services,
@@ -2528,9 +2571,11 @@ def sanitize_database_processes(db: Session):
         filter_cfg = copy.deepcopy(p.filter_config) if p.filter_config else {}
         if sanitize_process_config_data(input_cfg, filter_cfg):
             p.input_config = input_cfg
-            p.filter_config = filter_cfg
-            flag_modified(p, "input_config")
-            flag_modified(p, "filter_config")
+            try:
+                flag_modified(p, "input_config")
+                flag_modified(p, "filter_config")
+            except Exception:
+                pass
             updated_count += 1
             
     if updated_count > 0:
@@ -2853,6 +2898,29 @@ async def get_nvenc_tags():
     tags = await build_manager.fetch_available_tags("nvenc")
     return {"tags": tags}
 
+@app.get("/builds/tags/{software_type}")
+async def get_software_tags(software_type: str):
+    """List available tags for the specified software type."""
+    if software_type == "icecast2":
+        tags = await build_manager.fetch_available_tags("https://github.com/xiph/icecast-server.git")
+    elif software_type == "mediamtx":
+        tags = await build_manager.fetch_available_tags("https://github.com/bluenviron/mediamtx.git")
+    elif software_type == "kiosk_cog":
+        tags = await build_manager.fetch_available_tags("https://github.com/Igalia/cog.git")
+    else:
+        tags = await build_manager.fetch_available_tags(software_type)
+    
+    # Si por algún motivo no hay tags o falla, retornar un fallback básico
+    if not tags:
+        if software_type == "icecast2":
+            tags = ["2.4.4", "2.4.3", "2.4.2"]
+        elif software_type == "mediamtx":
+            tags = ["v1.9.0", "v1.8.0", "v1.7.0"]
+        elif software_type == "kiosk_cog":
+            tags = ["v0.18.0", "v0.16.0"]
+            
+    return {"tags": tags}
+
 @app.get("/builds/disk-info")
 def get_disk_info():
     """Get free space on the partition where builds are stored."""
@@ -3019,6 +3087,7 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         install_path="",  # Will be set after we have the ID
         status="pending",
         storage_id=data.storage_id,
+        software_type=data.software_type or "ffmpeg",
     )
     db.add(build)
     db.commit()
@@ -3086,6 +3155,8 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
         build.sdk_paths = data.sdk_paths
     if data.auto_clean is not None:
         build.auto_clean = data.auto_clean
+    if data.software_type is not None:
+        build.software_type = data.software_type
 
     db.commit()
     db.refresh(build)
@@ -3183,6 +3254,7 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                     log_callback=_log_callback,
                     auto_clean=build.auto_clean or False,
                     builds_root=storage_path,
+                    software_type=build.software_type or "ffmpeg",
                 )
                 # Persist results to DB
                 with SessionLocal() as session:
@@ -3297,14 +3369,17 @@ def clean_build_sources(build_id: int, db: Session = Depends(get_db)):
 
 @app.get("/builds/{build_id}/validate")
 async def validate_build(build_id: int, db: Session = Depends(get_db)):
-    """Run ffmpeg -version on the build's binary."""
+    """Run validation command on the build's binary."""
     build = db.query(FfmpegBuild).get(build_id)
     if not build:
         raise HTTPException(status_code=404, detail="Build profile not found")
 
-    result = await build_manager.validate_build(build.ffmpeg_binary)
+    result = await build_manager.validate_build(
+        binary_path=build.binary_path,
+        software_type=getattr(build, 'software_type', 'ffmpeg') or 'ffmpeg'
+    )
     if result.get("valid"):
-        build.ffmpeg_version_output = result["output"]
+        build.version_output = result["output"]
         db.commit()
     return result
 
@@ -3443,17 +3518,34 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if input_cfg:
         sanitize_process_config_data(input_cfg, filter_cfg or {})
         db_proc.input_config = input_cfg
-        flag_modified(db_proc, "input_config")
+        try:
+            flag_modified(db_proc, "input_config")
+        except Exception:
+            pass
         
     if filter_cfg is not None:
         db_proc.filter_config = filter_cfg
-        flag_modified(db_proc, "filter_config")
+        try:
+            flag_modified(db_proc, "filter_config")
+        except Exception:
+            pass
 
     output_cfg = proc_in.output_config if proc_in.output_config is not None else db_proc.output_config
     check_media_process_port_conflicts(input_cfg, output_cfg)
 
-    if proc_in.output_config is not None: db_proc.output_config = proc_in.output_config
-    if proc_in.codec_config is not None: db_proc.codec_config = proc_in.codec_config
+    if proc_in.output_config is not None:
+        db_proc.output_config = proc_in.output_config
+        try:
+            flag_modified(db_proc, "output_config")
+        except Exception:
+            pass
+
+    if proc_in.codec_config is not None:
+        db_proc.codec_config = proc_in.codec_config
+        try:
+            flag_modified(db_proc, "codec_config")
+        except Exception:
+            pass
     if proc_in.ffmpeg_build_id is not None: db_proc.ffmpeg_build_id = proc_in.ffmpeg_build_id
     if proc_in.auto_start is not None: db_proc.auto_start = proc_in.auto_start
     if proc_in.startup_order is not None: db_proc.startup_order = proc_in.startup_order
@@ -3685,12 +3777,51 @@ def get_process_progress(process_id: int):
 
 @app.get("/processes/{process_id}/logs")
 def get_process_logs(process_id: int, db: Session = Depends(get_db)):
-    # Check if process is active and has a memory buffer
-    if process_id in process_manager.processes and process_id in process_manager.log_buffers:
-        # Return serialized memory buffer (already formatted with timestamp, level, message)
+    # 1. If process is actively running and has an in-memory buffer, return it
+    if process_id in process_manager.log_buffers and len(process_manager.log_buffers[process_id]) > 0:
         return list(process_manager.log_buffers[process_id])
-        
-    # Fall back to database query, sorting by id ascending for chronological order
+
+    # 2. Read log file from disk (process_{process_id}.log) if process has completed / stopped
+    db_proc = db.query(MediaProcess).get(process_id)
+    if db_proc:
+        log_storage_path = None
+        if db_proc.log_storage_id:
+            storage = db.query(Storage).get(db_proc.log_storage_id)
+            if storage:
+                log_storage_path = storage.path
+
+        if not log_storage_path:
+            default_storage = db.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
+            if not default_storage:
+                default_storage = db.query(Storage).filter(Storage.type == "logs").first()
+            if default_storage:
+                log_storage_path = default_storage.path
+
+        if not log_storage_path:
+            log_storage_path = os.path.abspath("data/logs")
+
+        log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
+        if os.path.exists(log_file):
+            try:
+                with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                    parsed_logs = []
+                    for line in lines[-100:]:
+                        line_str = line.strip()
+                        if not line_str:
+                            continue
+                        lower = line_str.lower()
+                        level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot"]) else "INFO"
+                        parsed_logs.append({
+                            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                            "level": level,
+                            "message": line_str
+                        })
+                    return parsed_logs
+            except Exception as e:
+                logger.error(f"Error reading log file {log_file} for process {process_id}: {e}")
+
+    # 3. Fall back to database query
     return db.query(ProcessLog).filter(
         ProcessLog.process_id == process_id
     ).order_by(ProcessLog.id.asc()).limit(100).all()
@@ -3935,6 +4066,190 @@ async def get_preview(process_id: int, db: Session = Depends(get_db)):
     )
 
 
+
+
+
+# ══════════════════════════════════════════════════════════════════
+# SERVICES (v2.0)
+# ══════════════════════════════════════════════════════════════════
+
+@app.get("/api/services")
+def list_services(db: Session = Depends(get_db)):
+    services = db.query(MediaProcess).all()
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "service_type": s.service_type,
+            "config": s.config,
+            "is_active": s.is_active,
+            "status": s.status,
+            "pid": s.pid,
+            "cpu": s.cpu_usage,
+            "ram": s.ram_usage,
+            "bitrate": s.bitrate,
+            "fps": s.fps,
+            "speed": s.speed,
+            "last_start": s.last_start.isoformat() + "Z" if s.last_start else None,
+            "last_stop": s.last_stop.isoformat() + "Z" if s.last_stop else None,
+            "restart_count": s.restart_count,
+            "pending_changes": s.pending_changes,
+        } for s in services
+    ]
+
+@app.post("/api/services")
+def create_service(svc_in: ServiceCreate, db: Session = Depends(get_db)):
+    svc = MediaProcess(
+        name=svc_in.name,
+        service_type=svc_in.service_type,
+        config=svc_in.config,
+        is_active=svc_in.is_active,
+        alias=svc_in.alias
+    )
+    db.add(svc)
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+@app.get("/api/services/{service_id}")
+def get_service(service_id: int, db: Session = Depends(get_db)):
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return svc
+
+@app.put("/api/services/{service_id}")
+def update_service(service_id: int, svc_in: ServiceUpdate, db: Session = Depends(get_db)):
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc_in.name is not None:
+        svc.name = svc_in.name
+    if svc_in.service_type is not None:
+        svc.service_type = svc_in.service_type
+    if svc_in.config is not None:
+        svc.config = svc_in.config
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(svc, 'config')
+    if svc_in.is_active is not None:
+        svc.is_active = svc_in.is_active
+    if svc_in.alias is not None:
+        svc.alias = svc_in.alias
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+@app.delete("/api/services/{service_id}")
+def delete_service(service_id: int, db: Session = Depends(get_db)):
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.status == 'running':
+        raise HTTPException(status_code=400, detail="Cannot delete a running service")
+    db.delete(svc)
+    db.commit()
+    return {"detail": "Service deleted"}
+
+@app.post("/api/services/{service_id}/start")
+async def start_service_endpoint(service_id: int):
+    await process_manager.start_process(service_id)
+    return {"status": "starting"}
+
+@app.post("/api/services/{service_id}/stop")
+async def stop_service_endpoint(service_id: int):
+    await process_manager.stop_process(service_id)
+    return {"status": "stopping"}
+
+@app.post("/api/services/{service_id}/restart")
+async def restart_service_endpoint(service_id: int):
+    await process_manager.stop_process(service_id)
+    await process_manager.start_process(service_id)
+    return {"status": "restarting"}
+
+@app.get("/api/services/{service_id}/logs")
+def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(get_db)):
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    from database.models import ServiceLog
+    logs = db.query(ServiceLog).filter(ServiceLog.service_id == service_id).order_by(ServiceLog.id.desc()).limit(limit).all()
+    return [{"timestamp": l.timestamp.isoformat() + "Z", "level": l.level, "message": l.message} for l in reversed(logs)]
+
+@app.get("/api/services/{service_id}/preview")
+async def get_service_preview(service_id: int, db: Session = Depends(get_db)):
+    media_proc = db.query(MediaProcess).get(service_id)
+    if not media_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    is_running = media_proc.status == 'running'
+    input_config = media_proc.config.get("input_config", {}) if media_proc.config else {}
+    return StreamingResponse(
+        preview_manager.get_mjpeg_stream(media_proc.id, input_config, is_running),
+        media_type="multipart/x-mixed-replace; boundary=ffmpeg"
+    )
+
+@app.get("/api/services/{service_id}/dependencies")
+def list_service_dependencies(service_id: int, db: Session = Depends(get_db)):
+    from database.models import ServiceDependency
+    deps = db.query(ServiceDependency).filter(
+        ServiceDependency.consumer_type == 'service',
+        ServiceDependency.consumer_id == service_id
+    ).all()
+    return [
+        {
+            "id": d.id,
+            "provider_service_id": d.provider_service_id,
+            "is_auto_managed": d.is_auto_managed,
+            "provider_name": d.provider_service.name if d.provider_service else "Unknown"
+        } for d in deps
+    ]
+
+@app.post("/api/services/{service_id}/dependencies")
+def add_service_dependency(
+    service_id: int, 
+    provider_service_id: int = Body(..., embed=True),
+    is_auto_managed: bool = Body(True, embed=True),
+    db: Session = Depends(get_db)
+):
+    from database.models import ServiceDependency
+    consumer = db.query(MediaProcess).get(service_id)
+    provider = db.query(MediaProcess).get(provider_service_id)
+    if not consumer or not provider:
+        raise HTTPException(status_code=404, detail="Consumer or provider service not found")
+        
+    exists = db.query(ServiceDependency).filter(
+        ServiceDependency.consumer_type == 'service',
+        ServiceDependency.consumer_id == service_id,
+        ServiceDependency.provider_service_id == provider_service_id
+    ).first()
+    if exists:
+        return exists
+
+    dep = ServiceDependency(
+        consumer_type='service',
+        consumer_id=service_id,
+        provider_service_id=provider_service_id,
+        is_auto_managed=is_auto_managed
+    )
+    db.add(dep)
+    db.commit()
+    db.refresh(dep)
+    return dep
+
+@app.delete("/api/services/{service_id}/dependencies/{provider_service_id}")
+def remove_service_dependency(service_id: int, provider_service_id: int, db: Session = Depends(get_db)):
+    from database.models import ServiceDependency
+    dep = db.query(ServiceDependency).filter(
+        ServiceDependency.consumer_type == 'service',
+        ServiceDependency.consumer_id == service_id,
+        ServiceDependency.provider_service_id == provider_service_id
+    ).first()
+    if not dep:
+        raise HTTPException(status_code=404, detail="Dependency not found")
+    db.delete(dep)
+    db.commit()
+    return {"detail": "Dependency removed"}
+
+
 @app.get("/tasks/executions/{execution_id}/preview")
 async def get_task_preview(execution_id: int, db: Session = Depends(get_db)):
     execution = db.query(TaskExecution).get(execution_id)
@@ -3973,6 +4288,10 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "created_at": build.created_at.isoformat() if build.created_at else None,
         "built_at": build.built_at.isoformat() if build.built_at else None,
         "storage_id": build.storage_id,
+        "software_type": build.software_type,
+        "version_tag": build.version_tag,
+        "binary_path": build.binary_path,
+        "version_output": build.version_output,
     }
 
 
@@ -4181,6 +4500,40 @@ def export_single_task(task_id: int, db: Session = Depends(get_db)):
         }
     }
 
+def _serialize_service(p) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "alias": p.alias,
+        "type": p.type,
+        "status": p.status,
+        "pid": p.pid,
+        "cpu": p.cpu_usage,
+        "ram": p.ram_usage,
+        "bitrate": p.bitrate,
+        "fps": p.fps,
+        "speed": p.speed,
+        "ffmpeg_build_id": p.ffmpeg_build_id,
+        "input_config": p.input_config,
+        "output_config": p.output_config,
+        "codec_config": p.codec_config,
+        "filter_config": p.filter_config,
+        "auto_start": p.auto_start,
+        "startup_order": getattr(p, 'startup_order', 1) or 1,
+        "startup_delay": getattr(p, 'startup_delay', 0) or 0,
+        "watchdog_enabled": p.watchdog_enabled,
+        "watchdog_retries": p.watchdog_retries,
+        "watchdog_min_speed": p.watchdog_min_speed,
+        "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+        "pending_changes": p.pending_changes,
+        "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
+        "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
+        "restart_count": p.restart_count,
+        "network_timeout": p.network_timeout,
+        "debug_mode": p.debug_mode,
+        "log_storage_id": p.log_storage_id,
+    }
+
 @app.post("/tasks/{task_id}/clone-as-service")
 def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
     db_task = db.query(ScheduledTask).get(task_id)
@@ -4218,7 +4571,7 @@ def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
     db.add(new_proc)
     db.commit()
     db.refresh(new_proc)
-    return new_proc
+    return _serialize_service(new_proc)
 
 @app.post("/tasks/preview-cmd")
 def preview_task_command(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
@@ -4890,7 +5243,8 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
     try:
         while True:
             meters = alsa_manager.read_meters(card_index)
-            await websocket.send_json({"meters": meters})
+            jacks = alsa_manager.read_jack_sensors(card_index)
+            await websocket.send_json({"meters": meters, "jacks": jacks})
             await asyncio.sleep(0.033)  # ~30Hz
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected from ALSA meters card {card_index}")

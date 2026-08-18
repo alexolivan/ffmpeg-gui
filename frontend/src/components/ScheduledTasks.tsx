@@ -5,13 +5,13 @@ import { formatInputDesc, formatOutputDesc } from '../utils/formatters';
 import { 
   ImportIcon, 
   PlusIcon, 
-  LightningIcon, 
   ClipboardIcon, 
   ExportIcon, 
   PencilIcon, 
   TrashIcon, 
   SourceIcon, 
   StopIcon,
+  PlayIcon,
   ServerIcon
 } from './Icons';
 
@@ -426,11 +426,11 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           )}
                         </h3>
                         {task.is_system && (
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
                             {t('tasks.systemBadge', 'SYSTEM')}
                           </span>
                         )}
-                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
                           task.schedule_type === 'recurring' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' :
                           task.schedule_type === 'one_shot' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
                           'bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]'
@@ -439,11 +439,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                            task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
                            task.schedule_type}
                         </span>
-                        {isRunning && (
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-lime text-black animate-pulse">
-                            {exec.status}
-                          </span>
-                        )}
                         {exec?.retry_count > 0 && (
                           <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
                             ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
@@ -457,7 +452,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         {task.is_system ? (
                           <span 
                             title="Managed via Settings > General > Logging"
-                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-green-500/10 text-green-400 border-green-500/20"
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-green-500/10 text-green-400 border-green-500/20"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
                             {t('common.enabled', 'Active')}
@@ -465,7 +460,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         ) : (
                           <button 
                             onClick={() => handleToggleTaskActive(task.id, task.is_active)}
-                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20"
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20"
                             title={t('tasks.disableTask', 'Disable Task')}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
@@ -532,54 +527,55 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                                 {t('tasks.nextExecutionLabel', 'Next execution:')} <strong className="text-brand-orange">{new Date(task.next_run).toLocaleString()}</strong>
                               </p>
                             )}
+                            {exec && !isRunning && (
+                              <p className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution:')}</span>
+                                <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${getStatusBadgeClass(exec.status)}`}>
+                                  {exec.status}
+                                </span>
+                              </p>
+                            )}
                           </>
                         )}
                       </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      {exec && !isRunning ? (
-                        <div className="text-right hidden lg:block mr-2">
-                          <div className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution')}</div>
-                          <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md mt-1 ${getStatusBadgeClass(exec.status)}`}>
-                            {exec.status}
-                          </span>
-                        </div>
-                      ) : null}
 
                       <button 
                         disabled={taskTriggerPending[task.id]}
                         onClick={() => viewTaskDetails(task.id)}
-                        className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs py-2 px-4 hover:border-brand-lime/40 disabled:opacity-50 disabled:pointer-events-none"
+                        className="w-9 h-9 rounded-xl bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-[var(--glass-border)] transition-all flex items-center justify-center disabled:opacity-50"
+                        title={t('tasks.runHistory', 'View Run History')}
                       >
-                        {t('tasks.runHistory', 'RUN HISTORY')}
+                        📜
                       </button>
                       
                       {isRunning ? (
                         <button 
                           disabled={execStopPending[exec.id]}
                           onClick={() => handleStopExecution(exec.id)}
-                          className="pill-button bg-red-500 text-white font-bold hover:bg-red-600 text-xs py-2 px-4 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+                          className="w-9 h-9 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 flex items-center justify-center transition-all disabled:opacity-50"
                           title="Abort Execution"
                         >
-                          {execStopPending[exec.id] && (
-                            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                          {execStopPending[exec.id] ? (
+                            <span className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <StopIcon size={16} />
                           )}
-                          {execStopPending[exec.id] ? 'ABORTING...' : 'ABORT'}
                         </button>
                       ) : (
                         <button 
                           disabled={taskTriggerPending[task.id]}
                           onClick={() => handleTriggerTask(task.id)}
-                          className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+                          className="w-9 h-9 rounded-xl bg-brand-lime/10 text-brand-lime hover:bg-brand-lime/20 border border-brand-lime/30 flex items-center justify-center transition-all disabled:opacity-50"
                           title="Run Now"
                         >
                           {taskTriggerPending[task.id] ? (
-                            <span className="w-3 h-3 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
+                            <span className="w-4 h-4 border-2 border-brand-lime border-t-transparent rounded-full animate-spin" />
                           ) : (
-                            <LightningIcon size={12} />
+                            <PlayIcon size={16} />
                           )}
-                          {taskTriggerPending[task.id] ? 'TRIGGERING...' : 'RUN NOW'}
                         </button>
                       )}
 
@@ -689,20 +685,15 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           )}
                         </h3>
                         {task.is_system && (
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
                             {t('tasks.systemBadge', 'SYSTEM')}
                           </span>
                         )}
-                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
+                        <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
                           {task.schedule_type === 'recurring' ? t('tasks.scheduleTypes.recurring', 'recurring') :
                            task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
                            task.schedule_type}
                         </span>
-                        {isRunning && (
-                          <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider bg-brand-lime text-black animate-pulse">
-                            {exec.status}
-                          </span>
-                        )}
                         {exec?.retry_count > 0 && (
                           <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
                             ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
@@ -716,7 +707,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         {task.is_system ? (
                           <span 
                             title="Managed via Settings > General > Logging"
-                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]"
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>
                             {t('common.disabled', 'Disabled')}
@@ -724,7 +715,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         ) : (
                           <button 
                             onClick={() => handleToggleTaskActive(task.id, task.is_active)}
-                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10"
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10"
                             title={t('tasks.enableTask', 'Enable Task')}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>
@@ -781,9 +772,12 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                                 {t('tasks.cronExpressionLabel', 'Cron Expression:')} <code className="text-text-secondary font-mono">{task.schedule_cron}</code>
                               </p>
                             )}
-                            {task.schedule_type === 'one_shot' && (
-                              <p>
-                                {t('tasks.targetDateLabel', 'Target Date:')} <strong className="text-text-secondary">{new Date(task.schedule_datetime).toLocaleString()}</strong>
+                            {exec && !isRunning && (
+                              <p className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution:')}</span>
+                                <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${getStatusBadgeClass(exec.status)}`}>
+                                  {exec.status}
+                                </span>
                               </p>
                             )}
                           </>
@@ -792,48 +786,41 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
-                      {exec && !isRunning ? (
-                        <div className="text-right hidden lg:block mr-2">
-                          <div className="text-[10px] uppercase font-bold text-text-secondary tracking-widest">{t('tasks.lastExecutionLabel', 'Last Execution')}</div>
-                          <span className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md mt-1 ${getStatusBadgeClass(exec.status)}`}>
-                            {exec.status}
-                          </span>
-                        </div>
-                      ) : null}
 
                       <button 
                         disabled={taskTriggerPending[task.id]}
                         onClick={() => viewTaskDetails(task.id)}
-                        className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs py-2 px-4 hover:border-brand-lime/40 disabled:opacity-50 disabled:pointer-events-none"
+                        className="w-9 h-9 rounded-xl bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-[var(--glass-border)] transition-all flex items-center justify-center disabled:opacity-50"
+                        title={t('tasks.runHistory', 'View Run History')}
                       >
-                        {t('tasks.runHistory', 'RUN HISTORY')}
+                        📜
                       </button>
                       
                       {isRunning ? (
                         <button 
                           disabled={execStopPending[exec.id]}
                           onClick={() => handleStopExecution(exec.id)}
-                          className="pill-button bg-red-500 text-white font-bold hover:bg-red-600 text-xs py-2 px-4 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-1.5"
+                          className="w-9 h-9 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 flex items-center justify-center transition-all disabled:opacity-50"
                           title="Abort Execution"
                         >
-                          {execStopPending[exec.id] && (
-                            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+                          {execStopPending[exec.id] ? (
+                            <span className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <StopIcon size={16} />
                           )}
-                          {execStopPending[exec.id] ? 'ABORTING...' : 'ABORT'}
                         </button>
                       ) : (
                         <button 
                           disabled={taskTriggerPending[task.id]}
                           onClick={() => handleTriggerTask(task.id)}
-                          className="pill-button bg-brand-lime/10 hover:bg-brand-lime text-brand-lime hover:text-black text-xs py-2 px-4 border border-brand-lime/20 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
-                          title="Run Now (Test Execution)"
+                          className="w-9 h-9 rounded-xl bg-brand-lime/10 text-brand-lime hover:bg-brand-lime/20 border border-brand-lime/30 flex items-center justify-center transition-all disabled:opacity-50"
+                          title="Run Now"
                         >
                           {taskTriggerPending[task.id] ? (
-                            <span className="w-3 h-3 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
+                            <span className="w-4 h-4 border-2 border-brand-lime border-t-transparent rounded-full animate-spin" />
                           ) : (
-                            <LightningIcon size={12} />
+                            <PlayIcon size={16} />
                           )}
-                          {taskTriggerPending[task.id] ? 'TRIGGERING...' : 'RUN NOW'}
                         </button>
                       )}
 

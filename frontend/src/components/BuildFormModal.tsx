@@ -32,6 +32,9 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [storages, setStorages] = useState<{ id: number; name: string; path: string; type: string }[]>([])
   const [storageId, setStorageId] = useState<number | null>(editBuild?.storage_id || null)
 
+  const [softwareType, setSoftwareType] = useState(editBuild?.software_type || 'ffmpeg')
+  const [softwareTags, setSoftwareTags] = useState<string[]>([])
+
   const [options, setOptions] = useState(editBuild?.build_options || { 
     libsrt: true, 
     vaapi: false, 
@@ -49,7 +52,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     nvenc_headers: 'auto'
   })
 
-  const [ffmpegTags, setFfmpegTags] = useState<string[]>([])
   const [srtTags, setSrtTags] = useState<string[]>([])
   const [nvencTags, setNvencTags] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -128,37 +130,49 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   useEffect(() => {
     const fetchTags = async () => {
       try {
-        const [ffRes, srtRes, nvencRes] = await Promise.all([
-          fetch(`${API_BASE}/builds/tags/ffmpeg`),
-          fetch(`${API_BASE}/builds/tags/srt`),
-          fetch(`${API_BASE}/builds/tags/nvenc`),
-        ])
-        const ffData = await ffRes.json()
-        const srtData = await srtRes.json()
-        const nvencData = await nvencRes.json()
-        setFfmpegTags(ffData.tags || [])
-        setSrtTags(srtData.tags || [])
-        setNvencTags(nvencData.tags || [])
+        if (softwareType === 'ffmpeg') {
+          const [ffRes, srtRes, nvencRes] = await Promise.all([
+            fetch(`${API_BASE}/builds/tags/ffmpeg`),
+            fetch(`${API_BASE}/builds/tags/srt`),
+            fetch(`${API_BASE}/builds/tags/nvenc`),
+          ])
+          const ffData = await ffRes.json()
+          const srtData = await srtRes.json()
+          const nvencData = await nvencRes.json()
+          setSoftwareTags(ffData.tags || [])
+          setSrtTags(srtData.tags || [])
+          setNvencTags(nvencData.tags || [])
 
-        if (!isEditing) {
-          if (ffData.tags?.length > 0 && !ffmpegVersion) setFfmpegVersion(ffData.tags[0])
-          if (srtData.tags?.length > 0 && !srtVersion) setSrtVersion(srtData.tags[0])
-        }
+          if (!isEditing) {
+            if (ffData.tags?.length > 0 && !ffmpegVersion) setFfmpegVersion(ffData.tags[0])
+            if (srtData.tags?.length > 0 && !srtVersion) setSrtVersion(srtData.tags[0])
+          }
 
-        if (nvencData.tags?.length > 0) {
-          setSdkPaths(prev => {
-            const currentVal = prev.nvenc_headers
-            if (!currentVal || currentVal === 'auto') {
-              return { ...prev, nvenc_headers: nvencData.tags[0] }
-            }
-            return prev
-          })
+          if (nvencData.tags?.length > 0) {
+            setSdkPaths(prev => {
+              const currentVal = prev.nvenc_headers
+              if (!currentVal || currentVal === 'auto') {
+                return { ...prev, nvenc_headers: nvencData.tags[0] }
+              }
+              return prev
+            })
+          }
+        } else {
+          const res = await fetch(`${API_BASE}/builds/tags/${softwareType}`)
+          const data = await res.json()
+          setSoftwareTags(data.tags || [])
+          if (!isEditing && data.tags?.length > 0) {
+            setFfmpegVersion(data.tags[0])
+          }
         }
       } catch (err) {
         console.error('Failed to load tags:', err)
       }
     }
     fetchTags()
+  }, [softwareType])
+
+  useEffect(() => {
     fetchInstalledSdks()
     fetchPatches()
     fetchStorages()
@@ -203,40 +217,45 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     
     // Clean paths object based on enabled options
     const finalSdkPaths: Record<string, string> = {}
-    if (options.decklink && sdkPaths.decklink) {
-      finalSdkPaths.decklink = sdkPaths.decklink
-    }
-    if (options.ndi && sdkPaths.ndi) {
-      finalSdkPaths.ndi = sdkPaths.ndi
-      if (sdkPaths.ndi_patch_file) {
-        finalSdkPaths.ndi_patch_file = sdkPaths.ndi_patch_file
+    if (softwareType === 'ffmpeg') {
+      if (options.decklink && sdkPaths.decklink) {
+        finalSdkPaths.decklink = sdkPaths.decklink
       }
-    }
-    if (options.nvenc && sdkPaths.nvenc_headers) {
-      finalSdkPaths.nvenc_headers = sdkPaths.nvenc_headers
-    }
-    if (options.vaapi && sdkPaths.vaapi) {
-      finalSdkPaths.vaapi = sdkPaths.vaapi
+      if (options.ndi && sdkPaths.ndi) {
+        finalSdkPaths.ndi = sdkPaths.ndi
+        if (sdkPaths.ndi_patch_file) {
+          finalSdkPaths.ndi_patch_file = sdkPaths.ndi_patch_file
+        }
+      }
+      if (options.nvenc && sdkPaths.nvenc_headers) {
+        finalSdkPaths.nvenc_headers = sdkPaths.nvenc_headers
+      }
+      if (options.vaapi && sdkPaths.vaapi) {
+        finalSdkPaths.vaapi = sdkPaths.vaapi
+      }
     }
 
     await onSubmit({
       name: name.trim(),
       ffmpeg_version: ffmpegVersion,
-      srt_version: options.libsrt ? srtVersion || null : null,
-      build_options: options,
+      srt_version: softwareType === 'ffmpeg' && options.libsrt ? srtVersion || null : null,
+      build_options: softwareType === 'ffmpeg' ? options : {},
       sdk_paths: finalSdkPaths,
       auto_clean: autoClean,
       storage_id: storageId,
-    })
+      software_type: softwareType,
+    } as any)
     setIsSubmitting(false)
   }
 
   const isValid = name.trim().length > 0 && 
                   ffmpegVersion.length > 0 && 
-                  (!options.decklink || !!sdkPaths.decklink) && 
-                  (!options.ndi || !!sdkPaths.ndi) &&
-                  (!options.nvenc || !!sdkPaths.nvenc_headers) &&
-                  (!options.cuda_filters || (buildDeps?.dependencies?.clang?.installed !== false && buildDeps?.dependencies?.['nvidia-cuda-dev']?.installed !== false))
+                  (softwareType !== 'ffmpeg' || (
+                    (!options.decklink || !!sdkPaths.decklink) && 
+                    (!options.ndi || !!sdkPaths.ndi) &&
+                    (!options.nvenc || !!sdkPaths.nvenc_headers) &&
+                    (!options.cuda_filters || (buildDeps?.dependencies?.clang?.installed !== false && buildDeps?.dependencies?.['nvidia-cuda-dev']?.installed !== false))
+                  ))
 
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-hidden">
@@ -255,8 +274,10 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
         <div className="flex gap-1 px-4 py-2 border-b border-white/10 bg-white/5 shrink-0">
           {[
             { id: 'general', label: t('form.sections.general', 'General') },
-            { id: 'gpu', label: t('forge.gpuAcceleration', 'GPU Acceleration') },
-            { id: 'sdks', label: t('forge.sdksAndProtocols', 'SDKs & Protocols') },
+            ...(softwareType === 'ffmpeg' ? [
+              { id: 'gpu', label: t('forge.gpuAcceleration', 'GPU Acceleration') },
+              { id: 'sdks', label: t('forge.sdksAndProtocols', 'SDKs & Protocols') },
+            ] : []),
           ].map(tab => (
             <button
               key={tab.id}
@@ -278,6 +299,19 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
           
           {activeTab === 'general' && (
             <div className="space-y-4 animate-in fade-in duration-200">
+              {/* Software Type Selector (Locked to FFmpeg for v2.0 initial release) */}
+              <div>
+                <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">{t('forge.softwareType', 'Software Type')}</label>
+                <select
+                  disabled={true}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none opacity-80 text-[var(--text-primary)] cursor-not-allowed"
+                  value={softwareType}
+                  onChange={e => setSoftwareType(e.target.value)}
+                >
+                  <option value="ffmpeg" className="text-black">{t('forge.ffmpegOption', 'FFmpeg (Video / Audio Muxer)')}</option>
+                </select>
+              </div>
+
               {/* Identity & Core Version */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-1">
@@ -285,20 +319,22 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                   <input
                     type="text"
                     placeholder="e.g. Production 12G"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
                     value={name}
                     onChange={e => setName(e.target.value)}
                   />
                 </div>
                 <div className="col-span-1">
-                  <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">{t('forge.ffmpegTag', 'FFmpeg Tag')}</label>
+                  <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
+                    {softwareType === 'ffmpeg' ? t('forge.ffmpegTag', 'FFmpeg Tag') : t('forge.versionTag', 'Version Tag')}
+                  </label>
                   <select
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
                     value={ffmpegVersion}
                     onChange={e => setFfmpegVersion(e.target.value)}
                   >
-                    {ffmpegTags.map(tag => (
-                      <option key={tag} value={tag}>{tag}</option>
+                    {softwareTags.map(tag => (
+                      <option key={tag} value={tag} className="text-black">{tag}</option>
                     ))}
                   </select>
                 </div>

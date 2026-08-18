@@ -11,7 +11,8 @@ import {
   ForgeIcon, 
   ClipboardIcon,
   RefreshIcon,
-  PackageIcon
+  PackageIcon,
+  FfmpegLogoIcon
 } from '../Icons';
 import { BuildSdksModal } from '../modals/BuildSdksModal';
 
@@ -28,6 +29,8 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libssl": "libssl-dev",
     "libva": "libva-dev",
     "libdrm": "libdrm-dev",
+    "libmp3lame": "libmp3lame-dev",
+    "libvorbis": "libvorbis-dev",
     "avahi-daemon": "avahi-daemon avahi-utils",
     "libopus": "libopus-dev",
     "libvpx": "libvpx-dev",
@@ -51,6 +54,8 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libssl": "openssl-devel",
     "libva": "libva-devel",
     "libdrm": "libdrm-devel",
+    "libmp3lame": "lame-devel",
+    "libvorbis": "libvorbis-devel",
     "avahi-daemon": "avahi",
     "libopus": "opus-devel",
     "libvpx": "libvpx-devel",
@@ -74,6 +79,8 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libssl": "openssl",
     "libva": "libva",
     "libdrm": "libdrm",
+    "libmp3lame": "lame",
+    "libvorbis": "libvorbis",
     "avahi-daemon": "avahi",
     "libopus": "opus",
     "libvpx": "libvpx",
@@ -174,6 +181,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   const [showSdksModal, setShowSdksModal] = React.useState(false);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
   const [installedSdks, setInstalledSdks] = React.useState<any[]>([]);
+  const [activeEngineTab, setActiveEngineTab] = React.useState<'ffmpeg'>('ffmpeg');
 
   const fetchSdks = React.useCallback(() => {
     fetch(`${API}/sdks`)
@@ -196,7 +204,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 
   useEffect(() => {
     if ((showSdksModal || storages.length === 0) && API !== undefined) {
-      fetch(`${API}/storages`)
+      fetch(`${API}/settings/storages`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) setStorages(data);
@@ -228,27 +236,53 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
     document.body.removeChild(textArea);
   };
 
+  const filteredBuilds = builds.filter(b => (b.software_type || 'ffmpeg') === activeEngineTab);
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Clean Header: Title & Disk Telemetry Only */}
       <header className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5">
-            FFMPEG <span className="text-brand-orange">FORGE</span>
+            {t('forge.mainTitle', 'FORGE')}
           </h1>
-          <p className="text-xs text-text-secondary">{t('forge.subtitle')}</p>
+          <p className="text-xs text-text-secondary">{t('forge.subtitle', 'Build and manage custom compilation profiles')}</p>
         </div>
         <div className="flex items-center gap-4">
           {diskInfo && (
             <div className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] flex items-center gap-2 text-xs">
-              <span className="text-text-secondary">{t('forge.disk')}:</span>
+              <span className="text-text-secondary">{t('forge.disk', 'DISK')}:</span>
               <span className={`font-mono font-bold ${diskInfo.free_gb < 10 ? 'text-red-400' : diskInfo.free_gb < 50 ? 'text-brand-orange' : 'text-brand-lime'}`}>
-                {diskInfo.free_gb} {t('dashboard.freeGb')}
+                {diskInfo.free_gb} {t('dashboard.freeGb', 'GB Free')}
               </span>
             </div>
           )}
+        </div>
+      </header>
+
+      {/* Full-width Engine Navigation Tabs */}
+      <div className="flex items-center gap-2 border-b border-[var(--glass-border)] mb-6 pb-2 w-full">
+        <button
+          onClick={() => setActiveEngineTab('ffmpeg')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+            activeEngineTab === 'ffmpeg'
+              ? 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <FfmpegLogoIcon size={16} /> FFmpeg
+        </button>
+      </div>
+
+      {/* Tab Content Header: Actions for Active Engine */}
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+          {t('forge.activeProfilesFor', 'PROFILES')} — <span className="text-[var(--text-primary)]">{activeEngineTab.toUpperCase()}</span>
+        </h3>
+        <div className="flex items-center gap-3">
           <button onClick={() => importRecipeRef.current?.click()}
-            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 hover:scale-105 transition-transform flex items-center gap-1.5">
-            <ImportIcon size={14} /> {t('forge.importRecipe')}
+            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
+            <ImportIcon size={14} /> {t('forge.importRecipe', 'IMPORT RECIPE')}
           </button>
           <input 
             type="file" 
@@ -258,11 +292,11 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             onChange={handleImportRecipeChange} 
           />
           <button onClick={() => { setEditingBuild(null); setShowBuildForm(true) }}
-            className="pill-button bg-brand-orange text-black font-black hover:scale-105 transition-transform flex items-center gap-1.5">
-            <PlusIcon size={14} /> {t('forge.newBuildProfile')}
+            className="pill-button bg-brand-orange text-black font-black hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
+            <PlusIcon size={14} /> {t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
           </button>
         </div>
-      </header>
+      </div>
 
       {/* Health environment badge & detail control */}
       <div className="glass-card p-6 mb-8 bg-white/2 border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -277,16 +311,16 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             )}
           </div>
           <div>
-            <h4 className="text-sm font-black uppercase tracking-wider">{t('forge.envStatusTitle')}</h4>
+            <h4 className="text-sm font-black uppercase tracking-wider">{t('forge.envStatusTitle', 'ENVIRONMENT DEPENDENCIES')}</h4>
             <p className="text-xs text-text-secondary mt-0.5">
               {checkStatus === 'loading' ? (
-                <span className="text-brand-orange animate-pulse">{t('forge.analyzingDeps')}</span>
+                <span className="text-brand-orange animate-pulse">{t('forge.analyzingDeps', 'Analyzing dependencies...')}</span>
               ) : checkStatus === 'error' ? (
-                <span className="text-red-400 font-bold">{t('forge.backendError')}</span>
+                <span className="text-red-400 font-bold">{t('forge.backendError', 'Backend connection error')}</span>
               ) : buildDeps?.all_required_met ? (
-                <span className="text-brand-lime">{t('forge.allDepsInstalled')}</span>
+                <span className="text-brand-lime">{t('forge.allDepsInstalled', 'All required build tools and libraries installed')}</span>
               ) : (
-                <span className="text-brand-orange font-bold">{t('forge.missingDeps')}</span>
+                <span className="text-brand-orange font-bold">{t('forge.missingDeps', 'Some required build tools are missing')}</span>
               )}
             </p>
           </div>
@@ -296,31 +330,31 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             onClick={() => setShowSdksModal(true)}
             className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
           >
-            <PackageIcon size={14} /> {t('sdks.manageSdks')}
+            <PackageIcon size={14} /> {t('sdks.manageSdks', 'MANAGE SDKs')}
           </button>
           <button
             onClick={() => setShowEnvModal(true)}
             className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
           >
-            <GearIcon size={14} /> {t('forge.manageDeps')}
+            <GearIcon size={14} /> {t('forge.manageDeps', 'MANAGE DEPS')}
           </button>
         </div>
       </div>
 
       {/* Build Profiles List */}
       <div className="space-y-4">
-        {builds.length === 0 ? (
+        {filteredBuilds.length === 0 ? (
           <div className="text-center py-20 border-2 border-dashed border-white/5 rounded-3xl">
             <div className="text-white/10 mb-6 flex justify-center">
               <ForgeIcon size={48} />
             </div>
-            <div className="text-text-secondary text-lg mb-2">{t('forge.noProfilesYet')}</div>
-            <div className="text-text-secondary text-sm">{t('forge.createFirstProfile')}</div>
+            <div className="text-text-secondary text-lg mb-2">{t('forge.noProfilesYet', 'No build profiles yet')}</div>
+            <div className="text-text-secondary text-sm">{t('forge.createFirstProfile', 'Create your first build profile to get started')}</div>
           </div>
         ) : (
           (() => {
             const isAnyBuilding = builds.some(b => b.status === 'building');
-            return builds.map(build => (
+            return filteredBuilds.map(build => (
               <BuildProfileCard
                 key={build.id}
                 build={build}

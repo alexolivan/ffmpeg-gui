@@ -50,8 +50,8 @@ class ServicesMenuView(LCDView):
     def fetch_services(self):
         db = self.manager.db_session_factory()
         try:
-            from database.models import MediaProcess
-            self.services = db.query(MediaProcess).filter(MediaProcess.type == 'service').all()
+            from database.models import Service
+            self.services = db.query(Service).filter(Service.service_type == 'ffmpeg_stream').all()
         except Exception:
             self.services = []
         finally:

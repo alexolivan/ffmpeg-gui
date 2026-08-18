@@ -14,8 +14,8 @@ class ServiceDetailMenuView(LCDView):
     def fetch_service(self):
         db = self.manager.db_session_factory()
         try:
-            from database.models import MediaProcess
-            svc = db.query(MediaProcess).get(self.svc_id)
+            from database.models import Service
+            svc = db.query(Service).get(self.svc_id)
             if svc:
                 self.svc_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
                 self.svc_status = svc.status
@@ -88,8 +88,8 @@ class ServiceStatusDetailView(LCDView):
         db = self.manager.db_session_factory()
         lines = ["SVC Status"]
         try:
-            from database.models import MediaProcess
-            svc = db.query(MediaProcess).get(self.svc_id)
+            from database.models import Service
+            svc = db.query(Service).get(self.svc_id)
             if svc:
                 display_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
                 lines = [

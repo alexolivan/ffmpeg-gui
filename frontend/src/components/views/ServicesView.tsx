@@ -1,20 +1,12 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { formatInputDesc, formatOutputDesc } from '../../utils/formatters';
 import { 
   ImportIcon, 
-  ExportIcon, 
-  PlusIcon, 
-  PencilIcon, 
-  ClipboardIcon, 
-  StopIcon, 
-  PlayIcon, 
-  TrashIcon, 
-  LightningIcon, 
-  ShieldIcon,
-  RefreshIcon,
-  CalendarIcon
+  PlusIcon
 } from '../Icons';
+import { UnifiedServiceCard, hasVideo, type ServiceItem } from '../cards/UnifiedServiceCard';
+
+export { hasVideo };
 
 interface ServicesViewProps {
   telemetry: any[];
@@ -31,37 +23,6 @@ interface ServicesViewProps {
   setShowAddModal: (show: boolean) => void;
   API: string;
 }
-
-const formatUptime = (lastStartStr: string | null): string => {
-  if (!lastStartStr) return 'N/A';
-  const start = new Date(lastStartStr);
-  const diffMs = Date.now() - start.getTime();
-  if (diffMs <= 0) return '0s';
-  
-  const diffSecs = Math.floor(diffMs / 1000);
-  const days = Math.floor(diffSecs / 86400);
-  const hours = Math.floor((diffSecs % 86400) / 3600);
-  const mins = Math.floor((diffSecs % 3600) / 60);
-  const secs = diffSecs % 60;
-  
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${mins}m`;
-  if (mins > 0) return `${mins}m ${secs}s`;
-  return `${secs}s`;
-};
-
-export const hasVideo = (proc: any): boolean => {
-  if (!proc) return true;
-  try {
-    const codecCfg = typeof proc.codec_config === 'string' ? JSON.parse(proc.codec_config) : (proc.codec_config || {});
-    if (codecCfg.vcodec && codecCfg.vcodec !== 'none') return true;
-    const inputCfg = typeof proc.input_config === 'string' ? JSON.parse(proc.input_config) : (proc.input_config || {});
-    if (inputCfg.has_video === true) return true;
-    if (inputCfg.has_video === false) return false;
-    if (!codecCfg.vcodec || codecCfg.vcodec === 'none') return false;
-  } catch {}
-  return true;
-};
 
 export const isActiveService = (p: any, actionPending: Record<number, string> = {}) => {
   if (p.type && p.type !== 'service') return false;
@@ -84,20 +45,49 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   importFileRef,
   handleImportFileChange,
   setShowAddModal,
-  API,
+  API
 }) => {
   const { t } = useTranslation();
 
+  const activeServices = telemetry.filter(p => isActiveService(p, actionPending));
+  const inactiveServices = telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p, actionPending));
+
+  const handleExport = (proc: ServiceItem) => {
+    fetch(`${API}/processes/${proc.id}/export`)
+      .then(r => r.json())
+      .then(data => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${proc.name}_profile.json`;
+        a.click();
+      });
+  };
+
+  const handleCloneAsTask = async (proc: ServiceItem) => {
+    try {
+      const res = await fetch(`${API}/processes/${proc.id}/clone-as-task`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to clone service as task');
+      alert(t('common.clonedSuccess', 'Cloned successfully!'));
+    } catch (err: any) {
+      alert(err.message || 'Error cloning service as task');
+    }
+  };
+
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="flex justify-between items-center mb-4">
+    <div className="space-y-6">
+      {/* Header Bar */}
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--glass-border)]">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5">{t('services.title', 'SERVICES')}</h1>
-          <p className="text-xs text-text-secondary">{t('services.subtitle', 'Continuous media streaming and processing node instances')}</p>
+          <h1 className="text-2xl font-black text-[var(--text-primary)]">{t('services.title', 'Services')}</h1>
+          <p className="text-xs text-[var(--text-secondary)]">{t('services.subtitle', 'Continuous media streaming and processing node instances')}</p>
         </div>
-        <div className="flex gap-4">
-          <button onClick={() => importFileRef.current?.click()}
-            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 transition-all flex items-center gap-1.5">
+
+        <div className="flex items-center space-x-3">
+          <button 
+            onClick={() => importFileRef.current?.click()}
+            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 transition-all flex items-center gap-1.5"
+          >
             <ImportIcon size={14} /> {t('services.importProfile', 'IMPORT PROFILE')}
           </button>
           <input 
@@ -107,391 +97,80 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             accept=".json" 
             onChange={handleImportFileChange} 
           />
-          <button onClick={() => setShowAddModal(true)}
-            className="pill-button bg-brand-lime text-black font-black transition-all flex items-center gap-1.5">
+          <button 
+            onClick={() => setShowAddModal(true)}
+            className="pill-button bg-brand-lime text-black font-black transition-all flex items-center gap-1.5"
+          >
             <PlusIcon size={14} /> {t('services.newService', 'NEW SERVICE')}
           </button>
         </div>
       </header>
 
-      <div className="space-y-4">
-        {/* Active Running Services */}
+      <div className="space-y-6">
+        {/* Active Running Services Section */}
         <div className="glass-card p-4 md:p-5">
-          <h3 className="text-xl font-black mb-3 text-[var(--text-primary)]">{t('services.activeServicesRunning', 'ACTIVE SERVICES (RUNNING)')}</h3>
-          <div className="space-y-2.5">
-            {telemetry.filter(p => isActiveService(p, actionPending)).length === 0 ? (
-              <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
-                {t('services.noRunningServices', 'No running services')}
-              </div>
-            ) : (
-              telemetry.filter(p => isActiveService(p, actionPending)).map(proc => (
-                <div key={proc.id} onClick={() => onSelectedProcess(proc)}
-                  className="flex items-center justify-between p-3 bg-brand-lime/5 rounded-xl border border-brand-lime/10 cursor-pointer hover:bg-brand-lime/10 transition-colors">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full animate-pulse ${
-                        actionPending[proc.id] === 'starting' ? 'bg-blue-500' :
-                        actionPending[proc.id] === 'stopping' ? 'bg-brand-orange' :
-                        actionPending[proc.id] === 'restarting' ? 'bg-purple-500' :
-                        proc.status === 'running' ? 'bg-brand-lime' : 'bg-amber-500'
-                      }`}></span>
-                      <span className="font-bold text-[var(--text-primary)]">
-                        {proc.name}
-                        {proc.alias && (
-                          <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${proc.alias}`}>
-                            [{proc.alias}]
-                          </span>
-                        )}
-                      </span>
-                      {proc.pending_changes && (
-                        <span className="text-[10px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse" title="Requires reboot to apply new configuration">
-                          PENDING REBOOT
-                        </span>
-                      )}
-                      {proc.auto_start && (
-                        <span className="text-[9px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title={`Auto-starts on boot (Order #${proc.startup_order || 1}${proc.startup_delay ? `, Delay ${proc.startup_delay}s` : ''})`}>
-                          <LightningIcon size={10} /> BOOT (#{proc.startup_order || 1}{proc.startup_delay ? ` | ${proc.startup_delay}s` : ''})
-                        </span>
-                      )}
-                      {proc.watchdog_enabled && (
-                        <span className="text-[9px] bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Monitored by system watchdog">
-                          <ShieldIcon size={10} /> WATCHDOG
-                        </span>
-                      )}
-                      {proc.debug_mode && (
-                        <span className="text-[9px] bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Runs in interactive console debug mode">
-                          DEBUG
-                        </span>
-                      )}
-                      {actionPending[proc.id] === 'starting' && (
-                        <span className="text-[9px] bg-blue-500/20 border border-blue-500/40 text-blue-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
-                          <RefreshIcon size={10} className="animate-spin" /> {t('services.starting', 'Service is starting...')}
-                        </span>
-                      )}
-                      {actionPending[proc.id] === 'stopping' && (
-                        <span className="text-[9px] bg-brand-orange/20 border border-brand-orange/40 text-brand-orange px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
-                          <RefreshIcon size={10} className="animate-spin" /> {t('services.stopping', 'Service is stopping...')}
-                        </span>
-                      )}
-                      {actionPending[proc.id] === 'restarting' && (
-                        <span className="text-[9px] bg-purple-500/20 border border-purple-500/40 text-purple-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
-                          <RefreshIcon size={10} className="animate-spin" /> {t('services.restarting', 'Service is restarting...')}
-                        </span>
-                      )}
-                      {proc.watchdog_enabled && proc.restart_count > 0 && proc.status === 'running' && (
-                        <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1" title={`Watchdog rescued this service ${proc.restart_count} times`}>
-                          ⚠️ RESCUED {proc.restart_count}/{proc.watchdog_retries === -1 ? '∞' : proc.watchdog_retries}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-text-secondary space-y-0.5">
-                      <p className="truncate">
-                        Input: <code className="text-[var(--text-primary)] font-mono">{formatInputDesc(proc.input_config)}</code>
-                      </p>
-                      <p className="truncate">
-                        Output: <code className="text-[var(--text-primary)] font-mono">{formatOutputDesc(proc.output_config)}</code>
-                      </p>
-                    </div>
-                    <div className="flex gap-x-3 gap-y-1 mt-1 text-xs text-text-secondary flex-wrap items-center font-mono tabular-nums">
-                      <span>PID: <strong className="text-[var(--text-primary)] inline-block min-w-[5ch]">{proc.pid || 'N/A'}</strong></span>
-                      <span className="opacity-20 select-none">|</span>
-                      <span>Uptime: <strong className="text-[var(--text-primary)] inline-block min-w-[6ch]">{formatUptime(proc.last_start)}</strong></span>
-                      <span className="opacity-20 select-none">|</span>
-                      <span>CPU: <strong className="text-[var(--text-primary)] inline-block min-w-[4ch] text-right">{proc.cpu || 0}%</strong></span>
-                      <span className="opacity-20 select-none">|</span>
-                      <span>RAM: <strong className="text-[var(--text-primary)] inline-block min-w-[6ch] text-right">{proc.ram || 0} MB</strong></span>
-                      {hasVideo(proc) && proc.fps && proc.fps !== '0' && proc.fps !== '0.0' && (
-                        <>
-                          <span className="opacity-20 select-none">|</span>
-                          <span>FPS: <strong className="text-[var(--text-primary)] inline-block min-w-[4ch] text-right">{proc.fps}</strong></span>
-                        </>
-                      )}
-                      {proc.bitrate && proc.bitrate !== 'N/A' && proc.bitrate !== '0 kb/s' && proc.bitrate !== '0.0kbits/s' && (
-                        <>
-                          <span className="opacity-20 select-none">|</span>
-                          <span>Bitrate: <strong className="text-[var(--text-primary)] inline-block min-w-[9ch] text-right">{proc.bitrate}</strong></span>
-                        </>
-                      )}
-                      {proc.speed && proc.speed !== '0x' && proc.speed !== '0.00x' && proc.speed !== 'N/A' && (
-                        <>
-                          <span className="opacity-20 select-none">|</span>
-                          <span>Speed: <strong className="text-[var(--text-primary)] inline-block min-w-[5ch] text-right">{proc.speed}</strong></span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex gap-2">
-                      <button
-                        disabled={!!actionPending[proc.id]}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEditProcess(proc);
-                        }}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                        title="Edit Service Settings"
-                      >
-                        <PencilIcon size={16} />
-                      </button>
-                      <button
-                        disabled={!!actionPending[proc.id]}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onCloneProcess(proc);
-                        }}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                        title="Clone Service"
-                      >
-                        <ClipboardIcon size={16} />
-                      </button>
-                      <button
-                        disabled={!!actionPending[proc.id]}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            const res = await fetch(`${API}/processes/${proc.id}/clone-as-task`, { method: 'POST' });
-                            if (!res.ok) throw new Error('Failed to clone service as task');
-                            alert(t('common.clonedSuccess', 'Cloned successfully!'));
-                          } catch (err: any) {
-                            alert(err.message || 'Error cloning service as task');
-                          }
-                        }}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-lime disabled:opacity-50 disabled:pointer-events-none"
-                        title={t('services.cloneAsTask', 'Copy as Task')}
-                      >
-                        <CalendarIcon size={16} />
-                      </button>
-                      <button
-                        disabled={!!actionPending[proc.id]}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fetch(`${API}/processes/${proc.id}/export`)
-                            .then(r => r.json())
-                            .then(data => {
-                              const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-                              const a = document.createElement('a')
-                              a.href = URL.createObjectURL(blob)
-                              a.download = `${proc.name}_profile.json`
-                              a.click()
-                            })
-                        }}
-                        className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                        title="Export Service"
-                      >
-                        <ExportIcon size={16} />
-                      </button>
-                      <button
-                        disabled={!!actionPending[proc.id]}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRestartService(proc.id, proc.name);
-                        }}
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none ${
-                          actionPending[proc.id] === 'restarting'
-                            ? "bg-blue-500/20 border border-blue-500 text-blue-400"
-                            : proc.pending_changes
-                            ? "bg-brand-orange/20 hover:bg-brand-orange/30 border border-brand-orange text-brand-orange animate-pulse"
-                            : "bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400"
-                        }`}
-                        title={proc.pending_changes ? "Restart service to apply new configuration" : "Restart Service"}
-                      >
-                        <RefreshIcon size={16} className={actionPending[proc.id] === 'restarting' ? 'animate-spin' : ''} />
-                      </button>
-                      <button
-                        disabled={actionPending[proc.id] === 'stopping'}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onStopService(proc.id, proc.name);
-                        }}
-                        className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                        title="Stop Service (Abort/Kill)"
-                      >
-                        {actionPending[proc.id] === 'stopping' ? (
-                          <RefreshIcon size={16} className="animate-spin text-brand-orange" />
-                        ) : (
-                          <StopIcon size={16} />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <h3 className="text-xl font-black mb-3 text-[var(--text-primary)]">
+            {t('services.activeServicesRunning', 'ACTIVE SERVICES (RUNNING)')} ({activeServices.length})
+          </h3>
+          {activeServices.length === 0 ? (
+            <div className="text-[var(--text-secondary)] py-8 text-center border border-dashed border-white/5 rounded-2xl">
+              {t('services.noRunningServices', 'No running services')}
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {activeServices.map(proc => (
+                <UnifiedServiceCard
+                  key={proc.id}
+                  service={proc as ServiceItem}
+                  telemetryItem={proc}
+                  actionPending={actionPending[proc.id]}
+                  onStartService={onStartService}
+                  onStopService={onStopService}
+                  onRestartService={onRestartService}
+                  onEditProcess={onEditProcess}
+                  onCloneProcess={onCloneProcess}
+                  onDeleteProcess={onDeleteProcess}
+                  onSelectedProcess={onSelectedProcess}
+                  onExportProcess={handleExport}
+                  onCloneAsTask={handleCloneAsTask}
+                  API={API}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Inactive Configured Services */}
+        {/* Inactive Configured Services Section */}
         <div className="glass-card p-4 md:p-5">
-          <h3 className="text-xl font-black mb-3 text-text-secondary">{t('services.configuredServicesInactive', 'Configured Services (Inactive)')}</h3>
-          <div className="space-y-2.5">
-            {telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p, actionPending)).length === 0 ? (
-              <div className="text-text-secondary py-8 text-center border border-dashed border-white/5 rounded-2xl">
-                {t('services.noInactiveServices', 'No inactive services')}
-              </div>
-            ) : (
-              telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p, actionPending)).map(proc => {
-                return (
-                  <div key={proc.id} onClick={() => onSelectedProcess(proc)}
-                    className="flex items-center justify-between p-3 bg-white/2 opacity-75 hover:opacity-100 rounded-xl border border-white/5 cursor-pointer hover:bg-white/5 transition-all">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2.5 h-2.5 rounded-full ${proc.status === 'error' ? 'bg-red-500' : 'bg-white/20'}`}></span>
-                        <span className="font-bold text-[var(--text-primary)]">
-                          {proc.name}
-                          {proc.alias && (
-                            <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-75" title={`LCD Alias: ${proc.alias}`}>
-                              [{proc.alias}]
-                            </span>
-                          )}
-                        </span>
-                        {proc.auto_start && (
-                          <span className="text-[9px] bg-blue-500/20 text-blue-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title={`Auto-starts on boot (Order #${proc.startup_order || 1}${proc.startup_delay ? `, Delay ${proc.startup_delay}s` : ''})`}>
-                            <LightningIcon size={10} /> BOOT (#{proc.startup_order || 1}{proc.startup_delay ? ` | ${proc.startup_delay}s` : ''})
-                          </span>
-                        )}
-                        {proc.watchdog_enabled && (
-                          <span className="text-[9px] bg-purple-500/20 text-purple-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Monitored by system watchdog">
-                            <ShieldIcon size={10} /> WATCHDOG
-                          </span>
-                        )}
-                        {proc.debug_mode && (
-                          <span className="text-[9px] bg-yellow-500/20 text-yellow-400/80 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Runs in interactive console debug mode">
-                            DEBUG
-                          </span>
-                        )}
-                        {actionPending[proc.id] === 'starting' && (
-                          <span className="text-[9px] bg-blue-500/20 border border-blue-500/40 text-blue-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
-                            <RefreshIcon size={10} className="animate-spin" /> {t('services.starting', 'Service is starting...')}
-                          </span>
-                        )}
-                        {actionPending[proc.id] === 'stopping' && (
-                          <span className="text-[9px] bg-brand-orange/20 border border-brand-orange/40 text-brand-orange px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
-                            <RefreshIcon size={10} className="animate-spin" /> {t('services.stopping', 'Service is stopping...')}
-                          </span>
-                        )}
-                        {actionPending[proc.id] === 'restarting' && (
-                          <span className="text-[9px] bg-purple-500/20 border border-purple-500/40 text-purple-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
-                            <RefreshIcon size={10} className="animate-spin" /> {t('services.restarting', 'Service is restarting...')}
-                          </span>
-                        )}
-                        {proc.watchdog_enabled && proc.restart_count > 0 && actionPending[proc.id] !== 'stopping' && (
-                          <span className="text-[9px] bg-amber-500/20 border border-amber-500/40 text-amber-400 px-2 py-0.5 rounded font-bold animate-pulse flex items-center gap-1">
-                            ⚠️ {t('services.retrying', 'Retrying launch...')} ({proc.restart_count}/{proc.watchdog_retries === -1 ? '∞' : proc.watchdog_retries})
-                          </span>
-                        )}
-                        {proc.status === 'error' && (!proc.restart_count || !proc.watchdog_enabled) && (
-                          <span className="text-[9px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Process exited with error / stopped abnormally">
-                            ⚠ ABNORMAL END
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-text-secondary space-y-0.5 mt-0.5">
-                        <p className="truncate">
-                          Input: <code className="text-[var(--text-primary)] font-mono">{formatInputDesc(proc.input_config)}</code>
-                        </p>
-                        <p className="truncate">
-                          Output: <code className="text-[var(--text-primary)] font-mono">{formatOutputDesc(proc.output_config)}</code>
-                        </p>
-                        {proc.last_stop && (
-                          <p className="text-[10px] text-text-secondary/60 mt-1">
-                            Last active: {new Date(proc.last_stop).toLocaleString()}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-4 items-center">
-                      <div className="flex gap-2">
-                        <button
-                          disabled={actionPending[proc.id] === 'starting' || actionPending[proc.id] === 'stopping'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onStartService(proc.id);
-                          }}
-                          className="w-9 h-9 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center border border-brand-lime/20 text-brand-lime transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                          title="Start Service"
-                        >
-                          {actionPending[proc.id] === 'starting' ? (
-                            <RefreshIcon size={16} className="animate-spin text-brand-lime" />
-                          ) : (
-                            <PlayIcon size={16} />
-                          )}
-                        </button>
-                        <button
-                          disabled={!!actionPending[proc.id]}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEditProcess(proc);
-                          }}
-                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                          title="Edit Service Settings"
-                        >
-                          <PencilIcon size={16} />
-                        </button>
-                        <button
-                          disabled={!!actionPending[proc.id]}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onCloneProcess(proc);
-                          }}
-                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                          title="Clone Service"
-                        >
-                          <ClipboardIcon size={16} />
-                        </button>
-                        <button
-                          disabled={!!actionPending[proc.id]}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              const res = await fetch(`${API}/processes/${proc.id}/clone-as-task`, { method: 'POST' });
-                              if (!res.ok) throw new Error('Failed to clone service as task');
-                              alert(t('common.clonedSuccess', 'Cloned successfully!'));
-                            } catch (err: any) {
-                              alert(err.message || 'Error cloning service as task');
-                            }
-                          }}
-                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-lime disabled:opacity-50 disabled:pointer-events-none"
-                          title={t('services.cloneAsTask', 'Copy as Task')}
-                        >
-                          <CalendarIcon size={16} />
-                        </button>
-                        <button
-                          disabled={!!actionPending[proc.id]}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            fetch(`${API}/processes/${proc.id}/export`)
-                              .then(r => r.json())
-                              .then(data => {
-                                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-                                const a = document.createElement('a')
-                                a.href = URL.createObjectURL(blob)
-                                a.download = `${proc.name}_profile.json`
-                                a.click()
-                              })
-                          }}
-                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                          title="Export Service"
-                        >
-                          <ExportIcon size={16} />
-                        </button>
-                        <button
-                          disabled={!!actionPending[proc.id]}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteProcess(proc);
-                          }}
-                          className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                          title="Delete Service"
-                        >
-                          <TrashIcon size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          <h3 className="text-xl font-black mb-3 text-[var(--text-secondary)]">
+            {t('services.configuredServicesInactive', 'Configured Services (Inactive)')} ({inactiveServices.length})
+          </h3>
+          {inactiveServices.length === 0 ? (
+            <div className="text-[var(--text-secondary)] py-8 text-center border border-dashed border-white/5 rounded-2xl">
+              {t('services.noInactiveServices', 'No inactive services')}
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {inactiveServices.map(proc => (
+                <UnifiedServiceCard
+                  key={proc.id}
+                  service={proc as ServiceItem}
+                  telemetryItem={proc}
+                  actionPending={actionPending[proc.id]}
+                  onStartService={onStartService}
+                  onStopService={onStopService}
+                  onRestartService={onRestartService}
+                  onEditProcess={onEditProcess}
+                  onCloneProcess={onCloneProcess}
+                  onDeleteProcess={onDeleteProcess}
+                  onSelectedProcess={onSelectedProcess}
+                  onExportProcess={handleExport}
+                  onCloneAsTask={handleCloneAsTask}
+                  API={API}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

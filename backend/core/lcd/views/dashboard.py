@@ -14,8 +14,8 @@ class DashboardView(LCDView):
         node_name = "FFMPEG-GUI"
         active_count = 0
         try:
-            from database.models import MediaProcess, SystemSettings
-            active_count = db.query(MediaProcess).filter(MediaProcess.status == 'running').count()
+            from database.models import Service, SystemSettings
+            active_count = db.query(Service).filter(Service.status == 'running').count()
             settings = db.query(SystemSettings).first()
             if settings and isinstance(getattr(settings, "lcd_alias", None), str):
                 node_name = settings.lcd_alias

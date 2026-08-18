@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-08-18
+
+### Added
+- **Unified Multi-Type Compilation Forge**:
+  - Replaced `FfmpegBuild` with a generic `SoftwareBuild` class and table `software_builds` storing clean, generic software compilation metadata.
+  - Implemented modular recipe compilers: `FFmpeg`, `Icecast2`, `MediaMTX`, and `Kiosk Cog`.
+  - Added software type dropdown selector in `BuildFormModal` with dynamic validation constraints and conditional tabs (GPU / SDK tabs only display for FFmpeg).
+  - Added dynamic software version tag lookup endpoint `/builds/tags/{software_type}`.
+  - Added `software_type` badge rendering on `BuildProfileCard` in the unified forge management panel.
+- **Off-Repo Existing Database Migration Utility**:
+  - Created a database schema migration script `scratch/migrate_builds.py` to upgrade test machines smoothly.
+
+### Fixed & Enhanced
+- **Dynamic Muxer & Audio Codec Support for Icecast**:
+  - Implemented dynamic container format and content-type selection (`-f mp3`, `-f ogg`, `-f adts`) based on audio codec (`libmp3lame`, `libopus`, `libvorbis`, `aac`).
+  - Added system dependency detection and configure flags for `libmp3lame-dev` and `libvorbis-dev` in Forge recipes and `install.sh`.
+  - Added fallback header inspection (`lame/lame.h`, `vorbis/codec.h`) for Debian package managers without `.pc` pkg-config manifests.
+- **Resilient Process Logging & Startup Error Tracking**:
+  - Converted `_log_reader` to use non-blocking `proc.stderr.readline()` for line-by-line streaming without 4 KB chunking delays.
+  - Implemented disk-backed log file reading (`process_{id}.log`) for stopped or single-run processes in `GET /processes/{id}/logs`.
+  - Attached `_log_reader` immediately at subprocess spawn to capture early exit tracebacks and startup syntax errors.
+  - Rendered `🐞 DEBUG` mode badge on service cards when debug logging is active.
+- **ALSA Audio Mixer & Topology UI**:
+  - Formatted volume readouts with high-precision 1-decimal dB levels and 0–100% normalized percentage indicators.
+  - Fixed Mute toggle buttons with explicit `1`/`0` numeric state updates for instant visual UI feedback (Green `ON` / Red `MUTED`).
+  - Bound sub-mixer matrix routing modal to a reactive `activeMatrixGroup` selector searching aggregated hardware nodes to preserve all Intel HDA controls in real-time.
+
+## [2.0.0-beta] - 2026-08-11
+
+### Added
+- **Unified Multi-Type Service UI Card (`UnifiedServiceCard.tsx`)**:
+  - Modular React card component with dynamic slot rendering according to service types (`ffmpeg_stream`, `icecast_server`, `kiosk_browser`, `mediamtx_hub`).
+  - Preserved 100% of 1.X Services premium visual design (glassmorphic styling, hover glows, and rounded iconic control buttons: Play `▶`, Stop `⏹`, Restart `🔄`, Logs `📜`, Edit `✏`, Clone `📋`, Delete `🗑`).
+  - Added conditional action rendering: "Clone as Task" (`📋`) button is displayed exclusively for `ffmpeg_stream` services.
+  - Interactive card click triggers live inspection modal with big video snapshot, GPU/CPU pipeline diagram, and real-time streaming event logs.
+  - Integrated read-only implicit dependency badge (`🔗 Linked: Service Name (Auto-managed)`) showing live linked services and consumer reference counts.
+  - Added i18n keys for service types and implicit dependency labels across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`) with strict key parity.
+
+## [2.0.0-alpha] - 2026-08-11
+
+### Added
+- **Unified Services & Dependencies Engine (v2.0 Redesign)**:
+  - Replaced legacy `MediaProcess` model with a generic `Service` class storing configuration in a single, schema-agnostic `config` JSON column.
+  - Implemented automatic SQLite database migration converting historical `media_processes` records to `services` format on startup, bump schema version to `2.0.0`.
+  - Added reference-counting dependency tracking (`ServiceDependency` table) inside `ProcessManager`.
+  - Implemented `start_dependencies()` and `stop_unused_dependencies()` to auto-boot dependencies and auto-stop them when reference count falls to 0.
+  - Created native REST API endpoints under `/api/services` and `/api/services/{id}/dependencies`.
+  - Implemented backwards-compatible shims (Getter/Setter properties and module-level class aliases `MediaProcess = Service`, `ProcessLog = ServiceLog`) ensuring 100% functionality of legacy `/processes` endpoints and unit tests.
+
 ## [1.45.0] - 2026-08-07
 
 ### Added
