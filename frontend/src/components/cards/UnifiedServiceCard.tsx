@@ -196,6 +196,15 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           </span>
 
           {/* Badges */}
+          {!!(service.debug_mode || service.config?.debug_mode) && (
+            <span 
+              className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+              title="Debug mode active (-loglevel info)"
+            >
+              🐞 DEBUG
+            </span>
+          )}
+
           {service.pending_changes && (
             <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse">
               PENDING REBOOT

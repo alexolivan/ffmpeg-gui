@@ -220,6 +220,9 @@ class ProcessManager:
                     env=sub_env
                 )
                 self.processes[process_id] = proc
+                # Start log reader IMMEDIATELY to capture early startup errors or exit messages
+                asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
+                
                 # Short hardware initialization grace gap to allow CUDA / DeckLink / NVENC drivers to bind
                 await asyncio.sleep(1.0)
             
@@ -238,8 +241,7 @@ class ProcessManager:
                     media_proc.ram_usage = 0
                     session.commit()
             
-            # Start watchdog and log reader tasks
-            asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
+            # Start watchdog task
             self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, proc))
             
         except Exception as e:
