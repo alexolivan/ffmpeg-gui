@@ -3813,7 +3813,7 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
                         lower = line_str.lower()
                         level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot"]) else "INFO"
                         parsed_logs.append({
-                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                             "level": level,
                             "message": line_str
                         })
