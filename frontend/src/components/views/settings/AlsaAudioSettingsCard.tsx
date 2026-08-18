@@ -404,32 +404,38 @@ const formatControlValue = (ctrl?: AlsaControl, rawVal?: any): string => {
   const min = ctrl.min ?? 0;
   const max = ctrl.max ?? 100;
 
-  if (ctrl.db_min !== undefined && ctrl.db_step !== undefined && ctrl.db_step > 0) {
-    const isHundredths = Math.abs(ctrl.db_step) >= 50 || Math.abs(ctrl.db_min) >= 500;
-    const scale = isHundredths ? 100 : 1;
-    const dbVal = (ctrl.db_min / scale) + (numVal - min) * (ctrl.db_step / scale);
-    if (dbVal <= (ctrl.db_min / scale) && ctrl.db_min <= -50) {
-      return '-∞ dB';
-    }
-    return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(0)} dB`;
+  // Detect whether db_min and db_step are in hundredths (e.g. -6525 instead of -65.25)
+  let dbMin = ctrl.db_min;
+  let dbStep = ctrl.db_step;
+
+  if (dbMin !== undefined && Math.abs(dbMin) > 200) {
+    dbMin = dbMin / 100;
+  }
+  if (dbStep !== undefined && Math.abs(dbStep) > 10) {
+    dbStep = dbStep / 100;
   }
 
-  const isHundredths = Math.abs(min) >= 500 || Math.abs(max) >= 500 || (ctrl.db_min !== undefined && Math.abs(ctrl.db_min) > 200);
-
-  if (isHundredths || ctrl.db_min !== undefined) {
-    const scale = isHundredths ? 100 : 1;
-    const dbVal = numVal / scale;
-    if (dbVal <= (min / scale) && (min <= -5000 || (ctrl.db_min !== undefined && ctrl.db_min <= -50))) {
-      return '-∞ dB';
+  // Calculate dB if dbMin and dbStep are available
+  let dbStr: string | null = null;
+  if (dbMin !== undefined && dbStep !== undefined && dbStep > 0) {
+    const dbVal = dbMin + (numVal - min) * dbStep;
+    if (numVal <= min || dbVal <= -50) {
+      dbStr = '-∞ dB';
+    } else {
+      const formattedNum = Math.abs(dbVal) < 0.05 ? '0.0' : dbVal.toFixed(1);
+      dbStr = `${dbVal > 0.05 ? '+' : ''}${formattedNum} dB`;
     }
-    return `${dbVal > 0 ? '+' : ''}${dbVal.toFixed(0)} dB`;
   }
 
   if (max > min) {
     const pct = Math.round(((numVal - min) / (max - min)) * 100);
+    if (dbStr) {
+      return `${dbStr} (${pct}%)`;
+    }
     return `${pct}%`;
   }
 
+  if (dbStr) return dbStr;
   return `${numVal}`;
 };
 
