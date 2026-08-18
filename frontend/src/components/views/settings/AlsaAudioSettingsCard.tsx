@@ -298,18 +298,32 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   // Unified Single Master Mixer Node for Intel HDA / Realtek / Consumer Soundcards
   const isPhysicalOutputEndpoint = (g: AlsaGroup) => {
     const n = g.name.toLowerCase().trim();
-    if (n.includes('mic') || n.includes('input') || n === 'master' || n === 'general') return false;
+
+    // Exclude input monitors (Mic, Line In / Line Playback / Rear Mic / Front Mic), master, capture, and general
+    if (
+      n.includes('mic') ||
+      n.includes('input') ||
+      n === 'master' ||
+      n === 'general' ||
+      n.startsWith('line playback') ||
+      n === 'line' ||
+      n.includes('capture')
+    ) {
+      return false;
+    }
+
+    // Match physical hardware output jacks
     return (
       n.includes('line out') ||
-      n.includes('line playback') ||
-      n.includes('front') ||
+      n === 'front' ||
+      n === 'front playback' ||
+      n.startsWith('surround') ||
+      n.startsWith('center') ||
+      n.startsWith('lfe') ||
+      n.startsWith('clfe') ||
+      n.startsWith('side') ||
       n.includes('headphone') ||
       n.includes('speaker') ||
-      n.includes('surround') ||
-      n.includes('center') ||
-      n.includes('lfe') ||
-      n.includes('clfe') ||
-      n.includes('side') ||
       n.includes('spdif') ||
       n.includes('iec958')
     );
@@ -318,17 +332,17 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const physicalEndpoints = groups.filter(isPhysicalOutputEndpoint);
   const validEndpoints = physicalEndpoints.length > 0 ? physicalEndpoints : groups;
 
-  // Root Master Endpoint: 'Line Out' for 2.0 cards, 'Front' for 4.0/5.1 cards
+  // Root Master Endpoint: 'Line Out' for 2.0 cards, 'Front' / 'Front Playback' for 4.0/5.1 cards
   const rawMasterEndpoint =
-    validEndpoints.find(g => g.name.toLowerCase().trim().includes('line out') || g.name.toLowerCase().trim().includes('line playback')) ||
-    validEndpoints.find(g => g.name.toLowerCase().trim().includes('front')) ||
+    validEndpoints.find(g => g.name.toLowerCase().trim().includes('line out')) ||
+    validEndpoints.find(g => g.name.toLowerCase().trim().startsWith('front')) ||
     validEndpoints[0];
 
   // If ALSA reports 'Line Out' with no direct controls on 2.0 cards, merge 'Front' controls (Front Playback Volume) into Line Out
-  const frontGroup = groups.find(g => g.name.toLowerCase().trim().includes('front'));
+  const frontGroup = groups.find(g => g.name.toLowerCase().trim().startsWith('front'));
 
   let masterControls = rawMasterEndpoint.controls || [];
-  if (rawMasterEndpoint.name.toLowerCase().trim().includes('line') && frontGroup && frontGroup.id !== rawMasterEndpoint.id) {
+  if (rawMasterEndpoint.name.toLowerCase().trim().includes('line out') && frontGroup && frontGroup.id !== rawMasterEndpoint.id) {
     const hasLineOutDirect = masterControls.some(c => c && !c.name.toLowerCase().includes('mic'));
     if (!hasLineOutDirect && frontGroup.controls) {
       masterControls = [...masterControls, ...frontGroup.controls];
@@ -344,7 +358,7 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const slaveEndpoints = validEndpoints.filter(g => {
     const gName = g.name.toLowerCase().trim();
     if (g.id === masterEndpoint.id) return false;
-    if (gName.includes('front') && masterEndpoint.name.toLowerCase().trim().includes('line')) return false;
+    if (gName.startsWith('front') && masterEndpoint.name.toLowerCase().trim().includes('line out')) return false;
     return true;
   });
 
