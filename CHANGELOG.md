@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2026-08-13
+## [2.0.0] - 2026-08-18
 
 ### Added
 - **Unified Multi-Type Compilation Forge**:
@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `software_type` badge rendering on `BuildProfileCard` in the unified forge management panel.
 - **Off-Repo Existing Database Migration Utility**:
   - Created a database schema migration script `scratch/migrate_builds.py` to upgrade test machines smoothly.
+
+### Fixed & Enhanced
+- **Dynamic Muxer & Audio Codec Support for Icecast**:
+  - Implemented dynamic container format and content-type selection (`-f mp3`, `-f ogg`, `-f adts`) based on audio codec (`libmp3lame`, `libopus`, `libvorbis`, `aac`).
+  - Added system dependency detection and configure flags for `libmp3lame-dev` and `libvorbis-dev` in Forge recipes and `install.sh`.
+  - Added fallback header inspection (`lame/lame.h`, `vorbis/codec.h`) for Debian package managers without `.pc` pkg-config manifests.
+- **Resilient Process Logging & Startup Error Tracking**:
+  - Converted `_log_reader` to use non-blocking `proc.stderr.readline()` for line-by-line streaming without 4 KB chunking delays.
+  - Implemented disk-backed log file reading (`process_{id}.log`) for stopped or single-run processes in `GET /processes/{id}/logs`.
+  - Attached `_log_reader` immediately at subprocess spawn to capture early exit tracebacks and startup syntax errors.
+  - Rendered `🐞 DEBUG` mode badge on service cards when debug logging is active.
+- **ALSA Audio Mixer & Topology UI**:
+  - Formatted volume readouts with high-precision 1-decimal dB levels and 0–100% normalized percentage indicators.
+  - Fixed Mute toggle buttons with explicit `1`/`0` numeric state updates for instant visual UI feedback (Green `ON` / Red `MUTED`).
+  - Bound sub-mixer matrix routing modal to a reactive `activeMatrixGroup` selector searching aggregated hardware nodes to preserve all Intel HDA controls in real-time.
 
 ## [2.0.0-beta] - 2026-08-11
 
