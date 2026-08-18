@@ -709,6 +709,26 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const [linkedChannels, setLinkedChannels] = useState<Record<number, boolean>>({});
   const [selectedMatrixGroup, setSelectedMatrixGroup] = useState<AlsaGroup | null>(null);
 
+  const isLoopbackEnabled = useMemo(() => {
+    if (!topology) return false;
+    const allGroups = [
+      ...(topology.global_controls || []),
+      ...(topology.hardware_outputs || []),
+      ...(topology.virtual_capture || []),
+      ...(topology.hardware_inputs || [])
+    ];
+    for (const g of allGroups) {
+      for (const ctrl of g.controls || []) {
+        const cName = ctrl.name.toLowerCase();
+        if (cName.includes('loopback')) {
+          const val = ctrl.values?.[0];
+          return val === 1 || val === true || (ctrl.items && ctrl.items[val]?.toLowerCase() === 'enabled');
+        }
+      }
+    }
+    return false;
+  }, [topology]);
+
   const selectedDriver = useMemo(() => {
     return cards.find(c => c.card_index === selectedCardIdx)?.driver;
   }, [cards, selectedCardIdx]);
@@ -1177,6 +1197,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
+                isLoopbackActive={isLoopbackEnabled}
               />
             ))}
             {(!topology?.virtual_capture || topology.virtual_capture.length === 0) && (
@@ -1200,6 +1221,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 onToggleLink={() => group.controls?.[0] && toggleChannelLink(group.controls[0].numid)}
                 canvasRefSetter={(numid, el) => (canvasRefs.current[numid] = el)}
                 endpointIcon={getEndpointIcon(group.category, group.name)}
+                isLoopbackActive={isLoopbackEnabled}
               />
             ))}
             {(!topology?.hardware_inputs || topology.hardware_inputs.length === 0) && (
@@ -1299,6 +1321,7 @@ interface ChannelStripProps {
   canvasRefSetter: (numid: number, el: HTMLCanvasElement | null) => void;
   endpointIcon: React.ReactNode;
   hideInlineMixerButton?: boolean;
+  isLoopbackActive?: boolean;
 }
 
 interface AlsaFaderUnitProps {
@@ -1573,6 +1596,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
   canvasRefSetter,
   endpointIcon,
   hideInlineMixerButton = false,
+  isLoopbackActive = false,
 }) => {
   const [activePopup, setActivePopup] = useState<string | number | null>(null);
 
@@ -2293,14 +2317,23 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
 
         {/* RIGHT: ROUTING SOURCE BADGE & FFMPEG ACTIVE PROCESS ALIASES */}
         <div className="flex items-center gap-2">
-          {activeRouteName && (
+          {(activeRouteName || (isCaptureChannel && isLoopbackActive)) && (
             <div className="flex items-center gap-1">
               <span className="text-[9px] text-amber-400 font-semibold uppercase">Route:</span>
               <span
-                title={`Active Audio Route Source: ${activeRouteName}`}
-                className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[9px] px-1.5 py-0.2 rounded font-mono font-bold truncate max-w-[140px]"
+                title={
+                  isLoopbackActive
+                    ? `Active Audio Route Source: ${activeRouteName || 'Input'} + Master Playout Loopback`
+                    : `Active Audio Route Source: ${activeRouteName || 'Input'}`
+                }
+                className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold truncate max-w-[190px] border transition-all ${
+                  isLoopbackActive
+                    ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300 shadow-sm'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                }`}
               >
-                {activeRouteName}
+                {activeRouteName || 'Input'}
+                {isLoopbackActive && <span className="ml-1 text-[8.5px] font-extrabold text-brand-lime">+ MASTER</span>}
               </span>
             </div>
           )}
