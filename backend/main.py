@@ -3533,8 +3533,19 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     output_cfg = proc_in.output_config if proc_in.output_config is not None else db_proc.output_config
     check_media_process_port_conflicts(input_cfg, output_cfg)
 
-    if proc_in.output_config is not None: db_proc.output_config = proc_in.output_config
-    if proc_in.codec_config is not None: db_proc.codec_config = proc_in.codec_config
+    if proc_in.output_config is not None:
+        db_proc.output_config = proc_in.output_config
+        try:
+            flag_modified(db_proc, "output_config")
+        except Exception:
+            pass
+
+    if proc_in.codec_config is not None:
+        db_proc.codec_config = proc_in.codec_config
+        try:
+            flag_modified(db_proc, "codec_config")
+        except Exception:
+            pass
     if proc_in.ffmpeg_build_id is not None: db_proc.ffmpeg_build_id = proc_in.ffmpeg_build_id
     if proc_in.auto_start is not None: db_proc.auto_start = proc_in.auto_start
     if proc_in.startup_order is not None: db_proc.startup_order = proc_in.startup_order
