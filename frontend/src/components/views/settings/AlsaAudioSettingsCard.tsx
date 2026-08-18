@@ -720,8 +720,23 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const [linkedChannels, setLinkedChannels] = useState<Record<number, boolean>>({});
   const [selectedMatrixGroupId, setSelectedMatrixGroupId] = useState<string | null>(null);
 
+  const selectedDriver = useMemo(() => {
+    return cards.find(c => c.card_index === selectedCardIdx)?.driver;
+  }, [cards, selectedCardIdx]);
+
+  const groupedHardwareNodes = useMemo(() => {
+    return groupHardwareOutputs(topology?.hardware_outputs, selectedDriver);
+  }, [topology?.hardware_outputs, selectedDriver]);
+
   const activeMatrixGroup = useMemo(() => {
     if (!selectedMatrixGroupId || !topology) return null;
+
+    for (const node of groupedHardwareNodes) {
+      if (node.masterGroup?.id === selectedMatrixGroupId) {
+        return node.masterGroup;
+      }
+    }
+
     const allGroups = [
       ...(topology.global_controls || []),
       ...(topology.hardware_outputs || []),
@@ -730,7 +745,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
       ...(topology.virtual_playout || []),
     ];
     return allGroups.find(g => g.id === selectedMatrixGroupId) || null;
-  }, [selectedMatrixGroupId, topology]);
+  }, [selectedMatrixGroupId, topology, groupedHardwareNodes]);
 
   const isLoopbackEnabled = useMemo(() => {
     if (!topology) return false;
@@ -751,14 +766,6 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     }
     return false;
   }, [topology]);
-
-  const selectedDriver = useMemo(() => {
-    return cards.find(c => c.card_index === selectedCardIdx)?.driver;
-  }, [cards, selectedCardIdx]);
-
-  const groupedHardwareNodes = useMemo(() => {
-    return groupHardwareOutputs(topology?.hardware_outputs, selectedDriver);
-  }, [topology?.hardware_outputs, selectedDriver]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
