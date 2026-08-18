@@ -910,10 +910,15 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
       return {
         ...prevTopology,
-        virtual_playout: updateValuesInGroups(prevTopology.virtual_playout),
-        hardware_outputs: updateValuesInGroups(prevTopology.hardware_outputs),
-        virtual_capture: updateValuesInGroups(prevTopology.virtual_capture),
-        hardware_inputs: updateValuesInGroups(prevTopology.hardware_inputs),
+        virtual_playout: updateValuesInGroups(prevTopology.virtual_playout || []),
+        hardware_outputs: updateValuesInGroups(prevTopology.hardware_outputs || []),
+        virtual_capture: updateValuesInGroups(prevTopology.virtual_capture || []),
+        hardware_inputs: updateValuesInGroups(prevTopology.hardware_inputs || []),
+        global_controls: updateValuesInGroups(prevTopology.global_controls || []),
+        system_clock: updateValuesInGroups(prevTopology.system_clock || []),
+        jack_sensors: updateValuesInGroups(prevTopology.jack_sensors || []),
+        iec958_controls: updateValuesInGroups(prevTopology.iec958_controls || []),
+        pcm_capabilities: updateValuesInGroups(prevTopology.pcm_capabilities || []),
       };
     });
 
@@ -927,6 +932,8 @@ export const AlsaAudioSettingsCard: React.FC = () => {
           values,
         }),
       });
+      // Re-fetch topology to ensure 100% backend synchronization
+      fetchTopology(selectedCardIdx);
     } catch (err) {
       console.error('Failed to write control:', err);
     }
@@ -2317,14 +2324,14 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
 
         {/* RIGHT: ROUTING SOURCE BADGE & FFMPEG ACTIVE PROCESS ALIASES */}
         <div className="flex items-center gap-2">
-          {(activeRouteName || (isCaptureChannel && isLoopbackActive)) && (
+          {activeRouteName && (
             <div className="flex items-center gap-1">
               <span className="text-[9px] text-amber-400 font-semibold uppercase">Route:</span>
               <span
                 title={
                   isLoopbackActive
-                    ? `Active Audio Route Source: ${activeRouteName || 'Input'} + Master Playout Loopback`
-                    : `Active Audio Route Source: ${activeRouteName || 'Input'}`
+                    ? `Active Audio Route Source: ${activeRouteName} + Master Playout Loopback`
+                    : `Active Audio Route Source: ${activeRouteName}`
                 }
                 className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold truncate max-w-[190px] border transition-all ${
                   isLoopbackActive
@@ -2332,7 +2339,7 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
                     : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                 }`}
               >
-                {activeRouteName || 'Input'}
+                {activeRouteName}
                 {isLoopbackActive && <span className="ml-1 text-[8.5px] font-extrabold text-brand-lime">+ MASTER</span>}
               </span>
             </div>
