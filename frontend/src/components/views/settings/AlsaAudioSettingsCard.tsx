@@ -718,7 +718,19 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const [topology, setTopology] = useState<AlsaTopology | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [linkedChannels, setLinkedChannels] = useState<Record<number, boolean>>({});
-  const [selectedMatrixGroup, setSelectedMatrixGroup] = useState<AlsaGroup | null>(null);
+  const [selectedMatrixGroupId, setSelectedMatrixGroupId] = useState<string | null>(null);
+
+  const activeMatrixGroup = useMemo(() => {
+    if (!selectedMatrixGroupId || !topology) return null;
+    const allGroups = [
+      ...(topology.global_controls || []),
+      ...(topology.hardware_outputs || []),
+      ...(topology.virtual_capture || []),
+      ...(topology.hardware_inputs || []),
+      ...(topology.virtual_playout || []),
+    ];
+    return allGroups.find(g => g.id === selectedMatrixGroupId) || null;
+  }, [selectedMatrixGroupId, topology]);
 
   const isLoopbackEnabled = useMemo(() => {
     if (!topology) return false;
@@ -1132,8 +1144,8 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                     </span>
                   </div>
                   <button
-                    onClick={() => setSelectedMatrixGroup(node.masterGroup)}
-                    className="px-2.5 py-1 bg-brand-orange/15 hover:bg-brand-orange/25 border border-brand-orange/30 rounded-lg text-[10px] font-bold text-brand-orange transition-all flex items-center gap-1 shrink-0"
+                    onClick={() => setSelectedMatrixGroupId(node.masterGroup.id)}
+                    className="px-2.5 py-1 bg-brand-orange/15 hover:bg-brand-orange/25 border border-brand-orange/30 rounded-lg text-[10px] font-bold text-brand-orange transition-all flex items-center gap-1 shrink-0 cursor-pointer"
                     title={t('settings.alsa.matrixRouting', 'Matrix & Routing')}
                   >
                     <span>⚙️</span> {t('settings.alsa.matrixRouting', 'Matrix & Routing')}
@@ -1253,10 +1265,10 @@ export const AlsaAudioSettingsCard: React.FC = () => {
       </div>
 
       {/* MATRIX ROUTING MODAL */}
-      {selectedMatrixGroup && (
+      {activeMatrixGroup && (
         <AlsaMatrixRoutingModal
-          group={selectedMatrixGroup}
-          onClose={() => setSelectedMatrixGroup(null)}
+          group={activeMatrixGroup}
+          onClose={() => setSelectedMatrixGroupId(null)}
           onControlChange={handleControlChange}
         />
       )}
