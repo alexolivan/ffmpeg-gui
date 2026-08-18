@@ -9,7 +9,7 @@ This guide details the installation, dependency setup, and upgrade workflow for 
 - **Operating System**: Linux (Ubuntu 20.04+ or Debian 11+ recommended).
 - **Python**: Version 3.10 or higher (with `venv` support).
 - **Node.js**: Version 18 or higher (with `npm`).
-- **Compiler Tools**: `gcc`, `make`, `pkg-config`, and standard build utilities (required to compile custom FFmpeg binaries).
+- **Compiler Tools & Libraries**: `gcc`, `make`, `pkg-config`, `yasm`/`nasm`, and development headers (`libx264-dev`, `libx265-dev`, `libssl-dev`, `libmp3lame-dev`, `libvorbis-dev`, `libopus-dev`) required to compile custom FFmpeg binaries.
 - **Optional Hardware Tools**:
   - NVIDIA GPU with proprietary drivers & CUDA toolkit (optional for hardware acceleration; system compiles and runs on CPU-only hosts without NVIDIA drivers).
   - Intel graphics processors with QSV / VAAPI media drivers (e.g., `intel-media-driver` for low-overhead hardware transcoding).
