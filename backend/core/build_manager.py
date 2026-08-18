@@ -107,6 +107,18 @@ class BuildManager:
                     installed = True
                 except Exception:
                     installed = False
+
+            # Fallback header checks for packages without .pc files on Debian/Ubuntu (e.g. libmp3lame-dev)
+            if not installed and name == "libmp3lame":
+                for h_path in ["/usr/include/lame/lame.h", "/usr/include/lame.h", "/usr/local/include/lame/lame.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
+            elif not installed and name == "libvorbis":
+                for h_path in ["/usr/include/vorbis/codec.h", "/usr/local/include/vorbis/codec.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
             
             results[name] = {
                 "installed": installed,
