@@ -3777,12 +3777,51 @@ def get_process_progress(process_id: int):
 
 @app.get("/processes/{process_id}/logs")
 def get_process_logs(process_id: int, db: Session = Depends(get_db)):
-    # Check if process is active and has a memory buffer
-    if process_id in process_manager.processes and process_id in process_manager.log_buffers:
-        # Return serialized memory buffer (already formatted with timestamp, level, message)
+    # 1. If process is actively running and has an in-memory buffer, return it
+    if process_id in process_manager.log_buffers and len(process_manager.log_buffers[process_id]) > 0:
         return list(process_manager.log_buffers[process_id])
-        
-    # Fall back to database query, sorting by id ascending for chronological order
+
+    # 2. Read log file from disk (process_{process_id}.log) if process has completed / stopped
+    db_proc = db.query(MediaProcess).get(process_id)
+    if db_proc:
+        log_storage_path = None
+        if db_proc.log_storage_id:
+            storage = db.query(Storage).get(db_proc.log_storage_id)
+            if storage:
+                log_storage_path = storage.path
+
+        if not log_storage_path:
+            default_storage = db.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
+            if not default_storage:
+                default_storage = db.query(Storage).filter(Storage.type == "logs").first()
+            if default_storage:
+                log_storage_path = default_storage.path
+
+        if not log_storage_path:
+            log_storage_path = os.path.abspath("data/logs")
+
+        log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
+        if os.path.exists(log_file):
+            try:
+                with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                    parsed_logs = []
+                    for line in lines[-100:]:
+                        line_str = line.strip()
+                        if not line_str:
+                            continue
+                        lower = line_str.lower()
+                        level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot"]) else "INFO"
+                        parsed_logs.append({
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                            "level": level,
+                            "message": line_str
+                        })
+                    return parsed_logs
+            except Exception as e:
+                logger.error(f"Error reading log file {log_file} for process {process_id}: {e}")
+
+    # 3. Fall back to database query
     return db.query(ProcessLog).filter(
         ProcessLog.process_id == process_id
     ).order_by(ProcessLog.id.asc()).limit(100).all()
