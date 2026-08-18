@@ -481,7 +481,26 @@ class FFmpegCommandBuilder:
             port = output_cfg.get('port', '8000')
             mount = output_cfg.get('icecast_mount', '/live')
             password = output_cfg.get('icecast_password', 'hackme')
-            cmd += ["-f", "ogg", "-content_type", "application/ogg",
+
+            acodec = (codec_cfg.get('acodec') or 'aac').lower()
+
+            if acodec in ('libmp3lame', 'mp3', 'libshine'):
+                fmt = 'mp3'
+                c_type = 'audio/mpeg'
+            elif acodec in ('libopus', 'opus'):
+                fmt = 'ogg'
+                c_type = 'audio/ogg'
+            elif acodec in ('libvorbis', 'vorbis', 'flac'):
+                fmt = 'ogg'
+                c_type = 'application/ogg'
+            elif acodec in ('aac', 'libfdk_aac'):
+                fmt = 'adts'
+                c_type = 'audio/aac'
+            else:
+                fmt = 'ogg'
+                c_type = 'application/ogg'
+
+            cmd += ["-f", fmt, "-content_type", c_type,
                     f"icecast://source:{password}@{host}:{port}{mount}"]
         elif output_type == 'hls':
             path = output_cfg.get('path', '')

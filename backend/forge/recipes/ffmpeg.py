@@ -154,6 +154,10 @@ class FfmpegRecipe(BaseRecipe):
         ]
 
         dep_check = self.runner.check_dependencies()
+        if dep_check.get("dependencies", {}).get("libmp3lame", {}).get("installed"):
+            config_flags.append("--enable-libmp3lame")
+        if dep_check.get("dependencies", {}).get("libvorbis", {}).get("installed"):
+            config_flags.append("--enable-libvorbis")
         if dep_check.get("dependencies", {}).get("libopus", {}).get("installed"):
             config_flags.append("--enable-libopus")
         if dep_check.get("dependencies", {}).get("libvpx", {}).get("installed"):

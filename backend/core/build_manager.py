@@ -86,6 +86,8 @@ class BuildManager:
             "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
             "libssl": {"pkg": "openssl", "type": "required", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
             "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
+            "libmp3lame": {"pkg": "mp3lame", "type": "optional", "description": "Biblioteca LAME para codificación de audio MP3 (libmp3lame-dev)"},
+            "libvorbis": {"pkg": "vorbis", "type": "optional", "description": "Biblioteca Ogg Vorbis para codificación de audio (libvorbis-dev)"},
             "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"},
             "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)"},
             "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)"},
