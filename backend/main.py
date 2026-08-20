@@ -5252,6 +5252,42 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
         logger.error(f"WebSocket ALSA meters error: {e}")
 
 
+# ── Blackmagic DeckLink Settings Endpoints ───────────────────────────
+from backend.core.decklink_manager import DecklinkManager
+decklink_manager = DecklinkManager()
+
+@app.get("/api/settings/decklink/status")
+async def get_decklink_status(db: Session = Depends(get_db)):
+    """Retorna el estado global del subsistema DeckLink, compatibilidad y lista de tarjetas."""
+    return await decklink_manager.get_system_status(db)
+
+@app.get("/api/settings/decklink/{device_id}/telemetry")
+async def get_decklink_telemetry(device_id: str, db: Session = Depends(get_db)):
+    """Retorna la telemetría y estado de señal en tiempo real de un dispositivo DeckLink."""
+    res = await decklink_manager.get_device_telemetry(device_id, db)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Error consultando telemetría"))
+    return res
+
+@app.post("/api/settings/decklink/{device_id}/configure")
+async def configure_decklink_device(device_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Aplica configuraciones en un subdispositivo DeckLink garantizando no interferir con procesos activos."""
+    res = await decklink_manager.configure_device(device_id, payload, db, process_manager)
+    if res.get("conflict"):
+        raise HTTPException(status_code=409, detail=res.get("error"))
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Error aplicando configuración DeckLink"))
+    return res
+
+@app.post("/api/settings/decklink/{device_index}/firmware-update")
+async def update_decklink_firmware(device_index: int):
+    """Ejecuta la actualización de firmware de una tarjeta DeckLink mediante BlackmagicFirmwareUpdater."""
+    res = await decklink_manager.update_firmware(device_index)
+    if not res.get("success"):
+        raise HTTPException(status_code=500, detail=res.get("error", "Fallo en la actualización de firmware"))
+    return res
+
+
 # Mounting static files and SPA fallback
 FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", "../frontend/dist")
 try:
