@@ -91,7 +91,8 @@
       "storage": "Storage",
       "security": "Network & Security",
       "alsa": "ALSA AUDIO",
-      "backup": "BACKUP & RESTORE"
+      "backup": "BACKUP & RESTORE",
+      "decklink": "DECKLINK"
     },
     "alsa": {
       "title": "ALSA MIXER",
@@ -310,6 +311,35 @@
       "confirmBtn": "Confirm Restore",
       "importSuccess": "Backup restored successfully!",
       "invalidBackupFormat": "Invalid backup file format. Missing ffmpeg-gui signature."
+    },
+    "decklink": {
+      "title": "BLACKMAGIC DECKLINK HARDWARE CONTROL",
+      "subtitle": "Headless SDI/HDMI connector mapping, live signal telemetry, and firmware management",
+      "kernelDriver": "Kernel Driver (OS)",
+      "driverNotInstalled": "desktopvideo not installed",
+      "activeHelper": "Active Helper Tool",
+      "firmwareStatus": "Firmware Integrity",
+      "firmwareUpdateRequired": "Update Required",
+      "firmwareUpToDate": "Up to Date",
+      "detectedSubDevices": "Active Sub-Devices",
+      "firmwareAlertTitle": "Firmware Update Required on Hardware",
+      "firmwareAlertSubtitle": "One or more DeckLink cards require a firmware update to maintain compatibility with the host driver.",
+      "updateFirmwareBtn": "Update Firmware Now",
+      "confirmFirmwareUpdate": "Are you sure you want to update the firmware on this DeckLink card? Do not power off the machine during the update.",
+      "noDevicesFound": "No Blackmagic DeckLink Cards Detected",
+      "noDevicesFoundDesc": "Make sure your PCIe DeckLink card is seated properly and that the Linux kernel driver (bmd-io / desktopvideo) is installed and loaded.",
+      "selectChannel": "Channel / Sub-Device:",
+      "signalStatus": "Signal",
+      "format": "Format",
+      "pixelFormat": "Colorspace",
+      "configurePort": "Configure Port",
+      "configTitle": "Configure Port",
+      "configAppliedSuccess": "Configuration applied successfully",
+      "duplexModeLabel": "Duplex Mode (Connector Mapping)",
+      "duplexHalf": "Half Duplex (Independent Individual SDI Channels)",
+      "duplexFull": "Full Duplex (Paired Bidirectional In/Out Link)",
+      "duplexInactive": "Inactive (Disabled / Low Power)",
+      "duplexHint": "On dense cards like DeckLink Duo 2 / Quad 2, Half Duplex allows treating each BNC as an independent capture/playback stream."
     }
   },
   "dashboard": {
@@ -415,8 +445,8 @@
     "versionTag": "Version Tag",
     "ffmpegOption": "FFmpeg (Video / Audio Muxer)",
     "icecastOption": "Icecast2 (Audio Streaming Server)",
-    "mediamtxOption": "MediaMTX (RTSP/RTMP/SRT/WebRTC Hub)",
-    "kioskOption": "Kiosk Cog (WPE WebKit Browser Launcher)",
+    "mediamtxOption": "MediaMTX (SRT / WebRTC Hub)",
+    "kioskOption": "Kiosk Cog (Chromium Web Browser)",
     "buildStorage": "Build Storage",
     "defaultBuildStorage": "Default (Default Build Storage)",
     "autoClean": "Automatic Post-compilation Cleanup",
@@ -494,7 +524,10 @@
     "incompatibleCodecTitle": "Incompatible Codec Configuration",
     "autoFixCompatible": "Auto-Fix Settings to Compatible Values",
     "decklinkIncompatNotice": "DeckLink outputs require raw uncompressed YUV video or compatible broadcast formats.",
-    "ndiIncompatNotice": "NDI outputs automatically wrap video into NDI YUV/RGBA frames."
+    "ndiIncompatNotice": "NDI outputs automatically wrap video into NDI YUV/RGBA frames.",
+    "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
+    "targetDecklinkSdk": "Target DeckLink SDK",
+    "noDecklinkSdkUploaded": "No DeckLink SDK uploaded yet."
   },
   "sources": {
     "mediaStorage": "Media Storage",

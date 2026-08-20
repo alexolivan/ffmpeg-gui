@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n/i18n';
 import { ShieldIcon, GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon, ExportIcon } from '../Icons';
 import { AlsaAudioSettingsCard } from './settings/AlsaAudioSettingsCard';
+import { DecklinkSettingsCard } from './settings/DecklinkSettingsCard';
 import { BackupRestoreCard } from './settings/BackupRestoreCard';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
@@ -100,7 +101,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security' | 'alsa' | 'backup'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security' | 'alsa' | 'decklink' | 'backup'>('general');
 
   const [storages, setStorages] = useState<any[]>([]);
   const [isLoadingStorages, setIsLoadingStorages] = useState(false);
@@ -902,6 +903,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         >
           <span className="text-sm">🔊</span>
           {t('settings.tabs.alsa', 'ALSA AUDIO')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('decklink')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+            activeTab === 'decklink'
+              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span className="text-sm">🎛️</span>
+          {t('settings.tabs.decklink', 'DECKLINK')}
         </button>
         <button
           type="button"
@@ -2400,7 +2413,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* TAB 5: ALSA Audio */}
         {activeTab === 'alsa' && <AlsaAudioSettingsCard />}
 
-        {/* TAB 6: Backup & Restore */}
+        {/* TAB 6: DeckLink Hardware Control */}
+        {activeTab === 'decklink' && <DecklinkSettingsCard API={API} />}
+
+        {/* TAB 7: Backup & Restore */}
         {activeTab === 'backup' && <BackupRestoreCard API={API} />}
       </div>
 

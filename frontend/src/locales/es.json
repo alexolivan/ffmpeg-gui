@@ -91,7 +91,8 @@
       "storage": "Almacenamiento",
       "security": "Seguridad",
       "alsa": "Audio ALSA",
-      "backup": "Copia de Seguridad"
+      "backup": "Copia de Seguridad",
+      "decklink": "DECKLINK"
     },
     "alsa": {
       "title": "MEZCLADOR ALSA",
@@ -310,6 +311,35 @@
       "confirmBtn": "Confirmar Restauración",
       "importSuccess": "¡Copia de seguridad restaurada con éxito!",
       "invalidBackupFormat": "Formato de copia de seguridad no válido. Falta la firma ffmpeg-gui."
+    },
+    "decklink": {
+      "title": "CONTROL DE HARDWARE BLACKMAGIC DECKLINK",
+      "subtitle": "Mapeo de conectores SDI/HDMI headless, telemetría de señal en vivo y gestión de firmware",
+      "kernelDriver": "Driver de Kernel (SO)",
+      "driverNotInstalled": "desktopvideo no instalado",
+      "activeHelper": "Herramienta Auxiliar Activa",
+      "firmwareStatus": "Integridad de Firmware",
+      "firmwareUpdateRequired": "Actualización Requerida",
+      "firmwareUpToDate": "Actualizado",
+      "detectedSubDevices": "Subdispositivos Activos",
+      "firmwareAlertTitle": "Actualización de Firmware Requerida en el Hardware",
+      "firmwareAlertSubtitle": "Una o más tarjetas DeckLink requieren actualizar su firmware para mantener compatibilidad con el driver anfitrión.",
+      "updateFirmwareBtn": "Actualizar Firmware Ahora",
+      "confirmFirmwareUpdate": "¿Está seguro de que desea actualizar el firmware en esta tarjeta DeckLink? No apague el equipo durante la actualización.",
+      "noDevicesFound": "No se detectaron tarjetas Blackmagic DeckLink",
+      "noDevicesFoundDesc": "Asegúrese de que su tarjeta PCIe DeckLink esté bien insertada y que el driver de Linux (bmd-io / desktopvideo) esté instalado y cargado.",
+      "selectChannel": "Canal / Subdispositivo:",
+      "signalStatus": "Señal",
+      "format": "Formato",
+      "pixelFormat": "Espacio de Color",
+      "configurePort": "Configurar Puerto",
+      "configTitle": "Configurar Puerto",
+      "configAppliedSuccess": "Configuración aplicada correctamente",
+      "duplexModeLabel": "Modo Duplex (Mapeo de Conectores)",
+      "duplexHalf": "Half Duplex (Canales SDI individuales e independientes)",
+      "duplexFull": "Full Duplex (Enlace bidireccional emparejado In/Out)",
+      "duplexInactive": "Inactivo (Deshabilitado / Bajo consumo)",
+      "duplexHint": "En tarjetas densas como DeckLink Duo 2 / Quad 2, Half Duplex permite usar cada BNC como flujo independiente de captura o reproducción."
     }
   },
   "dashboard": {
@@ -415,8 +445,8 @@
     "versionTag": "Etiqueta de Versión",
     "ffmpegOption": "FFmpeg (Muxer de Vídeo / Audio)",
     "icecastOption": "Icecast2 (Servidor de Streaming de Audio)",
-    "mediamtxOption": "MediaMTX (Hub RTSP/RTMP/SRT/WebRTC)",
-    "kioskOption": "Kiosk Cog (Lanzador de Navegador WPE WebKit)",
+    "mediamtxOption": "MediaMTX (Concentrador SRT / WebRTC)",
+    "kioskOption": "Kiosk Cog (Navegador Web Chromium)",
     "buildStorage": "Almacenamiento de Build",
     "defaultBuildStorage": "Predeterminado (Almacenamiento de Build por Defecto)",
     "autoClean": "Limpieza Automática Post-compilación",
@@ -494,7 +524,10 @@
     "incompatibleCodecTitle": "Configuración de Códec Incompatible",
     "autoFixCompatible": "Auto-Corregir Parámetros a Valores Compatibles",
     "decklinkIncompatNotice": "Las salidas DeckLink requieren vídeo YUV sin comprimir o formatos de emisión compatibles.",
-    "ndiIncompatNotice": "Las salidas NDI empaquetan automáticamente el vídeo en cuadros NDI YUV/RGBA."
+    "ndiIncompatNotice": "Las salidas NDI empaquetan automáticamente el vídeo en cuadros NDI YUV/RGBA.",
+    "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
+    "targetDecklinkSdk": "SDK DeckLink de Destino",
+    "noDecklinkSdkUploaded": "Aún no se ha subido ningún SDK de DeckLink."
   },
   "sources": {
     "mediaStorage": "Almacenamiento de Medios",
