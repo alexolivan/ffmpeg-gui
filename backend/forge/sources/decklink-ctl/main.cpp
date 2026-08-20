@@ -13,18 +13,8 @@
 #define BMDDeckLinkDuplex ((BMDDeckLinkAttributeID)0x64757078) // 'dupx'
 #endif
 
-#ifndef bmdDuplexFull
-enum _FallbackBMDDuplexMode {
-    bmdDuplexFull     = 0x6478666c, // 'dxfl'
-    bmdDuplexHalf     = 0x64786866, // 'dxhf'
-    bmdDuplexSimplex  = 0x64787370, // 'dxsp'
-    bmdDuplexInactive = 0x6478696e  // 'dxin'
-};
-#endif
-
-#ifndef bmdDeckLinkConfigDuplexMode
-#define bmdDeckLinkConfigDuplexMode ((BMDDeckLinkConfigurationID)0x64757078) // 'dupx'
-#endif
+// Duplex Configuration ID FourCC 'dupx' (0x64757078)
+static const BMDDeckLinkConfigurationID kDeckLinkConfigDuplexMode = (BMDDeckLinkConfigurationID)0x64757078;
 
 // ── JSON Helper ─────────────────────────────────────────────────────────────
 std::string escapeJson(const std::string& str) {
@@ -314,7 +304,7 @@ int cmdConfigure(int targetDeviceIndex, int64_t targetPersistentId, const std::s
         if (duplexMode == "full") mode = (int64_t)bmdDuplexFull;
         else if (duplexMode == "inactive") mode = (int64_t)bmdDuplexInactive;
         
-        HRESULT res = config->SetInt(bmdDeckLinkConfigDuplexMode, mode);
+        HRESULT res = config->SetInt(kDeckLinkConfigDuplexMode, mode);
         if (res == S_OK) configChanged = true;
     }
 
