@@ -527,7 +527,13 @@
     "ndiIncompatNotice": "NDI outputs automatically wrap video into NDI YUV/RGBA frames.",
     "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
     "targetDecklinkSdk": "Target DeckLink SDK",
-    "noDecklinkSdkUploaded": "No DeckLink SDK uploaded yet."
+    "noDecklinkSdkUploaded": "No DeckLink SDK uploaded yet.",
+    "ffmpegEnvStatusTitle": "FFmpeg Environment Status",
+    "decklinkEnvStatusTitle": "DeckLink Tools Environment Status",
+    "decklinkToolsReady": "C++ compiler (g++) and Make build tools available.",
+    "decklinkToolsMissing": "C++ compiler (g++) or Make is missing.",
+    "decklinkCompEnvState": "DECKLINK TOOLS COMPILATION ENVIRONMENT",
+    "decklinkEnvDescription": "DeckLink Tools requires a standard C++ compiler and Make to generate the native decklink-ctl binary."
   },
   "sources": {
     "mediaStorage": "Media Storage",
@@ -892,6 +898,7 @@
     "forceDelete": "Force Delete",
     "deleting": "Deleting...",
     "manageSdks": "Manage SDKs",
-    "versionMismatchNotice": "⚠️ Notice: The uploaded archive contains SDK v{{uploaded}}. The required version v{{expected}} is still missing."
+    "versionMismatchNotice": "⚠️ Notice: The uploaded archive contains SDK v{{uploaded}}. The required version v{{expected}} is still missing.",
+    "manageDecklinkSdk": "Manage DeckLink SDK"
   }
 }

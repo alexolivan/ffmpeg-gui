@@ -377,9 +377,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                 >
                   <option value="ffmpeg" className="text-black">{t('forge.ffmpegOption', 'FFmpeg (Video / Audio Muxer)')}</option>
                   <option value="decklink_tools" className="text-black">{t('forge.decklinkToolsOption', 'DeckLink Tools (Blackmagic decklink-ctl)')}</option>
-                  <option value="icecast2" className="text-black">{t('forge.icecastOption', 'Icecast2 (Audio Streaming Server)')}</option>
-                  <option value="mediamtx" className="text-black">{t('forge.mediamtxOption', 'MediaMTX (SRT / WebRTC Hub)')}</option>
-                  <option value="kiosk_cog" className="text-black">{t('forge.kioskOption', 'Kiosk Cog (Chromium Web Browser)')}</option>
                 </select>
               </div>
 

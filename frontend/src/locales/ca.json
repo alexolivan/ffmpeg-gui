@@ -527,7 +527,13 @@
     "ndiIncompatNotice": "Les eixides NDI empaqueten automàticament el vídeo en quadres NDI YUV/RGBA.",
     "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
     "targetDecklinkSdk": "SDK DeckLink de Destí",
-    "noDecklinkSdkUploaded": "Encara no s'ha pujat cap SDK de DeckLink."
+    "noDecklinkSdkUploaded": "Encara no s'ha pujat cap SDK de DeckLink.",
+    "ffmpegEnvStatusTitle": "Estat de l'Entorn de FFmpeg",
+    "decklinkEnvStatusTitle": "Estat de l'Entorn de DeckLink Tools",
+    "decklinkToolsReady": "Compilador C++ (g++) i eines Make disponibles.",
+    "decklinkToolsMissing": "Manca el compilador C++ (g++) o Make.",
+    "decklinkCompEnvState": "ENTORN DE COMPILACIÓ DE DECKLINK TOOLS",
+    "decklinkEnvDescription": "DeckLink Tools requereix un compilador C++ estàndard i Make per generar el binari natiu decklink-ctl."
   },
   "sources": {
     "mediaStorage": "Emmagatzematge de Mitjans",
@@ -892,6 +898,7 @@
     "forceDelete": "Forçar Eliminació",
     "deleting": "Eliminant...",
     "manageSdks": "Gestionar SDKs",
-    "versionMismatchNotice": "⚠️ Advertència: El fitxer carregat conté el SDK v{{uploaded}}. La versió requerida v{{expected}} continua absent."
+    "versionMismatchNotice": "⚠️ Advertència: El fitxer carregat conté el SDK v{{uploaded}}. La versió requerida v{{expected}} continua absent.",
+    "manageDecklinkSdk": "Gestionar SDK DeckLink"
   }
 }

@@ -527,7 +527,13 @@
     "ndiIncompatNotice": "Las salidas NDI empaquetan automáticamente el vídeo en cuadros NDI YUV/RGBA.",
     "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
     "targetDecklinkSdk": "SDK DeckLink de Destino",
-    "noDecklinkSdkUploaded": "Aún no se ha subido ningún SDK de DeckLink."
+    "noDecklinkSdkUploaded": "Aún no se ha subido ningún SDK de DeckLink.",
+    "ffmpegEnvStatusTitle": "Estado del Entorno de FFmpeg",
+    "decklinkEnvStatusTitle": "Estado del Entorno de DeckLink Tools",
+    "decklinkToolsReady": "Compilador C++ (g++) y herramientas Make disponibles.",
+    "decklinkToolsMissing": "Falta el compilador C++ (g++) o Make.",
+    "decklinkCompEnvState": "ENTORNO DE COMPILACIÓN DE DECKLINK TOOLS",
+    "decklinkEnvDescription": "DeckLink Tools requiere un compilador C++ estándar y Make para generar el binario nativo decklink-ctl."
   },
   "sources": {
     "mediaStorage": "Almacenamiento de Medios",
@@ -892,6 +898,7 @@
     "forceDelete": "Forzar Eliminación",
     "deleting": "Eliminando...",
     "manageSdks": "Gestionar SDKs",
-    "versionMismatchNotice": "⚠️ Advertencia: El archivo subido contiene el SDK v{{uploaded}}. La versión requerida v{{expected}} continúa ausente."
+    "versionMismatchNotice": "⚠️ Advertencia: El archivo subido contiene el SDK v{{uploaded}}. La versión requerida v{{expected}} continúa ausente.",
+    "manageDecklinkSdk": "Gestionar SDK DeckLink"
   }
 }
