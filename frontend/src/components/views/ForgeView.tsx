@@ -140,6 +140,7 @@ interface ForgeViewProps {
   refreshDeps: () => Promise<void>;
   storages?: any[];
   API?: string;
+  initialSoftwareType?: 'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog';
 }
 
 export const ForgeView: React.FC<ForgeViewProps> = ({
@@ -176,12 +177,13 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   refreshDeps,
   storages: initialStorages = [],
   API = '',
+  initialSoftwareType = 'ffmpeg',
 }) => {
   const { t } = useTranslation();
   const [showSdksModal, setShowSdksModal] = React.useState(false);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
   const [installedSdks, setInstalledSdks] = React.useState<any[]>([]);
-  const [activeEngineTab, setActiveEngineTab] = React.useState<'ffmpeg'>('ffmpeg');
+  const [activeEngineTab, setActiveEngineTab] = React.useState<'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog'>(initialSoftwareType);
 
   const fetchSdks = React.useCallback(() => {
     fetch(`${API}/sdks`)
@@ -240,7 +242,6 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Clean Header: Title & Disk Telemetry Only */}
       <header className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5">
@@ -260,11 +261,10 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         </div>
       </header>
 
-      {/* Full-width Engine Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-[var(--glass-border)] mb-6 pb-2 w-full">
+      <div className="flex items-center gap-2 border-b border-[var(--glass-border)] mb-6 pb-2 w-full overflow-x-auto">
         <button
           onClick={() => setActiveEngineTab('ffmpeg')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
             activeEngineTab === 'ffmpeg'
               ? 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 shadow-sm'
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
@@ -272,14 +272,65 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         >
           <FfmpegLogoIcon size={16} /> FFmpeg
         </button>
+
+        <button
+          onClick={() => setActiveEngineTab('decklink_tools')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
+            activeEngineTab === 'decklink_tools'
+              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span>🎛️</span> DeckLink Tools
+        </button>
+
+        <button
+          onClick={() => setActiveEngineTab('icecast2')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
+            activeEngineTab === 'icecast2'
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span>📻</span> Icecast2
+        </button>
+
+        <button
+          onClick={() => setActiveEngineTab('mediamtx')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
+            activeEngineTab === 'mediamtx'
+              ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span>🔄</span> MediaMTX
+        </button>
+
+        <button
+          onClick={() => setActiveEngineTab('kiosk_cog')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
+            activeEngineTab === 'kiosk_cog'
+              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span>🌐</span> Kiosk Cog
+        </button>
       </div>
 
-      {/* Tab Content Header: Actions for Active Engine */}
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-          {t('forge.activeProfilesFor', 'PROFILES')} — <span className="text-[var(--text-primary)]">{activeEngineTab.toUpperCase()}</span>
+          {t('forge.activeProfilesFor', 'PROFILES')} — <span className="text-[var(--text-primary)]">{activeEngineTab.replace('_', ' ').toUpperCase()}</span>
         </h3>
         <div className="flex items-center gap-3">
+          {(activeEngineTab === 'ffmpeg' || activeEngineTab === 'decklink_tools') && (
+            <button
+              onClick={() => setShowSdksModal(true)}
+              className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-orange/40 hover:scale-105 transition-transform flex items-center gap-1.5 text-xs"
+            >
+              <span>📦</span> {t('sdks.manageSdks', 'MANAGE SDKS')}
+            </button>
+          )}
           <button onClick={() => importRecipeRef.current?.click()}
             className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
             <ImportIcon size={14} /> {t('forge.importRecipe', 'IMPORT RECIPE')}
@@ -298,7 +349,6 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         </div>
       </div>
 
-      {/* Health environment badge & detail control */}
       <div className="glass-card p-6 mb-8 bg-white/2 border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl">
@@ -386,6 +436,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           onSubmit={editingBuild ? handleUpdateBuild : handleCreateBuild}
           buildDeps={buildDeps}
           onOpenSdksModal={() => { setShowBuildForm(false); setShowSdksModal(true); }}
+          initialSoftwareType={activeEngineTab}
         />
       )}
 
@@ -414,6 +465,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           refreshBuilds();
         }}
         API={API}
+        filterSdkTypes={activeEngineTab === 'decklink_tools' ? ['decklink'] : undefined}
       />
 
       {/* Validation Result Modal */}

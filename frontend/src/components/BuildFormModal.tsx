@@ -8,6 +8,7 @@ interface BuildFormModalProps {
   onSubmit: (data: BuildFormData) => void
   buildDeps: any
   onOpenSdksModal?: () => void
+  initialSoftwareType?: string
 }
 
 export interface BuildFormData {
@@ -22,7 +23,7 @@ export interface BuildFormData {
 
 const API_BASE = '';
 
-export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps, onOpenSdksModal }: BuildFormModalProps) {
+export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps, onOpenSdksModal, initialSoftwareType }: BuildFormModalProps) {
   const { t } = useTranslation()
   const [name, setName] = useState(editBuild?.name || '')
   const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || '')
@@ -32,7 +33,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [storages, setStorages] = useState<{ id: number; name: string; path: string; type: string }[]>([])
   const [storageId, setStorageId] = useState<number | null>(editBuild?.storage_id || null)
 
-  const [softwareType, setSoftwareType] = useState(editBuild?.software_type || 'ffmpeg')
+  const [softwareType, setSoftwareType] = useState(editBuild?.software_type || initialSoftwareType || 'ffmpeg')
   const [softwareTags, setSoftwareTags] = useState<string[]>([])
 
   const [options, setOptions] = useState(editBuild?.build_options || { 
@@ -40,6 +41,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     vaapi: false, 
     ndi: false,
     decklink: false,
+    decklink_tools: false,
     nvenc: false,
     cuda_filters: false,
     whip: false
@@ -78,6 +80,58 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const patchInputRef = useRef<HTMLInputElement>(null)
 
   const isEditing = editBuild !== null
+
+  useEffect(() => {
+    fetch('/api/settings/storages')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setStorages(data.filter((s: any) => s.type === 'builds' || s.type === 'media' || s.is_default))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  // Auto-fill version tags
+  useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        if (softwareType === 'ffmpeg') {
+          const res = await fetch(`${API_BASE}/builds/tags/ffmpeg`)
+          if (res.ok) {
+            const data = await res.json()
+            setSoftwareTags(data)
+            if (!ffmpegVersion && data.length > 0) {
+              setFfmpegVersion(data[0])
+            }
+          }
+          const srtRes = await fetch(`${API_BASE}/builds/tags/srt`)
+          if (srtRes.ok) {
+            const data = await srtRes.json()
+            setSrtTags(data)
+            if (!srtVersion && data.length > 0) {
+              setSrtVersion(data[0])
+            }
+          }
+        } else if (softwareType === 'decklink_tools') {
+          setSoftwareTags(['1.0.0'])
+          if (!ffmpegVersion) setFfmpegVersion('1.0.0')
+        } else {
+          const res = await fetch(`${API_BASE}/builds/tags/${softwareType}`)
+          if (res.ok) {
+            const data = await res.json()
+            setSoftwareTags(data)
+            if (!ffmpegVersion && data.length > 0) {
+              setFfmpegVersion(data[0])
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch tags:", err)
+      }
+    }
+    fetchTags()
+  }, [softwareType])
 
   const decklinkSdks = installedSdks.filter((s: any) => s.sdk_type === 'decklink')
   const ndiSdks = installedSdks.filter((s: any) => s.sdk_type === 'ndi')
@@ -233,6 +287,12 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
       if (options.vaapi && sdkPaths.vaapi) {
         finalSdkPaths.vaapi = sdkPaths.vaapi
       }
+    } else if (softwareType === 'decklink_tools') {
+      if (sdkPaths.decklink) {
+        finalSdkPaths.decklink = sdkPaths.decklink
+      } else if (decklinkSdks.length > 0) {
+        finalSdkPaths.decklink = decklinkSdks[0].version
+      }
     }
 
     await onSubmit({
@@ -250,19 +310,20 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
 
   const isValid = name.trim().length > 0 && 
                   ffmpegVersion.length > 0 && 
-                  (softwareType !== 'ffmpeg' || (
+                  (softwareType === 'decklink_tools' ? (decklinkSdks.length > 0 && (!!sdkPaths.decklink || decklinkSdks.length > 0)) :
+                   softwareType !== 'ffmpeg' || (
                     (!options.decklink || !!sdkPaths.decklink) && 
                     (!options.ndi || !!sdkPaths.ndi) &&
                     (!options.nvenc || !!sdkPaths.nvenc_headers) &&
-                    (!options.cuda_filters || (buildDeps?.dependencies?.clang?.installed !== false && buildDeps?.dependencies?.['nvidia-cuda-dev']?.installed !== false))
+                    (!options.libsrt || !!srtVersion)
                   ))
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-hidden">
-      <div className="glass-card w-full max-w-2xl flex flex-col border-brand-orange/20 max-h-[95vh] shadow-2xl relative overflow-hidden">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
+      <div className="glass-card w-full max-w-2xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Header - Sticky */}
-        <div className="p-3.5 border-b border-white/10 flex justify-between items-center bg-white/5 shrink-0">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-white/10 bg-white/5">
           <h3 className="text-sm font-bold tracking-wide">
             {isEditing ? t('forge.editProfile', 'EDIT PROFILE') : t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
           </h3>
@@ -299,18 +360,74 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
           
           {activeTab === 'general' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              {/* Software Type Selector (Locked to FFmpeg for v2.0 initial release) */}
+              {/* Software Type Selector */}
               <div>
                 <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">{t('forge.softwareType', 'Software Type')}</label>
                 <select
-                  disabled={true}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none opacity-80 text-[var(--text-primary)] cursor-not-allowed"
+                  disabled={isEditing}
+                  className={`w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none text-[var(--text-primary)] ${isEditing ? 'opacity-80 cursor-not-allowed' : 'cursor-pointer focus:border-brand-orange'}`}
                   value={softwareType}
-                  onChange={e => setSoftwareType(e.target.value)}
+                  onChange={e => {
+                    const newType = e.target.value;
+                    setSoftwareType(newType);
+                    if (newType === 'decklink_tools') {
+                      setName(prev => prev || 'DeckLink Tools (Production)');
+                    }
+                  }}
                 >
                   <option value="ffmpeg" className="text-black">{t('forge.ffmpegOption', 'FFmpeg (Video / Audio Muxer)')}</option>
+                  <option value="decklink_tools" className="text-black">{t('forge.decklinkToolsOption', 'DeckLink Tools (Blackmagic decklink-ctl)')}</option>
+                  <option value="icecast2" className="text-black">{t('forge.icecastOption', 'Icecast2 (Audio Streaming Server)')}</option>
+                  <option value="mediamtx" className="text-black">{t('forge.mediamtxOption', 'MediaMTX (SRT / WebRTC Hub)')}</option>
+                  <option value="kiosk_cog" className="text-black">{t('forge.kioskOption', 'Kiosk Cog (Chromium Web Browser)')}</option>
                 </select>
               </div>
+
+              {/* DeckLink SDK Selector for DeckLink Tools */}
+              {softwareType === 'decklink_tools' && (
+                <div className="p-3 bg-white/5 rounded-xl border border-brand-orange/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-brand-orange uppercase tracking-wider">
+                      {t('forge.targetDecklinkSdk', 'Target DeckLink SDK')}
+                    </label>
+                    {onOpenSdksModal && (
+                      <button
+                        type="button"
+                        onClick={onOpenSdksModal}
+                        className="text-[10px] font-bold text-text-secondary hover:text-brand-orange transition-colors"
+                      >
+                        ⚙️ {t('sdks.manageSdks', 'Manage SDKs')}
+                      </button>
+                    )}
+                  </div>
+                  {decklinkSdks.length > 0 ? (
+                    <select
+                      className="w-full bg-black/60 border border-white/10 rounded-lg p-2 text-xs font-mono font-bold text-white focus:border-brand-orange outline-none cursor-pointer"
+                      value={sdkPaths.decklink || (decklinkSdks[0]?.version || '')}
+                      onChange={e => setSdkPaths({ ...sdkPaths, decklink: e.target.value })}
+                    >
+                      {decklinkSdks.map((sdk: any) => (
+                        <option key={sdk.id} value={sdk.version} className="text-black">
+                          Blackmagic DeckLink SDK v{sdk.version} ({sdk.path})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 font-bold flex items-center justify-between">
+                      <span>⚠️ {t('forge.noDecklinkSdkUploaded', 'No DeckLink SDK uploaded yet.')}</span>
+                      {onOpenSdksModal && (
+                        <button
+                          type="button"
+                          onClick={onOpenSdksModal}
+                          className="px-2 py-1 bg-brand-orange text-black rounded font-black text-[10px]"
+                        >
+                          {t('sdks.uploadSdk', 'Upload SDK')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Identity & Core Version */}
               <div className="grid grid-cols-2 gap-3">
