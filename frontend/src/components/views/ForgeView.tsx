@@ -322,6 +322,9 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         const isDecklinkEnvReady = (buildDeps?.dependencies?.gcc?.installed !== false) && (buildDeps?.dependencies?.make?.installed !== false);
         const isReady = isFfmpeg ? buildDeps?.all_required_met : isDecklinkEnvReady;
 
+        const engineSupportsSdks = isFfmpeg || isDecklinkTools;
+        const engineRequiresCompilation = isFfmpeg || isDecklinkTools;
+
         return (
           <div className="glass-card p-6 mb-8 bg-white/2 border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -336,42 +339,38 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
               </div>
               <div>
                 <h4 className="text-sm font-black uppercase tracking-wider">
-                  {isDecklinkTools ? t('forge.decklinkEnvStatusTitle', 'DECKLINK TOOLS ENVIRONMENT DEPENDENCIES') : t('forge.ffmpegEnvStatusTitle', 'FFMPEG ENVIRONMENT DEPENDENCIES')}
+                  {t('forge.envStatusTitle', 'ENVIRONMENT DEPENDENCIES')}
                 </h4>
                 <p className="text-xs text-text-secondary mt-0.5">
                   {checkStatus === 'loading' ? (
                     <span className="text-brand-orange animate-pulse">{t('forge.analyzingDeps', 'Analyzing dependencies...')}</span>
                   ) : checkStatus === 'error' ? (
                     <span className="text-red-400 font-bold">{t('forge.backendError', 'Backend connection error')}</span>
-                  ) : isFfmpeg ? (
-                    buildDeps?.all_required_met ? (
-                      <span className="text-brand-lime">{t('forge.allDepsInstalled', 'All required build tools and libraries installed')}</span>
-                    ) : (
-                      <span className="text-brand-orange font-bold">{t('forge.missingDeps', 'Some required build tools are missing')}</span>
-                    )
+                  ) : isReady ? (
+                    <span className="text-brand-lime">{t('forge.allDepsInstalled', 'All required build tools and libraries installed')}</span>
                   ) : (
-                    isDecklinkEnvReady ? (
-                      <span className="text-brand-lime">{t('forge.decklinkToolsReady', 'C++ compiler (g++) and Make build tools available')}</span>
-                    ) : (
-                      <span className="text-brand-orange font-bold">{t('forge.decklinkToolsMissing', 'C++ compiler (g++) or Make is missing')}</span>
-                    )
+                    <span className="text-brand-orange font-bold">{t('forge.missingDeps', 'Some required build tools are missing')}</span>
                   )}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowSdksModal(true)}
-                className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
-              >
-                <PackageIcon size={14} /> {isDecklinkTools ? t('sdks.manageDecklinkSdk', 'MANAGE DECKLINK SDK') : t('sdks.manageSdks', 'MANAGE SDKs')}
-              </button>
-              <button
-                onClick={() => setShowEnvModal(true)}
-                className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
-              >
-                <GearIcon size={14} /> {t('forge.manageDeps', 'MANAGE DEPS')}
-              </button>
+              {engineSupportsSdks && (
+                <button
+                  onClick={() => setShowSdksModal(true)}
+                  className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
+                >
+                  <PackageIcon size={14} /> {t('sdks.manageSdks', 'MANAGE SDKs')}
+                </button>
+              )}
+              {engineRequiresCompilation && (
+                <button
+                  onClick={() => setShowEnvModal(true)}
+                  className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
+                >
+                  <GearIcon size={14} /> {t('forge.manageDeps', 'MANAGE DEPS')}
+                </button>
+              )}
             </div>
           </div>
         );
@@ -492,10 +491,10 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             </button>
 
             <h3 className="text-lg font-black tracking-tight mb-1 flex items-center gap-2">
-              <ForgeIcon size={16} /> {activeEngineTab === 'decklink_tools' ? t('forge.decklinkCompEnvState', 'DECKLINK TOOLS ENVIRONMENT') : t('forge.compilationEnvState', 'COMPILATION ENVIRONMENT')}
+              <ForgeIcon size={16} /> {t('forge.compilationEnvState', 'COMPILATION ENVIRONMENT STATUS')}
             </h3>
             <p className="text-xs text-text-secondary mb-6 leading-relaxed">
-              {activeEngineTab === 'decklink_tools' ? t('forge.decklinkEnvDescription', 'Required build tools for compiling Decklink integration.') : t('forge.envDescription', 'Ensure your system has the necessary libraries and compilers to build FFmpeg.')}
+              {t('forge.envDescription')}
             </p>
 
             <div className="flex items-center justify-between pb-4 border-b border-white/5 mb-6">
