@@ -2571,6 +2571,7 @@ def sanitize_database_processes(db: Session):
         filter_cfg = copy.deepcopy(p.filter_config) if p.filter_config else {}
         if sanitize_process_config_data(input_cfg, filter_cfg):
             p.input_config = input_cfg
+            p.filter_config = filter_cfg
             try:
                 flag_modified(p, "input_config")
                 flag_modified(p, "filter_config")

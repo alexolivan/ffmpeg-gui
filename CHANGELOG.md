@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-08-20
+
+### Added
+- **Blackmagic DeckLink Hardware Orchestration & Control (`decklink-ctl`)**:
+  - Native C++11 headless helper binary (`backend/forge/sources/decklink-ctl/main.cpp`) utilizing the Blackmagic DeckLink SDK API (`IDeckLinkIterator`, `IDeckLinkProfileAttributes`, `IDeckLinkStatus`, `IDeckLinkConfiguration`).
+  - Implemented subcommands for real-time JSON device listing (`list`), signal telemetry (`status`), and connector duplex mode mapping (`configure`).
+  - Added compilation recipe `DecklinkToolsRecipe` (`backend/forge/recipes/decklink_tools.py`) in the unified compilation Forge.
+- **DeckLink Management Backend & Safety REST API**:
+  - Singleton `DecklinkManager` (`backend/core/decklink_manager.py`) orchestrating helper discovery, system package queries (`desktopvideo`), and firmware updater execution (`BlackmagicFirmwareUpdater`).
+  - REST endpoints for system status (`GET /api/settings/decklink/status`), real-time signal telemetry (`GET /api/settings/decklink/{device_id}/telemetry`), hardware reconfiguration (`POST /api/settings/decklink/{device_id}/configure`), and card firmware flashing (`POST /api/settings/decklink/{device_index}/firmware-update`).
+  - Safety mutual exclusion guard preventing hardware reconfiguration while a DeckLink input/output port is actively used by a running FFmpeg service (`409 Conflict`).
+- **DeckLink Settings UI & Hardware Telemetry Rack**:
+  - New dedicated `DECKLINK` tab in Settings (`DecklinkSettingsCard.tsx`) with 5-theme dynamic support and zero hardcoded colors.
+  - Ecosystem diagnostic banner (OS kernel driver, helper tool availability, firmware integrity, and connected channel count).
+  - Interactive connector matrix displaying per-port live signal status, detected video format (`1080p50`, `1080i50`, etc.), colorspace/pixel format, and duplex mode configuration modal.
+- **Forge Multi-Engine Navigation & Filtered SDK Inventory**:
+  - Expanded Forge navigation tabs supporting `FFmpeg`, `DeckLink Tools`, `Icecast2`, `MediaMTX`, and `Kiosk Cog`.
+  - Filtered SDK upload modal (`BuildSdksModal.tsx`) dynamically displaying relevant SDKs when opened from specific compilation profiles.
+- **Internationalization (i18n)**:
+  - Full translation keys with 100% parity across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`).
+
 ## [2.0.0] - 2026-08-18
 
 ### Added
