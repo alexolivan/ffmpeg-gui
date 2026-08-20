@@ -25,6 +25,11 @@ from core.patch_manager import PatchManager
 from core.notification_manager import NotificationManager
 notification_manager = NotificationManager()
 from core.alsa_manager import alsa_manager
+try:
+    from core.decklink_manager import DecklinkManager
+except ImportError:
+    from backend.core.decklink_manager import DecklinkManager
+decklink_manager = DecklinkManager()
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -5254,9 +5259,6 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
 
 
 # ── Blackmagic DeckLink Settings Endpoints ───────────────────────────
-from backend.core.decklink_manager import DecklinkManager
-decklink_manager = DecklinkManager()
-
 @app.get("/api/settings/decklink/status")
 async def get_decklink_status(db: Session = Depends(get_db)):
     """Retorna el estado global del subsistema DeckLink, compatibilidad y lista de tarjetas."""

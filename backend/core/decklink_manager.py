@@ -7,7 +7,10 @@ import logging
 import subprocess
 from typing import Dict, List, Any, Optional
 from sqlalchemy.orm import Session
-from backend.database.models import SoftwareBuild
+try:
+    from database.models import SoftwareBuild
+except ImportError:
+    from backend.database.models import SoftwareBuild
 
 logger = logging.getLogger("DecklinkManager")
 

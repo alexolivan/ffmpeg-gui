@@ -464,6 +464,7 @@ class ProcessManager:
         import re
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
         status_re = re.compile(r"(?:fps=\s*([\d.]+).*?)?bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
+        buffer = bytearray()
         
         log_file = None
         if log_path:
@@ -476,19 +477,35 @@ class ProcessManager:
             while True:
                 if proc is None or proc.stderr is None:
                     break
-                line_bytes = await proc.stderr.readline()
-                if not line_bytes:
+                chunk = await proc.stderr.read(4096)
+                if not chunk:
+                    if buffer:
+                        msg = buffer.decode('utf-8', errors='replace').strip()
+                        if msg:
+                            self._handle_log_msg(process_id, msg, status_re)
                     break
                 
                 if log_file:
                     try:
-                        log_file.write(line_bytes)
+                        log_file.write(chunk)
                     except Exception as e:
                         self.logger.error(f"Error writing log chunk for process {process_id}: {e}")
                 
-                msg = line_bytes.decode('utf-8', errors='replace').strip()
-                if msg:
-                    self._handle_log_msg(process_id, msg, status_re)
+                for b in chunk:
+                    char = bytes([b])
+                    if char in (b'\r', b'\n'):
+                        if buffer:
+                            msg = buffer.decode('utf-8', errors='replace').strip()
+                            buffer.clear()
+                            if msg:
+                                self._handle_log_msg(process_id, msg, status_re)
+                    else:
+                        buffer.extend(char)
+                        if len(buffer) > 65536:
+                            msg = buffer.decode('utf-8', errors='replace').strip()
+                            buffer.clear()
+                            if msg:
+                                self._handle_log_msg(process_id, msg, status_re)
         finally:
             if log_file:
                 try:
