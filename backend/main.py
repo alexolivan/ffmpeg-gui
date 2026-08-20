@@ -3106,13 +3106,7 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
     # Set install_path now that we have the ID
     storage_path = build.storage.path if build.storage else None
     build.install_path = build_manager.get_install_path(build.id, builds_root=storage_path)
-    # If this is the first build for this software_type, make it default
-    other_builds = db.query(FfmpegBuild).filter(
-        FfmpegBuild.id != build.id,
-        FfmpegBuild.software_type == software_type
-    ).count()
-    if other_builds == 0:
-        build.is_default = True
+    build.is_default = False
     db.commit()
     db.refresh(build)
 
@@ -3287,6 +3281,17 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                             from sqlalchemy.orm.attributes import flag_modified
                             db_build.sdk_paths = result.get("sdk_paths")
                             flag_modified(db_build, "sdk_paths")
+                        
+                        # Set default if no other ready build exists for this engine
+                        existing_default = session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == db_build.software_type,
+                            FfmpegBuild.is_default == True,
+                            FfmpegBuild.status == "ready",
+                            FfmpegBuild.id != db_build.id
+                        ).first()
+                        if not existing_default:
+                            db_build.is_default = True
+
                         notify_build_result(
                             build_id=build_id,
                             build_name=db_build.name,
@@ -3357,8 +3362,11 @@ def set_default_build(build_id: int, db: Session = Depends(get_db)):
     if build.status != "ready":
         raise HTTPException(status_code=409, detail="Only 'ready' builds can be set as default")
 
-    # Unset any previous default
-    db.query(FfmpegBuild).filter(FfmpegBuild.is_default == True).update(
+    # Unset any previous default for the SAME software_type
+    db.query(FfmpegBuild).filter(
+        FfmpegBuild.software_type == build.software_type,
+        FfmpegBuild.is_default == True
+    ).update(
         {"is_default": False}
     )
     build.is_default = True

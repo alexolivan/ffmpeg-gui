@@ -33,27 +33,62 @@ class DecklinkToolsRecipe(BaseRecipe):
         await log_callback("━━━ BLACKMAGIC DECKLINK TOOLS BUILD (decklink-ctl) ━━━\n")
 
         # 1. Resolve DeckLink SDK headers
+        requested_ver = None
+        if sdk_paths and sdk_paths.get("decklink"):
+            requested_ver = sdk_paths["decklink"]
+        elif options and options.get("decklink_sdk_version"):
+            requested_ver = options["decklink_sdk_version"]
+        elif options and options.get("decklink"):
+            requested_ver = options["decklink"]
+
+        # Locate SDKs root directory
+        ws = getattr(self.runner, "workspace_root", os.getcwd())
+        candidates_root = [
+            os.path.join(ws, "data", "sdks", "decklink"),
+            os.path.join(ws, "backend", "data", "sdks", "decklink"),
+            os.path.join(os.getcwd(), "data", "sdks", "decklink"),
+            os.path.join(os.getcwd(), "backend", "data", "sdks", "decklink"),
+        ]
+        sdks_root = next((p for p in candidates_root if os.path.isdir(p)), candidates_root[0])
+
         sdk_include_dir = None
-        if sdk_paths and "decklink" in sdk_paths:
-            candidate = os.path.join(sdk_paths["decklink"], "include")
-            if os.path.isdir(candidate):
-                sdk_include_dir = candidate
-            elif os.path.isdir(sdk_paths["decklink"]):
-                sdk_include_dir = sdk_paths["decklink"]
+        resolved_version = requested_ver or "16.0"
+
+        if requested_ver:
+            # Check if requested_ver is already a path
+            if os.path.isdir(requested_ver):
+                candidate = os.path.join(requested_ver, "include")
+                if os.path.exists(os.path.join(candidate, "DeckLinkAPI.h")):
+                    sdk_include_dir = candidate
+                elif os.path.exists(os.path.join(requested_ver, "DeckLinkAPI.h")):
+                    sdk_include_dir = requested_ver
+            else:
+                ver_dir = os.path.join(sdks_root, requested_ver)
+                candidate = os.path.join(ver_dir, "include")
+                if os.path.exists(os.path.join(candidate, "DeckLinkAPI.h")):
+                    sdk_include_dir = candidate
+                    resolved_version = requested_ver
+                elif os.path.exists(os.path.join(ver_dir, "DeckLinkAPI.h")):
+                    sdk_include_dir = ver_dir
+                    resolved_version = requested_ver
 
         if not sdk_include_dir or not os.path.exists(
             os.path.join(sdk_include_dir, "DeckLinkAPI.h")
         ):
             # Fallback scan in default SDKs directory
-            default_sdks_root = os.path.join("data", "sdks", "decklink")
-            if os.path.isdir(default_sdks_root):
-                versions = sorted(os.listdir(default_sdks_root), reverse=True)
+            if os.path.isdir(sdks_root):
+                versions = sorted(os.listdir(sdks_root), reverse=True)
                 for v in versions:
-                    test_include = os.path.join(default_sdks_root, v, "include")
+                    test_include = os.path.join(sdks_root, v, "include")
                     if os.path.exists(
                         os.path.join(test_include, "DeckLinkAPI.h")
                     ):
                         sdk_include_dir = test_include
+                        resolved_version = v
+                        break
+                    elif os.path.exists(os.path.join(sdks_root, v, "DeckLinkAPI.h")):
+                        sdk_include_dir = os.path.join(sdks_root, v)
+                        resolved_version = v
                         break
 
         if not sdk_include_dir:
@@ -67,7 +102,7 @@ class DecklinkToolsRecipe(BaseRecipe):
             }
 
         sdk_include_dir = os.path.abspath(sdk_include_dir)
-        await log_callback(f"Utilizando DeckLink SDK desde: {sdk_include_dir}\n")
+        await log_callback(f"Utilizando DeckLink SDK v{resolved_version} desde: {sdk_include_dir}\n")
 
         # 2. Copy source files and SDK headers into build src directory
         source_dir = os.path.abspath(
@@ -113,6 +148,7 @@ class DecklinkToolsRecipe(BaseRecipe):
             "g++",
             "-O2",
             "-std=c++11",
+            f'-DDECKLINK_SDK_VERSION="{resolved_version}"',
             f"-I{sdk_include_dir}",
             "-I.",
             "main.cpp",

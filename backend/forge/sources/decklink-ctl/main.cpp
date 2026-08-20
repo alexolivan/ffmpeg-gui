@@ -339,7 +339,9 @@ int main(int argc, char** argv) {
     std::string cmd = argv[1];
 
     if (cmd == "--version" || cmd == "-v" || cmd == "version") {
-        #ifdef BLACKMAGIC_DECKLINK_API_VERSION
+        #ifdef DECKLINK_SDK_VERSION
+        std::string sdkVer = DECKLINK_SDK_VERSION;
+        #elif defined(BLACKMAGIC_DECKLINK_API_VERSION)
         std::stringstream sdkVerSs;
         uint32_t rawHex = BLACKMAGIC_DECKLINK_API_VERSION;
         uint32_t major = (rawHex >> 24) & 0xFF;
@@ -349,7 +351,7 @@ int main(int argc, char** argv) {
         if (patch) sdkVerSs << "." << patch;
         std::string sdkVer = sdkVerSs.str();
         #else
-        std::string sdkVer = "16.0 (Native SDK)";
+        std::string sdkVer = "Native SDK";
         #endif
 
         std::cout << "decklink-ctl v1.0.0 (Blackmagic DeckLink Orchestrator for ffmpeg-gui)\n"
