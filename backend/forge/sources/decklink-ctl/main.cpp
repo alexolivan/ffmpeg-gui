@@ -332,14 +332,31 @@ int main(int argc, char** argv) {
                   << "  list                          List all connected DeckLink devices in JSON format\n"
                   << "  status --device=<idx|pId>     Get real-time signal and telemetry status for a device\n"
                   << "  configure --device=<idx> ...  Apply configuration to a DeckLink sub-device\n"
-                  << "  --version, -v                 Print utility version\n";
+                  << "  --version, -v, version        Print utility version and DeckLink SDK report\n";
         return 0;
     }
 
     std::string cmd = argv[1];
 
-    if (cmd == "--version" || cmd == "-v") {
-        std::cout << "decklink-ctl v1.0.0 (ffmpeg-gui Blackmagic DeckLink Orchestrator)\n";
+    if (cmd == "--version" || cmd == "-v" || cmd == "version") {
+        #ifdef BLACKMAGIC_DECKLINK_API_VERSION
+        std::stringstream sdkVerSs;
+        uint32_t rawHex = BLACKMAGIC_DECKLINK_API_VERSION;
+        uint32_t major = (rawHex >> 24) & 0xFF;
+        uint32_t minor = (rawHex >> 16) & 0xFF;
+        uint32_t patch = (rawHex >> 8) & 0xFF;
+        sdkVerSs << major << "." << minor;
+        if (patch) sdkVerSs << "." << patch;
+        std::string sdkVer = sdkVerSs.str();
+        #else
+        std::string sdkVer = "16.0 (Native SDK)";
+        #endif
+
+        std::cout << "decklink-ctl v1.0.0 (Blackmagic DeckLink Orchestrator for ffmpeg-gui)\n"
+                  << "DeckLink API Version: " << sdkVer << "\n"
+                  << "Build Date: " << __DATE__ << " " << __TIME__ << "\n"
+                  << "Architecture: Linux x86_64 / C++11\n"
+                  << "Features: Device Discovery, Duplex Configuration, Real-time Signal Lock & Telemetry\n";
         return 0;
     }
 

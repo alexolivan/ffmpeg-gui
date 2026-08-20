@@ -315,7 +315,7 @@ class BuildManager:
         except Exception as exc:
             error_msg = str(exc)
             await log_callback(f"\nERROR DURING BUILD: {error_msg}\n")
-            result = {"success": False, "error": error_msg}
+            result = {"success": False, "error": error_msg, "disk_usage_mb": self.get_disk_usage(build_id, builds_root)}
         finally:
             self.is_building = False
             self.active_build_id = None
@@ -335,7 +335,8 @@ class BuildManager:
             return await recipe.validate(binary_path)
         except Exception:
             try:
-                output = await self._get_command_output([binary_path, "-version"])
+                cmd_flag = "--version" if software_type == "decklink_tools" else "-version"
+                output = await self._get_command_output([binary_path, cmd_flag])
                 return {"valid": True, "output": output}
             except Exception as exc:
                 return {"valid": False, "error": str(exc)}

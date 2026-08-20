@@ -3389,9 +3389,24 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
     if not build:
         raise HTTPException(status_code=404, detail="Build profile not found")
 
+    stype = getattr(build, 'software_type', 'ffmpeg') or 'ffmpeg'
+    binary_path = build.binary_path
+    if not binary_path or not os.path.isfile(binary_path):
+        # Fallback candidates based on install_path
+        storage_path = build.storage.path if build.storage else None
+        install_path = build.install_path or build_manager.get_install_path(build.id, builds_root=storage_path)
+        if stype == "decklink_tools":
+            candidate = os.path.join(install_path, "decklink-ctl")
+        else:
+            candidate = os.path.join(install_path, "bin", "ffmpeg")
+        if os.path.isfile(candidate):
+            binary_path = candidate
+            build.binary_path = candidate
+            db.commit()
+
     result = await build_manager.validate_build(
-        binary_path=build.binary_path,
-        software_type=getattr(build, 'software_type', 'ffmpeg') or 'ffmpeg'
+        binary_path=binary_path,
+        software_type=stype
     )
     if result.get("valid"):
         build.version_output = result["output"]

@@ -57,6 +57,17 @@ function formatDate(iso: string | null): string {
     hour: '2-digit', minute: '2-digit',
   })
 }
+
+function formatDiskSize(mb: number | null | undefined): string {
+  if (mb == null) return '—'
+  if (mb === 0) return '0 MB'
+  if (mb < 1) {
+    const kb = Math.round(mb * 1024)
+    return `${kb} KB`
+  }
+  return `${Number(mb).toFixed(mb % 1 === 0 ? 0 : 1)} MB`
+}
+
 function normalizeVersion(v: string | null | undefined): string {
   if (!v) return ''
   return v.trim().toLowerCase().replace(/^v/, '')
@@ -152,8 +163,13 @@ export default function BuildProfileCard({
           {/* Line 1: Version Tag & Feature Badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-              {build.ffmpeg_version || build.version_tag}
+              {build.ffmpeg_version || build.version_tag || '1.0.0'}
             </span>
+            {build.software_type === 'decklink_tools' && (
+              <span className="text-[10px] font-mono bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded font-bold">
+                DeckLink SDK {build.sdk_paths?.decklink ? `v${build.sdk_paths.decklink}` : (build.build_options?.decklink_version ? `v${build.build_options.decklink_version}` : 'v16.0')}
+              </span>
+            )}
             {(build.software_type || 'ffmpeg') === 'ffmpeg' && (
               <>
                 {build.srt_version && (
@@ -201,7 +217,7 @@ export default function BuildProfileCard({
           <div className="flex gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
             <span>Built: <strong className="text-[var(--text-primary)]">{formatDate(build.built_at)}</strong></span>
             <span className="opacity-20">|</span>
-            <span>Size: <strong className="text-[var(--text-primary)]">{build.disk_usage_mb != null ? `${build.disk_usage_mb} MB` : '—'}</strong></span>
+            <span>Size: <strong className="text-[var(--text-primary)]">{formatDiskSize(build.disk_usage_mb)}</strong></span>
             
             {build.sources_cleaned && (
               <>

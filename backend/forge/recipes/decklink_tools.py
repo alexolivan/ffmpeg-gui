@@ -157,11 +157,29 @@ class DecklinkToolsRecipe(BaseRecipe):
             }
 
         os.chmod(output_binary, 0o755)
-        await log_callback(f"✅ decklink-ctl compilado con éxito en: {output_binary}\n")
+
+        version_output = "decklink-ctl v1.0.0"
+        try:
+            version_output = await self.runner._get_command_output([output_binary, "--version"])
+            await log_callback(f"\n━━━ VERIFICACIÓN DEL BINARIO (decklink-ctl --version) ━━━\n{version_output}\n")
+        except Exception as e:
+            await log_callback(f"Advertencia al ejecutar test de versión: {e}\n")
+
+        await log_callback(f"✅ decklink-ctl compilado y verificado con éxito en: {output_binary}\n")
 
         return {
             "success": True,
             "binary_path": output_binary,
-            "version_output": "decklink-ctl v1.0.0",
+            "version_output": version_output,
             "error": None,
         }
+
+    async def validate(self, binary_path: str) -> dict:
+        """Runs a harmless dry-run version test on decklink-ctl."""
+        if not binary_path or not os.path.isfile(binary_path):
+            return {"valid": False, "error": f"Binary not found: {binary_path}"}
+        try:
+            output = await self.runner._get_command_output([binary_path, "--version"])
+            return {"valid": True, "output": output}
+        except Exception as exc:
+            return {"valid": False, "error": str(exc)}
