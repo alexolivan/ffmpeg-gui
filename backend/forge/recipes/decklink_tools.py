@@ -124,9 +124,19 @@ class DecklinkToolsRecipe(BaseRecipe):
         ]
 
         await log_callback(f"Compilando decklink-ctl: {' '.join(cmd)}\n")
-        res = await self.runner._run_logged_cmd(cmd, log_callback, cwd=src_path)
-        if res != 0:
-            error_msg = f"Fallo en la compilación de decklink-ctl (código de salida {res})"
+        try:
+            res = await self.runner._run_logged_cmd(cmd, log_callback, cwd=src_path)
+            if res is not None and res != 0:
+                error_msg = f"Fallo en la compilación de decklink-ctl (código de salida {res})"
+                await log_callback(f"{error_msg}\n")
+                return {
+                    "success": False,
+                    "binary_path": None,
+                    "version_output": None,
+                    "error": error_msg,
+                }
+        except Exception as e:
+            error_msg = f"Fallo en la compilación de decklink-ctl: {e}"
             await log_callback(f"{error_msg}\n")
             return {
                 "success": False,

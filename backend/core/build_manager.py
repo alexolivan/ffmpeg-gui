@@ -429,9 +429,9 @@ class BuildManager:
         await self.current_process.wait()
         return_code = self.current_process.returncode
         self.current_process = None
-
         if return_code != 0 and not ignore_errors:
             raise Exception(f"Command failed with exit code {return_code}")
+        return return_code
 
     async def _get_command_output(self, cmd) -> str:
         """Run a command and return its full stdout as a string."""
