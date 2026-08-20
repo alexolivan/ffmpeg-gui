@@ -66,9 +66,10 @@ class DecklinkToolsRecipe(BaseRecipe):
                 "error": error_msg,
             }
 
+        sdk_include_dir = os.path.abspath(sdk_include_dir)
         await log_callback(f"Utilizando DeckLink SDK desde: {sdk_include_dir}\n")
 
-        # 2. Copy source files into build src directory
+        # 2. Copy source files and SDK headers into build src directory
         source_dir = os.path.abspath(
             os.path.join(
                 os.path.dirname(__file__), "..", "sources", "decklink-ctl"
@@ -87,7 +88,15 @@ class DecklinkToolsRecipe(BaseRecipe):
 
         shutil.copy2(main_cpp, os.path.join(src_path, "main.cpp"))
 
-        dispatch_cpp = os.path.join(sdk_include_dir, "DeckLinkAPIDispatch.cpp")
+        # Copy all headers and C++ dispatch files from SDK into src directory for hermetic build
+        for filename in os.listdir(sdk_include_dir):
+            if filename.endswith((".h", ".idl", ".cpp")):
+                shutil.copy2(
+                    os.path.join(sdk_include_dir, filename),
+                    os.path.join(src_path, filename),
+                )
+
+        dispatch_cpp = os.path.join(src_path, "DeckLinkAPIDispatch.cpp")
         if not os.path.exists(dispatch_cpp):
             error_msg = f"Error: 'DeckLinkAPIDispatch.cpp' no encontrado en {sdk_include_dir}"
             await log_callback(f"{error_msg}\n")
@@ -98,10 +107,8 @@ class DecklinkToolsRecipe(BaseRecipe):
                 "error": error_msg,
             }
 
-        shutil.copy2(dispatch_cpp, os.path.join(src_path, "DeckLinkAPIDispatch.cpp"))
-
         # 3. Compile with g++
-        output_binary = os.path.join(install_path, "decklink-ctl")
+        output_binary = os.path.abspath(os.path.join(install_path, "decklink-ctl"))
         cmd = [
             "g++",
             "-O2",

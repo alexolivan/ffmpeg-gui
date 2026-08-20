@@ -410,8 +410,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
               )}
 
               {/* Identity & Core Version */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-1">
+              <div className={softwareTags.length > 0 ? "grid grid-cols-2 gap-3" : "space-y-1"}>
+                <div>
                   <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">{t('forge.profileName', 'Profile Name')}</label>
                   <input
                     type="text"
@@ -421,20 +421,22 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     onChange={e => setName(e.target.value)}
                   />
                 </div>
-                <div className="col-span-1">
-                  <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
-                    {softwareType === 'ffmpeg' ? t('forge.ffmpegTag', 'FFmpeg Tag') : t('forge.versionTag', 'Version Tag')}
-                  </label>
-                  <select
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
-                    value={ffmpegVersion}
-                    onChange={e => setFfmpegVersion(e.target.value)}
-                  >
-                    {softwareTags.map(tag => (
-                      <option key={tag} value={tag} className="text-black">{tag}</option>
-                    ))}
-                  </select>
-                </div>
+                {softwareTags.length > 0 && (
+                  <div>
+                    <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
+                      {softwareType === 'ffmpeg' ? t('forge.ffmpegTag', 'FFmpeg Tag') : t('forge.versionTag', 'Version Tag')}
+                    </label>
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
+                      value={ffmpegVersion}
+                      onChange={e => setFfmpegVersion(e.target.value)}
+                    >
+                      {softwareTags.map(tag => (
+                        <option key={tag} value={tag} className="text-black">{tag}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Build Storage Selector */}

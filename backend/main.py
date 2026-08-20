@@ -3073,10 +3073,14 @@ def get_build(build_id: int, db: Session = Depends(get_db)):
 @app.post("/builds")
 def create_build(data: BuildCreate, db: Session = Depends(get_db)):
     """Create a new build profile."""
-    # Check for duplicate name
-    existing = db.query(FfmpegBuild).filter(FfmpegBuild.name == data.name).first()
+    software_type = data.software_type or "ffmpeg"
+    # Check for duplicate name within the same software engine
+    existing = db.query(FfmpegBuild).filter(
+        FfmpegBuild.name == data.name,
+        FfmpegBuild.software_type == software_type
+    ).first()
     if existing:
-        raise HTTPException(status_code=409, detail="A build with this name already exists")
+        raise HTTPException(status_code=409, detail="A build with this name already exists for this engine")
 
     if data.storage_id is not None:
         storage = db.query(Storage).get(data.storage_id)
@@ -3093,7 +3097,7 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         install_path="",  # Will be set after we have the ID
         status="pending",
         storage_id=data.storage_id,
-        software_type=data.software_type or "ffmpeg",
+        software_type=software_type,
     )
     db.add(build)
     db.commit()
@@ -3102,8 +3106,11 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
     # Set install_path now that we have the ID
     storage_path = build.storage.path if build.storage else None
     build.install_path = build_manager.get_install_path(build.id, builds_root=storage_path)
-    # If this is the first build, make it default
-    other_builds = db.query(FfmpegBuild).filter(FfmpegBuild.id != build.id).count()
+    # If this is the first build for this software_type, make it default
+    other_builds = db.query(FfmpegBuild).filter(
+        FfmpegBuild.id != build.id,
+        FfmpegBuild.software_type == software_type
+    ).count()
     if other_builds == 0:
         build.is_default = True
     db.commit()
@@ -3144,12 +3151,14 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
             build.ffprobe_binary = os.path.join(build.install_path, "bin", "ffprobe")
 
     if data.name is not None:
-        # Check uniqueness
+        # Check uniqueness per software_type
         dup = db.query(FfmpegBuild).filter(
-            FfmpegBuild.name == data.name, FfmpegBuild.id != build_id
+            FfmpegBuild.name == data.name,
+            FfmpegBuild.software_type == build.software_type,
+            FfmpegBuild.id != build_id
         ).first()
         if dup:
-            raise HTTPException(status_code=409, detail="A build with this name already exists")
+            raise HTTPException(status_code=409, detail="A build with this name already exists for this engine")
         build.name = data.name
     if data.ffmpeg_version is not None:
         build.ffmpeg_version = data.ffmpeg_version
@@ -4023,10 +4032,11 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
             )
     
     # 2. Check name duplication and rename
+    stype = recipe.get("software_type", "ffmpeg")
     base_name = recipe.get("name", "Imported-Build")
     name = base_name
     counter = 1
-    while db.query(FfmpegBuild).filter(FfmpegBuild.name == name).first():
+    while db.query(FfmpegBuild).filter(FfmpegBuild.name == name, FfmpegBuild.software_type == stype).first():
         name = f"{base_name}-Imported-{counter}"
         counter += 1
         
