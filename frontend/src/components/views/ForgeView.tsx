@@ -290,14 +290,6 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           {t('forge.activeProfilesFor', 'PROFILES')} — <span className="text-[var(--text-primary)]">{activeEngineTab.replace('_', ' ').toUpperCase()}</span>
         </h3>
         <div className="flex items-center gap-3">
-          {(activeEngineTab === 'ffmpeg' || activeEngineTab === 'decklink_tools') && (
-            <button
-              onClick={() => setShowSdksModal(true)}
-              className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-orange/40 hover:scale-105 transition-transform flex items-center gap-1.5 text-xs"
-            >
-              <span>📦</span> {activeEngineTab === 'decklink_tools' ? t('sdks.manageDecklinkSdk', 'MANAGE DECKLINK SDK') : t('sdks.manageSdks', 'MANAGE SDKS')}
-            </button>
-          )}
           <button onClick={() => importRecipeRef.current?.click()}
             className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
             <ImportIcon size={14} /> {t('forge.importRecipe', 'IMPORT RECIPE')}
