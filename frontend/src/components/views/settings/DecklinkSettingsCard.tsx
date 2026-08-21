@@ -208,15 +208,6 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
     }
   };
 
-  if (loading && !status) {
-    return (
-      <div className="glass-card p-8 text-center bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl">
-        <span className="w-8 h-8 border-2 border-brand-orange border-t-transparent rounded-full animate-spin inline-block mb-3" />
-        <p className="text-xs text-text-secondary font-mono uppercase tracking-widest">{t('common.processing', 'Loading...')}</p>
-      </div>
-    );
-  }
-
   const physicalCards: PhysicalDecklinkCard[] = React.useMemo(() => {
     if (!status?.devices || status.devices.length === 0) return [];
 
@@ -249,6 +240,15 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
   const cleanHelperVer = status?.helper_version
     ? status.helper_version.split('\n')[0].trim()
     : null;
+
+  if (loading && !status) {
+    return (
+      <div className="glass-card p-8 text-center bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl">
+        <span className="w-8 h-8 border-2 border-brand-orange border-t-transparent rounded-full animate-spin inline-block mb-3" />
+        <p className="text-xs text-text-secondary font-mono uppercase tracking-widest">{t('common.processing', 'Loading...')}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
