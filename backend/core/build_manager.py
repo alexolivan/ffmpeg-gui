@@ -311,6 +311,7 @@ class BuildManager:
                     "version_output": res.get("version_output"),
                     "disk_usage_mb": self.get_disk_usage(build_id, builds_root),
                     "sdk_paths": res.get("sdk_paths", sdk_paths),
+                    "version_tag": res.get("version_tag"),
                 }
             else:
                 result = {"success": False, "error": res.get("error", "Unknown build error")}

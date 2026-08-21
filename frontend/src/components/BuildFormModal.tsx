@@ -107,16 +107,8 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
             }
           }
         } else if (softwareType === 'decklink_tools') {
-          const res = await fetch(`${API_BASE}/builds/tags/decklink_tools`)
-          if (res.ok) {
-            const data = await res.json()
-            const tags = Array.isArray(data?.tags) ? data.tags : Array.isArray(data) ? data : ['1.0.1', '1.0.0']
-            setSoftwareTags(tags)
-            if (!ffmpegVersion) setFfmpegVersion(tags[0])
-          } else {
-            setSoftwareTags(['1.0.1', '1.0.0'])
-            if (!ffmpegVersion) setFfmpegVersion('1.0.1')
-          }
+          setSoftwareTags([])
+          if (!ffmpegVersion) setFfmpegVersion('1.0.1')
         } else {
           const res = await fetch(`${API_BASE}/builds/tags/${softwareType}`)
           if (res.ok) {
@@ -418,7 +410,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
               )}
 
               {/* Identity & Core Version */}
-              <div className={softwareTags.length > 0 ? "grid grid-cols-2 gap-3" : "space-y-1"}>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">{t('forge.profileName', 'Profile Name')}</label>
                   <input
@@ -429,7 +421,19 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     onChange={e => setName(e.target.value)}
                   />
                 </div>
-                {softwareTags.length > 0 && (
+                {softwareType === 'decklink_tools' ? (
+                  <div>
+                    <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
+                      {t('forge.softwareType', 'Software Type')}
+                    </label>
+                    <div className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs font-mono text-text-secondary flex items-center justify-between">
+                      <span className="font-bold text-[var(--text-primary)]">decklink-ctl v1.0.1</span>
+                      <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-1.5 py-0.5 rounded font-bold">
+                        {t('forge.internalToolSource', 'Internal Source Engine')}
+                      </span>
+                    </div>
+                  </div>
+                ) : softwareTags.length > 0 ? (
                   <div>
                     <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
                       {softwareType === 'ffmpeg' ? t('forge.ffmpegTag', 'FFmpeg Tag') : t('forge.versionTag', 'Version Tag')}
@@ -444,7 +448,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                       ))}
                     </select>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Build Storage Selector */}

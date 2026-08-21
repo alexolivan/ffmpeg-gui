@@ -541,7 +541,11 @@
     "decklinkToolsReady": "Compilador C++ (g++) i eines Make disponibles.",
     "decklinkToolsMissing": "Manca el compilador C++ (g++) o Make.",
     "decklinkCompEnvState": "ENTORN DE COMPILACIÓ DE DECKLINK TOOLS",
-    "decklinkEnvDescription": "DeckLink Tools requereix un compilador C++ estàndard i Make per generar el binari natiu decklink-ctl."
+    "decklinkEnvDescription": "DeckLink Tools requereix un compilador C++ estàndard i Make per generar el binari natiu decklink-ctl.",
+    "updateAvailable": "Actualització disponible",
+    "outdatedBuildTooltip": "Codi font actualitzat a v{{version}}. Recompila per actualitzar.",
+    "updateAndRecompile": "ACTUALITZAR I RECOMPILAR",
+    "internalToolSource": "Motor Intern (Codi Font)"
   },
   "sources": {
     "mediaStorage": "Emmagatzematge de Mitjans",

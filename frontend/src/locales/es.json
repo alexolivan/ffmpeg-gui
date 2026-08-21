@@ -541,7 +541,11 @@
     "decklinkToolsReady": "Compilador C++ (g++) y herramientas Make disponibles.",
     "decklinkToolsMissing": "Falta el compilador C++ (g++) o Make.",
     "decklinkCompEnvState": "ENTORNO DE COMPILACIÓN DE DECKLINK TOOLS",
-    "decklinkEnvDescription": "DeckLink Tools requiere un compilador C++ estándar y Make para generar el binario nativo decklink-ctl."
+    "decklinkEnvDescription": "DeckLink Tools requiere un compilador C++ estándar y Make para generar el binario nativo decklink-ctl.",
+    "updateAvailable": "Actualización disponible",
+    "outdatedBuildTooltip": "Código fuente actualizado a v{{version}}. Recompila para actualizar.",
+    "updateAndRecompile": "ACTUALIZAR Y RECOMPILAR",
+    "internalToolSource": "Motor Interno (Código Fuente)"
   },
   "sources": {
     "mediaStorage": "Almacenamiento de Medios",

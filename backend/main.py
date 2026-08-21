@@ -3316,6 +3316,9 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                         db_build.ffmpeg_version_output = result.get("version_output")
                         db_build.binary_path = result.get("binary_path")
                         db_build.version_output = result.get("version_output")
+                        if result.get("version_tag"):
+                            db_build.ffmpeg_version = result.get("version_tag")
+                            db_build.version_tag = result.get("version_tag")
                         db_build.disk_usage_mb = result.get("disk_usage_mb")
                         db_build.built_at = datetime.datetime.utcnow()
                         db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
@@ -4361,6 +4364,15 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         storage_path = build.storage.path if build.storage else None
         disk_mb = build_manager.get_disk_usage(build.id, builds_root=storage_path)
 
+    recipe_version = "1.0.1" if build.software_type == "decklink_tools" else None
+    is_outdated = False
+    if build.software_type == "decklink_tools" and build.status == "ready":
+        current_ver = build.version_tag or build.ffmpeg_version or "1.0.0"
+        if "v" in str(current_ver).lower():
+            current_ver = current_ver.lower().replace("v", "").strip()
+        if current_ver != recipe_version:
+            is_outdated = True
+
     return {
         "id": build.id,
         "name": build.name,
@@ -4385,6 +4397,8 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "version_tag": build.version_tag,
         "binary_path": build.binary_path,
         "version_output": build.version_output,
+        "recipe_version": recipe_version,
+        "is_outdated": is_outdated,
     }
 
 
