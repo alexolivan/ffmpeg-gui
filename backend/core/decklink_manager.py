@@ -193,6 +193,53 @@ class DecklinkManager:
 
         return self._cache_devices
 
+    def list_devices_sync(self, db: Optional[Session] = None) -> List[Dict[str, Any]]:
+        """Invoca 'decklink-ctl list' o sondea PCI de forma síncrona para obtener las tarjetas DeckLink."""
+        helper_path = self.get_active_helper_path(db)
+        if helper_path:
+            try:
+                res = subprocess.run(
+                    [helper_path, "list"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                if res.returncode == 0 and res.stdout:
+                    data = json.loads(res.stdout)
+                    if data.get("success") and data.get("devices"):
+                        self._cache_devices = data.get("devices", [])
+                        return self._cache_devices
+            except Exception as e:
+                logger.debug(f"Error in sync decklink-ctl list: {e}")
+
+        return self._probe_pci_cards_sync()
+
+    def _probe_pci_cards_sync(self) -> List[Dict[str, Any]]:
+        """Sondeo por hardware PCI/udev de tarjetas Blackmagic Design cuando el helper no está presente."""
+        cards = []
+        try:
+            res = subprocess.run(
+                ["lspci", "-d", "11b8:"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if res.returncode == 0 and res.stdout:
+                for line in res.stdout.splitlines():
+                    # Format: "04:00.0 Multimedia video controller: Blackmagic Design DeckLink Duo 2"
+                    if "Blackmagic Design" in line:
+                        parts = line.split("Blackmagic Design")
+                        model = parts[1].strip() if len(parts) > 1 else ""
+                        if model:
+                            cards.append({
+                                "model_name": model,
+                                "display_name": model,
+                                "index": len(cards),
+                            })
+        except Exception:
+            pass
+        return cards
+
     async def get_device_telemetry(self, device_id: str, db: Optional[Session] = None) -> Dict[str, Any]:
         """Invoca 'decklink-ctl status --device=...' para obtener la telemetría en tiempo real."""
         helper_path = self.get_active_helper_path(db)

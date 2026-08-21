@@ -27,7 +27,9 @@
     "cancelUpload": "✕ Cancel·lar pujada",
     "loading": "Carregant...",
     "waiting": "Esperant senyal d'entrada...",
-    "clonedSuccess": "Clonat amb èxit!"
+    "clonedSuccess": "Clonat amb èxit!",
+    "refresh": "Actualitzar",
+    "updated": "Actualitzat!"
   },
   "nav": {
     "dashboard": "Dashboard",

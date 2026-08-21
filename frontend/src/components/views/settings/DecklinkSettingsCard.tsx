@@ -66,6 +66,10 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
   // Firmware update state
   const [isUpdatingFirmware, setIsUpdatingFirmware] = useState<boolean>(false);
   const [firmwareResult, setFirmwareResult] = useState<{ success: boolean; output: string } | null>(null);
+  
+  // Refresh button ACK state
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [refreshSuccess, setRefreshSuccess] = useState<boolean>(false);
 
   const isMountedRef = useRef<boolean>(true);
 
@@ -94,6 +98,19 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
       }
     }
   }, [API]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    setRefreshSuccess(false);
+    await fetchStatus();
+    if (isMountedRef.current) {
+      setIsRefreshing(false);
+      setRefreshSuccess(true);
+      setTimeout(() => {
+        if (isMountedRef.current) setRefreshSuccess(false);
+      }, 1000);
+    }
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -204,7 +221,7 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
     <div className="space-y-6">
       {/* ── HEADER & COMPATIBILITY BANNER ────────────────────────────────────────── */}
       <div className="glass-card p-6 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl shadow-lg relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[var(--glass-border)] pb-4 mb-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-black tracking-wider uppercase text-[var(--text-primary)] flex items-center gap-2">
               <span className="text-xl">🎛️</span>
@@ -215,94 +232,89 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <button
-              onClick={() => {
-                setLoading(true);
-                fetchStatus();
-              }}
-              className="px-3 py-1.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] text-xs font-bold text-text-secondary hover:text-[var(--text-primary)] hover:border-brand-lime transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50 ${
+                refreshSuccess
+                  ? 'bg-brand-lime/20 border-brand-lime text-brand-lime scale-105'
+                  : 'bg-[var(--input-bg)] border-[var(--glass-border)] text-text-secondary hover:text-[var(--text-primary)] hover:border-brand-lime'
+              }`}
               title={t('common.refresh', 'Refresh')}
             >
-              <span>🔄</span> {t('common.refresh', 'Refresh')}
+              <span className={isRefreshing ? 'inline-block animate-spin' : ''}>
+                {refreshSuccess ? '✓' : '🔄'}
+              </span>
+              <span>{refreshSuccess ? t('common.updated', 'Updated') : t('common.refresh', 'Refresh')}</span>
             </button>
           </div>
         </div>
 
         {/* Global Error Banner */}
         {errorMsg && (
-          <div className="mb-4 p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-400 text-xs font-bold flex items-center justify-between">
+          <div className="mt-4 p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-400 text-xs font-bold flex items-center justify-between">
             <span>⚠️ {errorMsg}</span>
             <button onClick={() => setErrorMsg(null)} className="text-red-400 font-bold ml-2">✕</button>
           </div>
         )}
 
-        {/* Ecosystem Compatibility Diagnostic Grid (Responsive & Anti-Overflow) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono text-xs">
-          {/* Driver Status */}
-          <div className="p-3.5 bg-[var(--input-bg)]/70 border border-[var(--glass-border)] rounded-xl flex flex-col justify-between gap-2 min-w-0">
-            <span className="text-[10px] text-text-secondary font-bold uppercase tracking-wider">
-              {t('settings.decklink.kernelDriver', 'Kernel Driver (OS)')}
+        {/* Unified Horizontal Telemetry / Ecosystem Flow */}
+        <div className="mt-4 pt-3 border-t border-[var(--glass-border)] flex flex-wrap items-center gap-x-8 gap-y-2.5 text-xs font-mono text-text-secondary">
+          {/* Driver */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold uppercase tracking-wider text-[10px] text-[var(--text-primary)]">
+              {t('settings.decklink.kernelDriver', 'Driver')}:
             </span>
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="shrink-0">{status?.driver_installed ? '🟢' : '🔴'}</span>
-              <span className={`font-bold text-xs truncate ${status?.driver_installed ? 'text-emerald-400' : 'text-red-400'}`} title={status?.driver_version || ''}>
-                {status?.driver_installed
-                  ? `desktopvideo v${status.driver_version}`
-                  : t('settings.decklink.driverNotInstalled', 'desktopvideo not installed')}
-              </span>
-            </div>
+            <span className={status?.driver_installed ? 'text-emerald-400 font-bold flex items-center gap-1.5' : 'text-red-400 font-bold flex items-center gap-1.5'}>
+              <span>{status?.driver_installed ? '🟢' : '🔴'}</span>
+              <span>{status?.driver_installed ? `desktopvideo v${status.driver_version}` : t('settings.decklink.driverNotInstalled', 'desktopvideo not installed')}</span>
+            </span>
           </div>
 
-          {/* Active Helper Status */}
-          <div className="p-3.5 bg-[var(--input-bg)]/70 border border-[var(--glass-border)] rounded-xl flex flex-col justify-between gap-2 min-w-0">
-            <span className="text-[10px] text-text-secondary font-bold uppercase tracking-wider">
-              {t('settings.decklink.activeHelper', 'Active Helper Tool')}
+          {/* Active Helper */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold uppercase tracking-wider text-[10px] text-[var(--text-primary)]">
+              {t('settings.decklink.activeHelper', 'Helper Tool')}:
             </span>
-            <div className="flex items-center justify-between gap-2 min-w-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="shrink-0">{status?.helper_available ? '🟢' : '⚠️'}</span>
-                <span className={`font-bold text-xs truncate ${status?.helper_available ? 'text-emerald-400' : 'text-amber-400'}`} title={cleanHelperVer || ''}>
-                  {cleanHelperVer || 'decklink-ctl (Pending Build)'}
-                </span>
-              </div>
-              {onNavigateToForge && !status?.helper_available && (
-                <button
-                  onClick={onNavigateToForge}
-                  className="px-2 py-0.5 bg-brand-orange text-black font-black rounded text-[9px] hover:scale-105 transition-transform cursor-pointer shrink-0"
-                >
-                  {t('forge.mainTitle', 'FORGE')}
-                </button>
-              )}
-            </div>
+            <span className={status?.helper_available ? 'text-emerald-400 font-bold flex items-center gap-1.5' : 'text-amber-400 font-bold flex items-center gap-1.5'}>
+              <span>{status?.helper_available ? '🟢' : '⚠️'}</span>
+              <span>{cleanHelperVer || 'decklink-ctl (Pending Build)'}</span>
+            </span>
+            {onNavigateToForge && !status?.helper_available && (
+              <button
+                onClick={onNavigateToForge}
+                className="ml-1 px-2 py-0.5 bg-brand-orange text-black font-black rounded text-[9px] hover:scale-105 transition-transform cursor-pointer"
+              >
+                {t('forge.mainTitle', 'FORGE')}
+              </button>
+            )}
           </div>
 
-          {/* Firmware Status */}
-          <div className="p-3.5 bg-[var(--input-bg)]/70 border border-[var(--glass-border)] rounded-xl flex flex-col justify-between gap-2 min-w-0">
-            <span className="text-[10px] text-text-secondary font-bold uppercase tracking-wider">
-              {t('settings.decklink.firmwareStatus', 'Firmware Integrity')}
+          {/* Firmware Integrity */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold uppercase tracking-wider text-[10px] text-[var(--text-primary)]">
+              {t('settings.decklink.firmwareStatus', 'Firmware')}:
             </span>
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="shrink-0">{status?.firmware?.needs_update ? '⚠️' : '✅'}</span>
-              <span className={`font-bold text-xs truncate ${status?.firmware?.needs_update ? 'text-amber-400' : 'text-emerald-400'}`}>
+            <span className={status?.firmware?.needs_update ? 'text-amber-400 font-bold flex items-center gap-1.5' : 'text-emerald-400 font-bold flex items-center gap-1.5'}>
+              <span>{status?.firmware?.needs_update ? '⚠️' : '✅'}</span>
+              <span>
                 {status?.firmware?.needs_update
                   ? t('settings.decklink.firmwareUpdateRequired', 'Update Required')
                   : t('settings.decklink.firmwareUpToDate', 'Up to Date')}
               </span>
-            </div>
+            </span>
           </div>
 
-          {/* Detected Cards Count */}
-          <div className="p-3.5 bg-[var(--input-bg)]/70 border border-[var(--glass-border)] rounded-xl flex flex-col justify-between gap-2 min-w-0">
-            <span className="text-[10px] text-text-secondary font-bold uppercase tracking-wider">
-              {t('settings.decklink.detectedSubDevices', 'Active Sub-Devices')}
+          {/* Active Sub-Devices Count */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold uppercase tracking-wider text-[10px] text-[var(--text-primary)]">
+              {t('settings.decklink.detectedSubDevices', 'Channels')}:
             </span>
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="shrink-0">🎛️</span>
-              <span className="font-bold text-brand-lime text-xs truncate">
-                {devices.length} {devices.length === 1 ? 'Channel' : 'Channels'}
-              </span>
-            </div>
+            <span className="text-brand-lime font-bold flex items-center gap-1.5">
+              <span>🎛️</span>
+              <span>{devices.length} {devices.length === 1 ? 'Channel' : 'Channels'}</span>
+            </span>
           </div>
         </div>
 

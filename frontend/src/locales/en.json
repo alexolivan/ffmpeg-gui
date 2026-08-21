@@ -27,7 +27,9 @@
     "cancelUpload": "✕ Cancel upload",
     "loading": "Loading...",
     "waiting": "Waiting for input signal...",
-    "clonedSuccess": "Cloned successfully!"
+    "clonedSuccess": "Cloned successfully!",
+    "refresh": "Refresh",
+    "updated": "Updated!"
   },
   "nav": {
     "dashboard": "Dashboard",

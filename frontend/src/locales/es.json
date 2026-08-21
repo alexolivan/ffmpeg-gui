@@ -27,7 +27,9 @@
     "cancelUpload": "✕ Cancelar subida",
     "loading": "Cargando...",
     "waiting": "Esperando señal de entrada...",
-    "clonedSuccess": "¡Clonado con éxito!"
+    "clonedSuccess": "¡Clonado con éxito!",
+    "refresh": "Actualizar",
+    "updated": "¡Actualizado!"
   },
   "nav": {
     "dashboard": "Dashboard",

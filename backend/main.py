@@ -1889,10 +1889,10 @@ def get_system_capabilities():
     decklink_nodes = glob.glob("/dev/blackmagic/io*") + glob.glob("/dev/blackmagic/dv*") + glob.glob("/dev/bm*")
     try:
         from core.decklink_manager import decklink_manager
-        dl_status = decklink_manager.get_devices_status()
-        if dl_status.get("devices"):
+        devices = decklink_manager.list_devices_sync()
+        if devices:
             seen_models = {}
-            for d in dl_status["devices"]:
+            for d in devices:
                 m = d.get("model_name") or d.get("display_name") or "DeckLink Device"
                 seen_models[m] = seen_models.get(m, 0) + 1
             
