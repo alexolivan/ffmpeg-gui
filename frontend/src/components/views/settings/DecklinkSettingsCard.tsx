@@ -262,25 +262,25 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
         {/* Dedicated Multiline Key: Value Telemetry Flow */}
         <div className="mt-3.5 pt-2.5 border-t border-[var(--glass-border)] space-y-1.5 text-xs font-mono">
           {/* Row 1: Kernel Driver */}
-          <div className="flex items-center justify-between py-1 border-b border-[var(--glass-border)]/30 gap-4">
-            <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider shrink-0">
+          <div className="flex items-center gap-2 py-0.5">
+            <span className="text-text-secondary font-bold">
               {t('settings.decklink.kernelDriver', 'Kernel Driver (OS)')}:
             </span>
-            <span className={`font-bold text-xs flex items-center gap-1.5 truncate ${status?.driver_installed ? 'text-emerald-400' : 'text-red-400'}`}>
+            <span className={`font-bold text-xs flex items-center gap-1.5 ${status?.driver_installed ? 'text-emerald-400' : 'text-red-400'}`}>
               <span className="shrink-0">{status?.driver_installed ? '🟢' : '🔴'}</span>
-              <span className="truncate">{status?.driver_installed ? `desktopvideo v${status.driver_version}` : t('settings.decklink.driverNotInstalled', 'desktopvideo not installed')}</span>
+              <span>{status?.driver_installed ? `desktopvideo v${status.driver_version}` : t('settings.decklink.driverNotInstalled', 'desktopvideo not installed')}</span>
             </span>
           </div>
 
           {/* Row 2: Active Helper Tool */}
-          <div className="flex items-center justify-between py-1 border-b border-[var(--glass-border)]/30 gap-4">
-            <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider shrink-0">
+          <div className="flex items-center gap-2 py-0.5">
+            <span className="text-text-secondary font-bold">
               {t('settings.decklink.activeHelper', 'Active Helper Tool')}:
             </span>
-            <div className="flex items-center gap-2 truncate">
-              <span className={`font-bold text-xs flex items-center gap-1.5 truncate ${status?.helper_available ? 'text-emerald-400' : 'text-amber-400'}`}>
+            <div className="flex items-center gap-2">
+              <span className={`font-bold text-xs flex items-center gap-1.5 ${status?.helper_available ? 'text-emerald-400' : 'text-amber-400'}`}>
                 <span className="shrink-0">{status?.helper_available ? '🟢' : '⚠️'}</span>
-                <span className="truncate">{cleanHelperVer || 'decklink-ctl (Pending Build)'}</span>
+                <span>{cleanHelperVer || 'decklink-ctl (Pending Build)'}</span>
               </span>
               {onNavigateToForge && !status?.helper_available && (
                 <button
@@ -294,13 +294,13 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
           </div>
 
           {/* Row 3: Firmware Integrity */}
-          <div className="flex items-center justify-between py-1 border-b border-[var(--glass-border)]/30 gap-4">
-            <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider shrink-0">
+          <div className="flex items-center gap-2 py-0.5">
+            <span className="text-text-secondary font-bold">
               {t('settings.decklink.firmwareStatus', 'Firmware Integrity')}:
             </span>
-            <span className={`font-bold text-xs flex items-center gap-1.5 truncate ${status?.firmware?.needs_update ? 'text-amber-400' : 'text-emerald-400'}`}>
+            <span className={`font-bold text-xs flex items-center gap-1.5 ${status?.firmware?.needs_update ? 'text-amber-400' : 'text-emerald-400'}`}>
               <span className="shrink-0">{status?.firmware?.needs_update ? '⚠️' : '✅'}</span>
-              <span className="truncate">
+              <span>
                 {status?.firmware?.needs_update
                   ? t('settings.decklink.firmwareUpdateRequired', 'Update Required')
                   : t('settings.decklink.firmwareUpToDate', 'Up to Date')}
@@ -309,8 +309,8 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
           </div>
 
           {/* Row 4: Active Sub-Devices Channels */}
-          <div className="flex items-center justify-between py-1 gap-4">
-            <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider shrink-0">
+          <div className="flex items-center gap-2 py-0.5">
+            <span className="text-text-secondary font-bold">
               {t('settings.decklink.detectedSubDevices', 'Active Channels')}:
             </span>
             <span className="font-bold text-brand-lime text-xs flex items-center gap-1.5">
