@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-08-21
+
+### Added
+- **Desktop Video Carousel & Compact Sub-Device UI**:
+  - Implemented carousel navigation for dense multi-channel cards (e.g. *DeckLink Duo 2*, *Quad 2*) with channel pills and lateral controls.
+  - Automatically rendered single centered card cleanly without arrows when hardware has a single sub-device/connector (*Intensity Pro*, *DeckLink Mini Recorder*).
+  - Maintained persistent physical card selector dropdown in all scenarios.
+  - Streamlined spacing, paddings, and typography across the live telemetry and hardware matrix view.
+- **Active FFmpeg Services Mapping for DeckLink Devices**:
+  - Implemented bidirectional matching between DeckLink hardware channels and running FFmpeg services across `type`, `device`, `format`, and `url` parameters.
+- **Strict Storage Type Filtering in Forge**:
+  - Filtered storage selectors in `BuildFormModal` strictly by `build` and `builds` types to prevent accidental assignment of log/media storage paths.
+
+### Fixed
+- Fixed React hook execution order in `DecklinkSettingsCard` by ensuring `useMemo` hooks execute unconditionally before early loading returns.
+
 ## [2.2.0] - 2026-08-21
 
 ### Added

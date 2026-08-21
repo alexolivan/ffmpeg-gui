@@ -402,35 +402,25 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
       ) : (
         <div className="space-y-4">
           {/* Card Device Selector Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 bg-[var(--input-bg)]/70 p-3 rounded-2xl border border-[var(--glass-border)]">
+          <div className="flex flex-wrap items-center justify-between gap-4 bg-[var(--input-bg)]/70 p-2.5 md:p-3 rounded-2xl border border-[var(--glass-border)]">
             <div className="flex items-center gap-3">
               <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
                 {t('settings.decklink.selectCard', 'Physical Card:')}
               </span>
-              {physicalCards.length > 1 ? (
-                <select
-                  value={selectedCardIdx}
-                  onChange={(e) => {
-                    setSelectedCardIdx(Number(e.target.value));
-                    setSelectedChannelIdx(0);
-                  }}
-                  className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs font-bold rounded-xl px-3 py-1.5 focus:outline-none focus:border-brand-lime cursor-pointer font-mono"
-                >
-                  {physicalCards.map((c, idx) => (
-                    <option key={c.id} value={idx}>
-                      [{idx + 1}] {c.display_name} ({c.channels.length} {c.channels.length === 1 ? 'Channel' : 'Channels'})
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="flex items-center gap-2 font-mono font-bold text-xs text-[var(--text-primary)]">
-                  <span className="text-brand-lime">🎛️</span>
-                  <span>{currentCard?.display_name}</span>
-                  <span className="px-2 py-0.5 rounded-md bg-brand-lime/10 border border-brand-lime/30 text-brand-lime text-[10px]">
-                    {currentChannels.length} {currentChannels.length === 1 ? 'Channel' : 'Channels'}
-                  </span>
-                </div>
-              )}
+              <select
+                value={selectedCardIdx}
+                onChange={(e) => {
+                  setSelectedCardIdx(Number(e.target.value));
+                  setSelectedChannelIdx(0);
+                }}
+                className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs font-bold rounded-xl px-3 py-1.5 focus:outline-none focus:border-brand-lime cursor-pointer font-mono"
+              >
+                {physicalCards.map((c, idx) => (
+                  <option key={c.id} value={idx}>
+                    [{idx + 1}] {c.display_name} ({c.channels.length} {c.channels.length === 1 ? 'Channel' : 'Channels'})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {activeChannel && (
@@ -477,7 +467,7 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
             </div>
           )}
 
-          {/* Carousel Layout: Lateral Controls & Large Central Card */}
+          {/* Carousel Layout: Lateral Controls & Compact Central Card */}
           {activeChannel && (() => {
             const isLocked = activeChannel.signal_locked;
             const isOutput = activeChannel.video_output_connections > 0 && activeChannel.video_input_connections === 0;
@@ -500,36 +490,36 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
               : '—';
 
             return (
-              <div className="relative flex items-center justify-center gap-3 md:gap-4">
+              <div className="relative flex items-center justify-center gap-2.5 md:gap-4">
                 {/* Left Carousel Arrow (Only rendered when > 1 channel) */}
                 {currentChannels.length > 1 && (
                   <button
                     onClick={() => setSelectedChannelIdx(prev => (prev > 0 ? prev - 1 : currentChannels.length - 1))}
-                    className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-[var(--input-bg)] hover:bg-brand-lime/20 border border-[var(--glass-border)] hover:border-brand-lime/40 text-[var(--text-primary)] hover:text-brand-lime font-black text-xl flex items-center justify-center transition-all cursor-pointer shadow-lg shrink-0"
+                    className="w-9 h-9 md:w-11 md:h-11 rounded-2xl bg-[var(--input-bg)] hover:bg-brand-lime/20 border border-[var(--glass-border)] hover:border-brand-lime/40 text-[var(--text-primary)] hover:text-brand-lime font-black text-lg flex items-center justify-center transition-all cursor-pointer shadow-lg shrink-0"
                     title={t('settings.decklink.prevChannel', 'Previous Channel')}
                   >
                     ‹
                   </button>
                 )}
 
-                {/* Central Wide Detailed Card */}
-                <div className="glass-card p-6 md:p-8 rounded-3xl bg-[var(--bg-card)] border border-brand-lime/30 shadow-2xl flex-1 max-w-4xl space-y-6">
+                {/* Central Wide Detailed Card (Compact) */}
+                <div className="glass-card p-4 md:p-5 rounded-2xl bg-[var(--bg-card)] border border-brand-lime/30 shadow-xl flex-1 max-w-3xl space-y-3.5">
                   {/* Card Header */}
-                  <div className="flex flex-wrap items-center justify-between pb-4 border-b border-[var(--glass-border)] gap-3">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl shrink-0">{isOutput ? '🔵' : isLocked ? '🟢' : '⚫'}</span>
+                  <div className="flex flex-wrap items-center justify-between pb-2.5 border-b border-[var(--glass-border)] gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xl shrink-0">{isOutput ? '🔵' : isLocked ? '🟢' : '⚫'}</span>
                       <div>
-                        <h4 className="text-base md:text-lg font-mono font-bold text-[var(--text-primary)]">
+                        <h4 className="text-sm md:text-base font-mono font-bold text-[var(--text-primary)] leading-tight">
                           {activeChannel.display_name}
                         </h4>
-                        <p className="text-xs text-text-secondary font-mono">
+                        <p className="text-[11px] text-text-secondary font-mono">
                           {t('settings.decklink.channelLabel', 'Channel')} #{activeChannel.sub_device_index + 1} of {activeChannel.num_sub_devices} &bull; {currentCard?.display_name}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 font-mono">
-                      <span className={`px-3 py-1 rounded-xl text-xs font-bold uppercase tracking-wider border ${
+                      <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
                         activeChannel.duplex_mode === 'full'
                           ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
                           : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
@@ -540,18 +530,18 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                   </div>
 
                   {/* Card Body: 2 Wide Columns */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Left Column: Live Signal Telemetry & Connectors */}
-                    <div className="bg-[var(--input-bg)] p-4 rounded-2xl border border-[var(--glass-border)] space-y-2.5 font-mono text-xs">
-                      <div className="text-[10px] font-bold text-text-secondary uppercase tracking-wider pb-1 border-b border-[var(--glass-border)]/50">
+                    <div className="bg-[var(--input-bg)] p-3 rounded-xl border border-[var(--glass-border)] space-y-1.5 font-mono text-xs">
+                      <div className="text-[9px] font-bold text-text-secondary uppercase tracking-wider pb-1 border-b border-[var(--glass-border)]/50">
                         {t('settings.decklink.signalStatus', 'Signal')} & Hardware Matrix
                       </div>
 
                       <div className="flex items-center gap-2 py-0.5">
-                        <span className="text-text-secondary font-bold shrink-0">
+                        <span className="text-text-secondary font-bold shrink-0 text-[11px]">
                           {t('settings.decklink.signalStatus', 'Signal')}:
                         </span>
-                        <span className={`font-bold flex items-center gap-1.5 ${
+                        <span className={`font-bold text-xs flex items-center gap-1.5 ${
                           isLocked ? 'text-emerald-400 animate-pulse' : 'text-text-secondary/70'
                         }`}>
                           <span>{isLocked ? '●' : '○'}</span>
@@ -560,28 +550,28 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                       </div>
 
                       <div className="flex items-center gap-2 py-0.5">
-                        <span className="text-text-secondary font-bold shrink-0">
+                        <span className="text-text-secondary font-bold shrink-0 text-[11px]">
                           {t('settings.decklink.format', 'Format')}:
                         </span>
-                        <span className="font-bold text-[var(--text-primary)]">
+                        <span className="font-bold text-xs text-[var(--text-primary)]">
                           {displayFormat}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-2 py-0.5">
-                        <span className="text-text-secondary font-bold shrink-0">
+                        <span className="text-text-secondary font-bold shrink-0 text-[11px]">
                           {t('settings.decklink.pixelFormat', 'Colorspace')}:
                         </span>
-                        <span className="font-bold text-text-secondary">
+                        <span className="font-bold text-xs text-text-secondary">
                           {displayColorspace}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-2 py-0.5">
-                        <span className="text-text-secondary font-bold shrink-0">
+                        <span className="text-text-secondary font-bold shrink-0 text-[11px]">
                           {t('settings.decklink.connectionsLabel', 'Connections')}:
                         </span>
-                        <span className="font-bold text-[var(--text-primary)]">
+                        <span className="font-bold text-xs text-[var(--text-primary)]">
                           {[
                             activeChannel.video_input_connections > 0 ? 'Video Input' : null,
                             activeChannel.video_output_connections > 0 ? 'Video Output' : null,
@@ -590,45 +580,45 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                       </div>
 
                       <div className="flex items-center gap-2 py-0.5">
-                        <span className="text-text-secondary font-bold shrink-0">
+                        <span className="text-text-secondary font-bold shrink-0 text-[11px]">
                           {t('settings.decklink.keyingLabel', 'Internal Keying')}:
                         </span>
-                        <span className="font-bold text-text-secondary">
+                        <span className="font-bold text-xs text-text-secondary">
                           {activeChannel.supports_internal_keying ? '✅ Supported' : '— Not Supported'}
                         </span>
                       </div>
                     </div>
 
                     {/* Right Column: Assigned FFmpeg Services */}
-                    <div className="bg-[var(--input-bg)] p-4 rounded-2xl border border-[var(--glass-border)] space-y-2.5 font-mono text-xs flex flex-col justify-between">
-                      <div className="space-y-2.5">
-                        <div className="text-[10px] font-bold text-text-secondary uppercase tracking-wider pb-1 border-b border-[var(--glass-border)]/50">
+                    <div className="bg-[var(--input-bg)] p-3 rounded-xl border border-[var(--glass-border)] space-y-1.5 font-mono text-xs flex flex-col justify-between">
+                      <div className="space-y-1.5">
+                        <div className="text-[9px] font-bold text-text-secondary uppercase tracking-wider pb-1 border-b border-[var(--glass-border)]/50">
                           {t('settings.decklink.assignedProcesses', 'Assigned Services')}
                         </div>
 
                         {hasActiveProcesses ? (
-                          <div className="flex flex-wrap gap-2 pt-1">
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
                             {activeChannel.active_processes!.map((proc) => (
                               <span
                                 key={proc.process_id}
-                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-brand-lime/15 border border-brand-lime/30 text-xs font-mono font-bold text-[var(--text-primary)] shadow-sm"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-lime/15 border border-brand-lime/30 text-xs font-mono font-bold text-[var(--text-primary)] shadow-sm"
                                 title={`Process #${proc.process_id} (${proc.status})`}
                               >
-                                <span className="w-2 h-2 rounded-full bg-brand-lime animate-pulse shrink-0" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime animate-pulse shrink-0" />
                                 <span>#{proc.process_id} {proc.name}</span>
                                 <span className="text-[9px] uppercase text-brand-lime font-mono shrink-0">[{proc.direction}]</span>
                               </span>
                             ))}
                           </div>
                         ) : (
-                          <div className="p-4 rounded-xl bg-[var(--bg-card)]/50 border border-dashed border-[var(--glass-border)] text-text-secondary/60 text-xs italic text-center">
+                          <div className="p-3 rounded-xl bg-[var(--bg-card)]/50 border border-dashed border-[var(--glass-border)] text-text-secondary/60 text-[11px] italic text-center">
                             {t('settings.decklink.noProcessesAssigned', 'No active services assigned')}
                           </div>
                         )}
                       </div>
 
                       {/* Technical Duplex Hint */}
-                      <div className="text-[10px] text-text-secondary/70 italic pt-2 border-t border-[var(--glass-border)]/40">
+                      <div className="text-[10px] text-text-secondary/70 italic pt-1.5 border-t border-[var(--glass-border)]/40">
                         {activeChannel.duplex_mode === 'half'
                           ? 'Half-Duplex mode: dedicated capture/playback channel.'
                           : 'Full-Duplex mode: paired bidirectional hardware link.'}
@@ -637,14 +627,14 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                   </div>
 
                   {/* Card Footer: Configure Action */}
-                  <div className="flex items-center justify-between pt-4 border-t border-[var(--glass-border)]">
-                    <div className="text-xs font-mono text-text-secondary">
+                  <div className="flex items-center justify-between pt-2.5 border-t border-[var(--glass-border)]">
+                    <div className="text-[11px] font-mono text-text-secondary">
                       <span>Topological ID: <strong className="text-[var(--text-primary)]">{activeChannel.topological_id || activeChannel.index}</strong></span>
                     </div>
 
                     <button
                       onClick={() => handleOpenConfig(activeChannel)}
-                      className="px-5 py-2.5 rounded-xl bg-brand-lime hover:bg-brand-lime/80 text-black font-black text-xs font-mono transition-all flex items-center gap-2 cursor-pointer shadow-lg hover:scale-105"
+                      className="px-4 py-2 rounded-xl bg-brand-lime hover:bg-brand-lime/80 text-black font-black text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-lg hover:scale-105"
                       title={t('settings.decklink.configurePort', 'Configure Port')}
                     >
                       <span className="text-sm">⚙️</span>
@@ -657,7 +647,7 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                 {currentChannels.length > 1 && (
                   <button
                     onClick={() => setSelectedChannelIdx(prev => (prev < currentChannels.length - 1 ? prev + 1 : 0))}
-                    className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-[var(--input-bg)] hover:bg-brand-lime/20 border border-[var(--glass-border)] hover:border-brand-lime/40 text-[var(--text-primary)] hover:text-brand-lime font-black text-xl flex items-center justify-center transition-all cursor-pointer shadow-lg shrink-0"
+                    className="w-9 h-9 md:w-11 md:h-11 rounded-2xl bg-[var(--input-bg)] hover:bg-brand-lime/20 border border-[var(--glass-border)] hover:border-brand-lime/40 text-[var(--text-primary)] hover:text-brand-lime font-black text-lg flex items-center justify-center transition-all cursor-pointer shadow-lg shrink-0"
                     title={t('settings.decklink.nextChannel', 'Next Channel')}
                   >
                     ›

@@ -484,28 +484,36 @@ class DecklinkManager:
                         input_cfg = cfg.get("input_config") or {}
                         output_cfg = cfg.get("output_config") or {}
 
+                        in_type = str(input_cfg.get("type", "")).strip().lower()
                         in_fmt = str(input_cfg.get("format", "")).strip().lower()
-                        out_fmt = str(output_cfg.get("format", "")).strip().lower()
+                        in_device = str(input_cfg.get("device", "")).strip().lower()
                         in_url = str(input_cfg.get("url", "") or cfg.get("input_url", "")).strip().lower()
+                        in_combined = f"{in_type} {in_fmt} {in_device} {in_url}"
+
+                        out_type = str(output_cfg.get("type", "")).strip().lower()
+                        out_fmt = str(output_cfg.get("format", "")).strip().lower()
+                        out_device = str(output_cfg.get("device", "")).strip().lower()
                         out_url = str(output_cfg.get("url", "") or cfg.get("output_url", "")).strip().lower()
+                        out_combined = f"{out_type} {out_fmt} {out_device} {out_url}"
 
-                        # In FFmpeg, DeckLink input/output is specified via:
-                        # -f decklink -i 'Intensity Pro' or -i 'DeckLink SDI (1)' or -i '0' or -f decklink 'Intensity Pro'
-                        is_dl_in = in_fmt == "decklink" or "decklink" in in_fmt or "decklink" in in_url
-                        is_dl_out = out_fmt == "decklink" or "decklink" in out_fmt or "decklink" in out_url
+                        # In FFmpeg, DeckLink input/output is specified via type='decklink' or format='decklink' with device='...'
+                        is_dl_in = in_type == "decklink" or in_fmt == "decklink" or "decklink" in in_combined
+                        is_dl_out = out_type == "decklink" or out_fmt == "decklink" or "decklink" in out_combined
 
-                        # Match by device name, model, persistent_id, or device index in URL
+                        # Match by device name, model, persistent_id, or device index in combined fields
                         matches_in = is_dl_in and (
-                            (dev_name and dev_name in in_url) or
-                            (dev_model and dev_model in in_url) or
-                            (dev_idx_str and (in_url == dev_idx_str or f"({dev_idx_str})" in in_url or f":{dev_idx_str}" in in_url or in_url.endswith(f" {dev_idx_str}"))) or
-                            (dev_pers_str and dev_pers_str in in_url)
+                            (dev_name and dev_name in in_combined) or
+                            (dev_model and dev_model in in_combined) or
+                            (dev_idx_str and (in_device == dev_idx_str or in_url == dev_idx_str or f"({dev_idx_str})" in in_combined or f":{dev_idx_str}" in in_combined or in_combined.endswith(f" {dev_idx_str}"))) or
+                            (dev_pers_str and dev_pers_str in in_combined) or
+                            (len(devices) == 1 and (in_type == "decklink" or in_fmt == "decklink"))
                         )
                         matches_out = is_dl_out and (
-                            (dev_name and dev_name in out_url) or
-                            (dev_model and dev_model in out_url) or
-                            (dev_idx_str and (out_url == dev_idx_str or f"({dev_idx_str})" in out_url or f":{dev_idx_str}" in out_url or out_url.endswith(f" {dev_idx_str}"))) or
-                            (dev_pers_str and dev_pers_str in out_url)
+                            (dev_name and dev_name in out_combined) or
+                            (dev_model and dev_model in out_combined) or
+                            (dev_idx_str and (out_device == dev_idx_str or out_url == dev_idx_str or f"({dev_idx_str})" in out_combined or f":{dev_idx_str}" in out_combined or out_combined.endswith(f" {dev_idx_str}"))) or
+                            (dev_pers_str and dev_pers_str in out_combined) or
+                            (len(devices) == 1 and (out_type == "decklink" or out_fmt == "decklink"))
                         )
 
                         if matches_in or matches_out:
