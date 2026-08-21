@@ -104,6 +104,36 @@ class DecklinkManager:
                 "devices": [],
             }
 
+    def _resolve_build_binary_path(self, build: Optional[SoftwareBuild]) -> Optional[str]:
+        """Resuelve de forma segura el binario ejecutable asociado a un SoftwareBuild."""
+        if not build:
+            return None
+        if build.binary_path and os.path.exists(build.binary_path) and os.access(build.binary_path, os.X_OK):
+            return build.binary_path
+
+        # Check install_path
+        if build.install_path:
+            candidates = [
+                os.path.join(build.install_path, "decklink-ctl"),
+                os.path.join(build.install_path, "install", "decklink-ctl"),
+                os.path.join(build.install_path, "bin", "decklink-ctl"),
+            ]
+            for cand in candidates:
+                if os.path.exists(cand) and os.access(cand, os.X_OK):
+                    return cand
+
+        # Check storage or default ffmpeg_builds root
+        base_dir = build.storage.path if (hasattr(build, "storage") and build.storage) else os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ffmpeg_builds"))
+        candidates = [
+            os.path.join(base_dir, str(build.id), "install", "decklink-ctl"),
+            os.path.join(base_dir, str(build.id), "decklink-ctl"),
+        ]
+        for cand in candidates:
+            if os.path.exists(cand) and os.access(cand, os.X_OK):
+                return cand
+
+        return None
+
     def get_active_helper_path(self, db: Optional[Session] = None) -> Optional[str]:
         """Localiza el binario 'decklink-ctl' activo configurado en la Forja o en rutas del sistema."""
         if db is None:
@@ -119,8 +149,6 @@ class DecklinkManager:
 
         if db is not None:
             try:
-                from core.build_manager import build_manager
-
                 # 1. Check default build for decklink_tools
                 default_build = (
                     db.query(SoftwareBuild)
@@ -131,15 +159,9 @@ class DecklinkManager:
                     .order_by(SoftwareBuild.id.desc())
                     .first()
                 )
-                if default_build:
-                    bin_p = default_build.binary_path
-                    if not bin_p or not os.path.exists(bin_p):
-                        storage_root = default_build.storage.path if default_build.storage else None
-                        cand = os.path.abspath(os.path.join(build_manager.get_build_path(default_build.id, builds_root=storage_root), "install", "decklink-ctl"))
-                        if os.path.exists(cand):
-                            bin_p = cand
-                    if bin_p and os.path.exists(bin_p):
-                        return bin_p
+                cand = self._resolve_build_binary_path(default_build)
+                if cand:
+                    return cand
 
                 # 2. Check latest valid ready build for decklink_tools
                 latest_build = (
@@ -151,15 +173,9 @@ class DecklinkManager:
                     .order_by(SoftwareBuild.id.desc())
                     .first()
                 )
-                if latest_build:
-                    bin_p = latest_build.binary_path
-                    if not bin_p or not os.path.exists(bin_p):
-                        storage_root = latest_build.storage.path if latest_build.storage else None
-                        cand = os.path.abspath(os.path.join(build_manager.get_build_path(latest_build.id, builds_root=storage_root), "install", "decklink-ctl"))
-                        if os.path.exists(cand):
-                            bin_p = cand
-                    if bin_p and os.path.exists(bin_p):
-                        return bin_p
+                cand = self._resolve_build_binary_path(latest_build)
+                if cand:
+                    return cand
             except Exception as e:
                 logger.warning(f"Error querying SoftwareBuild for decklink_tools: {e}")
 
