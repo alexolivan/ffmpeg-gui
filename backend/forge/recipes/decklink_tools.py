@@ -194,7 +194,7 @@ class DecklinkToolsRecipe(BaseRecipe):
 
         os.chmod(output_binary, 0o755)
 
-        version_output = "decklink-ctl v1.0.0"
+        version_output = "decklink-ctl v1.0.1"
         try:
             version_output = await self.runner._get_command_output([output_binary, "--version"])
             await log_callback(f"\n━━━ VERIFICACIÓN DEL BINARIO (decklink-ctl --version) ━━━\n{version_output}\n")

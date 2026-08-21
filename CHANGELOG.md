@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-08-21
+
+### Added
+- **DeckLink Tools Helper SemVer & Active Default Build Auto-Resolution**:
+  - Incremented `decklink-ctl` internal helper tool to `v1.0.1`.
+  - Added robust database and filesystem resolution in `DecklinkManager.get_active_helper_path` dynamically locating the exact active default build from the Forge without manual intervention.
+  - Added automatic persistence of `binary_path` and `version_output` to SQLite when non-FFmpeg recipes complete compilation in the Forge.
+  - Refined DeckLink telemetry key: value rows in Settings UI with natural inline alignment.
+  - Sanitized signal locked and video format detection to cleanly handle unconnected physical ports (`No Signal / Auto`).
+
 ## [2.1.0] - 2026-08-20
 
 ### Added

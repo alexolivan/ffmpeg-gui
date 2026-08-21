@@ -3309,6 +3309,8 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                         db_build.ffmpeg_binary = result.get("ffmpeg_binary")
                         db_build.ffprobe_binary = result.get("ffprobe_binary")
                         db_build.ffmpeg_version_output = result.get("version_output")
+                        db_build.binary_path = result.get("binary_path")
+                        db_build.version_output = result.get("version_output")
                         db_build.disk_usage_mb = result.get("disk_usage_mb")
                         db_build.built_at = datetime.datetime.utcnow()
                         db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned

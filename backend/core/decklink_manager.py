@@ -116,6 +116,8 @@ class DecklinkManager:
 
         if db is not None:
             try:
+                from core.build_manager import build_manager
+
                 # 1. Check default build for decklink_tools
                 default_build = (
                     db.query(SoftwareBuild)
@@ -125,21 +127,35 @@ class DecklinkManager:
                     )
                     .first()
                 )
-                if default_build and default_build.binary_path and os.path.exists(default_build.binary_path):
-                    return default_build.binary_path
+                if default_build:
+                    bin_p = default_build.binary_path
+                    if not bin_p or not os.path.exists(bin_p):
+                        storage_root = default_build.storage.path if default_build.storage else None
+                        cand = os.path.abspath(os.path.join(build_manager.get_build_path(default_build.id, builds_root=storage_root), "install", "decklink-ctl"))
+                        if os.path.exists(cand):
+                            bin_p = cand
+                    if bin_p and os.path.exists(bin_p):
+                        return bin_p
 
-                # 2. Check latest valid build for decklink_tools
+                # 2. Check latest valid ready build for decklink_tools
                 latest_build = (
                     db.query(SoftwareBuild)
                     .filter(
                         SoftwareBuild.software_type == "decklink_tools",
-                        SoftwareBuild.binary_path.isnot(None),
+                        SoftwareBuild.status == "ready",
                     )
                     .order_by(SoftwareBuild.id.desc())
                     .first()
                 )
-                if latest_build and latest_build.binary_path and os.path.exists(latest_build.binary_path):
-                    return latest_build.binary_path
+                if latest_build:
+                    bin_p = latest_build.binary_path
+                    if not bin_p or not os.path.exists(bin_p):
+                        storage_root = latest_build.storage.path if latest_build.storage else None
+                        cand = os.path.abspath(os.path.join(build_manager.get_build_path(latest_build.id, builds_root=storage_root), "install", "decklink-ctl"))
+                        if os.path.exists(cand):
+                            bin_p = cand
+                    if bin_p and os.path.exists(bin_p):
+                        return bin_p
             except Exception as e:
                 logger.warning(f"Error querying SoftwareBuild for decklink_tools: {e}")
 

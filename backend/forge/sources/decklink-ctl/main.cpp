@@ -354,7 +354,7 @@ int main(int argc, char** argv) {
         std::string sdkVer = "Native SDK";
         #endif
 
-        std::cout << "decklink-ctl v1.0.0 (Blackmagic DeckLink Orchestrator for ffmpeg-gui)\n"
+        std::cout << "decklink-ctl v1.0.1 (Blackmagic DeckLink Orchestrator for ffmpeg-gui)\n"
                   << "DeckLink API Version: " << sdkVer << "\n"
                   << "Build Date: " << __DATE__ << " " << __TIME__ << "\n"
                   << "Architecture: Linux x86_64 / C++11\n"
