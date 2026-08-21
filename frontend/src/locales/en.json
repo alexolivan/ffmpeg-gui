@@ -347,7 +347,15 @@
       "signalLocked": "LOCKED",
       "noSignal": "NO SIGNAL",
       "noSignalAuto": "No Signal / Auto",
-      "autoDetecting": "Auto / Detecting"
+      "autoDetecting": "Auto / Detecting",
+      "selectCard": "Physical Card:",
+      "cardLabel": "Physical Card",
+      "prevChannel": "Previous Channel",
+      "nextChannel": "Next Channel",
+      "channelCounter": "Channel {{current}} of {{total}}",
+      "channelLabel": "Channel",
+      "connectionsLabel": "Connections",
+      "keyingLabel": "Internal Keying"
     }
   },
   "dashboard": {

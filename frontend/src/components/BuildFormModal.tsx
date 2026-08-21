@@ -151,7 +151,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
       if (res.ok) {
         const data = await res.json()
         if (Array.isArray(data)) {
-          const buildStorages = data.filter((s: any) => s.type === 'build' || s.type === 'builds' || s.is_default)
+          const buildStorages = data.filter((s: any) => s.type === 'build' || s.type === 'builds')
           setStorages(buildStorages)
         }
       }

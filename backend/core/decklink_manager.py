@@ -8,9 +8,9 @@ import subprocess
 from typing import Dict, List, Any, Optional
 from sqlalchemy.orm import Session
 try:
-    from database.models import SoftwareBuild
+    from database.models import SoftwareBuild, Service
 except ImportError:
-    from backend.database.models import SoftwareBuild
+    from backend.database.models import SoftwareBuild, Service
 
 logger = logging.getLogger("DecklinkManager")
 
@@ -469,42 +469,55 @@ class DecklinkManager:
         devices = await self.get_devices(db)
 
         # Inspect active processes using each DeckLink device
-        if process_manager is not None and devices:
+        if db is not None and devices:
             try:
-                active_procs = process_manager.get_active_processes()
+                active_procs = db.query(Service).filter(Service.status == "running").all()
                 for dev in devices:
                     dev_idx_str = str(dev.get("index", ""))
                     dev_pers_str = str(dev.get("persistent_id", ""))
-                    dev_name = str(dev.get("display_name", "")).lower()
-                    
+                    dev_name = str(dev.get("display_name", "")).strip().lower()
+                    dev_model = str(dev.get("model_name", "")).strip().lower()
+
                     matched_procs = []
                     for p in active_procs:
                         cfg = getattr(p, "config", {}) or {}
                         input_cfg = cfg.get("input_config") or {}
                         output_cfg = cfg.get("output_config") or {}
-                        
-                        input_url = str(input_cfg.get("url", "") or cfg.get("input_url", "")).lower()
-                        output_url = str(output_cfg.get("url", "") or cfg.get("output_url", "")).lower()
-                        in_fmt = str(input_cfg.get("format", "")).lower()
-                        out_fmt = str(output_cfg.get("format", "")).lower()
-                        
-                        is_input = ("decklink" in in_fmt or "decklink" in input_url) and (
-                            dev_name in input_url or dev_idx_str in input_url or (dev_pers_str and dev_pers_str in input_url)
+
+                        in_fmt = str(input_cfg.get("format", "")).strip().lower()
+                        out_fmt = str(output_cfg.get("format", "")).strip().lower()
+                        in_url = str(input_cfg.get("url", "") or cfg.get("input_url", "")).strip().lower()
+                        out_url = str(output_cfg.get("url", "") or cfg.get("output_url", "")).strip().lower()
+
+                        # In FFmpeg, DeckLink input/output is specified via:
+                        # -f decklink -i 'Intensity Pro' or -i 'DeckLink SDI (1)' or -i '0' or -f decklink 'Intensity Pro'
+                        is_dl_in = in_fmt == "decklink" or "decklink" in in_fmt or "decklink" in in_url
+                        is_dl_out = out_fmt == "decklink" or "decklink" in out_fmt or "decklink" in out_url
+
+                        # Match by device name, model, persistent_id, or device index in URL
+                        matches_in = is_dl_in and (
+                            (dev_name and dev_name in in_url) or
+                            (dev_model and dev_model in in_url) or
+                            (dev_idx_str and (in_url == dev_idx_str or f"({dev_idx_str})" in in_url or f":{dev_idx_str}" in in_url or in_url.endswith(f" {dev_idx_str}"))) or
+                            (dev_pers_str and dev_pers_str in in_url)
                         )
-                        is_output = ("decklink" in out_fmt or "decklink" in output_url) and (
-                            dev_name in output_url or dev_idx_str in output_url or (dev_pers_str and dev_pers_str in output_url)
+                        matches_out = is_dl_out and (
+                            (dev_name and dev_name in out_url) or
+                            (dev_model and dev_model in out_url) or
+                            (dev_idx_str and (out_url == dev_idx_str or f"({dev_idx_str})" in out_url or f":{dev_idx_str}" in out_url or out_url.endswith(f" {dev_idx_str}"))) or
+                            (dev_pers_str and dev_pers_str in out_url)
                         )
-                        
-                        if is_input or is_output:
+
+                        if matches_in or matches_out:
                             matched_procs.append({
-                                "process_id": getattr(p, "id", None),
-                                "name": getattr(p, "name", str(getattr(p, "id", ""))),
-                                "status": getattr(p, "status", "running"),
-                                "direction": "input" if is_input else "output",
+                                "process_id": p.id,
+                                "name": p.name or f"Service #{p.id}",
+                                "status": p.status,
+                                "direction": "input" if matches_in else "output",
                             })
                     dev["active_processes"] = matched_procs
             except Exception as e:
-                logger.debug(f"Error mapping active processes to DeckLink devices: {e}")
+                logger.warning(f"Error mapping active processes to DeckLink devices: {e}")
 
         # Compatibility Assessment
         is_ready = bool(driver_ver and helper_path and len(devices) > 0 and not firmware_info.get("needs_update"))

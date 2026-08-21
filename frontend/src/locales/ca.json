@@ -347,7 +347,15 @@
       "signalLocked": "SINCRO",
       "noSignal": "SENSE SENYAL",
       "noSignalAuto": "Sense senyal / Auto",
-      "autoDetecting": "Auto / Detectant"
+      "autoDetecting": "Auto / Detectant",
+      "selectCard": "Targeta Física:",
+      "cardLabel": "Targeta Física",
+      "prevChannel": "Canal Anterior",
+      "nextChannel": "Següent Canal",
+      "channelCounter": "Canal {{current}} de {{total}}",
+      "channelLabel": "Canal",
+      "connectionsLabel": "Connexions",
+      "keyingLabel": "Keying Intern"
     }
   },
   "dashboard": {
