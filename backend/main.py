@@ -1889,7 +1889,8 @@ def get_system_capabilities():
     decklink_nodes = glob.glob("/dev/blackmagic/io*") + glob.glob("/dev/blackmagic/dv*") + glob.glob("/dev/bm*")
     try:
         from core.decklink_manager import decklink_manager
-        devices = decklink_manager.list_devices_sync()
+        with SessionLocal() as db_session:
+            devices = decklink_manager.list_devices_sync(db_session)
         if devices:
             seen_models = {}
             for d in devices:

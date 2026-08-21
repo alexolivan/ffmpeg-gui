@@ -108,11 +108,14 @@ class DecklinkManager:
         """Localiza el binario 'decklink-ctl' activo configurado en la Forja o en rutas del sistema."""
         if db is None:
             try:
-                from database.session import SessionLocal
+                try:
+                    from database.db import SessionLocal
+                except ImportError:
+                    from backend.database.db import SessionLocal
                 with SessionLocal() as session:
                     return self.get_active_helper_path(session)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error opening DB session in get_active_helper_path: {e}")
 
         if db is not None:
             try:
@@ -291,6 +294,24 @@ class DecklinkManager:
                     })
                 if cards:
                     return cards
+        except Exception:
+            pass
+
+        # Method 3: Sysfs PCI vendor check (0x11b8)
+        try:
+            import glob
+            for dev_path in glob.glob("/sys/bus/pci/devices/*"):
+                vendor_file = os.path.join(dev_path, "vendor")
+                if os.path.exists(vendor_file):
+                    with open(vendor_file, "r") as f:
+                        if f.read().strip().lower() == "0x11b8":
+                            cards.append({
+                                "model_name": "Blackmagic PCIe Device",
+                                "display_name": "Blackmagic PCIe Device",
+                                "index": len(cards),
+                            })
+            if cards:
+                return cards
         except Exception:
             pass
 
