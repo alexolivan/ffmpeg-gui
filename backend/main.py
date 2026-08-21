@@ -2950,6 +2950,8 @@ async def get_software_tags(software_type: str):
         tags = await build_manager.fetch_available_tags("https://github.com/bluenviron/mediamtx.git")
     elif software_type == "kiosk_cog":
         tags = await build_manager.fetch_available_tags("https://github.com/Igalia/cog.git")
+    elif software_type == "decklink_tools":
+        tags = ["1.0.1", "1.0.0"]
     else:
         tags = await build_manager.fetch_available_tags(software_type)
     
@@ -2961,6 +2963,8 @@ async def get_software_tags(software_type: str):
             tags = ["v1.9.0", "v1.8.0", "v1.7.0"]
         elif software_type == "kiosk_cog":
             tags = ["v0.18.0", "v0.16.0"]
+        elif software_type == "decklink_tools":
+            tags = ["1.0.1", "1.0.0"]
             
     return {"tags": tags}
 
@@ -3401,15 +3405,21 @@ def set_default_build(build_id: int, db: Session = Depends(get_db)):
     if build.status != "ready":
         raise HTTPException(status_code=409, detail="Only 'ready' builds can be set as default")
 
+    stype = build.software_type or ("decklink_tools" if "decklink" in (build.name or "").lower() else "ffmpeg")
+    build.software_type = stype
+
     # Unset any previous default for the SAME software_type
     db.query(FfmpegBuild).filter(
-        FfmpegBuild.software_type == build.software_type,
-        FfmpegBuild.is_default == True
+        FfmpegBuild.software_type == stype,
+        FfmpegBuild.is_default == True,
+        FfmpegBuild.id != build_id
     ).update(
-        {"is_default": False}
+        {"is_default": False},
+        synchronize_session=False
     )
     build.is_default = True
     db.commit()
+    db.refresh(build)
     return {"status": "ok", "message": f"'{build.name}' is now the default build"}
 
 @app.post("/builds/{build_id}/clean-sources")

@@ -107,8 +107,16 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
             }
           }
         } else if (softwareType === 'decklink_tools') {
-          setSoftwareTags(['1.0.0'])
-          if (!ffmpegVersion) setFfmpegVersion('1.0.0')
+          const res = await fetch(`${API_BASE}/builds/tags/decklink_tools`)
+          if (res.ok) {
+            const data = await res.json()
+            const tags = Array.isArray(data?.tags) ? data.tags : Array.isArray(data) ? data : ['1.0.1', '1.0.0']
+            setSoftwareTags(tags)
+            if (!ffmpegVersion) setFfmpegVersion(tags[0])
+          } else {
+            setSoftwareTags(['1.0.1', '1.0.0'])
+            if (!ffmpegVersion) setFfmpegVersion('1.0.1')
+          }
         } else {
           const res = await fetch(`${API_BASE}/builds/tags/${softwareType}`)
           if (res.ok) {
