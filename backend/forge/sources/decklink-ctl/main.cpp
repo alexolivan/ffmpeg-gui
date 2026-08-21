@@ -62,7 +62,7 @@ std::string getDisplayModeString(BMDDisplayMode mode) {
         case bmdMode4K2160p50: return "2160p50";
         case bmdMode4K2160p5994: return "2160p59.94";
         case bmdMode4K2160p60: return "2160p60";
-        default: return "Unknown / Auto";
+        default: return "";
     }
 }
 
@@ -79,7 +79,7 @@ std::string getPixelFormatString(BMDPixelFormat format) {
         case bmdFormat10BitRGBX: return "10-bit RGBX";
         case bmdFormatH265: return "H.265";
         case bmdFormatDNxHR: return "DNxHR";
-        default: return "Unknown";
+        default: return "";
     }
 }
 

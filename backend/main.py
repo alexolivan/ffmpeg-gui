@@ -1908,7 +1908,7 @@ def get_system_capabilities():
     if decklink_cards:
         decklink_details = f"Detected DeckLink card(s): {', '.join(decklink_cards)}"
     elif decklink_available:
-        decklink_details = f"Detected DeckLink card nodes: {', '.join(decklink_nodes)}"
+        decklink_details = f"DeckLink video driver active ({len(decklink_nodes)} device node(s) present)"
     else:
         decklink_details = "No physical DeckLink cards detected"
 

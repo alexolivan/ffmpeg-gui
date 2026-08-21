@@ -106,6 +106,14 @@ class DecklinkManager:
 
     def get_active_helper_path(self, db: Optional[Session] = None) -> Optional[str]:
         """Localiza el binario 'decklink-ctl' activo configurado en la Forja o en rutas del sistema."""
+        if db is None:
+            try:
+                from database.session import SessionLocal
+                with SessionLocal() as session:
+                    return self.get_active_helper_path(session)
+            except Exception:
+                pass
+
         if db is not None:
             try:
                 # 1. Check default build for decklink_tools
@@ -135,7 +143,20 @@ class DecklinkManager:
             except Exception as e:
                 logger.warning(f"Error querying SoftwareBuild for decklink_tools: {e}")
 
-        # 3. System / Local paths
+        # 3. Forge builds filesystem search fallback
+        try:
+            import glob
+            build_candidates = sorted(
+                glob.glob(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "ffmpeg_builds", "*", "install", "decklink-ctl"))),
+                reverse=True,
+            )
+            for path in build_candidates:
+                if os.path.exists(path) and os.access(path, os.X_OK):
+                    return path
+        except Exception:
+            pass
+
+        # 4. System / Local paths
         candidates = [
             "/usr/local/bin/decklink-ctl",
             "/usr/bin/decklink-ctl",
@@ -174,22 +195,21 @@ class DecklinkManager:
         if not helper_path:
             return []
 
-        async with self._lock:
-            try:
-                proc = await asyncio.create_subprocess_exec(
-                    helper_path,
-                    "list",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
-                if proc.returncode == 0 and stdout:
-                    data = json.loads(stdout.decode("utf-8"))
-                    if data.get("success"):
-                        self._cache_devices = data.get("devices", [])
-                        return self._cache_devices
-            except Exception as e:
-                logger.warning(f"Failed to execute decklink-ctl list: {e}")
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                helper_path,
+                "list",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            if proc.returncode == 0 and stdout:
+                data = json.loads(stdout.decode("utf-8"))
+                if data.get("success"):
+                    self._cache_devices = data.get("devices", [])
+                    return self._cache_devices
+        except Exception as e:
+            logger.warning(f"Failed to execute decklink-ctl list: {e}")
 
         return self._cache_devices
 
@@ -215,29 +235,49 @@ class DecklinkManager:
         return self._probe_pci_cards_sync()
 
     def _probe_pci_cards_sync(self) -> List[Dict[str, Any]]:
-        """Sondeo por hardware PCI/udev de tarjetas Blackmagic Design cuando el helper no está presente."""
+        """Sondeo por hardware PCI/udev/firmware updater de tarjetas Blackmagic Design cuando el helper no está presente."""
         cards = []
+        
+        # Method 1: lspci (vendor 11b8 or keyword)
         try:
             res = subprocess.run(
-                ["lspci", "-d", "11b8:"],
+                ["lspci"],
                 capture_output=True,
                 text=True,
                 timeout=2,
             )
             if res.returncode == 0 and res.stdout:
                 for line in res.stdout.splitlines():
-                    # Format: "04:00.0 Multimedia video controller: Blackmagic Design DeckLink Duo 2"
-                    if "Blackmagic Design" in line:
-                        parts = line.split("Blackmagic Design")
-                        model = parts[1].strip() if len(parts) > 1 else ""
+                    if "Blackmagic" in line or "DeckLink" in line:
+                        # e.g. "04:00.0 Multimedia video controller: Blackmagic Design DeckLink Duo 2"
+                        model = line.split(":")[-1].replace("Blackmagic Design", "").strip()
                         if model:
                             cards.append({
                                 "model_name": model,
                                 "display_name": model,
                                 "index": len(cards),
                             })
+                if cards:
+                    return cards
         except Exception:
             pass
+
+        # Method 2: BlackmagicFirmwareUpdater status
+        try:
+            fw_status = self.get_firmware_status()
+            if fw_status.get("devices"):
+                for dev_str in fw_status["devices"]:
+                    clean_name = dev_str.split(":")[-1].strip() if ":" in dev_str else dev_str
+                    cards.append({
+                        "model_name": clean_name,
+                        "display_name": clean_name,
+                        "index": len(cards),
+                    })
+                if cards:
+                    return cards
+        except Exception:
+            pass
+
         return cards
 
     async def get_device_telemetry(self, device_id: str, db: Optional[Session] = None) -> Dict[str, Any]:

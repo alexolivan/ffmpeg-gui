@@ -220,14 +220,14 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
   return (
     <div className="space-y-6">
       {/* ── HEADER & COMPATIBILITY BANNER ────────────────────────────────────────── */}
-      <div className="glass-card p-6 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl shadow-lg relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="glass-card p-4 md:p-5 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl shadow-lg relative overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-black tracking-wider uppercase text-[var(--text-primary)] flex items-center gap-2">
-              <span className="text-xl">🎛️</span>
+            <h2 className="text-base font-black tracking-wider uppercase text-[var(--text-primary)] flex items-center gap-2">
+              <span className="text-lg">🎛️</span>
               <span>{t('settings.decklink.title', 'BLACKMAGIC DECKLINK HARDWARE CONTROL')}</span>
             </h2>
-            <p className="text-xs text-text-secondary mt-0.5">
+            <p className="text-[11px] text-text-secondary mt-0.5">
               {t('settings.decklink.subtitle', 'Headless SDI/HDMI connector mapping, live signal telemetry, and firmware management')}
             </p>
           </div>
@@ -246,59 +246,61 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
               <span className={isRefreshing ? 'inline-block animate-spin' : ''}>
                 {refreshSuccess ? '✓' : '🔄'}
               </span>
-              <span>{refreshSuccess ? t('common.updated', 'Updated') : t('common.refresh', 'Refresh')}</span>
+              <span>{refreshSuccess ? t('common.updated', 'Updated!') : t('common.refresh', 'Refresh')}</span>
             </button>
           </div>
         </div>
 
         {/* Global Error Banner */}
         {errorMsg && (
-          <div className="mt-4 p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-400 text-xs font-bold flex items-center justify-between">
+          <div className="mt-3 p-2.5 bg-red-500/15 border border-red-500/30 rounded-xl text-red-400 text-xs font-bold flex items-center justify-between">
             <span>⚠️ {errorMsg}</span>
             <button onClick={() => setErrorMsg(null)} className="text-red-400 font-bold ml-2">✕</button>
           </div>
         )}
 
-        {/* Unified Horizontal Telemetry / Ecosystem Flow */}
-        <div className="mt-4 pt-3 border-t border-[var(--glass-border)] flex flex-wrap items-center gap-x-8 gap-y-2.5 text-xs font-mono text-text-secondary">
-          {/* Driver */}
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-bold uppercase tracking-wider text-[10px] text-[var(--text-primary)]">
-              {t('settings.decklink.kernelDriver', 'Driver')}:
+        {/* Dedicated Multiline Key: Value Telemetry Flow */}
+        <div className="mt-3.5 pt-2.5 border-t border-[var(--glass-border)] space-y-1.5 text-xs font-mono">
+          {/* Row 1: Kernel Driver */}
+          <div className="flex items-center justify-between py-1 border-b border-[var(--glass-border)]/30 gap-4">
+            <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider shrink-0">
+              {t('settings.decklink.kernelDriver', 'Kernel Driver (OS)')}:
             </span>
-            <span className={status?.driver_installed ? 'text-emerald-400 font-bold flex items-center gap-1.5' : 'text-red-400 font-bold flex items-center gap-1.5'}>
-              <span>{status?.driver_installed ? '🟢' : '🔴'}</span>
-              <span>{status?.driver_installed ? `desktopvideo v${status.driver_version}` : t('settings.decklink.driverNotInstalled', 'desktopvideo not installed')}</span>
+            <span className={`font-bold text-xs flex items-center gap-1.5 truncate ${status?.driver_installed ? 'text-emerald-400' : 'text-red-400'}`}>
+              <span className="shrink-0">{status?.driver_installed ? '🟢' : '🔴'}</span>
+              <span className="truncate">{status?.driver_installed ? `desktopvideo v${status.driver_version}` : t('settings.decklink.driverNotInstalled', 'desktopvideo not installed')}</span>
             </span>
           </div>
 
-          {/* Active Helper */}
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-bold uppercase tracking-wider text-[10px] text-[var(--text-primary)]">
-              {t('settings.decklink.activeHelper', 'Helper Tool')}:
+          {/* Row 2: Active Helper Tool */}
+          <div className="flex items-center justify-between py-1 border-b border-[var(--glass-border)]/30 gap-4">
+            <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider shrink-0">
+              {t('settings.decklink.activeHelper', 'Active Helper Tool')}:
             </span>
-            <span className={status?.helper_available ? 'text-emerald-400 font-bold flex items-center gap-1.5' : 'text-amber-400 font-bold flex items-center gap-1.5'}>
-              <span>{status?.helper_available ? '🟢' : '⚠️'}</span>
-              <span>{cleanHelperVer || 'decklink-ctl (Pending Build)'}</span>
-            </span>
-            {onNavigateToForge && !status?.helper_available && (
-              <button
-                onClick={onNavigateToForge}
-                className="ml-1 px-2 py-0.5 bg-brand-orange text-black font-black rounded text-[9px] hover:scale-105 transition-transform cursor-pointer"
-              >
-                {t('forge.mainTitle', 'FORGE')}
-              </button>
-            )}
+            <div className="flex items-center gap-2 truncate">
+              <span className={`font-bold text-xs flex items-center gap-1.5 truncate ${status?.helper_available ? 'text-emerald-400' : 'text-amber-400'}`}>
+                <span className="shrink-0">{status?.helper_available ? '🟢' : '⚠️'}</span>
+                <span className="truncate">{cleanHelperVer || 'decklink-ctl (Pending Build)'}</span>
+              </span>
+              {onNavigateToForge && !status?.helper_available && (
+                <button
+                  onClick={onNavigateToForge}
+                  className="px-2 py-0.5 bg-brand-orange text-black font-black rounded text-[9px] hover:scale-105 transition-transform cursor-pointer shrink-0"
+                >
+                  {t('forge.mainTitle', 'FORGE')}
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Firmware Integrity */}
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-bold uppercase tracking-wider text-[10px] text-[var(--text-primary)]">
-              {t('settings.decklink.firmwareStatus', 'Firmware')}:
+          {/* Row 3: Firmware Integrity */}
+          <div className="flex items-center justify-between py-1 border-b border-[var(--glass-border)]/30 gap-4">
+            <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider shrink-0">
+              {t('settings.decklink.firmwareStatus', 'Firmware Integrity')}:
             </span>
-            <span className={status?.firmware?.needs_update ? 'text-amber-400 font-bold flex items-center gap-1.5' : 'text-emerald-400 font-bold flex items-center gap-1.5'}>
-              <span>{status?.firmware?.needs_update ? '⚠️' : '✅'}</span>
-              <span>
+            <span className={`font-bold text-xs flex items-center gap-1.5 truncate ${status?.firmware?.needs_update ? 'text-amber-400' : 'text-emerald-400'}`}>
+              <span className="shrink-0">{status?.firmware?.needs_update ? '⚠️' : '✅'}</span>
+              <span className="truncate">
                 {status?.firmware?.needs_update
                   ? t('settings.decklink.firmwareUpdateRequired', 'Update Required')
                   : t('settings.decklink.firmwareUpToDate', 'Up to Date')}
@@ -306,13 +308,13 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
             </span>
           </div>
 
-          {/* Active Sub-Devices Count */}
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="font-bold uppercase tracking-wider text-[10px] text-[var(--text-primary)]">
-              {t('settings.decklink.detectedSubDevices', 'Channels')}:
+          {/* Row 4: Active Sub-Devices Channels */}
+          <div className="flex items-center justify-between py-1 gap-4">
+            <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider shrink-0">
+              {t('settings.decklink.detectedSubDevices', 'Active Channels')}:
             </span>
-            <span className="text-brand-lime font-bold flex items-center gap-1.5">
-              <span>🎛️</span>
+            <span className="font-bold text-brand-lime text-xs flex items-center gap-1.5">
+              <span className="shrink-0">🎛️</span>
               <span>{devices.length} {devices.length === 1 ? 'Channel' : 'Channels'}</span>
             </span>
           </div>
@@ -320,7 +322,7 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
 
         {/* Firmware Warning Notice */}
         {status?.firmware?.needs_update && (
-          <div className="mt-4 p-3.5 bg-amber-500/15 border border-amber-500/40 rounded-xl text-amber-300 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-pulse">
+          <div className="mt-3 p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-amber-300 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-pulse">
             <div>
               <p className="font-bold flex items-center gap-1.5">
                 <span>⚠️</span> {t('settings.decklink.firmwareAlertTitle', 'Firmware Update Required on Hardware')}
@@ -341,7 +343,7 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
 
         {/* Firmware Result Box */}
         {firmwareResult && (
-          <div className={`mt-4 p-3 rounded-xl border text-xs font-mono whitespace-pre-wrap ${
+          <div className={`mt-3 p-3 rounded-xl border text-xs font-mono whitespace-pre-wrap ${
             firmwareResult.success ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-red-500/10 border-red-500/30 text-red-300'
           }`}>
             <div className="flex justify-between items-center mb-1 font-bold">
@@ -401,6 +403,22 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
               const isOutput = dev.video_output_connections > 0 && dev.video_input_connections === 0;
               const hasActiveProcesses = dev.active_processes && dev.active_processes.length > 0;
 
+              const cleanMode = (dev.detected_mode || '').trim();
+              const hasValidMode = cleanMode && !cleanMode.toLowerCase().includes('unknown') && !cleanMode.toLowerCase().includes('auto');
+              const displayFormat = isLocked && hasValidMode
+                ? cleanMode
+                : isLocked
+                ? t('settings.decklink.autoDetecting', 'Auto / Detecting')
+                : t('settings.decklink.noSignalAuto', 'No Signal / Auto');
+
+              const cleanPixel = (dev.detected_pixel_format || '').trim();
+              const hasValidPixel = cleanPixel && !cleanPixel.toLowerCase().includes('unknown') && !cleanPixel.toLowerCase().includes('auto');
+              const displayColorspace = isLocked && hasValidPixel
+                ? cleanPixel
+                : isLocked
+                ? 'Auto'
+                : '—';
+
               return (
                 <div
                   key={dev.persistent_id || idx}
@@ -431,9 +449,9 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
 
                   {/* Signal Telemetry Box */}
                   <div className="bg-[var(--input-bg)] p-3 rounded-xl border border-[var(--glass-border)]/60 space-y-1.5 font-mono text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-text-secondary text-[10px] uppercase">{t('settings.decklink.signalStatus', 'Signal')}:</span>
-                      <span className={`font-bold text-[11px] flex items-center gap-1 ${
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-text-secondary text-[10px] uppercase shrink-0">{t('settings.decklink.signalStatus', 'Signal')}:</span>
+                      <span className={`font-bold text-[11px] flex items-center gap-1 shrink-0 ${
                         isLocked ? 'text-emerald-400 animate-pulse' : 'text-text-secondary/60'
                       }`}>
                         <span>{isLocked ? '●' : '○'}</span>
@@ -441,25 +459,17 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-text-secondary text-[10px] uppercase">{t('settings.decklink.format', 'Format')}:</span>
-                      <span className="font-bold text-[var(--text-primary)] truncate max-w-[130px]" title={dev.detected_mode || ''}>
-                        {dev.detected_mode && dev.detected_mode !== 'Unknown'
-                          ? dev.detected_mode
-                          : isLocked
-                          ? t('settings.decklink.autoDetecting', 'Auto / Detecting')
-                          : t('settings.decklink.noSignalAuto', 'No Signal / Auto')}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-text-secondary text-[10px] uppercase shrink-0">{t('settings.decklink.format', 'Format')}:</span>
+                      <span className="font-bold text-[var(--text-primary)] truncate text-right" title={displayFormat}>
+                        {displayFormat}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-text-secondary text-[10px] uppercase">{t('settings.decklink.pixelFormat', 'Colorspace')}:</span>
-                      <span className="font-bold text-text-secondary truncate max-w-[130px]" title={dev.detected_pixel_format || ''}>
-                        {dev.detected_pixel_format && dev.detected_pixel_format !== 'Unknown'
-                          ? dev.detected_pixel_format
-                          : isLocked
-                          ? 'Auto'
-                          : 'N/A'}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-text-secondary text-[10px] uppercase shrink-0">{t('settings.decklink.pixelFormat', 'Colorspace')}:</span>
+                      <span className="font-bold text-text-secondary truncate text-right" title={displayColorspace}>
+                        {displayColorspace}
                       </span>
                     </div>
                   </div>
