@@ -409,7 +409,7 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                 ? cleanMode
                 : isLocked
                 ? t('settings.decklink.autoDetecting', 'Auto / Detecting')
-                : t('settings.decklink.noSignalAuto', 'No Signal / Auto');
+                : t('settings.decklink.noSignal', 'NO SIGNAL');
 
               const cleanPixel = (dev.detected_pixel_format || '').trim();
               const hasValidPixel = cleanPixel && !cleanPixel.toLowerCase().includes('unknown') && !cleanPixel.toLowerCase().includes('auto');
@@ -449,26 +449,32 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
 
                   {/* Signal Telemetry Box */}
                   <div className="bg-[var(--input-bg)] p-3 rounded-xl border border-[var(--glass-border)]/60 space-y-1.5 font-mono text-xs">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-text-secondary text-[10px] uppercase shrink-0">{t('settings.decklink.signalStatus', 'Signal')}:</span>
-                      <span className={`font-bold text-[11px] flex items-center gap-1 shrink-0 ${
-                        isLocked ? 'text-emerald-400 animate-pulse' : 'text-text-secondary/60'
+                    <div className="flex items-center gap-2">
+                      <span className="text-text-secondary text-[10px] font-bold uppercase shrink-0">
+                        {t('settings.decklink.signalStatus', 'Signal')}:
+                      </span>
+                      <span className={`font-bold text-xs flex items-center gap-1.5 ${
+                        isLocked ? 'text-emerald-400 animate-pulse' : 'text-text-secondary/70'
                       }`}>
-                        <span>{isLocked ? '●' : '○'}</span>
+                        <span className="shrink-0">{isLocked ? '●' : '○'}</span>
                         <span>{isLocked ? t('settings.decklink.signalLocked', 'LOCKED') : t('settings.decklink.noSignal', 'NO SIGNAL')}</span>
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-text-secondary text-[10px] uppercase shrink-0">{t('settings.decklink.format', 'Format')}:</span>
-                      <span className="font-bold text-[var(--text-primary)] truncate text-right" title={displayFormat}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-text-secondary text-[10px] font-bold uppercase shrink-0">
+                        {t('settings.decklink.format', 'Format')}:
+                      </span>
+                      <span className="font-bold text-xs text-[var(--text-primary)]">
                         {displayFormat}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-text-secondary text-[10px] uppercase shrink-0">{t('settings.decklink.pixelFormat', 'Colorspace')}:</span>
-                      <span className="font-bold text-text-secondary truncate text-right" title={displayColorspace}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-text-secondary text-[10px] font-bold uppercase shrink-0">
+                        {t('settings.decklink.pixelFormat', 'Colorspace')}:
+                      </span>
+                      <span className="font-bold text-xs text-text-secondary">
                         {displayColorspace}
                       </span>
                     </div>

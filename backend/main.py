@@ -1907,7 +1907,7 @@ def get_system_capabilities():
 
     decklink_available = len(decklink_cards) > 0 or len(decklink_nodes) > 0
     if decklink_cards:
-        decklink_details = f"Detected DeckLink card(s): {', '.join(decklink_cards)}"
+        decklink_details = f"Detected {len(decklink_cards)} DeckLink / Intensity card(s)"
     elif decklink_available:
         decklink_details = f"DeckLink video driver active ({len(decklink_nodes)} device node(s) present)"
     else:
@@ -2014,7 +2014,7 @@ def get_system_capabilities():
             "decoders": nvenc_caps["decoders"]
         },
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
-        "alsa": {"available": len(alsa_cards) > 0, "details": f"Detected ALSA sound card(s): {', '.join(alsa_cards)}" if alsa_cards else "No physical or virtual ALSA sound cards detected", "cards": alsa_cards},
+        "alsa": {"available": len(alsa_cards) > 0, "details": f"Detected {len(alsa_cards)} ALSA sound card(s)" if alsa_cards else "No physical or virtual ALSA sound cards detected", "cards": alsa_cards},
         "decklink": {"available": decklink_available, "details": decklink_details, "cards": decklink_cards},
         "lcd": {"available": lcd_available, "details": lcd_details},
         "avahi": {"available": avahi_available, "details": avahi_details},
