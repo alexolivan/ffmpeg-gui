@@ -227,11 +227,11 @@ class BuildManager:
             "path": self.builds_root,
         }
 
-    def get_disk_usage(self, build_id: int, builds_root: str = None) -> int:
+    def get_disk_usage(self, build_id: int, builds_root: str = None) -> float:
         """Calculate disk usage in MB for a specific build."""
         build_path = self.get_build_path(build_id, builds_root)
         if not os.path.exists(build_path):
-            return 0
+            return 0.0
 
         total_size = 0
         for dirpath, _dirnames, filenames in os.walk(build_path):
@@ -239,7 +239,10 @@ class BuildManager:
                 filepath = os.path.join(dirpath, filename)
                 if os.path.isfile(filepath):
                     total_size += os.path.getsize(filepath)
-        return round(total_size / (1024 * 1024))
+        total_mb = total_size / (1024 * 1024)
+        if total_mb < 1 and total_size > 0:
+            return round(total_mb, 2)
+        return round(total_mb, 1)
 
     # ── Build execution ───────────────────────────────────────────
 

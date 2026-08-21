@@ -238,6 +238,8 @@ function App() {
             setPasswordError={setPasswordError}
             passwordSuccess={passwordSuccess}
             setPasswordSuccess={setPasswordSuccess}
+            capabilities={capabilities}
+            systemTelemetry={systemTelemetry}
             API={API}
           />
         )}

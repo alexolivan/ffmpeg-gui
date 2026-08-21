@@ -339,7 +339,13 @@
       "duplexHalf": "Half Duplex (Canales SDI individuales e independientes)",
       "duplexFull": "Full Duplex (Enlace bidireccional emparejado In/Out)",
       "duplexInactive": "Inactivo (Deshabilitado / Bajo consumo)",
-      "duplexHint": "En tarjetas densas como DeckLink Duo 2 / Quad 2, Half Duplex permite usar cada BNC como flujo independiente de captura o reproducción."
+      "duplexHint": "En tarjetas densas como DeckLink Duo 2 / Quad 2, Half Duplex permite usar cada BNC como flujo independiente de captura o reproducción.",
+      "assignedProcesses": "Servicios Asignados",
+      "noProcessesAssigned": "Sin servicios activos asignados",
+      "signalLocked": "SINCRO",
+      "noSignal": "SIN SEÑAL",
+      "noSignalAuto": "Sin señal / Auto",
+      "autoDetecting": "Auto / Detectando"
     }
   },
   "dashboard": {

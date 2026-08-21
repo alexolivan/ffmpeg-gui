@@ -1883,14 +1883,49 @@ def get_system_capabilities():
         except Exception as e:
             logger.warning(f"Error parsing /proc/asound/cards: {e}")
 
-    alsa_available = len(alsa_cards) > 0
-    alsa_details = f"Detected ALSA sound card(s): {', '.join(alsa_cards)}" if alsa_available else "No physical or virtual ALSA sound cards detected"
-
     # DeckLink
     import glob
+    decklink_cards = []
     decklink_nodes = glob.glob("/dev/blackmagic/io*") + glob.glob("/dev/blackmagic/dv*") + glob.glob("/dev/bm*")
-    decklink_available = len(decklink_nodes) > 0
-    decklink_details = f"Detected DeckLink card nodes: {', '.join(decklink_nodes)}" if decklink_available else "No physical DeckLink cards detected"
+    try:
+        from core.decklink_manager import decklink_manager
+        dl_status = decklink_manager.get_devices_status()
+        if dl_status.get("devices"):
+            seen_models = {}
+            for d in dl_status["devices"]:
+                m = d.get("model_name") or d.get("display_name") or "DeckLink Device"
+                seen_models[m] = seen_models.get(m, 0) + 1
+            
+            for m, count in seen_models.items():
+                if count > 1:
+                    decklink_cards.append(f"{m} ({count} sub-devices)")
+                else:
+                    decklink_cards.append(m)
+    except Exception as e:
+        logger.debug(f"Error querying DeckLink devices for system_info: {e}")
+
+    decklink_available = len(decklink_cards) > 0 or len(decklink_nodes) > 0
+    if decklink_cards:
+        decklink_details = f"Detected DeckLink card(s): {', '.join(decklink_cards)}"
+    elif decklink_available:
+        decklink_details = f"Detected DeckLink card nodes: {', '.join(decklink_nodes)}"
+    else:
+        decklink_details = "No physical DeckLink cards detected"
+
+    # LCD Display Hardware
+    lcd_available = False
+    lcd_details = "No compatible Crystalfontz LCD detected"
+    try:
+        from core.lcd.driver_cfa635 import CFA635Driver
+        detected_lcds = CFA635Driver.find_devices()
+        lcd_available = len(detected_lcds) > 0
+        if lcd_available:
+            lcd_details = f"Detected LCD display device(s): {', '.join([d.get('port', '') for d in detected_lcds if d.get('port')])}"
+        elif settings.lcd_enabled:
+            lcd_available = True
+            lcd_details = f"LCD enabled on configured port: {settings.lcd_port}"
+    except Exception as e:
+        logger.debug(f"Error checking LCD hardware for capabilities: {e}")
 
     # Avahi
     avahi_installed = os.path.exists("/usr/sbin/avahi-daemon") or shutil.which("avahi-daemon") is not None
@@ -1978,8 +2013,9 @@ def get_system_capabilities():
             "decoders": nvenc_caps["decoders"]
         },
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
-        "alsa": {"available": alsa_available, "details": alsa_details, "cards": alsa_cards},
-        "decklink": {"available": decklink_available, "details": decklink_details},
+        "alsa": {"available": len(alsa_cards) > 0, "details": f"Detected ALSA sound card(s): {', '.join(alsa_cards)}" if alsa_cards else "No physical or virtual ALSA sound cards detected", "cards": alsa_cards},
+        "decklink": {"available": decklink_available, "details": decklink_details, "cards": decklink_cards},
+        "lcd": {"available": lcd_available, "details": lcd_details},
         "avahi": {"available": avahi_available, "details": avahi_details},
         "ffmpeg": {
             "filters": supported_filters,
@@ -4307,6 +4343,11 @@ async def get_task_preview(execution_id: int, db: Session = Depends(get_db)):
 
 def _serialize_build(build: FfmpegBuild) -> dict:
     """Convert a FfmpegBuild ORM object to a JSON-safe dict."""
+    disk_mb = build.disk_usage_mb
+    if (disk_mb is None or disk_mb == 0) and build.status == 'ready':
+        storage_path = build.storage.path if build.storage else None
+        disk_mb = build_manager.get_disk_usage(build.id, builds_root=storage_path)
+
     return {
         "id": build.id,
         "name": build.name,
@@ -4321,7 +4362,7 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "is_default": build.is_default,
         "sources_cleaned": build.sources_cleaned,
         "auto_clean": build.auto_clean,
-        "disk_usage_mb": build.disk_usage_mb,
+        "disk_usage_mb": disk_mb,
         "build_log_summary": build.build_log_summary,
         "ffmpeg_version_output": build.ffmpeg_version_output,
         "created_at": build.created_at.isoformat() if build.created_at else None,
@@ -5300,7 +5341,7 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
 @app.get("/api/settings/decklink/status")
 async def get_decklink_status(db: Session = Depends(get_db)):
     """Retorna el estado global del subsistema DeckLink, compatibilidad y lista de tarjetas."""
-    return await decklink_manager.get_system_status(db)
+    return await decklink_manager.get_system_status(db, process_manager=process_manager)
 
 @app.get("/api/settings/decklink/{device_id}/telemetry")
 async def get_decklink_telemetry(device_id: str, db: Session = Depends(get_db)):

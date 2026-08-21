@@ -45,7 +45,7 @@ class SoftwareBuild(Base):
     auto_clean = Column(Boolean, default=False)
 
     # Auto-generated metadata
-    disk_usage_mb = Column(Integer, nullable=True)
+    disk_usage_mb = Column(Float, nullable=True)
     build_log_summary = Column(String, nullable=True)
     version_output = Column(String, nullable=True)
 

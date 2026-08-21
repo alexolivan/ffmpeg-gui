@@ -339,7 +339,13 @@
       "duplexHalf": "Half Duplex (Canals SDI individuals i independents)",
       "duplexFull": "Full Duplex (Enllaç bidireccional aparellat In/Out)",
       "duplexInactive": "Inactiu (Deshabilitat / Baix consum)",
-      "duplexHint": "En targetes denses com DeckLink Duo 2 / Quad 2, Half Duplex permet utilitzar cada BNC com a flux independent de captura o reproducció."
+      "duplexHint": "En targetes denses com DeckLink Duo 2 / Quad 2, Half Duplex permet utilitzar cada BNC com a flux independent de captura o reproducció.",
+      "assignedProcesses": "Serveis Assignats",
+      "noProcessesAssigned": "Sense serveis actius assignats",
+      "signalLocked": "SINCRO",
+      "noSignal": "SENSE SENYAL",
+      "noSignalAuto": "Sense senyal / Auto",
+      "autoDetecting": "Auto / Detectant"
     }
   },
   "dashboard": {

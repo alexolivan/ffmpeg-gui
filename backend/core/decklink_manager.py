@@ -156,8 +156,14 @@ class DecklinkManager:
                 text=True,
                 timeout=3,
             )
-            if res.returncode == 0:
-                return res.stdout.strip()
+            if res.returncode == 0 and res.stdout.strip():
+                lines = [l.strip() for l in res.stdout.strip().splitlines() if l.strip()]
+                first_line = lines[0] if lines else "decklink-ctl"
+                sdk_line = next((l for l in lines if "DeckLink API Version:" in l), "")
+                if sdk_line:
+                    sdk_ver = sdk_line.replace("DeckLink API Version:", "").strip()
+                    return f"{first_line.split('(')[0].strip()} (SDK {sdk_ver})"
+                return first_line
         except Exception:
             pass
         return None
@@ -302,13 +308,55 @@ class DecklinkManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def get_system_status(self, db: Optional[Session] = None) -> Dict[str, Any]:
+    async def get_system_status(
+        self,
+        db: Optional[Session] = None,
+        process_manager: Optional[Any] = None,
+    ) -> Dict[str, Any]:
         """Compila el estado global de compatibilidad, drivers, firmware y tarjetas del sistema."""
         driver_ver = self.get_desktopvideo_version()
         firmware_info = self.get_firmware_status()
         helper_path = self.get_active_helper_path(db)
         helper_ver = self.get_helper_version(helper_path) if helper_path else None
         devices = await self.get_devices(db)
+
+        # Inspect active processes using each DeckLink device
+        if process_manager is not None and devices:
+            try:
+                active_procs = process_manager.get_active_processes()
+                for dev in devices:
+                    dev_idx_str = str(dev.get("index", ""))
+                    dev_pers_str = str(dev.get("persistent_id", ""))
+                    dev_name = str(dev.get("display_name", "")).lower()
+                    
+                    matched_procs = []
+                    for p in active_procs:
+                        cfg = getattr(p, "config", {}) or {}
+                        input_cfg = cfg.get("input_config") or {}
+                        output_cfg = cfg.get("output_config") or {}
+                        
+                        input_url = str(input_cfg.get("url", "") or cfg.get("input_url", "")).lower()
+                        output_url = str(output_cfg.get("url", "") or cfg.get("output_url", "")).lower()
+                        in_fmt = str(input_cfg.get("format", "")).lower()
+                        out_fmt = str(output_cfg.get("format", "")).lower()
+                        
+                        is_input = ("decklink" in in_fmt or "decklink" in input_url) and (
+                            dev_name in input_url or dev_idx_str in input_url or (dev_pers_str and dev_pers_str in input_url)
+                        )
+                        is_output = ("decklink" in out_fmt or "decklink" in output_url) and (
+                            dev_name in output_url or dev_idx_str in output_url or (dev_pers_str and dev_pers_str in output_url)
+                        )
+                        
+                        if is_input or is_output:
+                            matched_procs.append({
+                                "process_id": getattr(p, "id", None),
+                                "name": getattr(p, "name", str(getattr(p, "id", ""))),
+                                "status": getattr(p, "status", "running"),
+                                "direction": "input" if is_input else "output",
+                            })
+                    dev["active_processes"] = matched_procs
+            except Exception as e:
+                logger.debug(f"Error mapping active processes to DeckLink devices: {e}")
 
         # Compatibility Assessment
         is_ready = bool(driver_ver and helper_path and len(devices) > 0 and not firmware_info.get("needs_update"))

@@ -83,6 +83,8 @@ interface SettingsViewProps {
   setPasswordError: (val: string) => void;
   passwordSuccess: string;
   setPasswordSuccess: (val: string) => void;
+  capabilities?: any;
+  systemTelemetry?: any;
   API: string;
 }
 
@@ -98,10 +100,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setPasswordError,
   passwordSuccess,
   setPasswordSuccess,
+  capabilities,
+  systemTelemetry,
   API,
 }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security' | 'alsa' | 'decklink' | 'backup'>('general');
+
+  const hasLcdHardware = !!(
+    capabilities?.lcd?.available ||
+    systemTelemetry?.lcd?.connected ||
+    settings?.lcd_enabled
+  );
+  const hasAlsaHardware = capabilities ? !!capabilities?.alsa?.available : true;
+  const hasDecklinkHardware = capabilities ? !!capabilities?.decklink?.available : true;
+
+  useEffect(() => {
+    if (activeTab === 'lcd' && !hasLcdHardware) {
+      setActiveTab('general');
+    }
+  }, [activeTab, hasLcdHardware]);
 
   const [storages, setStorages] = useState<any[]>([]);
   const [isLoadingStorages, setIsLoadingStorages] = useState(false);
@@ -856,18 +874,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <GearIcon size={14} />
           {t('settings.tabs.general', 'General')}
         </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('lcd')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-            activeTab === 'lcd'
-              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-          }`}
-        >
-          <SlidersIcon size={14} />
-          {t('settings.tabs.lcd', 'LCD Display')}
-        </button>
+        {hasLcdHardware && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('lcd')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+              activeTab === 'lcd'
+                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+            }`}
+          >
+            <SlidersIcon size={14} />
+            {t('settings.tabs.lcd', 'LCD Display')}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setActiveTab('storage')}
@@ -892,30 +912,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <ShieldIcon size={14} />
           {t('settings.tabs.security', 'Security')}
         </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('alsa')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-            activeTab === 'alsa'
-              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-          }`}
-        >
-          <span className="text-sm">🔊</span>
-          {t('settings.tabs.alsa', 'ALSA AUDIO')}
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('decklink')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-            activeTab === 'decklink'
-              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-          }`}
-        >
-          <span className="text-sm">🎛️</span>
-          {t('settings.tabs.decklink', 'DECKLINK')}
-        </button>
+        {hasAlsaHardware && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('alsa')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+              activeTab === 'alsa'
+                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+            }`}
+          >
+            <span className="text-sm">🔊</span>
+            {t('settings.tabs.alsa', 'ALSA AUDIO')}
+          </button>
+        )}
+        {hasDecklinkHardware && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('decklink')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+              activeTab === 'decklink'
+                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+            }`}
+          >
+            <span className="text-sm">🎛️</span>
+            {t('settings.tabs.decklink', 'DECKLINK')}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setActiveTab('backup')}
