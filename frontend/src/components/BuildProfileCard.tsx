@@ -163,7 +163,9 @@ export default function BuildProfileCard({
           {/* Line 1: Version Tag & Feature Badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-              {build.ffmpeg_version || build.version_tag || '1.0.0'}
+              {build.software_type === 'decklink_tools' && build.version_output
+                ? (build.version_output.match(/v\d+\.\d+(\.\d+)?/)?.[0] || build.ffmpeg_version || 'v1.0.1')
+                : (build.ffmpeg_version || build.version_tag || (build.software_type === 'decklink_tools' ? '1.0.1' : '1.0.0'))}
             </span>
             {build.software_type === 'decklink_tools' && (
               <span className="text-[10px] font-mono bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded font-bold">

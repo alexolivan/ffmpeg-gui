@@ -87,7 +87,7 @@ class DecklinkManager:
             devices_status = []
             for line in raw.splitlines():
                 line = line.strip()
-                if line and ("decklink" in line.lower() or "firmware" in line.lower()):
+                if line and ("/dev/blackmagic" in line or "OK" in line or "update" in line.lower() or "intensity" in line.lower() or "decklink" in line.lower()):
                     devices_status.append(line)
 
             return {
@@ -125,9 +125,10 @@ class DecklinkManager:
                 default_build = (
                     db.query(SoftwareBuild)
                     .filter(
-                        SoftwareBuild.software_type == "decklink_tools",
+                        (SoftwareBuild.software_type == "decklink_tools") | (SoftwareBuild.name.ilike("%decklink%")),
                         SoftwareBuild.is_default == True,
                     )
+                    .order_by(SoftwareBuild.id.desc())
                     .first()
                 )
                 if default_build:
@@ -144,7 +145,7 @@ class DecklinkManager:
                 latest_build = (
                     db.query(SoftwareBuild)
                     .filter(
-                        SoftwareBuild.software_type == "decklink_tools",
+                        (SoftwareBuild.software_type == "decklink_tools") | (SoftwareBuild.name.ilike("%decklink%")),
                         SoftwareBuild.status == "ready",
                     )
                     .order_by(SoftwareBuild.id.desc())
@@ -227,6 +228,8 @@ class DecklinkManager:
                 if data.get("success"):
                     self._cache_devices = data.get("devices", [])
                     return self._cache_devices
+                else:
+                    logger.warning(f"decklink-ctl list returned error: {data.get('error')}")
         except Exception as e:
             logger.warning(f"Failed to execute decklink-ctl list: {e}")
 
@@ -241,13 +244,15 @@ class DecklinkManager:
                     [helper_path, "list"],
                     capture_output=True,
                     text=True,
-                    timeout=3,
+                    timeout=5,
                 )
                 if res.returncode == 0 and res.stdout:
                     data = json.loads(res.stdout)
                     if data.get("success") and data.get("devices"):
                         self._cache_devices = data.get("devices", [])
                         return self._cache_devices
+                    elif not data.get("success"):
+                        logger.warning(f"Sync decklink-ctl list returned error: {data.get('error')}")
             except Exception as e:
                 logger.debug(f"Error in sync decklink-ctl list: {e}")
 
@@ -268,7 +273,7 @@ class DecklinkManager:
             if res.returncode == 0 and res.stdout:
                 for line in res.stdout.splitlines():
                     if "Blackmagic" in line or "DeckLink" in line:
-                        # e.g. "04:00.0 Multimedia video controller: Blackmagic Design DeckLink Duo 2"
+                        # e.g. "04:00.0 Multimedia video controller: Blackmagic Design Intensity Pro"
                         model = line.split(":")[-1].replace("Blackmagic Design", "").strip()
                         if model:
                             cards.append({
@@ -281,19 +286,22 @@ class DecklinkManager:
         except Exception:
             pass
 
-        # Method 2: BlackmagicFirmwareUpdater status
+        # Method 2: BlackmagicFirmwareUpdater status (e.g. "0:\t/dev/blackmagic/dv0 [Intensity Pro]\t0x25\tOK")
         try:
             fw_status = self.get_firmware_status()
-            if fw_status.get("devices"):
-                for dev_str in fw_status["devices"]:
-                    clean_name = dev_str.split(":")[-1].strip() if ":" in dev_str else dev_str
-                    cards.append({
-                        "model_name": clean_name,
-                        "display_name": clean_name,
-                        "index": len(cards),
-                    })
-                if cards:
-                    return cards
+            raw = fw_status.get("raw_output", "")
+            for line in raw.splitlines():
+                matches = re.findall(r'\[(.*?)\]', line)
+                if matches:
+                    card_name = matches[0].strip()
+                    if card_name and card_name.lower() not in ("ok", "failed", "error"):
+                        cards.append({
+                            "model_name": card_name,
+                            "display_name": card_name,
+                            "index": len(cards),
+                        })
+            if cards:
+                return cards
         except Exception:
             pass
 
