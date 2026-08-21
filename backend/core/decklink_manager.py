@@ -521,3 +521,7 @@ class DecklinkManager:
             "device_count": len(devices),
             "system_status": status_code,
         }
+
+
+# Singleton instance
+decklink_manager = DecklinkManager()

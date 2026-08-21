@@ -1903,7 +1903,7 @@ def get_system_capabilities():
                 else:
                     decklink_cards.append(m)
     except Exception as e:
-        logger.debug(f"Error querying DeckLink devices for system_info: {e}")
+        logger.warning(f"Error querying DeckLink devices for system_info: {e}")
 
     decklink_available = len(decklink_cards) > 0 or len(decklink_nodes) > 0
     if decklink_cards:
