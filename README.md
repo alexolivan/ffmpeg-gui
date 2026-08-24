@@ -40,10 +40,14 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ### 🎛️ 3. Professional AV Hardware & Control
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
-- **Magewell Capture Cards**: Reliable integration with HDMI/SDI input capture via V4L2.
+- **Magewell Capture Cards**: Hardware telemetry and routing for Pro Capture / Eco Capture / USB Capture devices (`mwcap-info` / `mwcap-control`), live FPGA temperature monitoring, connector switching, and V4L2/ALSA stream integration.
 - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping and crosspoint volume matrix routing.
 - **Graphical Overlay Studio**: Fully graphical editor to place, scale, and preview graphic overlays on top of video streams.
 - **Audio Dynamics & Filters**: Dynamic range compressors, multi-band graphic equalizers, and ALSA loopback routing.
+
+![Blackmagic DeckLink Hardware Control](docs/assets/screenshot10.png)
+
+![Magewell Pro Capture Control & Live Telemetry](docs/assets/screenshot11.png)
 
 ![ALSA Audio Routing Matrix](docs/assets/screenshot8.png)
 
@@ -92,6 +96,8 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Full Translations**: English, Spanish, and Catalan interfaces with 100% i18n parity.
 
 ![Theme Switcher & Localization Settings](docs/assets/screenshot9.png)
+
+![Warm Paper Theme in Task Scheduling](docs/assets/screenshot12.png)
 
 ---
 
