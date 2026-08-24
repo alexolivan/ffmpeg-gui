@@ -1867,10 +1867,51 @@ def get_system_capabilities():
     else:
         nvenc_details = "NVIDIA GPU and driver libraries detected"
 
+    # Magewell Capture Hardware
+    magewell_cards = []
+    magewell_status = "NO_DEVICES"
+    magewell_available = False
+    magewell_details = "No Magewell capture hardware detected"
+    magewell_driver_ver = None
+    magewell_video_nodes = set()
+    try:
+        with SessionLocal() as db_session:
+            mw_stat = magewell_manager.get_system_status(db_session)
+        magewell_status = mw_stat.get("status", "NO_DEVICES")
+        magewell_available = (magewell_status == "READY")
+        magewell_driver_ver = mw_stat.get("driver_version")
+        for card in mw_stat.get("cards", []):
+            p_name = card.get("product_name", "Magewell Card")
+            n_ch = card.get("num_channels", 1)
+            if n_ch > 1:
+                magewell_cards.append(f"{p_name} ({n_ch} channels)")
+            else:
+                magewell_cards.append(p_name)
+            for ch in card.get("channels", []):
+                if ch.get("device_path"):
+                    magewell_video_nodes.add(ch.get("device_path"))
+        
+        if magewell_available:
+            magewell_details = f"Detected {len(mw_stat.get('cards', []))} Magewell card(s) ({mw_stat.get('total_channels', 0)} channel(s))"
+        elif magewell_status == "SETUP_REQUIRED":
+            magewell_details = f"Magewell hardware detected on PCIe ({len(mw_stat.get('pcie_devices', []))} device(s)), but driver is not loaded"
+            for dev in mw_stat.get("pcie_devices", []):
+                magewell_cards.append(f"{dev.get('slot', 'PCIe')} (Driver Missing)")
+    except Exception as e:
+        logger.warning(f"Error querying Magewell devices for system_info: {e}")
+
     # V4L2
     v4l2_devices = glob.glob("/dev/video*")
     v4l2_available = len(v4l2_devices) > 0
-    v4l2_details = f"Detected video nodes: {', '.join(v4l2_devices)}" if v4l2_available else "No video nodes found in /dev/video*"
+    non_magewell_nodes = [d for d in v4l2_devices if d not in magewell_video_nodes]
+    if non_magewell_nodes:
+        v4l2_details = f"Detected generic video node(s): {', '.join(non_magewell_nodes)}"
+    elif v4l2_devices and magewell_video_nodes:
+        v4l2_details = f"Kernel V4L2 active ({len(v4l2_devices)} node(s) mapped to Magewell hardware)"
+    elif v4l2_available:
+        v4l2_details = f"Detected video nodes: {', '.join(v4l2_devices)}"
+    else:
+        v4l2_details = "No video nodes found in /dev/video*"
 
     # ALSA
     alsa_cards = []
@@ -1917,35 +1958,6 @@ def get_system_capabilities():
         decklink_details = f"DeckLink video driver active ({len(decklink_nodes)} device node(s) present)"
     else:
         decklink_details = "No physical DeckLink cards detected"
-
-    # Magewell Capture Hardware
-    magewell_cards = []
-    magewell_status = "NO_DEVICES"
-    magewell_available = False
-    magewell_details = "No Magewell capture hardware detected"
-    magewell_driver_ver = None
-    try:
-        with SessionLocal() as db_session:
-            mw_stat = magewell_manager.get_system_status(db_session)
-        magewell_status = mw_stat.get("status", "NO_DEVICES")
-        magewell_available = (magewell_status == "READY")
-        magewell_driver_ver = mw_stat.get("driver_version")
-        for card in mw_stat.get("cards", []):
-            p_name = card.get("product_name", "Magewell Card")
-            n_ch = card.get("num_channels", 1)
-            if n_ch > 1:
-                magewell_cards.append(f"{p_name} ({n_ch} channels)")
-            else:
-                magewell_cards.append(p_name)
-        
-        if magewell_available:
-            magewell_details = f"Detected {len(mw_stat.get('cards', []))} Magewell card(s) ({mw_stat.get('total_channels', 0)} channel(s))"
-        elif magewell_status == "SETUP_REQUIRED":
-            magewell_details = f"Magewell hardware detected on PCIe ({len(mw_stat.get('pcie_devices', []))} device(s)), but 'mwcap' driver is not loaded"
-            for dev in mw_stat.get("pcie_devices", []):
-                magewell_cards.append(f"{dev.get('slot', 'PCIe')} (Driver Missing)")
-    except Exception as e:
-        logger.warning(f"Error querying Magewell devices for system_info: {e}")
 
     # LCD Display Hardware
     lcd_available = False

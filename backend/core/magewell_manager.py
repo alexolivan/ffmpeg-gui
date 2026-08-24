@@ -106,38 +106,47 @@ class MagewellManager:
 
     def get_driver_version(self) -> Optional[str]:
         """
-        Retrieves the version of the mwcap kernel driver. Cached with 60s TTL.
+        Retrieves the version of the mwcap/ProCapture kernel driver. Cached with 60s TTL.
         """
         now = time.time()
         if self._cached_driver_version is not None and (now - self._cached_driver_time < 60.0):
             return self._cached_driver_version
 
         version = None
-        # Check sysfs module version
-        sys_ver_path = "/sys/module/mwcap/version"
-        if os.path.exists(sys_ver_path):
-            try:
-                with open(sys_ver_path, "r") as f:
-                    v = f.read().strip()
-                    if v:
-                        version = v
-            except Exception:
-                pass
+        # Check sysfs module version paths
+        sys_paths = [
+            "/sys/module/mwcap/version",
+            "/sys/module/ProCapture/version",
+            "/sys/module/procapture/version",
+            "/sys/module/mwcap_procapture/version"
+        ]
+        for p in sys_paths:
+            if os.path.exists(p):
+                try:
+                    with open(p, "r") as f:
+                        v = f.read().strip()
+                        if v:
+                            version = v
+                            break
+                except Exception:
+                    pass
 
         if not version:
             modinfo_bin = shutil.which("modinfo")
             if modinfo_bin:
-                try:
-                    res = subprocess.run(
-                        [modinfo_bin, "-F", "version", "mwcap"],
-                        capture_output=True,
-                        text=True,
-                        timeout=2
-                    )
-                    if res.returncode == 0 and res.stdout.strip():
-                        version = res.stdout.strip()
-                except Exception:
-                    pass
+                for mod_name in ["mwcap", "ProCapture", "procapture", "mwcap_procapture"]:
+                    try:
+                        res = subprocess.run(
+                            [modinfo_bin, "-F", "version", mod_name],
+                            capture_output=True,
+                            text=True,
+                            timeout=2
+                        )
+                        if res.returncode == 0 and res.stdout.strip():
+                            version = res.stdout.strip()
+                            break
+                    except Exception:
+                        pass
 
         self._cached_driver_version = version
         self._cached_driver_time = now
@@ -400,6 +409,9 @@ class MagewellManager:
         # Determine overall system status
         if channels_list:
             status_code = "READY"
+            driver_loaded = True
+            if not driver_ver and channels_list[0].get("driver_version"):
+                driver_ver = channels_list[0]["driver_version"]
         elif has_pcie and not driver_loaded:
             status_code = "SETUP_REQUIRED"
         elif has_pcie and not utils_available:
