@@ -30,6 +30,11 @@ try:
 except ImportError:
     from backend.core.decklink_manager import DecklinkManager
 decklink_manager = DecklinkManager()
+try:
+    from core.magewell_manager import MagewellManager
+except ImportError:
+    from backend.core.magewell_manager import MagewellManager
+magewell_manager = MagewellManager()
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -1913,6 +1918,35 @@ def get_system_capabilities():
     else:
         decklink_details = "No physical DeckLink cards detected"
 
+    # Magewell Capture Hardware
+    magewell_cards = []
+    magewell_status = "NO_DEVICES"
+    magewell_available = False
+    magewell_details = "No Magewell capture hardware detected"
+    magewell_driver_ver = None
+    try:
+        with SessionLocal() as db_session:
+            mw_stat = magewell_manager.get_system_status(db_session)
+        magewell_status = mw_stat.get("status", "NO_DEVICES")
+        magewell_available = (magewell_status == "READY")
+        magewell_driver_ver = mw_stat.get("driver_version")
+        for card in mw_stat.get("cards", []):
+            p_name = card.get("product_name", "Magewell Card")
+            n_ch = card.get("num_channels", 1)
+            if n_ch > 1:
+                magewell_cards.append(f"{p_name} ({n_ch} channels)")
+            else:
+                magewell_cards.append(p_name)
+        
+        if magewell_available:
+            magewell_details = f"Detected {len(mw_stat.get('cards', []))} Magewell card(s) ({mw_stat.get('total_channels', 0)} channel(s))"
+        elif magewell_status == "SETUP_REQUIRED":
+            magewell_details = f"Magewell hardware detected on PCIe ({len(mw_stat.get('pcie_devices', []))} device(s)), but 'mwcap' driver is not loaded"
+            for dev in mw_stat.get("pcie_devices", []):
+                magewell_cards.append(f"{dev.get('slot', 'PCIe')} (Driver Missing)")
+    except Exception as e:
+        logger.warning(f"Error querying Magewell devices for system_info: {e}")
+
     # LCD Display Hardware
     lcd_available = False
     lcd_details = "No compatible Crystalfontz LCD detected"
@@ -2016,6 +2050,13 @@ def get_system_capabilities():
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
         "alsa": {"available": len(alsa_cards) > 0, "details": f"Detected {len(alsa_cards)} ALSA sound card(s)" if alsa_cards else "No physical or virtual ALSA sound cards detected", "cards": alsa_cards},
         "decklink": {"available": decklink_available, "details": decklink_details, "cards": decklink_cards},
+        "magewell": {
+            "available": magewell_available,
+            "status": magewell_status,
+            "details": magewell_details,
+            "cards": magewell_cards,
+            "driver_version": magewell_driver_ver
+        },
         "lcd": {"available": lcd_available, "details": lcd_details},
         "avahi": {"available": avahi_available, "details": avahi_details},
         "ffmpeg": {
@@ -5405,6 +5446,46 @@ async def update_decklink_firmware(device_index: int):
     return res
 
 
+# ── Magewell Capture Settings Endpoints ────────────────────────────────
+class MagewellChannelConfigureRequest(BaseModel):
+    video_input: Optional[str] = None
+    audio_input: Optional[str] = None
+    low_latency: Optional[bool] = None
+    deinterlace: Optional[str] = None
+    led_mode: Optional[str] = None
+
+
+@app.get("/api/settings/magewell/status")
+def get_magewell_status(db: Session = Depends(get_db)):
+    """Retorna el estado del driver mwcap, utilidades y telemetría en vivo de tarjetas Magewell."""
+    return magewell_manager.get_system_status(db_session=db)
+
+
+@app.post("/api/settings/magewell/{device_id:path}/configure")
+async def configure_magewell_channel(
+    device_id: str,
+    payload: MagewellChannelConfigureRequest,
+    db: Session = Depends(get_db)
+):
+    """Aplica configuraciones de hardware en un canal de captura Magewell vía mwcap-control."""
+    target_dev = device_id
+    if target_dev.startswith("dev-"):
+        target_dev = "/" + target_dev.replace("-", "/")
+    elif not target_dev.startswith("/") and ":" not in target_dev:
+        target_dev = f"/dev/{target_dev}"
+
+    res = await magewell_manager.configure_channel(
+        device_id=target_dev,
+        config_payload=payload.model_dump(exclude_unset=True),
+        db_session=db
+    )
+    if not res.get("success"):
+        err_msg = res.get("error", "Error configurando canal Magewell")
+        status_code = 409 if "active service" in err_msg.lower() else 400
+        raise HTTPException(status_code=status_code, detail=err_msg)
+    return res
+
+
 # Mounting static files and SPA fallback
 FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", "../frontend/dist")
 try:
@@ -5417,7 +5498,7 @@ if os.path.exists(os.path.join(FRONTEND_DIST_DIR, "assets")):
 
 @app.get("/{catchall:path}")
 def serve_spa(catchall: str):
-    api_prefixes = ["api", "ws", "settings", "login", "builds", "processes", "tasks", "sdks", "uploads", "system", "decklink"]
+    api_prefixes = ["api", "ws", "settings", "login", "builds", "processes", "tasks", "sdks", "uploads", "system", "decklink", "magewell"]
     first_part = catchall.split("/")[0] if catchall else ""
     if first_part in api_prefixes:
         raise HTTPException(status_code=404, detail="Not Found")

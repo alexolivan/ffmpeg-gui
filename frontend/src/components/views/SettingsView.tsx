@@ -4,6 +4,7 @@ import i18n from '../../i18n/i18n';
 import { ShieldIcon, GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon, ExportIcon } from '../Icons';
 import { AlsaAudioSettingsCard } from './settings/AlsaAudioSettingsCard';
 import { DecklinkSettingsCard } from './settings/DecklinkSettingsCard';
+import { MagewellSettingsCard } from './settings/MagewellSettingsCard';
 import { BackupRestoreCard } from './settings/BackupRestoreCard';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
@@ -105,7 +106,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security' | 'alsa' | 'decklink' | 'backup'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup'>('general');
 
   const hasLcdHardware = !!(
     capabilities?.lcd?.available ||
@@ -114,6 +115,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
   const hasAlsaHardware = capabilities ? !!capabilities?.alsa?.available : true;
   const hasDecklinkHardware = capabilities ? !!capabilities?.decklink?.available : true;
+  const hasMagewellHardware = capabilities ? (!!capabilities?.magewell?.available || capabilities?.magewell?.status === 'SETUP_REQUIRED' || capabilities?.magewell?.status === 'READY') : true;
 
   useEffect(() => {
     if (activeTab === 'lcd' && !hasLcdHardware) {
@@ -938,6 +940,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           >
             <span className="text-sm">🎛️</span>
             {t('settings.tabs.decklink', 'DECKLINK')}
+          </button>
+        )}
+        {hasMagewellHardware && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('magewell')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+              activeTab === 'magewell'
+                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+            }`}
+          >
+            <span className="text-sm">📟</span>
+            {t('settings.tabs.magewell', 'MAGEWELL')}
           </button>
         )}
         <button
@@ -2440,7 +2456,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* TAB 6: DeckLink Hardware Control */}
         {activeTab === 'decklink' && <DecklinkSettingsCard API={API} />}
 
-        {/* TAB 7: Backup & Restore */}
+        {/* TAB 7: Magewell Hardware Control */}
+        {activeTab === 'magewell' && <MagewellSettingsCard API={API} />}
+
+        {/* TAB 8: Backup & Restore */}
         {activeTab === 'backup' && <BackupRestoreCard API={API} />}
       </div>
 

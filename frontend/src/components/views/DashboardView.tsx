@@ -337,9 +337,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                     value.available
                       ? 'bg-brand-lime/25 text-brand-lime'
+                      : value.status === 'SETUP_REQUIRED'
+                      ? 'bg-amber-500/25 text-amber-300'
                       : 'bg-white/5 text-text-secondary'
                   }`}>
-                    {value.available ? t('dashboard.available') : t('dashboard.unavailable')}
+                    {value.available ? t('dashboard.available') : value.status === 'SETUP_REQUIRED' ? t('dashboard.setupRequired', 'SETUP REQUIRED') : t('dashboard.unavailable')}
                   </span>
                 </div>
                 <p className="text-[10px] text-text-secondary mt-1">{value.details}</p>
@@ -380,6 +382,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 {key === 'decklink' && value.available && value.cards && value.cards.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
                     <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                  </div>
+                )}
+                {key === 'magewell' && value.cards && value.cards.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
+                    <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                    {value.driver_version && (
+                      <div><span className="text-text-secondary">Driver:</span> {value.driver_version}</div>
+                    )}
                   </div>
                 )}
               </div>
