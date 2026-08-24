@@ -387,9 +387,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 {key === 'magewell' && value.cards && value.cards.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
                     <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
-                    {value.driver_version && (
-                      <div><span className="text-text-secondary">Driver:</span> {value.driver_version}</div>
-                    )}
                   </div>
                 )}
               </div>
