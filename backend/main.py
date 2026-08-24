@@ -4364,14 +4364,22 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         storage_path = build.storage.path if build.storage else None
         disk_mb = build_manager.get_disk_usage(build.id, builds_root=storage_path)
 
-    recipe_version = "1.0.1" if build.software_type == "decklink_tools" else None
+    from forge.recipes import get_recipe_version
+    recipe_version = get_recipe_version(build.software_type or "ffmpeg")
     is_outdated = False
-    if build.software_type == "decklink_tools" and build.status == "ready":
+    if recipe_version and build.status == "ready":
         current_ver = build.version_tag or build.ffmpeg_version or "1.0.0"
+        if build.version_output:
+            match = re.search(r'v(\d+\.\d+(?:\.\d+)?)', build.version_output)
+            if match:
+                current_ver = match.group(1)
         if "v" in str(current_ver).lower():
             current_ver = current_ver.lower().replace("v", "").strip()
-        if current_ver != recipe_version:
-            is_outdated = True
+        try:
+            from packaging import version
+            is_outdated = version.parse(str(current_ver)) < version.parse(str(recipe_version))
+        except Exception:
+            is_outdated = str(current_ver) != str(recipe_version)
 
     return {
         "id": build.id,

@@ -166,8 +166,8 @@ export default function BuildProfileCard({
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
               {build.software_type === 'decklink_tools' && build.version_output
-                ? (build.version_output.match(/v\d+\.\d+(\.\d+)?/)?.[0] || build.ffmpeg_version || 'v1.0.1')
-                : (build.ffmpeg_version || build.version_tag || (build.software_type === 'decklink_tools' ? '1.0.1' : '1.0.0'))}
+                ? (build.version_output.match(/v\d+\.\d+(\.\d+)?/)?.[0] || build.ffmpeg_version || `v${build.recipe_version || '1.0.2'}`)
+                : (build.ffmpeg_version || build.version_tag || (build.software_type === 'decklink_tools' ? (build.recipe_version || '1.0.2') : '1.0.0'))}
             </span>
             {build.software_type === 'decklink_tools' && (
               <span className="text-[10px] font-mono bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded font-bold">
@@ -177,9 +177,9 @@ export default function BuildProfileCard({
             {build.is_outdated && (
               <span
                 className="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-bold animate-pulse"
-                title={t('forge.outdatedBuildTooltip', 'Source code updated to v{{version}}. Recompile to update.', { version: build.recipe_version || '1.0.1' })}
+                title={t('forge.outdatedBuildTooltip', 'Source code updated to v{{version}}. Recompile to update.', { version: build.recipe_version || '1.0.2' })}
               >
-                ⚡ {t('forge.updateAvailable', 'Update Available')} (v{build.recipe_version || '1.0.1'})
+                ⚡ {t('forge.updateAvailable', 'Update Available')} (v{build.recipe_version || '1.0.2'})
               </span>
             )}
             {(build.software_type || 'ffmpeg') === 'ffmpeg' && (
