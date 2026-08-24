@@ -94,7 +94,8 @@
       "security": "Network & Security",
       "alsa": "ALSA AUDIO",
       "backup": "BACKUP & RESTORE",
-      "decklink": "DECKLINK"
+      "decklink": "DECKLINK",
+      "magewell": "MAGEWELL"
     },
     "alsa": {
       "title": "ALSA MIXER",
@@ -362,6 +363,47 @@
       "videoInputConnLabel": "Video Input Connection",
       "videoInputConnHint": "Select the active physical video input connector for capture.",
       "autoDefault": "Automatic / Hardware Default"
+    },
+    "magewell": {
+      "title": "MAGEWELL PRO & ECO CAPTURE CONTROL",
+      "subtitle": "Kernel mwcap driver status, live FPGA temperature, signal analysis, and hardware routing",
+      "kernelDriver": "Kernel Driver (mwcap)",
+      "driverNotLoaded": "mwcap not loaded",
+      "utilitiesTools": "Official CLI Tools",
+      "utilitiesMissing": "Not in PATH",
+      "pcieAudit": "PCIe Hardware Audit",
+      "noPcieFound": "No PCIe Device",
+      "detectedChannels": "Active Channels",
+      "channelsCount": "channel(s)",
+      "setupRequiredTitle": "Magewell PCIe Hardware Detected (Driver Required)",
+      "setupRequiredDesc": "A Magewell capture card was detected on the PCIe bus, but the mwcap kernel driver is not loaded. Download and run the official Magewell Linux driver package (./install.sh).",
+      "noDevicesFound": "No Magewell Capture Cards Detected",
+      "noDevicesFoundDesc": "Make sure your PCIe or USB Magewell card is connected and that the mwcap driver is installed and loaded.",
+      "selectCard": "Physical Card:",
+      "channelUnit": "ch",
+      "prevChannel": "Previous Channel",
+      "nextChannel": "Next Channel",
+      "channelCounter": "Channel {{current}} of {{total}}",
+      "configurePort": "Configure Channel",
+      "signalStatus": "Signal State",
+      "signalLocked": "LOCKED",
+      "noSignal": "NO SIGNAL",
+      "detectedMode": "Detected Mode / Standard",
+      "audioTelemetry": "Embedded Audio",
+      "audioFormat": "Audio Format",
+      "audioChannels": "Audio Channel Pairs",
+      "hardwareHealth": "Hardware Health",
+      "activeServices": "Assigned FFmpeg Services",
+      "noActiveServices": "No active FFmpeg services currently bound",
+      "configureModalTitle": "Configure Magewell Channel",
+      "videoInputLabel": "Video Input Connector Source:",
+      "audioInputLabel": "Audio Input Source:",
+      "deinterlaceLabel": "Hardware Deinterlace:",
+      "ledModeLabel": "Front LED Indicator:",
+      "lowLatencyLabel": "Ultra Low Latency Capture Mode",
+      "lowLatencyDesc": "Bypasses internal frame queues for minimum latency processing",
+      "applyConfigBtn": "Apply Configuration",
+      "configAppliedSuccess": "Configuration applied successfully"
     }
   },
   "dashboard": {
@@ -417,7 +459,8 @@
     "nextRunInHoursMins": "In {{hours}}h {{mins}}m",
     "nextRunTodayAt": "Today at {{time}}",
     "sniHostname": "SNI Hostname",
-    "sslCertificate": "SSL Certificate"
+    "sslCertificate": "SSL Certificate",
+    "setupRequired": "SETUP REQUIRED"
   },
   "forge": {
     "title": "FFMPEG FORGE",

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-08-24
+
+### Added
+- **Magewell Pro & Eco Capture Hardware Orchestration & Live Telemetry**:
+  - Integrated native `mwcap-info` and `mwcap-control` driver utilities for deep FPGA telemetry and hardware control without requiring compilation recipes.
+  - Implemented `MagewellManager` singleton with PCIe hardware audit (`lspci`/sysfs), driver status detection, live signal lock resolution, color space, and FPGA chipset temperature monitoring.
+  - Added dedicated **MAGEWELL** hardware capability card to the Dashboard and management tab to Settings.
+  - Added channel configuration modal with hardware video input switching, audio input routing, hardware deinterlacing, and low-latency mode controls.
+  - Maintained zero-regression plug & play compatibility with ALSA and V4L2 subsystems (Approach C Hybrid).
+
 ## [2.3.0] - 2026-08-21
 
 ### Added

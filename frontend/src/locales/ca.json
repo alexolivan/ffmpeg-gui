@@ -94,7 +94,8 @@
       "security": "Seguretat",
       "alsa": "Àudio ALSA",
       "backup": "Còpia de Seguretat",
-      "decklink": "DECKLINK"
+      "decklink": "DECKLINK",
+      "magewell": "MAGEWELL"
     },
     "alsa": {
       "title": "MESCLADOR ALSA",
@@ -362,6 +363,47 @@
       "videoInputConnLabel": "Connexió d'Entrada de Vídeo",
       "videoInputConnHint": "Seleccioneu el connector d'entrada física actiu per a la captura.",
       "autoDefault": "Automàtic / Per Defecte de Targeta"
+    },
+    "magewell": {
+      "title": "CONTROL DE MAQUINARI MAGEWELL PRO & ECO CAPTURE",
+      "subtitle": "Estat del controlador mwcap al kernel, temperatura FPGA en viu, anàlisi de senyal i encaminament de maquinari",
+      "kernelDriver": "Controlador del Kernel (mwcap)",
+      "driverNotLoaded": "mwcap no carregat",
+      "utilitiesTools": "Eines CLI Oficials",
+      "utilitiesMissing": "No al PATH",
+      "pcieAudit": "Auditoria de Maquinari PCIe",
+      "noPcieFound": "Cap Dispositiu PCIe",
+      "detectedChannels": "Canals Actius",
+      "channelsCount": "canal(s)",
+      "setupRequiredTitle": "Maquinari PCIe Magewell Detectat (Controlador Requerit)",
+      "setupRequiredDesc": "S'ha detectat una capturadora Magewell al bus PCIe, però el controlador mwcap no està carregat. Baixeu i executeu el paquet oficial de Magewell per a Linux (./install.sh).",
+      "noDevicesFound": "No s'han detectat targetes de captura Magewell",
+      "noDevicesFoundDesc": "Assegureu-vos que la targeta PCIe o USB Magewell estigui connectada i que el controlador mwcap estigui instal·lat i carregat.",
+      "selectCard": "Targeta Física:",
+      "channelUnit": "canals",
+      "prevChannel": "Canal Anterior",
+      "nextChannel": "Canal Següent",
+      "channelCounter": "Canal {{current}} de {{total}}",
+      "configurePort": "Configurar Canal",
+      "signalStatus": "Estat del Senyal",
+      "signalLocked": "ENGANXAT",
+      "noSignal": "SENSE SENYAL",
+      "detectedMode": "Mode / Estàndard Detectat",
+      "audioTelemetry": "Àudio Encastat",
+      "audioFormat": "Format d'Àudio",
+      "audioChannels": "Parells de Canals d'Àudio",
+      "hardwareHealth": "Salut del Maquinari",
+      "activeServices": "Serveis FFmpeg Assignats",
+      "noActiveServices": "Cap servei actiu de FFmpeg assignat actualment",
+      "configureModalTitle": "Configurar Canal Magewell",
+      "videoInputLabel": "Font del Connector de Vídeo:",
+      "audioInputLabel": "Font d'Entrada d'Àudio:",
+      "deinterlaceLabel": "Desentrellaçat per Maquinari:",
+      "ledModeLabel": "Indicador LED Frontal:",
+      "lowLatencyLabel": "Mode de Captura d'Ultra Baixa Latència",
+      "lowLatencyDesc": "Omet cues internes de frames per a un processament de latència mínima",
+      "applyConfigBtn": "Aplicar Configuració",
+      "configAppliedSuccess": "Configuració aplicada correctament"
     }
   },
   "dashboard": {
@@ -417,7 +459,8 @@
     "nextRunInHoursMins": "En {{hours}}h {{mins}}m",
     "nextRunTodayAt": "Avui a les {{time}}h",
     "sniHostname": "Hostname SNI",
-    "sslCertificate": "Certificat SSL"
+    "sslCertificate": "Certificat SSL",
+    "setupRequired": "CONFIGURACIÓ REQUERIDA"
   },
   "forge": {
     "title": "FFMPEG FORGE",
