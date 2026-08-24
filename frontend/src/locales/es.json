@@ -355,7 +355,10 @@
       "channelCounter": "Canal {{current}} de {{total}}",
       "channelLabel": "Canal",
       "connectionsLabel": "Conexiones",
-      "keyingLabel": "Keying Interno"
+      "keyingLabel": "Keying Interno",
+      "duplexHalfSubtitle": "Modo Half-Duplex: canal dedicado de captura/reproducción",
+      "duplexFullSubtitle": "Modo Full-Duplex: enlace bidireccional pareado por hardware",
+      "duplexInactiveSubtitle": "Modo inactivo: puerto deshabilitado / bajo consumo"
     }
   },
   "dashboard": {

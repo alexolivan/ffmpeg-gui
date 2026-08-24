@@ -489,6 +489,12 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
               ? 'Auto'
               : '—';
 
+            const duplexSubtitle = activeChannel.duplex_mode === 'half'
+              ? t('settings.decklink.duplexHalfSubtitle', 'Half-Duplex mode: dedicated capture/playback channel')
+              : activeChannel.duplex_mode === 'full'
+              ? t('settings.decklink.duplexFullSubtitle', 'Full-Duplex mode: paired bidirectional hardware link')
+              : t('settings.decklink.duplexInactiveSubtitle', 'Inactive mode: port disabled / low power');
+
             return (
               <div className="relative flex items-center justify-center gap-2.5 md:gap-4">
                 {/* Left Carousel Arrow (Only rendered when > 1 channel) */}
@@ -502,31 +508,30 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                   </button>
                 )}
 
-                {/* Central Wide Detailed Card (Compact) */}
+                {/* Central Wide Detailed Card (Compact & Clean) */}
                 <div className="glass-card p-4 md:p-5 rounded-2xl bg-[var(--bg-card)] border border-brand-lime/30 shadow-xl flex-1 max-w-3xl space-y-3.5">
-                  {/* Card Header */}
-                  <div className="flex flex-wrap items-center justify-between pb-2.5 border-b border-[var(--glass-border)] gap-2">
-                    <div className="flex items-center gap-2.5">
+                  {/* Card Header: Channel title, Duplex subtitle & Configure action */}
+                  <div className="flex items-center justify-between pb-2.5 border-b border-[var(--glass-border)] gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <span className="text-xl shrink-0">{isOutput ? '🔵' : isLocked ? '🟢' : '⚫'}</span>
-                      <div>
+                      <div className="min-w-0">
                         <h4 className="text-sm md:text-base font-mono font-bold text-[var(--text-primary)] leading-tight">
-                          {activeChannel.display_name}
+                          {t('settings.decklink.channelLabel', 'Channel')} #{activeChannel.sub_device_index + 1} of {activeChannel.num_sub_devices}
                         </h4>
-                        <p className="text-[11px] text-text-secondary font-mono">
-                          {t('settings.decklink.channelLabel', 'Channel')} #{activeChannel.sub_device_index + 1} of {activeChannel.num_sub_devices} &bull; {currentCard?.display_name}
+                        <p className="text-[11px] text-text-secondary font-mono truncate" title={duplexSubtitle}>
+                          {duplexSubtitle}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 font-mono">
-                      <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
-                        activeChannel.duplex_mode === 'full'
-                          ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                          : 'bg-blue-500/20 text-blue-300 border-blue-500/30'
-                      }`}>
-                        {activeChannel.duplex_mode.toUpperCase()} DUPLEX
-                      </span>
-                    </div>
+                    <button
+                      onClick={() => handleOpenConfig(activeChannel)}
+                      className="px-3.5 py-1.5 rounded-xl bg-brand-lime hover:bg-brand-lime/80 text-black font-black text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-md hover:scale-105 shrink-0"
+                      title={t('settings.decklink.configurePort', 'Configure Port')}
+                    >
+                      <span className="text-sm">⚙️</span>
+                      <span>{t('settings.decklink.configurePort', 'Configure Port')}</span>
+                    </button>
                   </div>
 
                   {/* Card Body: 2 Wide Columns */}
@@ -590,56 +595,31 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                     </div>
 
                     {/* Right Column: Assigned FFmpeg Services */}
-                    <div className="bg-[var(--input-bg)] p-3 rounded-xl border border-[var(--glass-border)] space-y-1.5 font-mono text-xs flex flex-col justify-between">
-                      <div className="space-y-1.5">
-                        <div className="text-[9px] font-bold text-text-secondary uppercase tracking-wider pb-1 border-b border-[var(--glass-border)]/50">
-                          {t('settings.decklink.assignedProcesses', 'Assigned Services')}
+                    <div className="bg-[var(--input-bg)] p-3 rounded-xl border border-[var(--glass-border)] space-y-1.5 font-mono text-xs flex flex-col justify-start">
+                      <div className="text-[9px] font-bold text-text-secondary uppercase tracking-wider pb-1 border-b border-[var(--glass-border)]/50">
+                        {t('settings.decklink.assignedProcesses', 'Assigned Services')}
+                      </div>
+
+                      {hasActiveProcesses ? (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {activeChannel.active_processes!.map((proc) => (
+                            <span
+                              key={proc.process_id}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-lime/15 border border-brand-lime/30 text-xs font-mono font-bold text-[var(--text-primary)] shadow-sm"
+                              title={`Process #${proc.process_id} (${proc.status})`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-brand-lime animate-pulse shrink-0" />
+                              <span>#{proc.process_id} {proc.name}</span>
+                              <span className="text-[9px] uppercase text-brand-lime font-mono shrink-0">[{proc.direction}]</span>
+                            </span>
+                          ))}
                         </div>
-
-                        {hasActiveProcesses ? (
-                          <div className="flex flex-wrap gap-1.5 pt-0.5">
-                            {activeChannel.active_processes!.map((proc) => (
-                              <span
-                                key={proc.process_id}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-brand-lime/15 border border-brand-lime/30 text-xs font-mono font-bold text-[var(--text-primary)] shadow-sm"
-                                title={`Process #${proc.process_id} (${proc.status})`}
-                              >
-                                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime animate-pulse shrink-0" />
-                                <span>#{proc.process_id} {proc.name}</span>
-                                <span className="text-[9px] uppercase text-brand-lime font-mono shrink-0">[{proc.direction}]</span>
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="p-3 rounded-xl bg-[var(--bg-card)]/50 border border-dashed border-[var(--glass-border)] text-text-secondary/60 text-[11px] italic text-center">
-                            {t('settings.decklink.noProcessesAssigned', 'No active services assigned')}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Technical Duplex Hint */}
-                      <div className="text-[10px] text-text-secondary/70 italic pt-1.5 border-t border-[var(--glass-border)]/40">
-                        {activeChannel.duplex_mode === 'half'
-                          ? 'Half-Duplex mode: dedicated capture/playback channel.'
-                          : 'Full-Duplex mode: paired bidirectional hardware link.'}
-                      </div>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-[var(--bg-card)]/50 border border-dashed border-[var(--glass-border)] text-text-secondary/60 text-[11px] italic text-center my-auto">
+                          {t('settings.decklink.noProcessesAssigned', 'No active services assigned')}
+                        </div>
+                      )}
                     </div>
-                  </div>
-
-                  {/* Card Footer: Configure Action */}
-                  <div className="flex items-center justify-between pt-2.5 border-t border-[var(--glass-border)]">
-                    <div className="text-[11px] font-mono text-text-secondary">
-                      <span>Topological ID: <strong className="text-[var(--text-primary)]">{activeChannel.topological_id || activeChannel.index}</strong></span>
-                    </div>
-
-                    <button
-                      onClick={() => handleOpenConfig(activeChannel)}
-                      className="px-4 py-2 rounded-xl bg-brand-lime hover:bg-brand-lime/80 text-black font-black text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-lg hover:scale-105"
-                      title={t('settings.decklink.configurePort', 'Configure Port')}
-                    >
-                      <span className="text-sm">⚙️</span>
-                      <span>{t('settings.decklink.configurePort', 'Configure Port')}</span>
-                    </button>
                   </div>
                 </div>
 

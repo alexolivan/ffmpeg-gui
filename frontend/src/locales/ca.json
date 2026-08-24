@@ -355,7 +355,10 @@
       "channelCounter": "Canal {{current}} de {{total}}",
       "channelLabel": "Canal",
       "connectionsLabel": "Connexions",
-      "keyingLabel": "Keying Intern"
+      "keyingLabel": "Keying Intern",
+      "duplexHalfSubtitle": "Mode Half-Duplex: canal dedicat de captura/reproducció",
+      "duplexFullSubtitle": "Mode Full-Duplex: enllaç bidireccional aparellat per maquinari",
+      "duplexInactiveSubtitle": "Mode inactiu: port inhabilitat / baix consum"
     }
   },
   "dashboard": {
