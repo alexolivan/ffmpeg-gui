@@ -127,16 +127,24 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
     isMountedRef.current = true;
     fetchStatus();
 
-    // Live telemetry polling interval (every 3 seconds)
+    // Live telemetry polling interval (every 3 seconds, paused when modal is open)
     const interval = setInterval(() => {
-      fetchStatus();
+      if (!configuringDevice) {
+        fetchStatus();
+      }
     }, 3000);
 
     return () => {
       isMountedRef.current = false;
       clearInterval(interval);
     };
-  }, [fetchStatus]);
+  }, [fetchStatus, configuringDevice]);
+
+  const handleCloseConfig = () => {
+    setConfiguringDevice(null);
+    setConfigError(null);
+    setConfigSuccess(null);
+  };
 
   const handleOpenConfig = (device: DecklinkSubDevice) => {
     setConfiguringDevice(device);
@@ -175,8 +183,8 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
         setConfigSuccess(t('settings.decklink.configAppliedSuccess', 'Configuration applied successfully'));
         await fetchStatus();
         setTimeout(() => {
-          if (isMountedRef.current) setConfiguringDevice(null);
-        }, 1200);
+          if (isMountedRef.current) handleCloseConfig();
+        }, 400);
       } else {
         setConfigError(data.detail || data.error || 'Failed to apply configuration');
       }
@@ -648,15 +656,15 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
 
       {/* ── PORT CONFIGURATION MODAL ────────────────────────────────────────────── */}
       {configuringDevice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="glass-card w-full max-w-lg p-6 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-3xl shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-lg p-6 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-3xl shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">
               <h3 className="text-sm font-black uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
                 <span>⚙️</span>
                 <span>{t('settings.decklink.configTitle', 'Configure Port')} — {configuringDevice.display_name}</span>
               </h3>
               <button
-                onClick={() => setConfiguringDevice(null)}
+                onClick={handleCloseConfig}
                 className="w-7 h-7 rounded-full bg-[var(--input-bg)] hover:bg-brand-lime/10 text-text-secondary hover:text-[var(--text-primary)] flex items-center justify-center font-bold text-xs cursor-pointer"
               >
                 ✕
@@ -740,7 +748,7 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-[var(--glass-border)]">
                 <button
                   type="button"
-                  onClick={() => setConfiguringDevice(null)}
+                  onClick={handleCloseConfig}
                   className="px-4 py-2 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-secondary hover:text-[var(--text-primary)] font-bold transition-all cursor-pointer"
                 >
                   {t('common.cancel', 'Cancel')}

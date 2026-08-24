@@ -12,6 +12,7 @@ class TestDecklinkManager(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.mgr = DecklinkManager()
+        self.mgr.clear_cache()
 
     @patch("subprocess.run")
     def test_get_desktopvideo_version(self, mock_subproc):

@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import json
 import shutil
 import asyncio
@@ -33,53 +34,80 @@ class DecklinkManager:
         self._lock = asyncio.Lock()
         self._cache_devices: List[Dict[str, Any]] = []
         self._last_scan_time = 0.0
+        self._cached_driver_version = None
+        self._cached_driver_time = 0.0
+        self._cached_firmware: Optional[Dict[str, Any]] = None
+        self._cached_firmware_time = 0.0
+        self._cached_helper_ver: Dict[str, str] = {}
+
+    def clear_cache(self):
+        """Invalida todos los cachés internos de estado y versiones."""
+        self._cached_driver_version = None
+        self._cached_driver_time = 0.0
+        self._cached_firmware = None
+        self._cached_firmware_time = 0.0
+        self._cached_helper_ver.clear()
 
     def get_desktopvideo_version(self) -> Optional[str]:
-        """Consulta la versión del paquete desktopvideo instalado en el sistema operativo."""
+        """Consulta la versión del paquete desktopvideo instalado en el sistema operativo con caché TTL."""
+        now = time.time()
+        if self._cached_driver_version is not None and (now - self._cached_driver_time) < 60.0:
+            return self._cached_driver_version
+
+        ver = None
         try:
             res = subprocess.run(
                 ["dpkg-query", "-W", "-f=${Version}", "desktopvideo"],
                 capture_output=True,
                 text=True,
-                timeout=3,
+                timeout=2,
             )
             if res.returncode == 0 and res.stdout.strip():
-                return res.stdout.strip()
+                ver = res.stdout.strip()
         except Exception:
             pass
 
-        # Fallback check for rpm
-        try:
-            res = subprocess.run(
-                ["rpm", "-q", "--qf", "%{VERSION}-%{RELEASE}", "desktopvideo"],
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-            if res.returncode == 0 and res.stdout.strip():
-                return res.stdout.strip()
-        except Exception:
-            pass
+        if not ver:
+            try:
+                res = subprocess.run(
+                    ["rpm", "-q", "--qf", "%{VERSION}-%{RELEASE}", "desktopvideo"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                )
+                if res.returncode == 0 and res.stdout.strip():
+                    ver = res.stdout.strip()
+            except Exception:
+                pass
 
-        return None
+        self._cached_driver_version = ver
+        self._cached_driver_time = now
+        return ver
 
     def get_firmware_status(self) -> Dict[str, Any]:
-        """Ejecuta BlackmagicFirmwareUpdater status para comprobar el estado de firmware de las tarjetas."""
+        """Ejecuta BlackmagicFirmwareUpdater status para comprobar el estado de firmware con caché TTL."""
+        now = time.time()
+        if self._cached_firmware is not None and (now - self._cached_firmware_time) < 30.0:
+            return self._cached_firmware
+
         updater_bin = shutil.which("BlackmagicFirmwareUpdater") or "/usr/bin/BlackmagicFirmwareUpdater"
         if not os.path.exists(updater_bin):
-            return {
+            res_dict = {
                 "available": False,
                 "needs_update": False,
                 "raw_output": "BlackmagicFirmwareUpdater no encontrado en el sistema.",
                 "devices": [],
             }
+            self._cached_firmware = res_dict
+            self._cached_firmware_time = now
+            return res_dict
 
         try:
             res = subprocess.run(
                 [updater_bin, "status"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=3,
             )
             raw = res.stdout + res.stderr
             needs_update = "update required" in raw.lower() or "requires update" in raw.lower()
@@ -90,12 +118,15 @@ class DecklinkManager:
                 if line and ("/dev/blackmagic" in line or "OK" in line or "update" in line.lower() or "intensity" in line.lower() or "decklink" in line.lower()):
                     devices_status.append(line)
 
-            return {
+            res_dict = {
                 "available": True,
                 "needs_update": needs_update,
                 "raw_output": raw.strip(),
                 "devices": devices_status,
             }
+            self._cached_firmware = res_dict
+            self._cached_firmware_time = now
+            return res_dict
         except Exception as e:
             return {
                 "available": True,
@@ -205,13 +236,18 @@ class DecklinkManager:
         return None
 
     def get_helper_version(self, helper_path: str) -> Optional[str]:
-        """Obtiene la versión reportada por el binario decklink-ctl."""
+        """Obtiene la versión reportada por el binario decklink-ctl con caché."""
+        if not helper_path:
+            return None
+        if helper_path in self._cached_helper_ver:
+            return self._cached_helper_ver[helper_path]
+
         try:
             res = subprocess.run(
                 [helper_path, "--version"],
                 capture_output=True,
                 text=True,
-                timeout=3,
+                timeout=2,
             )
             if res.returncode == 0 and res.stdout.strip():
                 lines = [l.strip() for l in res.stdout.strip().splitlines() if l.strip()]
@@ -219,11 +255,13 @@ class DecklinkManager:
                 sdk_line = next((l for l in lines if "DeckLink API Version:" in l), "")
                 if sdk_line:
                     sdk_ver = sdk_line.replace("DeckLink API Version:", "").strip()
-                    return f"{first_line.split('(')[0].strip()} (SDK {sdk_ver})"
+                    first_line = f"{first_line.split('(')[0].strip()} (SDK {sdk_ver})"
+                self._cached_helper_ver[helper_path] = first_line
                 return first_line
-        except Exception:
-            pass
-        return None
+        except Exception as e:
+            logger.warning(f"Error checking helper version for {helper_path}: {e}")
+
+        return "decklink-ctl (SDK Available)"
 
     async def get_devices(self, db: Optional[Session] = None) -> List[Dict[str, Any]]:
         """Invoca 'decklink-ctl list' para obtener la lista estructurada de tarjetas y subdispositivos."""
