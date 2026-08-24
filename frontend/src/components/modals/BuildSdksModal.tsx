@@ -29,6 +29,7 @@ interface BuildSdksModalProps {
   storages: StorageItem[];
   onRefresh: () => void;
   API: string;
+  filterSdkTypes?: string[];
 }
 
 export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
@@ -37,15 +38,22 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
   storages = [],
   onRefresh,
   API,
+  filterSdkTypes,
 }) => {
   const { t } = useTranslation();
 
   const [sdks, setSdks] = useState<SdkItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [uploadType, setUploadType] = useState<string>('decklink');
+  const [uploadType, setUploadType] = useState<string>(filterSdkTypes && filterSdkTypes.length === 1 ? filterSdkTypes[0] : 'decklink');
   const [uploadStorageId, setUploadStorageId] = useState<number | ''>('');
   const [showUploadDrawer, setShowUploadDrawer] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (filterSdkTypes && filterSdkTypes.length === 1) {
+      setUploadType(filterSdkTypes[0]);
+    }
+  }, [filterSdkTypes]);
 
   const [migrateSdk, setMigrateSdk] = useState<SdkItem | null>(null);
   const [targetStorageId, setTargetStorageId] = useState<number | ''>('');
@@ -227,16 +235,23 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
     setSelectedFile(null);
   };
 
+  const displayedSdks = filterSdkTypes && filterSdkTypes.length > 0 
+    ? sdks.filter(s => filterSdkTypes.includes(s.sdk_type)) 
+    : sdks;
+
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
-      <div className="glass-card w-full max-w-4xl p-6 border-white/10 shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden bg-[var(--bg-card)] text-[var(--text-primary)] rounded-3xl border border-[var(--glass-border)]">
-        {/* Header bar */}
-        <header className="flex justify-between items-center pb-4 mb-4 border-b border-white/10 flex-shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+      <div
+        className="glass-card w-full max-w-4xl p-6 rounded-3xl border border-white/10 shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden"
+        style={{ background: 'rgba(18, 18, 20, 0.95)' }}
+      >
+        {/* Header */}
+        <header className="flex justify-between items-center mb-4 flex-shrink-0 border-b border-white/10 pb-4">
           <div>
-            <h2 className="text-xl font-black tracking-tight text-[var(--text-primary)] flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-brand-orange inline-block" />
-              {t('sdks.modalTitle')}
+            <h2 className="text-xl font-black text-white tracking-wider uppercase flex items-center gap-2">
+              <span>📦</span> {t('sdks.title')}
             </h2>
+            <p className="text-xs text-text-secondary mt-0.5">{t('sdks.subtitle')}</p>
           </div>
           <button
             onClick={() => {
@@ -273,7 +288,7 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
         {/* Toolbar */}
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
           <div className="text-xs text-text-secondary">
-            {sdks.length} {sdks.length === 1 ? 'SDK installed' : 'SDKs installed'}
+            {displayedSdks.length} {displayedSdks.length === 1 ? 'SDK installed' : 'SDKs installed'}
           </div>
           <button
             onClick={() => setShowUploadDrawer(!showUploadDrawer)}
@@ -300,8 +315,12 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
                   onChange={(e) => setUploadType(e.target.value)}
                   className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-brand-orange"
                 >
-                  <option value="decklink">DeckLink (Blackmagic)</option>
-                  <option value="ndi">NDI (NewTek)</option>
+                  {(!filterSdkTypes || filterSdkTypes.includes('decklink')) && (
+                    <option value="decklink">DeckLink (Blackmagic)</option>
+                  )}
+                  {(!filterSdkTypes || filterSdkTypes.includes('ndi')) && (
+                    <option value="ndi">NDI (NewTek)</option>
+                  )}
                 </select>
               </div>
 
@@ -398,12 +417,12 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
               <span className="w-8 h-8 border-2 border-brand-orange border-t-transparent rounded-full animate-spin inline-block mb-2" />
               <p className="text-xs text-text-secondary">{t('common.processing')}</p>
             </div>
-          ) : sdks.length === 0 ? (
+          ) : displayedSdks.length === 0 ? (
             <div className="text-center py-16 border border-dashed border-white/10 rounded-2xl">
               <p className="text-sm text-text-secondary font-bold">{t('sdks.noSdks')}</p>
             </div>
           ) : (
-            sdks.map((sdk) => {
+            displayedSdks.map((sdk) => {
               const isDecklink = sdk.sdk_type === 'decklink';
               const sizeMb = (sdk.size_bytes / (1024 * 1024)).toFixed(1);
               const usedRecipesCount = sdk.used_by_builds ? sdk.used_by_builds.length : 0;

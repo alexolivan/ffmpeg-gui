@@ -12,9 +12,14 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ## Core Features
 
-### 🛠️ 1. Custom FFmpeg Toolchain & Automated Builder
-- **In-App Compilation**: Compile custom FFmpeg binaries from source directly from the panel. Select specific repository tags and configure compiler options without manual terminal intervention.
-- **External SDK Management**: Automated downloading, extraction, and compilation binding for proprietary or complex SDKs:
+### 🛠️ 1. Multi-Engine Forge & Toolchain Builder
+- **In-App Compilation**: Compile custom binaries from source directly from the panel. Select specific repository tags and configure compiler options for multiple software engines:
+  - **FFmpeg**: Video/audio transcoding and muxing with full hardware codec bindings.
+  - **DeckLink Tools (`decklink-ctl`)**: Headless hardware control and telemetry helper for Blackmagic PCIe devices.
+  - **Icecast2**: High-performance audio streaming broadcast server.
+  - **MediaMTX**: Multi-protocol zero-dependency media hub (SRT, WebRTC, RTSP).
+  - **Kiosk Cog**: Wayland/X11 web kiosk display browser.
+- **External SDK Management**: Automated uploading, extraction, and compilation binding for proprietary SDKs:
   - **Blackmagic DeckLink SDK**: Capture and playback support from professional PCIe hardware.
   - **NewTek NDI SDK**: High-quality IP video routing support.
   - **NVIDIA CUDA & NVENC/NVDEC**: Optional hardware-accelerated decoding/encoding integration (compiles cleanly on CPU-only hosts without NVIDIA hardware).
@@ -33,13 +38,12 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Live Stream Preview & Logs](docs/assets/screenshot3.png)
 
-### 🎨 3. Graphical Overlay Studio & Filters
-- **Visual Video Overlays**: Fully graphical editor to place, scale, and preview graphic overlays on top of video streams. Includes alignment assistants and dynamic canvas coordinates mapping.
-- **Professional AV Hardware & Filters**: GUI controls to configure capture hardware and chain advanced filters:
-  - **Magewell Capture Cards**: Reliable integration with HDMI/SDI input capture via V4L2.
-  - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping and crosspoint volume matrix routing.
-  - Dynamic range compressors and expanders.
-  - Multi-band equalizers (EQ) and ALSA loopback routing.
+### 🎛️ 3. Professional AV Hardware & Control
+- **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
+- **Magewell Capture Cards**: Reliable integration with HDMI/SDI input capture via V4L2.
+- **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping and crosspoint volume matrix routing.
+- **Graphical Overlay Studio**: Fully graphical editor to place, scale, and preview graphic overlays on top of video streams.
+- **Audio Dynamics & Filters**: Dynamic range compressors, multi-band graphic equalizers, and ALSA loopback routing.
 
 ![ALSA Audio Routing Matrix](docs/assets/screenshot8.png)
 

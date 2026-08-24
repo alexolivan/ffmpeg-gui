@@ -27,7 +27,9 @@
     "cancelUpload": "✕ Cancelar subida",
     "loading": "Cargando...",
     "waiting": "Esperando señal de entrada...",
-    "clonedSuccess": "¡Clonado con éxito!"
+    "clonedSuccess": "¡Clonado con éxito!",
+    "refresh": "Actualizar",
+    "updated": "¡Actualizado!"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -91,7 +93,8 @@
       "storage": "Almacenamiento",
       "security": "Seguridad",
       "alsa": "Audio ALSA",
-      "backup": "Copia de Seguridad"
+      "backup": "Copia de Seguridad",
+      "decklink": "DECKLINK"
     },
     "alsa": {
       "title": "MEZCLADOR ALSA",
@@ -310,6 +313,55 @@
       "confirmBtn": "Confirmar Restauración",
       "importSuccess": "¡Copia de seguridad restaurada con éxito!",
       "invalidBackupFormat": "Formato de copia de seguridad no válido. Falta la firma ffmpeg-gui."
+    },
+    "decklink": {
+      "title": "CONTROL DE HARDWARE BLACKMAGIC DECKLINK",
+      "subtitle": "Mapeo de conectores SDI/HDMI headless, telemetría de señal en vivo y gestión de firmware",
+      "kernelDriver": "Driver de Kernel (SO)",
+      "driverNotInstalled": "desktopvideo no instalado",
+      "activeHelper": "Herramienta Auxiliar Activa",
+      "firmwareStatus": "Integridad de Firmware",
+      "firmwareUpdateRequired": "Actualización Requerida",
+      "firmwareUpToDate": "Actualizado",
+      "detectedSubDevices": "Subdispositivos Activos",
+      "firmwareAlertTitle": "Actualización de Firmware Requerida en el Hardware",
+      "firmwareAlertSubtitle": "Una o más tarjetas DeckLink requieren actualizar su firmware para mantener compatibilidad con el driver anfitrión.",
+      "updateFirmwareBtn": "Actualizar Firmware Ahora",
+      "confirmFirmwareUpdate": "¿Está seguro de que desea actualizar el firmware en esta tarjeta DeckLink? No apague el equipo durante la actualización.",
+      "noDevicesFound": "No se detectaron tarjetas Blackmagic DeckLink",
+      "noDevicesFoundDesc": "Asegúrese de que su tarjeta PCIe DeckLink esté bien insertada y que el driver de Linux (bmd-io / desktopvideo) esté instalado y cargado.",
+      "selectChannel": "Canal / Subdispositivo:",
+      "signalStatus": "Señal",
+      "format": "Formato",
+      "pixelFormat": "Espacio de Color",
+      "configurePort": "Configurar Puerto",
+      "configTitle": "Configurar Puerto",
+      "configAppliedSuccess": "Configuración aplicada correctamente",
+      "duplexModeLabel": "Modo Duplex (Mapeo de Conectores)",
+      "duplexHalf": "Half Duplex (Canales SDI individuales e independientes)",
+      "duplexFull": "Full Duplex (Enlace bidireccional emparejado In/Out)",
+      "duplexInactive": "Inactivo (Deshabilitado / Bajo consumo)",
+      "duplexHint": "En tarjetas densas como DeckLink Duo 2 / Quad 2, Half Duplex permite usar cada BNC como flujo independiente de captura o reproducción.",
+      "assignedProcesses": "Servicios Asignados",
+      "noProcessesAssigned": "Sin servicios activos asignados",
+      "signalLocked": "SINCRO",
+      "noSignal": "SIN SEÑAL",
+      "noSignalAuto": "Sin señal / Auto",
+      "autoDetecting": "Auto / Detectando",
+      "selectCard": "Tarjeta Física:",
+      "cardLabel": "Tarjeta Física",
+      "prevChannel": "Canal Anterior",
+      "nextChannel": "Siguiente Canal",
+      "channelCounter": "Canal {{current}} de {{total}}",
+      "channelLabel": "Canal",
+      "connectionsLabel": "Conexiones",
+      "keyingLabel": "Keying Interno",
+      "duplexHalfSubtitle": "Modo Half-Duplex: canal dedicado de captura/reproducción",
+      "duplexFullSubtitle": "Modo Full-Duplex: enlace bidireccional pareado por hardware",
+      "duplexInactiveSubtitle": "Modo inactivo: puerto deshabilitado / bajo consumo",
+      "videoInputConnLabel": "Conexión de Entrada de Vídeo",
+      "videoInputConnHint": "Seleccione el conector de entrada física activo para la captura.",
+      "autoDefault": "Automático / Por Defecto de Tarjeta"
     }
   },
   "dashboard": {
@@ -415,8 +467,8 @@
     "versionTag": "Etiqueta de Versión",
     "ffmpegOption": "FFmpeg (Muxer de Vídeo / Audio)",
     "icecastOption": "Icecast2 (Servidor de Streaming de Audio)",
-    "mediamtxOption": "MediaMTX (Hub RTSP/RTMP/SRT/WebRTC)",
-    "kioskOption": "Kiosk Cog (Lanzador de Navegador WPE WebKit)",
+    "mediamtxOption": "MediaMTX (Concentrador SRT / WebRTC)",
+    "kioskOption": "Kiosk Cog (Navegador Web Chromium)",
     "buildStorage": "Almacenamiento de Build",
     "defaultBuildStorage": "Predeterminado (Almacenamiento de Build por Defecto)",
     "autoClean": "Limpieza Automática Post-compilación",
@@ -494,7 +546,20 @@
     "incompatibleCodecTitle": "Configuración de Códec Incompatible",
     "autoFixCompatible": "Auto-Corregir Parámetros a Valores Compatibles",
     "decklinkIncompatNotice": "Las salidas DeckLink requieren vídeo YUV sin comprimir o formatos de emisión compatibles.",
-    "ndiIncompatNotice": "Las salidas NDI empaquetan automáticamente el vídeo en cuadros NDI YUV/RGBA."
+    "ndiIncompatNotice": "Las salidas NDI empaquetan automáticamente el vídeo en cuadros NDI YUV/RGBA.",
+    "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
+    "targetDecklinkSdk": "SDK DeckLink de Destino",
+    "noDecklinkSdkUploaded": "Aún no se ha subido ningún SDK de DeckLink.",
+    "ffmpegEnvStatusTitle": "Estado del Entorno de FFmpeg",
+    "decklinkEnvStatusTitle": "Estado del Entorno de DeckLink Tools",
+    "decklinkToolsReady": "Compilador C++ (g++) y herramientas Make disponibles.",
+    "decklinkToolsMissing": "Falta el compilador C++ (g++) o Make.",
+    "decklinkCompEnvState": "ENTORNO DE COMPILACIÓN DE DECKLINK TOOLS",
+    "decklinkEnvDescription": "DeckLink Tools requiere un compilador C++ estándar y Make para generar el binario nativo decklink-ctl.",
+    "updateAvailable": "Actualización disponible",
+    "outdatedBuildTooltip": "Código fuente actualizado a v{{version}}. Recompila para actualizar.",
+    "updateAndRecompile": "ACTUALIZAR Y RECOMPILAR",
+    "internalToolSource": "Motor Interno (Código Fuente)"
   },
   "sources": {
     "mediaStorage": "Almacenamiento de Medios",
@@ -859,6 +924,7 @@
     "forceDelete": "Forzar Eliminación",
     "deleting": "Eliminando...",
     "manageSdks": "Gestionar SDKs",
-    "versionMismatchNotice": "⚠️ Advertencia: El archivo subido contiene el SDK v{{uploaded}}. La versión requerida v{{expected}} continúa ausente."
+    "versionMismatchNotice": "⚠️ Advertencia: El archivo subido contiene el SDK v{{uploaded}}. La versión requerida v{{expected}} continúa ausente.",
+    "manageDecklinkSdk": "Gestionar SDK DeckLink"
   }
 }

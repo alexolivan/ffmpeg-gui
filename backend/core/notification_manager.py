@@ -259,3 +259,7 @@ class NotificationManager:
         """Stops the background worker task."""
         if self._worker_task and not self._worker_task.done():
             self._worker_task.cancel()
+
+
+# Singleton instance
+notification_manager = NotificationManager()

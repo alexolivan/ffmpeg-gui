@@ -27,7 +27,9 @@
     "cancelUpload": "✕ Cancel·lar pujada",
     "loading": "Carregant...",
     "waiting": "Esperant senyal d'entrada...",
-    "clonedSuccess": "Clonat amb èxit!"
+    "clonedSuccess": "Clonat amb èxit!",
+    "refresh": "Actualitzar",
+    "updated": "Actualitzat!"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -91,7 +93,8 @@
       "storage": "Emmagatzematge",
       "security": "Seguretat",
       "alsa": "Àudio ALSA",
-      "backup": "Còpia de Seguretat"
+      "backup": "Còpia de Seguretat",
+      "decklink": "DECKLINK"
     },
     "alsa": {
       "title": "MESCLADOR ALSA",
@@ -310,6 +313,55 @@
       "confirmBtn": "Confirmar Restauració",
       "importSuccess": "Còpia de seguretat restaurada amb èxit!",
       "invalidBackupFormat": "Format de còpia de seguretat no vàlid. Falta la signatura ffmpeg-gui."
+    },
+    "decklink": {
+      "title": "CONTROL DE MAQUINARI BLACKMAGIC DECKLINK",
+      "subtitle": "Mapeig de connectors SDI/HDMI headless, telemetria de senyal en directe i gestió de microprogramari",
+      "kernelDriver": "Controlador de Nucli (SO)",
+      "driverNotInstalled": "desktopvideo no instal·lat",
+      "activeHelper": "Eina Auxiliar Activa",
+      "firmwareStatus": "Integritat de Microprogramari",
+      "firmwareUpdateRequired": "Actualització Requerida",
+      "firmwareUpToDate": "Actualitzat",
+      "detectedSubDevices": "Subdispositius Actius",
+      "firmwareAlertTitle": "Actualització de Microprogramari Requerida al Maquinari",
+      "firmwareAlertSubtitle": "Una o més targetes DeckLink requereixen actualitzar el seu microprogramari per mantenir compatibilitat amb el controlador amfitrió.",
+      "updateFirmwareBtn": "Actualitzar Microprogramari Ara",
+      "confirmFirmwareUpdate": "Esteu segur que voleu actualitzar el microprogramari en aquesta targeta DeckLink? No apagueu l'equip durant l'actualització.",
+      "noDevicesFound": "No s'han detectat targetes Blackmagic DeckLink",
+      "noDevicesFoundDesc": "Assegureu-vos que la vostra targeta PCIe DeckLink estigui ben connectada i que el controlador de Linux (bmd-io / desktopvideo) estigui instal·lat i carregat.",
+      "selectChannel": "Canal / Subdispositiu:",
+      "signalStatus": "Senyal",
+      "format": "Format",
+      "pixelFormat": "Espai de Color",
+      "configurePort": "Configurar Port",
+      "configTitle": "Configurar Port",
+      "configAppliedSuccess": "Configuració aplicada correctament",
+      "duplexModeLabel": "Mode Duplex (Mapeig de Connectors)",
+      "duplexHalf": "Half Duplex (Canals SDI individuals i independents)",
+      "duplexFull": "Full Duplex (Enllaç bidireccional aparellat In/Out)",
+      "duplexInactive": "Inactiu (Deshabilitat / Baix consum)",
+      "duplexHint": "En targetes denses com DeckLink Duo 2 / Quad 2, Half Duplex permet utilitzar cada BNC com a flux independent de captura o reproducció.",
+      "assignedProcesses": "Serveis Assignats",
+      "noProcessesAssigned": "Sense serveis actius assignats",
+      "signalLocked": "SINCRO",
+      "noSignal": "SENSE SENYAL",
+      "noSignalAuto": "Sense senyal / Auto",
+      "autoDetecting": "Auto / Detectant",
+      "selectCard": "Targeta Física:",
+      "cardLabel": "Targeta Física",
+      "prevChannel": "Canal Anterior",
+      "nextChannel": "Següent Canal",
+      "channelCounter": "Canal {{current}} de {{total}}",
+      "channelLabel": "Canal",
+      "connectionsLabel": "Connexions",
+      "keyingLabel": "Keying Intern",
+      "duplexHalfSubtitle": "Mode Half-Duplex: canal dedicat de captura/reproducció",
+      "duplexFullSubtitle": "Mode Full-Duplex: enllaç bidireccional aparellat per maquinari",
+      "duplexInactiveSubtitle": "Mode inactiu: port inhabilitat / baix consum",
+      "videoInputConnLabel": "Connexió d'Entrada de Vídeo",
+      "videoInputConnHint": "Seleccioneu el connector d'entrada física actiu per a la captura.",
+      "autoDefault": "Automàtic / Per Defecte de Targeta"
     }
   },
   "dashboard": {
@@ -415,8 +467,8 @@
     "versionTag": "Etiqueta de Versió",
     "ffmpegOption": "FFmpeg (Muxer de Vídeo / Audio)",
     "icecastOption": "Icecast2 (Servidor de Streaming d'Àudio)",
-    "mediamtxOption": "MediaMTX (Hub RTSP/RTMP/SRT/WebRTC)",
-    "kioskOption": "Kiosk Cog (Llançador de Navegador WPE WebKit)",
+    "mediamtxOption": "MediaMTX (Concentrador SRT / WebRTC)",
+    "kioskOption": "Kiosk Cog (Navegador Web Chromium)",
     "buildStorage": "Emmagatzematge de Build",
     "defaultBuildStorage": "Per defecte (Emmagatzematge de Build per Defecte)",
     "autoClean": "Neteja Automàtica Post-compilació",
@@ -494,7 +546,20 @@
     "incompatibleCodecTitle": "Configuració de Còdec Incompatible",
     "autoFixCompatible": "Auto-Corregir Paràmetres a Valors Compatibles",
     "decklinkIncompatNotice": "Les eixides DeckLink requereixen vídeo YUV sense comprimir o formats d'emissió compatibles.",
-    "ndiIncompatNotice": "Les eixides NDI empaqueten automàticament el vídeo en quadres NDI YUV/RGBA."
+    "ndiIncompatNotice": "Les eixides NDI empaqueten automàticament el vídeo en quadres NDI YUV/RGBA.",
+    "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
+    "targetDecklinkSdk": "SDK DeckLink de Destí",
+    "noDecklinkSdkUploaded": "Encara no s'ha pujat cap SDK de DeckLink.",
+    "ffmpegEnvStatusTitle": "Estat de l'Entorn de FFmpeg",
+    "decklinkEnvStatusTitle": "Estat de l'Entorn de DeckLink Tools",
+    "decklinkToolsReady": "Compilador C++ (g++) i eines Make disponibles.",
+    "decklinkToolsMissing": "Manca el compilador C++ (g++) o Make.",
+    "decklinkCompEnvState": "ENTORN DE COMPILACIÓ DE DECKLINK TOOLS",
+    "decklinkEnvDescription": "DeckLink Tools requereix un compilador C++ estàndard i Make per generar el binari natiu decklink-ctl.",
+    "updateAvailable": "Actualització disponible",
+    "outdatedBuildTooltip": "Codi font actualitzat a v{{version}}. Recompila per actualitzar.",
+    "updateAndRecompile": "ACTUALITZAR I RECOMPILAR",
+    "internalToolSource": "Motor Intern (Codi Font)"
   },
   "sources": {
     "mediaStorage": "Emmagatzematge de Mitjans",
@@ -859,6 +924,7 @@
     "forceDelete": "Forçar Eliminació",
     "deleting": "Eliminant...",
     "manageSdks": "Gestionar SDKs",
-    "versionMismatchNotice": "⚠️ Advertència: El fitxer carregat conté el SDK v{{uploaded}}. La versió requerida v{{expected}} continua absent."
+    "versionMismatchNotice": "⚠️ Advertència: El fitxer carregat conté el SDK v{{uploaded}}. La versió requerida v{{expected}} continua absent.",
+    "manageDecklinkSdk": "Gestionar SDK DeckLink"
   }
 }

@@ -33,6 +33,8 @@ export interface BuildProfile {
   version_tag?: string
   binary_path?: string
   version_output?: string
+  recipe_version?: string | null
+  is_outdated?: boolean
 }
 
 interface BuildProfileCardProps {
@@ -57,6 +59,17 @@ function formatDate(iso: string | null): string {
     hour: '2-digit', minute: '2-digit',
   })
 }
+
+function formatDiskSize(mb: number | null | undefined): string {
+  if (mb == null) return '—'
+  if (mb === 0) return '0 MB'
+  if (mb < 1) {
+    const kb = Math.round(mb * 1024)
+    return `${kb} KB`
+  }
+  return `${Number(mb).toFixed(mb % 1 === 0 ? 0 : 1)} MB`
+}
+
 function normalizeVersion(v: string | null | undefined): string {
   if (!v) return ''
   return v.trim().toLowerCase().replace(/^v/, '')
@@ -152,8 +165,23 @@ export default function BuildProfileCard({
           {/* Line 1: Version Tag & Feature Badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] font-mono bg-[var(--input-bg)] border border-[var(--glass-border)] px-2 py-0.5 rounded text-[var(--text-primary)]">
-              {build.ffmpeg_version || build.version_tag}
+              {build.software_type === 'decklink_tools' && build.version_output
+                ? (build.version_output.match(/v\d+\.\d+(\.\d+)?/)?.[0] || build.ffmpeg_version || `v${build.recipe_version || '1.0.2'}`)
+                : (build.ffmpeg_version || build.version_tag || (build.software_type === 'decklink_tools' ? (build.recipe_version || '1.0.2') : '1.0.0'))}
             </span>
+            {build.software_type === 'decklink_tools' && (
+              <span className="text-[10px] font-mono bg-blue-500/15 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded font-bold">
+                DeckLink SDK {build.sdk_paths?.decklink ? `v${build.sdk_paths.decklink}` : (build.build_options?.decklink_version ? `v${build.build_options.decklink_version}` : 'v16.0')}
+              </span>
+            )}
+            {build.is_outdated && (
+              <span
+                className="text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-bold animate-pulse"
+                title={t('forge.outdatedBuildTooltip', 'Source code updated to v{{version}}. Recompile to update.', { version: build.recipe_version || '1.0.2' })}
+              >
+                ⚡ {t('forge.updateAvailable', 'Update Available')} (v{build.recipe_version || '1.0.2'})
+              </span>
+            )}
             {(build.software_type || 'ffmpeg') === 'ffmpeg' && (
               <>
                 {build.srt_version && (
@@ -201,7 +229,7 @@ export default function BuildProfileCard({
           <div className="flex gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
             <span>Built: <strong className="text-[var(--text-primary)]">{formatDate(build.built_at)}</strong></span>
             <span className="opacity-20">|</span>
-            <span>Size: <strong className="text-[var(--text-primary)]">{build.disk_usage_mb != null ? `${build.disk_usage_mb} MB` : '—'}</strong></span>
+            <span>Size: <strong className="text-[var(--text-primary)]">{formatDiskSize(build.disk_usage_mb)}</strong></span>
             
             {build.sources_cleaned && (
               <>
@@ -239,13 +267,21 @@ export default function BuildProfileCard({
             <button
               onClick={() => !hasMissingSdk && onCompile(build.id)}
               disabled={isAnyBuilding || hasMissingSdk}
-              title={hasMissingSdk ? t('forge.missingSdkCompileTooltip', 'Required SDK version is missing and must be uploaded via Manage SDKs.') : (build.status === 'ready' ? t('forge.recompile', 'RECOMPILE') : build.status === 'failed' ? t('forge.retryBuild', 'RETRY BUILD') : t('forge.compile', 'COMPILE'))}
+              title={
+                hasMissingSdk
+                  ? t('forge.missingSdkCompileTooltip', 'Required SDK version is missing and must be uploaded via Manage SDKs.')
+                  : build.is_outdated
+                    ? t('forge.updateAndRecompile', 'UPDATE & RECOMPILE')
+                    : (build.status === 'ready' ? t('forge.recompile', 'RECOMPILE') : build.status === 'failed' ? t('forge.retryBuild', 'RETRY BUILD') : t('forge.compile', 'COMPILE'))
+              }
               className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ${
                 isAnyBuilding || hasMissingSdk
                   ? 'opacity-40 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]'
                   : build.status === 'failed' 
                     ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' 
-                    : 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 hover:bg-brand-orange/30'
+                    : build.is_outdated
+                      ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 hover:bg-amber-500/35 shadow-sm'
+                      : 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 hover:bg-brand-orange/30'
               }`}
             >
               <PlayIcon size={16} />

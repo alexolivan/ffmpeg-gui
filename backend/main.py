@@ -25,6 +25,11 @@ from core.patch_manager import PatchManager
 from core.notification_manager import NotificationManager
 notification_manager = NotificationManager()
 from core.alsa_manager import alsa_manager
+try:
+    from core.decklink_manager import DecklinkManager
+except ImportError:
+    from backend.core.decklink_manager import DecklinkManager
+decklink_manager = DecklinkManager()
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -1878,14 +1883,50 @@ def get_system_capabilities():
         except Exception as e:
             logger.warning(f"Error parsing /proc/asound/cards: {e}")
 
-    alsa_available = len(alsa_cards) > 0
-    alsa_details = f"Detected ALSA sound card(s): {', '.join(alsa_cards)}" if alsa_available else "No physical or virtual ALSA sound cards detected"
-
     # DeckLink
     import glob
+    decklink_cards = []
     decklink_nodes = glob.glob("/dev/blackmagic/io*") + glob.glob("/dev/blackmagic/dv*") + glob.glob("/dev/bm*")
-    decklink_available = len(decklink_nodes) > 0
-    decklink_details = f"Detected DeckLink card nodes: {', '.join(decklink_nodes)}" if decklink_available else "No physical DeckLink cards detected"
+    try:
+        from core.decklink_manager import decklink_manager
+        with SessionLocal() as db_session:
+            devices = decklink_manager.list_devices_sync(db_session)
+        if devices:
+            seen_models = {}
+            for d in devices:
+                m = d.get("model_name") or d.get("display_name") or "DeckLink Device"
+                seen_models[m] = seen_models.get(m, 0) + 1
+            
+            for m, count in seen_models.items():
+                if count > 1:
+                    decklink_cards.append(f"{m} ({count} sub-devices)")
+                else:
+                    decklink_cards.append(m)
+    except Exception as e:
+        logger.warning(f"Error querying DeckLink devices for system_info: {e}")
+
+    decklink_available = len(decklink_cards) > 0 or len(decklink_nodes) > 0
+    if decklink_cards:
+        decklink_details = f"Detected {len(decklink_cards)} DeckLink / Intensity card(s)"
+    elif decklink_available:
+        decklink_details = f"DeckLink video driver active ({len(decklink_nodes)} device node(s) present)"
+    else:
+        decklink_details = "No physical DeckLink cards detected"
+
+    # LCD Display Hardware
+    lcd_available = False
+    lcd_details = "No compatible Crystalfontz LCD detected"
+    try:
+        from core.lcd.driver_cfa635 import CFA635Driver
+        detected_lcds = CFA635Driver.find_devices()
+        lcd_available = len(detected_lcds) > 0
+        if lcd_available:
+            lcd_details = f"Detected LCD display device(s): {', '.join([d.get('port', '') for d in detected_lcds if d.get('port')])}"
+        elif settings.lcd_enabled:
+            lcd_available = True
+            lcd_details = f"LCD enabled on configured port: {settings.lcd_port}"
+    except Exception as e:
+        logger.debug(f"Error checking LCD hardware for capabilities: {e}")
 
     # Avahi
     avahi_installed = os.path.exists("/usr/sbin/avahi-daemon") or shutil.which("avahi-daemon") is not None
@@ -1973,8 +2014,9 @@ def get_system_capabilities():
             "decoders": nvenc_caps["decoders"]
         },
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
-        "alsa": {"available": alsa_available, "details": alsa_details, "cards": alsa_cards},
-        "decklink": {"available": decklink_available, "details": decklink_details},
+        "alsa": {"available": len(alsa_cards) > 0, "details": f"Detected {len(alsa_cards)} ALSA sound card(s)" if alsa_cards else "No physical or virtual ALSA sound cards detected", "cards": alsa_cards},
+        "decklink": {"available": decklink_available, "details": decklink_details, "cards": decklink_cards},
+        "lcd": {"available": lcd_available, "details": lcd_details},
         "avahi": {"available": avahi_available, "details": avahi_details},
         "ffmpeg": {
             "filters": supported_filters,
@@ -2571,6 +2613,7 @@ def sanitize_database_processes(db: Session):
         filter_cfg = copy.deepcopy(p.filter_config) if p.filter_config else {}
         if sanitize_process_config_data(input_cfg, filter_cfg):
             p.input_config = input_cfg
+            p.filter_config = filter_cfg
             try:
                 flag_modified(p, "input_config")
                 flag_modified(p, "filter_config")
@@ -2907,6 +2950,8 @@ async def get_software_tags(software_type: str):
         tags = await build_manager.fetch_available_tags("https://github.com/bluenviron/mediamtx.git")
     elif software_type == "kiosk_cog":
         tags = await build_manager.fetch_available_tags("https://github.com/Igalia/cog.git")
+    elif software_type == "decklink_tools":
+        tags = ["1.0.1", "1.0.0"]
     else:
         tags = await build_manager.fetch_available_tags(software_type)
     
@@ -2918,6 +2963,8 @@ async def get_software_tags(software_type: str):
             tags = ["v1.9.0", "v1.8.0", "v1.7.0"]
         elif software_type == "kiosk_cog":
             tags = ["v0.18.0", "v0.16.0"]
+        elif software_type == "decklink_tools":
+            tags = ["1.0.1", "1.0.0"]
             
     return {"tags": tags}
 
@@ -3067,10 +3114,14 @@ def get_build(build_id: int, db: Session = Depends(get_db)):
 @app.post("/builds")
 def create_build(data: BuildCreate, db: Session = Depends(get_db)):
     """Create a new build profile."""
-    # Check for duplicate name
-    existing = db.query(FfmpegBuild).filter(FfmpegBuild.name == data.name).first()
+    software_type = data.software_type or "ffmpeg"
+    # Check for duplicate name within the same software engine
+    existing = db.query(FfmpegBuild).filter(
+        FfmpegBuild.name == data.name,
+        FfmpegBuild.software_type == software_type
+    ).first()
     if existing:
-        raise HTTPException(status_code=409, detail="A build with this name already exists")
+        raise HTTPException(status_code=409, detail="A build with this name already exists for this engine")
 
     if data.storage_id is not None:
         storage = db.query(Storage).get(data.storage_id)
@@ -3087,7 +3138,7 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         install_path="",  # Will be set after we have the ID
         status="pending",
         storage_id=data.storage_id,
-        software_type=data.software_type or "ffmpeg",
+        software_type=software_type,
     )
     db.add(build)
     db.commit()
@@ -3096,10 +3147,7 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
     # Set install_path now that we have the ID
     storage_path = build.storage.path if build.storage else None
     build.install_path = build_manager.get_install_path(build.id, builds_root=storage_path)
-    # If this is the first build, make it default
-    other_builds = db.query(FfmpegBuild).filter(FfmpegBuild.id != build.id).count()
-    if other_builds == 0:
-        build.is_default = True
+    build.is_default = False
     db.commit()
     db.refresh(build)
 
@@ -3138,12 +3186,14 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
             build.ffprobe_binary = os.path.join(build.install_path, "bin", "ffprobe")
 
     if data.name is not None:
-        # Check uniqueness
+        # Check uniqueness per software_type
         dup = db.query(FfmpegBuild).filter(
-            FfmpegBuild.name == data.name, FfmpegBuild.id != build_id
+            FfmpegBuild.name == data.name,
+            FfmpegBuild.software_type == build.software_type,
+            FfmpegBuild.id != build_id
         ).first()
         if dup:
-            raise HTTPException(status_code=409, detail="A build with this name already exists")
+            raise HTTPException(status_code=409, detail="A build with this name already exists for this engine")
         build.name = data.name
     if data.ffmpeg_version is not None:
         build.ffmpeg_version = data.ffmpeg_version
@@ -3264,6 +3314,11 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                         db_build.ffmpeg_binary = result.get("ffmpeg_binary")
                         db_build.ffprobe_binary = result.get("ffprobe_binary")
                         db_build.ffmpeg_version_output = result.get("version_output")
+                        db_build.binary_path = result.get("binary_path")
+                        db_build.version_output = result.get("version_output")
+                        if result.get("version_tag"):
+                            db_build.ffmpeg_version = result.get("version_tag")
+                            db_build.version_tag = result.get("version_tag")
                         db_build.disk_usage_mb = result.get("disk_usage_mb")
                         db_build.built_at = datetime.datetime.utcnow()
                         db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
@@ -3272,6 +3327,17 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                             from sqlalchemy.orm.attributes import flag_modified
                             db_build.sdk_paths = result.get("sdk_paths")
                             flag_modified(db_build, "sdk_paths")
+                        
+                        # Set default if no other ready build exists for this engine
+                        existing_default = session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == db_build.software_type,
+                            FfmpegBuild.is_default == True,
+                            FfmpegBuild.status == "ready",
+                            FfmpegBuild.id != db_build.id
+                        ).first()
+                        if not existing_default:
+                            db_build.is_default = True
+
                         notify_build_result(
                             build_id=build_id,
                             build_name=db_build.name,
@@ -3342,12 +3408,21 @@ def set_default_build(build_id: int, db: Session = Depends(get_db)):
     if build.status != "ready":
         raise HTTPException(status_code=409, detail="Only 'ready' builds can be set as default")
 
-    # Unset any previous default
-    db.query(FfmpegBuild).filter(FfmpegBuild.is_default == True).update(
-        {"is_default": False}
+    stype = build.software_type or ("decklink_tools" if "decklink" in (build.name or "").lower() else "ffmpeg")
+    build.software_type = stype
+
+    # Unset any previous default for the SAME software_type
+    db.query(FfmpegBuild).filter(
+        FfmpegBuild.software_type == stype,
+        FfmpegBuild.is_default == True,
+        FfmpegBuild.id != build_id
+    ).update(
+        {"is_default": False},
+        synchronize_session=False
     )
     build.is_default = True
     db.commit()
+    db.refresh(build)
     return {"status": "ok", "message": f"'{build.name}' is now the default build"}
 
 @app.post("/builds/{build_id}/clean-sources")
@@ -3374,9 +3449,24 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
     if not build:
         raise HTTPException(status_code=404, detail="Build profile not found")
 
+    stype = getattr(build, 'software_type', 'ffmpeg') or 'ffmpeg'
+    binary_path = build.binary_path
+    if not binary_path or not os.path.isfile(binary_path):
+        # Fallback candidates based on install_path
+        storage_path = build.storage.path if build.storage else None
+        install_path = build.install_path or build_manager.get_install_path(build.id, builds_root=storage_path)
+        if stype == "decklink_tools":
+            candidate = os.path.join(install_path, "decklink-ctl")
+        else:
+            candidate = os.path.join(install_path, "bin", "ffmpeg")
+        if os.path.isfile(candidate):
+            binary_path = candidate
+            build.binary_path = candidate
+            db.commit()
+
     result = await build_manager.validate_build(
-        binary_path=build.binary_path,
-        software_type=getattr(build, 'software_type', 'ffmpeg') or 'ffmpeg'
+        binary_path=binary_path,
+        software_type=stype
     )
     if result.get("valid"):
         build.version_output = result["output"]
@@ -4017,10 +4107,11 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
             )
     
     # 2. Check name duplication and rename
+    stype = recipe.get("software_type", "ffmpeg")
     base_name = recipe.get("name", "Imported-Build")
     name = base_name
     counter = 1
-    while db.query(FfmpegBuild).filter(FfmpegBuild.name == name).first():
+    while db.query(FfmpegBuild).filter(FfmpegBuild.name == name, FfmpegBuild.software_type == stype).first():
         name = f"{base_name}-Imported-{counter}"
         counter += 1
         
@@ -4268,6 +4359,28 @@ async def get_task_preview(execution_id: int, db: Session = Depends(get_db)):
 
 def _serialize_build(build: FfmpegBuild) -> dict:
     """Convert a FfmpegBuild ORM object to a JSON-safe dict."""
+    disk_mb = build.disk_usage_mb
+    if (disk_mb is None or disk_mb == 0) and build.status == 'ready':
+        storage_path = build.storage.path if build.storage else None
+        disk_mb = build_manager.get_disk_usage(build.id, builds_root=storage_path)
+
+    from forge.recipes import get_recipe_version
+    recipe_version = get_recipe_version(build.software_type or "ffmpeg")
+    is_outdated = False
+    if recipe_version and build.status == "ready":
+        current_ver = build.version_tag or build.ffmpeg_version or "1.0.0"
+        if build.version_output:
+            match = re.search(r'v(\d+\.\d+(?:\.\d+)?)', build.version_output)
+            if match:
+                current_ver = match.group(1)
+        if "v" in str(current_ver).lower():
+            current_ver = current_ver.lower().replace("v", "").strip()
+        try:
+            from packaging import version
+            is_outdated = version.parse(str(current_ver)) < version.parse(str(recipe_version))
+        except Exception:
+            is_outdated = str(current_ver) != str(recipe_version)
+
     return {
         "id": build.id,
         "name": build.name,
@@ -4282,7 +4395,7 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "is_default": build.is_default,
         "sources_cleaned": build.sources_cleaned,
         "auto_clean": build.auto_clean,
-        "disk_usage_mb": build.disk_usage_mb,
+        "disk_usage_mb": disk_mb,
         "build_log_summary": build.build_log_summary,
         "ffmpeg_version_output": build.ffmpeg_version_output,
         "created_at": build.created_at.isoformat() if build.created_at else None,
@@ -4292,6 +4405,8 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "version_tag": build.version_tag,
         "binary_path": build.binary_path,
         "version_output": build.version_output,
+        "recipe_version": recipe_version,
+        "is_outdated": is_outdated,
     }
 
 
@@ -4820,6 +4935,7 @@ def get_disk_stats(path: str) -> dict:
         }
 
 @app.get("/settings/storages")
+@app.get("/api/settings/storages")
 def get_storages(db: Session = Depends(get_db)):
     storages = db.query(Storage).all()
     results = []
@@ -4841,6 +4957,7 @@ def get_storages(db: Session = Depends(get_db)):
     return results
 
 @app.post("/settings/storages")
+@app.post("/api/settings/storages")
 def create_storage(storage_in: StorageCreate, db: Session = Depends(get_db)):
     valid_types = {'build', 'media', 'hls', 'logs', 'sdk', 'preview'}
     if storage_in.type not in valid_types:
@@ -4873,6 +4990,7 @@ def create_storage(storage_in: StorageCreate, db: Session = Depends(get_db)):
     return db_storage
 
 @app.put("/settings/storages/{id}")
+@app.put("/api/settings/storages/{id}")
 def update_storage(id: int, storage_in: StorageUpdate, db: Session = Depends(get_db)):
     db_storage = db.query(Storage).filter(Storage.id == id).first()
     if not db_storage:
@@ -4908,6 +5026,7 @@ def update_storage(id: int, storage_in: StorageUpdate, db: Session = Depends(get
     return db_storage
 
 @app.delete("/settings/storages/{id}")
+@app.delete("/api/settings/storages/{id}")
 def delete_storage(id: int, db: Session = Depends(get_db)):
     db_storage = db.query(Storage).filter(Storage.id == id).first()
     if not db_storage:
@@ -4925,6 +5044,7 @@ def delete_storage(id: int, db: Session = Depends(get_db)):
     return {"status": "deleted", "id": id}
 
 @app.post("/settings/storages/test")
+@app.post("/api/settings/storages/test")
 def test_storage_path(test_in: StorageTest, db: Session = Depends(get_db)):
     abs_path = os.path.abspath(test_in.path)
     
@@ -5250,6 +5370,39 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
         logger.info(f"WebSocket client disconnected from ALSA meters card {card_index}")
     except Exception as e:
         logger.error(f"WebSocket ALSA meters error: {e}")
+
+
+# ── Blackmagic DeckLink Settings Endpoints ───────────────────────────
+@app.get("/api/settings/decklink/status")
+async def get_decklink_status(db: Session = Depends(get_db)):
+    """Retorna el estado global del subsistema DeckLink, compatibilidad y lista de tarjetas."""
+    return await decklink_manager.get_system_status(db, process_manager=process_manager)
+
+@app.get("/api/settings/decklink/{device_id}/telemetry")
+async def get_decklink_telemetry(device_id: str, db: Session = Depends(get_db)):
+    """Retorna la telemetría y estado de señal en tiempo real de un dispositivo DeckLink."""
+    res = await decklink_manager.get_device_telemetry(device_id, db)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Error consultando telemetría"))
+    return res
+
+@app.post("/api/settings/decklink/{device_id}/configure")
+async def configure_decklink_device(device_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Aplica configuraciones en un subdispositivo DeckLink garantizando no interferir con procesos activos."""
+    res = await decklink_manager.configure_device(device_id, payload, db, process_manager)
+    if res.get("conflict"):
+        raise HTTPException(status_code=409, detail=res.get("error"))
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Error aplicando configuración DeckLink"))
+    return res
+
+@app.post("/api/settings/decklink/{device_index}/firmware-update")
+async def update_decklink_firmware(device_index: int):
+    """Ejecuta la actualización de firmware de una tarjeta DeckLink mediante BlackmagicFirmwareUpdater."""
+    res = await decklink_manager.update_firmware(device_index)
+    if not res.get("success"):
+        raise HTTPException(status_code=500, detail=res.get("error", "Fallo en la actualización de firmware"))
+    return res
 
 
 # Mounting static files and SPA fallback

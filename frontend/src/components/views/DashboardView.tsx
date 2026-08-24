@@ -377,6 +377,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
                   </div>
                 )}
+                {key === 'decklink' && value.available && value.cards && value.cards.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
+                    <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

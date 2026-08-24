@@ -603,12 +603,15 @@ class TestTaskAPI(unittest.TestCase):
         }
         res = self.client.post("/processes", json=payload)
         self.assertEqual(res.status_code, 200)
-        api_proc_id = res.json()["id"]
+        res_data = res.json()
+        api_proc_id = res_data["id"]
 
         # Verify returned JSON config is sanitized
-        self.assertEqual(res.json()["input_config"]["input1"]["hwaccel"], "none")
-        self.assertEqual(res.json()["input_config"]["input1"]["frames_destination"], "cpu")
-        self.assertEqual(res.json()["filter_config"]["advanced"]["hwaccel"], "none")
+        in_cfg = res_data.get("input_config") or res_data.get("config", {}).get("input_config", {})
+        filt_cfg = res_data.get("filter_config") or res_data.get("config", {}).get("filter_config", {})
+        self.assertEqual(in_cfg["input1"]["hwaccel"], "none")
+        self.assertEqual(in_cfg["input1"]["frames_destination"], "cpu")
+        self.assertEqual(filt_cfg["advanced"]["hwaccel"], "none")
 
         # 3. Test API level sanitization on update (PUT)
         update_payload = {
@@ -623,8 +626,10 @@ class TestTaskAPI(unittest.TestCase):
         }
         res = self.client.put(f"/processes/{api_proc_id}", json=update_payload)
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["input_config"]["input1"]["hwaccel"], "none")
-        self.assertEqual(res.json()["input_config"]["input1"]["frames_destination"], "cpu")
+        res_update_data = res.json()
+        up_in_cfg = res_update_data.get("input_config") or res_update_data.get("config", {}).get("input_config", {})
+        self.assertEqual(up_in_cfg["input1"]["hwaccel"], "none")
+        self.assertEqual(up_in_cfg["input1"]["frames_destination"], "cpu")
 
         # Clean up API test process
         self.client.delete(f"/processes/{api_proc_id}")

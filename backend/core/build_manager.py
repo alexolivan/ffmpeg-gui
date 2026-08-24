@@ -227,11 +227,11 @@ class BuildManager:
             "path": self.builds_root,
         }
 
-    def get_disk_usage(self, build_id: int, builds_root: str = None) -> int:
+    def get_disk_usage(self, build_id: int, builds_root: str = None) -> float:
         """Calculate disk usage in MB for a specific build."""
         build_path = self.get_build_path(build_id, builds_root)
         if not os.path.exists(build_path):
-            return 0
+            return 0.0
 
         total_size = 0
         for dirpath, _dirnames, filenames in os.walk(build_path):
@@ -239,7 +239,10 @@ class BuildManager:
                 filepath = os.path.join(dirpath, filename)
                 if os.path.isfile(filepath):
                     total_size += os.path.getsize(filepath)
-        return round(total_size / (1024 * 1024))
+        total_mb = total_size / (1024 * 1024)
+        if total_mb < 1 and total_size > 0:
+            return round(total_mb, 2)
+        return round(total_mb, 1)
 
     # ── Build execution ───────────────────────────────────────────
 
@@ -308,6 +311,7 @@ class BuildManager:
                     "version_output": res.get("version_output"),
                     "disk_usage_mb": self.get_disk_usage(build_id, builds_root),
                     "sdk_paths": res.get("sdk_paths", sdk_paths),
+                    "version_tag": res.get("version_tag"),
                 }
             else:
                 result = {"success": False, "error": res.get("error", "Unknown build error")}
@@ -315,7 +319,7 @@ class BuildManager:
         except Exception as exc:
             error_msg = str(exc)
             await log_callback(f"\nERROR DURING BUILD: {error_msg}\n")
-            result = {"success": False, "error": error_msg}
+            result = {"success": False, "error": error_msg, "disk_usage_mb": self.get_disk_usage(build_id, builds_root)}
         finally:
             self.is_building = False
             self.active_build_id = None
@@ -335,7 +339,8 @@ class BuildManager:
             return await recipe.validate(binary_path)
         except Exception:
             try:
-                output = await self._get_command_output([binary_path, "-version"])
+                cmd_flag = "--version" if software_type == "decklink_tools" else "-version"
+                output = await self._get_command_output([binary_path, cmd_flag])
                 return {"valid": True, "output": output}
             except Exception as exc:
                 return {"valid": False, "error": str(exc)}
@@ -429,9 +434,9 @@ class BuildManager:
         await self.current_process.wait()
         return_code = self.current_process.returncode
         self.current_process = None
-
         if return_code != 0 and not ignore_errors:
             raise Exception(f"Command failed with exit code {return_code}")
+        return return_code
 
     async def _get_command_output(self, cmd) -> str:
         """Run a command and return its full stdout as a string."""

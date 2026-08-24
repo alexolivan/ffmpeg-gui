@@ -132,6 +132,56 @@ def init_db():
                 conn.execute(text("ALTER TABLE software_builds ADD COLUMN auto_clean BOOLEAN DEFAULT 0"))
             if "storage_id" not in build_columns:
                 conn.execute(text("ALTER TABLE software_builds ADD COLUMN storage_id INTEGER REFERENCES storages(id) NULL"))
+
+            # Migración para reemplazar UNIQUE(name) por UNIQUE(name, software_type) en software_builds
+            result = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='software_builds'"))
+            table_sql_row = result.fetchone()
+            if table_sql_row and table_sql_row[0]:
+                table_sql = table_sql_row[0]
+                if "UNIQUE (name)" in table_sql or "name VARCHAR NOT NULL UNIQUE" in table_sql or "name TEXT NOT NULL UNIQUE" in table_sql or "UNIQUE(name)" in table_sql:
+                    logger.info("Migrating software_builds to remove single-column UNIQUE(name) constraint...")
+                    conn.execute(text("""
+                        CREATE TABLE software_builds_mig_tmp (
+                            id INTEGER PRIMARY KEY,
+                            name VARCHAR NOT NULL,
+                            software_type VARCHAR DEFAULT 'ffmpeg' NOT NULL,
+                            version_tag VARCHAR NOT NULL,
+                            binary_path VARCHAR,
+                            build_options JSON NOT NULL,
+                            sdk_paths JSON,
+                            install_path VARCHAR NOT NULL,
+                            status VARCHAR DEFAULT 'pending',
+                            is_default BOOLEAN DEFAULT 0,
+                            sources_cleaned BOOLEAN DEFAULT 0,
+                            auto_clean BOOLEAN DEFAULT 0,
+                            disk_usage_mb INTEGER,
+                            build_log_summary VARCHAR,
+                            version_output VARCHAR,
+                            created_at DATETIME,
+                            built_at DATETIME,
+                            storage_id INTEGER REFERENCES storages(id)
+                        )
+                    """))
+                    conn.execute(text("""
+                        INSERT INTO software_builds_mig_tmp (
+                            id, name, software_type, version_tag, binary_path,
+                            build_options, sdk_paths, install_path, status,
+                            is_default, sources_cleaned, auto_clean,
+                            disk_usage_mb, build_log_summary, version_output,
+                            created_at, built_at, storage_id
+                        )
+                        SELECT
+                            id, name, software_type, version_tag, binary_path,
+                            build_options, sdk_paths, install_path, status,
+                            is_default, sources_cleaned, auto_clean,
+                            disk_usage_mb, build_log_summary, version_output,
+                            created_at, built_at, storage_id
+                        FROM software_builds
+                    """))
+                    conn.execute(text("DROP TABLE software_builds"))
+                    conn.execute(text("ALTER TABLE software_builds_mig_tmp RENAME TO software_builds"))
+            
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_software_builds_name_type ON software_builds(name, software_type)"))
                 
             # Migración para la tabla system_settings
             result = conn.execute(text("PRAGMA table_info(system_settings)"))

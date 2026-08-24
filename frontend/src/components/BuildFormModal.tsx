@@ -8,6 +8,7 @@ interface BuildFormModalProps {
   onSubmit: (data: BuildFormData) => void
   buildDeps: any
   onOpenSdksModal?: () => void
+  initialSoftwareType?: string
 }
 
 export interface BuildFormData {
@@ -22,17 +23,17 @@ export interface BuildFormData {
 
 const API_BASE = '';
 
-export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps, onOpenSdksModal }: BuildFormModalProps) {
+export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps, onOpenSdksModal, initialSoftwareType }: BuildFormModalProps) {
   const { t } = useTranslation()
-  const [name, setName] = useState(editBuild?.name || '')
-  const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || '')
+  const defaultSoftwareType = editBuild?.software_type || initialSoftwareType || 'ffmpeg'
+  const [softwareType] = useState(defaultSoftwareType)
+  const [name, setName] = useState(editBuild?.name || (defaultSoftwareType === 'decklink_tools' ? 'DeckLink Tools (Production)' : ''))
+  const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || (defaultSoftwareType === 'decklink_tools' ? '1.0.0' : ''))
   const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || '')
   const [autoClean, setAutoClean] = useState(editBuild?.auto_clean || false)
   const [activeTab, setActiveTab] = useState<'general' | 'gpu' | 'sdks'>('general')
   const [storages, setStorages] = useState<{ id: number; name: string; path: string; type: string }[]>([])
   const [storageId, setStorageId] = useState<number | null>(editBuild?.storage_id || null)
-
-  const [softwareType, setSoftwareType] = useState(editBuild?.software_type || 'ffmpeg')
   const [softwareTags, setSoftwareTags] = useState<string[]>([])
 
   const [options, setOptions] = useState(editBuild?.build_options || { 
@@ -40,6 +41,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     vaapi: false, 
     ndi: false,
     decklink: false,
+    decklink_tools: false,
     nvenc: false,
     cuda_filters: false,
     whip: false
@@ -79,14 +81,65 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
 
   const isEditing = editBuild !== null
 
+  // Auto-fill version tags
+  useEffect(() => {
+    const fetchTags = async () => {
+      try {
+        if (softwareType === 'ffmpeg') {
+          const res = await fetch(`${API_BASE}/builds/tags/ffmpeg`)
+          if (res.ok) {
+            const data = await res.json()
+            if (Array.isArray(data)) {
+              setSoftwareTags(data)
+              if (!ffmpegVersion && data.length > 0) {
+                setFfmpegVersion(data[0])
+              }
+            }
+          }
+          const srtRes = await fetch(`${API_BASE}/builds/tags/srt`)
+          if (srtRes.ok) {
+            const data = await srtRes.json()
+            if (Array.isArray(data)) {
+              setSrtTags(data)
+              if (!srtVersion && data.length > 0) {
+                setSrtVersion(data[0])
+              }
+            }
+          }
+        } else if (softwareType === 'decklink_tools') {
+          setSoftwareTags([])
+          if (!ffmpegVersion) setFfmpegVersion('1.0.1')
+        } else {
+          const res = await fetch(`${API_BASE}/builds/tags/${softwareType}`)
+          if (res.ok) {
+            const data = await res.json()
+            if (Array.isArray(data)) {
+              setSoftwareTags(data)
+              if (!ffmpegVersion && data.length > 0) {
+                setFfmpegVersion(data[0])
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch tags:", err)
+      }
+    }
+    fetchTags()
+  }, [softwareType])
+
   const decklinkSdks = installedSdks.filter((s: any) => s.sdk_type === 'decklink')
   const ndiSdks = installedSdks.filter((s: any) => s.sdk_type === 'ndi')
 
   const fetchPatches = async () => {
     try {
       const res = await fetch(`${API_BASE}/system/patches`)
-      const data = await res.json()
-      setPatches(data)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          setPatches(data)
+        }
+      }
     } catch (err) {
       console.error('Failed to fetch patches:', err)
     }
@@ -95,9 +148,13 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const fetchStorages = async () => {
     try {
       const res = await fetch(`${API_BASE}/settings/storages`)
-      const data = await res.json()
-      const buildStorages = data.filter((s: any) => s.type === 'build')
-      setStorages(buildStorages)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          const buildStorages = data.filter((s: any) => s.type === 'build' || s.type === 'builds')
+          setStorages(buildStorages)
+        }
+      }
     } catch (err) {
       console.error('Failed to fetch build storages:', err)
     }
@@ -233,6 +290,12 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
       if (options.vaapi && sdkPaths.vaapi) {
         finalSdkPaths.vaapi = sdkPaths.vaapi
       }
+    } else if (softwareType === 'decklink_tools') {
+      if (sdkPaths.decklink) {
+        finalSdkPaths.decklink = sdkPaths.decklink
+      } else if (decklinkSdks.length > 0) {
+        finalSdkPaths.decklink = decklinkSdks[0].version
+      }
     }
 
     await onSubmit({
@@ -250,19 +313,20 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
 
   const isValid = name.trim().length > 0 && 
                   ffmpegVersion.length > 0 && 
-                  (softwareType !== 'ffmpeg' || (
+                  (softwareType === 'decklink_tools' ? (decklinkSdks.length > 0 && (!!sdkPaths.decklink || decklinkSdks.length > 0)) :
+                   softwareType !== 'ffmpeg' || (
                     (!options.decklink || !!sdkPaths.decklink) && 
                     (!options.ndi || !!sdkPaths.ndi) &&
                     (!options.nvenc || !!sdkPaths.nvenc_headers) &&
-                    (!options.cuda_filters || (buildDeps?.dependencies?.clang?.installed !== false && buildDeps?.dependencies?.['nvidia-cuda-dev']?.installed !== false))
+                    (!options.libsrt || !!srtVersion)
                   ))
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-hidden">
-      <div className="glass-card w-full max-w-2xl flex flex-col border-brand-orange/20 max-h-[95vh] shadow-2xl relative overflow-hidden">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
+      <div className="glass-card w-full max-w-2xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Header - Sticky */}
-        <div className="p-3.5 border-b border-white/10 flex justify-between items-center bg-white/5 shrink-0">
+        <div className="flex justify-between items-center px-4 py-3 border-b border-white/10 bg-white/5">
           <h3 className="text-sm font-bold tracking-wide">
             {isEditing ? t('forge.editProfile', 'EDIT PROFILE') : t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
           </h3>
@@ -299,22 +363,55 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
           
           {activeTab === 'general' && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              {/* Software Type Selector (Locked to FFmpeg for v2.0 initial release) */}
-              <div>
-                <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">{t('forge.softwareType', 'Software Type')}</label>
-                <select
-                  disabled={true}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none opacity-80 text-[var(--text-primary)] cursor-not-allowed"
-                  value={softwareType}
-                  onChange={e => setSoftwareType(e.target.value)}
-                >
-                  <option value="ffmpeg" className="text-black">{t('forge.ffmpegOption', 'FFmpeg (Video / Audio Muxer)')}</option>
-                </select>
-              </div>
+              {/* DeckLink SDK Selector for DeckLink Tools */}
+              {softwareType === 'decklink_tools' && (
+                <div className="p-3 bg-white/5 rounded-xl border border-brand-orange/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-brand-orange uppercase tracking-wider">
+                      {t('forge.targetDecklinkSdk', 'Target DeckLink SDK')}
+                    </label>
+                    {onOpenSdksModal && (
+                      <button
+                        type="button"
+                        onClick={onOpenSdksModal}
+                        className="text-[10px] font-bold text-text-secondary hover:text-brand-orange transition-colors"
+                      >
+                        ⚙️ {t('sdks.manageSdks', 'Manage SDKs')}
+                      </button>
+                    )}
+                  </div>
+                  {decklinkSdks.length > 0 ? (
+                    <select
+                      className="w-full bg-black/60 border border-white/10 rounded-lg p-2 text-xs font-mono font-bold text-white focus:border-brand-orange outline-none cursor-pointer"
+                      value={sdkPaths.decklink || (decklinkSdks[0]?.version || '')}
+                      onChange={e => setSdkPaths({ ...sdkPaths, decklink: e.target.value })}
+                    >
+                      {decklinkSdks.map((sdk: any) => (
+                        <option key={sdk.id} value={sdk.version} className="text-black">
+                          Blackmagic DeckLink SDK v{sdk.version} ({sdk.path})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 font-bold flex items-center justify-between">
+                      <span>⚠️ {t('forge.noDecklinkSdkUploaded', 'No DeckLink SDK uploaded yet.')}</span>
+                      {onOpenSdksModal && (
+                        <button
+                          type="button"
+                          onClick={onOpenSdksModal}
+                          className="px-2 py-1 bg-brand-orange text-black rounded font-black text-[10px]"
+                        >
+                          {t('sdks.uploadSdk', 'Upload SDK')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Identity & Core Version */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-1">
+                <div>
                   <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">{t('forge.profileName', 'Profile Name')}</label>
                   <input
                     type="text"
@@ -324,20 +421,34 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     onChange={e => setName(e.target.value)}
                   />
                 </div>
-                <div className="col-span-1">
-                  <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
-                    {softwareType === 'ffmpeg' ? t('forge.ffmpegTag', 'FFmpeg Tag') : t('forge.versionTag', 'Version Tag')}
-                  </label>
-                  <select
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
-                    value={ffmpegVersion}
-                    onChange={e => setFfmpegVersion(e.target.value)}
-                  >
-                    {softwareTags.map(tag => (
-                      <option key={tag} value={tag} className="text-black">{tag}</option>
-                    ))}
-                  </select>
-                </div>
+                {softwareType === 'decklink_tools' ? (
+                  <div>
+                    <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
+                      {t('forge.softwareType', 'Software Type')}
+                    </label>
+                    <div className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs font-mono text-text-secondary flex items-center justify-between">
+                      <span className="font-bold text-[var(--text-primary)]">decklink-ctl v1.0.1</span>
+                      <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-1.5 py-0.5 rounded font-bold">
+                        {t('forge.internalToolSource', 'Internal Source Engine')}
+                      </span>
+                    </div>
+                  </div>
+                ) : softwareTags.length > 0 ? (
+                  <div>
+                    <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
+                      {softwareType === 'ffmpeg' ? t('forge.ffmpegTag', 'FFmpeg Tag') : t('forge.versionTag', 'Version Tag')}
+                    </label>
+                    <select
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
+                      value={ffmpegVersion}
+                      onChange={e => setFfmpegVersion(e.target.value)}
+                    >
+                      {softwareTags.map(tag => (
+                        <option key={tag} value={tag} className="text-black">{tag}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
               </div>
 
               {/* Build Storage Selector */}

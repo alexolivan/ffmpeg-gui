@@ -13,7 +13,7 @@ This guide details the installation, dependency setup, and upgrade workflow for 
 - **Optional Hardware Tools**:
   - NVIDIA GPU with proprietary drivers & CUDA toolkit (optional for hardware acceleration; system compiles and runs on CPU-only hosts without NVIDIA drivers).
   - Intel graphics processors with QSV / VAAPI media drivers (e.g., `intel-media-driver` for low-overhead hardware transcoding).
-  - Blackmagic DeckLink PCIe cards (optional for physical SDI/HDMI feed captures).
+  - Blackmagic DeckLink PCIe cards (requires `desktopvideo` Linux drivers and DeckLink SDK uploaded in the Forge).
   - Magewell capture devices (HDMI/SDI capture routed via V4L2).
   - AudioScience professional soundcards (ALSA audio matrix and topology controls).
   - CrystalFontz CFA635 USB LCD Display.

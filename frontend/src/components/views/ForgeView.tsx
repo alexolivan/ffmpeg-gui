@@ -140,6 +140,7 @@ interface ForgeViewProps {
   refreshDeps: () => Promise<void>;
   storages?: any[];
   API?: string;
+  initialSoftwareType?: 'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog';
 }
 
 export const ForgeView: React.FC<ForgeViewProps> = ({
@@ -176,12 +177,13 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   refreshDeps,
   storages: initialStorages = [],
   API = '',
+  initialSoftwareType = 'ffmpeg',
 }) => {
   const { t } = useTranslation();
   const [showSdksModal, setShowSdksModal] = React.useState(false);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
   const [installedSdks, setInstalledSdks] = React.useState<any[]>([]);
-  const [activeEngineTab, setActiveEngineTab] = React.useState<'ffmpeg'>('ffmpeg');
+  const [activeEngineTab, setActiveEngineTab] = React.useState<'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog'>(initialSoftwareType);
 
   const fetchSdks = React.useCallback(() => {
     fetch(`${API}/sdks`)
@@ -240,7 +242,6 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Clean Header: Title & Disk Telemetry Only */}
       <header className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5">
@@ -260,11 +261,10 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         </div>
       </header>
 
-      {/* Full-width Engine Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-[var(--glass-border)] mb-6 pb-2 w-full">
+      <div className="flex items-center gap-2 border-b border-[var(--glass-border)] mb-6 pb-2 w-full overflow-x-auto">
         <button
           onClick={() => setActiveEngineTab('ffmpeg')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
             activeEngineTab === 'ffmpeg'
               ? 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30 shadow-sm'
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
@@ -272,12 +272,22 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         >
           <FfmpegLogoIcon size={16} /> FFmpeg
         </button>
+
+        <button
+          onClick={() => setActiveEngineTab('decklink_tools')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
+            activeEngineTab === 'decklink_tools'
+              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span>🎛️</span> DeckLink Tools
+        </button>
       </div>
 
-      {/* Tab Content Header: Actions for Active Engine */}
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-          {t('forge.activeProfilesFor', 'PROFILES')} — <span className="text-[var(--text-primary)]">{activeEngineTab.toUpperCase()}</span>
+          {t('forge.activeProfilesFor', 'PROFILES')} — <span className="text-[var(--text-primary)]">{activeEngineTab.replace('_', ' ').toUpperCase()}</span>
         </h3>
         <div className="flex items-center gap-3">
           <button onClick={() => importRecipeRef.current?.click()}
@@ -298,48 +308,65 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         </div>
       </div>
 
-      {/* Health environment badge & detail control */}
-      <div className="glass-card p-6 mb-8 bg-white/2 border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl">
-            {checkStatus === 'loading' ? (
-              <span className="w-5 h-5 border-2 border-brand-orange border-t-transparent rounded-full animate-spin inline-block" />
-            ) : buildDeps?.all_required_met ? (
-              <span className="text-brand-lime font-black">✓</span>
-            ) : (
-              <span className="text-brand-orange font-black">!</span>
-            )}
-          </div>
-          <div>
-            <h4 className="text-sm font-black uppercase tracking-wider">{t('forge.envStatusTitle', 'ENVIRONMENT DEPENDENCIES')}</h4>
-            <p className="text-xs text-text-secondary mt-0.5">
-              {checkStatus === 'loading' ? (
-                <span className="text-brand-orange animate-pulse">{t('forge.analyzingDeps', 'Analyzing dependencies...')}</span>
-              ) : checkStatus === 'error' ? (
-                <span className="text-red-400 font-bold">{t('forge.backendError', 'Backend connection error')}</span>
-              ) : buildDeps?.all_required_met ? (
-                <span className="text-brand-lime">{t('forge.allDepsInstalled', 'All required build tools and libraries installed')}</span>
-              ) : (
-                <span className="text-brand-orange font-bold">{t('forge.missingDeps', 'Some required build tools are missing')}</span>
+      {(() => {
+        const isFfmpeg = activeEngineTab === 'ffmpeg';
+        const isDecklinkTools = activeEngineTab === 'decklink_tools';
+        const isDecklinkEnvReady = (buildDeps?.dependencies?.gcc?.installed !== false) && (buildDeps?.dependencies?.make?.installed !== false);
+        const isReady = isFfmpeg ? buildDeps?.all_required_met : isDecklinkEnvReady;
+
+        const engineSupportsSdks = isFfmpeg || isDecklinkTools;
+        const engineRequiresCompilation = isFfmpeg || isDecklinkTools;
+
+        return (
+          <div className="glass-card p-6 mb-8 bg-white/2 border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl">
+                {checkStatus === 'loading' ? (
+                  <span className="w-5 h-5 border-2 border-brand-orange border-t-transparent rounded-full animate-spin inline-block" />
+                ) : isReady ? (
+                  <span className="text-brand-lime font-black">✓</span>
+                ) : (
+                  <span className="text-brand-orange font-black">!</span>
+                )}
+              </div>
+              <div>
+                <h4 className="text-sm font-black uppercase tracking-wider">
+                  {t('forge.envStatusTitle', 'ENVIRONMENT DEPENDENCIES')}
+                </h4>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  {checkStatus === 'loading' ? (
+                    <span className="text-brand-orange animate-pulse">{t('forge.analyzingDeps', 'Analyzing dependencies...')}</span>
+                  ) : checkStatus === 'error' ? (
+                    <span className="text-red-400 font-bold">{t('forge.backendError', 'Backend connection error')}</span>
+                  ) : isReady ? (
+                    <span className="text-brand-lime">{t('forge.allDepsInstalled', 'All required build tools and libraries installed')}</span>
+                  ) : (
+                    <span className="text-brand-orange font-bold">{t('forge.missingDeps', 'Some required build tools are missing')}</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {engineSupportsSdks && (
+                <button
+                  onClick={() => setShowSdksModal(true)}
+                  className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
+                >
+                  <PackageIcon size={14} /> {t('sdks.manageSdks', 'MANAGE SDKs')}
+                </button>
               )}
-            </p>
+              {engineRequiresCompilation && (
+                <button
+                  onClick={() => setShowEnvModal(true)}
+                  className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
+                >
+                  <GearIcon size={14} /> {t('forge.manageDeps', 'MANAGE DEPS')}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSdksModal(true)}
-            className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
-          >
-            <PackageIcon size={14} /> {t('sdks.manageSdks', 'MANAGE SDKs')}
-          </button>
-          <button
-            onClick={() => setShowEnvModal(true)}
-            className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
-          >
-            <GearIcon size={14} /> {t('forge.manageDeps', 'MANAGE DEPS')}
-          </button>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Build Profiles List */}
       <div className="space-y-4">
@@ -386,6 +413,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           onSubmit={editingBuild ? handleUpdateBuild : handleCreateBuild}
           buildDeps={buildDeps}
           onOpenSdksModal={() => { setShowBuildForm(false); setShowSdksModal(true); }}
+          initialSoftwareType={activeEngineTab}
         />
       )}
 
@@ -414,6 +442,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           refreshBuilds();
         }}
         API={API}
+        filterSdkTypes={activeEngineTab === 'decklink_tools' ? ['decklink'] : undefined}
       />
 
       {/* Validation Result Modal */}
@@ -454,7 +483,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             </button>
 
             <h3 className="text-lg font-black tracking-tight mb-1 flex items-center gap-2">
-              <ForgeIcon size={16} /> {t('forge.compilationEnvState')}
+              <ForgeIcon size={16} /> {t('forge.compilationEnvState', 'COMPILATION ENVIRONMENT STATUS')}
             </h3>
             <p className="text-xs text-text-secondary mb-6 leading-relaxed">
               {t('forge.envDescription')}
@@ -482,12 +511,17 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">{t('forge.requiredTools')}</h4>
                 <div className="space-y-2">
                   {Object.entries(buildDeps?.dependencies || {})
-                    .filter(([, info]: any) => info.type === 'required')
+                    .filter(([name, info]: any) => {
+                      if (activeEngineTab === 'decklink_tools') {
+                        return name === 'gcc' || name === 'make';
+                      }
+                      return info.type === 'required';
+                    })
                     .map(([name, info]: any) => (
                       <div key={name} className="flex flex-col p-3 bg-white/2 border border-white/5 rounded-xl gap-2">
                         <div className="flex items-center justify-between">
                           <div className="flex flex-col">
-                            <span className="text-xs font-bold text-white/95">{name}</span>
+                            <span className="text-xs font-bold text-white/95">{name === 'gcc' && activeEngineTab === 'decklink_tools' ? 'g++ / gcc' : name}</span>
                             <span className="text-[10px] text-text-secondary mt-0.5">{info.description}</span>
                           </div>
                           <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black ${info.installed ? 'bg-brand-lime/10 text-brand-lime' : 'bg-red-500/10 text-red-400'}`}>
@@ -520,64 +554,74 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 </div>
               </div>
 
-              {/* Optional Deps Section */}
-              <div>
-                <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">{t('forge.optionalLibs')}</h4>
-                <div className="space-y-2">
-                  {Object.entries(buildDeps?.dependencies || {})
-                    .filter(([, info]: any) => info.type === 'optional')
-                    .map(([name, info]: any) => (
-                      <div key={name} className="flex flex-col p-3 bg-white/2 border border-white/5 rounded-xl gap-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex flex-col">
-                            <span className="text-xs font-bold text-white/95">{name}</span>
-                            <span className="text-[10px] text-text-secondary mt-0.5">{info.description}</span>
+              {/* Optional Deps Section (Only for FFmpeg) */}
+              {activeEngineTab === 'ffmpeg' && (
+                <div>
+                  <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">{t('forge.optionalLibs')}</h4>
+                  <div className="space-y-2">
+                    {Object.entries(buildDeps?.dependencies || {})
+                      .filter(([, info]: any) => info.type === 'optional')
+                      .map(([name, info]: any) => (
+                        <div key={name} className="flex flex-col p-3 bg-white/2 border border-white/5 rounded-xl gap-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="text-xs font-bold text-white/95">{name}</span>
+                              <span className="text-[10px] text-text-secondary mt-0.5">{info.description}</span>
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black ${info.installed ? 'bg-brand-lime/10 text-brand-lime' : 'bg-brand-orange/10 text-brand-orange'}`}>
+                              {info.installed ? t('forge.installed') : t('forge.notInstalled')}
+                            </span>
                           </div>
-                          <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black ${info.installed ? 'bg-brand-lime/10 text-brand-lime' : 'bg-brand-orange/10 text-brand-orange'}`}>
-                            {info.installed ? t('forge.installed') : t('forge.notInstalled')}
-                          </span>
+                          {!info.installed && (
+                            <div className="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-1.5 pl-2.5 gap-2 mt-1">
+                              <code className="font-mono text-[9px] text-white/80 select-all break-all">
+                                {getSingleInstallCommand(name, selectedLinuxDistro)}
+                              </code>
+                              <button
+                                onClick={() => {
+                                  const cmd = getSingleInstallCommand(name, selectedLinuxDistro);
+                                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                                    navigator.clipboard.writeText(cmd).catch(() => fallbackCopy(cmd));
+                                  } else {
+                                    fallbackCopy(cmd);
+                                  }
+                                }}
+                                className="p-1 bg-white/5 hover:bg-white/10 rounded text-text-secondary hover:text-white transition-all shrink-0 flex items-center justify-center"
+                                title={t('forge.copyInstallCommand')}
+                              >
+                                <ClipboardIcon size={10} />
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        {!info.installed && (
-                          <div className="flex items-center justify-between bg-black/40 border border-white/5 rounded-lg p-1.5 pl-2.5 gap-2 mt-1">
-                            <code className="font-mono text-[9px] text-white/80 select-all break-all">
-                              {getSingleInstallCommand(name, selectedLinuxDistro)}
-                            </code>
-                            <button
-                              onClick={() => {
-                                const cmd = getSingleInstallCommand(name, selectedLinuxDistro);
-                                if (navigator.clipboard && navigator.clipboard.writeText) {
-                                  navigator.clipboard.writeText(cmd).catch(() => fallbackCopy(cmd));
-                                } else {
-                                  fallbackCopy(cmd);
-                                }
-                              }}
-                              className="p-1 bg-white/5 hover:bg-white/10 rounded text-text-secondary hover:text-white transition-all shrink-0 flex items-center justify-center"
-                              title={t('forge.copyInstallCommand')}
-                            >
-                              <ClipboardIcon size={10} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Command Generator */}
               {(() => {
+                const isDecklinkTools = activeEngineTab === 'decklink_tools';
                 const hasNvidia = !!(systemTelemetry?.capabilities?.nvenc?.available || (systemTelemetry?.gpu?.vendor && systemTelemetry.gpu.vendor.toLowerCase().includes('nvidia')));
 
-                const missingRequired = Object.entries(buildDeps?.dependencies || {})
-                  .filter(([, info]: any) => info.type === 'required' && !info.installed)
+                let missingRequired = Object.entries(buildDeps?.dependencies || {})
+                  .filter(([name, info]: any) => {
+                    if (isDecklinkTools) {
+                      return (name === 'gcc' || name === 'make') && !info.installed;
+                    }
+                    return info.type === 'required' && !info.installed;
+                  })
                   .map(([name]) => name);
 
-                const missingOptional = Object.entries(buildDeps?.dependencies || {})
-                  .filter(([, info]: any) => info.type === 'optional' && !info.installed)
-                  .map(([name]) => name);
+                let missingOptional = isDecklinkTools
+                  ? []
+                  : Object.entries(buildDeps?.dependencies || {})
+                      .filter(([, info]: any) => info.type === 'optional' && !info.installed)
+                      .map(([name]) => name);
 
                 let allMissing = [...missingRequired, ...missingOptional];
 
-                if (!hasNvidia) {
+                if (!hasNvidia && !isDecklinkTools) {
                   allMissing = allMissing.filter(dep => dep !== 'clang' && dep !== 'nvidia-cuda-dev');
                 }
 
@@ -627,7 +671,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                         <ClipboardIcon size={14} />
                       </button>
                     </div>
-                    {!hasNvidia && (
+                    {!hasNvidia && !isDecklinkTools && (
                       <p className="text-[9px] text-brand-orange mt-2">
                         {t('forge.nvidiaExcludedNote')}
                       </p>

@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, BigInteger, String, DateTime, JSON, ForeignKey, Boolean, Float
+from sqlalchemy import Column, Integer, BigInteger, String, DateTime, JSON, ForeignKey, Boolean, Float, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 class Base(DeclarativeBase):
@@ -21,9 +21,12 @@ class SoftwareBuild(Base):
     allowing users to maintain multiple versions and options of different engines.
     """
     __tablename__ = 'software_builds'
+    __table_args__ = (
+        UniqueConstraint('name', 'software_type', name='uq_software_build_name_type'),
+    )
 
     id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False, unique=True)
+    name = Column(String, nullable=False)
     software_type = Column(String, nullable=False, default='ffmpeg')  # 'ffmpeg', 'icecast2', 'kiosk_cog', 'mediamtx'
     version_tag = Column(String, nullable=False)  # main version (e.g. n7.1 or v1.6)
     binary_path = Column(String, nullable=True)   # main compiled binary location
@@ -42,7 +45,7 @@ class SoftwareBuild(Base):
     auto_clean = Column(Boolean, default=False)
 
     # Auto-generated metadata
-    disk_usage_mb = Column(Integer, nullable=True)
+    disk_usage_mb = Column(Float, nullable=True)
     build_log_summary = Column(String, nullable=True)
     version_output = Column(String, nullable=True)
 

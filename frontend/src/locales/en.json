@@ -27,7 +27,9 @@
     "cancelUpload": "✕ Cancel upload",
     "loading": "Loading...",
     "waiting": "Waiting for input signal...",
-    "clonedSuccess": "Cloned successfully!"
+    "clonedSuccess": "Cloned successfully!",
+    "refresh": "Refresh",
+    "updated": "Updated!"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -91,7 +93,8 @@
       "storage": "Storage",
       "security": "Network & Security",
       "alsa": "ALSA AUDIO",
-      "backup": "BACKUP & RESTORE"
+      "backup": "BACKUP & RESTORE",
+      "decklink": "DECKLINK"
     },
     "alsa": {
       "title": "ALSA MIXER",
@@ -310,6 +313,55 @@
       "confirmBtn": "Confirm Restore",
       "importSuccess": "Backup restored successfully!",
       "invalidBackupFormat": "Invalid backup file format. Missing ffmpeg-gui signature."
+    },
+    "decklink": {
+      "title": "BLACKMAGIC DECKLINK HARDWARE CONTROL",
+      "subtitle": "Headless SDI/HDMI connector mapping, live signal telemetry, and firmware management",
+      "kernelDriver": "Kernel Driver (OS)",
+      "driverNotInstalled": "desktopvideo not installed",
+      "activeHelper": "Active Helper Tool",
+      "firmwareStatus": "Firmware Integrity",
+      "firmwareUpdateRequired": "Update Required",
+      "firmwareUpToDate": "Up to Date",
+      "detectedSubDevices": "Active Sub-Devices",
+      "firmwareAlertTitle": "Firmware Update Required on Hardware",
+      "firmwareAlertSubtitle": "One or more DeckLink cards require a firmware update to maintain compatibility with the host driver.",
+      "updateFirmwareBtn": "Update Firmware Now",
+      "confirmFirmwareUpdate": "Are you sure you want to update the firmware on this DeckLink card? Do not power off the machine during the update.",
+      "noDevicesFound": "No Blackmagic DeckLink Cards Detected",
+      "noDevicesFoundDesc": "Make sure your PCIe DeckLink card is seated properly and that the Linux kernel driver (bmd-io / desktopvideo) is installed and loaded.",
+      "selectChannel": "Channel / Sub-Device:",
+      "signalStatus": "Signal",
+      "format": "Format",
+      "pixelFormat": "Colorspace",
+      "configurePort": "Configure Port",
+      "configTitle": "Configure Port",
+      "configAppliedSuccess": "Configuration applied successfully",
+      "duplexModeLabel": "Duplex Mode (Connector Mapping)",
+      "duplexHalf": "Half Duplex (Independent Individual SDI Channels)",
+      "duplexFull": "Full Duplex (Paired Bidirectional In/Out Link)",
+      "duplexInactive": "Inactive (Disabled / Low Power)",
+      "duplexHint": "On dense cards like DeckLink Duo 2 / Quad 2, Half Duplex allows treating each BNC as an independent capture/playback stream.",
+      "assignedProcesses": "Assigned Services",
+      "noProcessesAssigned": "No active services assigned",
+      "signalLocked": "LOCKED",
+      "noSignal": "NO SIGNAL",
+      "noSignalAuto": "No Signal / Auto",
+      "autoDetecting": "Auto / Detecting",
+      "selectCard": "Physical Card:",
+      "cardLabel": "Physical Card",
+      "prevChannel": "Previous Channel",
+      "nextChannel": "Next Channel",
+      "channelCounter": "Channel {{current}} of {{total}}",
+      "channelLabel": "Channel",
+      "connectionsLabel": "Connections",
+      "keyingLabel": "Internal Keying",
+      "duplexHalfSubtitle": "Half-Duplex mode: dedicated capture/playback channel",
+      "duplexFullSubtitle": "Full-Duplex mode: paired bidirectional hardware link",
+      "duplexInactiveSubtitle": "Inactive mode: port disabled / low power",
+      "videoInputConnLabel": "Video Input Connection",
+      "videoInputConnHint": "Select the active physical video input connector for capture.",
+      "autoDefault": "Automatic / Hardware Default"
     }
   },
   "dashboard": {
@@ -415,8 +467,8 @@
     "versionTag": "Version Tag",
     "ffmpegOption": "FFmpeg (Video / Audio Muxer)",
     "icecastOption": "Icecast2 (Audio Streaming Server)",
-    "mediamtxOption": "MediaMTX (RTSP/RTMP/SRT/WebRTC Hub)",
-    "kioskOption": "Kiosk Cog (WPE WebKit Browser Launcher)",
+    "mediamtxOption": "MediaMTX (SRT / WebRTC Hub)",
+    "kioskOption": "Kiosk Cog (Chromium Web Browser)",
     "buildStorage": "Build Storage",
     "defaultBuildStorage": "Default (Default Build Storage)",
     "autoClean": "Automatic Post-compilation Cleanup",
@@ -494,7 +546,20 @@
     "incompatibleCodecTitle": "Incompatible Codec Configuration",
     "autoFixCompatible": "Auto-Fix Settings to Compatible Values",
     "decklinkIncompatNotice": "DeckLink outputs require raw uncompressed YUV video or compatible broadcast formats.",
-    "ndiIncompatNotice": "NDI outputs automatically wrap video into NDI YUV/RGBA frames."
+    "ndiIncompatNotice": "NDI outputs automatically wrap video into NDI YUV/RGBA frames.",
+    "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
+    "targetDecklinkSdk": "Target DeckLink SDK",
+    "noDecklinkSdkUploaded": "No DeckLink SDK uploaded yet.",
+    "ffmpegEnvStatusTitle": "FFmpeg Environment Status",
+    "decklinkEnvStatusTitle": "DeckLink Tools Environment Status",
+    "decklinkToolsReady": "C++ compiler (g++) and Make build tools available.",
+    "decklinkToolsMissing": "C++ compiler (g++) or Make is missing.",
+    "decklinkCompEnvState": "DECKLINK TOOLS COMPILATION ENVIRONMENT",
+    "decklinkEnvDescription": "DeckLink Tools requires a standard C++ compiler and Make to generate the native decklink-ctl binary.",
+    "updateAvailable": "Update Available",
+    "outdatedBuildTooltip": "Source code updated to v{{version}}. Recompile to update.",
+    "updateAndRecompile": "UPDATE & RECOMPILE",
+    "internalToolSource": "Internal Source Engine"
   },
   "sources": {
     "mediaStorage": "Media Storage",
@@ -859,6 +924,7 @@
     "forceDelete": "Force Delete",
     "deleting": "Deleting...",
     "manageSdks": "Manage SDKs",
-    "versionMismatchNotice": "⚠️ Notice: The uploaded archive contains SDK v{{uploaded}}. The required version v{{expected}} is still missing."
+    "versionMismatchNotice": "⚠️ Notice: The uploaded archive contains SDK v{{uploaded}}. The required version v{{expected}} is still missing.",
+    "manageDecklinkSdk": "Manage DeckLink SDK"
   }
 }
