@@ -92,6 +92,31 @@ std::string getDuplexString(int64_t duplex) {
     }
 }
 
+std::string getVideoConnectionName(int64_t conn) {
+    if (conn == bmdVideoConnectionSDI) return "sdi";
+    if (conn == bmdVideoConnectionHDMI) return "hdmi";
+    if (conn == bmdVideoConnectionOpticalSDI) return "optical_sdi";
+    if (conn == bmdVideoConnectionComponent) return "component";
+    if (conn == bmdVideoConnectionComposite) return "composite";
+    if (conn == bmdVideoConnectionSVideo) return "svideo";
+    return "";
+}
+
+int64_t parseVideoConnection(const std::string& connStr) {
+    if (connStr.empty() || connStr == "auto" || connStr == "none") return 0;
+    if (connStr == "sdi") return (int64_t)bmdVideoConnectionSDI;
+    if (connStr == "hdmi") return (int64_t)bmdVideoConnectionHDMI;
+    if (connStr == "optical_sdi") return (int64_t)bmdVideoConnectionOpticalSDI;
+    if (connStr == "component") return (int64_t)bmdVideoConnectionComponent;
+    if (connStr == "composite") return (int64_t)bmdVideoConnectionComposite;
+    if (connStr == "svideo") return (int64_t)bmdVideoConnectionSVideo;
+    try {
+        return std::stoll(connStr);
+    } catch (...) {
+        return 0;
+    }
+}
+
 // ── Commands ────────────────────────────────────────────────────────────────
 
 int cmdList() {
@@ -160,6 +185,15 @@ int cmdList() {
             status->Release();
         }
 
+        int64_t currentVideoInputConn = 0;
+        int64_t currentVideoOutputConn = 0;
+        IDeckLinkConfiguration* cfg = nullptr;
+        if (deckLink->QueryInterface(IID_IDeckLinkConfiguration, (void**)&cfg) == S_OK) {
+            cfg->GetInt(bmdDeckLinkConfigVideoInputConnection, &currentVideoInputConn);
+            cfg->GetInt(bmdDeckLinkConfigVideoOutputConnection, &currentVideoOutputConn);
+            cfg->Release();
+        }
+
         json << "{"
              << "\"index\":" << deviceIndex << ","
              << "\"display_name\":\"" << escapeJson(displayName) << "\","
@@ -174,6 +208,8 @@ int cmdList() {
              << "\"supports_internal_keying\":" << (supportsInternalKeying ? "true" : "false") << ","
              << "\"video_input_connections\":" << videoInputConnections << ","
              << "\"video_output_connections\":" << videoOutputConnections << ","
+             << "\"current_video_input_connection\":\"" << escapeJson(getVideoConnectionName(currentVideoInputConn)) << "\","
+             << "\"current_video_output_connection\":\"" << escapeJson(getVideoConnectionName(currentVideoOutputConn)) << "\","
              << "\"signal_locked\":" << (signalLocked ? "true" : "false") << ","
              << "\"detected_mode\":\"" << escapeJson(getDisplayModeString((BMDDisplayMode)detectedMode)) << "\","
              << "\"detected_pixel_format\":\"" << escapeJson(getPixelFormatString((BMDPixelFormat)detectedPixelFormat)) << "\""
@@ -242,10 +278,21 @@ int cmdStatus(int targetDeviceIndex, int64_t targetPersistentId) {
         status->Release();
     }
 
+    int64_t currentVideoInputConn = 0;
+    int64_t currentVideoOutputConn = 0;
+    IDeckLinkConfiguration* cfg = nullptr;
+    if (deckLink->QueryInterface(IID_IDeckLinkConfiguration, (void**)&cfg) == S_OK) {
+        cfg->GetInt(bmdDeckLinkConfigVideoInputConnection, &currentVideoInputConn);
+        cfg->GetInt(bmdDeckLinkConfigVideoOutputConnection, &currentVideoOutputConn);
+        cfg->Release();
+    }
+
     std::cout << "{"
               << "\"success\":true,"
               << "\"device_index\":" << currentIndex << ","
               << "\"display_name\":\"" << escapeJson(displayName) << "\","
+              << "\"current_video_input_connection\":\"" << escapeJson(getVideoConnectionName(currentVideoInputConn)) << "\","
+              << "\"current_video_output_connection\":\"" << escapeJson(getVideoConnectionName(currentVideoOutputConn)) << "\","
               << "\"signal_locked\":" << (signalLocked ? "true" : "false") << ","
               << "\"detected_mode\":\"" << escapeJson(getDisplayModeString((BMDDisplayMode)detectedMode)) << "\","
               << "\"detected_pixel_format\":\"" << escapeJson(getPixelFormatString((BMDPixelFormat)detectedPixelFormat)) << "\""
@@ -255,7 +302,7 @@ int cmdStatus(int targetDeviceIndex, int64_t targetPersistentId) {
     return 0;
 }
 
-int cmdConfigure(int targetDeviceIndex, int64_t targetPersistentId, const std::string& duplexMode, int64_t defaultVideoMode, int64_t videoConnection) {
+int cmdConfigure(int targetDeviceIndex, int64_t targetPersistentId, const std::string& duplexMode, int64_t defaultVideoMode, int64_t videoInputConnection, int64_t videoOutputConnection) {
     IDeckLinkIterator* iterator = CreateDeckLinkIteratorInstance();
     if (!iterator) {
         std::cout << "{\"success\":false,\"error\":\"DeckLink driver not loaded.\"}\n";
@@ -313,8 +360,13 @@ int cmdConfigure(int targetDeviceIndex, int64_t targetPersistentId, const std::s
         if (res == S_OK) configChanged = true;
     }
 
-    if (videoConnection > 0) {
-        HRESULT res = config->SetInt(bmdDeckLinkConfigVideoOutputConnection, videoConnection);
+    if (videoInputConnection > 0) {
+        HRESULT res = config->SetInt(bmdDeckLinkConfigVideoInputConnection, videoInputConnection);
+        if (res == S_OK) configChanged = true;
+    }
+
+    if (videoOutputConnection > 0) {
+        HRESULT res = config->SetInt(bmdDeckLinkConfigVideoOutputConnection, videoOutputConnection);
         if (res == S_OK) configChanged = true;
     }
 
@@ -354,11 +406,11 @@ int main(int argc, char** argv) {
         std::string sdkVer = "Native SDK";
         #endif
 
-        std::cout << "decklink-ctl v1.0.1 (Blackmagic DeckLink Orchestrator for ffmpeg-gui)\n"
+        std::cout << "decklink-ctl v1.0.2 (Blackmagic DeckLink Orchestrator for ffmpeg-gui)\n"
                   << "DeckLink API Version: " << sdkVer << "\n"
                   << "Build Date: " << __DATE__ << " " << __TIME__ << "\n"
                   << "Architecture: Linux x86_64 / C++11\n"
-                  << "Features: Device Discovery, Duplex Configuration, Real-time Signal Lock & Telemetry\n";
+                  << "Features: Device Discovery, Duplex Configuration, Video Input Switching, Real-time Signal Lock\n";
         return 0;
     }
 
@@ -385,7 +437,8 @@ int main(int argc, char** argv) {
         int64_t persistentId = 0;
         std::string duplex;
         int64_t defaultMode = 0;
-        int64_t connection = 0;
+        int64_t videoInputConn = 0;
+        int64_t videoOutputConn = 0;
 
         for (int i = 2; i < argc; ++i) {
             std::string arg = argv[i];
@@ -397,11 +450,15 @@ int main(int argc, char** argv) {
                 duplex = arg.substr(9);
             } else if (arg.rfind("--default-mode=", 0) == 0) {
                 defaultMode = std::stoll(arg.substr(15));
+            } else if (arg.rfind("--video-input-connection=", 0) == 0) {
+                videoInputConn = parseVideoConnection(arg.substr(25));
+            } else if (arg.rfind("--video-output-connection=", 0) == 0) {
+                videoOutputConn = parseVideoConnection(arg.substr(26));
             } else if (arg.rfind("--connection=", 0) == 0) {
-                connection = std::stoll(arg.substr(13));
+                videoInputConn = parseVideoConnection(arg.substr(13));
             }
         }
-        return cmdConfigure(deviceIndex, persistentId, duplex, defaultMode, connection);
+        return cmdConfigure(deviceIndex, persistentId, duplex, defaultMode, videoInputConn, videoOutputConn);
     }
 
     std::cout << "{\"success\":false,\"error\":\"Unknown command: " << escapeJson(cmd) << "\"}\n";

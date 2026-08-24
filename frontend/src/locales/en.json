@@ -358,7 +358,10 @@
       "keyingLabel": "Internal Keying",
       "duplexHalfSubtitle": "Half-Duplex mode: dedicated capture/playback channel",
       "duplexFullSubtitle": "Full-Duplex mode: paired bidirectional hardware link",
-      "duplexInactiveSubtitle": "Inactive mode: port disabled / low power"
+      "duplexInactiveSubtitle": "Inactive mode: port disabled / low power",
+      "videoInputConnLabel": "Video Input Connection",
+      "videoInputConnHint": "Select the active physical video input connector for capture.",
+      "autoDefault": "Automatic / Hardware Default"
     }
   },
   "dashboard": {

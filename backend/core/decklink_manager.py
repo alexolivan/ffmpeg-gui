@@ -482,13 +482,32 @@ class DecklinkManager:
                     for p in active_procs:
                         cfg = getattr(p, "config", {}) or {}
                         input_cfg = cfg.get("input_config") or {}
+                        input1_cfg = input_cfg.get("input1") if isinstance(input_cfg, dict) else {}
+                        input2_cfg = input_cfg.get("input2") if isinstance(input_cfg, dict) else {}
                         output_cfg = cfg.get("output_config") or {}
 
-                        in_type = str(input_cfg.get("type", "")).strip().lower()
-                        in_fmt = str(input_cfg.get("format", "")).strip().lower()
-                        in_device = str(input_cfg.get("device", "")).strip().lower()
-                        in_url = str(input_cfg.get("url", "") or cfg.get("input_url", "")).strip().lower()
-                        in_combined = f"{in_type} {in_fmt} {in_device} {in_url}"
+                        # Extract all input fields (from input_config directly or nested input1/input2)
+                        in_types = [
+                            str(input_cfg.get("type", "")),
+                            str(input1_cfg.get("type", "") if isinstance(input1_cfg, dict) else ""),
+                            str(input2_cfg.get("type", "") if isinstance(input2_cfg, dict) else ""),
+                        ]
+                        in_devices = [
+                            str(input_cfg.get("device", "")),
+                            str(input1_cfg.get("device", "") if isinstance(input1_cfg, dict) else ""),
+                            str(input2_cfg.get("device", "") if isinstance(input2_cfg, dict) else ""),
+                        ]
+                        in_fmts = [
+                            str(input_cfg.get("format", "")),
+                            str(input1_cfg.get("format", "") if isinstance(input1_cfg, dict) else ""),
+                            str(input2_cfg.get("format", "") if isinstance(input2_cfg, dict) else ""),
+                        ]
+                        in_urls = [
+                            str(input_cfg.get("url", "") or cfg.get("input_url", "")),
+                            str(input1_cfg.get("path", "") if isinstance(input1_cfg, dict) else ""),
+                            str(input2_cfg.get("path", "") if isinstance(input2_cfg, dict) else ""),
+                        ]
+                        in_combined = f"{' '.join(in_types)} {' '.join(in_fmts)} {' '.join(in_devices)} {' '.join(in_urls)}".strip().lower()
 
                         out_type = str(output_cfg.get("type", "")).strip().lower()
                         out_fmt = str(output_cfg.get("format", "")).strip().lower()
@@ -497,23 +516,23 @@ class DecklinkManager:
                         out_combined = f"{out_type} {out_fmt} {out_device} {out_url}"
 
                         # In FFmpeg, DeckLink input/output is specified via type='decklink' or format='decklink' with device='...'
-                        is_dl_in = in_type == "decklink" or in_fmt == "decklink" or "decklink" in in_combined
+                        is_dl_in = any(t == "decklink" for t in in_types) or any(f == "decklink" for f in in_fmts) or "decklink" in in_combined
                         is_dl_out = out_type == "decklink" or out_fmt == "decklink" or "decklink" in out_combined
 
                         # Match by device name, model, persistent_id, or device index in combined fields
                         matches_in = is_dl_in and (
                             (dev_name and dev_name in in_combined) or
                             (dev_model and dev_model in in_combined) or
-                            (dev_idx_str and (in_device == dev_idx_str or in_url == dev_idx_str or f"({dev_idx_str})" in in_combined or f":{dev_idx_str}" in in_combined or in_combined.endswith(f" {dev_idx_str}"))) or
+                            (dev_idx_str and (any(d == dev_idx_str for d in in_devices) or f"({dev_idx_str})" in in_combined or f":{dev_idx_str}" in in_combined or in_combined.endswith(f" {dev_idx_str}"))) or
                             (dev_pers_str and dev_pers_str in in_combined) or
-                            (len(devices) == 1 and (in_type == "decklink" or in_fmt == "decklink"))
+                            (len(devices) == 1 and is_dl_in)
                         )
                         matches_out = is_dl_out and (
                             (dev_name and dev_name in out_combined) or
                             (dev_model and dev_model in out_combined) or
                             (dev_idx_str and (out_device == dev_idx_str or out_url == dev_idx_str or f"({dev_idx_str})" in out_combined or f":{dev_idx_str}" in out_combined or out_combined.endswith(f" {dev_idx_str}"))) or
                             (dev_pers_str and dev_pers_str in out_combined) or
-                            (len(devices) == 1 and (out_type == "decklink" or out_fmt == "decklink"))
+                            (len(devices) == 1 and is_dl_out)
                         )
 
                         if matches_in or matches_out:

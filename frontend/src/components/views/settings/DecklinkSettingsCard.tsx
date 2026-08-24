@@ -22,6 +22,8 @@ export interface DecklinkSubDevice {
   supports_internal_keying: boolean;
   video_input_connections: number;
   video_output_connections: number;
+  current_video_input_connection?: string;
+  current_video_output_connection?: string;
   signal_locked: boolean;
   detected_mode: string;
   detected_pixel_format: string;
@@ -66,6 +68,7 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
   // Configuration Modal state
   const [configuringDevice, setConfiguringDevice] = useState<DecklinkSubDevice | null>(null);
   const [configDuplex, setConfigDuplex] = useState<string>('half');
+  const [configVideoInputConn, setConfigVideoInputConn] = useState<string>('auto');
   const [configDefaultMode, setConfigDefaultMode] = useState<number>(0);
   const [isSavingConfig, setIsSavingConfig] = useState<boolean>(false);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -138,6 +141,7 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
   const handleOpenConfig = (device: DecklinkSubDevice) => {
     setConfiguringDevice(device);
     setConfigDuplex(device.duplex_mode || 'half');
+    setConfigVideoInputConn(device.current_video_input_connection || 'auto');
     setConfigDefaultMode(0);
     setConfigError(null);
     setConfigSuccess(null);
@@ -152,10 +156,13 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
     setConfigSuccess(null);
 
     try {
-      const payload = {
+      const payload: any = {
         duplex: configDuplex,
         default_mode: configDefaultMode || undefined,
       };
+      if (configVideoInputConn && configVideoInputConn !== 'auto') {
+        payload.video_input_connection = configVideoInputConn;
+      }
 
       const res = await fetch(`${API}/api/settings/decklink/${configuringDevice.persistent_id || configuringDevice.index}/configure`, {
         method: 'POST',
@@ -669,26 +676,65 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
             )}
 
             <form onSubmit={handleSaveConfig} className="space-y-4 text-xs">
-              {/* Duplex Mode Selector */}
-              <div>
-                <label className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
-                  {t('settings.decklink.duplexModeLabel', 'Duplex Mode (Connector Mapping)')}
-                </label>
-                <select
-                  value={configDuplex}
-                  onChange={(e) => setConfigDuplex(e.target.value)}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-xl p-2.5 font-bold focus:border-brand-lime outline-none cursor-pointer"
-                >
-                  <option value="half">{t('settings.decklink.duplexHalf', 'Half Duplex (Independent Individual SDI Channels)')}</option>
-                  {configuringDevice.supports_full_duplex && (
-                    <option value="full">{t('settings.decklink.duplexFull', 'Full Duplex (Paired Bidirectional In/Out Link)')}</option>
-                  )}
-                  <option value="inactive">{t('settings.decklink.duplexInactive', 'Inactive (Disabled / Low Power)')}</option>
-                </select>
-                <p className="text-[10px] text-text-secondary mt-1">
-                  {t('settings.decklink.duplexHint', 'On dense cards like DeckLink Duo 2 / Quad 2, Half Duplex allows treating each BNC as an independent capture/playback stream.')}
-                </p>
-              </div>
+              {/* Video Input Connector Selector (for cards with video inputs like Mini Recorder, Intensity Pro, etc.) */}
+              {configuringDevice.video_input_connections > 0 && (
+                <div>
+                  <label className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
+                    {t('settings.decklink.videoInputConnLabel', 'Video Input Connection')}
+                  </label>
+                  <select
+                    value={configVideoInputConn}
+                    onChange={(e) => setConfigVideoInputConn(e.target.value)}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-xl p-2.5 font-bold focus:border-brand-lime outline-none cursor-pointer"
+                  >
+                    <option value="auto">{t('settings.decklink.autoDefault', 'Automatic / Hardware Default')}</option>
+                    {(configuringDevice.video_input_connections & 1) !== 0 && (
+                      <option value="sdi">SDI</option>
+                    )}
+                    {(configuringDevice.video_input_connections & 2) !== 0 && (
+                      <option value="hdmi">HDMI</option>
+                    )}
+                    {(configuringDevice.video_input_connections & 4) !== 0 && (
+                      <option value="optical_sdi">Optical SDI</option>
+                    )}
+                    {(configuringDevice.video_input_connections & 8) !== 0 && (
+                      <option value="component">Component (YPbPr)</option>
+                    )}
+                    {(configuringDevice.video_input_connections & 16) !== 0 && (
+                      <option value="composite">Composite (CVBS)</option>
+                    )}
+                    {(configuringDevice.video_input_connections & 32) !== 0 && (
+                      <option value="svideo">S-Video (Y/C)</option>
+                    )}
+                  </select>
+                  <p className="text-[10px] text-text-secondary mt-1">
+                    {t('settings.decklink.videoInputConnHint', 'Select the active physical video input connector for capture.')}
+                  </p>
+                </div>
+              )}
+
+              {/* Duplex Mode Selector (for dense multi-subdevice cards) */}
+              {(configuringDevice.num_sub_devices > 1 || configuringDevice.supports_full_duplex) && (
+                <div>
+                  <label className="block text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
+                    {t('settings.decklink.duplexModeLabel', 'Duplex Mode (Connector Mapping)')}
+                  </label>
+                  <select
+                    value={configDuplex}
+                    onChange={(e) => setConfigDuplex(e.target.value)}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-xl p-2.5 font-bold focus:border-brand-lime outline-none cursor-pointer"
+                  >
+                    <option value="half">{t('settings.decklink.duplexHalf', 'Half Duplex (Independent Individual SDI Channels)')}</option>
+                    {configuringDevice.supports_full_duplex && (
+                      <option value="full">{t('settings.decklink.duplexFull', 'Full Duplex (Paired Bidirectional In/Out Link)')}</option>
+                    )}
+                    <option value="inactive">{t('settings.decklink.duplexInactive', 'Inactive (Disabled / Low Power)')}</option>
+                  </select>
+                  <p className="text-[10px] text-text-secondary mt-1">
+                    {t('settings.decklink.duplexHint', 'On dense cards like DeckLink Duo 2 / Quad 2, Half Duplex allows treating each BNC as an independent capture/playback stream.')}
+                  </p>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex items-center justify-end gap-3 pt-2 border-t border-[var(--glass-border)]">

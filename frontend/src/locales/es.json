@@ -358,7 +358,10 @@
       "keyingLabel": "Keying Interno",
       "duplexHalfSubtitle": "Modo Half-Duplex: canal dedicado de captura/reproducción",
       "duplexFullSubtitle": "Modo Full-Duplex: enlace bidireccional pareado por hardware",
-      "duplexInactiveSubtitle": "Modo inactivo: puerto deshabilitado / bajo consumo"
+      "duplexInactiveSubtitle": "Modo inactivo: puerto deshabilitado / bajo consumo",
+      "videoInputConnLabel": "Conexión de Entrada de Vídeo",
+      "videoInputConnHint": "Seleccione el conector de entrada física activo para la captura.",
+      "autoDefault": "Automático / Por Defecto de Tarjeta"
     }
   },
   "dashboard": {

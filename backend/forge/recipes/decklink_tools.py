@@ -9,7 +9,7 @@ class DecklinkToolsRecipe(BaseRecipe):
 
     software_type = "decklink_tools"
     supported_sdk_types = ["decklink"]
-    VERSION = "1.0.1"
+    VERSION = "1.0.2"
 
     def __init__(self, builds_root: str, runner=None):
         super().__init__(builds_root)

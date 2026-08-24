@@ -358,7 +358,10 @@
       "keyingLabel": "Keying Intern",
       "duplexHalfSubtitle": "Mode Half-Duplex: canal dedicat de captura/reproducció",
       "duplexFullSubtitle": "Mode Full-Duplex: enllaç bidireccional aparellat per maquinari",
-      "duplexInactiveSubtitle": "Mode inactiu: port inhabilitat / baix consum"
+      "duplexInactiveSubtitle": "Mode inactiu: port inhabilitat / baix consum",
+      "videoInputConnLabel": "Connexió d'Entrada de Vídeo",
+      "videoInputConnHint": "Seleccioneu el connector d'entrada física actiu per a la captura.",
+      "autoDefault": "Automàtic / Per Defecte de Targeta"
     }
   },
   "dashboard": {
