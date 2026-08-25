@@ -455,7 +455,10 @@
       "changeIcon": "Subir icono personalizado",
       "resetIcon": "Restablecer por defecto",
       "iconResetSuccess": "Restablecido al icono por defecto.",
-      "iconFormats": "Branding personalizado: PNG, SVG, WebP (máx 2MB)"
+      "iconFormats": "Branding personalizado: PNG, SVG, WebP (máx 2MB)",
+      "liveSyncTitle": "Auto-Guardado en Tiempo Real y Aplicación Inmediata",
+      "liveSyncDesc": "Los cambios realizados en motores, iconos y registros de binarios se aplican y guardan inmediatamente sin necesidad de pulsar Guardar Ajustes ni reiniciar el panel.",
+      "liveStatus": "● Modo en Vivo"
     }
   },
   "dashboard": {

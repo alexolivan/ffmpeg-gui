@@ -13,6 +13,7 @@ import {
   CalendarIcon,
   ExportIcon
 } from '../Icons';
+import { EngineLogo } from '../common/EngineLogo';
 
 export interface ServiceItem {
   id: number;
@@ -119,7 +120,8 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   onDeleteProcess,
   onSelectedProcess,
   onExportProcess,
-  onCloneAsTask
+  onCloneAsTask,
+  API = ''
 }) => {
   const { t } = useTranslation();
   const isRunning = service.status === 'running';
@@ -177,17 +179,22 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           </span>
 
           {/* Service Type Tag */}
-          <span className={`text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-bold ${
+          <span className={`text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-bold flex items-center gap-1.5 ${
             serviceType === 'ffmpeg_stream' 
               ? 'bg-brand-orange/10 text-brand-orange border-brand-orange/30' 
+              : serviceType === 'mediamtx_hub'
+              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
               : serviceType === 'icecast_server' 
               ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' 
               : serviceType === 'kiosk_browser' 
               ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' 
               : 'bg-purple-500/10 text-purple-400 border-purple-500/30'
           }`}>
+            <EngineLogo softwareType={serviceType} size={12} API={API} />
             {serviceType === 'ffmpeg_stream' 
               ? 'FFmpeg' 
+              : serviceType === 'mediamtx_hub'
+              ? 'MediaMTX'
               : serviceType === 'icecast_server' 
               ? 'Icecast' 
               : serviceType === 'kiosk_browser' 

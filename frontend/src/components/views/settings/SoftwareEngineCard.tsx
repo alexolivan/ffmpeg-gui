@@ -223,6 +223,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
 
       setHasCustomIcon(true);
       setIconTimestamp(Date.now());
+      window.dispatchEvent(new Event('engine_icons_updated'));
       showNotification(t('settings.software.iconUploadSuccess', 'Custom icon uploaded successfully.'));
     } catch (err: any) {
       showNotification(err.message, true);
@@ -237,6 +238,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
       if (res.ok) {
         setHasCustomIcon(false);
         setIconTimestamp(Date.now());
+        window.dispatchEvent(new Event('engine_icons_updated'));
         showNotification(t('settings.software.iconResetSuccess', 'Reverted to default icon.'));
       }
     } catch (err: any) {

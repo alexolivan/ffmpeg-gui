@@ -1686,6 +1686,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             </div>
 
+            {/* Live Auto-Save Info Banner */}
+            <div className="bg-brand-lime/10 border border-brand-lime/30 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs text-brand-lime">
+              <div className="flex items-center gap-2.5">
+                <span className="text-base">⚡</span>
+                <div>
+                  <span className="font-bold uppercase tracking-wider block">
+                    {t('settings.software.liveSyncTitle', 'Real-Time Auto-Save & Instant Application')}
+                  </span>
+                  <span className="text-[11px] text-[var(--text-secondary)]">
+                    {t('settings.software.liveSyncDesc', 'Changes made to engines, icons, and binary registrations take effect immediately without needing to click Save Settings or restart the panel.')}
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-brand-lime/20 border border-brand-lime/40 uppercase shrink-0">
+                {t('settings.software.liveStatus', '● Live Mode')}
+              </span>
+            </div>
+
             <div className="space-y-5">
               {Object.values(softwareEngines).map((engine) => (
                 <SoftwareEngineCard

@@ -455,7 +455,10 @@
       "changeIcon": "Upload custom icon",
       "resetIcon": "Reset to Default",
       "iconResetSuccess": "Reverted to default icon.",
-      "iconFormats": "Custom branding: PNG, SVG, WebP (max 2MB)"
+      "iconFormats": "Custom branding: PNG, SVG, WebP (max 2MB)",
+      "liveSyncTitle": "Real-Time Auto-Save & Instant Application",
+      "liveSyncDesc": "Changes made to engines, icons, and binary registrations take effect immediately without needing to click Save Settings or restart the panel.",
+      "liveStatus": "● Live Mode"
     }
   },
   "dashboard": {

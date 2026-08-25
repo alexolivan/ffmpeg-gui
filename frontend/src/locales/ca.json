@@ -455,7 +455,10 @@
       "changeIcon": "Pujar icona personalitzada",
       "resetIcon": "Restablir per defecte",
       "iconResetSuccess": "Restablert a la icona per defecte.",
-      "iconFormats": "Branding personalitzat: PNG, SVG, WebP (màx 2MB)"
+      "iconFormats": "Branding personalitzat: PNG, SVG, WebP (màx 2MB)",
+      "liveSyncTitle": "Desat Automàtic en Temps Real i Aplicació Immediata",
+      "liveSyncDesc": "Els canvis realitzats en motors, icones i registres de binaris s'apliquen i es guarden immediatament sense necessitat de prémer Desar Paràmetres ni reiniciar el panell.",
+      "liveStatus": "● Mode en Viu"
     }
   },
   "dashboard": {

@@ -14,6 +14,7 @@ import {
   PlayIcon,
   ServerIcon
 } from './Icons';
+import { EngineLogo } from './common/EngineLogo';
 
 interface ScheduledTasksProps {
   API: string;
@@ -413,18 +414,23 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                   >
                     <div className="flex-1 space-y-0.5 min-w-0">
                       <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="font-bold text-lg truncate text-[var(--text-primary)]">
-                          {task.is_system && (task.name === 'System Log Rotation and Retention Cleanup' || task.command === 'system://log_rotate')
-                            ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
-                            : task.is_system && (task.name === 'System SSL/TLS Certificate Auto-Renewal Routine' || task.command === 'system://ssl_renew')
-                            ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
-                            : task.name}
-                          {task.alias && (
-                            <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
-                              [{task.alias}]
-                            </span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          {!task.is_system && (
+                            <EngineLogo softwareType="ffmpeg" size={16} API={API} />
                           )}
-                        </h3>
+                          <h3 className="font-bold text-lg truncate text-[var(--text-primary)]">
+                            {task.is_system && (task.name === 'System Log Rotation and Retention Cleanup' || task.command === 'system://log_rotate')
+                              ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
+                              : task.is_system && (task.name === 'System SSL/TLS Certificate Auto-Renewal Routine' || task.command === 'system://ssl_renew')
+                              ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
+                              : task.name}
+                            {task.alias && (
+                              <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
+                                [{task.alias}]
+                              </span>
+                            )}
+                          </h3>
+                        </div>
                         {task.is_system && (
                           <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
                             {t('tasks.systemBadge', 'SYSTEM')}
