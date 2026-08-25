@@ -89,7 +89,10 @@
       "logStorage": "Volum Dedicat per a Registres (Logs)",
       "logStorageDesc": "Sortida stdout/stderr d'alt trànsit gestionada per rotació automàtica de registres.",
       "lifecycleTitle": "4. Cicle de Vida i Auto-arrencada",
-      "buildRequired": "Si us plau, selecciona o descarrega una versió de MediaMTX a Paràmetres -> Programari primer."
+      "buildRequired": "Si us plau, selecciona o descarrega una versió de MediaMTX a Paràmetres -> Programari primer.",
+      "noStorage": "Sense Emmagatzematge",
+      "noHlsStorageTitle": "No hi ha cap volum d'emmagatzematge HLS configurat",
+      "noHlsStorageNotice": "La distribució HLS està inhabilitada per protegir contra la saturació del disc arrel. Configura un volum d'emmagatzematge HLS a Paràmetres -> Emmagatzematge per habilitar-la."
     },
     "picker": {
       "title": "Crear Nou Servei: Seleccionar Motor",

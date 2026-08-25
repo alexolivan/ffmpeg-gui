@@ -513,28 +513,32 @@ class ProcessManager:
             config_dict["rtmpAddress"] = f":{mtx_cfg.get('rtmp_port', 1935)}"
 
         hls_enabled = mtx_cfg.get("hls_enabled", True)
-        config_dict["hls"] = hls_enabled
         if hls_enabled:
-            config_dict["hlsAddress"] = f":{mtx_cfg.get('hls_port', 8888)}"
-            config_dict["hlsSegmentCount"] = int(mtx_cfg.get("hls_segment_count", 5))
-            config_dict["hlsSegmentDuration"] = f"{mtx_cfg.get('hls_segment_duration', 2)}s"
-
-            # Resolve HLS storage path
+            # Resolve HLS storage path - strictly require a storage volume of type 'hls'
             hls_storage_id = mtx_cfg.get("hls_storage_id") or cfg.get("hls_storage_id")
-            hls_dir = None
+            hls_storage = None
             if hls_storage_id:
                 hls_storage = session.query(Storage).get(hls_storage_id)
-                if hls_storage:
-                    hls_dir = os.path.join(hls_storage.path, f"mediamtx_svc_{media_proc.id}")
-            if not hls_dir:
-                def_hls = session.query(Storage).filter(Storage.type.in_(["hls", "media"])).first()
-                if def_hls:
-                    hls_dir = os.path.join(def_hls.path, f"mediamtx_svc_{media_proc.id}")
-                else:
-                    hls_dir = os.path.join("/tmp/ffmpeg-gui-hls", f"mediamtx_svc_{media_proc.id}")
+            if not hls_storage:
+                hls_storage = session.query(Storage).filter(Storage.type == "hls").first()
 
-            os.makedirs(hls_dir, exist_ok=True)
-            config_dict["hlsDirectory"] = hls_dir
+            if not hls_storage:
+                hls_enabled = False
+                config_dict["hls"] = False
+                logger.warning(
+                    f"[MediaMTX] HLS disabled for service {media_proc.id} ({media_proc.name}) "
+                    "because no dedicated storage volume of type 'hls' exists in the database."
+                )
+            else:
+                config_dict["hls"] = True
+                config_dict["hlsAddress"] = f":{mtx_cfg.get('hls_port', 8888)}"
+                config_dict["hlsSegmentCount"] = int(mtx_cfg.get("hls_segment_count", 5))
+                config_dict["hlsSegmentDuration"] = f"{mtx_cfg.get('hls_segment_duration', 2)}s"
+                hls_dir = os.path.join(hls_storage.path, f"mediamtx_svc_{media_proc.id}")
+                os.makedirs(hls_dir, exist_ok=True)
+                config_dict["hlsDirectory"] = hls_dir
+        else:
+            config_dict["hls"] = False
 
         webrtc_enabled = mtx_cfg.get("webrtc_enabled", False)
         config_dict["webrtc"] = webrtc_enabled

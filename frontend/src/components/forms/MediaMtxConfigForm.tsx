@@ -75,9 +75,14 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
       .then((data) => {
         if (Array.isArray(data)) {
           setStorages(data);
-          const hlsStorages = data.filter((s: any) => s.type === 'hls');
-          if (!hlsStorageId && hlsStorages.length > 0) {
-            setHlsStorageId(hlsStorages[0].id);
+          const hlsList = data.filter((s: any) => s.type === 'hls');
+          if (hlsList.length === 0) {
+            setHlsEnabled(false);
+            setHlsStorageId(null);
+          } else {
+            if (!hlsStorageId) {
+              setHlsStorageId(hlsList[0].id);
+            }
           }
           const logStorages = data.filter((s: any) => s.type === 'logs');
           if (!logStorageId && logStorages.length > 0) {
@@ -275,15 +280,23 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           {/* HLS */}
           <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="font-bold uppercase tracking-wider text-xs">HLS (HTTP)</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold uppercase tracking-wider text-xs">HLS (HTTP)</span>
+                {hlsStorages.length === 0 && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20" title={t('services.mediamtx.noHlsStorageNotice', 'No HLS storage configured')}>
+                    {t('services.mediamtx.noStorage', 'No Storage')}
+                  </span>
+                )}
+              </div>
               <input
                 type="checkbox"
-                checked={hlsEnabled}
+                disabled={hlsStorages.length === 0}
+                checked={hlsEnabled && hlsStorages.length > 0}
                 onChange={(e) => setHlsEnabled(e.target.checked)}
-                className="rounded text-brand-lime"
+                className="rounded text-brand-lime disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
               />
             </div>
-            {hlsEnabled && (
+            {hlsEnabled && hlsStorages.length > 0 && (
               <div>
                 <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port</label>
                 <input
@@ -360,21 +373,31 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             <label className="block text-[11px] font-bold text-[var(--text-secondary)] uppercase mb-1">
               {t('services.mediamtx.hlsStorage', 'HLS Segment Storage Volume')}
             </label>
-            <select
-              value={hlsStorageId || ''}
-              onChange={(e) => setHlsStorageId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 focus:border-brand-lime outline-none text-xs"
-            >
-              <option value="">{t('common.default', 'Default (Internal data/hls)')}</option>
-              {hlsStorages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.path})
-                </option>
-              ))}
-            </select>
-            <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
-              {t('services.mediamtx.hlsStorageDesc', 'HLS chunks use circular ring retention (5 segments of 2s) to protect root storage.')}
-            </span>
+            {hlsStorages.length > 0 ? (
+              <>
+                <select
+                  value={hlsStorageId || hlsStorages[0].id}
+                  onChange={(e) => setHlsStorageId(Number(e.target.value))}
+                  className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 focus:border-brand-lime outline-none text-xs font-mono"
+                >
+                  {hlsStorages.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.path})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
+                  {t('services.mediamtx.hlsStorageDesc', 'HLS chunks use circular ring retention (5 segments of 2s) to protect root storage.')}
+                </span>
+              </>
+            ) : (
+              <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-0.5">
+                <span className="font-bold block">⚠️ {t('services.mediamtx.noHlsStorageTitle', 'No HLS Storage Volume Configured')}</span>
+                <span className="text-[10px] text-[var(--text-secondary)] block">
+                  {t('services.mediamtx.noHlsStorageNotice', 'HLS distribution is disabled to protect against root disk saturation. Configure an HLS storage volume in Settings -> Storage to enable.')}
+                </span>
+              </div>
+            )}
           </div>
 
           <div>
