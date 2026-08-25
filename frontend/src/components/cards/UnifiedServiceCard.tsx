@@ -91,7 +91,9 @@ const formatUptime = (lastStartStr: string | null | undefined): string => {
 };
 
 export const hasVideo = (proc: ServiceItem): boolean => {
-  if (!proc) return true;
+  if (!proc) return false;
+  const svcType = proc.service_type || 'ffmpeg_stream';
+  if (svcType !== 'ffmpeg_stream') return false;
   try {
     const codecCfg = typeof proc.codec_config === 'string' 
       ? JSON.parse(proc.codec_config) 
