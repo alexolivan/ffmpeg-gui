@@ -281,7 +281,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
           }`}
         >
-          <span>🎛️</span> DeckLink Tools
+          <EngineLogo softwareType="decklink_tools" size={16} API={API} /> DeckLink Tools
         </button>
       </div>
 

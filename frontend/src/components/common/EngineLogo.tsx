@@ -36,6 +36,8 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
     normalizedType = 'icecast2';
   } else if (normalizedType.includes('kiosk') || normalizedType.includes('cog') || normalizedType === 'kiosk_browser') {
     normalizedType = 'kiosk_cog';
+  } else if (normalizedType.includes('decklink') || normalizedType === 'decklink_tools') {
+    normalizedType = 'decklink_tools';
   }
 
   const iconUrl = `${API}/api/settings/software/${normalizedType}/icon?t=${timestamp}`;
@@ -55,6 +57,10 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
 
   if (normalizedType === 'ffmpeg') {
     return <FfmpegLogoIcon size={size} className={className} />;
+  }
+
+  if (normalizedType === 'decklink_tools') {
+    return <span style={{ fontSize: `${size}px`, lineHeight: 1 }} className={`inline-flex items-center justify-center select-none ${className}`}>🎛️</span>;
   }
 
   return <ServerIcon size={size} className={className} />;

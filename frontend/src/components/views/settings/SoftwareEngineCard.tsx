@@ -465,7 +465,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                     <input
                       type="checkbox"
                       checked={engine.forge_enabled}
-                      disabled={isUpdatingConfig}
+                      disabled={isUpdatingConfig || (engine.always_enabled && !engine.supports_installed && !engine.supports_precompiled)}
                       onChange={(e) =>
                         handleUpdateEngineConfig({
                           [`${engine.key}_forge_enabled`]: e.target.checked,
