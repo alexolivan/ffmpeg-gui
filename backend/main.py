@@ -5646,6 +5646,16 @@ def get_software_icon(software_type: str, db: Session = Depends(get_db)):
     raise HTTPException(status_code=404, detail="Icon not found")
 
 
+@app.delete("/api/settings/software/{software_type}/icon")
+def delete_software_icon(software_type: str, db: Session = Depends(get_db)):
+    """Elimina el icono personalizado y vuelve al icono por defecto."""
+    from database.models import Storage
+    storage = db.query(Storage).first()
+    base_dir = storage.path if storage else os.path.abspath("data")
+    deleted = software_manager.delete_engine_icon(software_type, base_dir)
+    return {"success": True, "deleted": deleted}
+
+
 # Mounting static files and SPA fallback
 FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", "../frontend/dist")
 try:

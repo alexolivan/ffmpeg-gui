@@ -263,7 +263,7 @@ class SoftwareManager:
         ).first()
 
         if enabled:
-            default_name = alias.strip() if alias and alias.strip() else f"System {meta['name']} (APT/OS)"
+            default_name = alias.strip() if alias and alias.strip() else f"System {meta['name']} ($PATH)"
             v_tag = sys_audit.get("version") or "system"
             b_path = sys_audit.get("path")
             
@@ -481,6 +481,20 @@ class SoftwareManager:
             if os.path.isfile(p):
                 return p
         return None
+
+    def delete_engine_icon(self, software_type: str, storage_base_dir: str) -> bool:
+        """Deletes custom branding icon for the given software type."""
+        icons_dir = os.path.join(storage_base_dir, "branding", "engines")
+        deleted = False
+        for ext in (".png", ".svg", ".webp", ".jpg", ".jpeg"):
+            p = os.path.join(icons_dir, f"{software_type}{ext}")
+            if os.path.isfile(p):
+                try:
+                    os.remove(p)
+                    deleted = True
+                except Exception as e:
+                    logger.warning(f"Failed to remove icon {p}: {e}")
+        return deleted
 
 
 software_manager = SoftwareManager()

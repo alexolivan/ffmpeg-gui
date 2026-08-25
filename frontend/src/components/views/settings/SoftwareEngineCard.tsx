@@ -229,6 +229,21 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
     }
   };
 
+  const handleDeleteIcon = async () => {
+    try {
+      const res = await fetch(`${API}/api/settings/software/${engine.key}/icon`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setHasCustomIcon(false);
+        setIconTimestamp(Date.now());
+        showNotification(t('settings.software.iconResetSuccess', 'Reverted to default icon.'));
+      }
+    } catch (err: any) {
+      showNotification(err.message, true);
+    }
+  };
+
   const iconUrl = `${API}/api/settings/software/${engine.key}/icon?t=${iconTimestamp}`;
 
   return (
@@ -248,11 +263,11 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
       )}
 
       {/* Header with Icon, Title, and Master Toggle */}
-      <div className="flex items-start justify-between gap-4 pb-3 border-b border-[var(--glass-border)]">
-        <div className="flex items-center gap-3.5">
-          {/* Engine Logo / Icon */}
-          <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-            <div className="w-12 h-12 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] flex items-center justify-center overflow-hidden p-1.5">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-[var(--glass-border)]">
+        <div className="flex items-start gap-4">
+          {/* Engine Logo / Icon & Upload Controls */}
+          <div className="flex flex-col items-center gap-1.5 shrink-0">
+            <div className="w-14 h-14 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] flex items-center justify-center overflow-hidden p-1.5 shadow-inner">
               {hasCustomIcon ? (
                 <img
                   src={iconUrl}
@@ -261,12 +276,32 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                   onError={() => setHasCustomIcon(false)}
                 />
               ) : (
-                <ServerIcon size={24} className="text-brand-lime/70" />
+                <ServerIcon size={26} className="text-brand-lime/70" />
               )}
             </div>
-            <div className="absolute inset-0 bg-black/60 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-              <PencilIcon size={14} className="text-white" />
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-[10px] font-bold px-2 py-0.5 rounded bg-[var(--input-bg)] hover:bg-[var(--glass-border)] text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 transition-all flex items-center gap-1 cursor-pointer"
+                title={t('settings.software.changeIcon', 'Upload custom icon')}
+              >
+                <PencilIcon size={10} />
+                <span>{t('settings.software.icon', 'Icon')}</span>
+              </button>
+              {hasCustomIcon && (
+                <button
+                  type="button"
+                  onClick={handleDeleteIcon}
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded text-red-400 hover:bg-red-500/15 border border-red-500/20 transition-all cursor-pointer"
+                  title={t('settings.software.resetIcon', 'Reset to Default')}
+                >
+                  <TrashIcon size={10} />
+                </button>
+              )}
             </div>
+
             <input
               ref={fileInputRef}
               type="file"
@@ -290,23 +325,31 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
             <p className="text-xs text-[var(--text-secondary)] mt-0.5">
               {engine.description}
             </p>
+            <span className="text-[10px] text-[var(--text-secondary)] opacity-70 block mt-1">
+              {t('settings.software.iconFormats', 'Custom branding: PNG, SVG, WebP (max 2MB)')}
+            </span>
           </div>
         </div>
 
         {/* Master Engine Switch (locked for core FFmpeg) */}
         {!engine.always_enabled && (
-          <label className="relative inline-flex items-center cursor-pointer shrink-0">
-            <input
-              type="checkbox"
-              checked={engine.is_enabled}
-              disabled={isUpdatingConfig}
-              onChange={(e) =>
-                handleUpdateEngineConfig({ [`${engine.key}_enabled`]: e.target.checked })
-              }
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-[var(--input-bg)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
-          </label>
+          <div className="flex items-center gap-2 self-end sm:self-start">
+            <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+              {engine.is_enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')}
+            </span>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={engine.is_enabled}
+                disabled={isUpdatingConfig}
+                onChange={(e) =>
+                  handleUpdateEngineConfig({ [`${engine.key}_enabled`]: e.target.checked })
+                }
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-[var(--input-bg)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+            </label>
+          </div>
         )}
       </div>
 
@@ -319,7 +362,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
               <div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
-                    {t('settings.software.systemBinary', 'System Binary (APT/OS)')}
+                    {t('settings.software.systemBinary', 'System Binary ($PATH)')}
                   </span>
                   {engine.system_binary.found ? (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -343,7 +386,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                   </div>
                 ) : (
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
-                    {t('settings.software.installViaPackage', 'Install via package manager (apt install {{name}}) to enable automatic discovery.', { name: engine.name })}
+                    {t('settings.software.installViaPackage', 'The executable was not found in the system $PATH. Install it via your package manager or compile it to enable automatic detection.')}
                   </p>
                 )}
               </div>

@@ -423,11 +423,11 @@
       "title": "Motores de Software y Registro de Binarios",
       "subtitle": "Configura motores de procesamiento activos, paquetes del sistema ($PATH), releases precompiladas y branding personalizado.",
       "coreEngine": "NÚCLEO",
-      "systemBinary": "Binario del Sistema (APT/SO)",
+      "systemBinary": "Binario del Sistema ($PATH)",
       "detected": "Detectado",
       "notFoundInPath": "No en $PATH",
       "version": "Versión",
-      "installViaPackage": "Instala mediante el gestor de paquetes (apt install {{name}}) para habilitar su detección automática.",
+      "installViaPackage": "El ejecutable no se encontró en el $PATH del sistema. Instálalo mediante tu gestor de paquetes o compílalo para habilitar su detección automática.",
       "activeInBuilds": "Activo en desplegables",
       "unregister": "Desregistrar",
       "registerInBuilds": "Registrar en Builds",
@@ -450,7 +450,12 @@
       "downloadFailed": "Error en la descarga",
       "downloadSuccess": "¡Release de MediaMTX aprovisionada correctamente!",
       "iconUploadFailed": "Error al subir icono",
-      "iconUploadSuccess": "Icono personalizado subido correctamente."
+      "iconUploadSuccess": "Icono personalizado subido correctamente.",
+      "icon": "Icono",
+      "changeIcon": "Subir icono personalizado",
+      "resetIcon": "Restablecer por defecto",
+      "iconResetSuccess": "Restablecido al icono por defecto.",
+      "iconFormats": "Branding personalizado: PNG, SVG, WebP (máx 2MB)"
     }
   },
   "dashboard": {

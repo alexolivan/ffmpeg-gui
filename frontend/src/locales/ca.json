@@ -423,11 +423,11 @@
       "title": "Motors de Programari i Registre de Binaris",
       "subtitle": "Configura motors de processament actius, paquets del sistema ($PATH), versions precompilades i branding personalitzat.",
       "coreEngine": "NUCLI",
-      "systemBinary": "Binari del Sistema (APT/SO)",
+      "systemBinary": "Binari del Sistema ($PATH)",
       "detected": "Detectat",
       "notFoundInPath": "No a $PATH",
       "version": "Versió",
-      "installViaPackage": "Instal·la mitjançant el gestor de paquets (apt install {{name}}) per habilitar la detecció automàtica.",
+      "installViaPackage": "L'executable no s'ha trobat al $PATH del sistema. Instal·la'l mitjançant el teu gestor de paquets o compila'l per habilitar la detecció automàtica.",
       "activeInBuilds": "Actiu als desplegables",
       "unregister": "Desregistrar",
       "registerInBuilds": "Registrar a Builds",
@@ -450,7 +450,12 @@
       "downloadFailed": "Error en la descàrrega",
       "downloadSuccess": "¡Release de MediaMTX aprovisionada correctament!",
       "iconUploadFailed": "Error en pujar la icona",
-      "iconUploadSuccess": "Icona personalitzada pujada correctament."
+      "iconUploadSuccess": "Icona personalitzada pujada correctament.",
+      "icon": "Icona",
+      "changeIcon": "Pujar icona personalitzada",
+      "resetIcon": "Restablir per defecte",
+      "iconResetSuccess": "Restablert a la icona per defecte.",
+      "iconFormats": "Branding personalitzat: PNG, SVG, WebP (màx 2MB)"
     }
   },
   "dashboard": {

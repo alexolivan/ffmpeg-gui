@@ -423,11 +423,11 @@
       "title": "Software Engines & Binary Registry",
       "subtitle": "Configure active media processing engines, system packages ($PATH), precompiled releases, and custom branding.",
       "coreEngine": "CORE",
-      "systemBinary": "System Binary (APT/OS)",
+      "systemBinary": "System Binary ($PATH)",
       "detected": "Detected",
       "notFoundInPath": "Not in $PATH",
       "version": "Version",
-      "installViaPackage": "Install via package manager (apt install {{name}}) to enable automatic discovery.",
+      "installViaPackage": "The executable was not found in the system $PATH. Install it via your package manager or compile it to enable automatic detection.",
       "activeInBuilds": "Active in dropdowns",
       "unregister": "Unregister",
       "registerInBuilds": "Register in Builds",
@@ -450,7 +450,12 @@
       "downloadFailed": "Download failed",
       "downloadSuccess": "MediaMTX release provisioned successfully!",
       "iconUploadFailed": "Failed to upload icon",
-      "iconUploadSuccess": "Custom icon uploaded successfully."
+      "iconUploadSuccess": "Custom icon uploaded successfully.",
+      "icon": "Icon",
+      "changeIcon": "Upload custom icon",
+      "resetIcon": "Reset to Default",
+      "iconResetSuccess": "Reverted to default icon.",
+      "iconFormats": "Custom branding: PNG, SVG, WebP (max 2MB)"
     }
   },
   "dashboard": {
