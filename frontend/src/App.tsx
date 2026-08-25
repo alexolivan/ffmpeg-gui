@@ -11,6 +11,8 @@ import { ServicesView } from './components/views/ServicesView';
 import { SettingsView } from './components/views/SettingsView';
 import { ForgeView } from './components/views/ForgeView';
 import { ProcessPreviewModal } from './components/modals/ProcessPreviewModal';
+import { EngineLogo } from './components/common/EngineLogo';
+import { MediaMtxConfigForm } from './components/forms/MediaMtxConfigForm';
 
 const API = '';
 
@@ -19,6 +21,22 @@ function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [selectedLinuxDistro, setSelectedLinuxDistro] = useState<'debian' | 'fedora' | 'arch'>('debian');
+  const [creationServiceType, setCreationServiceType] = useState<'ffmpeg_stream' | 'mediamtx_hub'>('ffmpeg_stream');
+  const [enabledServiceEngines, setEnabledServiceEngines] = useState<string[]>(['ffmpeg']);
+
+  useEffect(() => {
+    fetch(`${API}/api/settings/software`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((data) => {
+        const enabled = Object.values(data)
+          .filter((e: any) => e.is_enabled && e.key !== 'decklink_tools')
+          .map((e: any) => e.key);
+        if (enabled.length > 0) {
+          setEnabledServiceEngines(enabled);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Custom Hooks
   const {
@@ -286,45 +304,112 @@ function App() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
-            <button onClick={() => setShowAddModal(false)}
-              className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs">✕</button>
-            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase">{t('services.addNewService')}</h3>
-            <ProcessConfigForm
-              onCancel={() => setShowAddModal(false)}
-              onSubmit={async (config) => {
-                try {
-                  const res = await fetch(`${API}/processes`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      name: config.name, type: 'service',
-                      alias: config.alias,
-                      input_config: config.input_config, output_config: config.output_config,
-                      codec_config: config.codec_config, filter_config: config.filter_config,
-                      ffmpeg_build_id: config.ffmpeg_build_id,
-                      auto_start: config.auto_start,
-                      startup_order: config.startup_order,
-                      startup_delay: config.startup_delay,
-                      watchdog_enabled: config.watchdog_enabled,
-                      watchdog_retries: config.watchdog_retries,
-                      watchdog_min_speed: config.watchdog_min_speed,
-                      watchdog_min_speed_duration: config.watchdog_min_speed_duration,
-                      network_timeout: config.network_timeout,
-                      debug_mode: config.debug_mode,
-                      log_storage_id: config.log_storage_id,
-                    })
-                  });
-                  if (res.ok) {
-                    setShowAddModal(false);
-                  } else {
-                    const errData = await res.json();
-                    alert(`Error creating service: ${errData.detail || 'Unknown error'}`);
+            <button
+              onClick={() => setShowAddModal(false)}
+              className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs cursor-pointer"
+            >
+              ✕
+            </button>
+            <div className="flex items-center justify-between gap-4 mb-3 flex-shrink-0">
+              <h3 className="text-base font-bold tracking-wide uppercase">
+                {t('services.addNewService')}
+              </h3>
+
+              {/* Service Engine Type Selector (if MediaMTX is enabled) */}
+              {enabledServiceEngines.includes('mediamtx') && (
+                <div className="flex items-center gap-1.5 bg-[var(--input-bg)] p-1 rounded-xl border border-[var(--glass-border)]">
+                  <button
+                    type="button"
+                    onClick={() => setCreationServiceType('ffmpeg_stream')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
+                      creationServiceType === 'ffmpeg_stream'
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent'
+                    }`}
+                  >
+                    <EngineLogo softwareType="ffmpeg" size={13} API={API} />
+                    <span>FFmpeg</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreationServiceType('mediamtx_hub')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
+                      creationServiceType === 'mediamtx_hub'
+                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent'
+                    }`}
+                  >
+                    <EngineLogo softwareType="mediamtx" size={13} API={API} />
+                    <span>MediaMTX</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {creationServiceType === 'mediamtx_hub' ? (
+              <MediaMtxConfigForm
+                API={API}
+                onCancel={() => setShowAddModal(false)}
+                onSubmit={async (payload) => {
+                  try {
+                    const res = await fetch(`${API}/processes`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                      setShowAddModal(false);
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error creating MediaMTX service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error: ${err.message || err}`);
                   }
-                } catch (err: any) {
-                  alert(`Network error creating service: ${err.message || err}`);
-                }
-              }}
-            />
+                }}
+              />
+            ) : (
+              <ProcessConfigForm
+                onCancel={() => setShowAddModal(false)}
+                onSubmit={async (config) => {
+                  try {
+                    const res = await fetch(`${API}/processes`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        name: config.name,
+                        type: 'service',
+                        service_type: 'ffmpeg_stream',
+                        alias: config.alias,
+                        input_config: config.input_config,
+                        output_config: config.output_config,
+                        codec_config: config.codec_config,
+                        filter_config: config.filter_config,
+                        ffmpeg_build_id: config.ffmpeg_build_id,
+                        auto_start: config.auto_start,
+                        startup_order: config.startup_order,
+                        startup_delay: config.startup_delay,
+                        watchdog_enabled: config.watchdog_enabled,
+                        watchdog_retries: config.watchdog_retries,
+                        watchdog_min_speed: config.watchdog_min_speed,
+                        watchdog_min_speed_duration: config.watchdog_min_speed_duration,
+                        network_timeout: config.network_timeout,
+                        debug_mode: config.debug_mode,
+                        log_storage_id: config.log_storage_id,
+                      }),
+                    });
+                    if (res.ok) {
+                      setShowAddModal(false);
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error creating service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error creating service: ${err.message || err}`);
+                  }
+                }}
+              />
+            )}
           </div>
         </div>
       )}
@@ -333,63 +418,98 @@ function App() {
       {editingProcess && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
-            <button onClick={() => setEditingProcess(null)}
-              className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs">✕</button>
-            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase">{t('services.editService')}: {editingProcess.name.toUpperCase()}</h3>
-            <ProcessConfigForm
-              initialConfig={editingProcess}
-              onCancel={() => setEditingProcess(null)}
-              onSubmit={async (config) => {
-                try {
-                  const res = await fetch(`${API}/processes/${editingProcess.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      name: config.name,
-                      alias: config.alias,
-                      input_config: config.input_config, output_config: config.output_config,
-                      codec_config: config.codec_config, filter_config: config.filter_config,
-                      ffmpeg_build_id: config.ffmpeg_build_id,
-                      auto_start: config.auto_start,
-                      startup_order: config.startup_order,
-                      startup_delay: config.startup_delay,
-                      watchdog_enabled: config.watchdog_enabled,
-                      watchdog_retries: config.watchdog_retries,
-                      watchdog_min_speed: config.watchdog_min_speed,
-                      watchdog_min_speed_duration: config.watchdog_min_speed_duration,
-                      network_timeout: config.network_timeout,
-                      debug_mode: config.debug_mode,
-                      log_storage_id: config.log_storage_id,
-                    })
-                  });
-                  if (res.ok) {
-                    setEditingProcess(null);
-                  } else {
-                    const errData = await res.json();
-                    alert(`Error updating service: ${errData.detail || 'Unknown error'}`);
+            <button
+              onClick={() => setEditingProcess(null)}
+              className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs cursor-pointer"
+            >
+              ✕
+            </button>
+            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase">
+              {t('services.editService')}: {editingProcess.name.toUpperCase()}
+            </h3>
+
+            {editingProcess.service_type === 'mediamtx_hub' ? (
+              <MediaMtxConfigForm
+                API={API}
+                initialConfig={editingProcess}
+                onCancel={() => setEditingProcess(null)}
+                onSubmit={async (payload) => {
+                  try {
+                    const res = await fetch(`${API}/processes/${editingProcess.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                      setEditingProcess(null);
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error updating MediaMTX service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error updating service: ${err.message || err}`);
                   }
-                } catch (err: any) {
-                  alert(`Network error updating service: ${err.message || err}`);
-                }
-              }}
-              onSaveAs={async (config) => {
-                try {
-                  const res = await fetch(`${API}/processes`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                  });
-                  if (res.ok) {
-                    setEditingProcess(null);
-                  } else {
-                    const errData = await res.json();
-                    alert(`Error saving service as copy: ${errData.detail || 'Unknown error'}`);
+                }}
+              />
+            ) : (
+              <ProcessConfigForm
+                initialConfig={editingProcess}
+                onCancel={() => setEditingProcess(null)}
+                onSubmit={async (config) => {
+                  try {
+                    const res = await fetch(`${API}/processes/${editingProcess.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        name: config.name,
+                        service_type: 'ffmpeg_stream',
+                        alias: config.alias,
+                        input_config: config.input_config,
+                        output_config: config.output_config,
+                        codec_config: config.codec_config,
+                        filter_config: config.filter_config,
+                        ffmpeg_build_id: config.ffmpeg_build_id,
+                        auto_start: config.auto_start,
+                        startup_order: config.startup_order,
+                        startup_delay: config.startup_delay,
+                        watchdog_enabled: config.watchdog_enabled,
+                        watchdog_retries: config.watchdog_retries,
+                        watchdog_min_speed: config.watchdog_min_speed,
+                        watchdog_min_speed_duration: config.watchdog_min_speed_duration,
+                        network_timeout: config.network_timeout,
+                        debug_mode: config.debug_mode,
+                        log_storage_id: config.log_storage_id,
+                      }),
+                    });
+                    if (res.ok) {
+                      setEditingProcess(null);
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error updating service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error updating service: ${err.message || err}`);
                   }
-                } catch (err: any) {
-                  alert(`Network error saving service copy: ${err.message || err}`);
-                }
-              }}
-            />
+                }}
+                onSaveAs={async (config) => {
+                  try {
+                    const res = await fetch(`${API}/processes`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(config),
+                    });
+                    if (res.ok) {
+                      setEditingProcess(null);
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error saving service as copy: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error saving service copy: ${err.message || err}`);
+                  }
+                }}
+              />
+            )}
           </div>
         </div>
       )}

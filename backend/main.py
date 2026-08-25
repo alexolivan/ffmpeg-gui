@@ -185,10 +185,12 @@ class BuildUpdate(BaseModel):
 
 class ProcessCreate(BaseModel):
     name: str
-    type: str
-    input_config: dict
-    output_config: dict
-    codec_config: dict
+    type: str = "service"
+    service_type: Optional[str] = "ffmpeg_stream"
+    config: Optional[dict] = None
+    input_config: Optional[dict] = None
+    output_config: Optional[dict] = None
+    codec_config: Optional[dict] = None
     filter_config: Optional[dict] = None
     ffmpeg_build_id: Optional[int] = None
     auto_start: Optional[bool] = False
@@ -219,6 +221,8 @@ class ProcessCreate(BaseModel):
 
 class ProcessUpdate(BaseModel):
     name: Optional[str] = None
+    service_type: Optional[str] = None
+    config: Optional[dict] = None
     input_config: Optional[dict] = None
     output_config: Optional[dict] = None
     codec_config: Optional[dict] = None
@@ -3579,30 +3583,43 @@ def list_processes(db: Session = Depends(get_db)):
 
 @app.post("/processes")
 def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
-    # If no build specified, use the default
+    svc_type = proc_in.service_type or "ffmpeg_stream"
+    
+    # If no build specified and ffmpeg_stream, use default ffmpeg build
     build_id = proc_in.ffmpeg_build_id
-    if build_id is None:
+    if build_id is None and svc_type == "ffmpeg_stream":
         default_build = db.query(FfmpegBuild).filter(
-            FfmpegBuild.is_default == True
+            FfmpegBuild.is_default == True,
+            (FfmpegBuild.software_type == 'ffmpeg') | (FfmpegBuild.software_type == None)
         ).first()
         if default_build:
             build_id = default_build.id
+    elif build_id is None and svc_type == "mediamtx_hub":
+        mtx_build = db.query(FfmpegBuild).filter(
+            FfmpegBuild.software_type == 'mediamtx',
+            FfmpegBuild.status == 'ready'
+        ).first()
+        if mtx_build:
+            build_id = mtx_build.id
 
-    # Sanitize configs on creation
-    input_cfg = dict(proc_in.input_config)
-    filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
-    sanitize_process_config_data(input_cfg, filter_cfg)
+    input_cfg = dict(proc_in.input_config) if proc_in.input_config is not None else None
+    filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else None
+    output_cfg = dict(proc_in.output_config) if proc_in.output_config is not None else None
+    codec_cfg = dict(proc_in.codec_config) if proc_in.codec_config is not None else None
 
-    # Check for port conflicts with GUI
-    check_media_process_port_conflicts(input_cfg, proc_in.output_config)
+    if svc_type == "ffmpeg_stream" and input_cfg is not None:
+        # Sanitize configs on creation
+        sanitize_process_config_data(input_cfg, filter_cfg or {})
+        check_media_process_port_conflicts(input_cfg, output_cfg or {})
 
     db_proc = MediaProcess(
         name=proc_in.name,
-        type=proc_in.type,
+        service_type=svc_type,
+        config=proc_in.config if proc_in.config is not None else {},
         input_config=input_cfg,
-        output_config=proc_in.output_config,
-        codec_config=proc_in.codec_config,
-        filter_config=filter_cfg if proc_in.filter_config is not None else None,
+        output_config=output_cfg,
+        codec_config=codec_cfg,
+        filter_config=filter_cfg,
         ffmpeg_build_id=build_id,
         auto_start=proc_in.auto_start,
         startup_order=proc_in.startup_order if proc_in.startup_order is not None else 1,
@@ -3624,7 +3641,7 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
 @app.post("/processes/preview-cmd")
 def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
     # Sanitize configs for preview
-    input_cfg = dict(proc_in.input_config)
+    input_cfg = dict(proc_in.input_config or {})
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
     sanitize_process_config_data(input_cfg, filter_cfg)
 
@@ -3657,44 +3674,54 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
         raise HTTPException(status_code=404, detail="Process not found")
 
     if proc_in.name is not None: db_proc.name = proc_in.name
+    if proc_in.service_type is not None: db_proc.service_type = proc_in.service_type
     
-    # Handle config sanitization on update
     import copy
     from sqlalchemy.orm.attributes import flag_modified
-    input_cfg = copy.deepcopy(proc_in.input_config) if proc_in.input_config is not None else copy.deepcopy(db_proc.input_config)
-    filter_cfg = copy.deepcopy(proc_in.filter_config) if proc_in.filter_config is not None else copy.deepcopy(db_proc.filter_config)
-    
-    if input_cfg:
-        sanitize_process_config_data(input_cfg, filter_cfg or {})
-        db_proc.input_config = input_cfg
+    if proc_in.config is not None:
+        db_proc.config = proc_in.config
         try:
-            flag_modified(db_proc, "input_config")
+            flag_modified(db_proc, "config")
         except Exception:
             pass
+
+    # Handle config sanitization on update for ffmpeg streams
+    if db_proc.service_type == "ffmpeg_stream":
+        input_cfg = copy.deepcopy(proc_in.input_config) if proc_in.input_config is not None else copy.deepcopy(db_proc.input_config)
+        filter_cfg = copy.deepcopy(proc_in.filter_config) if proc_in.filter_config is not None else copy.deepcopy(db_proc.filter_config)
         
-    if filter_cfg is not None:
-        db_proc.filter_config = filter_cfg
-        try:
-            flag_modified(db_proc, "filter_config")
-        except Exception:
-            pass
+        if input_cfg:
+            sanitize_process_config_data(input_cfg, filter_cfg or {})
+            db_proc.input_config = input_cfg
+            try:
+                flag_modified(db_proc, "input_config")
+            except Exception:
+                pass
+            
+        if filter_cfg is not None:
+            db_proc.filter_config = filter_cfg
+            try:
+                flag_modified(db_proc, "filter_config")
+            except Exception:
+                pass
 
-    output_cfg = proc_in.output_config if proc_in.output_config is not None else db_proc.output_config
-    check_media_process_port_conflicts(input_cfg, output_cfg)
+        output_cfg = proc_in.output_config if proc_in.output_config is not None else db_proc.output_config
+        check_media_process_port_conflicts(input_cfg, output_cfg)
 
-    if proc_in.output_config is not None:
-        db_proc.output_config = proc_in.output_config
-        try:
-            flag_modified(db_proc, "output_config")
-        except Exception:
-            pass
+        if proc_in.output_config is not None:
+            db_proc.output_config = proc_in.output_config
+            try:
+                flag_modified(db_proc, "output_config")
+            except Exception:
+                pass
 
-    if proc_in.codec_config is not None:
-        db_proc.codec_config = proc_in.codec_config
-        try:
-            flag_modified(db_proc, "codec_config")
-        except Exception:
-            pass
+        if proc_in.codec_config is not None:
+            db_proc.codec_config = proc_in.codec_config
+            try:
+                flag_modified(db_proc, "codec_config")
+            except Exception:
+                pass
+
     if proc_in.ffmpeg_build_id is not None: db_proc.ffmpeg_build_id = proc_in.ffmpeg_build_id
     if proc_in.auto_start is not None: db_proc.auto_start = proc_in.auto_start
     if proc_in.startup_order is not None: db_proc.startup_order = proc_in.startup_order

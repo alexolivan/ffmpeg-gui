@@ -79,17 +79,17 @@
     "logsHistory": "Histórico de Logs y Eventos",
     "viewLogs": "Ver Registros de Eventos",
     "mediamtx": {
-      "rtmpDesc": "Publica desde OBS o FFmpeg, o reproduce mediante VLC",
-      "rtspDesc": "Cámaras IP y clientes RTSP de baja latencia",
-      "hlsDesc": "HTTP Live Streaming para Safari, iOS y Hls.js",
-      "webrtcDesc": "Reproducción en navegador de latencia ultra-baja vía WHEP",
-      "srtDesc": "Contribución de alta resiliencia sobre redes con pérdida de paquetes",
-      "endpointsTab": "Endpoints de Transmisión",
-      "logsTab": "Logs en Vivo",
-      "endpointsExpl": "Haz clic en cualquier URL para copiarla directamente al portapapeles. Sustituye stream1 por tu nombre de stream.",
-      "logsStreaming": "Emisión en tiempo real de stdout / stderr del demonio",
-      "autoScroll": "Auto-scroll",
-      "noLogsYet": "Esperando salida de registros de logs..."
+      "generalConfig": "1. General y Binario de Ejecución",
+      "selectBinary": "Versión / Binario de MediaMTX",
+      "noBuildsWarning": "No se encontró ningún binario de MediaMTX. Ve a Ajustes -> Software para descargar una versión oficial o registrar el binario del sistema.",
+      "protocolsTitle": "2. Protocolos de Transmisión en Vivo y Puertos",
+      "storageTitle": "3. Almacenamiento y Protección de Disco",
+      "hlsStorage": "Volumen de Almacenamiento de Segmentos HLS",
+      "hlsStorageDesc": "Los fragmentos HLS usan retención circular en anillo (5 segmentos de 2s) para no saturar el almacenamiento raíz.",
+      "logStorage": "Volumen Dedicado para Logs",
+      "logStorageDesc": "Salida stdout/stderr de alto tráfico gestionada por rotación automática de logs.",
+      "lifecycleTitle": "4. Ciclo de Vida y Auto-arranque",
+      "buildRequired": "Por favor selecciona o descarga una versión de MediaMTX en Ajustes -> Software primero."
     }
   },
   "settings": {

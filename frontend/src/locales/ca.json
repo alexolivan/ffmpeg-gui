@@ -79,17 +79,17 @@
     "logsHistory": "Històric de Logs i Esdeveniments",
     "viewLogs": "Veure Registres d'Esdeveniments",
     "mediamtx": {
-      "rtmpDesc": "Publica des d'OBS o FFmpeg, o reprodueix mitjançant VLC",
-      "rtspDesc": "Càmeres IP i clients RTSP de baixa latència",
-      "hlsDesc": "HTTP Live Streaming per a Safari, iOS i Hls.js",
-      "webrtcDesc": "Reproducció en navegador de latència ultra-baixa via WHEP",
-      "srtDesc": "Contribució d'alta resiliència sobre xarxes amb pèrdua de paquets",
-      "endpointsTab": "Endpoints de Transmissió",
-      "logsTab": "Logs en Viu",
-      "endpointsExpl": "Fes clic a qualsevol URL per copiar-la directament al porta-retalls. Substitueix stream1 pel teu nom d'stream.",
-      "logsStreaming": "Emissió en temps real d'stdout / stderr del dimoni",
-      "autoScroll": "Auto-scroll",
-      "noLogsYet": "Esperant sortida de registres de logs..."
+      "generalConfig": "1. General i Binari d'Execució",
+      "selectBinary": "Versió / Binari de MediaMTX",
+      "noBuildsWarning": "No s'ha trobat cap binari de MediaMTX. Vés a Paràmetres -> Programari per descarregar una versió oficial o registrar el binari del sistema.",
+      "protocolsTitle": "2. Protocols de Transmissió en Viu i Ports",
+      "storageTitle": "3. Emmagatzematge i Protecció de Disc",
+      "hlsStorage": "Volum d'Emmagatzematge de Segments HLS",
+      "hlsStorageDesc": "Els fragments HLS usen retenció circular en anell (5 segments de 2s) per no saturar l'emmagatzematge arrel.",
+      "logStorage": "Volum Dedicat per a Registres (Logs)",
+      "logStorageDesc": "Sortida stdout/stderr d'alt trànsit gestionada per rotació automàtica de registres.",
+      "lifecycleTitle": "4. Cicle de Vida i Auto-arrencada",
+      "buildRequired": "Si us plau, selecciona o descarrega una versió de MediaMTX a Paràmetres -> Programari primer."
     }
   },
   "settings": {

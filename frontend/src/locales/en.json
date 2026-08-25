@@ -79,17 +79,17 @@
     "logsHistory": "Logs & Event History",
     "viewLogs": "View Event Logs",
     "mediamtx": {
-      "rtmpDesc": "Publish from OBS or FFmpeg, or play via VLC",
-      "rtspDesc": "Low-latency IP cameras and RTSP clients",
-      "hlsDesc": "HTTP Live Streaming for Safari, iOS, and Hls.js",
-      "webrtcDesc": "Ultra-low latency browser playback via WHEP",
-      "srtDesc": "High-resilience contribution over lossy networks",
-      "endpointsTab": "Streaming Endpoints",
-      "logsTab": "Live Logs",
-      "endpointsExpl": "Click any URL to copy it directly to your clipboard. Replace stream1 with your custom stream name.",
-      "logsStreaming": "Streaming daemon stdout / stderr",
-      "autoScroll": "Auto-scroll",
-      "noLogsYet": "Waiting for log output..."
+      "generalConfig": "1. General & Binary Build",
+      "selectBinary": "MediaMTX Binary Release",
+      "noBuildsWarning": "No MediaMTX release found. Please go to Settings -> Software to download an official release or register your system binary.",
+      "protocolsTitle": "2. Live Streaming Protocols & Ports",
+      "storageTitle": "3. Storage & Retention Protection",
+      "hlsStorage": "HLS Segment Storage Volume",
+      "hlsStorageDesc": "HLS chunks use circular ring retention (5 segments of 2s) to protect root storage.",
+      "logStorage": "Dedicated Log Storage Volume",
+      "logStorageDesc": "High-volume daemon stdout/stderr covered by automatic log rotation.",
+      "lifecycleTitle": "4. Lifecycle & Autostart",
+      "buildRequired": "Please select or provision a MediaMTX build in Settings -> Software first."
     }
   },
   "settings": {
