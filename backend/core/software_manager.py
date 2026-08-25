@@ -461,5 +461,26 @@ class SoftwareManager:
                 shutil.rmtree(dest_dir, ignore_errors=True)
             raise
 
+    def save_engine_icon(self, software_type: str, image_bytes: bytes, filename: str, storage_base_dir: str) -> str:
+        """Saves a custom branding icon for the given software type."""
+        icons_dir = os.path.join(storage_base_dir, "branding", "engines")
+        os.makedirs(icons_dir, exist_ok=True)
+        ext = os.path.splitext(filename)[1].lower() or ".png"
+        if ext not in (".png", ".svg", ".jpg", ".jpeg", ".webp"):
+            ext = ".png"
+        icon_path = os.path.join(icons_dir, f"{software_type}{ext}")
+        with open(icon_path, "wb") as f:
+            f.write(image_bytes)
+        return icon_path
+
+    def get_engine_icon_path(self, software_type: str, storage_base_dir: str) -> Optional[str]:
+        """Returns the filesystem path of a custom icon if it exists."""
+        icons_dir = os.path.join(storage_base_dir, "branding", "engines")
+        for ext in (".png", ".svg", ".webp", ".jpg", ".jpeg"):
+            p = os.path.join(icons_dir, f"{software_type}{ext}")
+            if os.path.isfile(p):
+                return p
+        return None
+
 
 software_manager = SoftwareManager()

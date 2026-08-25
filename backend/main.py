@@ -35,6 +35,10 @@ try:
 except ImportError:
     from backend.core.magewell_manager import MagewellManager
 magewell_manager = MagewellManager()
+try:
+    from core.software_manager import software_manager
+except ImportError:
+    from backend.core.software_manager import software_manager
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -585,6 +589,8 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 except ValueError: pass
                 try: notifications_data["notify_storage_alerts"] = notif_cfg.getboolean("notify_storage_alerts", fallback=notifications_data["notify_storage_alerts"])
                 except ValueError: pass
+            if "software_engines" in config:
+                software_manager.load_config(dict(config["software_engines"]))
             if "server" in config and "port" in config["server"]:
                 gui_port = int(config["server"]["port"])
                 if gui_port != active_port:
@@ -5496,6 +5502,148 @@ async def configure_magewell_channel(
         status_code = 409 if "active service" in err_msg.lower() else 400
         raise HTTPException(status_code=status_code, detail=err_msg)
     return res
+
+
+# ── Software Engine Registry Endpoints ──────────────────────────────────
+class ToggleInstalledSoftwareRequest(BaseModel):
+    enabled: bool
+    alias: Optional[str] = None
+
+
+class DownloadMediaMtxReleaseRequest(BaseModel):
+    version: str
+
+
+@app.get("/api/settings/software")
+def get_software_settings(db: Session = Depends(get_db)):
+    """Retorna el estado agregado de todos los motores de software soportados."""
+    return software_manager.get_engines_status(db_session=db)
+
+
+@app.post("/api/settings/software/config")
+def update_software_config(payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """Actualiza la configuración de motores y valida los invariantes de seguridad."""
+    # Validar invariantes en cada motor
+    for s_type in ["ffmpeg", "mediamtx", "icecast2", "kiosk_cog"]:
+        try:
+            software_manager.validate_safety_invariants(s_type, payload)
+        except ValueError as val_err:
+            raise HTTPException(status_code=400, detail=str(val_err))
+
+    # Persistir en archivo de configuración .conf
+    config_path = os.environ.get("CONFIG_FILE_PATH", "ffmpeg-gui.conf")
+    if not os.path.exists(config_path) and os.path.exists("/etc/ffmpeg-gui/ffmpeg-gui.conf"):
+        config_path = "/etc/ffmpeg-gui/ffmpeg-gui.conf"
+
+    import configparser
+    c_parser = configparser.ConfigParser()
+    if os.path.exists(config_path):
+        c_parser.read(config_path)
+
+    if not c_parser.has_section("software_engines"):
+        c_parser.add_section("software_engines")
+
+    for k, v in payload.items():
+        c_parser.set("software_engines", str(k), str(v).lower())
+
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            c_parser.write(f)
+    except Exception as e:
+        logger.warning(f"No se pudo escribir en {config_path}: {e}")
+
+    software_manager.load_config(payload)
+    return {"success": True, "config": software_manager.get_config()}
+
+
+@app.post("/api/settings/software/{software_type}/installed/toggle")
+def toggle_installed_software(
+    software_type: str,
+    payload: ToggleInstalledSoftwareRequest,
+    db: Session = Depends(get_db)
+):
+    """Registra o desregistra un binario instalado en el sistema ($PATH)."""
+    try:
+        res = software_manager.toggle_installed_binary(
+            software_type=software_type,
+            enabled=payload.enabled,
+            alias=payload.alias,
+            db_session=db
+        )
+        return res
+    except FileNotFoundError as fnf:
+        raise HTTPException(status_code=404, detail=str(fnf))
+    except RuntimeError as r_err:
+        raise HTTPException(status_code=409, detail=str(r_err))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/settings/software/mediamtx/releases")
+def get_mediamtx_releases():
+    """Retorna la lista de releases oficiales de MediaMTX en GitHub."""
+    return software_manager.get_mediamtx_releases()
+
+
+@app.post("/api/settings/software/mediamtx/download")
+def download_mediamtx_release(
+    payload: DownloadMediaMtxReleaseRequest,
+    db: Session = Depends(get_db)
+):
+    """Descarga, valida y aprovisiona una release precompilada de MediaMTX."""
+    from database.models import Storage
+    build_storage = db.query(Storage).filter(Storage.type.in_(["build", "builds"])).first()
+    storage_path = build_storage.path if build_storage else os.path.abspath("data/builds")
+
+    try:
+        res = software_manager.provision_mediamtx_release(
+            version_tag=payload.version,
+            db_session=db,
+            builds_storage_dir=storage_path
+        )
+        return res
+    except Exception as e:
+        logger.error(f"Error aprovisionando MediaMTX: {e}")
+        raise HTTPException(status_code=500, detail=f"Fallo al descargar o validar MediaMTX: {e}")
+
+
+@app.post("/api/settings/software/{software_type}/icon")
+async def upload_software_icon(
+    software_type: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Guarda un icono personalizado para un motor de software."""
+    from database.models import Storage
+    storage = db.query(Storage).first()
+    base_dir = storage.path if storage else os.path.abspath("data")
+
+    contents = await file.read()
+    if len(contents) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="El archivo excede el tamaño máximo permitido (2MB)")
+
+    try:
+        saved_path = software_manager.save_engine_icon(
+            software_type=software_type,
+            image_bytes=contents,
+            filename=file.filename or f"{software_type}.png",
+            storage_base_dir=base_dir
+        )
+        return {"success": True, "icon_path": saved_path}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error guardando icono: {e}")
+
+
+@app.get("/api/settings/software/{software_type}/icon")
+def get_software_icon(software_type: str, db: Session = Depends(get_db)):
+    """Sirve el icono personalizado o 404."""
+    from database.models import Storage
+    storage = db.query(Storage).first()
+    base_dir = storage.path if storage else os.path.abspath("data")
+    icon_path = software_manager.get_engine_icon_path(software_type, base_dir)
+    if icon_path and os.path.isfile(icon_path):
+        return FileResponse(icon_path)
+    raise HTTPException(status_code=404, detail="Icon not found")
 
 
 # Mounting static files and SPA fallback
