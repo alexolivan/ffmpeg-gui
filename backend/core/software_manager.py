@@ -23,6 +23,16 @@ SUPPORTED_ENGINES: Dict[str, Dict[str, Any]] = {
         "always_enabled": True,
         "version_cmd": ["-version"],
     },
+    "decklink_tools": {
+        "name": "DeckLink Tools (Helper)",
+        "description": "Native Blackmagic DeckLink hardware probe and configuration CLI helper.",
+        "default_binary": "decklink_helper",
+        "supports_forge": True,
+        "supports_installed": False,
+        "supports_precompiled": False,
+        "always_enabled": True,
+        "version_cmd": ["--version"],
+    },
     "mediamtx": {
         "name": "MediaMTX Hub",
         "description": "Multi-protocol zero-dependency live media hub (RTSP, RTMP, HLS, WebRTC, SRT).",
@@ -52,16 +62,6 @@ SUPPORTED_ENGINES: Dict[str, Dict[str, Any]] = {
         "supports_installed": True,
         "supports_precompiled": False,
         "always_enabled": False,
-        "version_cmd": ["--version"],
-    },
-    "decklink_tools": {
-        "name": "DeckLink Tools (Helper)",
-        "description": "Native Blackmagic DeckLink hardware probe and configuration CLI helper.",
-        "default_binary": "decklink_helper",
-        "supports_forge": True,
-        "supports_installed": False,
-        "supports_precompiled": False,
-        "always_enabled": True,
         "version_cmd": ["--version"],
     },
 }

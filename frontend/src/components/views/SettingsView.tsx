@@ -1680,15 +1680,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <div className="space-y-3">
-              {Object.values(softwareEngines).map((engine) => (
-                <SoftwareEngineCard
-                  key={engine.key}
-                  engine={engine}
-                  API={API}
-                  onRefresh={fetchSoftwareEngines}
-                  onDeleteBuild={handleDeleteBuild}
-                />
-              ))}
+              {Object.values(softwareEngines)
+                .sort((a, b) => {
+                  const order = ['ffmpeg', 'decklink_tools', 'mediamtx', 'icecast2', 'kiosk_cog'];
+                  const idxA = order.indexOf(a.key);
+                  const idxB = order.indexOf(b.key);
+                  if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                  if (a.always_enabled && !b.always_enabled) return -1;
+                  if (!a.always_enabled && b.always_enabled) return 1;
+                  return 0;
+                })
+                .map((engine) => (
+                  <SoftwareEngineCard
+                    key={engine.key}
+                    engine={engine}
+                    API={API}
+                    onRefresh={fetchSoftwareEngines}
+                    onDeleteBuild={handleDeleteBuild}
+                  />
+                ))}
             </div>
           </div>
         )}
