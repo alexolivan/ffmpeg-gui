@@ -77,7 +77,20 @@
     "autoManaged": "Autogestionado",
     "refCount": "Consumidores",
     "logsHistory": "Histórico de Logs y Eventos",
-    "viewLogs": "Ver Registros de Eventos"
+    "viewLogs": "Ver Registros de Eventos",
+    "mediamtx": {
+      "rtmpDesc": "Publica desde OBS o FFmpeg, o reproduce mediante VLC",
+      "rtspDesc": "Cámaras IP y clientes RTSP de baja latencia",
+      "hlsDesc": "HTTP Live Streaming para Safari, iOS y Hls.js",
+      "webrtcDesc": "Reproducción en navegador de latencia ultra-baja vía WHEP",
+      "srtDesc": "Contribución de alta resiliencia sobre redes con pérdida de paquetes",
+      "endpointsTab": "Endpoints de Transmisión",
+      "logsTab": "Logs en Vivo",
+      "endpointsExpl": "Haz clic en cualquier URL para copiarla directamente al portapapeles. Sustituye stream1 por tu nombre de stream.",
+      "logsStreaming": "Emisión en tiempo real de stdout / stderr del demonio",
+      "autoScroll": "Auto-scroll",
+      "noLogsYet": "Esperando salida de registros de logs..."
+    }
   },
   "settings": {
     "title": "Configuración",
@@ -95,7 +108,8 @@
       "alsa": "Audio ALSA",
       "backup": "Copia de Seguridad",
       "decklink": "DECKLINK",
-      "magewell": "MAGEWELL"
+      "magewell": "MAGEWELL",
+      "software": "SOFTWARE"
     },
     "alsa": {
       "title": "MEZCLADOR ALSA",
@@ -404,6 +418,39 @@
       "lowLatencyDesc": "Omite colas de frames internas para un procesamiento con latencia mínima",
       "applyConfigBtn": "Aplicar Configuración",
       "configAppliedSuccess": "Configuración aplicada correctamente"
+    },
+    "software": {
+      "title": "Motores de Software y Registro de Binarios",
+      "subtitle": "Configura motores de procesamiento activos, paquetes del sistema ($PATH), releases precompiladas y branding personalizado.",
+      "coreEngine": "NÚCLEO",
+      "systemBinary": "Binario del Sistema (APT/SO)",
+      "detected": "Detectado",
+      "notFoundInPath": "No en $PATH",
+      "version": "Versión",
+      "installViaPackage": "Instala mediante el gestor de paquetes (apt install {{name}}) para habilitar su detección automática.",
+      "activeInBuilds": "Activo en desplegables",
+      "unregister": "Desregistrar",
+      "registerInBuilds": "Registrar en Builds",
+      "forgeCompilation": "Compilador Forja (Código Fuente)",
+      "forgeDesc": "Habilita la compilación de versiones personalizadas y variantes con SDKs para {{name}} en la Forja.",
+      "registeredCompiledBuilds": "Builds Compilados",
+      "precompiledReleases": "Releases Oficiales Precompiladas (GitHub)",
+      "precompiledDesc": "Descarga y aprovisiona releases oficiales independientes directamente sin necesidad de compilar.",
+      "fetchReleases": "Consultar Releases en GitHub",
+      "downloading": "Descargando y Validando...",
+      "downloadAndInstall": "📥 Descargar e Instalar",
+      "provisionedReleases": "Releases Aprovisionadas",
+      "dependentServices": "servicios",
+      "cannotDeleteInUse": "No se puede eliminar mientras esté en uso por servicios",
+      "errorUpdatingConfig": "Error al actualizar la configuración de motores",
+      "configUpdated": "Configuración de motores actualizada correctamente.",
+      "errorTogglingInstalled": "Error al conmutar binario instalado",
+      "installedRegistered": "Binario del sistema registrado como build.",
+      "installedUnregistered": "Binario del sistema desregistrado.",
+      "downloadFailed": "Error en la descarga",
+      "downloadSuccess": "¡Release de MediaMTX aprovisionada correctamente!",
+      "iconUploadFailed": "Error al subir icono",
+      "iconUploadSuccess": "Icono personalizado subido correctamente."
     }
   },
   "dashboard": {

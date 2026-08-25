@@ -27,6 +27,7 @@ class ProcessManager:
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
         self._spawn_lock: Optional[asyncio.Lock] = None
+        self.ephemeral_configs: Dict[int, str] = {}
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -137,30 +138,45 @@ class ProcessManager:
             
             logs_dir = log_storage_path
             debug_mode = cfg.get("debug_mode", False)
+            svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
 
-            # Determine which FFmpeg binary to use
-            ffmpeg_bin = self.ffmpeg_path  # Default fallback
-            ffmpeg_build_id = cfg.get("ffmpeg_build_id")
-            if ffmpeg_build_id:
-                build = session.query(FfmpegBuild).get(ffmpeg_build_id)
-                if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
-                    ffmpeg_bin = build.ffmpeg_binary
-                    self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
+            if svc_type == "mediamtx_hub":
+                mediamtx_bin = "mediamtx"
+                build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                if build_id:
+                    build = session.query(FfmpegBuild).get(build_id)
+                    if build and build.binary_path and os.path.exists(build.binary_path):
+                        mediamtx_bin = build.binary_path
+                elif shutil.which("mediamtx"):
+                    mediamtx_bin = shutil.which("mediamtx")
 
-            # Resolve and validate paths before starting
-            import copy
-            val_input = copy.deepcopy(cfg.get("input_config", {}))
-            val_output = copy.deepcopy(cfg.get("output_config", {}))
-            val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
-            self._resolve_config_paths(val_input, val_output, val_filter)
-            try:
-                self._validate_paths(val_input, val_output, val_filter)
-            except Exception as val_err:
-                media_proc.status = 'error'
-                session.commit()
-                raise val_err
+                cmd, ephem_path = self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session)
+                self.ephemeral_configs[process_id] = ephem_path
+            else:
+                # Determine which FFmpeg binary to use
+                ffmpeg_bin = self.ffmpeg_path  # Default fallback
+                ffmpeg_build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                if ffmpeg_build_id:
+                    build = session.query(FfmpegBuild).get(ffmpeg_build_id)
+                    if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+                        ffmpeg_bin = build.ffmpeg_binary
+                        self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
 
-            cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
+                # Resolve and validate paths before starting
+                import copy
+                val_input = copy.deepcopy(cfg.get("input_config", {}))
+                val_output = copy.deepcopy(cfg.get("output_config", {}))
+                val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
+                self._resolve_config_paths(val_input, val_output, val_filter)
+                try:
+                    self._validate_paths(val_input, val_output, val_filter)
+                except Exception as val_err:
+                    media_proc.status = 'error'
+                    session.commit()
+                    raise val_err
+
+                cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
+
             proc_name = media_proc.name
             session.commit()  # Save changes and release write lock immediately!
             
@@ -170,7 +186,7 @@ class ProcessManager:
         prepare_process_file_permissions(process_id=process_id, logger=self.logger)
 
         # 2. Spawn subprocess (outside of any database session locks)
-        self.logger.info(f"Starting FFMPEG for {proc_name}: {shlex.join(cmd)}")
+        self.logger.info(f"Starting service '{proc_name}' ({svc_type}): {shlex.join(cmd)}")
         try:
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
@@ -339,6 +355,14 @@ class ProcessManager:
                 if process_id in self.processes:
                     del self.processes[process_id]
 
+            # Clean up ephemeral RAM configuration file if present
+            ephem = self.ephemeral_configs.pop(process_id, None)
+            if ephem and os.path.exists(ephem):
+                try:
+                    os.remove(ephem)
+                except Exception:
+                    pass
+
             cleanup_rogue_processes(process_id=process_id)
 
             with self.db_session_factory() as session:
@@ -459,6 +483,106 @@ class ProcessManager:
         return FFmpegCommandBuilder.build_cmd(
             media_proc, ffmpeg_bin, limit_sec=limit_sec, execution_id=execution_id, db_session_factory=self.db_session_factory
         )
+
+    def _build_mediamtx_config_and_cmd(self, media_proc, mediamtx_bin: str, session):
+        """
+        Builds dynamic configuration for MediaMTX in ephemeral RAM (/dev/shm) and returns subprocess command.
+        """
+        import uuid
+        import yaml
+        from database.models import Storage
+
+        cfg = media_proc.config or {}
+        mtx_cfg = cfg.get("mediamtx_config", {})
+
+        config_dict = {}
+        config_dict["logLevel"] = mtx_cfg.get("log_level", "info")
+        config_dict["logDestinations"] = ["stdout"]
+
+        # Protocols & Ports
+        rtsp_enabled = mtx_cfg.get("rtsp_enabled", True)
+        config_dict["rtsp"] = rtsp_enabled
+        if rtsp_enabled:
+            config_dict["rtspAddress"] = f":{mtx_cfg.get('rtsp_port', 8554)}"
+            config_dict["rtpAddress"] = f":{mtx_cfg.get('rtp_port', 8000)}"
+            config_dict["rtcpAddress"] = f":{mtx_cfg.get('rtcp_port', 8001)}"
+
+        rtmp_enabled = mtx_cfg.get("rtmp_enabled", True)
+        config_dict["rtmp"] = rtmp_enabled
+        if rtmp_enabled:
+            config_dict["rtmpAddress"] = f":{mtx_cfg.get('rtmp_port', 1935)}"
+
+        hls_enabled = mtx_cfg.get("hls_enabled", True)
+        config_dict["hls"] = hls_enabled
+        if hls_enabled:
+            config_dict["hlsAddress"] = f":{mtx_cfg.get('hls_port', 8888)}"
+            config_dict["hlsSegmentCount"] = int(mtx_cfg.get("hls_segment_count", 5))
+            config_dict["hlsSegmentDuration"] = f"{mtx_cfg.get('hls_segment_duration', 2)}s"
+
+            # Resolve HLS storage path
+            hls_storage_id = mtx_cfg.get("hls_storage_id") or cfg.get("hls_storage_id")
+            hls_dir = None
+            if hls_storage_id:
+                hls_storage = session.query(Storage).get(hls_storage_id)
+                if hls_storage:
+                    hls_dir = os.path.join(hls_storage.path, f"mediamtx_svc_{media_proc.id}")
+            if not hls_dir:
+                def_hls = session.query(Storage).filter(Storage.type.in_(["hls", "media"])).first()
+                if def_hls:
+                    hls_dir = os.path.join(def_hls.path, f"mediamtx_svc_{media_proc.id}")
+                else:
+                    hls_dir = os.path.join("/tmp/ffmpeg-gui-hls", f"mediamtx_svc_{media_proc.id}")
+
+            os.makedirs(hls_dir, exist_ok=True)
+            config_dict["hlsDirectory"] = hls_dir
+
+        webrtc_enabled = mtx_cfg.get("webrtc_enabled", False)
+        config_dict["webrtc"] = webrtc_enabled
+        if webrtc_enabled:
+            config_dict["webrtcAddress"] = f":{mtx_cfg.get('webrtc_port', 8889)}"
+
+        srt_enabled = mtx_cfg.get("srt_enabled", False)
+        config_dict["srt"] = srt_enabled
+        if srt_enabled:
+            config_dict["srtAddress"] = f":{mtx_cfg.get('srt_port', 8890)}"
+
+        # API & Metrics
+        api_enabled = mtx_cfg.get("api_enabled", True)
+        config_dict["api"] = api_enabled
+        if api_enabled:
+            config_dict["apiAddress"] = f":{mtx_cfg.get('api_port', 9997)}"
+
+        # Paths / Stream routing
+        paths = mtx_cfg.get("paths", {})
+        if not paths:
+            paths = {"all_others": {}}
+        config_dict["paths"] = paths
+
+        # Custom raw YAML overrides if provided
+        raw_yaml = mtx_cfg.get("raw_yaml", "").strip()
+        if raw_yaml:
+            try:
+                parsed_raw = yaml.safe_load(raw_yaml)
+                if isinstance(parsed_raw, dict):
+                    config_dict.update(parsed_raw)
+            except Exception as e:
+                self.logger.warning(f"Error parsing raw_yaml for MediaMTX service {media_proc.id}: {e}")
+
+        # Choose RAM filesystem (/dev/shm) with fallback to /tmp
+        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.path.isdir("/dev/shm") else "/tmp"
+        token = uuid.uuid4().hex[:8]
+        ephem_file = os.path.join(shm_dir, f"ffmpeg_gui_mediamtx_{media_proc.id}_{token}.yml")
+
+        yaml_content = yaml.dump(config_dict, default_flow_style=False)
+        with open(ephem_file, "w", encoding="utf-8") as f:
+            f.write(yaml_content)
+
+        try:
+            os.chmod(ephem_file, 0o600)
+        except Exception:
+            pass
+
+        return [mediamtx_bin, ephem_file], ephem_file
 
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process, log_path: Optional[str] = None):
         import re
