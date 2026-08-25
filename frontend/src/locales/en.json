@@ -458,7 +458,9 @@
       "iconFormats": "Custom branding: PNG, SVG, WebP (max 2MB)",
       "liveSyncTitle": "Real-Time Auto-Save & Instant Application",
       "liveSyncDesc": "Changes made to engines, icons, and binary registrations take effect immediately without needing to click Save Settings or restart the panel.",
-      "liveStatus": "● Live Mode"
+      "liveStatus": "● Live Mode",
+      "liveSyncShort": "Auto-Saved in Real-Time",
+      "subtitleCompact": "Configure active media processing engines, system packages ($PATH), precompiled releases, and custom branding. Changes apply immediately without panel restarts."
     }
   },
   "dashboard": {

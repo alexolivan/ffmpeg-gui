@@ -458,7 +458,9 @@
       "iconFormats": "Branding personalizado: PNG, SVG, WebP (máx 2MB)",
       "liveSyncTitle": "Auto-Guardado en Tiempo Real y Aplicación Inmediata",
       "liveSyncDesc": "Los cambios realizados en motores, iconos y registros de binarios se aplican y guardan inmediatamente sin necesidad de pulsar Guardar Ajustes ni reiniciar el panel.",
-      "liveStatus": "● Modo en Vivo"
+      "liveStatus": "● Modo en Vivo",
+      "liveSyncShort": "Auto-Guardado en Tiempo Real",
+      "subtitleCompact": "Configura motores de procesamiento activos, paquetes del sistema ($PATH), releases precompiladas y branding personalizado. Los cambios se aplican inmediatamente sin reiniciar el panel."
     }
   },
   "dashboard": {

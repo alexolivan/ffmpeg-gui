@@ -458,7 +458,9 @@
       "iconFormats": "Branding personalitzat: PNG, SVG, WebP (màx 2MB)",
       "liveSyncTitle": "Desat Automàtic en Temps Real i Aplicació Immediata",
       "liveSyncDesc": "Els canvis realitzats en motors, icones i registres de binaris s'apliquen i es guarden immediatament sense necessitat de prémer Desar Paràmetres ni reiniciar el panell.",
-      "liveStatus": "● Mode en Viu"
+      "liveStatus": "● Mode en Viu",
+      "liveSyncShort": "Desat Automàtic en Temps Real",
+      "subtitleCompact": "Configura motors de processament actius, paquets del sistema ($PATH), versions precompilades i branding personalitzat. Els canvis s'apliquen immediatament sense reiniciar el panell."
     }
   },
   "dashboard": {

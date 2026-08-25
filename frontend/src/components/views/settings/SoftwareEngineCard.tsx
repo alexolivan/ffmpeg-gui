@@ -85,14 +85,13 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
     setTimeout(() => {
       setErrorMessage(null);
       setSuccessMessage(null);
-    }, 4000);
+    }, 3500);
   };
 
   const handleUpdateEngineConfig = async (patch: Record<string, boolean>) => {
     setIsUpdatingConfig(true);
     setErrorMessage(null);
     try {
-      // Build proposed config
       const resStatus = await fetch(`${API}/api/settings/software`);
       const allEngines: Record<string, SoftwareEngineData> = await resStatus.json();
       
@@ -112,7 +111,6 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
         }
       });
 
-      // Apply patch
       Object.assign(payload, patch);
 
       const res = await fetch(`${API}/api/settings/software/config`, {
@@ -249,27 +247,27 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
   const iconUrl = `${API}/api/settings/software/${engine.key}/icon?t=${iconTimestamp}`;
 
   return (
-    <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-5 shadow-lg flex flex-col gap-4 relative overflow-hidden">
+    <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-3.5 shadow-sm flex flex-col gap-2.5 relative overflow-hidden">
       {/* Notifications banner */}
       {errorMessage && (
-        <div className="bg-red-500/15 border border-red-500/40 text-red-300 text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+        <div className="bg-red-500/15 border border-red-500/40 text-red-300 text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-2">
           <span>⚠️</span>
           <span>{errorMessage}</span>
         </div>
       )}
       {successMessage && (
-        <div className="bg-brand-lime/15 border border-brand-lime/40 text-brand-lime text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+        <div className="bg-brand-lime/15 border border-brand-lime/40 text-brand-lime text-[11px] px-2.5 py-1.5 rounded-lg flex items-center gap-2">
           <span>✓</span>
           <span>{successMessage}</span>
         </div>
       )}
 
-      {/* Header with Icon, Title, and Master Toggle */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-[var(--glass-border)]">
-        <div className="flex items-start gap-4">
+      {/* Compact Header with Icon, Title, and Master Toggle */}
+      <div className="flex items-center justify-between gap-3 pb-2 border-b border-[var(--glass-border)]">
+        <div className="flex items-center gap-3 min-w-0">
           {/* Engine Logo / Icon & Upload Controls */}
-          <div className="flex flex-col items-center gap-1.5 shrink-0">
-            <div className="w-14 h-14 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] flex items-center justify-center overflow-hidden p-1.5 shadow-inner">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] flex items-center justify-center overflow-hidden p-1 shadow-inner">
               {hasCustomIcon ? (
                 <img
                   src={iconUrl}
@@ -278,7 +276,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                   onError={() => setHasCustomIcon(false)}
                 />
               ) : (
-                <ServerIcon size={26} className="text-brand-lime/70" />
+                <ServerIcon size={18} className="text-brand-lime/70" />
               )}
             </div>
 
@@ -286,20 +284,20 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="text-[10px] font-bold px-2 py-0.5 rounded bg-[var(--input-bg)] hover:bg-[var(--glass-border)] text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 transition-all flex items-center gap-1 cursor-pointer"
-                title={t('settings.software.changeIcon', 'Upload custom icon')}
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--input-bg)] hover:bg-[var(--glass-border)] text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 transition-all flex items-center gap-1 cursor-pointer"
+                title={t('settings.software.changeIcon', 'Upload custom icon (PNG, SVG, WebP)')}
               >
-                <PencilIcon size={10} />
+                <PencilIcon size={9} />
                 <span>{t('settings.software.icon', 'Icon')}</span>
               </button>
               {hasCustomIcon && (
                 <button
                   type="button"
                   onClick={handleDeleteIcon}
-                  className="text-[10px] font-bold px-1.5 py-0.5 rounded text-red-400 hover:bg-red-500/15 border border-red-500/20 transition-all cursor-pointer"
+                  className="text-[10px] font-bold px-1 py-0.5 rounded text-red-400 hover:bg-red-500/15 border border-red-500/20 transition-all cursor-pointer"
                   title={t('settings.software.resetIcon', 'Reset to Default')}
                 >
-                  <TrashIcon size={10} />
+                  <TrashIcon size={9} />
                 </button>
               )}
             </div>
@@ -313,30 +311,28 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
             />
           </div>
 
-          <div>
+          {/* Title & Desc */}
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-black tracking-wide text-[var(--text-primary)] uppercase">
+              <h3 className="text-xs font-black tracking-wide text-[var(--text-primary)] uppercase truncate">
                 {engine.name}
               </h3>
               {engine.always_enabled && (
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-brand-lime/10 text-brand-lime border border-brand-lime/20">
+                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20">
                   {t('settings.software.coreEngine', 'CORE')}
                 </span>
               )}
             </div>
-            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+            <p className="text-[11px] text-[var(--text-secondary)] truncate">
               {engine.description}
             </p>
-            <span className="text-[10px] text-[var(--text-secondary)] opacity-70 block mt-1">
-              {t('settings.software.iconFormats', 'Custom branding: PNG, SVG, WebP (max 2MB)')}
-            </span>
           </div>
         </div>
 
-        {/* Master Engine Switch (locked for core FFmpeg) */}
+        {/* Master Engine Switch (locked for core FFmpeg / decklink helper) */}
         {!engine.always_enabled && (
-          <div className="flex items-center gap-2 self-end sm:self-start">
-            <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
               {engine.is_enabled ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')}
             </span>
             <label className="relative inline-flex items-center cursor-pointer shrink-0">
@@ -349,7 +345,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                 }
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-[var(--input-bg)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-lime"></div>
+              <div className="w-8 h-4.5 bg-[var(--input-bg)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-brand-lime"></div>
             </label>
           </div>
         )}
@@ -357,29 +353,29 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
 
       {/* Engine Body when Enabled */}
       {engine.is_enabled && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
           {/* Subcard 1: System Binary (INSTALLED via which) */}
           {engine.supports_installed && (
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-4 flex flex-col justify-between gap-3">
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2.5 flex flex-col justify-between gap-2">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-primary)]">
                     {t('settings.software.systemBinary', 'System Binary ($PATH)')}
                   </span>
                   {engine.system_binary.found ? (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                       ✓ {t('settings.software.detected', 'Detected')}
                     </span>
                   ) : (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-zinc-500/10 text-zinc-400 border border-zinc-500/20">
                       ✗ {t('settings.software.notFoundInPath', 'Not in $PATH')}
                     </span>
                   )}
                 </div>
 
                 {engine.system_binary.found ? (
-                  <div className="mt-2 text-xs space-y-1">
-                    <div className="text-[var(--text-secondary)] font-mono text-[11px] truncate">
+                  <div className="mt-1 text-[11px] space-y-0.5">
+                    <div className="text-[var(--text-secondary)] font-mono text-[10px] truncate">
                       {engine.system_binary.path}
                     </div>
                     <div className="text-[var(--text-primary)] font-semibold">
@@ -387,29 +383,29 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                  <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
                     {t('settings.software.installViaPackage', 'The executable was not found in the system $PATH. Install it via your package manager or compile it to enable automatic detection.')}
                   </p>
                 )}
               </div>
 
               {engine.system_binary.found && (
-                <div className="pt-2 border-t border-[var(--glass-border)] flex items-center justify-between gap-2">
+                <div className="pt-1.5 border-t border-[var(--glass-border)] flex items-center justify-between gap-2">
                   {engine.installed_build_registered ? (
                     <div className="flex items-center justify-between w-full">
-                      <span className="text-xs text-brand-lime font-semibold flex items-center gap-1">
+                      <span className="text-[11px] text-brand-lime font-semibold flex items-center gap-1">
                         ● {t('settings.software.activeInBuilds', 'Active in dropdowns')}
                       </span>
                       <button
                         type="button"
                         onClick={() => handleToggleInstalledBinary(false)}
-                        className="text-xs text-red-400 hover:text-red-300 font-bold hover:underline cursor-pointer"
+                        className="text-[11px] text-red-400 hover:text-red-300 font-bold hover:underline cursor-pointer"
                       >
                         {t('settings.software.unregister', 'Unregister')}
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 w-full">
+                    <div className="flex items-center gap-1.5 w-full">
                       {isEditingAlias ? (
                         <>
                           <input
@@ -417,19 +413,19 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                             placeholder="Alias (e.g. System FFmpeg)"
                             value={installedAlias}
                             onChange={(e) => setInstalledAlias(e.target.value)}
-                            className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] flex-1"
+                            className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-0.5 text-xs text-[var(--text-primary)] flex-1"
                           />
                           <button
                             type="button"
                             onClick={() => handleToggleInstalledBinary(true)}
-                            className="bg-brand-lime text-black font-bold text-xs px-3 py-1 rounded cursor-pointer"
+                            className="bg-brand-lime text-black font-bold text-[11px] px-2 py-0.5 rounded cursor-pointer"
                           >
                             {t('common.confirm', 'OK')}
                           </button>
                           <button
                             type="button"
                             onClick={() => setIsEditingAlias(false)}
-                            className="text-xs text-[var(--text-secondary)]"
+                            className="text-[11px] text-[var(--text-secondary)]"
                           >
                             {t('common.cancel', 'Cancel')}
                           </button>
@@ -438,10 +434,10 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            setInstalledAlias(`System ${engine.name} (OS)`);
+                            setInstalledAlias(`System ${engine.name} ($PATH)`);
                             setIsEditingAlias(true);
                           }}
-                          className="bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/30 text-xs font-bold px-3 py-1.5 rounded-lg w-full transition-all cursor-pointer"
+                          className="bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/30 text-[11px] font-bold px-2.5 py-1 rounded w-full transition-all cursor-pointer"
                         >
                           + {t('settings.software.registerInBuilds', 'Register in Builds')}
                         </button>
@@ -455,10 +451,10 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
 
           {/* Subcard 2: Forge Compiler (COMPILED) */}
           {engine.supports_forge && (
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-4 flex flex-col justify-between gap-3">
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2.5 flex flex-col justify-between gap-2">
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-primary)]">
                     {t('settings.software.forgeCompilation', 'Forge Compiler (Source)')}
                   </span>
                   <label className="relative inline-flex items-center cursor-pointer shrink-0">
@@ -473,15 +469,15 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                       }
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-[var(--bg-card)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
+                    <div className="w-8 h-4.5 bg-[var(--bg-card)] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-brand-lime"></div>
                   </label>
                 </div>
-                <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                <p className="mt-1 text-[11px] text-[var(--text-secondary)]">
                   {t('settings.software.forgeDesc', 'Enable building custom versions and SDK variants for {{name}} in the Forge.', { name: engine.name })}
                 </p>
               </div>
 
-              <div className="pt-2 border-t border-[var(--glass-border)] text-xs text-[var(--text-secondary)] flex justify-between">
+              <div className="pt-1.5 border-t border-[var(--glass-border)] text-[11px] text-[var(--text-secondary)] flex justify-between">
                 <span>{t('settings.software.registeredCompiledBuilds', 'Compiled Builds')}:</span>
                 <span className="font-bold text-[var(--text-primary)]">
                   {engine.builds.filter((b) => b.source_type === 'compiled').length}
@@ -492,14 +488,14 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
 
           {/* Subcard 3: Precompiled Releases Downloader (MediaMTX) */}
           {engine.supports_precompiled && (
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-4 flex flex-col justify-between gap-3 col-span-1 md:col-span-2">
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2.5 flex flex-col justify-between gap-2 col-span-1 md:col-span-2">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-primary)]">
                     {t('settings.software.precompiledReleases', 'Pre-compiled Official Releases (GitHub)')}
                   </span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] mb-3">
+                <p className="text-[11px] text-[var(--text-secondary)] mb-2">
                   {t('settings.software.precompiledDesc', 'Download and provision standalone official releases directly without compiling.')}
                 </p>
 
@@ -508,7 +504,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                   <button
                     type="button"
                     onClick={handleFetchReleases}
-                    className="bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-xs px-3 py-1.5 rounded-lg text-[var(--text-primary)] font-semibold cursor-pointer"
+                    className="bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[11px] px-2.5 py-1 rounded text-[var(--text-primary)] font-semibold cursor-pointer"
                   >
                     {isFetchingReleases ? t('common.loading', 'Loading...') : t('settings.software.fetchReleases', 'Check GitHub Releases')}
                   </button>
@@ -518,7 +514,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                       <select
                         value={selectedRelease}
                         onChange={(e) => setSelectedRelease(e.target.value)}
-                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-xs text-[var(--text-primary)] font-mono"
+                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-[11px] text-[var(--text-primary)] font-mono"
                       >
                         {releases.map((r) => (
                           <option key={r.tag} value={r.tag}>
@@ -531,7 +527,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                         type="button"
                         disabled={isDownloadingRelease}
                         onClick={handleDownloadRelease}
-                        className="bg-brand-lime text-black font-bold text-xs px-4 py-1.5 rounded-lg shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                        className="bg-brand-lime text-black font-bold text-[11px] px-3 py-1 rounded shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
                       >
                         {isDownloadingRelease ? t('settings.software.downloading', 'Downloading & Validating...') : t('settings.software.downloadAndInstall', '📥 Download & Install')}
                       </button>
@@ -542,31 +538,31 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
 
               {/* Table of precompiled builds */}
               {engine.builds.filter((b) => b.source_type === 'precompiled').length > 0 && (
-                <div className="pt-3 border-t border-[var(--glass-border)]">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] block mb-2">
+                <div className="pt-2 border-t border-[var(--glass-border)]">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] block mb-1.5">
                     {t('settings.software.provisionedReleases', 'Provisioned Releases')}:
                   </span>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {engine.builds
                       .filter((b) => b.source_type === 'precompiled')
                       .map((b) => (
                         <div
                           key={b.id}
-                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-2 flex items-center justify-between gap-3 text-xs"
+                          className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px]"
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <span className="font-bold text-[var(--text-primary)]">{b.name}</span>
-                            <span className="font-mono text-[10px] text-brand-lime bg-brand-lime/10 px-1.5 py-0.5 rounded border border-brand-lime/20">
+                            <span className="font-mono text-[9px] text-brand-lime bg-brand-lime/10 px-1 py-0.2 rounded border border-brand-lime/20">
                               v{b.version_tag}
                             </span>
                             {b.disk_usage_mb && (
-                              <span className="text-[10px] text-[var(--text-secondary)]">
+                              <span className="text-[9px] text-[var(--text-secondary)]">
                                 ({b.disk_usage_mb} MB)
                               </span>
                             )}
                           </div>
 
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
                             <span className="text-[10px] text-[var(--text-secondary)]">
                               {b.referencing_services_count}{' '}
                               {t('settings.software.dependentServices', 'services')}
@@ -575,14 +571,14 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                               type="button"
                               onClick={() => onDeleteBuild(b.id)}
                               disabled={b.referencing_services_count > 0}
-                              className={`p-1.5 rounded transition-colors ${
+                              className={`p-1 rounded transition-colors ${
                                 b.referencing_services_count > 0
                                   ? 'opacity-30 cursor-not-allowed text-[var(--text-secondary)]'
                                   : 'text-red-400 hover:bg-red-500/10 cursor-pointer'
                               }`}
                               title={b.referencing_services_count > 0 ? t('settings.software.cannotDeleteInUse', 'Cannot delete while used by services') : t('common.delete', 'Delete')}
                             >
-                              <TrashIcon size={13} />
+                              <TrashIcon size={12} />
                             </button>
                           </div>
                         </div>

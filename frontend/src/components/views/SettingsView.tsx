@@ -110,10 +110,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup'>('general');
 
   const [softwareEngines, setSoftwareEngines] = useState<Record<string, SoftwareEngineData>>({});
-  const [isLoadingSoftware, setIsLoadingSoftware] = useState(false);
 
   const fetchSoftwareEngines = async () => {
-    setIsLoadingSoftware(true);
     try {
       const res = await fetch(`${API}/api/settings/software`);
       if (res.ok) {
@@ -122,8 +120,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
     } catch (err) {
       console.error('Error fetching software engines:', err);
-    } finally {
-      setIsLoadingSoftware(false);
     }
   };
 
@@ -1666,45 +1662,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* TAB 2: Software Engines & Registry */}
         {activeTab === 'software' && (
-          <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between">
+          <div className="space-y-3 animate-in fade-in duration-300">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[var(--glass-border)]">
               <div>
-                <h3 className="text-sm font-black uppercase tracking-wider text-[var(--text-primary)]">
-                  {t('settings.software.title', 'Software Engines & Binary Registry')}
-                </h3>
-                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                  {t('settings.software.subtitle', 'Configure active media processing engines, system packages ($PATH), precompiled releases, and custom branding.')}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={fetchSoftwareEngines}
-                disabled={isLoadingSoftware}
-                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[var(--text-primary)] transition-all cursor-pointer"
-              >
-                {isLoadingSoftware ? t('common.loading', 'Loading...') : t('common.refresh', 'Refresh')}
-              </button>
-            </div>
-
-            {/* Live Auto-Save Info Banner */}
-            <div className="bg-brand-lime/10 border border-brand-lime/30 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs text-brand-lime">
-              <div className="flex items-center gap-2.5">
-                <span className="text-base">⚡</span>
-                <div>
-                  <span className="font-bold uppercase tracking-wider block">
-                    {t('settings.software.liveSyncTitle', 'Real-Time Auto-Save & Instant Application')}
-                  </span>
-                  <span className="text-[11px] text-[var(--text-secondary)]">
-                    {t('settings.software.liveSyncDesc', 'Changes made to engines, icons, and binary registrations take effect immediately without needing to click Save Settings or restart the panel.')}
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-[var(--text-primary)]">
+                    {t('settings.software.title', 'Software Engines & Binary Registry')}
+                  </h3>
+                  <span className="text-[10px] font-mono text-brand-lime bg-brand-lime/10 px-1.5 py-0.2 rounded border border-brand-lime/20 font-bold">
+                    ⚡ {t('settings.software.liveSyncShort', 'Auto-Saved in Real-Time')}
                   </span>
                 </div>
+                <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                  {t('settings.software.subtitleCompact', 'Configure active media processing engines, system packages ($PATH), precompiled releases, and custom branding. Changes apply immediately without panel restarts.')}
+                </p>
               </div>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-brand-lime/20 border border-brand-lime/40 uppercase shrink-0">
-                {t('settings.software.liveStatus', '● Live Mode')}
-              </span>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-3">
               {Object.values(softwareEngines).map((engine) => (
                 <SoftwareEngineCard
                   key={engine.key}
