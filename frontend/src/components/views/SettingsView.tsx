@@ -6,6 +6,7 @@ import { AlsaAudioSettingsCard } from './settings/AlsaAudioSettingsCard';
 import { DecklinkSettingsCard } from './settings/DecklinkSettingsCard';
 import { MagewellSettingsCard } from './settings/MagewellSettingsCard';
 import { BackupRestoreCard } from './settings/BackupRestoreCard';
+import { SoftwareEngineCard, type SoftwareEngineData } from './settings/SoftwareEngineCard';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
 
@@ -106,7 +107,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'lcd' | 'storage' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup'>('general');
+
+  const [softwareEngines, setSoftwareEngines] = useState<Record<string, SoftwareEngineData>>({});
+  const [isLoadingSoftware, setIsLoadingSoftware] = useState(false);
+
+  const fetchSoftwareEngines = async () => {
+    setIsLoadingSoftware(true);
+    try {
+      const res = await fetch(`${API}/api/settings/software`);
+      if (res.ok) {
+        const data = await res.json();
+        setSoftwareEngines(data);
+      }
+    } catch (err) {
+      console.error('Error fetching software engines:', err);
+    } finally {
+      setIsLoadingSoftware(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSoftwareEngines();
+  }, [API]);
+
+  const handleDeleteBuild = async (buildId: number) => {
+    if (!confirm(t('common.confirmDelete', 'Are you sure you want to delete this build?'))) return;
+    try {
+      const res = await fetch(`${API}/builds/${buildId}`, { method: 'DELETE' });
+      if (res.ok) {
+        await fetchSoftwareEngines();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const hasLcdHardware = !!(
     capabilities?.lcd?.available ||
@@ -876,6 +911,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <GearIcon size={14} />
           {t('settings.tabs.general', 'General')}
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('software')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+            activeTab === 'software'
+              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <ServerIcon size={14} />
+          {t('settings.tabs.software', 'SOFTWARE')}
+        </button>
         {hasLcdHardware && (
           <button
             type="button"
@@ -1613,6 +1660,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </select>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: Software Engines & Registry */}
+        {activeTab === 'software' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-[var(--text-primary)]">
+                  {t('settings.software.title', 'Software Engines & Binary Registry')}
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                  {t('settings.software.subtitle', 'Configure active media processing engines, system packages ($PATH), precompiled releases, and custom branding.')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchSoftwareEngines}
+                disabled={isLoadingSoftware}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[var(--text-primary)] transition-all cursor-pointer"
+              >
+                {isLoadingSoftware ? t('common.loading', 'Loading...') : t('common.refresh', 'Refresh')}
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              {Object.values(softwareEngines).map((engine) => (
+                <SoftwareEngineCard
+                  key={engine.key}
+                  engine={engine}
+                  API={API}
+                  onRefresh={fetchSoftwareEngines}
+                  onDeleteBuild={handleDeleteBuild}
+                />
+              ))}
             </div>
           </div>
         )}

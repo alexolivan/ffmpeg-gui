@@ -77,7 +77,20 @@
     "autoManaged": "Auto-managed",
     "refCount": "Consumers",
     "logsHistory": "Logs & Event History",
-    "viewLogs": "View Event Logs"
+    "viewLogs": "View Event Logs",
+    "mediamtx": {
+      "rtmpDesc": "Publish from OBS or FFmpeg, or play via VLC",
+      "rtspDesc": "Low-latency IP cameras and RTSP clients",
+      "hlsDesc": "HTTP Live Streaming for Safari, iOS, and Hls.js",
+      "webrtcDesc": "Ultra-low latency browser playback via WHEP",
+      "srtDesc": "High-resilience contribution over lossy networks",
+      "endpointsTab": "Streaming Endpoints",
+      "logsTab": "Live Logs",
+      "endpointsExpl": "Click any URL to copy it directly to your clipboard. Replace stream1 with your custom stream name.",
+      "logsStreaming": "Streaming daemon stdout / stderr",
+      "autoScroll": "Auto-scroll",
+      "noLogsYet": "Waiting for log output..."
+    }
   },
   "settings": {
     "title": "Settings",
@@ -95,7 +108,8 @@
       "alsa": "ALSA AUDIO",
       "backup": "BACKUP & RESTORE",
       "decklink": "DECKLINK",
-      "magewell": "MAGEWELL"
+      "magewell": "MAGEWELL",
+      "software": "SOFTWARE"
     },
     "alsa": {
       "title": "ALSA MIXER",
@@ -404,6 +418,39 @@
       "lowLatencyDesc": "Bypasses internal frame queues for minimum latency processing",
       "applyConfigBtn": "Apply Configuration",
       "configAppliedSuccess": "Configuration applied successfully"
+    },
+    "software": {
+      "title": "Software Engines & Binary Registry",
+      "subtitle": "Configure active media processing engines, system packages ($PATH), precompiled releases, and custom branding.",
+      "coreEngine": "CORE",
+      "systemBinary": "System Binary (APT/OS)",
+      "detected": "Detected",
+      "notFoundInPath": "Not in $PATH",
+      "version": "Version",
+      "installViaPackage": "Install via package manager (apt install {{name}}) to enable automatic discovery.",
+      "activeInBuilds": "Active in dropdowns",
+      "unregister": "Unregister",
+      "registerInBuilds": "Register in Builds",
+      "forgeCompilation": "Forge Compiler (Source)",
+      "forgeDesc": "Enable building custom versions and SDK variants for {{name}} in the Forge.",
+      "registeredCompiledBuilds": "Compiled Builds",
+      "precompiledReleases": "Pre-compiled Official Releases (GitHub)",
+      "precompiledDesc": "Download and provision standalone official releases directly without compiling.",
+      "fetchReleases": "Check GitHub Releases",
+      "downloading": "Downloading & Validating...",
+      "downloadAndInstall": "📥 Download & Install",
+      "provisionedReleases": "Provisioned Releases",
+      "dependentServices": "services",
+      "cannotDeleteInUse": "Cannot delete while used by services",
+      "errorUpdatingConfig": "Failed to update software configuration",
+      "configUpdated": "Engine configuration updated successfully.",
+      "errorTogglingInstalled": "Failed to toggle installed binary",
+      "installedRegistered": "System binary registered as build.",
+      "installedUnregistered": "System binary unregistered.",
+      "downloadFailed": "Download failed",
+      "downloadSuccess": "MediaMTX release provisioned successfully!",
+      "iconUploadFailed": "Failed to upload icon",
+      "iconUploadSuccess": "Custom icon uploaded successfully."
     }
   },
   "dashboard": {

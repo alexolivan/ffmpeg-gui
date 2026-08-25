@@ -77,7 +77,20 @@
     "autoManaged": "Autogestionat",
     "refCount": "Consumidors",
     "logsHistory": "Històric de Logs i Esdeveniments",
-    "viewLogs": "Veure Registres d'Esdeveniments"
+    "viewLogs": "Veure Registres d'Esdeveniments",
+    "mediamtx": {
+      "rtmpDesc": "Publica des d'OBS o FFmpeg, o reprodueix mitjançant VLC",
+      "rtspDesc": "Càmeres IP i clients RTSP de baixa latència",
+      "hlsDesc": "HTTP Live Streaming per a Safari, iOS i Hls.js",
+      "webrtcDesc": "Reproducció en navegador de latència ultra-baixa via WHEP",
+      "srtDesc": "Contribució d'alta resiliència sobre xarxes amb pèrdua de paquets",
+      "endpointsTab": "Endpoints de Transmissió",
+      "logsTab": "Logs en Viu",
+      "endpointsExpl": "Fes clic a qualsevol URL per copiar-la directament al porta-retalls. Substitueix stream1 pel teu nom d'stream.",
+      "logsStreaming": "Emissió en temps real d'stdout / stderr del dimoni",
+      "autoScroll": "Auto-scroll",
+      "noLogsYet": "Esperant sortida de registres de logs..."
+    }
   },
   "settings": {
     "title": "Configuració",
@@ -95,7 +108,8 @@
       "alsa": "Àudio ALSA",
       "backup": "Còpia de Seguretat",
       "decklink": "DECKLINK",
-      "magewell": "MAGEWELL"
+      "magewell": "MAGEWELL",
+      "software": "SOFTWARE"
     },
     "alsa": {
       "title": "MESCLADOR ALSA",
@@ -404,6 +418,39 @@
       "lowLatencyDesc": "Omet cues internes de frames per a un processament de latència mínima",
       "applyConfigBtn": "Aplicar Configuració",
       "configAppliedSuccess": "Configuració aplicada correctament"
+    },
+    "software": {
+      "title": "Motors de Programari i Registre de Binaris",
+      "subtitle": "Configura motors de processament actius, paquets del sistema ($PATH), versions precompilades i branding personalitzat.",
+      "coreEngine": "NUCLI",
+      "systemBinary": "Binari del Sistema (APT/SO)",
+      "detected": "Detectat",
+      "notFoundInPath": "No a $PATH",
+      "version": "Versió",
+      "installViaPackage": "Instal·la mitjançant el gestor de paquets (apt install {{name}}) per habilitar la detecció automàtica.",
+      "activeInBuilds": "Actiu als desplegables",
+      "unregister": "Desregistrar",
+      "registerInBuilds": "Registrar a Builds",
+      "forgeCompilation": "Compilador Forja (Codi Font)",
+      "forgeDesc": "Habilita la compilació de versions personalitzades i variants amb SDKs per a {{name}} a la Forja.",
+      "registeredCompiledBuilds": "Builds Compilats",
+      "precompiledReleases": "Releases Oficials Precompilades (GitHub)",
+      "precompiledDesc": "Descarrega i aprovisiona versions oficials independents directament sense necessitat de compilar.",
+      "fetchReleases": "Consultar Releases a GitHub",
+      "downloading": "Descarregant i Validant...",
+      "downloadAndInstall": "📥 Descarregar i Instal·lar",
+      "provisionedReleases": "Releases Aprovisionades",
+      "dependentServices": "serveis",
+      "cannotDeleteInUse": "No es pot eliminar mentre estigui en ús per serveis",
+      "errorUpdatingConfig": "Error en actualitzar la configuració de motors",
+      "configUpdated": "Configuració de motors actualitzada correctament.",
+      "errorTogglingInstalled": "Error en commutar binari instal·lat",
+      "installedRegistered": "Binari del sistema registrat com a build.",
+      "installedUnregistered": "Binari del sistema desregistrat.",
+      "downloadFailed": "Error en la descàrrega",
+      "downloadSuccess": "¡Release de MediaMTX aprovisionada correctament!",
+      "iconUploadFailed": "Error en pujar la icona",
+      "iconUploadSuccess": "Icona personalitzada pujada correctament."
     }
   },
   "dashboard": {
