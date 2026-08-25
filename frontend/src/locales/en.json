@@ -90,6 +90,11 @@
       "logStorageDesc": "High-volume daemon stdout/stderr covered by automatic log rotation.",
       "lifecycleTitle": "4. Lifecycle & Autostart",
       "buildRequired": "Please select or provision a MediaMTX build in Settings -> Software first."
+    },
+    "picker": {
+      "title": "Create New Service: Select Engine",
+      "subtitle": "Choose the underlying software engine architecture to configure for this new service.",
+      "continue": "Continue"
     }
   },
   "settings": {

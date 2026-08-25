@@ -90,6 +90,11 @@
       "logStorageDesc": "Sortida stdout/stderr d'alt trànsit gestionada per rotació automàtica de registres.",
       "lifecycleTitle": "4. Cicle de Vida i Auto-arrencada",
       "buildRequired": "Si us plau, selecciona o descarrega una versió de MediaMTX a Paràmetres -> Programari primer."
+    },
+    "picker": {
+      "title": "Crear Nou Servei: Seleccionar Motor",
+      "subtitle": "Tria l'arquitectura i el motor de programari per configurar aquest nou servei.",
+      "continue": "Continuar"
     }
   },
   "settings": {

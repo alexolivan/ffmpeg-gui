@@ -90,6 +90,11 @@
       "logStorageDesc": "Salida stdout/stderr de alto tráfico gestionada por rotación automática de logs.",
       "lifecycleTitle": "4. Ciclo de Vida y Auto-arranque",
       "buildRequired": "Por favor selecciona o descarga una versión de MediaMTX en Ajustes -> Software primero."
+    },
+    "picker": {
+      "title": "Crear Nuevo Servicio: Seleccionar Motor",
+      "subtitle": "Elige la arquitectura y el motor de software para configurar este nuevo servicio.",
+      "continue": "Continuar"
     }
   },
   "settings": {

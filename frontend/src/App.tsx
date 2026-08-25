@@ -11,7 +11,7 @@ import { ServicesView } from './components/views/ServicesView';
 import { SettingsView } from './components/views/SettingsView';
 import { ForgeView } from './components/views/ForgeView';
 import { ProcessPreviewModal } from './components/modals/ProcessPreviewModal';
-import { EngineLogo } from './components/common/EngineLogo';
+import { ServiceTypePickerModal } from './components/modals/ServiceTypePickerModal';
 import { MediaMtxConfigForm } from './components/forms/MediaMtxConfigForm';
 
 const API = '';
@@ -22,21 +22,7 @@ function App() {
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [selectedLinuxDistro, setSelectedLinuxDistro] = useState<'debian' | 'fedora' | 'arch'>('debian');
   const [creationServiceType, setCreationServiceType] = useState<'ffmpeg_stream' | 'mediamtx_hub'>('ffmpeg_stream');
-  const [enabledServiceEngines, setEnabledServiceEngines] = useState<string[]>(['ffmpeg']);
-
-  useEffect(() => {
-    fetch(`${API}/api/settings/software`)
-      .then((r) => (r.ok ? r.json() : {}))
-      .then((data) => {
-        const enabled = Object.values(data)
-          .filter((e: any) => e.is_enabled && e.key !== 'decklink_tools')
-          .map((e: any) => e.key);
-        if (enabled.length > 0) {
-          setEnabledServiceEngines(enabled);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const [creationStep, setCreationStep] = useState<'picker' | 'form'>('picker');
 
   // Custom Hooks
   const {
@@ -300,56 +286,56 @@ function App() {
         )}
       </main>
 
-      {/* ── Add Service Modal ── */}
-      {showAddModal && (
+      {/* ── Add Service Modal (Step 1: Engine Picker, Step 2: Dedicated Form) ── */}
+      {showAddModal && creationStep === 'picker' && (
+        <ServiceTypePickerModal
+          API={API}
+          onClose={() => {
+            setShowAddModal(false);
+          }}
+          onSelectServiceType={(serviceType) => {
+            setCreationServiceType(serviceType as any);
+            setCreationStep('form');
+          }}
+        />
+      )}
+
+      {showAddModal && creationStep === 'form' && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
             <button
-              onClick={() => setShowAddModal(false)}
+              onClick={() => {
+                setShowAddModal(false);
+                setCreationStep('picker');
+              }}
               className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs cursor-pointer"
             >
               ✕
             </button>
             <div className="flex items-center justify-between gap-4 mb-3 flex-shrink-0">
-              <h3 className="text-base font-bold tracking-wide uppercase">
-                {t('services.addNewService')}
-              </h3>
-
-              {/* Service Engine Type Selector (if MediaMTX is enabled) */}
-              {enabledServiceEngines.includes('mediamtx') && (
-                <div className="flex items-center gap-1.5 bg-[var(--input-bg)] p-1 rounded-xl border border-[var(--glass-border)]">
-                  <button
-                    type="button"
-                    onClick={() => setCreationServiceType('ffmpeg_stream')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
-                      creationServiceType === 'ffmpeg_stream'
-                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent'
-                    }`}
-                  >
-                    <EngineLogo softwareType="ffmpeg" size={13} API={API} />
-                    <span>FFmpeg</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCreationServiceType('mediamtx_hub')}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
-                      creationServiceType === 'mediamtx_hub'
-                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-sm'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-transparent'
-                    }`}
-                  >
-                    <EngineLogo softwareType="mediamtx" size={13} API={API} />
-                    <span>MediaMTX</span>
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCreationStep('picker')}
+                  className="text-xs text-[var(--text-secondary)] hover:text-brand-lime font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"
+                  title="Volver al selector"
+                >
+                  ← {t('common.back', 'Back')}
+                </button>
+                <span className="text-[var(--glass-border)]">|</span>
+                <h3 className="text-base font-bold tracking-wide uppercase">
+                  {t('services.addNewService')}: {creationServiceType === 'mediamtx_hub' ? 'MediaMTX Hub' : 'FFmpeg Stream'}
+                </h3>
+              </div>
             </div>
 
             {creationServiceType === 'mediamtx_hub' ? (
               <MediaMtxConfigForm
                 API={API}
-                onCancel={() => setShowAddModal(false)}
+                onCancel={() => {
+                  setShowAddModal(false);
+                  setCreationStep('picker');
+                }}
                 onSubmit={async (payload) => {
                   try {
                     const res = await fetch(`${API}/processes`, {
@@ -359,6 +345,7 @@ function App() {
                     });
                     if (res.ok) {
                       setShowAddModal(false);
+                      setCreationStep('picker');
                     } else {
                       const errData = await res.json();
                       alert(`Error creating MediaMTX service: ${errData.detail || 'Unknown error'}`);
@@ -370,7 +357,10 @@ function App() {
               />
             ) : (
               <ProcessConfigForm
-                onCancel={() => setShowAddModal(false)}
+                onCancel={() => {
+                  setShowAddModal(false);
+                  setCreationStep('picker');
+                }}
                 onSubmit={async (config) => {
                   try {
                     const res = await fetch(`${API}/processes`, {
@@ -400,6 +390,7 @@ function App() {
                     });
                     if (res.ok) {
                       setShowAddModal(false);
+                      setCreationStep('picker');
                     } else {
                       const errData = await res.json();
                       alert(`Error creating service: ${errData.detail || 'Unknown error'}`);
