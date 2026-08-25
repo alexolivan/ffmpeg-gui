@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-08-25
+
+### Added
+- **Software Engine Registry & Multi-Source Binary Lifecycle**:
+  - Implemented centralized **SOFTWARE** management tab in Settings for `FFmpeg`, `MediaMTX`, `Icecast2`, and `Kiosk Cog`.
+  - Added support for 3 binary source types: `COMPILED` (Forge), `INSTALLED` (automatic `$PATH` discovery via `which`), and `PRE-COMPILED` (standalone GitHub Release downloads).
+  - Implemented strict safety invariant preventing active software engines from disabling all binary sources simultaneously.
+  - Added custom engine logo/icon uploader with real-time thumbnail preview, propagating across Forge, Services, and Tasks.
+- **MediaMTX Hub Service Orchestration & Ephemeral In-RAM Configuration**:
+  - Implemented `mediamtx_hub` service daemon execution using ephemeral YAML configurations written dynamically to `/dev/shm/` (RAM) with `0600` permissions.
+  - Added granular storage isolation for MediaMTX `hls` storage volume (with ring-buffer segment rotation) and dedicated `logs` volume.
+  - Extended automated log rotation & retention routine to cover all multi-engine service logs across storage volumes.
+  - Added pre-launch socket port validation preventing listening conflicts (RTSP `8554`, RTMP `1935`, HLS `8888`, WebRTC `8889`, SRT `8890`).
+  - Added seamless 1-click publishing destination in FFmpeg services/tasks with automatic internal URL resolution and boot sequence synchronization.
+
 ## [2.4.0] - 2026-08-24
 
 ### Added

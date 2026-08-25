@@ -125,13 +125,19 @@ def init_db():
             if "command" not in task_columns:
                 conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN command TEXT DEFAULT NULL"))
             
-            # Migración para la columna auto_clean en software_builds
+            # Migración para la tabla software_builds
             result = conn.execute(text("PRAGMA table_info(software_builds)"))
             build_columns = [row[1] for row in result.fetchall()]
             if "auto_clean" not in build_columns:
                 conn.execute(text("ALTER TABLE software_builds ADD COLUMN auto_clean BOOLEAN DEFAULT 0"))
             if "storage_id" not in build_columns:
                 conn.execute(text("ALTER TABLE software_builds ADD COLUMN storage_id INTEGER REFERENCES storages(id) NULL"))
+            if "source_type" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN source_type VARCHAR(32) DEFAULT 'compiled' NOT NULL"))
+            if "system_path" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN system_path VARCHAR(512) DEFAULT NULL"))
+            if "is_managed" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN is_managed BOOLEAN DEFAULT 1 NOT NULL"))
 
             # Migración para reemplazar UNIQUE(name) por UNIQUE(name, software_type) en software_builds
             result = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='software_builds'"))
