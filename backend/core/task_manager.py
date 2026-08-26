@@ -101,7 +101,7 @@ class TaskManager:
             
         # Acquire dependency leases
         from core.dependency_manager import dependency_manager
-        dependency_manager.acquire_dependencies('task', task_id, allow_auto_start=allow_start)
+        await dependency_manager.acquire_dependencies('task', task_id, allow_auto_start=allow_start)
 
         # 2. Spawn subprocess (outside database session)
         prepare_process_file_permissions(execution_id=execution_id, logger=self.logger)
@@ -279,7 +279,7 @@ class TaskManager:
 
         if task_id:
             from core.dependency_manager import dependency_manager
-            dependency_manager.release_dependencies('task', task_id, allow_auto_stop=allow_stop)
+            await dependency_manager.release_dependencies('task', task_id, allow_auto_stop=allow_stop)
 
     async def _log_reader(self, execution_id: int, proc):
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)

@@ -3547,7 +3547,22 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
 
 @app.get("/processes")
 def list_processes(db: Session = Depends(get_db)):
+    from database.models import ServiceDependency
     processes = db.query(MediaProcess).all()
+    from core.dependency_manager import dependency_manager
+    
+    all_deps = db.query(ServiceDependency).all()
+    deps_by_consumer = {}
+    for d in all_deps:
+        key = (d.consumer_type, d.consumer_id)
+        if key not in deps_by_consumer:
+            deps_by_consumer[key] = []
+        deps_by_consumer[key].append({
+            "provider_service_id": d.provider_service_id,
+            "provider_name": d.provider_service.name if d.provider_service else f"Service #{d.provider_service_id}",
+            "is_auto_managed": d.is_auto_managed
+        })
+
     return [
         {
             "id": p.id,
@@ -3575,6 +3590,11 @@ def list_processes(db: Session = Depends(get_db)):
             "watchdog_retries": p.watchdog_retries,
             "watchdog_min_speed": p.watchdog_min_speed,
             "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+            "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
+            "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
+            "active_leases": dependency_manager.get_active_leases(p.id),
+            "is_pinned": dependency_manager.is_pinned(p.id),
+            "dependencies": deps_by_consumer.get(('service', p.id), []),
             "pending_changes": p.pending_changes,
             "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
             "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
@@ -3639,6 +3659,9 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
     )
     db.add(db_proc)
     db.commit()
+
+    from core.dependency_manager import dependency_manager
+    dependency_manager.sync_auto_dependencies('service', db_proc.id, db_proc.input_config, db_proc.output_config, db)
     db.refresh(db_proc)
     return db_proc
 
@@ -3740,6 +3763,9 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.log_storage_id is not None: db_proc.log_storage_id = proc_in.log_storage_id
 
     db.commit()
+
+    from core.dependency_manager import dependency_manager
+    dependency_manager.sync_auto_dependencies('service', db_proc.id, db_proc.input_config, db_proc.output_config, db)
     db.refresh(db_proc)
     return db_proc
 
@@ -4591,7 +4617,20 @@ class ScheduledTaskUpdate(BaseModel):
 
 @app.get("/tasks")
 def list_tasks(db: Session = Depends(get_db)):
+    from database.models import ServiceDependency
     tasks = db.query(ScheduledTask).all()
+    
+    all_deps = db.query(ServiceDependency).filter(ServiceDependency.consumer_type == 'task').all()
+    deps_by_task = {}
+    for d in all_deps:
+        if d.consumer_id not in deps_by_task:
+            deps_by_task[d.consumer_id] = []
+        deps_by_task[d.consumer_id].append({
+            "provider_service_id": d.provider_service_id,
+            "provider_name": d.provider_service.name if d.provider_service else f"Service #{d.provider_service_id}",
+            "is_auto_managed": d.is_auto_managed
+        })
+
     res = []
     for t in tasks:
         # Find last execution
@@ -4613,6 +4652,9 @@ def list_tasks(db: Session = Depends(get_db)):
             "duration_seconds": t.duration_seconds,
             "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
             "retry_policy": t.retry_policy,
+            "allow_auto_start_deps": getattr(t, 'allow_auto_start_deps', True),
+            "allow_auto_stop_deps": getattr(t, 'allow_auto_stop_deps', True),
+            "dependencies": deps_by_task.get(t.id, []),
             "alias": t.alias,
             "is_system": t.is_system,
             "created_at": t.created_at.isoformat() if t.created_at else None,
@@ -4664,10 +4706,15 @@ def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
         duration_seconds=payload.duration_seconds,
         duration_end_time=payload.duration_end_time,
         retry_policy=payload.retry_policy,
+        allow_auto_start_deps=payload.allow_auto_start_deps if hasattr(payload, 'allow_auto_start_deps') and payload.allow_auto_start_deps is not None else True,
+        allow_auto_stop_deps=payload.allow_auto_stop_deps if hasattr(payload, 'allow_auto_stop_deps') and payload.allow_auto_stop_deps is not None else True,
         alias=payload.alias,
     )
     db.add(db_task)
     db.commit()
+
+    from core.dependency_manager import dependency_manager
+    dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
     db.refresh(db_task)
     return db_task
 
@@ -4958,6 +5005,9 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depend
                 task.next_run = None
 
     db.commit()
+
+    from core.dependency_manager import dependency_manager
+    dependency_manager.sync_auto_dependencies('task', task.id, task.input_config, task.output_config, db)
     db.refresh(task)
     return task
 

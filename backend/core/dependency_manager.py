@@ -1,6 +1,6 @@
+import asyncio
 import logging
 import threading
-import time
 from typing import Dict, Set, List, Optional
 from database.models import ServiceDependency, Service
 
@@ -63,7 +63,7 @@ class DependencyManager:
         with self.state_lock:
             return list(self.active_leases.get(service_id, set()))
 
-    def acquire_dependencies(
+    async def acquire_dependencies(
         self,
         consumer_type: str,
         consumer_id: int,
@@ -72,6 +72,7 @@ class DependencyManager:
         """
         Acquire leases on all required provider services.
         If a provider is stopped and allow_auto_start is True, launches it On-Demand.
+        Waits for provider to be running and adds stabilization grace delay before returning.
         """
         if not self.db_session_factory:
             return []
@@ -105,14 +106,30 @@ class DependencyManager:
                         f"Consumer {consumer_token} auto-starting stopped dependency '{provider.name}' (ID {provider_id}) on-demand."
                     )
                     if self.process_manager:
-                        # Start provider
-                        self.process_manager.start_process(provider_id)
-                        # Wait up to 5s for provider to report running
+                        res = self.process_manager.start_process(provider_id, is_restart=False)
+                        if asyncio.iscoroutine(res):
+                            await res
+
+                        # Wait up to 5s for provider to transition to running status
+                        started_ok = False
                         for _ in range(25):
-                            time.sleep(0.2)
-                            session.refresh(provider)
+                            await asyncio.sleep(0.2)
+                            session.expire(provider)
                             if provider.status == 'running':
+                                started_ok = True
                                 break
+
+                        if not started_ok and provider.status != 'running':
+                            err_msg = (
+                                f"Required dependency '{provider.name}' (ID {provider_id}) "
+                                f"failed to transition to 'running' status (current: '{provider.status}')."
+                            )
+                            self.logger.error(err_msg)
+                            raise RuntimeError(err_msg)
+
+                        # Stabilization grace time for socket binding (RTMP / SRT / RTSP ports)
+                        self.logger.info(f"Provider {provider_id} running. Waiting 1.0s stabilization grace time...")
+                        await asyncio.sleep(1.0)
 
                 # Register lease
                 with self.state_lock:
@@ -128,7 +145,7 @@ class DependencyManager:
 
         return acquired_providers
 
-    def release_dependencies(
+    async def release_dependencies(
         self,
         consumer_type: str,
         consumer_id: int,
@@ -168,7 +185,9 @@ class DependencyManager:
                         )
                         if self.process_manager:
                             try:
-                                self.process_manager.stop_process(provider_id)
+                                res = self.process_manager.stop_process(provider_id)
+                                if asyncio.iscoroutine(res):
+                                    await res
                             except Exception as stop_err:
                                 self.logger.error(f"Error auto-stopping provider {provider_id}: {stop_err}")
                     else:
@@ -176,6 +195,115 @@ class DependencyManager:
                             f"Provider service {provider_id} has 0 leases but consumer {consumer_token} "
                             f"has allow_auto_stop_deps=False. Leaving active."
                         )
+
+    def sync_auto_dependencies(
+        self,
+        consumer_type: str,
+        consumer_id: int,
+        input_config: Optional[dict],
+        output_config: Optional[dict],
+        db_session
+    ) -> List[int]:
+        """
+        Analyzes input and output configs of a service or task and automatically
+        synchronizes ServiceDependency rows in SQLite for any local auxiliary providers
+        (MediaMTX Hub, Icecast2, etc.).
+        """
+        detected_provider_ids = set()
+        
+        # Check all auxiliary services in DB
+        aux_providers = db_session.query(Service).filter(
+            Service.service_type.in_(["mediamtx_hub", "icecast_server"])
+        ).all()
+
+        for provider in aux_providers:
+            p_id = provider.id
+            # Do not allow self-dependency
+            if consumer_type == 'service' and consumer_id == p_id:
+                continue
+
+            cfg = provider.config or {}
+            mtx_cfg = cfg.get("mediamtx_config", cfg)
+
+            # Known ports for this provider
+            ports = set()
+            for k, default_port in [
+                ("rtmp_port", 1935),
+                ("rtsp_port", 8554),
+                ("webrtc_port", 8889),
+                ("srt_port", 8890),
+                ("hls_port", 8888),
+                ("api_port", 9997),
+                ("port", 8000),  # Icecast
+            ]:
+                p_val = mtx_cfg.get(k) or cfg.get(k) or default_port
+                try:
+                    ports.add(int(p_val))
+                except (ValueError, TypeError):
+                    pass
+
+            def matches_target(conf: dict) -> bool:
+                if not conf or not isinstance(conf, dict):
+                    return False
+                # Explicit provider_service_id reference
+                if conf.get("provider_service_id") == p_id:
+                    return True
+                
+                # Check url
+                url = str(conf.get("url") or "")
+                if url:
+                    for port in ports:
+                        if f":{port}" in url and any(h in url for h in ["127.0.0.1", "localhost", "0.0.0.0"]):
+                            return True
+
+                # Check host and port
+                host = str(conf.get("host") or "").lower()
+                port_str = str(conf.get("port") or "")
+                if host in ["127.0.0.1", "localhost", "0.0.0.0", ""]:
+                    try:
+                        if port_str and int(port_str) in ports:
+                            return True
+                    except (ValueError, TypeError):
+                        pass
+
+                return False
+
+            if output_config and matches_target(output_config):
+                detected_provider_ids.add(p_id)
+            if input_config:
+                if matches_target(input_config):
+                    detected_provider_ids.add(p_id)
+                for inp_key in ["input1", "input2"]:
+                    if inp_key in input_config and matches_target(input_config[inp_key]):
+                        detected_provider_ids.add(p_id)
+
+        # Sync with SQLite ServiceDependency
+        existing_deps = db_session.query(ServiceDependency).filter(
+            ServiceDependency.consumer_type == consumer_type,
+            ServiceDependency.consumer_id == consumer_id
+        ).all()
+        existing_provider_ids = {d.provider_service_id: d for d in existing_deps}
+
+        # Add missing
+        for p_id in detected_provider_ids:
+            if p_id not in existing_provider_ids:
+                new_dep = ServiceDependency(
+                    consumer_type=consumer_type,
+                    consumer_id=consumer_id,
+                    provider_service_id=p_id,
+                    is_auto_managed=True
+                )
+                db_session.add(new_dep)
+                self.logger.info(f"Auto-linked dependency: {consumer_type}:{consumer_id} -> provider:{p_id}")
+
+        # Remove auto-managed deps no longer present
+        for p_id, dep in existing_provider_ids.items():
+            if dep.is_auto_managed and p_id not in detected_provider_ids:
+                db_session.delete(dep)
+                self.logger.info(f"Auto-unlinked stale dependency: {consumer_type}:{consumer_id} -> provider:{p_id}")
+
+        db_session.commit()
+        return list(detected_provider_ids)
 
 
 dependency_manager = DependencyManager()

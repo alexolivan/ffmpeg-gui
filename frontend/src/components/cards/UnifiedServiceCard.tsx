@@ -49,11 +49,15 @@ export interface ServiceItem {
   debug_mode?: boolean;
   log_storage_id?: number | null;
   dependencies?: Array<{
-    id: number;
+    id?: number;
     provider_service_id: number;
     provider_name?: string;
     is_auto_managed?: boolean;
   }>;
+  active_leases?: string[];
+  is_pinned?: boolean;
+  allow_auto_start_deps?: boolean;
+  allow_auto_stop_deps?: boolean;
 }
 
 interface UnifiedServiceCardProps {

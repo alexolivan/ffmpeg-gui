@@ -49,11 +49,15 @@ export interface ServiceItem {
   debug_mode?: boolean;
   log_storage_id?: number | null;
   dependencies?: Array<{
-    id: number;
+    id?: number;
     provider_service_id: number;
     provider_name?: string;
     is_auto_managed?: boolean;
   }>;
+  active_leases?: string[];
+  is_pinned?: boolean;
+  allow_auto_start_deps?: boolean;
+  allow_auto_stop_deps?: boolean;
 }
 
 interface UnifiedServiceCardProps {
@@ -236,8 +240,11 @@ export const FfmpegServiceCard: React.FC<UnifiedServiceCardProps> = ({
           )}
 
           {service.dependencies && service.dependencies.length > 0 && (
-            <span className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
-              🔗 LINKED ({service.dependencies.length})
+            <span 
+              className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+              title={`Depends on auxiliary service: ${service.dependencies.map((d: any) => d.provider_name).join(', ')}`}
+            >
+              🔗 {service.dependencies.map((d: any) => d.provider_name).join(', ')}
             </span>
           )}
 

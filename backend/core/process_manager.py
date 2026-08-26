@@ -47,11 +47,11 @@ class ProcessManager:
 
     async def start_dependencies(self, process_id: int, allow_auto_start: bool = True):
         from core.dependency_manager import dependency_manager
-        dependency_manager.acquire_dependencies('service', process_id, allow_auto_start=allow_auto_start)
+        await dependency_manager.acquire_dependencies('service', process_id, allow_auto_start=allow_auto_start)
 
     async def stop_unused_dependencies(self, process_id: int, allow_auto_stop: bool = True):
         from core.dependency_manager import dependency_manager
-        dependency_manager.release_dependencies('service', process_id, allow_auto_stop=allow_auto_stop)
+        await dependency_manager.release_dependencies('service', process_id, allow_auto_stop=allow_auto_stop)
 
     async def start_process(self, process_id: int, is_restart: bool = False):
         cleanup_rogue_processes(process_id=process_id)
@@ -213,8 +213,8 @@ class ProcessManager:
             async with spawn_lock:
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
                     stdin=asyncio.subprocess.PIPE,
                     env=sub_env
                 )
@@ -593,9 +593,9 @@ class ProcessManager:
                 
         try:
             while True:
-                if proc is None or proc.stderr is None:
+                if proc is None or proc.stdout is None:
                     break
-                chunk = await proc.stderr.read(4096)
+                chunk = await proc.stdout.read(4096)
                 if not chunk:
                     if buffer:
                         msg = buffer.decode('utf-8', errors='replace').strip()
