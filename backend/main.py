@@ -2385,6 +2385,20 @@ async def telemetry_broadcast_loop():
             storages_data = []
             
             with SessionLocal() as db:
+                from core.dependency_manager import dependency_manager
+                from database.models import ServiceDependency
+                all_deps = db.query(ServiceDependency).all()
+                deps_by_proc = {}
+                for d in all_deps:
+                    if d.consumer_type == 'service':
+                        if d.consumer_id not in deps_by_proc:
+                            deps_by_proc[d.consumer_id] = []
+                        deps_by_proc[d.consumer_id].append({
+                            "provider_service_id": d.provider_service_id,
+                            "provider_name": d.provider_service.name if d.provider_service else f"Service #{d.provider_service_id}",
+                            "is_auto_managed": d.is_auto_managed
+                        })
+
                 processes = db.query(MediaProcess).all()
                 processes_data = [
                     {
@@ -2414,6 +2428,11 @@ async def telemetry_broadcast_loop():
                         "watchdog_min_speed": p.watchdog_min_speed,
                         "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
                         "pending_changes": p.pending_changes,
+                        "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
+                        "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
+                        "active_leases": dependency_manager.get_active_leases(p.id),
+                        "is_pinned": dependency_manager.is_pinned(p.id),
+                        "dependencies": deps_by_proc.get(p.id, []),
                         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
                         "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
                         "restart_count": p.restart_count,
@@ -4632,6 +4651,61 @@ class ScheduledTaskUpdate(BaseModel):
 
 # ── Scheduled Tasks API Endpoints ─────────────────────────────────
 
+def serialize_task_item(t: ScheduledTask, db: Session, deps_list: Optional[list] = None) -> dict:
+    from database.models import ServiceDependency
+    if deps_list is None:
+        deps = db.query(ServiceDependency).filter(
+            ServiceDependency.consumer_type == 'task',
+            ServiceDependency.consumer_id == t.id
+        ).all()
+        deps_list = [{
+            "provider_service_id": d.provider_service_id,
+            "provider_name": d.provider_service.name if d.provider_service else f"Service #{d.provider_service_id}",
+            "is_auto_managed": d.is_auto_managed
+        } for d in deps]
+
+    last_exec = db.query(TaskExecution).filter(TaskExecution.task_id == t.id).order_by(TaskExecution.id.desc()).first()
+    return {
+        "id": t.id,
+        "name": t.name,
+        "is_active": t.is_active,
+        "input_config": t.input_config,
+        "output_config": t.output_config,
+        "codec_config": t.codec_config,
+        "filter_config": t.filter_config,
+        "ffmpeg_build_id": t.ffmpeg_build_id,
+        "schedule_type": t.schedule_type,
+        "schedule_cron": t.schedule_cron,
+        "schedule_datetime": t.schedule_datetime.isoformat() if t.schedule_datetime else None,
+        "next_run": t.next_run.isoformat() if t.next_run else None,
+        "duration_type": t.duration_type,
+        "duration_seconds": t.duration_seconds,
+        "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
+        "retry_policy": t.retry_policy,
+        "allow_auto_start_deps": getattr(t, 'allow_auto_start_deps', True),
+        "allow_auto_stop_deps": getattr(t, 'allow_auto_stop_deps', True),
+        "dependencies": deps_list,
+        "alias": t.alias,
+        "is_system": t.is_system,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+        "last_execution": {
+            "id": last_exec.id,
+            "status": last_exec.status,
+            "pid": last_exec.pid,
+            "started_at": last_exec.started_at.isoformat() if last_exec.started_at else None,
+            "stopped_at": last_exec.stopped_at.isoformat() if last_exec.stopped_at else None,
+            "exit_code": last_exec.exit_code,
+            "error_message": last_exec.error_message,
+            "cpu": last_exec.cpu_usage,
+            "ram": last_exec.ram_usage,
+            "fps": last_exec.fps,
+            "bitrate": last_exec.bitrate,
+            "speed": last_exec.speed,
+            "retry_count": getattr(last_exec, 'retry_count', 0),
+        } if last_exec else None
+    }
+
 @app.get("/tasks")
 def list_tasks(db: Session = Depends(get_db)):
     from database.models import ServiceDependency
@@ -4648,51 +4722,7 @@ def list_tasks(db: Session = Depends(get_db)):
             "is_auto_managed": d.is_auto_managed
         })
 
-    res = []
-    for t in tasks:
-        # Find last execution
-        last_exec = db.query(TaskExecution).filter(TaskExecution.task_id == t.id).order_by(TaskExecution.id.desc()).first()
-        res.append({
-            "id": t.id,
-            "name": t.name,
-            "is_active": t.is_active,
-            "input_config": t.input_config,
-            "output_config": t.output_config,
-            "codec_config": t.codec_config,
-            "filter_config": t.filter_config,
-            "ffmpeg_build_id": t.ffmpeg_build_id,
-            "schedule_type": t.schedule_type,
-            "schedule_cron": t.schedule_cron,
-            "schedule_datetime": t.schedule_datetime.isoformat() if t.schedule_datetime else None,
-            "next_run": t.next_run.isoformat() if t.next_run else None,
-            "duration_type": t.duration_type,
-            "duration_seconds": t.duration_seconds,
-            "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
-            "retry_policy": t.retry_policy,
-            "allow_auto_start_deps": getattr(t, 'allow_auto_start_deps', True),
-            "allow_auto_stop_deps": getattr(t, 'allow_auto_stop_deps', True),
-            "dependencies": deps_by_task.get(t.id, []),
-            "alias": t.alias,
-            "is_system": t.is_system,
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
-            "last_execution": {
-                "id": last_exec.id,
-                "status": last_exec.status,
-                "pid": last_exec.pid,
-                "started_at": last_exec.started_at.isoformat() if last_exec.started_at else None,
-                "stopped_at": last_exec.stopped_at.isoformat() if last_exec.stopped_at else None,
-                "exit_code": last_exec.exit_code,
-                "error_message": last_exec.error_message,
-                "cpu": last_exec.cpu_usage,
-                "ram": last_exec.ram_usage,
-                "fps": last_exec.fps,
-                "bitrate": last_exec.bitrate,
-                "speed": last_exec.speed,
-                "retry_count": getattr(last_exec, 'retry_count', 0),
-            } if last_exec else None
-        })
-    return res
+    return [serialize_task_item(t, db, deps_by_task.get(t.id, [])) for t in tasks]
 
 @app.post("/tasks")
 def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
@@ -4733,7 +4763,7 @@ def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
     from core.dependency_manager import dependency_manager
     dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
     db.refresh(db_task)
-    return db_task
+    return serialize_task_item(db_task, db)
 
 @app.get("/tasks/export")
 def export_tasks(db: Session = Depends(get_db)):
@@ -5026,7 +5056,7 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depend
     from core.dependency_manager import dependency_manager
     dependency_manager.sync_auto_dependencies('task', task.id, task.input_config, task.output_config, db)
     db.refresh(task)
-    return task
+    return serialize_task_item(task, db)
 
 @app.delete("/tasks/{task_id}")
 def delete_task(task_id: int, db: Session = Depends(get_db)):
