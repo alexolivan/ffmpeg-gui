@@ -153,6 +153,10 @@ build_manager = BuildManager(builds_root="./ffmpeg_builds")
 sdk_manager = SdkManager(workspace_root=".")
 patch_manager = PatchManager(workspace_root=".")
 
+from core.dependency_manager import dependency_manager
+dependency_manager.db_session_factory = SessionLocal
+dependency_manager.process_manager = process_manager
+
 from core.task_manager import TaskManager
 from core.scheduler import Scheduler
 from utils.cron_helper import CronHelper

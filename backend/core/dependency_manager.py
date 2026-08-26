@@ -42,7 +42,22 @@ class DependencyManager:
         self.pinned_services: Set[int] = set()
         self.state_lock = threading.Lock()
         
+        self._ensure_initialized()
         self._initialized = True
+
+    def _ensure_initialized(self):
+        if not self.db_session_factory:
+            try:
+                from database.db import SessionLocal
+                self.db_session_factory = SessionLocal
+            except Exception:
+                pass
+        if not self.process_manager:
+            try:
+                import main
+                self.process_manager = getattr(main, 'process_manager', None)
+            except Exception:
+                pass
 
     def mark_pinned(self, service_id: int):
         """Mark a service as explicitly started by the operator or boot sequence."""
@@ -75,6 +90,7 @@ class DependencyManager:
         If a provider is stopped and allow_auto_start is True, launches it On-Demand.
         Waits for provider to be running and adds stabilization grace delay before returning.
         """
+        self._ensure_initialized()
         if not self.db_session_factory:
             return []
 
@@ -176,6 +192,7 @@ class DependencyManager:
         Release leases held by a consumer.
         Implements 'No estás solo en el mundo' and 'El último que apague la luz'.
         """
+        self._ensure_initialized()
         consumer_token = f"{consumer_type}:{consumer_id}"
         providers_to_evaluate = []
 
