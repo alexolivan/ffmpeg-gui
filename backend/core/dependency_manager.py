@@ -2,7 +2,8 @@ import asyncio
 import logging
 import threading
 from typing import Dict, Set, List, Optional
-from database.models import ServiceDependency, Service
+from urllib.parse import urlparse
+from database.models import ServiceDependency, Service, ScheduledTask
 
 
 class DependencyManager:
@@ -85,6 +86,26 @@ class DependencyManager:
                 ServiceDependency.consumer_type == consumer_type,
                 ServiceDependency.consumer_id == consumer_id
             ).all()
+
+            # Dynamic on-the-fly auto-sync if no dependencies are recorded in DB
+            if not deps:
+                if consumer_type == 'service':
+                    consumer = session.get(Service, consumer_id)
+                else:
+                    consumer = session.get(ScheduledTask, consumer_id)
+
+                if consumer:
+                    self.sync_auto_dependencies(
+                        consumer_type,
+                        consumer_id,
+                        consumer.input_config,
+                        consumer.output_config,
+                        session
+                    )
+                    deps = session.query(ServiceDependency).filter(
+                        ServiceDependency.consumer_type == consumer_type,
+                        ServiceDependency.consumer_id == consumer_id
+                    ).all()
 
             for dep in deps:
                 provider_id = dep.provider_service_id
@@ -249,22 +270,46 @@ class DependencyManager:
                 if conf.get("provider_service_id") == p_id:
                     return True
                 
-                # Check url
+                # Check URL with robust parser
                 url = str(conf.get("url") or "")
                 if url:
-                    for port in ports:
-                        if f":{port}" in url and any(h in url for h in ["127.0.0.1", "localhost", "0.0.0.0"]):
+                    try:
+                        parsed = urlparse(url)
+                        hostname = (parsed.hostname or "").lower()
+                        port = parsed.port
+                        if not port:
+                            if parsed.scheme in ["rtmp", "rtmps"]: port = 1935
+                            elif parsed.scheme in ["rtsp", "rtsps"]: port = 8554
+                            elif parsed.scheme == "srt": port = 8890
+                            elif parsed.scheme in ["http", "https"]: port = 8888
+                        
+                        is_local = hostname in ["localhost", "127.0.0.1", "0.0.0.0", "::1", ""]
+                        if is_local and port in ports:
                             return True
+                    except Exception:
+                        pass
 
-                # Check host and port
+                # Check explicit host and port fields
                 host = str(conf.get("host") or "").lower()
                 port_str = str(conf.get("port") or "")
+                target_type = str(conf.get("type") or "").lower()
+                
                 if host in ["127.0.0.1", "localhost", "0.0.0.0", ""]:
-                    try:
-                        if port_str and int(port_str) in ports:
-                            return True
-                    except (ValueError, TypeError):
-                        pass
+                    if port_str:
+                        try:
+                            if int(port_str) in ports:
+                                return True
+                        except (ValueError, TypeError):
+                            pass
+                    # Default type ports if port not specified
+                    if target_type == 'rtmp' and 1935 in ports:
+                        return True
+                    if target_type == 'srt' and 8890 in ports:
+                        return True
+                    if target_type == 'whip' and 8889 in ports:
+                        return True
+                    if target_type == 'icecast' and 8000 in ports:
+                        return True
 
                 return False
 
