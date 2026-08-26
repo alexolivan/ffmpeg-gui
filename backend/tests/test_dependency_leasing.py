@@ -150,13 +150,13 @@ class TestDependencyLeasing(unittest.IsolatedAsyncioTestCase):
         self.mock_pm.stop_process.assert_not_called()
 
     def test_sync_auto_dependencies_detection(self):
-        # Service 3 output points to RTMP :1935 on localhost
+        # Service 3 output explicitly links to provider
         svc3 = Service(
             name="New RTMP Producer",
             service_type="ffmpeg_stream",
             status="stopped",
             type="service",
-            output_config={"type": "rtmp", "url": "rtmp://localhost:1935/live/test"}
+            output_config={"type": "rtmp", "url": "rtmp://localhost:1935/live/test", "provider_service_id": self.provider.id}
         )
         self.db.add(svc3)
         self.db.commit()
@@ -174,6 +174,23 @@ class TestDependencyLeasing(unittest.IsolatedAsyncioTestCase):
         ).first()
         self.assertIsNotNone(dep)
         self.assertEqual(dep.provider_service_id, self.provider.id)
+
+        # Service with standalone URL (no provider_service_id) produces NO dependency
+        svc4 = Service(
+            name="Standalone Producer",
+            service_type="ffmpeg_stream",
+            status="stopped",
+            type="service",
+            output_config={"type": "rtmp", "url": "rtmp://127.0.0.1:1935/live/external"}
+        )
+        self.db.add(svc4)
+        self.db.commit()
+        self.db.refresh(svc4)
+
+        detected4 = self.dm.sync_auto_dependencies(
+            'service', svc4.id, svc4.input_config, svc4.output_config, self.db
+        )
+        self.assertEqual(detected4, [])
 
 
 if __name__ == '__main__':

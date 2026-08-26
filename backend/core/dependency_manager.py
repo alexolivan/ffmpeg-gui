@@ -243,101 +243,41 @@ class DependencyManager:
         db_session
     ) -> List[int]:
         """
-        Analyzes input and output configs of a service or task and automatically
-        synchronizes ServiceDependency rows in SQLite for any local auxiliary providers
-        (MediaMTX Hub, Icecast2, etc.).
+        Synchronizes ServiceDependency rows in SQLite for explicitly linked
+        auxiliary providers (provider_service_id in input or output config).
+        Strictly deterministic - zero heuristic port sniffing.
         """
         detected_provider_ids = set()
-        
-        # Check all auxiliary services in DB
-        aux_providers = db_session.query(Service).filter(
-            Service.service_type.in_(["mediamtx_hub", "icecast_server"])
-        ).all()
 
-        for provider in aux_providers:
-            p_id = provider.id
-            # Do not allow self-dependency
-            if consumer_type == 'service' and consumer_id == p_id:
-                continue
-
-            cfg = provider.config or {}
-            mtx_cfg = cfg.get("mediamtx_config", cfg)
-
-            # Known ports for this provider
-            ports = set()
-            for k, default_port in [
-                ("rtmp_port", 1935),
-                ("rtsp_port", 8554),
-                ("webrtc_port", 8889),
-                ("srt_port", 8890),
-                ("hls_port", 8888),
-                ("api_port", 9997),
-                ("port", 8000),  # Icecast
-            ]:
-                p_val = mtx_cfg.get(k) or cfg.get(k) or default_port
+        def extract_provider_id(conf: dict) -> Optional[int]:
+            if not conf or not isinstance(conf, dict):
+                return None
+            val = conf.get("provider_service_id")
+            if val is not None:
                 try:
-                    ports.add(int(p_val))
+                    return int(val)
                 except (ValueError, TypeError):
                     pass
+            return None
 
-            def matches_target(conf: dict) -> bool:
-                if not conf or not isinstance(conf, dict):
-                    return False
-                # Explicit provider_service_id reference
-                if conf.get("provider_service_id") == p_id:
-                    return True
-                
-                # Check URL with robust parser
-                url = str(conf.get("url") or "")
-                if url:
-                    try:
-                        parsed = urlparse(url)
-                        hostname = (parsed.hostname or "").lower()
-                        port = parsed.port
-                        if not port:
-                            if parsed.scheme in ["rtmp", "rtmps"]: port = 1935
-                            elif parsed.scheme in ["rtsp", "rtsps"]: port = 8554
-                            elif parsed.scheme == "srt": port = 8890
-                            elif parsed.scheme in ["http", "https"]: port = 8888
-                        
-                        is_local = hostname in ["localhost", "127.0.0.1", "0.0.0.0", "::1", ""]
-                        if is_local and port in ports:
-                            return True
-                    except Exception:
-                        pass
+        # Check output config
+        out_pid = extract_provider_id(output_config)
+        if out_pid:
+            detected_provider_ids.add(out_pid)
 
-                # Check explicit host and port fields
-                host = str(conf.get("host") or "").lower()
-                port_str = str(conf.get("port") or "")
-                target_type = str(conf.get("type") or "").lower()
-                
-                if host in ["127.0.0.1", "localhost", "0.0.0.0", ""]:
-                    if port_str:
-                        try:
-                            if int(port_str) in ports:
-                                return True
-                        except (ValueError, TypeError):
-                            pass
-                    # Default type ports if port not specified
-                    if target_type == 'rtmp' and 1935 in ports:
-                        return True
-                    if target_type == 'srt' and 8890 in ports:
-                        return True
-                    if target_type == 'whip' and 8889 in ports:
-                        return True
-                    if target_type == 'icecast' and 8000 in ports:
-                        return True
+        # Check input configs
+        inp_pid = extract_provider_id(input_config)
+        if inp_pid:
+            detected_provider_ids.add(inp_pid)
+        if input_config and isinstance(input_config, dict):
+            for k in ["input1", "input2"]:
+                k_pid = extract_provider_id(input_config.get(k))
+                if k_pid:
+                    detected_provider_ids.add(k_pid)
 
-                return False
-
-            if output_config and matches_target(output_config):
-                detected_provider_ids.add(p_id)
-            if input_config:
-                if matches_target(input_config):
-                    detected_provider_ids.add(p_id)
-                for inp_key in ["input1", "input2"]:
-                    if inp_key in input_config and matches_target(input_config[inp_key]):
-                        detected_provider_ids.add(p_id)
+        # Never allow self-dependency
+        if consumer_type == 'service':
+            detected_provider_ids.discard(consumer_id)
 
         # Sync with SQLite ServiceDependency
         existing_deps = db_session.query(ServiceDependency).filter(
@@ -356,13 +296,13 @@ class DependencyManager:
                     is_auto_managed=True
                 )
                 db_session.add(new_dep)
-                self.logger.info(f"Auto-linked dependency: {consumer_type}:{consumer_id} -> provider:{p_id}")
+                self.logger.info(f"Explicitly linked dependency: {consumer_type}:{consumer_id} -> provider:{p_id}")
 
         # Remove auto-managed deps no longer present
         for p_id, dep in existing_provider_ids.items():
             if dep.is_auto_managed and p_id not in detected_provider_ids:
                 db_session.delete(dep)
-                self.logger.info(f"Auto-unlinked stale dependency: {consumer_type}:{consumer_id} -> provider:{p_id}")
+                self.logger.info(f"Unlinked dependency: {consumer_type}:{consumer_id} -> provider:{p_id}")
 
         db_session.commit()
         return list(detected_provider_ids)

@@ -36,6 +36,7 @@ export interface OutputConfig {
   streamid?: string;
   storage_id?: number | null;
   relative_path?: string;
+  provider_service_id?: number | null;
 }
 
 interface DestinationPanelProps {
@@ -325,20 +326,27 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           </div>
           <select
             className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-[10px] font-mono text-[var(--text-primary)] focus:border-brand-lime focus:outline-none"
-            defaultValue=""
+            value={config.provider_service_id || ''}
             onChange={e => {
               const selectedId = parseInt(e.target.value);
-              if (!selectedId) return;
+              if (!selectedId) {
+                update({ provider_service_id: undefined });
+                return;
+              }
               const provider = providers.find(p => p.id === selectedId);
               if (!provider) return;
 
               const cfg = provider.config || {};
               if (config.type === 'rtmp') {
                 const port = cfg.rtmp_port || 1935;
-                update({ url: `rtmp://127.0.0.1:${port}/live/stream1` });
+                update({ 
+                  provider_service_id: selectedId,
+                  url: `rtmp://127.0.0.1:${port}/live/stream1` 
+                });
               } else if (config.type === 'srt') {
                 const port = cfg.srt_port || 8890;
                 update({
+                  provider_service_id: selectedId,
                   mode: 'caller',
                   host: '127.0.0.1',
                   port: String(port),
@@ -346,11 +354,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 });
               } else if (config.type === 'whip') {
                 const port = cfg.webrtc_port || 8889;
-                update({ url: `http://127.0.0.1:${port}/live_stream/whip` });
+                update({ 
+                  provider_service_id: selectedId,
+                  url: `http://127.0.0.1:${port}/live_stream/whip` 
+                });
               }
             }}
           >
-            <option value="">{t('destinations.selectHubPreset', '-- Select Provider Hub --')}</option>
+            <option value="">{t('destinations.selectHubPreset', '-- Direct / Standalone (No Managed Provider) --')}</option>
             {providers.map(p => (
               <option key={p.id} value={p.id}>
                 {p.name} ({p.service_type === 'mediamtx_hub' ? 'MediaMTX' : 'Icecast'})
