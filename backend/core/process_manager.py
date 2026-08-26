@@ -42,51 +42,34 @@ class ProcessManager:
         return "ffmpeg"
 
     def get_service_ref_count(self, provider_id: int) -> int:
-        active_running_service_ids = [sid for sid, p in self.processes.items() if p is not None]
-        with self.db_session_factory() as session:
-            from database.models import ServiceDependency
-            ref_count = session.query(ServiceDependency).filter(
-                ServiceDependency.provider_service_id == provider_id,
-                ServiceDependency.consumer_type == 'service',
-                ServiceDependency.consumer_id.in_(active_running_service_ids)
-            ).count() if active_running_service_ids else 0
-            return ref_count
+        from core.dependency_manager import dependency_manager
+        return len(dependency_manager.get_active_leases(provider_id))
 
-    async def start_dependencies(self, process_id: int):
-        with self.db_session_factory() as session:
-            from database.models import ServiceDependency
-            deps = session.query(ServiceDependency).filter(
-                ServiceDependency.consumer_type == 'service',
-                ServiceDependency.consumer_id == process_id
-            ).all()
-            provider_ids = [dep.provider_service_id for dep in deps]
-            
-        for provider_id in provider_ids:
-            if provider_id not in self.processes:
-                self.logger.info(f"Starting auto-managed dependency service {provider_id} for consumer service {process_id}")
-                await self.start_process(provider_id, is_restart=False)
+    async def start_dependencies(self, process_id: int, allow_auto_start: bool = True):
+        from core.dependency_manager import dependency_manager
+        dependency_manager.acquire_dependencies('service', process_id, allow_auto_start=allow_auto_start)
 
-    async def stop_unused_dependencies(self, process_id: int):
-        with self.db_session_factory() as session:
-            from database.models import ServiceDependency
-            deps = session.query(ServiceDependency).filter(
-                ServiceDependency.consumer_type == 'service',
-                ServiceDependency.consumer_id == process_id
-            ).all()
-            auto_managed_deps = [dep for dep in deps if dep.is_auto_managed]
-            
-        for dep in auto_managed_deps:
-            provider_id = dep.provider_service_id
-            ref_count = self.get_service_ref_count(provider_id)
-            if ref_count == 0:
-                self.logger.info(f"Stopping unused dependency service {provider_id} (ref_count reached 0)")
-                await self.stop_process(provider_id)
+    async def stop_unused_dependencies(self, process_id: int, allow_auto_stop: bool = True):
+        from core.dependency_manager import dependency_manager
+        dependency_manager.release_dependencies('service', process_id, allow_auto_stop=allow_auto_stop)
 
     async def start_process(self, process_id: int, is_restart: bool = False):
         cleanup_rogue_processes(process_id=process_id)
         
+        from core.dependency_manager import dependency_manager
+        if not is_restart:
+            dependency_manager.mark_pinned(process_id)
+
+        # Get service config to check dependency permissions
+        allow_start_deps = True
+        with self.db_session_factory() as session:
+            from database.models import Service
+            svc = session.get(Service, process_id)
+            if svc:
+                allow_start_deps = getattr(svc, 'allow_auto_start_deps', True)
+
         # Start auto-managed dependencies first
-        await self.start_dependencies(process_id)
+        await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
         
         logs_dir = None
         debug_mode = False
@@ -365,10 +348,17 @@ class ProcessManager:
 
             cleanup_rogue_processes(process_id=process_id)
 
+            # Unmark pinned state if stopped intentionally
+            from core.dependency_manager import dependency_manager
+            if not is_restart:
+                dependency_manager.unmark_pinned(process_id)
+
+            allow_stop_deps = True
             with self.db_session_factory() as session:
                 from database.models import Service
                 media_proc = session.query(Service).get(process_id)
                 if media_proc:
+                    allow_stop_deps = getattr(media_proc, 'allow_auto_stop_deps', True)
                     media_proc.status = 'restarting' if is_restart else 'stopped'
                     media_proc.pid = None
                     media_proc.cpu_usage = 0
@@ -381,7 +371,7 @@ class ProcessManager:
                     session.commit()
 
             # Stop any auto-managed dependencies that are no longer needed
-            await self.stop_unused_dependencies(process_id)
+            await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
         finally:
             self.stopping_processes.discard(process_id)
 
@@ -899,132 +889,136 @@ class ProcessManager:
                             if (frame is not None and frame > 0) or (out_time_us is not None and out_time_us > 0):
                                 has_had_activity = True
 
-                            # Check speed degradation
-                            speed_val = None
-                            if speed and speed != "N/A":
-                                try:
-                                    speed_val = float(speed.replace("x", "").strip())
-                                except ValueError:
-                                    pass
+                            is_ffmpeg_service = (getattr(media_proc, 'service_type', 'ffmpeg_stream') == 'ffmpeg_stream')
 
-                            cfg = media_proc.config or {}
-                            watchdog_enabled = cfg.get('watchdog_enabled', False)
-                            watchdog_min_speed = cfg.get('watchdog_min_speed')
-                            if getattr(media_proc, 'service_type', None) == 'ffmpeg_stream' and watchdog_enabled and watchdog_min_speed is not None:
-                                elapsed = (datetime.utcnow() - start_time).total_seconds()
-                                if elapsed > 30:
-                                    if speed_val is not None and speed_val < watchdog_min_speed:
-                                        if self.watchdog_low_speed_since.get(process_id) is None:
-                                            self.watchdog_low_speed_since[process_id] = datetime.utcnow()
+                            # FFmpeg-specific Deep Transcode Watchdog Checks
+                            if is_ffmpeg_service:
+                                # Check speed degradation
+                                speed_val = None
+                                if speed and speed != "N/A":
+                                    try:
+                                        speed_val = float(speed.replace("x", "").strip())
+                                    except ValueError:
+                                        pass
+
+                                cfg = media_proc.config or {}
+                                watchdog_enabled = cfg.get('watchdog_enabled', False)
+                                watchdog_min_speed = cfg.get('watchdog_min_speed')
+                                if watchdog_enabled and watchdog_min_speed is not None:
+                                    elapsed = (datetime.utcnow() - start_time).total_seconds()
+                                    if elapsed > 30:
+                                        if speed_val is not None and speed_val < watchdog_min_speed:
+                                            if self.watchdog_low_speed_since.get(process_id) is None:
+                                                self.watchdog_low_speed_since[process_id] = datetime.utcnow()
+                                            else:
+                                                watchdog_min_speed_duration = cfg.get('watchdog_min_speed_duration', 30)
+                                                duration = watchdog_min_speed_duration if watchdog_min_speed_duration is not None else 30
+                                                low_speed_duration = (datetime.utcnow() - self.watchdog_low_speed_since[process_id]).total_seconds()
+                                                if low_speed_duration > duration:
+                                                    log_msg = f"Watchdog: Stream speed ({speed_val}x) fell below minimum threshold ({watchdog_min_speed}x) for more than {duration}s. Force killing..."
+                                                    self.logger.error(log_msg)
+                                                    
+                                                    from database.models import ProcessLog
+                                                    log = ProcessLog(
+                                                        process_id=process_id,
+                                                        level='ERROR',
+                                                        message=log_msg
+                                                    )
+                                                    session.add(log)
+                                                    session.commit()
+
+                                                    if proc is not None:
+                                                        try:
+                                                            proc.kill()
+                                                        except Exception as kerr:
+                                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
+                                                    else:
+                                                        import signal
+                                                        try:
+                                                            os.kill(pid, signal.SIGKILL)
+                                                        except Exception as kerr:
+                                                            self.logger.error(f"Failed to kill PID {pid} via os.kill: {kerr}")
                                         else:
-                                            watchdog_min_speed_duration = cfg.get('watchdog_min_speed_duration', 30)
-                                            duration = watchdog_min_speed_duration if watchdog_min_speed_duration is not None else 30
-                                            low_speed_duration = (datetime.utcnow() - self.watchdog_low_speed_since[process_id]).total_seconds()
-                                            if low_speed_duration > duration:
-                                                log_msg = f"Watchdog: Stream speed ({speed_val}x) fell below minimum threshold ({media_proc.watchdog_min_speed}x) for more than {duration}s. Force killing..."
-                                                self.logger.error(log_msg)
-                                                
-                                                from database.models import ProcessLog
-                                                log = ProcessLog(
-                                                    process_id=process_id,
-                                                    level='ERROR',
-                                                    message=log_msg
-                                                )
-                                                session.add(log)
-                                                session.commit()
+                                            self.watchdog_low_speed_since[process_id] = None
 
-                                                if proc is not None:
-                                                    try:
-                                                        proc.kill()
-                                                    except Exception as kerr:
-                                                        self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                                else:
-                                                    import signal
-                                                    try:
-                                                        os.kill(pid, signal.SIGKILL)
-                                                    except Exception as kerr:
-                                                        self.logger.error(f"Failed to kill PID {pid} via os.kill: {kerr}")
-                                    else:
-                                        self.watchdog_low_speed_since[process_id] = None
+                                # Check startup stall (process running for > network_wait_timeout with zero activity/frames)
+                                elapsed_since_start = (datetime.utcnow() - start_time).total_seconds()
+                                net_timeout_cfg = self.get_network_wait_timeout()
+                                
+                                # Do not force kill listeners awaiting connections on startup (Rule XIII)
+                                cfg_str = str(media_proc.config or {}).lower()
+                                is_listener = ("mode=listener" in cfg_str) or \
+                                              (isinstance(media_proc.input_config, dict) and media_proc.input_config.get('mode') == 'listener') or \
+                                              (isinstance(media_proc.output_config, dict) and media_proc.output_config.get('mode') == 'listener')
+                                              
+                                if media_proc.type == 'service' and media_proc.watchdog_enabled and not has_had_activity and not is_listener:
+                                    if elapsed_since_start > net_timeout_cfg:
+                                        log_msg = f"Watchdog: Service failed to produce any frames/progress after {int(elapsed_since_start)}s (hung at startup/network connection). Force killing..."
+                                        self.logger.error(log_msg)
+                                        from database.models import ProcessLog
+                                        log = ProcessLog(
+                                            process_id=process_id,
+                                            level='ERROR',
+                                            message=log_msg
+                                        )
+                                        session.add(log)
+                                        session.commit()
 
-                            # Check startup stall (process running for > network_wait_timeout with zero activity/frames)
-                            elapsed_since_start = (datetime.utcnow() - start_time).total_seconds()
-                            net_timeout_cfg = self.get_network_wait_timeout()
-                            
-                            # Do not force kill listeners awaiting connections on startup (Rule XIII)
-                            cfg_str = str(media_proc.config or {}).lower()
-                            is_listener = ("mode=listener" in cfg_str) or \
-                                          (isinstance(media_proc.input_config, dict) and media_proc.input_config.get('mode') == 'listener') or \
-                                          (isinstance(media_proc.output_config, dict) and media_proc.output_config.get('mode') == 'listener')
-                                          
-                            if media_proc.type == 'service' and media_proc.watchdog_enabled and not has_had_activity and not is_listener:
-                                if elapsed_since_start > net_timeout_cfg:
-                                    log_msg = f"Watchdog: Service failed to produce any frames/progress after {int(elapsed_since_start)}s (hung at startup/network connection). Force killing..."
-                                    self.logger.error(log_msg)
-                                    from database.models import ProcessLog
-                                    log = ProcessLog(
-                                        process_id=process_id,
-                                        level='ERROR',
-                                        message=log_msg
-                                    )
-                                    session.add(log)
-                                    session.commit()
+                                        if proc is not None:
+                                            try:
+                                                proc.kill()
+                                            except Exception as kerr:
+                                                self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
+                                        else:
+                                            import signal
+                                            try:
+                                                os.kill(pid, signal.SIGKILL)
+                                            except Exception as kerr:
+                                                self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
 
-                                    if proc is not None:
-                                        try:
-                                            proc.kill()
-                                        except Exception as kerr:
-                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                    else:
-                                        import signal
-                                        try:
-                                            os.kill(pid, signal.SIGKILL)
-                                        except Exception as kerr:
-                                            self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
-
-                            # Compare with previous iteration when activity is present
-                            if has_had_activity:
-                                if prev_out_time_us is None:
-                                    prev_frame = frame
-                                    prev_out_time_us = out_time_us
-                                    self.watchdog_stalled_since[process_id] = None
-                                else:
-                                    if frame == prev_frame and out_time_us == prev_out_time_us:
-                                        if self.watchdog_stalled_since.get(process_id) is None:
-                                            self.watchdog_stalled_since[process_id] = datetime.utcnow()
-                                        elif (datetime.utcnow() - self.watchdog_stalled_since[process_id]).total_seconds() > 15:
-                                            if media_proc.type == 'service' and media_proc.watchdog_enabled:
-                                                log_msg = "Watchdog: Stream pipeline has frozen (frame/time count stalled for 15s). Force killing..."
-                                                self.logger.error(log_msg)
-                                                
-                                                from database.models import ProcessLog
-                                                log = ProcessLog(
-                                                    process_id=process_id,
-                                                    level='ERROR',
-                                                    message=log_msg
-                                                )
-                                                session.add(log)
-                                                session.commit()
-
-                                                # Kill the process
-                                                if proc is not None:
-                                                    try:
-                                                        proc.kill()
-                                                    except Exception as kerr:
-                                                        self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                                else:
-                                                    import signal
-                                                    try:
-                                                        os.kill(pid, signal.SIGKILL)
-                                                    except Exception as kerr:
-                                                        self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
-
-                                                self.watchdog_stalled_since[process_id] = None
-                                    else:
-                                        # They have changed
-                                        self.watchdog_stalled_since[process_id] = None
+                                # Compare with previous iteration when activity is present
+                                if has_had_activity:
+                                    if prev_out_time_us is None:
                                         prev_frame = frame
                                         prev_out_time_us = out_time_us
+                                        self.watchdog_stalled_since[process_id] = None
+                                    else:
+                                        if frame == prev_frame and out_time_us == prev_out_time_us:
+                                            if self.watchdog_stalled_since.get(process_id) is None:
+                                                self.watchdog_stalled_since[process_id] = datetime.utcnow()
+                                            elif (datetime.utcnow() - self.watchdog_stalled_since[process_id]).total_seconds() > 15:
+                                                if media_proc.type == 'service' and media_proc.watchdog_enabled:
+                                                    log_msg = "Watchdog: Stream pipeline has frozen (frame/time count stalled for 15s). Force killing..."
+                                                    self.logger.error(log_msg)
+                                                    
+                                                    from database.models import ProcessLog
+                                                    log = ProcessLog(
+                                                        process_id=process_id,
+                                                        level='ERROR',
+                                                        message=log_msg
+                                                    )
+                                                    session.add(log)
+                                                    session.commit()
+
+                                                    # Kill the process
+                                                    if proc is not None:
+                                                        try:
+                                                            proc.kill()
+                                                        except Exception as kerr:
+                                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
+                                                    else:
+                                                        import signal
+                                                        try:
+                                                            os.kill(pid, signal.SIGKILL)
+                                                        except Exception as kerr:
+                                                            self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
+
+                                                    self.watchdog_stalled_since[process_id] = None
+                                        else:
+                                            # They have changed
+                                            self.watchdog_stalled_since[process_id] = None
+                                            prev_frame = frame
+                                            prev_out_time_us = out_time_us
                 except Exception as db_err:
                     self.logger.error(f"Watchdog database error for process {process_id}: {db_err}")
 

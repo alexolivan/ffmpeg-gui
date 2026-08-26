@@ -11,6 +11,8 @@ interface SchedulingFormSectionProps {
   duration_end_time: string;
   retry_max: number;
   retry_delay: number;
+  allow_auto_start_deps?: boolean;
+  allow_auto_stop_deps?: boolean;
   onChange: (updates: {
     is_active?: boolean;
     schedule_type?: string;
@@ -21,6 +23,8 @@ interface SchedulingFormSectionProps {
     duration_end_time?: string;
     retry_max?: number;
     retry_delay?: number;
+    allow_auto_start_deps?: boolean;
+    allow_auto_stop_deps?: boolean;
   }) => void;
 }
 
@@ -34,6 +38,8 @@ export const SchedulingFormSection: React.FC<SchedulingFormSectionProps> = ({
   duration_end_time,
   retry_max,
   retry_delay,
+  allow_auto_start_deps = true,
+  allow_auto_stop_deps = true,
   onChange,
 }) => {
   const { t } = useTranslation();
@@ -169,6 +175,47 @@ export const SchedulingFormSection: React.FC<SchedulingFormSectionProps> = ({
             value={retry_delay}
             onChange={e => onChange({ retry_delay: Number(e.target.value) })}
           />
+        </div>
+      </div>
+
+      {/* Dependency Safety Capabilities */}
+      <div className="p-2 bg-white/5 rounded-lg border border-white/5 space-y-2 mt-2">
+        <div className="flex items-center justify-between border-b border-white/5 pb-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-brand-lime flex items-center gap-1">
+            🔗 {t('services.dependencyCapabilities', 'Dependency Management & Permissions')}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold text-white">{t('services.allowAutoStartDeps', 'Auto-start required auxiliary services')}</span>
+            <span className="text-[9px] text-text-secondary">{t('services.allowAutoStartDepsDesc', 'Start required Hubs or servers if stopped when this process starts.')}</span>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allow_auto_start_deps}
+              onChange={e => onChange({ allow_auto_start_deps: e.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
+          </label>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold text-white">{t('services.allowAutoStopDeps', 'Auto-stop auxiliary services on finish')}</span>
+            <span className="text-[9px] text-text-secondary">{t('services.allowAutoStopDepsDesc', 'Gracefully shut down on-demand Hubs when no other processes are using them.')}</span>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allow_auto_stop_deps}
+              onChange={e => onChange({ allow_auto_stop_deps: e.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
+          </label>
         </div>
       </div>
     </div>

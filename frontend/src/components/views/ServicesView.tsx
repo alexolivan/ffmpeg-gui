@@ -4,7 +4,9 @@ import {
   ImportIcon, 
   PlusIcon
 } from '../Icons';
-import { UnifiedServiceCard, hasVideo, type ServiceItem } from '../cards/UnifiedServiceCard';
+import { FfmpegServiceCard } from '../cards/FfmpegServiceCard';
+import { MediaMtxServiceCard } from '../cards/MediaMtxServiceCard';
+import { hasVideo, type ServiceItem } from '../cards/UnifiedServiceCard';
 
 export { hasVideo };
 
@@ -49,10 +51,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const activeServices = telemetry.filter(p => isActiveService(p, actionPending));
-  const inactiveServices = telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p, actionPending));
+  const services = telemetry.filter(p => !p.type || p.type === 'service');
+  const activeServices = services.filter(p => isActiveService(p, actionPending));
+  const inactiveServices = services.filter(p => !isActiveService(p, actionPending));
 
-  const handleExport = (proc: ServiceItem) => {
+  const handleExport = (proc: any) => {
     fetch(`${API}/processes/${proc.id}/export`)
       .then(r => r.json())
       .then(data => {
@@ -64,7 +67,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
       });
   };
 
-  const handleCloneAsTask = async (proc: ServiceItem) => {
+  const handleCloneAsTask = async (proc: any) => {
     try {
       const res = await fetch(`${API}/processes/${proc.id}/clone-as-task`, { method: 'POST' });
       if (!res.ok) throw new Error('Failed to clone service as task');
@@ -74,68 +77,97 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     }
   };
 
+  const renderCard = (proc: any) => {
+    if (proc.service_type === 'mediamtx_hub') {
+      return (
+        <MediaMtxServiceCard
+          key={proc.id}
+          service={proc as ServiceItem}
+          telemetryItem={proc}
+          actionPending={actionPending[proc.id]}
+          onStartService={onStartService}
+          onStopService={onStopService}
+          onRestartService={onRestartService}
+          onEditProcess={onEditProcess}
+          onCloneProcess={onCloneProcess}
+          onDeleteProcess={onDeleteProcess}
+          onSelectedProcess={onSelectedProcess}
+          onExportProcess={handleExport}
+          API={API}
+        />
+      );
+    }
+    return (
+      <FfmpegServiceCard
+        key={proc.id}
+        service={proc as ServiceItem}
+        telemetryItem={proc}
+        actionPending={actionPending[proc.id]}
+        onStartService={onStartService}
+        onStopService={onStopService}
+        onRestartService={onRestartService}
+        onEditProcess={onEditProcess}
+        onCloneProcess={onCloneProcess}
+        onDeleteProcess={onDeleteProcess}
+        onSelectedProcess={onSelectedProcess}
+        onExportProcess={handleExport}
+        onCloneAsTask={handleCloneAsTask}
+        API={API}
+      />
+    );
+  };
+
   return (
     <div className="space-y-6">
-      {/* Header Bar */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--glass-border)]">
+      {/* Top Banner Actions */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-black text-[var(--text-primary)]">{t('services.title', 'Services')}</h1>
-          <p className="text-xs text-[var(--text-secondary)]">{t('services.subtitle', 'Continuous media streaming and processing node instances')}</p>
+          <h2 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">
+            {t('nav.services', 'Services')}
+          </h2>
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+            {t('services.manageServicesSubtitle', 'Manage 24/7 background broadcast streaming services and media routing hubs.')}
+          </p>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <button 
-            onClick={() => importFileRef.current?.click()}
-            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 transition-all flex items-center gap-1.5"
-          >
-            <ImportIcon size={14} /> {t('services.importProfile', 'IMPORT PROFILE')}
-          </button>
-          <input 
-            type="file" 
-            ref={importFileRef} 
-            className="hidden" 
-            accept=".json" 
-            onChange={handleImportFileChange} 
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <input
+            type="file"
+            ref={importFileRef}
+            onChange={handleImportFileChange}
+            accept=".json"
+            className="hidden"
           />
-          <button 
-            onClick={() => setShowAddModal(true)}
-            className="pill-button bg-brand-lime text-black font-black transition-all flex items-center gap-1.5"
+          <button
+            onClick={() => importFileRef.current?.click()}
+            className="pill-button bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 text-xs py-2 px-3.5 flex items-center gap-1.5 flex-1 sm:flex-initial justify-center"
           >
-            <PlusIcon size={14} /> {t('services.newService', 'NEW SERVICE')}
+            <ImportIcon size={14} />
+            {t('common.import', 'Import')}
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="pill-button bg-brand-lime hover:bg-brand-lime/90 text-black font-bold text-xs py-2 px-4 flex items-center gap-1.5 flex-1 sm:flex-initial justify-center shadow-lg shadow-brand-lime/10"
+          >
+            <PlusIcon size={14} />
+            {t('services.createService', 'Create Service')}
           </button>
         </div>
-      </header>
+      </div>
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Active Running Services Section */}
         <div className="glass-card p-4 md:p-5">
           <h3 className="text-xl font-black mb-3 text-[var(--text-primary)]">
-            {t('services.activeServicesRunning', 'ACTIVE SERVICES (RUNNING)')} ({activeServices.length})
+            {t('services.activeServices', 'Active Services')} ({activeServices.length})
           </h3>
           {activeServices.length === 0 ? (
             <div className="text-[var(--text-secondary)] py-8 text-center border border-dashed border-white/5 rounded-2xl">
-              {t('services.noRunningServices', 'No running services')}
+              {t('services.noActiveServices', 'No active services running')}
             </div>
           ) : (
             <div className="space-y-2.5">
-              {activeServices.map(proc => (
-                <UnifiedServiceCard
-                  key={proc.id}
-                  service={proc as ServiceItem}
-                  telemetryItem={proc}
-                  actionPending={actionPending[proc.id]}
-                  onStartService={onStartService}
-                  onStopService={onStopService}
-                  onRestartService={onRestartService}
-                  onEditProcess={onEditProcess}
-                  onCloneProcess={onCloneProcess}
-                  onDeleteProcess={onDeleteProcess}
-                  onSelectedProcess={onSelectedProcess}
-                  onExportProcess={handleExport}
-                  onCloneAsTask={handleCloneAsTask}
-                  API={API}
-                />
-              ))}
+              {activeServices.map(renderCard)}
             </div>
           )}
         </div>
@@ -151,24 +183,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
             </div>
           ) : (
             <div className="space-y-2.5">
-              {inactiveServices.map(proc => (
-                <UnifiedServiceCard
-                  key={proc.id}
-                  service={proc as ServiceItem}
-                  telemetryItem={proc}
-                  actionPending={actionPending[proc.id]}
-                  onStartService={onStartService}
-                  onStopService={onStopService}
-                  onRestartService={onRestartService}
-                  onEditProcess={onEditProcess}
-                  onCloneProcess={onCloneProcess}
-                  onDeleteProcess={onDeleteProcess}
-                  onSelectedProcess={onSelectedProcess}
-                  onExportProcess={handleExport}
-                  onCloneAsTask={handleCloneAsTask}
-                  API={API}
-                />
-              ))}
+              {inactiveServices.map(renderCard)}
             </div>
           )}
         </div>

@@ -124,6 +124,10 @@ def init_db():
                 conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN is_system BOOLEAN DEFAULT 0"))
             if "command" not in task_columns:
                 conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN command TEXT DEFAULT NULL"))
+            if "allow_auto_start_deps" not in task_columns:
+                conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN allow_auto_start_deps BOOLEAN DEFAULT 1"))
+            if "allow_auto_stop_deps" not in task_columns:
+                conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN allow_auto_stop_deps BOOLEAN DEFAULT 1"))
             
             # Migración para la tabla software_builds
             result = conn.execute(text("PRAGMA table_info(software_builds)"))

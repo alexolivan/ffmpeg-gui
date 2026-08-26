@@ -240,6 +240,21 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     return () => { active = false; };
   }, [config.type]);
 
+  const [providers, setProviders] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    let active = true;
+    fetch('/api/dependencies/providers')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (active) setProviders(data || []);
+      })
+      .catch(() => {
+        if (active) setProviders([]);
+      });
+    return () => { active = false; };
+  }, []);
+
   const parseFormatDescription = (desc: string) => {
     const resMatch = desc.match(/(\d+)x(\d+)/);
     const fpsMatch = desc.match(/at ([\d/]+) fps/);
@@ -298,6 +313,52 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           <option key={tItem.value} value={tItem.value}>{t(tItem.labelKey, tItem.label)}</option>
         ))}
       </select>
+
+      {/* Auxiliary Hub Quick-Preset Bar */}
+      {providers.length > 0 && ['rtmp', 'srt', 'whip'].includes(config.type) && (
+        <div className="bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xs">⚡</span>
+            <span className="text-[10px] font-semibold text-brand-lime truncate">
+              {t('destinations.hubPresetTitle', 'Route to Auxiliary Hub')}:
+            </span>
+          </div>
+          <select
+            className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-[10px] font-mono text-[var(--text-primary)] focus:border-brand-lime focus:outline-none"
+            defaultValue=""
+            onChange={e => {
+              const selectedId = parseInt(e.target.value);
+              if (!selectedId) return;
+              const provider = providers.find(p => p.id === selectedId);
+              if (!provider) return;
+
+              const cfg = provider.config || {};
+              if (config.type === 'rtmp') {
+                const port = cfg.rtmp_port || 1935;
+                update({ url: `rtmp://127.0.0.1:${port}/live/stream1` });
+              } else if (config.type === 'srt') {
+                const port = cfg.srt_port || 8890;
+                update({
+                  mode: 'caller',
+                  host: '127.0.0.1',
+                  port: String(port),
+                  streamid: 'publish:stream1'
+                });
+              } else if (config.type === 'whip') {
+                const port = cfg.webrtc_port || 8889;
+                update({ url: `http://127.0.0.1:${port}/live_stream/whip` });
+              }
+            }}
+          >
+            <option value="">{t('destinations.selectHubPreset', '-- Select Provider Hub --')}</option>
+            {providers.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({p.service_type === 'mediamtx_hub' ? 'MediaMTX' : 'Icecast'})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* ── Type-specific fields ── */}
 

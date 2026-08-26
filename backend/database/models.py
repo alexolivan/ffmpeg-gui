@@ -282,6 +282,22 @@ class Service(Base):
         self._set_config_key('network_timeout', val)
 
     @property
+    def allow_auto_start_deps(self):
+        return self.config.get('allow_auto_start_deps', True) if self.config else True
+
+    @allow_auto_start_deps.setter
+    def allow_auto_start_deps(self, val):
+        self._set_config_key('allow_auto_start_deps', bool(val))
+
+    @property
+    def allow_auto_stop_deps(self):
+        return self.config.get('allow_auto_stop_deps', True) if self.config else True
+
+    @allow_auto_stop_deps.setter
+    def allow_auto_stop_deps(self, val):
+        self._set_config_key('allow_auto_stop_deps', bool(val))
+
+    @property
     def pending_changes(self) -> bool:
         if self.status != 'running' or not self.last_started_config:
             return False
@@ -394,6 +410,9 @@ class ScheduledTask(Base):
     duration_end_time = Column(DateTime, nullable=True)
 
     retry_policy = Column(JSON, nullable=True)
+
+    allow_auto_start_deps = Column(Boolean, default=True)
+    allow_auto_stop_deps = Column(Boolean, default=True)
 
     alias = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

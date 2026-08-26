@@ -10,7 +10,8 @@ import { DashboardView } from './components/views/DashboardView';
 import { ServicesView } from './components/views/ServicesView';
 import { SettingsView } from './components/views/SettingsView';
 import { ForgeView } from './components/views/ForgeView';
-import { ProcessPreviewModal } from './components/modals/ProcessPreviewModal';
+import { FfmpegPreviewModal } from './components/modals/FfmpegPreviewModal';
+import { MediaMtxPreviewModal } from './components/modals/MediaMtxPreviewModal';
 import { ServiceTypePickerModal } from './components/modals/ServiceTypePickerModal';
 import { MediaMtxConfigForm } from './components/forms/MediaMtxConfigForm';
 
@@ -505,21 +506,37 @@ function App() {
         </div>
       )}
 
-      {/* ── Preview Modal ── */}
+      {/* ── Preview / Monitor Modals ── */}
       {selectedProcess && (
-        <ProcessPreviewModal
-          selectedProcess={selectedProcess}
-          telemetry={telemetry}
-          actionPending={actionPending}
-          logs={logs}
-          onClose={() => setSelectedProcess(null)}
-          onEditProcess={setEditingProcess}
-          onCloneProcess={handleCloneProcess}
-          onStartService={handleStartService}
-          onStopService={handleStopService}
-          onRestartService={handleRestartService}
-          API={API}
-        />
+        selectedProcess.service_type === 'mediamtx_hub' ? (
+          <MediaMtxPreviewModal
+            selectedProcess={selectedProcess}
+            telemetry={telemetry}
+            actionPending={actionPending}
+            logs={logs}
+            onClose={() => setSelectedProcess(null)}
+            onEditProcess={setEditingProcess}
+            onCloneProcess={handleCloneProcess}
+            onStartService={handleStartService}
+            onStopService={handleStopService}
+            onRestartService={handleRestartService}
+            API={API}
+          />
+        ) : (
+          <FfmpegPreviewModal
+            selectedProcess={selectedProcess}
+            telemetry={telemetry}
+            actionPending={actionPending}
+            logs={logs}
+            onClose={() => setSelectedProcess(null)}
+            onEditProcess={setEditingProcess}
+            onCloneProcess={handleCloneProcess}
+            onStartService={handleStartService}
+            onStopService={handleStopService}
+            onRestartService={handleRestartService}
+            API={API}
+          />
+        )
       )}
     </div>
   );

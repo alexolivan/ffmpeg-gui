@@ -98,7 +98,12 @@
       "title": "Crear Nou Servei: Seleccionar Motor",
       "subtitle": "Tria l'arquitectura i el motor de programari per configurar aquest nou servei.",
       "continue": "Continuar"
-    }
+    },
+    "dependencyCapabilities": "Gestió de Dependències i Permisos",
+    "allowAutoStartDeps": "Auto-arrencar serveis auxiliars requerits",
+    "allowAutoStartDepsDesc": "Arrenca Hubs o servidors necessaris si estan aturats en iniciar aquest procés.",
+    "allowAutoStopDeps": "Auto-apagar serveis auxiliars en acabar",
+    "allowAutoStopDepsDesc": "Apaga de forma neta els Hubs sota demanda quan cap altre procés els estigui utilitzant."
   },
   "settings": {
     "title": "Configuració",
@@ -824,7 +829,9 @@
     "forcedFramerate": "Freqüència de Quadres Forçada",
     "enableAbr": "Streaming de Taxa de Bits Adaptativa (ABR)",
     "alsaPlayoutDevice": "Dispositiu de Reproducció d'Àudio ALSA",
-    "noAlsaPlaybackDetected": "No s'han detectat dispositius de reproducció d'àudio ALSA"
+    "noAlsaPlaybackDetected": "No s'han detectat dispositius de reproducció d'àudio ALSA",
+    "hubPresetTitle": "Encaminar a Hub Auxiliar",
+    "selectHubPreset": "-- Seleccionar Hub Proveïdor --"
   },
   "filters": {
     "filtersNotAvailable": "Els filtres només estan disponibles quan els fluxos de vídeo o àudio estan habilitats.",

@@ -98,7 +98,12 @@
       "title": "Crear Nuevo Servicio: Seleccionar Motor",
       "subtitle": "Elige la arquitectura y el motor de software para configurar este nuevo servicio.",
       "continue": "Continuar"
-    }
+    },
+    "dependencyCapabilities": "Gestión de Dependencias y Permisos",
+    "allowAutoStartDeps": "Auto-arrancar servicios auxiliares requeridos",
+    "allowAutoStartDepsDesc": "Arranca Hubs o servidores necesarios si están detenidos al iniciar este proceso.",
+    "allowAutoStopDeps": "Auto-apagar servicios auxiliares al terminar",
+    "allowAutoStopDepsDesc": "Apaga de forma limpia los Hubs bajo demanda cuando ningún otro proceso los esté usando."
   },
   "settings": {
     "title": "Configuración",
@@ -824,7 +829,9 @@
     "forcedFramerate": "Frecuencia de Cuadros Forzada",
     "enableAbr": "Streaming de Tasa de Bits Adaptativa (ABR)",
     "alsaPlayoutDevice": "Dispositivo de Reproducción de Audio ALSA",
-    "noAlsaPlaybackDetected": "No se detectaron dispositivos de reproducción de audio ALSA"
+    "noAlsaPlaybackDetected": "No se detectaron dispositivos de reproducción de audio ALSA",
+    "hubPresetTitle": "Enrutar a Hub Auxiliar",
+    "selectHubPreset": "-- Seleccionar Hub Proveedor --"
   },
   "filters": {
     "filtersNotAvailable": "Los filtros solo están disponibles cuando los flujos de vídeo o audio están habilitados.",

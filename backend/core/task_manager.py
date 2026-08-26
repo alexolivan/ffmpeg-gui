@@ -95,8 +95,14 @@ class TaskManager:
                 raise val_err
 
             cmd = self._build_ffmpeg_cmd(task, ffmpeg_bin, limit_sec, execution_id=execution_id)
+            task_id = task.id
+            allow_start = getattr(task, 'allow_auto_start_deps', True)
             session.commit()  # Release write locks immediately before slow spawn!
             
+        # Acquire dependency leases
+        from core.dependency_manager import dependency_manager
+        dependency_manager.acquire_dependencies('task', task_id, allow_auto_start=allow_start)
+
         # 2. Spawn subprocess (outside database session)
         prepare_process_file_permissions(execution_id=execution_id, logger=self.logger)
         self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
@@ -251,9 +257,14 @@ class TaskManager:
 
         cleanup_rogue_processes(execution_id=execution_id)
 
+        task_id = None
+        allow_stop = True
         with self.db_session_factory() as session:
             execution = session.query(TaskExecution).get(execution_id)
             if execution:
+                task_id = execution.task_id
+                if execution.task:
+                    allow_stop = getattr(execution.task, 'allow_auto_stop_deps', True)
                 execution.status = status
                 if error_msg:
                     execution.error_message = error_msg
@@ -265,6 +276,10 @@ class TaskManager:
                 if status == 'error':
                     task_name = execution.task.name if execution.task else str(execution_id)
                     self.notify_task_failure(execution_id, task_name, error_msg)
+
+        if task_id:
+            from core.dependency_manager import dependency_manager
+            dependency_manager.release_dependencies('task', task_id, allow_auto_stop=allow_stop)
 
     async def _log_reader(self, execution_id: int, proc):
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)

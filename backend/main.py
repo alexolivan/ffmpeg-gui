@@ -4431,6 +4431,28 @@ def remove_service_dependency(service_id: int, provider_service_id: int, db: Ses
     return {"detail": "Dependency removed"}
 
 
+@app.get("/api/dependencies/providers")
+def list_available_dependency_providers(db: Session = Depends(get_db)):
+    """List auxiliary services that can act as stream routing or protocol hubs (MediaMTX, Icecast)."""
+    providers = db.query(MediaProcess).filter(
+        MediaProcess.service_type.in_(["mediamtx_hub", "icecast_server"])
+    ).all()
+    
+    result = []
+    for p in providers:
+        cfg = p.config or {}
+        mtx_cfg = cfg.get("mediamtx_config", cfg)
+        result.append({
+            "id": p.id,
+            "name": p.name,
+            "alias": p.alias,
+            "service_type": p.service_type,
+            "status": p.status,
+            "config": mtx_cfg
+        })
+    return result
+
+
 @app.get("/tasks/executions/{execution_id}/preview")
 async def get_task_preview(execution_id: int, db: Session = Depends(get_db)):
     execution = db.query(TaskExecution).get(execution_id)

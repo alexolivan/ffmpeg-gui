@@ -98,7 +98,12 @@
       "title": "Create New Service: Select Engine",
       "subtitle": "Choose the underlying software engine architecture to configure for this new service.",
       "continue": "Continue"
-    }
+    },
+    "dependencyCapabilities": "Dependency Management & Permissions",
+    "allowAutoStartDeps": "Auto-start required auxiliary services",
+    "allowAutoStartDepsDesc": "Start required Hubs or servers if stopped when this process starts.",
+    "allowAutoStopDeps": "Auto-stop auxiliary services on finish",
+    "allowAutoStopDepsDesc": "Gracefully shut down on-demand Hubs when no other processes are using them."
   },
   "settings": {
     "title": "Settings",
@@ -824,7 +829,9 @@
     "forcedFramerate": "Forced Output Framerate",
     "enableAbr": "Adaptive Bitrate (ABR) Streaming",
     "alsaPlayoutDevice": "ALSA Audio Playout Device",
-    "noAlsaPlaybackDetected": "No ALSA audio playback devices detected"
+    "noAlsaPlaybackDetected": "No ALSA audio playback devices detected",
+    "hubPresetTitle": "Route to Auxiliary Hub",
+    "selectHubPreset": "-- Select Provider Hub --"
   },
   "filters": {
     "filtersNotAvailable": "Filters are only available when video or audio streams are enabled.",
