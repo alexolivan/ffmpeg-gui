@@ -450,6 +450,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
                           </span>
                         )}
+                        {task.dependencies && task.dependencies.length > 0 && (
+                          <span 
+                            className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+                            title={`Depends on auxiliary service: ${task.dependencies.map((d: any) => d.provider_name).join(', ')}`}
+                          >
+                            🔗 {task.dependencies.map((d: any) => d.provider_name).join(', ')}
+                          </span>
+                        )}
                         {task.retry_policy?.max_retries > 0 && (!exec || exec.retry_count === 0 || exec.status !== 'running') && (
                           <span className="text-[9px] bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-2 py-0.5 rounded font-black flex items-center gap-1" title={`Watchdog active (${task.retry_policy.max_retries} max retries)`}>
                             🛡️ WATCHDOG ({task.retry_policy.max_retries})
