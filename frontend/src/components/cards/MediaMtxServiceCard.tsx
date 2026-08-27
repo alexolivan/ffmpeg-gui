@@ -63,7 +63,9 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
   const isPending = !!actionPending;
-  const isRetrying = !!service.watchdog_enabled && (service.restart_count || 0) > 0 && service.status !== 'running' && service.status !== 'stopped';
+  const watchdogEnabled = service.watchdog_enabled ?? service.config?.watchdog_enabled ?? false;
+  const restartCount = service.restart_count ?? telemetryItem?.restart_count ?? 0;
+  const isRetrying = !!watchdogEnabled && restartCount > 0 && service.status !== 'running' && service.status !== 'stopped';
 
   const cpu = telemetryItem?.cpu ?? service.cpu ?? 0;
   const ram = telemetryItem?.ram ?? service.ram ?? 0;
@@ -156,7 +158,13 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
 
           {isRetrying && (
             <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
-              ⚠️ {t('services.retrying', 'RETRYING')} ({service.restart_count})
+              ⚠️ {t('services.retrying', 'RETRYING')} ({restartCount})
+            </span>
+          )}
+
+          {service.status === 'error' && !isRetrying && (
+            <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Service failed to start or exited abnormally">
+              ⚠ FAILED
             </span>
           )}
         </div>

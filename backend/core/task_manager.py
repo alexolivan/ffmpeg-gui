@@ -99,14 +99,14 @@ class TaskManager:
             allow_start = getattr(task, 'allow_auto_start_deps', True)
             session.commit()  # Release write locks immediately before slow spawn!
             
-        # Acquire dependency leases
-        from core.dependency_manager import dependency_manager
-        await dependency_manager.acquire_dependencies('task', task_id, allow_auto_start=allow_start)
-
-        # 2. Spawn subprocess (outside database session)
-        prepare_process_file_permissions(execution_id=execution_id, logger=self.logger)
-        self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
         try:
+            # Acquire dependency leases
+            from core.dependency_manager import dependency_manager
+            await dependency_manager.acquire_dependencies('task', task_id, allow_auto_start=allow_start)
+
+            # 2. Spawn subprocess (outside database session)
+            prepare_process_file_permissions(execution_id=execution_id, logger=self.logger)
+            self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
             sub_env = {**os.environ, "FFMPEG_GUI_EXECUTION_ID": str(execution_id)}
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -136,7 +136,14 @@ class TaskManager:
                     execution.status = 'error'
                     execution.error_message = str(e)
                     execution.stopped_at = datetime.utcnow()
+                    execution.pid = None
+                    execution.cpu_usage = 0
+                    execution.ram_usage = 0
                     session.commit()
+                    task_name = execution.task.name if execution.task else str(execution_id)
+                    self.notify_task_failure(execution_id, task_name, str(e))
+            from core.dependency_manager import dependency_manager
+            await dependency_manager.release_dependencies('task', task_id, allow_auto_stop=True)
 
     def _resolve_storage_path(self, storage_id: Optional[int], relative_path: Optional[str]) -> Optional[str]:
         if not storage_id:

@@ -12,8 +12,10 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
     active_pids = active_pids or set()
     for proc in psutil.process_iter(['pid', 'name']):
         try:
-            name = proc.info['name']
-            if name and 'ffmpeg' in name.lower():
+            name = proc.info['name'] or ''
+            # Check if it is a managed process binary
+            is_candidate = any(target in name.lower() for target in ['ffmpeg', 'mediamtx', 'icecast', 'cog'])
+            if is_candidate:
                 env = proc.environ()
                 pid = proc.info['pid']
                 
