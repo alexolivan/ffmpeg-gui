@@ -378,43 +378,53 @@ class TaskManager:
             retry_delay = 10
             max_retries = 0
             
+            task_id = None
+            allow_stop = True
             with self.db_session_factory() as session:
                 execution = session.query(TaskExecution).get(execution_id)
-                if execution and execution.status == 'running':
-                    if exit_code == 0:
-                        execution.status = 'finished'
-                        execution.exit_code = 0
-                        execution.stopped_at = datetime.utcnow()
-                        execution.pid = None
-                        execution.cpu_usage = 0
-                        execution.ram_usage = 0
-                        session.commit()
-                    else:
-                        retry_policy = (execution.task.retry_policy or {}) if execution.task else {}
-                        max_retries = int(retry_policy.get('max_retries', 0) or 0)
-                        retry_delay = int(retry_policy.get('retry_delay', 10) or 10)
-                        current_retries = execution.retry_count or 0
-                        
-                        if current_retries < max_retries:
-                            should_retry = True
-                            execution.retry_count = current_retries + 1
-                            execution.status = 'retrying'
-                            execution.error_message = f"Failed with exit code {exit_code}. Retry {execution.retry_count}/{max_retries} scheduled in {retry_delay}s..."
-                            session.commit()
-                        else:
-                            execution.status = 'error'
-                            execution.exit_code = exit_code
+                if execution:
+                    task_id = execution.task_id
+                    if execution.task:
+                        allow_stop = getattr(execution.task, 'allow_auto_stop_deps', True)
+                    if execution.status == 'running':
+                        if exit_code == 0:
+                            execution.status = 'finished'
+                            execution.exit_code = 0
                             execution.stopped_at = datetime.utcnow()
                             execution.pid = None
                             execution.cpu_usage = 0
                             execution.ram_usage = 0
                             session.commit()
-                            task_name = execution.task.name if execution.task else str(execution_id)
-                            self.notify_task_failure(execution_id, task_name, f"Exited with code {exit_code} (All {max_retries} retries exhausted)")
+                        else:
+                            retry_policy = (execution.task.retry_policy or {}) if execution.task else {}
+                            max_retries = int(retry_policy.get('max_retries', 0) or 0)
+                            retry_delay = int(retry_policy.get('retry_delay', 10) or 10)
+                            current_retries = execution.retry_count or 0
+                            
+                            if current_retries < max_retries:
+                                should_retry = True
+                                execution.retry_count = current_retries + 1
+                                execution.status = 'retrying'
+                                execution.error_message = f"Failed with exit code {exit_code}. Retry {execution.retry_count}/{max_retries} scheduled in {retry_delay}s..."
+                                session.commit()
+                            else:
+                                execution.status = 'error'
+                                execution.exit_code = exit_code
+                                execution.stopped_at = datetime.utcnow()
+                                execution.pid = None
+                                execution.cpu_usage = 0
+                                execution.ram_usage = 0
+                                session.commit()
+                                task_name = execution.task.name if execution.task else str(execution_id)
+                                self.notify_task_failure(execution_id, task_name, f"Exited with code {exit_code} (All {max_retries} retries exhausted)")
 
             self.running_processes.pop(execution_id, None)
             self.last_activity.pop(execution_id, None)
             
+            if not should_retry and task_id:
+                from core.dependency_manager import dependency_manager
+                await dependency_manager.release_dependencies('task', task_id, allow_auto_stop=allow_stop)
+
             if should_retry:
                 self.logger.info(f"Task execution {execution_id} failed. Waiting {retry_delay}s before retry attempt...")
                 await asyncio.sleep(retry_delay)

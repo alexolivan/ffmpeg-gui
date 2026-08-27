@@ -76,8 +76,8 @@ interface UnifiedServiceCardProps {
   API?: string;
 }
 
-const formatUptime = (lastStartStr: string | null | undefined): string => {
-  if (!lastStartStr) return 'N/A';
+const formatUptime = (lastStartStr: string | null | undefined, isRunning: boolean = true): string => {
+  if (!isRunning || !lastStartStr) return '-';
   const start = new Date(lastStartStr);
   const diffMs = Date.now() - start.getTime();
   if (diffMs <= 0) return '0s';
@@ -279,11 +279,11 @@ export const FfmpegServiceCard: React.FC<UnifiedServiceCardProps> = ({
         <div className="flex gap-x-3 gap-y-1 mt-0.5 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
           <span>PID: <strong className={isRunning && pid ? "text-[var(--text-primary)] font-bold" : "text-zinc-500 font-normal"}>{isRunning && pid ? pid : t('common.offline', 'OFFLINE')}</strong></span>
           <span className="opacity-20">|</span>
-          <span>Uptime: <strong className="text-[var(--text-primary)]">{formatUptime(service.last_start)}</strong></span>
+          <span>Uptime: <strong className="text-[var(--text-primary)]">{formatUptime(service.last_start, isRunning)}</strong></span>
           <span className="opacity-20">|</span>
-          <span>CPU: <strong className={cpu > 80 ? 'text-red-400 font-bold' : 'text-[var(--text-primary)]'}>{cpu}%</strong></span>
+          <span>CPU: <strong className={isRunning && cpu > 80 ? 'text-red-400 font-bold' : 'text-[var(--text-primary)]'}>{isRunning ? `${cpu}%` : '-'}</strong></span>
           <span className="opacity-20">|</span>
-          <span>RAM: <strong className="text-[var(--text-primary)]">{ram} MB</strong></span>
+          <span>RAM: <strong className="text-[var(--text-primary)]">{isRunning ? `${ram} MB` : '-'}</strong></span>
           {isFfmpegStream && hasVideo(service) && fps && fps !== '0' && (
             <>
               <span className="opacity-20">|</span>

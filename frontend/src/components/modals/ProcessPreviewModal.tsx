@@ -17,8 +17,8 @@ interface ProcessPreviewModalProps {
   API: string;
 }
 
-const formatUptime = (lastStartStr: string | null | undefined): string => {
-  if (!lastStartStr) return 'N/A';
+const formatUptime = (lastStartStr: string | null | undefined, isRunning: boolean = true): string => {
+  if (!isRunning || !lastStartStr) return '-';
   const start = new Date(lastStartStr);
   const diffMs = Date.now() - start.getTime();
   if (diffMs <= 0) return '0s';
@@ -232,18 +232,18 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                 <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 text-center">
                   <div className="text-[9px] uppercase font-bold text-[var(--text-secondary)] mb-0.5">Uptime</div>
                   <div className="font-bold font-mono text-xs text-[var(--text-primary)]">
-                    {formatUptime(currentProcess.last_start)}
+                    {formatUptime(currentProcess.last_start, isRunning)}
                   </div>
                 </div>
 
                 <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 text-center">
                   <div className="text-[9px] uppercase font-bold text-[var(--text-secondary)] mb-0.5">CPU Usage</div>
-                  <div className="font-bold font-mono text-xs text-brand-lime">{currentProcess.cpu || 0}%</div>
+                  <div className="font-bold font-mono text-xs text-brand-lime">{isRunning ? `${currentProcess.cpu || 0}%` : '-'}</div>
                 </div>
 
                 <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 text-center col-span-2 sm:col-span-1">
                   <div className="text-[9px] uppercase font-bold text-[var(--text-secondary)] mb-0.5">RAM Usage</div>
-                  <div className="font-bold font-mono text-xs text-brand-orange">{currentProcess.ram || 0} MB</div>
+                  <div className="font-bold font-mono text-xs text-brand-orange">{isRunning ? `${currentProcess.ram || 0} MB` : '-'}</div>
                 </div>
               </div>
 
