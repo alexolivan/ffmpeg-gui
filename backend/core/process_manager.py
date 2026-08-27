@@ -548,6 +548,7 @@ class ProcessManager:
         if api_enabled:
             config_dict["apiAddress"] = f":{int(mtx_cfg.get('api_port', 9997))}"
 
+        config_dict["playback"] = False
         config_dict["metrics"] = False
         config_dict["pprof"] = False
 
