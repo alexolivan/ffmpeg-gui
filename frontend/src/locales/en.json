@@ -92,7 +92,16 @@
       "buildRequired": "Please select or provision a MediaMTX build in Settings -> Software first.",
       "noStorage": "No Storage",
       "noHlsStorageTitle": "No HLS Storage Volume Configured",
-      "noHlsStorageNotice": "HLS distribution is disabled to protect against root disk saturation. Configure an HLS storage volume in Settings -> Storage to enable."
+      "noHlsStorageNotice": "HLS distribution is disabled to protect against root disk saturation. Configure an HLS storage volume in Settings -> Storage to enable.",
+      "suggestFreePorts": "Auto-assign Free Ports",
+      "portConflict": "Port {{port}} is already in use by \"{{service}}\"",
+      "rtpPort": "RTP Transport Port (UDP)",
+      "rtcpPort": "RTCP Feedback Port (UDP)",
+      "apiTitle": "3. Control API & Diagnostics",
+      "apiEnabled": "Enable REST Control API",
+      "apiPort": "Control API Port (TCP)",
+      "apiPortDesc": "Used for live session telemetry, active path inspection, and stats polling.",
+      "resolvePortConflicts": "Please resolve highlighted port conflicts before saving."
     },
     "picker": {
       "title": "Create New Service: Select Engine",

@@ -176,6 +176,29 @@ export function useProcesses() {
 
   const handleCloneProcess = async (proc: any) => {
     try {
+      let cloneConfig = proc.config ? JSON.parse(JSON.stringify(proc.config)) : {};
+      if (proc.service_type === 'mediamtx_hub') {
+        try {
+          const portsRes = await fetch(`${API}/services/mediamtx/next-available-ports`);
+          if (portsRes.ok) {
+            const nextPorts = await portsRes.json();
+            cloneConfig.mediamtx_config = {
+              ...(cloneConfig.mediamtx_config || {}),
+              rtmp_port: nextPorts.rtmp_port,
+              rtsp_port: nextPorts.rtsp_port,
+              rtp_port: nextPorts.rtp_port,
+              rtcp_port: nextPorts.rtcp_port,
+              hls_port: nextPorts.hls_port,
+              webrtc_port: nextPorts.webrtc_port,
+              srt_port: nextPorts.srt_port,
+              api_port: nextPorts.api_port,
+            };
+          }
+        } catch (portErr) {
+          console.warn("Could not fetch next available ports for clone", portErr);
+        }
+      }
+
       const res = await fetch(`${API}/processes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -184,13 +207,13 @@ export function useProcesses() {
           service_type: proc.service_type || 'ffmpeg_stream',
           alias: proc.alias ? `${proc.alias.slice(0, 7)}_copy`.slice(0, 12) : null,
           type: 'service',
-          config: proc.config || {},
+          config: cloneConfig,
           input_config: proc.input_config,
           output_config: proc.output_config,
           codec_config: proc.codec_config,
           filter_config: proc.filter_config,
           ffmpeg_build_id: proc.ffmpeg_build_id,
-          auto_start: proc.auto_start,
+          auto_start: false,
           startup_order: proc.startup_order,
           startup_delay: proc.startup_delay,
           watchdog_enabled: proc.watchdog_enabled,

@@ -92,7 +92,16 @@
       "buildRequired": "Por favor selecciona o descarga una versión de MediaMTX en Ajustes -> Software primero.",
       "noStorage": "Sin Almacenamiento",
       "noHlsStorageTitle": "No hay volumen de almacenamiento HLS configurado",
-      "noHlsStorageNotice": "La distribución HLS está deshabilitada para proteger contra la saturación del disco raíz. Configura un volumen de almacenamiento HLS en Ajustes -> Almacenamiento para habilitarla."
+      "noHlsStorageNotice": "La distribución HLS está deshabilitada para proteger contra la saturación del disco raíz. Configura un volumen de almacenamiento HLS en Ajustes -> Almacenamiento para habilitarla.",
+      "suggestFreePorts": "Auto-asignar puertos libres",
+      "portConflict": "El puerto {{port}} ya está en uso por \"{{service}}\"",
+      "rtpPort": "Puerto de transporte RTP (UDP)",
+      "rtcpPort": "Puerto de control RTCP (UDP)",
+      "apiTitle": "3. API de Control y Diagnóstico",
+      "apiEnabled": "Habilitar API REST de Control",
+      "apiPort": "Puerto API de Control (TCP)",
+      "apiPortDesc": "Usado para telemetría de sesiones en vivo, inspección de rutas y estadísticas.",
+      "resolvePortConflicts": "Por favor, resuelve los conflictos de puertos resaltados antes de guardar."
     },
     "picker": {
       "title": "Crear Nuevo Servicio: Seleccionar Motor",

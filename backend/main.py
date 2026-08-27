@@ -876,47 +876,45 @@ def is_port_allocated_in_db(port: int, db: Session) -> bool:
     return False
 
 
-def check_media_process_port_conflicts(input_config: dict, output_config: list):
-    gui_ports = set()
-    gui_ports.add(int(os.environ.get("ACTIVE_PORT", 8000)))
-    
-    config_path = os.environ.get("CONFIG_FILE_PATH")
-    if config_path and os.path.exists(config_path):
-        try:
-            import configparser
-            config = configparser.ConfigParser()
-            config.read(config_path)
-            if "server" in config and "port" in config["server"]:
-                gui_ports.add(int(config["server"]["port"]))
-        except Exception:
-            pass
-
-    def extract_ports(cfg):
-        ports = []
-        if not cfg:
+def check_media_process_port_conflicts(input_config: dict, output_config: list, db: Optional[Session] = None, service_id: Optional[int] = None):
+    from utils.port_validator import validate_service_port_conflicts, get_gui_reserved_ports
+    gui_ports = get_gui_reserved_ports()
+    if db is not None:
+        validate_service_port_conflicts(
+            db=db,
+            service_id=service_id,
+            service_name="Service",
+            service_type="ffmpeg_stream",
+            config={},
+            input_config=input_config,
+            output_config=output_config
+        )
+    else:
+        # Fallback basic GUI port check
+        def extract_ports(cfg):
+            ports = []
+            if not cfg: return ports
+            if isinstance(cfg, list):
+                for item in cfg:
+                    if isinstance(item, dict) and "port" in item:
+                        try: ports.append(int(item["port"]))
+                        except (ValueError, TypeError): pass
+            elif isinstance(cfg, dict):
+                if "port" in cfg:
+                    try: ports.append(int(cfg["port"]))
+                    except (ValueError, TypeError): pass
+                for key in ["input1", "input2"]:
+                    if key in cfg and isinstance(cfg[key], dict) and "port" in cfg[key]:
+                        try: ports.append(int(cfg[key]["port"]))
+                        except (ValueError, TypeError): pass
             return ports
-        if isinstance(cfg, list):
-            for item in cfg:
-                if isinstance(item, dict) and "port" in item:
-                    try: ports.append(int(item["port"]))
-                    except (ValueError, TypeError): pass
-        elif isinstance(cfg, dict):
-            if "port" in cfg:
-                try: ports.append(int(cfg["port"]))
-                except (ValueError, TypeError): pass
-            for key in ["input1", "input2"]:
-                if key in cfg and isinstance(cfg[key], dict) and "port" in cfg[key]:
-                    try: ports.append(int(cfg[key]["port"]))
-                    except (ValueError, TypeError): pass
-        return ports
 
-    process_ports = extract_ports(input_config) + extract_ports(output_config)
-    for p in process_ports:
-        if p in gui_ports:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Port {p} is reserved for the GUI web panel."
-            )
+        for p in extract_ports(input_config) + extract_ports(output_config):
+            if p in gui_ports:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Port {p} is reserved for the GUI web panel."
+                )
 
 
 @app.post("/settings")
@@ -3667,10 +3665,20 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
     output_cfg = dict(proc_in.output_config) if proc_in.output_config is not None else None
     codec_cfg = dict(proc_in.codec_config) if proc_in.codec_config is not None else None
 
+    from utils.port_validator import validate_service_port_conflicts
+    validate_service_port_conflicts(
+        db=db,
+        service_id=None,
+        service_name=proc_in.name,
+        service_type=svc_type,
+        config=proc_in.config,
+        input_config=input_cfg,
+        output_config=output_cfg
+    )
+
     if svc_type == "ffmpeg_stream" and input_cfg is not None:
         # Sanitize configs on creation
         sanitize_process_config_data(input_cfg, filter_cfg or {})
-        check_media_process_port_conflicts(input_cfg, output_cfg or {})
 
     db_proc = MediaProcess(
         name=proc_in.name,
@@ -3700,6 +3708,11 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
     dependency_manager.sync_auto_dependencies('service', db_proc.id, db_proc.input_config, db_proc.output_config, db)
     db.refresh(db_proc)
     return db_proc
+
+@app.get("/api/services/mediamtx/next-available-ports")
+def get_mediamtx_next_available_ports(exclude_service_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    from utils.port_validator import get_next_available_mediamtx_ports
+    return get_next_available_mediamtx_ports(db, exclude_service_id=exclude_service_id)
 
 @app.post("/processes/preview-cmd")
 def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
@@ -3797,6 +3810,17 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.network_timeout is not None: db_proc.network_timeout = proc_in.network_timeout
     if proc_in.debug_mode is not None: db_proc.debug_mode = proc_in.debug_mode
     if proc_in.log_storage_id is not None: db_proc.log_storage_id = proc_in.log_storage_id
+
+    from utils.port_validator import validate_service_port_conflicts
+    validate_service_port_conflicts(
+        db=db,
+        service_id=db_proc.id,
+        service_name=db_proc.name,
+        service_type=db_proc.service_type,
+        config=db_proc.config,
+        input_config=db_proc.input_config,
+        output_config=db_proc.output_config
+    )
 
     db.commit()
 

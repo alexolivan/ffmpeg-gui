@@ -493,14 +493,14 @@ class ProcessManager:
         rtsp_enabled = mtx_cfg.get("rtsp_enabled", True)
         config_dict["rtsp"] = rtsp_enabled
         if rtsp_enabled:
-            config_dict["rtspAddress"] = f":{mtx_cfg.get('rtsp_port', 8554)}"
-            config_dict["rtpAddress"] = f":{mtx_cfg.get('rtp_port', 8000)}"
-            config_dict["rtcpAddress"] = f":{mtx_cfg.get('rtcp_port', 8001)}"
+            config_dict["rtspAddress"] = f":{int(mtx_cfg.get('rtsp_port', 8554))}"
+            config_dict["rtpAddress"] = f":{int(mtx_cfg.get('rtp_port', 8000))}"
+            config_dict["rtcpAddress"] = f":{int(mtx_cfg.get('rtcp_port', 8001))}"
 
         rtmp_enabled = mtx_cfg.get("rtmp_enabled", True)
         config_dict["rtmp"] = rtmp_enabled
         if rtmp_enabled:
-            config_dict["rtmpAddress"] = f":{mtx_cfg.get('rtmp_port', 1935)}"
+            config_dict["rtmpAddress"] = f":{int(mtx_cfg.get('rtmp_port', 1935))}"
 
         hls_enabled = mtx_cfg.get("hls_enabled", True)
         if hls_enabled:
@@ -521,7 +521,7 @@ class ProcessManager:
                 )
             else:
                 config_dict["hls"] = True
-                config_dict["hlsAddress"] = f":{mtx_cfg.get('hls_port', 8888)}"
+                config_dict["hlsAddress"] = f":{int(mtx_cfg.get('hls_port', 8888))}"
                 config_dict["hlsSegmentCount"] = int(mtx_cfg.get("hls_segment_count", 5))
                 config_dict["hlsSegmentDuration"] = f"{mtx_cfg.get('hls_segment_duration', 2)}s"
                 hls_dir = os.path.join(hls_storage.path, f"mediamtx_svc_{media_proc.id}")
@@ -533,18 +533,20 @@ class ProcessManager:
         webrtc_enabled = mtx_cfg.get("webrtc_enabled", False)
         config_dict["webrtc"] = webrtc_enabled
         if webrtc_enabled:
-            config_dict["webrtcAddress"] = f":{mtx_cfg.get('webrtc_port', 8889)}"
+            config_dict["webrtcAddress"] = f":{int(mtx_cfg.get('webrtc_port', 8889))}"
 
         srt_enabled = mtx_cfg.get("srt_enabled", False)
         config_dict["srt"] = srt_enabled
         if srt_enabled:
-            config_dict["srtAddress"] = f":{mtx_cfg.get('srt_port', 8890)}"
+            config_dict["srtAddress"] = f":{int(mtx_cfg.get('srt_port', 8890))}"
 
         # API & Metrics
         api_enabled = mtx_cfg.get("api_enabled", True)
         config_dict["api"] = api_enabled
         if api_enabled:
-            config_dict["apiAddress"] = f":{mtx_cfg.get('api_port', 9997)}"
+            config_dict["apiAddress"] = f":{int(mtx_cfg.get('api_port', 9997))}"
+
+        config_dict["metrics"] = False
 
         # Paths / Stream routing
         paths = mtx_cfg.get("paths", {})

@@ -1,0 +1,156 @@
+import os
+import unittest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from fastapi import HTTPException
+from database.models import Base, Service
+from utils.port_validator import validate_service_port_conflicts, get_next_available_mediamtx_ports
+
+class TestMediaMtxPorts(unittest.TestCase):
+    def setUp(self):
+        os.environ["ACTIVE_PORT"] = "8011"
+        self.engine = create_engine('sqlite:///:memory:')
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+        self.db = self.Session()
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_single_mediamtx_standard_ports_pass(self):
+        # MediaMTX 1 on standard ports
+        validate_service_port_conflicts(
+            db=self.db,
+            service_id=None,
+            service_name="MediaMTX 1",
+            service_type="mediamtx_hub",
+            config={
+                "mediamtx_config": {
+                    "rtmp_port": 1935,
+                    "rtsp_port": 8554,
+                    "rtp_port": 8000,
+                    "rtcp_port": 8001,
+                    "hls_port": 8888,
+                    "webrtc_port": 8889,
+                    "srt_port": 8890,
+                    "api_port": 9997
+                }
+            },
+            input_config={},
+            output_config={}
+        )
+
+    def test_duplicate_port_detected_between_mediamtx_services(self):
+        # Insert MediaMTX 1
+        s1 = Service(
+            name="MediaMTX 1",
+            service_type="mediamtx_hub",
+            status="stopped",
+            type="service",
+            config={
+                "mediamtx_config": {
+                    "rtmp_port": 1935,
+                    "rtsp_port": 8554,
+                    "rtp_port": 8000,
+                    "rtcp_port": 8001,
+                    "api_port": 9997
+                }
+            }
+        )
+        self.db.add(s1)
+        self.db.commit()
+
+        # Attempt to create MediaMTX 2 with same RTMP port 1935
+        with self.assertRaises(HTTPException) as ctx:
+            validate_service_port_conflicts(
+                db=self.db,
+                service_id=None,
+                service_name="MediaMTX 2",
+                service_type="mediamtx_hub",
+                config={
+                    "mediamtx_config": {
+                        "rtmp_port": 1935, # Collision!
+                        "rtsp_port": 8555,
+                        "rtp_port": 8002,
+                        "rtcp_port": 8003,
+                        "api_port": 9998
+                    }
+                },
+                input_config={},
+                output_config={}
+            )
+        self.assertIn("Port collision", ctx.exception.detail)
+        self.assertIn("1935", ctx.exception.detail)
+
+    def test_duplicate_hidden_rtp_port_detected(self):
+        # Insert MediaMTX 1 with default RTP port 8000
+        s1 = Service(
+            name="MediaMTX 1",
+            service_type="mediamtx_hub",
+            status="stopped",
+            type="service",
+            config={
+                "mediamtx_config": {
+                    "rtsp_enabled": True,
+                    "rtsp_port": 8554,
+                    "rtp_port": 8000
+                }
+            }
+        )
+        self.db.add(s1)
+        self.db.commit()
+
+        # MediaMTX 2 changed RTSP port to 8555 but left RTP on 8000
+        with self.assertRaises(HTTPException) as ctx:
+            validate_service_port_conflicts(
+                db=self.db,
+                service_id=None,
+                service_name="MediaMTX 2",
+                service_type="mediamtx_hub",
+                config={
+                    "mediamtx_config": {
+                        "rtsp_enabled": True,
+                        "rtsp_port": 8555,
+                        "rtp_port": 8000 # Collision!
+                    }
+                },
+                input_config={},
+                output_config={}
+            )
+        self.assertIn("8000", ctx.exception.detail)
+
+    def test_get_next_available_mediamtx_ports(self):
+        # With MediaMTX 1 occupying base slots
+        s1 = Service(
+            name="MediaMTX 1",
+            service_type="mediamtx_hub",
+            status="stopped",
+            type="service",
+            config={
+                "mediamtx_config": {
+                    "rtmp_port": 1935,
+                    "rtsp_port": 8554,
+                    "rtp_port": 8000,
+                    "rtcp_port": 8001,
+                    "hls_port": 8888,
+                    "webrtc_port": 8889,
+                    "srt_port": 8890,
+                    "api_port": 9997
+                }
+            }
+        )
+        self.db.add(s1)
+        self.db.commit()
+
+        next_ports = get_next_available_mediamtx_ports(self.db)
+        self.assertEqual(next_ports["rtmp_port"], 1936)
+        self.assertEqual(next_ports["rtsp_port"], 8555)
+        self.assertEqual(next_ports["rtp_port"], 8002)
+        self.assertEqual(next_ports["rtcp_port"], 8003)
+        self.assertEqual(next_ports["hls_port"], 8898)
+        self.assertEqual(next_ports["webrtc_port"], 8899)
+        self.assertEqual(next_ports["srt_port"], 8900)
+        self.assertEqual(next_ports["api_port"], 9998)
+
+if __name__ == '__main__':
+    unittest.main()

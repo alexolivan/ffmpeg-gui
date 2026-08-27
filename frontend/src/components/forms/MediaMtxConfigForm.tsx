@@ -8,6 +8,13 @@ interface MediaMtxConfigFormProps {
   API?: string;
 }
 
+interface ServicePortMap {
+  port: number;
+  label: string;
+  serviceName: string;
+  serviceId: number;
+}
+
 export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
   initialConfig,
   onCancel,
@@ -29,6 +36,8 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
 
   const [rtspEnabled, setRtspEnabled] = useState(mtxCfg.rtsp_enabled !== false);
   const [rtspPort, setRtspPort] = useState(mtxCfg.rtsp_port || 8554);
+  const [rtpPort, setRtpPort] = useState(mtxCfg.rtp_port || 8000);
+  const [rtcpPort, setRtcpPort] = useState(mtxCfg.rtcp_port || 8001);
 
   const [hlsEnabled, setHlsEnabled] = useState(mtxCfg.hls_enabled !== false);
   const [hlsPort, setHlsPort] = useState(mtxCfg.hls_port || 8888);
@@ -38,6 +47,10 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
 
   const [srtEnabled, setSrtEnabled] = useState(mtxCfg.srt_enabled !== false);
   const [srtPort, setSrtPort] = useState(mtxCfg.srt_port || 8890);
+
+  // API & Diagnostics
+  const [apiEnabled, setApiEnabled] = useState(mtxCfg.api_enabled !== false);
+  const [apiPort, setApiPort] = useState(mtxCfg.api_port || 9997);
 
   // Storage
   const [storages, setStorages] = useState<any[]>([]);
@@ -50,6 +63,8 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
   const [startupDelay, setStartupDelay] = useState(initialConfig?.startup_delay ?? 0);
   const [watchdogEnabled, setWatchdogEnabled] = useState(initialConfig?.watchdog_enabled !== false);
 
+  // Conflict detection
+  const [allOtherServicePorts, setAllOtherServicePorts] = useState<ServicePortMap[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,7 +106,95 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
         }
       })
       .catch((err) => console.error(err));
-  }, [API]);
+
+    // Fetch all other services to build real-time port collision map
+    fetch(`${API}/processes`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((services: any[]) => {
+        const portList: ServicePortMap[] = [];
+        const currentId = initialConfig?.id;
+        for (const s of services) {
+          if (currentId && s.id === currentId) continue;
+          const sType = s.service_type || 'ffmpeg_stream';
+          const cfg = s.config?.mediamtx_config || s.config || {};
+          if (sType === 'mediamtx_hub') {
+            if (cfg.rtmp_enabled !== false && cfg.rtmp_port) portList.push({ port: Number(cfg.rtmp_port), label: 'RTMP', serviceName: s.name, serviceId: s.id });
+            if (cfg.rtsp_enabled !== false) {
+              if (cfg.rtsp_port) portList.push({ port: Number(cfg.rtsp_port), label: 'RTSP', serviceName: s.name, serviceId: s.id });
+              portList.push({ port: Number(cfg.rtp_port || 8000), label: 'RTP', serviceName: s.name, serviceId: s.id });
+              portList.push({ port: Number(cfg.rtcp_port || 8001), label: 'RTCP', serviceName: s.name, serviceId: s.id });
+            }
+            if (cfg.hls_enabled !== false && cfg.hls_port) portList.push({ port: Number(cfg.hls_port), label: 'HLS', serviceName: s.name, serviceId: s.id });
+            if (cfg.webrtc_enabled && cfg.webrtc_port) portList.push({ port: Number(cfg.webrtc_port), label: 'WebRTC', serviceName: s.name, serviceId: s.id });
+            if (cfg.srt_enabled && cfg.srt_port) portList.push({ port: Number(cfg.srt_port), label: 'SRT', serviceName: s.name, serviceId: s.id });
+            if (cfg.api_enabled !== false) portList.push({ port: Number(cfg.api_port || 9997), label: 'API', serviceName: s.name, serviceId: s.id });
+          } else if (sType === 'icecast_server') {
+            const ice = s.config?.icecast_config || s.config || {};
+            if (ice.port) portList.push({ port: Number(ice.port), label: 'Icecast', serviceName: s.name, serviceId: s.id });
+          }
+        }
+        setAllOtherServicePorts(portList);
+      })
+      .catch((err) => console.error('Error fetching processes for port mapping', err));
+  }, [API, initialConfig?.id]);
+
+  const handleAutoAssignFreePorts = async () => {
+    try {
+      const url = initialConfig?.id
+        ? `${API}/services/mediamtx/next-available-ports?exclude_service_id=${initialConfig.id}`
+        : `${API}/services/mediamtx/next-available-ports`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const freePorts = await res.json();
+        setRtmpPort(freePorts.rtmp_port);
+        setRtspPort(freePorts.rtsp_port);
+        setRtpPort(freePorts.rtp_port);
+        setRtcpPort(freePorts.rtcp_port);
+        setHlsPort(freePorts.hls_port);
+        setWebrtcPort(freePorts.webrtc_port);
+        setSrtPort(freePorts.srt_port);
+        setApiPort(freePorts.api_port);
+      }
+    } catch (err) {
+      console.error('Failed to auto-assign free ports', err);
+    }
+  };
+
+  const getConflict = (portNum: number) => {
+    if (!portNum) return null;
+    return allOtherServicePorts.find((p) => p.port === portNum);
+  };
+
+  // Internal collision checking within the form
+  const activeFormPorts = [
+    ...(rtmpEnabled ? [{ port: Number(rtmpPort), label: 'RTMP' }] : []),
+    ...(rtspEnabled
+      ? [
+          { port: Number(rtspPort), label: 'RTSP' },
+          { port: Number(rtpPort), label: 'RTP' },
+          { port: Number(rtcpPort), label: 'RTCP' },
+        ]
+      : []),
+    ...(hlsEnabled ? [{ port: Number(hlsPort), label: 'HLS' }] : []),
+    ...(webrtcEnabled ? [{ port: Number(webrtcPort), label: 'WebRTC' }] : []),
+    ...(srtEnabled ? [{ port: Number(srtPort), label: 'SRT' }] : []),
+    ...(apiEnabled ? [{ port: Number(apiPort), label: 'API' }] : []),
+  ];
+
+  const hasInternalDuplicate = () => {
+    const seen = new Set<number>();
+    for (const item of activeFormPorts) {
+      if (seen.has(item.port)) return true;
+      seen.add(item.port);
+    }
+    return false;
+  };
+
+  const hasExternalCollision = () => {
+    return activeFormPorts.some((item) => getConflict(item.port) !== undefined);
+  };
+
+  const hasAnyConflict = hasInternalDuplicate() || hasExternalCollision();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +204,11 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
     }
     if (!buildId) {
       setError(t('services.mediamtx.buildRequired', 'Please select or provision a MediaMTX build in Settings -> Software first.'));
+      return;
+    }
+
+    if (hasAnyConflict) {
+      setError(t('services.mediamtx.resolvePortConflicts', 'Please resolve highlighted port conflicts before saving.'));
       return;
     }
 
@@ -124,6 +232,8 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           rtmp_port: Number(rtmpPort) || 1935,
           rtsp_enabled: rtspEnabled,
           rtsp_port: Number(rtspPort) || 8554,
+          rtp_port: Number(rtpPort) || 8000,
+          rtcp_port: Number(rtcpPort) || 8001,
           hls_enabled: hlsEnabled,
           hls_port: Number(hlsPort) || 8888,
           hls_storage_id: hlsStorageId ? Number(hlsStorageId) : null,
@@ -131,6 +241,8 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           webrtc_port: Number(webrtcPort) || 8889,
           srt_enabled: srtEnabled,
           srt_port: Number(srtPort) || 8890,
+          api_enabled: apiEnabled,
+          api_port: Number(apiPort) || 9997,
         },
       },
     };
@@ -221,16 +333,26 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
 
       {/* Section 2: Active Protocols & Ports */}
       <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 space-y-3">
-        <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-2">
-          <span className="w-2 h-2 rounded-full bg-cyan-400" />
-          <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400">
-            {t('services.mediamtx.protocolsTitle', '2. Live Streaming Protocols & Ports')}
-          </h4>
+        <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400" />
+            <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+              {t('services.mediamtx.protocolsTitle', '2. Live Streaming Protocols & Ports')}
+            </h4>
+          </div>
+          <button
+            type="button"
+            onClick={handleAutoAssignFreePorts}
+            className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-brand-lime/10 hover:bg-brand-lime/20 text-brand-lime border border-brand-lime/30 flex items-center gap-1.5 transition-all hover:scale-105 cursor-pointer shadow-sm"
+          >
+            <span>⚡</span>
+            <span>{t('services.mediamtx.suggestFreePorts', 'Auto-assign Free Ports')}</span>
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
           {/* RTMP */}
-          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5 space-y-2">
+          <div className={`bg-[var(--bg-card)] border rounded-lg p-2.5 space-y-2 ${rtmpEnabled && getConflict(rtmpPort) ? 'border-red-500/50 bg-red-500/5' : 'border-[var(--glass-border)]'}`}>
             <div className="flex items-center justify-between">
               <span className="font-bold uppercase tracking-wider text-xs">RTMP</span>
               <input
@@ -242,21 +364,28 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             </div>
             {rtmpEnabled && (
               <div>
-                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port</label>
+                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port (TCP)</label>
                 <input
                   type="number"
                   value={rtmpPort}
                   onChange={(e) => setRtmpPort(Number(e.target.value))}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs font-mono"
+                  className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(rtmpPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
                 />
+                {getConflict(rtmpPort) && (
+                  <span className="text-[10px] text-red-400 block mt-1 leading-tight">
+                    ⚠️ {t('services.mediamtx.portConflict', { port: rtmpPort, service: getConflict(rtmpPort)?.serviceName })}
+                  </span>
+                )}
               </div>
             )}
           </div>
 
-          {/* RTSP */}
-          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5 space-y-2">
+          {/* RTSP with RTP/RTCP Transport */}
+          <div className={`bg-[var(--bg-card)] border rounded-lg p-2.5 space-y-2 sm:col-span-2 ${rtspEnabled && (getConflict(rtspPort) || getConflict(rtpPort) || getConflict(rtcpPort)) ? 'border-red-500/50 bg-red-500/5' : 'border-[var(--glass-border)]'}`}>
             <div className="flex items-center justify-between">
-              <span className="font-bold uppercase tracking-wider text-xs">RTSP</span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold uppercase tracking-wider text-xs">RTSP & UDP Transport</span>
+              </div>
               <input
                 type="checkbox"
                 checked={rtspEnabled}
@@ -265,20 +394,55 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
               />
             </div>
             {rtspEnabled && (
-              <div>
-                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port</label>
-                <input
-                  type="number"
-                  value={rtspPort}
-                  onChange={(e) => setRtspPort(Number(e.target.value))}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs font-mono"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                <div>
+                  <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">RTSP (TCP)</label>
+                  <input
+                    type="number"
+                    value={rtspPort}
+                    onChange={(e) => setRtspPort(Number(e.target.value))}
+                    className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(rtspPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
+                  />
+                  {getConflict(rtspPort) && (
+                    <span className="text-[9px] text-red-400 block mt-0.5 leading-tight">
+                      ⚠️ {getConflict(rtspPort)?.serviceName}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">RTP (UDP)</label>
+                  <input
+                    type="number"
+                    value={rtpPort}
+                    onChange={(e) => setRtpPort(Number(e.target.value))}
+                    className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(rtpPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
+                  />
+                  {getConflict(rtpPort) && (
+                    <span className="text-[9px] text-red-400 block mt-0.5 leading-tight">
+                      ⚠️ {getConflict(rtpPort)?.serviceName}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">RTCP (UDP)</label>
+                  <input
+                    type="number"
+                    value={rtcpPort}
+                    onChange={(e) => setRtcpPort(Number(e.target.value))}
+                    className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(rtcpPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
+                  />
+                  {getConflict(rtcpPort) && (
+                    <span className="text-[9px] text-red-400 block mt-0.5 leading-tight">
+                      ⚠️ {getConflict(rtcpPort)?.serviceName}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>
 
           {/* HLS */}
-          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5 space-y-2">
+          <div className={`bg-[var(--bg-card)] border rounded-lg p-2.5 space-y-2 ${hlsEnabled && getConflict(hlsPort) ? 'border-red-500/50 bg-red-500/5' : 'border-[var(--glass-border)]'}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <span className="font-bold uppercase tracking-wider text-xs">HLS (HTTP)</span>
@@ -298,19 +462,24 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             </div>
             {hlsEnabled && hlsStorages.length > 0 && (
               <div>
-                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port</label>
+                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port (HTTP)</label>
                 <input
                   type="number"
                   value={hlsPort}
                   onChange={(e) => setHlsPort(Number(e.target.value))}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs font-mono"
+                  className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(hlsPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
                 />
+                {getConflict(hlsPort) && (
+                  <span className="text-[10px] text-red-400 block mt-1 leading-tight">
+                    ⚠️ {t('services.mediamtx.portConflict', { port: hlsPort, service: getConflict(hlsPort)?.serviceName })}
+                  </span>
+                )}
               </div>
             )}
           </div>
 
           {/* WebRTC */}
-          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5 space-y-2">
+          <div className={`bg-[var(--bg-card)] border rounded-lg p-2.5 space-y-2 ${webrtcEnabled && getConflict(webrtcPort) ? 'border-red-500/50 bg-red-500/5' : 'border-[var(--glass-border)]'}`}>
             <div className="flex items-center justify-between">
               <span className="font-bold uppercase tracking-wider text-xs">WebRTC (WHEP)</span>
               <input
@@ -322,19 +491,24 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             </div>
             {webrtcEnabled && (
               <div>
-                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port</label>
+                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port (HTTP/TCP)</label>
                 <input
                   type="number"
                   value={webrtcPort}
                   onChange={(e) => setWebrtcPort(Number(e.target.value))}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs font-mono"
+                  className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(webrtcPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
                 />
+                {getConflict(webrtcPort) && (
+                  <span className="text-[10px] text-red-400 block mt-1 leading-tight">
+                    ⚠️ {t('services.mediamtx.portConflict', { port: webrtcPort, service: getConflict(webrtcPort)?.serviceName })}
+                  </span>
+                )}
               </div>
             )}
           </div>
 
           {/* SRT */}
-          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5 space-y-2">
+          <div className={`bg-[var(--bg-card)] border rounded-lg p-2.5 space-y-2 ${srtEnabled && getConflict(srtPort) ? 'border-red-500/50 bg-red-500/5' : 'border-[var(--glass-border)]'}`}>
             <div className="flex items-center justify-between">
               <span className="font-bold uppercase tracking-wider text-xs">SRT</span>
               <input
@@ -346,25 +520,78 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             </div>
             {srtEnabled && (
               <div>
-                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port</label>
+                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port (UDP)</label>
                 <input
                   type="number"
                   value={srtPort}
                   onChange={(e) => setSrtPort(Number(e.target.value))}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs font-mono"
+                  className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(srtPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
                 />
+                {getConflict(srtPort) && (
+                  <span className="text-[10px] text-red-400 block mt-1 leading-tight">
+                    ⚠️ {t('services.mediamtx.portConflict', { port: srtPort, service: getConflict(srtPort)?.serviceName })}
+                  </span>
+                )}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Section 3: Dedicated Storage Allocations */}
+      {/* Section 3: REST API & Telemetry Control */}
+      <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 space-y-3">
+        <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400" />
+          <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400">
+            {t('services.mediamtx.apiTitle', '3. Control API & Diagnostics')}
+          </h4>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs items-center">
+          <label className="flex items-center gap-2 cursor-pointer bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2.5">
+            <input
+              type="checkbox"
+              checked={apiEnabled}
+              onChange={(e) => setApiEnabled(e.target.checked)}
+              className="rounded text-brand-lime"
+            />
+            <div>
+              <span className="font-bold uppercase tracking-wide text-xs block">
+                {t('services.mediamtx.apiEnabled', 'Enable REST Control API')}
+              </span>
+              <span className="text-[10px] text-[var(--text-secondary)] block">
+                {t('services.mediamtx.apiPortDesc', 'Used for live session telemetry, active path inspection, and stats polling.')}
+              </span>
+            </div>
+          </label>
+
+          {apiEnabled && (
+            <div className={`bg-[var(--bg-card)] border rounded-lg p-2.5 ${getConflict(apiPort) ? 'border-red-500/50 bg-red-500/5' : 'border-[var(--glass-border)]'}`}>
+              <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase block mb-1">
+                {t('services.mediamtx.apiPort', 'Control API Port (TCP)')}
+              </label>
+              <input
+                type="number"
+                value={apiPort}
+                onChange={(e) => setApiPort(Number(e.target.value))}
+                className={`w-full bg-[var(--input-bg)] border rounded px-2.5 py-1.5 text-xs font-mono ${getConflict(apiPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
+              />
+              {getConflict(apiPort) && (
+                <span className="text-[10px] text-red-400 block mt-1 leading-tight">
+                  ⚠️ {t('services.mediamtx.portConflict', { port: apiPort, service: getConflict(apiPort)?.serviceName })}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section 4: Dedicated Storage Allocations */}
       <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 space-y-3">
         <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-2">
           <span className="w-2 h-2 rounded-full bg-purple-400" />
           <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400">
-            {t('services.mediamtx.storageTitle', '3. Storage & Retention Protection')}
+            {t('services.mediamtx.storageTitle', '4. Storage & Retention Protection')}
           </h4>
         </div>
 
@@ -423,12 +650,12 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
         </div>
       </div>
 
-      {/* Section 4: Lifecycle & Boot Options */}
+      {/* Section 5: Lifecycle & Boot Options */}
       <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 space-y-3">
         <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-2">
           <span className="w-2 h-2 rounded-full bg-emerald-400" />
           <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-            {t('services.mediamtx.lifecycleTitle', '4. Lifecycle & Autostart')}
+            {t('services.mediamtx.lifecycleTitle', '5. Lifecycle & Autostart')}
           </h4>
         </div>
 
@@ -500,8 +727,8 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="px-6 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-brand-lime text-black shadow-lg shadow-brand-lime/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+          disabled={isSubmitting || hasAnyConflict}
+          className="px-6 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-brand-lime text-black shadow-lg shadow-brand-lime/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
         >
           {isSubmitting ? t('common.saving', 'Saving...') : initialConfig ? t('services.saveChanges', 'Save Changes') : t('services.createService', 'Create Service')}
         </button>
@@ -509,3 +736,4 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
     </form>
   );
 };
+

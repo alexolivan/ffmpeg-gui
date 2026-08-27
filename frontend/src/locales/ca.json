@@ -92,7 +92,16 @@
       "buildRequired": "Si us plau, selecciona o descarrega una versió de MediaMTX a Paràmetres -> Programari primer.",
       "noStorage": "Sense Emmagatzematge",
       "noHlsStorageTitle": "No hi ha cap volum d'emmagatzematge HLS configurat",
-      "noHlsStorageNotice": "La distribució HLS està inhabilitada per protegir contra la saturació del disc arrel. Configura un volum d'emmagatzematge HLS a Paràmetres -> Emmagatzematge per habilitar-la."
+      "noHlsStorageNotice": "La distribució HLS està inhabilitada per protegir contra la saturació del disc arrel. Configura un volum d'emmagatzematge HLS a Paràmetres -> Emmagatzematge per habilitar-la.",
+      "suggestFreePorts": "Auto-assignar ports lliures",
+      "portConflict": "El port {{port}} ja està en ús per \"{{service}}\"",
+      "rtpPort": "Port de transport RTP (UDP)",
+      "rtcpPort": "Port de control RTCP (UDP)",
+      "apiTitle": "3. API de Control i Diagnòstic",
+      "apiEnabled": "Habilitar API REST de Control",
+      "apiPort": "Port API de Control (TCP)",
+      "apiPortDesc": "Utilitzat per a telemetria de sessions en viu, inspecció de rutes i estadístiques.",
+      "resolvePortConflicts": "Si us plau, resol els conflictes de ports ressaltats abans de desar."
     },
     "picker": {
       "title": "Crear Nou Servei: Seleccionar Motor",
