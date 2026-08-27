@@ -17,7 +17,7 @@ class TestDependencyLeasing(unittest.IsolatedAsyncioTestCase):
 
         self.mock_pm = MagicMock()
         
-        async def mock_start(pid, is_restart=False):
+        async def mock_start(pid, is_restart=False, is_on_demand=False):
             with self.Session() as s:
                 svc = s.get(Service, pid)
                 if svc:
@@ -108,8 +108,8 @@ class TestDependencyLeasing(unittest.IsolatedAsyncioTestCase):
         # When consumer service starts and provider is stopped
         await self.dm.acquire_dependencies('service', self.consumer_svc.id, allow_auto_start=True)
         
-        # Verify process_manager.start_process was called on provider
-        self.mock_pm.start_process.assert_called_with(self.provider.id, is_restart=False)
+        # Verify process_manager.start_process was called on provider with is_on_demand=True
+        self.mock_pm.start_process.assert_called_with(self.provider.id, is_restart=False, is_on_demand=True)
         # Verify lease is recorded
         self.assertIn("service:2", self.dm.active_leases[self.provider.id])
         self.assertFalse(self.dm.is_pinned(self.provider.id))

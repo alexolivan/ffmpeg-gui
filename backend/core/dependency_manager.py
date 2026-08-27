@@ -139,11 +139,9 @@ class DependencyManager:
                         self.logger.error(err_msg)
                         raise RuntimeError(err_msg)
 
-                    self.logger.info(
-                        f"Consumer {consumer_token} auto-starting stopped dependency '{provider.name}' (ID {provider_id}) on-demand."
-                    )
+                    is_on_demand = not self.is_pinned(provider_id)
                     if self.process_manager:
-                        res = self.process_manager.start_process(provider_id, is_restart=False)
+                        res = self.process_manager.start_process(provider_id, is_restart=False, is_on_demand=is_on_demand)
                         if asyncio.iscoroutine(res):
                             await res
 

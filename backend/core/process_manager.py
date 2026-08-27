@@ -53,11 +53,11 @@ class ProcessManager:
         from core.dependency_manager import dependency_manager
         await dependency_manager.release_dependencies('service', process_id, allow_auto_stop=allow_auto_stop)
 
-    async def start_process(self, process_id: int, is_restart: bool = False):
+    async def start_process(self, process_id: int, is_restart: bool = False, is_on_demand: bool = False):
         cleanup_rogue_processes(process_id=process_id)
         
         from core.dependency_manager import dependency_manager
-        if not is_restart:
+        if not is_restart and not is_on_demand:
             dependency_manager.mark_pinned(process_id)
 
         # Get service config to check dependency permissions
