@@ -954,6 +954,10 @@ class FFmpegCommandBuilder:
                 "-map", "0:v",
                 "-c:v", "mjpeg",
                 "-vf", preview_vf,
+            ]
+            if limit_sec is not None and int(limit_sec) > 0:
+                cmd += ["-t", str(int(limit_sec))]
+            cmd += [
                 "-update", "1",
                 "-y", preview_path
             ]

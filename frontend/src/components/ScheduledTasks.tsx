@@ -404,12 +404,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 return (
                   <div 
                     key={task.id} 
-                    className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all px-2 ${
+                    onClick={() => {
+                      if (exec && exec.id) {
+                        setViewingLogsExecutionId(exec.id);
+                      } else {
+                        viewTaskDetails(task.id);
+                      }
+                    }}
+                    className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all px-2 cursor-pointer ${
                       isRunning
-                        ? 'border border-brand-lime/30 rounded-xl bg-brand-lime/[0.02] px-3 my-1 shadow-sm shadow-brand-lime/5'
+                        ? 'border border-brand-lime/30 rounded-xl bg-brand-lime/[0.02] px-3 my-1 shadow-sm shadow-brand-lime/5 hover:bg-brand-lime/[0.05]'
                         : task.is_system 
-                          ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1 shadow-sm shadow-brand-orange/5' 
-                          : 'hover:bg-white/[0.01]'
+                          ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1 shadow-sm shadow-brand-orange/5 hover:bg-brand-orange/[0.05]' 
+                          : 'hover:bg-white/[0.02] rounded-xl'
                     }`}
                   >
                     <div className="flex-1 space-y-0.5 min-w-0">
@@ -473,7 +480,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           </span>
                         ) : (
                           <button 
-                            onClick={() => handleToggleTaskActive(task.id, task.is_active)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTaskActive(task.id, task.is_active);
+                            }}
                             className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20"
                             title={t('tasks.disableTask', 'Disable Task')}
                           >
@@ -554,7 +564,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3" onClick={(e) => e.stopPropagation()}>
 
                       <button 
                         disabled={taskTriggerPending[task.id]}
@@ -676,12 +686,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 return (
                   <div 
                     key={task.id} 
-                    className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all px-2 opacity-75 hover:opacity-100 ${
+                    onClick={() => {
+                      if (exec && exec.id) {
+                        setViewingLogsExecutionId(exec.id);
+                      } else {
+                        viewTaskDetails(task.id);
+                      }
+                    }}
+                    className={`py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all px-2 opacity-75 hover:opacity-100 cursor-pointer ${
                       isRunning
-                        ? 'border border-brand-lime/30 rounded-xl bg-brand-lime/[0.02] px-3 my-1 shadow-sm shadow-brand-lime/5'
+                        ? 'border border-brand-lime/30 rounded-xl bg-brand-lime/[0.02] px-3 my-1 shadow-sm shadow-brand-lime/5 hover:bg-brand-lime/[0.05]'
                         : task.is_system 
-                          ? 'border border-white/10 rounded-xl bg-white/[0.01] px-3 my-1'
-                          : 'hover:bg-white/[0.01]'
+                          ? 'border border-white/10 rounded-xl bg-white/[0.01] px-3 my-1 hover:bg-white/[0.03]'
+                          : 'hover:bg-white/[0.02] rounded-xl'
                     }`}
                   >
                     <div className="flex-1 space-y-0.5 min-w-0">
@@ -736,7 +753,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           </span>
                         ) : (
                           <button 
-                            onClick={() => handleToggleTaskActive(task.id, task.is_active)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTaskActive(task.id, task.is_active);
+                            }}
                             className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10"
                             title={t('tasks.enableTask', 'Enable Task')}
                           >
@@ -807,7 +827,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3" onClick={(e) => e.stopPropagation()}>
 
                       <button 
                         disabled={taskTriggerPending[task.id]}
