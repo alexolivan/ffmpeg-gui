@@ -536,7 +536,6 @@ class ProcessManager:
             config_dict["webrtcAddress"] = f":{int(mtx_cfg.get('webrtc_port', 8889))}"
             webrtc_udp = int(mtx_cfg.get("webrtc_udp_port", 8189))
             config_dict["webrtcLocalUDPAddress"] = f":{webrtc_udp}"
-            config_dict["webrtcServerAddress"] = f":{webrtc_udp}"
 
         srt_enabled = mtx_cfg.get("srt_enabled", False)
         config_dict["srt"] = srt_enabled
