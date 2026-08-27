@@ -397,6 +397,7 @@ class TaskManager:
                         if exit_code == 0:
                             execution.status = 'finished'
                             execution.exit_code = 0
+                            execution.error_message = None
                             execution.stopped_at = datetime.utcnow()
                             execution.pid = None
                             execution.cpu_usage = 0

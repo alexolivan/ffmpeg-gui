@@ -453,9 +453,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                            task.schedule_type}
                         </span>
                         {exec?.retry_count > 0 && (
-                          <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
-                            ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
-                          </span>
+                          isRunning || exec?.status === 'retrying' ? (
+                            <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
+                              ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
+                            </span>
+                          ) : exec?.status === 'finished' || exec?.status === 'completed' ? (
+                            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold flex items-center gap-1" title={`Completed successfully after ${exec.retry_count} watchdog retries`}>
+                              ✓ RESCUED ({exec.retry_count})
+                            </span>
+                          ) : (
+                            <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Failed after retrying">
+                              ⚠️ FAILED ({exec.retry_count})
+                            </span>
+                          )
                         )}
                         {task.dependencies && task.dependencies.length > 0 && (
                           <span 
@@ -726,9 +736,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                            task.schedule_type}
                         </span>
                         {exec?.retry_count > 0 && (
-                          <span className="text-[9px] bg-brand-orange/20 text-brand-orange px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
-                            ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
-                          </span>
+                          isRunning || exec?.status === 'retrying' ? (
+                            <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
+                              ⚠️ RESCUED {exec.retry_count}/{task.retry_policy?.max_retries || '∞'}
+                            </span>
+                          ) : exec?.status === 'finished' || exec?.status === 'completed' ? (
+                            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold flex items-center gap-1" title={`Completed successfully after ${exec.retry_count} watchdog retries`}>
+                              ✓ RESCUED ({exec.retry_count})
+                            </span>
+                          ) : (
+                            <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Failed after retrying">
+                              ⚠️ FAILED ({exec.retry_count})
+                            </span>
+                          )
                         )}
                         {task.dependencies && task.dependencies.length > 0 && (
                           <span 
@@ -1003,7 +1023,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                               >
                                 View Logs
                               </button>
-                              {exec.error_message && (
+                              {exec.error_message && exec.status !== 'finished' && exec.status !== 'completed' && (
                                 <span className="text-red-400 text-xs italic block truncate max-w-[200px]" title={exec.error_message}>
                                   — {exec.error_message}
                                 </span>
