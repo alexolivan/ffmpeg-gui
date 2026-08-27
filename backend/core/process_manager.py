@@ -549,12 +549,8 @@ class ProcessManager:
             config_dict["apiAddress"] = f":{int(mtx_cfg.get('api_port', 9997))}"
 
         config_dict["playback"] = False
-        config_dict["playbackAddress"] = ""
-        config_dict["playbackLocalUDPAddress"] = ""
         config_dict["metrics"] = False
-        config_dict["metricsAddress"] = ""
         config_dict["pprof"] = False
-        config_dict["pprofAddress"] = ""
 
         # Paths / Stream routing
         paths = mtx_cfg.get("paths", {})
