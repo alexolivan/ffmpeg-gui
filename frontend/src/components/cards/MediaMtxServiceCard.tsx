@@ -247,42 +247,43 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
           </button>
         )}
 
-        {/* Start / Stop / Restart Action Controls */}
-        {isRunning ? (
-          <>
-            <button
-              disabled={isPending}
-              onClick={() => onRestartService(service.id, service.name)}
-              className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 disabled:opacity-50 ${
-                service.pending_changes
-                  ? 'bg-brand-orange text-black border-brand-orange/40 animate-pulse shadow-lg shadow-brand-orange/20'
-                  : 'bg-white/5 hover:bg-white/10 border-white/10 text-emerald-400'
-              }`}
-              title={t('services.restartService', 'Restart Service')}
-            >
-              {actionPending === 'restarting' ? (
-                <span className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin inline-block" />
-              ) : (
-                <RefreshIcon size={16} />
-              )}
-            </button>
-
-            <button
-              disabled={isPending}
-              onClick={() => onStopService(service.id, service.name)}
-              className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50"
-              title={t('services.stopService', 'Stop Service')}
-            >
-              {actionPending === 'stopping' ? (
-                <span className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" />
-              ) : (
-                <StopIcon size={16} />
-              )}
-            </button>
-          </>
-        ) : (
+        {/* Restart Button */}
+        {isRunning && (
           <button
             disabled={isPending}
+            onClick={() => onRestartService(service.id, service.name)}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 disabled:opacity-50 ${
+              service.pending_changes
+                ? 'bg-brand-orange text-black border-brand-orange/40 animate-pulse shadow-lg shadow-brand-orange/20'
+                : 'bg-white/5 hover:bg-white/10 border-white/10 text-emerald-400'
+            }`}
+            title={t('services.restartService', 'Restart Service')}
+          >
+            {actionPending === 'restarting' ? (
+              <span className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin inline-block" />
+            ) : (
+              <RefreshIcon size={16} />
+            )}
+          </button>
+        )}
+
+        {/* Start / Stop Action Controls */}
+        {isRunning || isRetrying ? (
+          <button
+            disabled={actionPending === 'stopping'}
+            onClick={() => onStopService(service.id, service.name)}
+            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50"
+            title={t('services.stopService', 'Stop Service')}
+          >
+            {actionPending === 'stopping' ? (
+              <span className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" />
+            ) : (
+              <StopIcon size={16} />
+            )}
+          </button>
+        ) : (
+          <button
+            disabled={actionPending === 'starting' || actionPending === 'stopping'}
             onClick={() => onStartService(service.id)}
             className="w-9 h-9 rounded-xl bg-emerald-400/20 hover:bg-emerald-400/30 text-emerald-300 border border-emerald-400/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50"
             title={t('services.startService', 'Start Service')}
@@ -297,10 +298,10 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
 
         {/* Delete Button */}
         <button
-          disabled={isPending || isRunning}
+          disabled={isRunning || isRetrying || isPending}
           onClick={() => onDeleteProcess(service)}
           className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/15 text-red-400/80 hover:text-red-400 border border-red-500/10 hover:border-red-500/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-30 disabled:hover:scale-100 cursor-pointer"
-          title={isRunning ? t('services.cannotDeleteRunning', 'Stop service before deleting') : t('services.deleteService', 'Delete Service')}
+          title={isRunning || isRetrying ? t('services.cannotDeleteRunning', 'Stop service before deleting') : t('services.deleteService', 'Delete Service')}
         >
           <TrashIcon size={16} />
         </button>
