@@ -3710,6 +3710,7 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
     return db_proc
 
 @app.get("/api/services/mediamtx/next-available-ports")
+@app.get("/services/mediamtx/next-available-ports")
 def get_mediamtx_next_available_ports(exclude_service_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
     from utils.port_validator import get_next_available_mediamtx_ports
     return get_next_available_mediamtx_ports(db, exclude_service_id=exclude_service_id)

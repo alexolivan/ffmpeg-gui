@@ -178,25 +178,35 @@ export function useProcesses() {
     try {
       let cloneConfig = proc.config ? JSON.parse(JSON.stringify(proc.config)) : {};
       if (proc.service_type === 'mediamtx_hub') {
+        let nextPorts: any = null;
         try {
-          const portsRes = await fetch(`${API}/services/mediamtx/next-available-ports`);
+          const portsRes = await fetch(`${API}/api/services/mediamtx/next-available-ports`);
           if (portsRes.ok) {
-            const nextPorts = await portsRes.json();
-            cloneConfig.mediamtx_config = {
-              ...(cloneConfig.mediamtx_config || {}),
-              rtmp_port: nextPorts.rtmp_port,
-              rtsp_port: nextPorts.rtsp_port,
-              rtp_port: nextPorts.rtp_port,
-              rtcp_port: nextPorts.rtcp_port,
-              hls_port: nextPorts.hls_port,
-              webrtc_port: nextPorts.webrtc_port,
-              srt_port: nextPorts.srt_port,
-              api_port: nextPorts.api_port,
-            };
+            nextPorts = await portsRes.json();
           }
         } catch (portErr) {
           console.warn("Could not fetch next available ports for clone", portErr);
         }
+
+        if (!nextPorts) {
+          // Robust client-side fallback offset (+1 / +10) if API unreachable
+          const currMtx = cloneConfig.mediamtx_config || cloneConfig || {};
+          nextPorts = {
+            rtmp_port: (Number(currMtx.rtmp_port) || 1935) + 1,
+            rtsp_port: (Number(currMtx.rtsp_port) || 8554) + 1,
+            rtp_port: (Number(currMtx.rtp_port) || 8000) + 2,
+            rtcp_port: (Number(currMtx.rtcp_port) || 8001) + 2,
+            hls_port: (Number(currMtx.hls_port) || 8888) + 10,
+            webrtc_port: (Number(currMtx.webrtc_port) || 8889) + 10,
+            srt_port: (Number(currMtx.srt_port) || 8890) + 10,
+            api_port: (Number(currMtx.api_port) || 9997) + 1,
+          };
+        }
+
+        cloneConfig.mediamtx_config = {
+          ...(cloneConfig.mediamtx_config || {}),
+          ...nextPorts,
+        };
       }
 
       const res = await fetch(`${API}/processes`, {

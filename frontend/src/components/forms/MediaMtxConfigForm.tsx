@@ -141,8 +141,8 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
   const handleAutoAssignFreePorts = async () => {
     try {
       const url = initialConfig?.id
-        ? `${API}/services/mediamtx/next-available-ports?exclude_service_id=${initialConfig.id}`
-        : `${API}/services/mediamtx/next-available-ports`;
+        ? `${API}/api/services/mediamtx/next-available-ports?exclude_service_id=${initialConfig.id}`
+        : `${API}/api/services/mediamtx/next-available-ports`;
       const res = await fetch(url);
       if (res.ok) {
         const freePorts = await res.json();
