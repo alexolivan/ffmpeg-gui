@@ -181,8 +181,10 @@ export function useProcesses() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: `${proc.name} (Copy)`,
+          service_type: proc.service_type || 'ffmpeg_stream',
           alias: proc.alias ? `${proc.alias.slice(0, 7)}_copy`.slice(0, 12) : null,
           type: 'service',
+          config: proc.config || {},
           input_config: proc.input_config,
           output_config: proc.output_config,
           codec_config: proc.codec_config,
