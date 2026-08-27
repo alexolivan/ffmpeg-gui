@@ -548,8 +548,31 @@ class ProcessManager:
         if api_enabled:
             config_dict["apiAddress"] = f":{int(mtx_cfg.get('api_port', 9997))}"
 
-        config_dict["moq"] = False
-        config_dict["playback"] = False
+        # Resolve build version if available to adapt YAML schema safely across releases
+        build_ver_major = 1
+        build_ver_minor = 19
+        build_id = getattr(media_proc, "ffmpeg_build_id", None) or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+        if build_id:
+            from database.models import FfmpegBuild
+            build = session.query(FfmpegBuild).get(build_id)
+            if build and build.version:
+                import re
+                clean = re.sub(r'^[^\d]*', '', build.version)
+                parts = clean.split('.')
+                try:
+                    build_ver_major = int(parts[0])
+                    build_ver_minor = int(parts[1]) if len(parts) > 1 else 0
+                except Exception:
+                    pass
+
+        # MoQ was introduced in MediaMTX v1.19.0
+        if (build_ver_major > 1) or (build_ver_major == 1 and build_ver_minor >= 19):
+            config_dict["moq"] = False
+
+        # Playback server was introduced in MediaMTX v1.8.0
+        if (build_ver_major > 1) or (build_ver_major == 1 and build_ver_minor >= 8):
+            config_dict["playback"] = False
+
         config_dict["metrics"] = False
         config_dict["pprof"] = False
 
