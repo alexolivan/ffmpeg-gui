@@ -32,6 +32,7 @@ class TestMediaMtxPorts(unittest.TestCase):
                     "rtcp_port": 8001,
                     "hls_port": 8888,
                     "webrtc_port": 8889,
+                    "webrtc_udp_port": 8189,
                     "srt_port": 8890,
                     "api_port": 9997
                 }
@@ -119,6 +120,51 @@ class TestMediaMtxPorts(unittest.TestCase):
             )
         self.assertIn("8000", ctx.exception.detail)
 
+    def test_duplicate_webrtc_udp_port_detected(self):
+        # Insert MediaMTX 1 with WebRTC enabled (default 8189 UDP)
+        s1 = Service(
+            name="MediaMTX 1",
+            service_type="mediamtx_hub",
+            status="stopped",
+            type="service",
+            config={
+                "mediamtx_config": {
+                    "rtsp_enabled": False,
+                    "rtmp_enabled": False,
+                    "hls_enabled": False,
+                    "api_enabled": False,
+                    "webrtc_enabled": True,
+                    "webrtc_port": 8889,
+                    "webrtc_udp_port": 8189
+                }
+            }
+        )
+        self.db.add(s1)
+        self.db.commit()
+
+        # MediaMTX 2 changed WebRTC HTTP port to 8890 but left UDP on 8189
+        with self.assertRaises(HTTPException) as ctx:
+            validate_service_port_conflicts(
+                db=self.db,
+                service_id=None,
+                service_name="MediaMTX 2",
+                service_type="mediamtx_hub",
+                config={
+                    "mediamtx_config": {
+                        "rtsp_enabled": False,
+                        "rtmp_enabled": False,
+                        "hls_enabled": False,
+                        "api_enabled": False,
+                        "webrtc_enabled": True,
+                        "webrtc_port": 8890,
+                        "webrtc_udp_port": 8189 # Collision!
+                    }
+                },
+                input_config={},
+                output_config={}
+            )
+        self.assertIn("8189", ctx.exception.detail)
+
     def test_get_next_available_mediamtx_ports(self):
         # With MediaMTX 1 occupying base slots
         s1 = Service(
@@ -134,6 +180,7 @@ class TestMediaMtxPorts(unittest.TestCase):
                     "rtcp_port": 8001,
                     "hls_port": 8888,
                     "webrtc_port": 8889,
+                    "webrtc_udp_port": 8189,
                     "srt_port": 8890,
                     "api_port": 9997
                 }
@@ -149,6 +196,7 @@ class TestMediaMtxPorts(unittest.TestCase):
         self.assertEqual(next_ports["rtcp_port"], 8003)
         self.assertEqual(next_ports["hls_port"], 8898)
         self.assertEqual(next_ports["webrtc_port"], 8899)
+        self.assertEqual(next_ports["webrtc_udp_port"], 8199)
         self.assertEqual(next_ports["srt_port"], 8900)
         self.assertEqual(next_ports["api_port"], 9998)
 

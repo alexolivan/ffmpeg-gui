@@ -101,7 +101,9 @@
       "apiEnabled": "Habilitar API REST de Control",
       "apiPort": "Puerto API de Control (TCP)",
       "apiPortDesc": "Usado para telemetría de sesiones en vivo, inspección de rutas y estadísticas.",
-      "resolvePortConflicts": "Por favor, resuelve los conflictos de puertos resaltados antes de guardar."
+      "resolvePortConflicts": "Por favor, resuelve los conflictos de puertos resaltados antes de guardar.",
+      "webrtcUdpPort": "Puerto Media / ICE (UDP)",
+      "webrtcPort": "Puerto de señalización (HTTP/WHEP)"
     },
     "picker": {
       "title": "Crear Nuevo Servicio: Seleccionar Motor",

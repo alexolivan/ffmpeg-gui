@@ -534,19 +534,23 @@ class ProcessManager:
         config_dict["webrtc"] = webrtc_enabled
         if webrtc_enabled:
             config_dict["webrtcAddress"] = f":{int(mtx_cfg.get('webrtc_port', 8889))}"
+            webrtc_udp = int(mtx_cfg.get("webrtc_udp_port", 8189))
+            config_dict["webrtcLocalUDPAddress"] = f":{webrtc_udp}"
+            config_dict["webrtcServerAddress"] = f":{webrtc_udp}"
 
         srt_enabled = mtx_cfg.get("srt_enabled", False)
         config_dict["srt"] = srt_enabled
         if srt_enabled:
             config_dict["srtAddress"] = f":{int(mtx_cfg.get('srt_port', 8890))}"
 
-        # API & Metrics
+        # API & Diagnostics
         api_enabled = mtx_cfg.get("api_enabled", True)
         config_dict["api"] = api_enabled
         if api_enabled:
             config_dict["apiAddress"] = f":{int(mtx_cfg.get('api_port', 9997))}"
 
         config_dict["metrics"] = False
+        config_dict["pprof"] = False
 
         # Paths / Stream routing
         paths = mtx_cfg.get("paths", {})

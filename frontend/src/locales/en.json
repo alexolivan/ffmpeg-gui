@@ -101,7 +101,9 @@
       "apiEnabled": "Enable REST Control API",
       "apiPort": "Control API Port (TCP)",
       "apiPortDesc": "Used for live session telemetry, active path inspection, and stats polling.",
-      "resolvePortConflicts": "Please resolve highlighted port conflicts before saving."
+      "resolvePortConflicts": "Please resolve highlighted port conflicts before saving.",
+      "webrtcUdpPort": "Media / ICE Port (UDP)",
+      "webrtcPort": "Signaling Port (HTTP/WHEP)"
     },
     "picker": {
       "title": "Create New Service: Select Engine",

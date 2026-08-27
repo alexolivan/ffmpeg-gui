@@ -44,6 +44,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
 
   const [webrtcEnabled, setWebrtcEnabled] = useState(mtxCfg.webrtc_enabled !== false);
   const [webrtcPort, setWebrtcPort] = useState(mtxCfg.webrtc_port || 8889);
+  const [webrtcUdpPort, setWebrtcUdpPort] = useState(mtxCfg.webrtc_udp_port || 8189);
 
   const [srtEnabled, setSrtEnabled] = useState(mtxCfg.srt_enabled !== false);
   const [srtPort, setSrtPort] = useState(mtxCfg.srt_port || 8890);
@@ -125,7 +126,10 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
               portList.push({ port: Number(cfg.rtcp_port || 8001), label: 'RTCP', serviceName: s.name, serviceId: s.id });
             }
             if (cfg.hls_enabled !== false && cfg.hls_port) portList.push({ port: Number(cfg.hls_port), label: 'HLS', serviceName: s.name, serviceId: s.id });
-            if (cfg.webrtc_enabled && cfg.webrtc_port) portList.push({ port: Number(cfg.webrtc_port), label: 'WebRTC', serviceName: s.name, serviceId: s.id });
+            if (cfg.webrtc_enabled !== false) {
+              if (cfg.webrtc_port) portList.push({ port: Number(cfg.webrtc_port), label: 'WebRTC HTTP', serviceName: s.name, serviceId: s.id });
+              portList.push({ port: Number(cfg.webrtc_udp_port || 8189), label: 'WebRTC UDP', serviceName: s.name, serviceId: s.id });
+            }
             if (cfg.srt_enabled && cfg.srt_port) portList.push({ port: Number(cfg.srt_port), label: 'SRT', serviceName: s.name, serviceId: s.id });
             if (cfg.api_enabled !== false) portList.push({ port: Number(cfg.api_port || 9997), label: 'API', serviceName: s.name, serviceId: s.id });
           } else if (sType === 'icecast_server') {
@@ -152,6 +156,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
         setRtcpPort(freePorts.rtcp_port);
         setHlsPort(freePorts.hls_port);
         setWebrtcPort(freePorts.webrtc_port);
+        setWebrtcUdpPort(freePorts.webrtc_udp_port || 8189);
         setSrtPort(freePorts.srt_port);
         setApiPort(freePorts.api_port);
       }
@@ -176,7 +181,12 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
         ]
       : []),
     ...(hlsEnabled ? [{ port: Number(hlsPort), label: 'HLS' }] : []),
-    ...(webrtcEnabled ? [{ port: Number(webrtcPort), label: 'WebRTC' }] : []),
+    ...(webrtcEnabled
+      ? [
+          { port: Number(webrtcPort), label: 'WebRTC HTTP' },
+          { port: Number(webrtcUdpPort), label: 'WebRTC UDP' },
+        ]
+      : []),
     ...(srtEnabled ? [{ port: Number(srtPort), label: 'SRT' }] : []),
     ...(apiEnabled ? [{ port: Number(apiPort), label: 'API' }] : []),
   ];
@@ -239,6 +249,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           hls_storage_id: hlsStorageId ? Number(hlsStorageId) : null,
           webrtc_enabled: webrtcEnabled,
           webrtc_port: Number(webrtcPort) || 8889,
+          webrtc_udp_port: Number(webrtcUdpPort) || 8189,
           srt_enabled: srtEnabled,
           srt_port: Number(srtPort) || 8890,
           api_enabled: apiEnabled,
@@ -479,7 +490,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           </div>
 
           {/* WebRTC */}
-          <div className={`bg-[var(--bg-card)] border rounded-lg p-2.5 space-y-2 ${webrtcEnabled && getConflict(webrtcPort) ? 'border-red-500/50 bg-red-500/5' : 'border-[var(--glass-border)]'}`}>
+          <div className={`bg-[var(--bg-card)] border rounded-lg p-2.5 space-y-2 ${webrtcEnabled && (getConflict(webrtcPort) || getConflict(webrtcUdpPort)) ? 'border-red-500/50 bg-red-500/5' : 'border-[var(--glass-border)]'}`}>
             <div className="flex items-center justify-between">
               <span className="font-bold uppercase tracking-wider text-xs">WebRTC (WHEP)</span>
               <input
@@ -490,19 +501,35 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
               />
             </div>
             {webrtcEnabled && (
-              <div>
-                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port (HTTP/TCP)</label>
-                <input
-                  type="number"
-                  value={webrtcPort}
-                  onChange={(e) => setWebrtcPort(Number(e.target.value))}
-                  className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(webrtcPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
-                />
-                {getConflict(webrtcPort) && (
-                  <span className="text-[10px] text-red-400 block mt-1 leading-tight">
-                    ⚠️ {t('services.mediamtx.portConflict', { port: webrtcPort, service: getConflict(webrtcPort)?.serviceName })}
-                  </span>
-                )}
+              <div className="space-y-2">
+                <div>
+                  <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">{t('services.mediamtx.webrtcPort', 'Signaling Port (HTTP/WHEP)')}</label>
+                  <input
+                    type="number"
+                    value={webrtcPort}
+                    onChange={(e) => setWebrtcPort(Number(e.target.value))}
+                    className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(webrtcPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
+                  />
+                  {getConflict(webrtcPort) && (
+                    <span className="text-[9px] text-red-400 block mt-0.5 leading-tight">
+                      ⚠️ {getConflict(webrtcPort)?.serviceName}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">{t('services.mediamtx.webrtcUdpPort', 'Media / ICE Port (UDP)')}</label>
+                  <input
+                    type="number"
+                    value={webrtcUdpPort}
+                    onChange={(e) => setWebrtcUdpPort(Number(e.target.value))}
+                    className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(webrtcUdpPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
+                  />
+                  {getConflict(webrtcUdpPort) && (
+                    <span className="text-[9px] text-red-400 block mt-0.5 leading-tight">
+                      ⚠️ {getConflict(webrtcUdpPort)?.serviceName}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>

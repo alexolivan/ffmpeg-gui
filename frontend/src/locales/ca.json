@@ -101,7 +101,9 @@
       "apiEnabled": "Habilitar API REST de Control",
       "apiPort": "Port API de Control (TCP)",
       "apiPortDesc": "Utilitzat per a telemetria de sessions en viu, inspecció de rutes i estadístiques.",
-      "resolvePortConflicts": "Si us plau, resol els conflictes de ports ressaltats abans de desar."
+      "resolvePortConflicts": "Si us plau, resol els conflictes de ports ressaltats abans de desar.",
+      "webrtcUdpPort": "Port Media / ICE (UDP)",
+      "webrtcPort": "Port de senyalització (HTTP/WHEP)"
     },
     "picker": {
       "title": "Crear Nou Servei: Seleccionar Motor",

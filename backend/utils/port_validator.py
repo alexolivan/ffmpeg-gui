@@ -59,9 +59,18 @@ def extract_ports_from_service(
             try: ports.append((int(mtx["hls_port"]), "HLS", service_name, service_id))
             except (ValueError, TypeError): pass
 
-        if mtx.get("webrtc_enabled", False) and mtx.get("webrtc_port"):
-            try: ports.append((int(mtx["webrtc_port"]), "WebRTC (WHEP)", service_name, service_id))
-            except (ValueError, TypeError): pass
+        if mtx.get("webrtc_enabled", False):
+            if mtx.get("webrtc_port"):
+                try: ports.append((int(mtx["webrtc_port"]), "WebRTC Signaling (HTTP/WHEP)", service_name, service_id))
+                except (ValueError, TypeError): pass
+            else:
+                ports.append((8889, "WebRTC Signaling (HTTP Default)", service_name, service_id))
+
+            if mtx.get("webrtc_udp_port"):
+                try: ports.append((int(mtx["webrtc_udp_port"]), "WebRTC Media (UDP ICE)", service_name, service_id))
+                except (ValueError, TypeError): pass
+            else:
+                ports.append((8189, "WebRTC Media (UDP ICE Default)", service_name, service_id))
 
         if mtx.get("srt_enabled", False) and mtx.get("srt_port"):
             try: ports.append((int(mtx["srt_port"]), "SRT", service_name, service_id))
@@ -212,6 +221,7 @@ def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[
     base_rtcp = 8001
     base_hls = 8888
     base_webrtc = 8889
+    base_webrtc_udp = 8189
     base_srt = 8890
     base_api = 9997
 
@@ -223,12 +233,13 @@ def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[
         cand_rtcp = base_rtcp + (offset * 2)
         cand_hls = base_hls + (offset * 10)
         cand_webrtc = base_webrtc + (offset * 10)
+        cand_webrtc_udp = base_webrtc_udp + (offset * 10)
         cand_srt = base_srt + (offset * 10)
         cand_api = base_api + offset
 
         candidate_set = {
             cand_rtmp, cand_rtsp, cand_rtp, cand_rtcp,
-            cand_hls, cand_webrtc, cand_srt, cand_api
+            cand_hls, cand_webrtc, cand_webrtc_udp, cand_srt, cand_api
         }
 
         if not candidate_set.intersection(occupied_ports):
@@ -239,6 +250,7 @@ def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[
                 "rtcp_port": cand_rtcp,
                 "hls_port": cand_hls,
                 "webrtc_port": cand_webrtc,
+                "webrtc_udp_port": cand_webrtc_udp,
                 "srt_port": cand_srt,
                 "api_port": cand_api,
             }
@@ -251,6 +263,7 @@ def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[
         "rtcp_port": 18001,
         "hls_port": 18888,
         "webrtc_port": 18889,
+        "webrtc_udp_port": 18189,
         "srt_port": 18890,
         "api_port": 19997,
     }
