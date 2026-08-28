@@ -607,10 +607,11 @@ class ProcessManager:
                 config_dict["serverCert"] = server_cert
 
             if mtx_cfg.get("rtmps_enabled", False):
-                config_dict["rtmps"] = True
+                config_dict["rtmpEncryption"] = "optional"
                 config_dict["rtmpsAddress"] = f":{int(mtx_cfg.get('rtmps_port', 1936))}"
 
             if mtx_cfg.get("rtsps_enabled", False):
+                config_dict["rtspEncryption"] = "optional"
                 config_dict["rtspsAddress"] = f":{int(mtx_cfg.get('rtsps_port', 8322))}"
 
             config_dict["hlsEncryption"] = True

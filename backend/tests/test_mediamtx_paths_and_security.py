@@ -161,8 +161,9 @@ class TestMediaMtxPathsAndSecurity(unittest.TestCase):
 
         self.assertEqual(cfg.get("serverKey"), "/data/certs/live/privkey.pem")
         self.assertEqual(cfg.get("serverCert"), "/data/certs/live/fullchain.pem")
-        self.assertTrue(cfg.get("rtmps"))
+        self.assertEqual(cfg.get("rtmpEncryption"), "optional")
         self.assertEqual(cfg.get("rtmpsAddress"), ":1936")
+        self.assertEqual(cfg.get("rtspEncryption"), "optional")
         self.assertEqual(cfg.get("rtspsAddress"), ":8322")
         self.assertTrue(cfg.get("hlsEncryption"))
         self.assertTrue(cfg.get("webrtcEncryption"))
