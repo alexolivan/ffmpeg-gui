@@ -73,6 +73,21 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
 
   const mtxCfg = service.config?.mediamtx_config || service.config || {};
 
+  const pathsCount = (() => {
+    const rawPaths = mtxCfg.paths;
+    if (!rawPaths) return 0;
+    if (Array.isArray(rawPaths)) {
+      return rawPaths.filter((p: any) => {
+        const id = p?.path_id || p?.name || p?.path;
+        return id && id !== 'all_others';
+      }).length;
+    }
+    if (typeof rawPaths === 'object') {
+      return Object.keys(rawPaths).filter((k) => k !== 'all_others').length;
+    }
+    return 0;
+  })();
+
   return (
     <div 
       onClick={() => onSelectedProcess(service)}
@@ -114,6 +129,23 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
             <EngineLogo softwareType="mediamtx" size={12} API={API} />
             MediaMTX Hub
           </span>
+
+          {/* SSL / TLS Badge */}
+          {mtxCfg.ssl_enabled && (
+            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+              <ShieldIcon size={10} /> TLS/SSL
+            </span>
+          )}
+
+          {/* Configured Paths Telemetry Badge */}
+          {pathsCount > 0 && (
+            <span 
+              className="text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+              title={`${pathsCount} ${t('services.mediamtx.configuredPaths', 'Configured Paths')}`}
+            >
+              📌 {pathsCount} {pathsCount === 1 ? t('services.mediamtx.pathSingular', 'Path') : t('services.mediamtx.pathPlural', 'Paths')}
+            </span>
+          )}
 
           {/* Pending Changes Reboot */}
           {service.pending_changes && (
@@ -177,9 +209,19 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
               RTMP :{mtxCfg.rtmp_port || 1935}
             </span>
           )}
+          {mtxCfg.ssl_enabled && mtxCfg.rtmps_enabled && (
+            <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">
+              RTMPS :{mtxCfg.rtmps_port || 1936}
+            </span>
+          )}
           {mtxCfg.rtsp_enabled !== false && (
             <span className="px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px]">
               RTSP :{mtxCfg.rtsp_port || 8554}
+            </span>
+          )}
+          {mtxCfg.ssl_enabled && mtxCfg.rtsps_enabled && (
+            <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">
+              RTSPS :{mtxCfg.rtsps_port || 8322}
             </span>
           )}
           {mtxCfg.webrtc_enabled !== false && (
