@@ -467,12 +467,20 @@ class ProcessManager:
                 if not os.path.exists(path):
                     raise FileNotFoundError(f"Overlay image does not exist: {path}")
 
+    @staticmethod
+    def _build_srt_url(srt_cfg: dict, direction: str = "output", ffmpeg_bin: str = "ffmpeg", network_timeout: int = 15) -> str:
+        """Helper to build formatted SRT URL supporting MediaMTX access control."""
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+        return FFmpegCommandBuilder._build_srt_url(srt_cfg, direction=direction, ffmpeg_bin=ffmpeg_bin, network_timeout=network_timeout)
+
     def _build_ffmpeg_cmd(self, media_proc, ffmpeg_bin, limit_sec=None, execution_id=None):
         """Build the ffmpeg command line using the dedicated FFmpegCommandBuilder."""
         from core.builders.ffmpeg_builder import FFmpegCommandBuilder
         return FFmpegCommandBuilder.build_cmd(
             media_proc, ffmpeg_bin, limit_sec=limit_sec, execution_id=execution_id, db_session_factory=self.db_session_factory
         )
+
+    _build_ffmpeg_stream_cmd = _build_ffmpeg_cmd
 
     def _build_mediamtx_config_and_cmd(self, media_proc, mediamtx_bin: str, session):
         """
@@ -577,11 +585,144 @@ class ProcessManager:
         config_dict["metrics"] = False
         config_dict["pprof"] = False
 
-        # Paths / Stream routing
-        paths = mtx_cfg.get("paths", {})
-        if not paths:
-            paths = {"all_others": {}}
-        config_dict["paths"] = paths
+        # SSL / TLS configuration
+        ssl_enabled = mtx_cfg.get("ssl_enabled", False)
+        if ssl_enabled:
+            server_key = mtx_cfg.get("server_key") or mtx_cfg.get("serverKey")
+            server_cert = mtx_cfg.get("server_cert") or mtx_cfg.get("serverCert")
+            if not server_key or not server_cert:
+                try:
+                    from services.cert_manager import CertificateManager
+                    cert_mgr = CertificateManager()
+                    if not server_key:
+                        server_key = cert_mgr.privkey_path
+                    if not server_cert:
+                        server_cert = cert_mgr.fullchain_path
+                except Exception as e:
+                    self.logger.warning(f"[MediaMTX] Error resolving SSL certificates: {e}")
+
+            if server_key:
+                config_dict["serverKey"] = server_key
+            if server_cert:
+                config_dict["serverCert"] = server_cert
+
+            if mtx_cfg.get("rtmps_enabled", False):
+                config_dict["rtmps"] = True
+                config_dict["rtmpsAddress"] = f":{int(mtx_cfg.get('rtmps_port', 1936))}"
+
+            if mtx_cfg.get("rtsps_enabled", False):
+                config_dict["rtspsAddress"] = f":{int(mtx_cfg.get('rtsps_port', 8322))}"
+
+            config_dict["hlsEncryption"] = True
+            config_dict["webrtcEncryption"] = True
+            config_dict["apiEncryption"] = True
+
+        # Paths / Stream routing & Security
+        raw_paths = mtx_cfg.get("paths", {})
+        security = mtx_cfg.get("security", {})
+
+        processed_paths = {}
+
+        # Global credentials for all_others
+        global_pub_user = security.get("publish_user") or security.get("publishUser") or mtx_cfg.get("publish_user")
+        global_pub_pass = security.get("publish_pass") or security.get("publishPass") or mtx_cfg.get("publish_pass")
+        global_read_user = security.get("read_user") or security.get("readUser") or mtx_cfg.get("read_user")
+        global_read_pass = security.get("read_pass") or security.get("readPass") or mtx_cfg.get("read_pass")
+
+        all_others_entry = {}
+        if global_pub_user is not None:
+            all_others_entry["publishUser"] = global_pub_user
+        if global_pub_pass is not None:
+            all_others_entry["publishPass"] = global_pub_pass
+        if global_read_user is not None:
+            all_others_entry["readUser"] = global_read_user
+        if global_read_pass is not None:
+            all_others_entry["readPass"] = global_read_pass
+
+        # If paths is provided as a dict or list
+        paths_map = {}
+        if isinstance(raw_paths, dict):
+            paths_map = dict(raw_paths)
+        elif isinstance(raw_paths, list):
+            for item in raw_paths:
+                if isinstance(item, dict):
+                    name = item.get("name") or item.get("path")
+                    if name:
+                        paths_map[name] = item
+
+        # If all_others was explicitly in paths_map, merge it
+        if "all_others" in paths_map:
+            ao_cfg = paths_map["all_others"]
+            if isinstance(ao_cfg, dict):
+                for k, v in ao_cfg.items():
+                    if k in ["publish_user", "publishUser"]:
+                        all_others_entry["publishUser"] = v
+                    elif k in ["publish_pass", "publishPass"]:
+                        all_others_entry["publishPass"] = v
+                    elif k in ["read_user", "readUser"]:
+                        all_others_entry["readUser"] = v
+                    elif k in ["read_pass", "readPass"]:
+                        all_others_entry["readPass"] = v
+                    elif k not in ["mode", "name", "path"]:
+                        all_others_entry[k] = v
+
+        processed_paths["all_others"] = all_others_entry
+
+        # Process each non-all_others path
+        for path_name, path_cfg in paths_map.items():
+            if path_name == "all_others" or not isinstance(path_cfg, dict):
+                continue
+
+            mode = path_cfg.get("mode", "inherit")
+            entry = {}
+
+            # Map source
+            if "source" in path_cfg and path_cfg["source"] is not None:
+                entry["source"] = path_cfg["source"]
+
+            # Map run_on_publish / run_on_read
+            run_on_pub = path_cfg.get("run_on_publish") or path_cfg.get("runOnPublish")
+            if run_on_pub:
+                entry["runOnPublish"] = run_on_pub
+            run_on_read = path_cfg.get("run_on_read") or path_cfg.get("runOnRead")
+            if run_on_read:
+                entry["runOnRead"] = run_on_read
+
+            if mode == "open":
+                entry["publishUser"] = ""
+                entry["publishPass"] = ""
+                entry["readUser"] = ""
+                entry["readPass"] = ""
+            elif mode == "custom":
+                pub_u = path_cfg.get("publish_user") if "publish_user" in path_cfg else path_cfg.get("publishUser")
+                pub_p = path_cfg.get("publish_pass") if "publish_pass" in path_cfg else path_cfg.get("publishPass")
+                read_u = path_cfg.get("read_user") if "read_user" in path_cfg else path_cfg.get("readUser")
+                read_p = path_cfg.get("read_pass") if "read_pass" in path_cfg else path_cfg.get("readPass")
+                if pub_u is not None:
+                    entry["publishUser"] = pub_u
+                if pub_p is not None:
+                    entry["publishPass"] = pub_p
+                if read_u is not None:
+                    entry["readUser"] = read_u
+                if read_p is not None:
+                    entry["readPass"] = read_p
+            elif mode == "inherit":
+                pass
+
+            # Copy any extra keys provided in path_cfg that are not internal
+            internal_keys = {
+                "mode", "name", "path", "publish_user", "publishUser",
+                "publish_pass", "publishPass", "read_user", "readUser",
+                "read_pass", "readPass", "run_on_publish", "runOnPublish",
+                "run_on_read", "runOnRead", "source"
+            }
+            for k, v in path_cfg.items():
+                if k not in internal_keys:
+                    entry[k] = v
+
+            processed_paths[path_name] = entry
+
+        config_dict["paths"] = processed_paths
 
         # Custom raw YAML overrides if provided
         raw_yaml = mtx_cfg.get("raw_yaml", "").strip()

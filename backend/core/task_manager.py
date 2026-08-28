@@ -237,6 +237,12 @@ class TaskManager:
                 if not os.path.exists(path):
                     raise FileNotFoundError(f"Overlay image does not exist: {path}")
 
+    @staticmethod
+    def _build_srt_url(srt_cfg: dict, direction: str = "output", ffmpeg_bin: str = "ffmpeg", network_timeout: int = 15) -> str:
+        """Helper to build formatted SRT URL supporting MediaMTX access control."""
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+        return FFmpegCommandBuilder._build_srt_url(srt_cfg, direction=direction, ffmpeg_bin=ffmpeg_bin, network_timeout=network_timeout)
+
     def _build_ffmpeg_cmd(self, task, ffmpeg_bin, limit_sec=None, execution_id=None):
         from core.builders.ffmpeg_builder import FFmpegCommandBuilder
         return FFmpegCommandBuilder.build_cmd(

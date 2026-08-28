@@ -48,6 +48,105 @@ class FFmpegCommandBuilder:
                     overlay['path'] = resolved
 
     @classmethod
+    def _build_srt_url(cls, srt_cfg: dict, direction: str = "output", ffmpeg_bin: str = "ffmpeg", network_timeout: int = 15) -> str:
+        """
+        Builds a fully formatted SRT URL supporting MediaMTX access control streamid and manual parameters.
+        """
+        if isinstance(srt_cfg, str):
+            return srt_cfg
+
+        if not isinstance(srt_cfg, dict):
+            return str(srt_cfg)
+
+        raw_url = srt_cfg.get('url') or srt_cfg.get('path')
+        is_mediamtx = (
+            srt_cfg.get('mediamtx_mode') is True
+            or srt_cfg.get('service_target') == 'mediamtx'
+            or bool(srt_cfg.get('path_id'))
+        )
+
+        if raw_url and isinstance(raw_url, str) and raw_url.startswith('srt://'):
+            if not is_mediamtx and not srt_cfg.get('streamid') and not srt_cfg.get('passphrase'):
+                return raw_url
+
+        mode = srt_cfg.get('mode', 'caller')
+        default_host = '0.0.0.0' if mode == 'listener' else '127.0.0.1'
+        host = srt_cfg.get('host') or default_host
+        default_port = '9000' if direction == 'input' else '1234'
+        port = srt_cfg.get('port') or default_port
+        default_latency = 250 if direction == 'input' else 200
+        latency = srt_cfg.get('latency', default_latency)
+
+        params = [f"mode={mode}", f"latency={latency}"]
+
+        if direction == 'input' and mode == 'caller' and network_timeout is not None and int(network_timeout) > 0:
+            from utils.process_utils import get_ffmpeg_version
+            version = get_ffmpeg_version(ffmpeg_bin)
+            timeout_us = int(network_timeout) * 1000000
+            timeout_param = f"timeout={timeout_us}" if version >= 4.0 else f"rw_timeout={timeout_us}"
+            params.append(timeout_param)
+
+        if srt_cfg.get('passphrase'):
+            params.append(f"passphrase={srt_cfg.get('passphrase')}")
+        if srt_cfg.get('pbkeylen'):
+            params.append(f"pbkeylen={srt_cfg.get('pbkeylen')}")
+
+        raw_streamid = srt_cfg.get('streamid', '')
+        path_id = srt_cfg.get('path_id')
+        if not path_id and is_mediamtx:
+            path_id = srt_cfg.get('path') or srt_cfg.get('stream_path') or srt_cfg.get('stream_name')
+            if not path_id and raw_streamid and not str(raw_streamid).startswith('#!::'):
+                path_id = raw_streamid
+
+        if is_mediamtx and path_id:
+            action = 'publish' if direction == 'output' else 'request'
+            streamid_parts = [f"#!::r={path_id}", f"m={action}"]
+
+            if direction == 'output':
+                user = (
+                    srt_cfg.get('publish_user')
+                    or srt_cfg.get('publishUser')
+                    or srt_cfg.get('username')
+                    or srt_cfg.get('user')
+                    or srt_cfg.get('auth_user')
+                )
+                pwd = (
+                    srt_cfg.get('publish_pass')
+                    or srt_cfg.get('publishPass')
+                    or srt_cfg.get('password')
+                    or srt_cfg.get('pass')
+                    or srt_cfg.get('auth_pass')
+                )
+            else:
+                user = (
+                    srt_cfg.get('read_user')
+                    or srt_cfg.get('readUser')
+                    or srt_cfg.get('username')
+                    or srt_cfg.get('user')
+                    or srt_cfg.get('auth_user')
+                )
+                pwd = (
+                    srt_cfg.get('read_pass')
+                    or srt_cfg.get('readPass')
+                    or srt_cfg.get('password')
+                    or srt_cfg.get('pass')
+                    or srt_cfg.get('auth_pass')
+                )
+
+            if user is not None and str(user).strip() != '':
+                streamid_parts.append(f"u={user}")
+            if pwd is not None and str(pwd).strip() != '':
+                streamid_parts.append(f"p={pwd}")
+
+            final_streamid = ",".join(streamid_parts)
+            params.append(f"streamid={final_streamid}")
+        elif raw_streamid:
+            params.append(f"streamid={raw_streamid}")
+
+        query_string = "&".join(params)
+        return f"srt://{host}:{port}?{query_string}"
+
+    @classmethod
     def _append_fps_mode(cls, cmd: list, codec_cfg: dict, output_cfg: dict, filter_cfg: dict, ffmpeg_bin: str):
         video_params = codec_cfg.get('video_params', {})
         fps_mode = video_params.get('fps_mode', 'auto')
@@ -123,21 +222,7 @@ class FFmpegCommandBuilder:
         if input_type == 'file':
             cmd += ["-i", input_cfg.get('path', '')]
         elif input_type == 'srt':
-            mode = input_cfg.get('mode', 'caller')
-            latency = input_cfg.get('latency', 250)
-            host = input_cfg.get('host') or ('0.0.0.0' if mode == 'listener' else '127.0.0.1')
-            port = input_cfg.get('port', '9000')
-            streamid = input_cfg.get('streamid', '')
-            
-            url = f"srt://{host}:{port}?mode={mode}&latency={latency}"
-            if mode == 'caller' and network_timeout > 0:
-                from utils.process_utils import get_ffmpeg_version
-                version = get_ffmpeg_version(ffmpeg_bin)
-                timeout_us = network_timeout * 1000000
-                timeout_param = f"timeout={timeout_us}" if version >= 4.0 else f"rw_timeout={timeout_us}"
-                url += f"&{timeout_param}"
-            if streamid:
-                url += f"&streamid={streamid}"
+            url = cls._build_srt_url(input_cfg, direction="input", ffmpeg_bin=ffmpeg_bin, network_timeout=network_timeout)
             cmd += ["-i", url]
         elif input_type == 'ndi':
             name = input_cfg.get('name', '')
@@ -357,7 +442,7 @@ class FFmpegCommandBuilder:
                 cmd += [f"-vbr:a:{idx}", params['vbr']]
 
     @classmethod
-    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None):
+    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None, ffmpeg_bin: str = "ffmpeg"):
         output_type = output_cfg.get('type')
         
         is_mpegts = (
@@ -430,16 +515,7 @@ class FFmpegCommandBuilder:
             cmd += ["-f", "mpegts", url]
             append_mpegts_options(cmd, output_cfg)
         elif output_type == 'srt':
-            host = output_cfg.get('host', '127.0.0.1')
-            port = output_cfg.get('port', '1234')
-            mode = output_cfg.get('mode', 'caller')
-            latency = output_cfg.get('latency', 200)
-            streamid = output_cfg.get('streamid', '')
-            
-            url = f"srt://{host}:{port}?mode={mode}&latency={latency}"
-            if streamid:
-                url += f"&streamid={streamid}"
-                
+            url = cls._build_srt_url(output_cfg, direction="output", ffmpeg_bin=ffmpeg_bin)
             cmd += ["-f", "mpegts", url]
             append_mpegts_options(cmd, output_cfg)
         elif output_type == 'rtp_mpegts':
@@ -930,7 +1006,7 @@ class FFmpegCommandBuilder:
                     cls._append_audio_codec_params(cmd, acodec, audio_params)
 
             cls._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
-            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec)
+            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec, ffmpeg_bin=ffmpeg_bin)
             
         is_service = getattr(media_proc, 'type', 'service') == 'service'
         
