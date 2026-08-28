@@ -38,7 +38,19 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Live Stream Preview & Logs](docs/assets/screenshot3.png)
 
-### 🎛️ 3. Professional AV Hardware & Control
+### ⚡ 3. MediaMTX Hub, Stream Paths & SSL/TLS Integration
+- **Multi-Protocol Zero-Dependency Hub**: Deploy standalone MediaMTX daemon instances orchestrated through ephemeral YAML configs written to RAM (`/dev/shm`).
+- **Universal Stream Paths & Granular Security**: Configure routing rules (`inherit`, `custom`, `open` LAN modes) with decoupled Publish (Push) and Read (Pull) credentials per path.
+- **In-RAM HLS Live Distribution & Storage Persistence**: Serves live HLS ultra-fast from RAM ring buffers without disk wear, with optional continuous stream recording to dedicated HLS storage volumes.
+- **Bidirectional SRT Access Control**: Formats and parses SRT stream IDs (`#!::r=<path_id>,m=<publish|request>[,u=...,p=...]`) with interactive Hub connection assistants across FFmpeg sources and destinations.
+- **SSL/TLS Security & Collision Protection**: Local Let's Encrypt / custom certificate binding for RTMPS and RTSPS with automatic $+10$ port offset safety allocation.
+- **Live Stream Connection Matrix**: 1-click clipboard copy matrix for RTMP/S, RTSP/S, SRT, WebRTC (WHEP/WHIP), and HLS playback/ingest strings.
+
+![MediaMTX Hub Service Configuration](docs/assets/screenshot14.png)
+
+![MediaMTX Stream Connection Matrix & Live URI Generator](docs/assets/screenshot13.png)
+
+### 🎛️ 4. Professional AV Hardware & Control
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
 - **Magewell Capture Cards**: Hardware telemetry and routing for Pro Capture / Eco Capture / USB Capture devices (`mwcap-info` / `mwcap-control`), live FPGA temperature monitoring, connector switching, and V4L2/ALSA stream integration.
 - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping and crosspoint volume matrix routing.
@@ -53,37 +65,37 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Graphic EQ & Dynamics Compressor](docs/assets/screenshot7.png)
 
-### 🛡️ 4. Decoupled Watchdog Recovery
+### 🛡️ 5. Decoupled Watchdog Recovery
 - **Automatic Auto-Start**: Recovers crashed or disconnected streams automatically.
 - **Freeze Protection**: Actively monitors process FPS, bitrate, and outputs, force-restarting streams if frames freeze or connection drops.
 - **Jittered Backoff**: Uses exponential backoff delays combined with randomized jitter to break lockstep recovery loops and reduce server resource peaks during network outages.
 
-### ⏰ 5. Task Scheduler & Bilateral Cloning
+### ⏰ 6. Task Scheduler & Bilateral Cloning
 - **Automation Jobs**: Schedule recurring (cron-like) or one-shot encoding tasks (e.g., recording daily broadcasts, scheduled stream dumps).
 - **Safety Runtime Limits**: Define max duration timers to automatically clean up active tasks.
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
 
 ![Scheduled Tasks & Cron Automation](docs/assets/screenshot4.png)
 
-### 🔒 6. HTTPS & Let's Encrypt SSL Manager
+### 🔒 7. HTTPS & Let's Encrypt SSL Manager
 - **Automated SSL/TLS Certificates**: Request and renew Let's Encrypt certificates directly from the GUI panel.
 - **ACME Challenge Handler**: Integrated HTTP-01 challenge router (`/.well-known/acme-challenge/*`) for automated domain verification.
 - **Status & Monitoring**: Real-time display of certificate validity, domain bindings, and automated expiration warnings.
 
-### 💾 7. Granular Backup & Restore
+### 💾 8. Granular Backup & Restore
 - **Selective Section Toggles**: Export and import specific configuration parts (e.g., only backing up media services and scheduled tasks while leaving SMTP credentials or network port configs unchanged).
 - **Format Verification**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions and config file updates.
 
-### 🗄️ 8. Storage, Log Retention & Branding
+### 🗄️ 9. Storage, Log Retention & Branding
 - **Storage Management**: Configure local or mounted storage volumes, monitor disk space usage in real time, and trigger notifications if volume capacity exceeds limits.
 - **Automated Log Rotation**: Fine-grained settings to define retention limits for application logs, task logs, and stream outputs, automatically purging stale data to prevent disk saturation.
 - **Branding Customization**: Customize the application name, panel headers, and console branding directly from the interface settings.
 
-### 🔔 9. State-Based SMTP Notifications
+### 🔔 10. State-Based SMTP Notifications
 - **Alert Fatigue Prevention**: Stateful notification queue that filters redundant alerts. Emails are dispatched exclusively on initial stream crashes, recovery success, and final retry exhaustion.
 - **System Health Checks**: Active warnings for pending SSL/TLS certificate expirations and disk space utilization exceeding 90%.
 
-### 📟 10. CFA635 LCD Display Driver
+### 📟 11. CFA635 LCD Display Driver
 - **Serial LCD Integration**: Direct driver control for CrystalFontz CFA635 USB/Serial displays. Renders live CPU, RAM, active stream counts, locator beacons, and handles backlight dimming timeouts.
 - **Bicolor Status LEDs**: Maps physical LEDs to profile monitors:
   - Heartbeat status indicator.
@@ -91,7 +103,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
   - Task execution monitor (reflects latest execution results).
   - High-resource alerts.
 
-### 🌐 11. Styling & Localization
+### 🌐 12. Styling & Localization
 - **Multi-Theme Engine**: 5 visual styles (Studio Dark, Cyberpunk Neon, Nordic Frost, Broadcast Light, Warm Paper) loaded instantly without page flash.
 - **Full Translations**: English, Spanish, and Catalan interfaces with 100% i18n parity.
 
