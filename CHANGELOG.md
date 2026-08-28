@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-08-28
+
+### Added
+- **Universal MediaMTX Stream Paths Management**:
+  - Implemented full CRUD interface supporting `inherit`, `custom`, and `open` LAN security modes, automation hooks (`runOnInit`, `runOnDemand`, `runOnReady`), and remote RTSP/RTMP pull sources.
+- **Granular Multi-Tier Authentication & Access Control**:
+  - Decoupled Publish (Push) and Read (Pull) credentials at both global service and individual stream path levels.
+- **Bidirectional SRT Access Control Integration**:
+  - Implemented SRT stream ID parsing and generation (`#!::r=<path_id>,m=<publish|request>[,u=...,p=...]`) and integrated interactive MediaMTX Hub SRT connection assistant in FFmpeg input and destination forms.
+- **Local SSL/TLS Certificate Binding & Port Collision Protection**:
+  - Added TLS certificate binding (`serverKey`, `serverCert`) for MediaMTX with automatic RTMPS/RTSPS $+10$ port offset allocation to eliminate socket conflicts.
+- **Interactive Stream Connection Matrix & URL Generator**:
+  - Added real-time connection string generator in `MediaMtxPreviewModal` across RTSP, RTSPS, RTMP, RTMPS, HLS, WebRTC (WHEP/WHIP), and SRT protocols with 1-click clipboard copying.
+
+### Fixed
+- **Universal Service Auto-Start & Stale Task Execution Prevention**:
+  - Enabled universal service auto-start on boot across all service types (FFmpeg, MediaMTX, Icecast) and eliminated stale historical scheduled task executions on system boot.
+
 ## [2.5.0] - 2026-08-26
 
 ### Added
