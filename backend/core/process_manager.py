@@ -511,32 +511,24 @@ class ProcessManager:
             config_dict["rtmpAddress"] = f":{int(mtx_cfg.get('rtmp_port', 1935))}"
 
         hls_enabled = mtx_cfg.get("hls_enabled", True)
+        config_dict["hls"] = hls_enabled
         if hls_enabled:
-            # Resolve HLS storage path - strictly require a storage volume of type 'hls'
-            hls_storage_id = mtx_cfg.get("hls_storage_id") or cfg.get("hls_storage_id")
-            hls_storage = None
-            if hls_storage_id:
-                hls_storage = session.query(Storage).get(hls_storage_id)
-            if not hls_storage:
-                hls_storage = session.query(Storage).filter(Storage.type == "hls").first()
+            config_dict["hlsAddress"] = f":{int(mtx_cfg.get('hls_port', 8888))}"
+            config_dict["hlsSegmentCount"] = int(mtx_cfg.get("hls_segment_count", 7))
+            config_dict["hlsSegmentDuration"] = f"{mtx_cfg.get('hls_segment_duration', 2)}s"
 
-            if not hls_storage:
-                hls_enabled = False
-                config_dict["hls"] = False
-                logger.warning(
-                    f"[MediaMTX] HLS disabled for service {media_proc.id} ({media_proc.name}) "
-                    "because no dedicated storage volume of type 'hls' exists in the database."
-                )
-            else:
-                config_dict["hls"] = True
-                config_dict["hlsAddress"] = f":{int(mtx_cfg.get('hls_port', 8888))}"
-                config_dict["hlsSegmentCount"] = int(mtx_cfg.get("hls_segment_count", 5))
-                config_dict["hlsSegmentDuration"] = f"{mtx_cfg.get('hls_segment_duration', 2)}s"
+        # Resolve optional HLS storage for path recording
+        hls_storage_id = mtx_cfg.get("hls_storage_id") or cfg.get("hls_storage_id")
+        hls_storage = None
+        hls_dir = None
+        if hls_storage_id:
+            hls_storage = session.query(Storage).get(hls_storage_id)
+            if hls_storage:
                 hls_dir = os.path.join(hls_storage.path, f"mediamtx_svc_{media_proc.id}")
-                os.makedirs(hls_dir, exist_ok=True)
-                config_dict["hlsDirectory"] = hls_dir
-        else:
-            config_dict["hls"] = False
+                try:
+                    os.makedirs(hls_dir, exist_ok=True)
+                except Exception as e:
+                    self.logger.warning(f"[MediaMTX] Could not create storage dir {hls_dir}: {e}")
 
         webrtc_enabled = mtx_cfg.get("webrtc_enabled", False)
         config_dict["webrtc"] = webrtc_enabled
@@ -708,12 +700,17 @@ class ProcessManager:
             elif mode == "inherit":
                 pass
 
+            if path_cfg.get("record") and hls_dir:
+                entry["record"] = True
+                entry["recordPath"] = os.path.join(hls_dir, "%path/%Y-%m-%d_%H-%M-%S.mp4")
+                entry["recordFormat"] = "fmp4"
+
             # Copy any extra keys provided in path_cfg that are not internal
             internal_keys = {
                 "mode", "name", "path", "publish_user", "publishUser",
                 "publish_pass", "publishPass", "read_user", "readUser",
                 "read_pass", "readPass", "run_on_publish", "runOnPublish",
-                "run_on_read", "runOnRead", "source"
+                "run_on_read", "runOnRead", "source", "record"
             }
             for k, v in path_cfg.items():
                 if k not in internal_keys:

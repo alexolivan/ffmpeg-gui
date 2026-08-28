@@ -29,6 +29,7 @@ export interface PathConfig {
   publish_pass?: string;
   read_user?: string;
   read_pass?: string;
+  record?: boolean;
 }
 
 export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
@@ -57,6 +58,8 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
 
   const [hlsEnabled, setHlsEnabled] = useState(mtxCfg.hls_enabled !== false);
   const [hlsPort, setHlsPort] = useState(mtxCfg.hls_port || 8888);
+  const [hlsSegmentDuration, setHlsSegmentDuration] = useState<number>(mtxCfg.hls_segment_duration || 2);
+  const [hlsSegmentCount, setHlsSegmentCount] = useState<number>(mtxCfg.hls_segment_count || 7);
 
   const [webrtcEnabled, setWebrtcEnabled] = useState(mtxCfg.webrtc_enabled !== false);
   const [webrtcPort, setWebrtcPort] = useState(mtxCfg.webrtc_port || 8889);
@@ -106,8 +109,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           publish_pass: p.publish_pass || p.publishPass || '',
           read_user: p.read_user || p.readUser || '',
           read_pass: p.read_pass || p.readPass || '',
-          run_on_publish: p.run_on_publish || p.runOnPublish || '',
-          source: p.source || '',
+          record: Boolean(p.record),
         }))
         .filter((p) => p.path_id && p.path_id !== 'all_others');
     }
@@ -121,8 +123,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           publish_pass: val?.publish_pass || val?.publishPass || '',
           read_user: val?.read_user || val?.readUser || '',
           read_pass: val?.read_pass || val?.readPass || '',
-          run_on_publish: val?.run_on_publish || val?.runOnPublish || '',
-          source: val?.source || '',
+          record: Boolean(val?.record),
         }));
     }
     return [];
@@ -137,6 +138,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
   const [currentPathPubPass, setCurrentPathPubPass] = useState<string>('');
   const [currentPathReadUser, setCurrentPathReadUser] = useState<string>('');
   const [currentPathReadPass, setCurrentPathReadPass] = useState<string>('');
+  const [currentPathRecord, setCurrentPathRecord] = useState<boolean>(false);
   const [currentPathShowPubPass, setCurrentPathShowPubPass] = useState<boolean>(false);
   const [currentPathShowReadPass, setCurrentPathShowReadPass] = useState<boolean>(false);
   const [pathFormError, setPathFormError] = useState<string | null>(null);
@@ -338,6 +340,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
     setCurrentPathPubPass('');
     setCurrentPathReadUser('');
     setCurrentPathReadPass('');
+    setCurrentPathRecord(false);
     setPathFormError(null);
   };
 
@@ -352,6 +355,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
     setCurrentPathPubPass(p.publish_pass || '');
     setCurrentPathReadUser(p.read_user || '');
     setCurrentPathReadPass(p.read_pass || '');
+    setCurrentPathRecord(Boolean(p.record));
     setPathFormError(null);
   };
 
@@ -376,6 +380,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
       publish_pass: currentPathMode === 'custom' ? currentPathPubPass : undefined,
       read_user: currentPathMode === 'custom' ? currentPathReadUser.trim() : undefined,
       read_pass: currentPathMode === 'custom' ? currentPathReadPass : undefined,
+      record: Boolean(hlsStorageId && currentPathRecord),
     };
 
     if (editingPathIndex !== null) {
@@ -443,6 +448,9 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
         pEntry.read_user = p.read_user ? p.read_user.trim() : '';
         pEntry.read_pass = p.read_pass || '';
       }
+      if (p.record && hlsStorageId) {
+        pEntry.record = true;
+      }
       pathsMap[pid] = pEntry;
     }
 
@@ -467,6 +475,8 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           rtcp_port: Number(rtcpPort) || 8001,
           hls_enabled: hlsEnabled,
           hls_port: Number(hlsPort) || 8888,
+          hls_segment_duration: Number(hlsSegmentDuration) || 2,
+          hls_segment_count: Number(hlsSegmentCount) || 7,
           hls_storage_id: hlsStorageId ? Number(hlsStorageId) : null,
           webrtc_enabled: webrtcEnabled,
           webrtc_port: Number(webrtcPort) || 8889,
@@ -688,36 +698,83 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           {/* HLS */}
           <div className={`bg-[var(--bg-card)] border rounded-lg p-2.5 space-y-2 ${hlsEnabled && getConflict(hlsPort) ? 'border-red-500/50 bg-red-500/5' : 'border-[var(--glass-border)]'}`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold uppercase tracking-wider text-xs">HLS (HTTP)</span>
-                {hlsStorages.length === 0 && (
-                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20" title={t('services.mediamtx.noHlsStorageNotice', 'No HLS storage configured')}>
-                    {t('services.mediamtx.noStorage', 'No Storage')}
-                  </span>
-                )}
-              </div>
+              <span className="font-bold uppercase tracking-wider text-xs">HLS (HTTP)</span>
               <input
                 type="checkbox"
-                disabled={hlsStorages.length === 0}
-                checked={hlsEnabled && hlsStorages.length > 0}
+                checked={hlsEnabled}
                 onChange={(e) => setHlsEnabled(e.target.checked)}
-                className="rounded text-brand-lime disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                className="rounded text-brand-lime cursor-pointer"
               />
             </div>
-            {hlsEnabled && hlsStorages.length > 0 && (
-              <div>
-                <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port (HTTP)</label>
-                <input
-                  type="number"
-                  value={hlsPort}
-                  onChange={(e) => setHlsPort(Number(e.target.value))}
-                  className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(hlsPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
-                />
-                {getConflict(hlsPort) && (
-                  <span className="text-[10px] text-red-400 block mt-1 leading-tight">
-                    ⚠️ {t('services.mediamtx.portConflict', { port: hlsPort, service: getConflict(hlsPort)?.serviceName })}
-                  </span>
-                )}
+            {hlsEnabled && (
+              <div className="space-y-2 pt-1 border-t border-[var(--glass-border)]">
+                <div>
+                  <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">Port (HTTP)</label>
+                  <input
+                    type="number"
+                    value={hlsPort}
+                    onChange={(e) => setHlsPort(Number(e.target.value))}
+                    className={`w-full bg-[var(--input-bg)] border rounded px-2 py-1 text-xs font-mono ${getConflict(hlsPort) ? 'border-red-500 text-red-300' : 'border-[var(--glass-border)]'}`}
+                  />
+                  {getConflict(hlsPort) && (
+                    <span className="text-[10px] text-red-400 block mt-1 leading-tight">
+                      ⚠️ {t('services.mediamtx.portConflict', { port: hlsPort, service: getConflict(hlsPort)?.serviceName })}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">
+                      {t('services.mediamtx.segmentDuration', 'Duración Segmento (s)')}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={hlsSegmentDuration}
+                      onChange={(e) => setHlsSegmentDuration(Number(e.target.value))}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">
+                      {t('services.mediamtx.segmentCount', 'Segmentos (Buffer)')}
+                    </label>
+                    <input
+                      type="number"
+                      min={3}
+                      max={30}
+                      value={hlsSegmentCount}
+                      onChange={(e) => setHlsSegmentCount(Number(e.target.value))}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">
+                    {t('services.mediamtx.hlsStorage', 'Almacenamiento Grabación (Opcional)')}
+                  </label>
+                  <select
+                    value={hlsStorageId || ''}
+                    disabled={hlsStorages.length === 0}
+                    onChange={(e) => setHlsStorageId(e.target.value ? Number(e.target.value) : null)}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">{t('services.mediamtx.hlsStorageRamDefault', '⚡ Desactivado / RAM (Sin persistencia)')}</option>
+                    {hlsStorages.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.path})
+                      </option>
+                    ))}
+                  </select>
+                  {hlsStorages.length === 0 && (
+                    <span className="text-[9px] text-[var(--text-secondary)] block mt-0.5">
+                      {t('services.mediamtx.noHlsStorageNotice', 'Requiere configurar un volumen tipo HLS en Ajustes → Almacenamiento.')}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1202,6 +1259,26 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Record Toggle (only when an HLS storage volume is selected) */}
+              {Boolean(hlsStorageId) && (
+                <div className="sm:col-span-2 flex items-center justify-between p-2.5 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                  <div>
+                    <span className="text-xs font-bold text-[var(--text-primary)] block">
+                      {t('services.mediamtx.recordPath', 'Grabar stream en almacenamiento HLS (Record)')}
+                    </span>
+                    <span className="text-[10px] text-[var(--text-secondary)] block">
+                      {t('services.mediamtx.recordPathDesc', 'Guarda grabaciones continuas del stream en el almacenamiento seleccionado.')}
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={currentPathRecord}
+                    onChange={(e) => setCurrentPathRecord(e.target.checked)}
+                    className="rounded text-brand-lime cursor-pointer"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--glass-border)]">
@@ -1260,6 +1337,13 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
                     {isCustom && (
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                         {t('services.mediamtx.authModeCustom', 'Personalizado')}
+                      </span>
+                    )}
+
+                    {p.record && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/10 text-red-400 border border-red-500/20 flex items-center gap-1">
+                        <span>⏺️</span>
+                        <span>{t('services.mediamtx.recording', 'Grabando')}</span>
                       </span>
                     )}
 

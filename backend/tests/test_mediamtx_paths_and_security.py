@@ -179,6 +179,64 @@ class TestMediaMtxPathsAndSecurity(unittest.TestCase):
         self.assertTrue(cfg.get("webrtcEncryption"))
         self.assertTrue(cfg.get("apiEncryption"))
 
+    def test_hls_ram_and_recording_storage(self):
+        storage = Storage(
+            name="HLS Record Storage",
+            type="hls",
+            path="/tmp/hls_records_test"
+        )
+        self.db.add(storage)
+        self.db.commit()
+
+        service = Service(
+            name="MediaMTX HLS & Record Hub",
+            service_type="mediamtx_hub",
+            config={
+                "mediamtx_config": {
+                    "hls_enabled": True,
+                    "hls_port": 8888,
+                    "hls_segment_duration": 3,
+                    "hls_segment_count": 10,
+                    "hls_storage_id": storage.id,
+                    "paths": {
+                        "live_stream": {
+                            "mode": "inherit",
+                            "record": True,
+                        },
+                        "ram_only_stream": {
+                            "mode": "open",
+                            "record": False,
+                        }
+                    }
+                }
+            }
+        )
+        self.db.add(service)
+        self.db.commit()
+
+        cmd, ephem_path = self.pm._build_mediamtx_config_and_cmd(service, "/usr/local/bin/mediamtx", self.db)
+        self.created_files.append(ephem_path)
+
+        with open(ephem_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+
+        self.assertTrue(cfg.get("hls"))
+        self.assertEqual(cfg.get("hlsAddress"), ":8888")
+        self.assertEqual(cfg.get("hlsSegmentCount"), 10)
+        self.assertEqual(cfg.get("hlsSegmentDuration"), "3s")
+        # Global hlsDirectory is not set, keeping HLS live playback in RAM
+        self.assertNotIn("hlsDirectory", cfg)
+
+        paths = cfg.get("paths", {})
+        self.assertIn("live_stream", paths)
+        rec_path = paths["live_stream"]
+        self.assertTrue(rec_path.get("record"))
+        self.assertEqual(rec_path.get("recordFormat"), "fmp4")
+        self.assertTrue(rec_path.get("recordPath").startswith("/tmp/hls_records_test/mediamtx_svc_"))
+
+        ram_path = paths["ram_only_stream"]
+        self.assertNotIn("record", ram_path)
+
 
 if __name__ == "__main__":
     unittest.main()

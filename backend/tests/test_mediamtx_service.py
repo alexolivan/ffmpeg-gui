@@ -66,7 +66,8 @@ class TestMediaMtxService(unittest.TestCase):
         self.assertEqual(cfg.get("rtmpAddress"), ":1935")
         self.assertTrue(cfg.get("hls"))
         self.assertEqual(cfg.get("hlsAddress"), ":8888")
-        self.assertIn("mediamtx_svc_", cfg.get("hlsDirectory", ""))
+        self.assertEqual(cfg.get("hlsSegmentCount"), 7)
+        self.assertEqual(cfg.get("hlsSegmentDuration"), "2s")
 
         # Clean up ephemeral file
         if os.path.exists(ephem_path):
