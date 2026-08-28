@@ -40,6 +40,16 @@ def extract_ports_from_service(
             try: ports.append((int(mtx["rtmp_port"]), "RTMP", service_name, service_id))
             except (ValueError, TypeError): pass
 
+        if mtx.get("rtmps_enabled", False):
+            if mtx.get("rtmps_port"):
+                try: ports.append((int(mtx["rtmps_port"]), "RTMPS", service_name, service_id))
+                except (ValueError, TypeError): pass
+            else:
+                ports.append((1936, "RTMPS (Default)", service_name, service_id))
+        elif mtx.get("rtmps_port") and mtx.get("rtmps_enabled") is not False:
+            try: ports.append((int(mtx["rtmps_port"]), "RTMPS", service_name, service_id))
+            except (ValueError, TypeError): pass
+
         if mtx.get("rtsp_enabled", True):
             if mtx.get("rtsp_port"):
                 try: ports.append((int(mtx["rtsp_port"]), "RTSP", service_name, service_id))
@@ -54,6 +64,16 @@ def extract_ports_from_service(
                 except (ValueError, TypeError): pass
             else:
                 ports.append((8001, "RTCP (RTSP UDP Default)", service_name, service_id))
+
+        if mtx.get("rtsps_enabled", False):
+            if mtx.get("rtsps_port"):
+                try: ports.append((int(mtx["rtsps_port"]), "RTSPS", service_name, service_id))
+                except (ValueError, TypeError): pass
+            else:
+                ports.append((8322, "RTSPS (Default)", service_name, service_id))
+        elif mtx.get("rtsps_port") and mtx.get("rtsps_enabled") is not False:
+            try: ports.append((int(mtx["rtsps_port"]), "RTSPS", service_name, service_id))
+            except (ValueError, TypeError): pass
 
         if mtx.get("hls_enabled", True) and mtx.get("hls_port"):
             try: ports.append((int(mtx["hls_port"]), "HLS", service_name, service_id))
@@ -216,7 +236,9 @@ def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[
 
     # Base port definitions
     base_rtmp = 1935
+    base_rtmps = 1936
     base_rtsp = 8554
+    base_rtsps = 8322
     base_rtp = 8000
     base_rtcp = 8001
     base_hls = 8888
@@ -227,8 +249,10 @@ def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[
 
     # Try offset 0, 1, 2, 3...
     for offset in range(50):
-        cand_rtmp = base_rtmp + offset
-        cand_rtsp = base_rtsp + offset
+        cand_rtmp = base_rtmp + (offset * 10)
+        cand_rtmps = base_rtmps + (offset * 10)
+        cand_rtsp = base_rtsp + (offset * 10)
+        cand_rtsps = base_rtsps + (offset * 10)
         cand_rtp = base_rtp + (offset * 2)
         cand_rtcp = base_rtcp + (offset * 2)
         cand_hls = base_hls + (offset * 10)
@@ -238,14 +262,16 @@ def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[
         cand_api = base_api + offset
 
         candidate_set = {
-            cand_rtmp, cand_rtsp, cand_rtp, cand_rtcp,
+            cand_rtmp, cand_rtmps, cand_rtsp, cand_rtsps, cand_rtp, cand_rtcp,
             cand_hls, cand_webrtc, cand_webrtc_udp, cand_srt, cand_api
         }
 
         if not candidate_set.intersection(occupied_ports):
             return {
                 "rtmp_port": cand_rtmp,
+                "rtmps_port": cand_rtmps,
                 "rtsp_port": cand_rtsp,
+                "rtsps_port": cand_rtsps,
                 "rtp_port": cand_rtp,
                 "rtcp_port": cand_rtcp,
                 "hls_port": cand_hls,
@@ -258,7 +284,9 @@ def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[
     # Fallback to high random/offset if 50 slots exhausted
     return {
         "rtmp_port": 11935,
+        "rtmps_port": 11936,
         "rtsp_port": 18554,
+        "rtsps_port": 18322,
         "rtp_port": 18000,
         "rtcp_port": 18001,
         "hls_port": 18888,
