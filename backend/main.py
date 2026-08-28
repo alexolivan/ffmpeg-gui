@@ -2583,12 +2583,11 @@ async def auto_start_services():
     logger.info("Watchdog / Auto-start: Initializing service startup checks...")
     
     with SessionLocal() as db:
-        services = db.query(MediaProcess).filter(
-            MediaProcess.service_type == 'ffmpeg_stream',
-            MediaProcess.config["auto_start"].as_boolean() == True
-        ).all()
+        all_services = db.query(MediaProcess).all()
+        auto_start_services = [s for s in all_services if getattr(s, 'auto_start', False)]
+
         sorted_services = sorted(
-            services,
+            auto_start_services,
             key=lambda s: (
                 s.startup_order if getattr(s, 'startup_order', None) is not None else 1,
                 s.startup_delay if getattr(s, 'startup_delay', None) is not None else 0,
