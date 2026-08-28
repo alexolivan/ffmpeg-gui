@@ -553,11 +553,12 @@ class ProcessManager:
         build_ver_minor = 19
         build_id = getattr(media_proc, "ffmpeg_build_id", None) or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
         if build_id:
-            from database.models import FfmpegBuild
-            build = session.query(FfmpegBuild).get(build_id)
-            if build and build.version:
+            from database.models import SoftwareBuild
+            build = session.query(SoftwareBuild).get(build_id)
+            version_str = getattr(build, "version_tag", None) or getattr(build, "name", None) or ""
+            if version_str:
                 import re
-                clean = re.sub(r'^[^\d]*', '', build.version)
+                clean = re.sub(r'^[^\d]*', '', version_str)
                 parts = clean.split('.')
                 try:
                     build_ver_major = int(parts[0])
