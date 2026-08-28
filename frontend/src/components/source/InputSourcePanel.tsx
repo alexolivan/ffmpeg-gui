@@ -465,6 +465,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
       {config.type === 'srt' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         const mtxCfg = selectedProvider?.config || {};
         const rawPaths = mtxCfg.paths || {};
@@ -534,7 +535,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         };
 
         const currentPathConf = rawPaths[config.path_id || ''];
-        const authHint = config.mediamtx_mode ? (
+        const authHint = isMediaMtxMode ? (
           currentPathConf?.mode === 'custom'
             ? t('sources.srtAuthCustomHint', 'Credentials loaded from path-specific rules')
             : currentPathConf?.mode === 'open'
@@ -546,7 +547,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
         const effectiveReadUser = config.read_user ?? config.auth_user ?? '';
         const effectiveReadPass = config.read_pass ?? config.auth_pass ?? '';
-        const streamIdPreview = config.mediamtx_mode
+        const streamIdPreview = isMediaMtxMode
           ? `#!::r=${config.path_id || '<path>'},m=request${effectiveReadUser ? `,u=${effectiveReadUser}` : ''}${effectiveReadPass ? `,p=${effectiveReadPass}` : ''}`
           : (config.streamid || '');
 
@@ -557,7 +558,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               <button
                 type="button"
                 className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
-                  !config.mediamtx_mode
+                  !isMediaMtxMode
                     ? 'bg-blue-600/30 text-[var(--text-primary)] border border-blue-500/40 shadow-sm'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
@@ -566,6 +567,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   service_target: undefined,
                   stream_action: undefined,
                   path_id: undefined,
+                  provider_service_id: undefined,
                 })}
               >
                 {t('sources.srtManualDirect', 'Manual Direct SRT')}
@@ -573,12 +575,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               <button
                 type="button"
                 className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
-                  config.mediamtx_mode
+                  isMediaMtxMode
                     ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
                 onClick={() => {
-                  const defaultProv = mediamtxProviders[0];
+                  const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
                   if (defaultProv) {
                     handleSelectProvider(defaultProv.id);
                   } else {
@@ -589,7 +591,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       service_target: 'mediamtx',
                       host: config.host || '127.0.0.1',
                       port: config.port || '8890',
-                      path_id: config.path_id || 'live',
+                      path_id: config.path_id || 'stream1',
                     });
                   }
                 }}
@@ -599,7 +601,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               </button>
             </div>
 
-            {config.mediamtx_mode ? (
+            {isMediaMtxMode ? (
               /* MediaMTX Hub Integration Mode */
               <div className="space-y-2.5 bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-3">
                 <div className="flex items-center justify-between">

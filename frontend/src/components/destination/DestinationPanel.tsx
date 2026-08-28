@@ -327,8 +327,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         ))}
       </select>
 
-      {/* Auxiliary Hub Quick-Preset Bar */}
-      {providers.length > 0 && ['rtmp', 'srt', 'whip'].includes(config.type) && (
+      {/* Auxiliary Hub Quick-Preset Bar (for RTMP and WHIP) */}
+      {providers.length > 0 && ['rtmp', 'whip'].includes(config.type) && (
         <div className="bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-2 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-xs">⚡</span>
@@ -354,15 +354,6 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 update({ 
                   provider_service_id: selectedId,
                   url: `rtmp://127.0.0.1:${port}/live/stream1` 
-                });
-              } else if (config.type === 'srt') {
-                const port = cfg.srt_port || 8890;
-                update({
-                  provider_service_id: selectedId,
-                  mode: 'caller',
-                  host: '127.0.0.1',
-                  port: String(port),
-                  streamid: 'publish:stream1'
                 });
               } else if (config.type === 'whip') {
                 const port = cfg.webrtc_port || 8889;
@@ -398,16 +389,16 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 name="host"
                 placeholder="e.g. 239.0.0.1 or 127.0.0.1"
                 className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                  validationErrors?.host
-                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
+                  validationErrors?.host ? 'border-red-500/50' : 'border-white/10 focus:border-brand-lime'
                 }`}
-                value={config.host || ''} onChange={e => update({ host: e.target.value })}
+                value={config.host || ''}
+                onChange={e => update({ host: e.target.value })}
               />
               {validationErrors?.host && (
-                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.host}</span>
+                <p className="text-[9px] text-red-400 mt-0.5">{validationErrors.host}</p>
               )}
             </div>
+
             <div>
               <label htmlFor={`dest-${config.type}-port`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
                 {t('destinations.port')}<span className="text-red-500 ml-0.5">*</span>
@@ -416,109 +407,123 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 type="text"
                 id={`dest-${config.type}-port`}
                 name="port"
-                placeholder="1234"
-                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
-                  validationErrors?.port
-                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
+                placeholder="e.g. 1234"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                  validationErrors?.port ? 'border-red-500/50' : 'border-white/10 focus:border-brand-lime'
                 }`}
-                value={config.port || ''} onChange={e => update({ port: e.target.value })}
+                value={config.port || ''}
+                onChange={e => update({ port: e.target.value })}
               />
               {validationErrors?.port && (
-                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.port}</span>
+                <p className="text-[9px] text-red-400 mt-0.5">{validationErrors.port}</p>
               )}
             </div>
           </div>
 
           {config.type === 'udp' && (
-            <div className="border border-white/5 bg-white/[0.01] rounded-lg p-2.5 space-y-2">
-              <span className="text-[9px] uppercase font-black tracking-widest text-text-secondary">
-                {t('destinations.mpegTsDvbOptions')}
-              </span>
-
+            <div className="space-y-2 pt-2 border-t border-white/5">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label htmlFor="dest-udp-muxrate" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.constantMuxrate')}</label>
+                  <label htmlFor="dest-udp-pkt-size" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.packetSize')}
+                  </label>
+                  <select
+                    id="dest-udp-pkt-size"
+                    name="pkt_size"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                    value={config.pkt_size || 1316}
+                    onChange={e => update({ pkt_size: Number(e.target.value) })}
+                  >
+                    <option value={1316}>1316 {t('destinations.standardDvb')}</option>
+                    <option value={188}>188 {t('destinations.singlePacket')}</option>
+                    <option value={7}>7 {t('destinations.lanJumbo')}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="dest-udp-muxrate" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.cbrMuxrate')}
+                  </label>
                   <input
                     type="text"
                     id="dest-udp-muxrate"
                     name="muxrate"
-                    placeholder="e.g. 5000000 (5 Mbps)"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.muxrate || ''} onChange={e => update({ muxrate: e.target.value })}
+                    placeholder="e.g. 10M, 5000k"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none placeholder-white/20"
+                    value={config.muxrate || ''}
+                    onChange={e => update({ muxrate: e.target.value })}
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label htmlFor="dest-udp-pkt-size" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.socketPacketSize')}</label>
-                  <input
-                    type="number"
-                    id="dest-udp-pkt-size"
-                    name="pkt_size"
-                    placeholder="1316" min={188} max={65535}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.pkt_size || 1316} onChange={e => update({ pkt_size: Number(e.target.value) })}
-                  />
+              {/* DVB / MPEG-TS SI Table Metadata Form */}
+              <div className="bg-white/[0.03] border border-white/5 rounded-lg p-2.5 space-y-2">
+                <span className="text-[9px] font-bold text-brand-lime uppercase tracking-wider block">
+                  {t('destinations.dvbMetadata')}
+                </span>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="dest-udp-service-prov" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceProvider')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-service-prov"
+                      name="service_provider"
+                      placeholder="e.g. Broadcaster TV"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.service_provider || ''} onChange={e => update({ service_provider: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="dest-udp-service-name" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceName')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-service-name"
+                      name="service_name"
+                      placeholder="e.g. Channel 1 HD"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.service_name || ''} onChange={e => update({ service_name: e.target.value })}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label htmlFor="dest-udp-service-provider" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceProvider')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-service-provider"
-                    name="service_provider"
-                    placeholder="e.g. Antigravity Broadcast"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-                    value={config.service_provider || ''} onChange={e => update({ service_provider: e.target.value })}
-                  />
-                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="dest-udp-ts-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.transportStreamId')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-ts-id"
+                      name="transport_stream_id"
+                      placeholder="e.g. 0x0001 or 1"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.transport_stream_id || ''} onChange={e => update({ transport_stream_id: e.target.value })}
+                    />
+                  </div>
 
-                <div>
-                  <label htmlFor="dest-udp-service-name" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceName')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-service-name"
-                    name="service_name"
-                    placeholder="e.g. Main HD Channel"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-                    value={config.service_name || ''} onChange={e => update({ service_name: e.target.value })}
-                  />
-                </div>
+                  <div>
+                    <label htmlFor="dest-udp-net-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.originalNetworkId')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-net-id"
+                      name="original_network_id"
+                      placeholder="e.g. 0x20fa or 8442"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.original_network_id || ''} onChange={e => update({ original_network_id: e.target.value })}
+                    />
+                  </div>
 
-                <div>
-                  <label htmlFor="dest-udp-ts-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.transportStreamId')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-ts-id"
-                    name="transport_stream_id"
-                    placeholder="e.g. 0x0001 or 1"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.transport_stream_id || ''} onChange={e => update({ transport_stream_id: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="dest-udp-net-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.originalNetworkId')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-net-id"
-                    name="original_network_id"
-                    placeholder="e.g. 0x20fa or 8442"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.original_network_id || ''} onChange={e => update({ original_network_id: e.target.value })}
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label htmlFor="dest-udp-service-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceId')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-service-id"
-                    name="service_id"
-                    placeholder="e.g. 0x0001 or 1"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.service_id || ''} onChange={e => update({ service_id: e.target.value })}
-                  />
+                  <div className="col-span-2">
+                    <label htmlFor="dest-udp-service-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceId')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-service-id"
+                      name="service_id"
+                      placeholder="e.g. 0x0001 or 1"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.service_id || ''} onChange={e => update({ service_id: e.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -528,6 +533,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'srt' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         const mtxCfg = selectedProvider?.config || {};
         const rawPaths = mtxCfg.paths || {};
@@ -597,7 +603,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         };
 
         const currentPathConf = rawPaths[config.path_id || ''];
-        const authHint = config.mediamtx_mode ? (
+        const authHint = isMediaMtxMode ? (
           currentPathConf?.mode === 'custom'
             ? t('destinations.srtAuthCustomHint', 'Credentials loaded from path-specific rules')
             : currentPathConf?.mode === 'open'
@@ -609,7 +615,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
         const effectivePubUser = config.publish_user ?? config.auth_user ?? '';
         const effectivePubPass = config.publish_pass ?? config.auth_pass ?? '';
-        const streamIdPreview = config.mediamtx_mode
+        const streamIdPreview = isMediaMtxMode
           ? `#!::r=${config.path_id || '<path>'},m=publish${effectivePubUser ? `,u=${effectivePubUser}` : ''}${effectivePubPass ? `,p=${effectivePubPass}` : ''}`
           : (config.streamid || '');
 
@@ -620,7 +626,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               <button
                 type="button"
                 className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
-                  !config.mediamtx_mode
+                  !isMediaMtxMode
                     ? 'bg-purple-600/30 text-[var(--text-primary)] border border-purple-500/40 shadow-sm'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
@@ -629,6 +635,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   service_target: undefined,
                   stream_action: undefined,
                   path_id: undefined,
+                  provider_service_id: undefined,
                 })}
               >
                 {t('destinations.srtManualDirect', 'Manual Direct SRT')}
@@ -636,12 +643,12 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               <button
                 type="button"
                 className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
-                  config.mediamtx_mode
+                  isMediaMtxMode
                     ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
                 onClick={() => {
-                  const defaultProv = mediamtxProviders[0];
+                  const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
                   if (defaultProv) {
                     handleSelectProvider(defaultProv.id);
                   } else {
@@ -652,7 +659,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       service_target: 'mediamtx',
                       host: config.host || '127.0.0.1',
                       port: config.port || '8890',
-                      path_id: config.path_id || 'live',
+                      path_id: config.path_id || 'stream1',
                     });
                   }
                 }}
@@ -662,7 +669,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               </button>
             </div>
 
-            {config.mediamtx_mode ? (
+            {isMediaMtxMode ? (
               /* MediaMTX Hub Integration Mode */
               <div className="space-y-2.5 bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-3">
                 <div className="flex items-center justify-between">

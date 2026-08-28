@@ -80,7 +80,6 @@ class TestMediaMtxPathsAndSecurity(unittest.TestCase):
                     "paths": {
                         "default_stream": {
                             "mode": "inherit",
-                            "source": "publisher",
                         },
                         "studio_live": {
                             "mode": "custom",
@@ -88,12 +87,9 @@ class TestMediaMtxPathsAndSecurity(unittest.TestCase):
                             "publish_pass": "studiopass123",
                             "read_user": "viewer1",
                             "read_pass": "viewerpass123",
-                            "run_on_publish": "ffmpeg -i rtsp://localhost:8554/studio_live -c copy ...",
-                            "source": "publisher",
                         },
                         "public_broadcast": {
                             "mode": "open",
-                            "source": "publisher",
                         }
                     }
                 }
@@ -123,8 +119,6 @@ class TestMediaMtxPathsAndSecurity(unittest.TestCase):
         self.assertEqual(studio.get("publishPass"), "studiopass123")
         self.assertEqual(studio.get("readUser"), "viewer1")
         self.assertEqual(studio.get("readPass"), "viewerpass123")
-        self.assertEqual(studio.get("runOnPublish"), "ffmpeg -i rtsp://localhost:8554/studio_live -c copy ...")
-        self.assertEqual(studio.get("source"), "publisher")
 
         # open mode path
         self.assertIn("public_broadcast", paths)
@@ -133,12 +127,10 @@ class TestMediaMtxPathsAndSecurity(unittest.TestCase):
         self.assertEqual(pub.get("publishPass"), "")
         self.assertEqual(pub.get("readUser"), "")
         self.assertEqual(pub.get("readPass"), "")
-        self.assertEqual(pub.get("source"), "publisher")
 
         # inherit mode path
         self.assertIn("default_stream", paths)
         default_s = paths["default_stream"]
-        self.assertEqual(default_s.get("source"), "publisher")
         # In inherit mode, specific user/pass should not overwrite with empty strings
         self.assertNotIn("publishUser", default_s)
 

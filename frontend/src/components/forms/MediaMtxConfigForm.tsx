@@ -29,8 +29,6 @@ export interface PathConfig {
   publish_pass?: string;
   read_user?: string;
   read_pass?: string;
-  run_on_publish?: string;
-  source?: string;
 }
 
 export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
@@ -141,8 +139,6 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
   const [currentPathReadPass, setCurrentPathReadPass] = useState<string>('');
   const [currentPathShowPubPass, setCurrentPathShowPubPass] = useState<boolean>(false);
   const [currentPathShowReadPass, setCurrentPathShowReadPass] = useState<boolean>(false);
-  const [currentPathRunOnPublish, setCurrentPathRunOnPublish] = useState<string>('');
-  const [currentPathSource, setCurrentPathSource] = useState<string>('');
   const [pathFormError, setPathFormError] = useState<string | null>(null);
 
   // API & Diagnostics
@@ -342,8 +338,6 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
     setCurrentPathPubPass('');
     setCurrentPathReadUser('');
     setCurrentPathReadPass('');
-    setCurrentPathRunOnPublish('');
-    setCurrentPathSource('');
     setPathFormError(null);
   };
 
@@ -358,8 +352,6 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
     setCurrentPathPubPass(p.publish_pass || '');
     setCurrentPathReadUser(p.read_user || '');
     setCurrentPathReadPass(p.read_pass || '');
-    setCurrentPathRunOnPublish(p.run_on_publish || '');
-    setCurrentPathSource(p.source || '');
     setPathFormError(null);
   };
 
@@ -380,8 +372,6 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
     const newPath: PathConfig = {
       path_id: cleanId,
       mode: currentPathMode,
-      source: currentPathSource.trim() || undefined,
-      run_on_publish: currentPathRunOnPublish.trim() || undefined,
       publish_user: currentPathMode === 'custom' ? currentPathPubUser.trim() : undefined,
       publish_pass: currentPathMode === 'custom' ? currentPathPubPass : undefined,
       read_user: currentPathMode === 'custom' ? currentPathReadUser.trim() : undefined,
@@ -447,8 +437,6 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
       const pEntry: Record<string, any> = {
         mode: p.mode,
       };
-      if (p.source && p.source.trim()) pEntry.source = p.source.trim();
-      if (p.run_on_publish && p.run_on_publish.trim()) pEntry.run_on_publish = p.run_on_publish.trim();
       if (p.mode === 'custom') {
         pEntry.publish_user = p.publish_user ? p.publish_user.trim() : '';
         pEntry.publish_pass = p.publish_pass || '';
@@ -1214,34 +1202,6 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
                   </div>
                 </div>
               )}
-
-              {/* Source Pull URL */}
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase mb-1">
-                  {t('services.mediamtx.source', 'URL de Fuente de Ingesta Externa (Opcional)')}
-                </label>
-                <input
-                  type="text"
-                  value={currentPathSource}
-                  onChange={(e) => setCurrentPathSource(e.target.value)}
-                  placeholder={t('services.mediamtx.sourcePlaceholder', 'ej. publisher o rtsp://192.168.1.50:554/stream1')}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:border-brand-lime outline-none"
-                />
-              </div>
-
-              {/* Run On Publish */}
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase mb-1">
-                  {t('services.mediamtx.runOnPublish', 'Comando al Publicar (Hook Run On Publish Opcional)')}
-                </label>
-                <input
-                  type="text"
-                  value={currentPathRunOnPublish}
-                  onChange={(e) => setCurrentPathRunOnPublish(e.target.value)}
-                  placeholder={t('services.mediamtx.runOnPublishPlaceholder', 'ej. ffmpeg -i rtsp://localhost:8554/$MTX_PATH ...')}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono focus:border-brand-lime outline-none"
-                />
-              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--glass-border)]">
@@ -1307,18 +1267,6 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
                       <span className="text-[10px] text-[var(--text-secondary)] font-mono">
                         {p.publish_user ? `pub:${p.publish_user} ` : ''}
                         {p.read_user ? `read:${p.read_user}` : ''}
-                      </span>
-                    )}
-
-                    {p.source && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--input-bg)] text-[var(--text-secondary)] font-mono border border-[var(--glass-border)]" title={p.source}>
-                        src: {p.source.length > 25 ? `${p.source.slice(0, 22)}...` : p.source}
-                      </span>
-                    )}
-
-                    {p.run_on_publish && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 font-mono border border-purple-500/20" title={p.run_on_publish}>
-                        hook
                       </span>
                     )}
                   </div>

@@ -676,18 +676,6 @@ class ProcessManager:
             mode = path_cfg.get("mode", "inherit")
             entry = {}
 
-            # Map source
-            if "source" in path_cfg and path_cfg["source"] is not None:
-                entry["source"] = path_cfg["source"]
-
-            # Map run_on_publish / run_on_read
-            run_on_pub = path_cfg.get("run_on_publish") or path_cfg.get("runOnPublish")
-            if run_on_pub:
-                entry["runOnPublish"] = run_on_pub
-            run_on_read = path_cfg.get("run_on_read") or path_cfg.get("runOnRead")
-            if run_on_read:
-                entry["runOnRead"] = run_on_read
-
             if mode == "open":
                 entry["publishUser"] = ""
                 entry["publishPass"] = ""
