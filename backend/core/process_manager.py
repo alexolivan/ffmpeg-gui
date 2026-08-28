@@ -603,8 +603,18 @@ class ProcessManager:
 
             if server_key:
                 config_dict["serverKey"] = server_key
+                config_dict["rtspServerKey"] = server_key
+                config_dict["rtmpServerKey"] = server_key
+                config_dict["hlsServerKey"] = server_key
+                config_dict["webrtcServerKey"] = server_key
+                config_dict["apiServerKey"] = server_key
             if server_cert:
                 config_dict["serverCert"] = server_cert
+                config_dict["rtspServerCert"] = server_cert
+                config_dict["rtmpServerCert"] = server_cert
+                config_dict["hlsServerCert"] = server_cert
+                config_dict["webrtcServerCert"] = server_cert
+                config_dict["apiServerCert"] = server_cert
 
             if mtx_cfg.get("rtmps_enabled", False):
                 config_dict["rtmpEncryption"] = "optional"
