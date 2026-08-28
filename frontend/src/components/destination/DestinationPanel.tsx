@@ -616,7 +616,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         const effectivePubUser = config.publish_user ?? config.auth_user ?? '';
         const effectivePubPass = config.publish_pass ?? config.auth_pass ?? '';
         const streamIdPreview = isMediaMtxMode
-          ? `#!::r=${config.path_id || '<path>'},m=publish${effectivePubUser ? `,u=${effectivePubUser}` : ''}${effectivePubPass ? `,p=${effectivePubPass}` : ''}`
+          ? `#!::r=${config.path_id || '<path>'},m=publish${effectivePubUser ? `,u=${effectivePubUser}` : ''}${effectivePubPass ? `,p=••••••••` : ''}`
           : (config.streamid || '');
 
         return (
@@ -677,7 +677,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     <span>⚡</span> {t('destinations.srtMediaMtxHub', 'MediaMTX Hub Integration')}
                   </span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime font-mono">
-                    caller → publish
+                    caller → publish ({config.host || '127.0.0.1'}:{config.port || '8890'})
                   </span>
                 </div>
 
@@ -725,95 +725,45 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         </select>
                       </div>
 
-                      {isCustomPath ? (
-                        <div>
-                          <label htmlFor="dest-srt-path-custom" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
-                            {t('destinations.srtCustomPathSlug', 'Custom Path Slug')}
-                          </label>
-                          <input
-                            type="text"
-                            id="dest-srt-path-custom"
-                            placeholder={t('destinations.srtCustomPathPlaceholder', 'e.g. live, studio_main, tx1')}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                            value={config.path_id || ''}
-                            onChange={e => update({ path_id: e.target.value })}
-                          />
-                        </div>
-                      ) : (
-                        <div>
-                          <label htmlFor="dest-srt-latency-mtx" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
-                            {t('sources.latencyMs', 'Latency (ms)')}
-                          </label>
-                          <input
-                            type="number"
-                            id="dest-srt-latency-mtx"
-                            min={20}
-                            max={8000}
-                            placeholder="200"
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                            value={config.latency || 200}
-                            onChange={e => update({ latency: Number(e.target.value) })}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label htmlFor="dest-srt-host-mtx" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
-                          {t('destinations.hostMulticastIp', 'Host')}
+                        <label htmlFor="dest-srt-latency-mtx" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.latencyMs', 'Latency (ms)')}
                         </label>
                         <input
-                          type="text"
-                          id="dest-srt-host-mtx"
+                          type="number"
+                          id="dest-srt-latency-mtx"
+                          min={20}
+                          max={8000}
+                          placeholder="200"
                           className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                          value={config.host || '127.0.0.1'}
-                          onChange={e => update({ host: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="dest-srt-port-mtx" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
-                          {t('destinations.port', 'Port')}
-                        </label>
-                        <input
-                          type="text"
-                          id="dest-srt-port-mtx"
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                          value={config.port || '8890'}
-                          onChange={e => update({ port: e.target.value })}
+                          value={config.latency || 200}
+                          onChange={e => update({ latency: Number(e.target.value) })}
                         />
                       </div>
                     </div>
 
-                    {/* Publish Credentials */}
-                    <div className="pt-1 border-t border-[var(--glass-border)]">
-                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
-                        {t('destinations.srtPublishAuth', 'Publish Authentication')}
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <input
-                            type="text"
-                            placeholder={t('destinations.srtPublishUser', 'Publish Username (u=...)')}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                            value={effectivePubUser}
-                            onChange={e => update({ publish_user: e.target.value, auth_user: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <input
-                            type="password"
-                            placeholder={t('destinations.srtPublishPass', 'Publish Password (p=...)')}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                            value={effectivePubPass}
-                            onChange={e => update({ publish_pass: e.target.value, auth_pass: e.target.value })}
-                          />
-                        </div>
+                    {isCustomPath && (
+                      <div>
+                        <label htmlFor="dest-srt-path-custom" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.srtCustomPathSlug', 'Custom Path Slug')}
+                        </label>
+                        <input
+                          type="text"
+                          id="dest-srt-path-custom"
+                          placeholder={t('destinations.srtCustomPathPlaceholder', 'e.g. live, studio_main, tx1')}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.path_id || ''}
+                          onChange={e => update({ path_id: e.target.value })}
+                        />
                       </div>
-                      {authHint && (
-                        <p className="text-[10px] text-brand-lime/80 mt-1">{authHint}</p>
-                      )}
-                    </div>
+                    )}
+
+                    {authHint && (
+                      <div className="text-[10px] text-brand-lime/90 bg-brand-lime/10 px-2 py-1 rounded border border-brand-lime/20 flex items-center gap-1.5">
+                        <span>🔐</span>
+                        <span>{authHint}</span>
+                      </div>
+                    )}
 
                     {/* Stream ID Preview */}
                     <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2">

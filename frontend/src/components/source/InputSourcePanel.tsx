@@ -548,7 +548,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         const effectiveReadUser = config.read_user ?? config.auth_user ?? '';
         const effectiveReadPass = config.read_pass ?? config.auth_pass ?? '';
         const streamIdPreview = isMediaMtxMode
-          ? `#!::r=${config.path_id || '<path>'},m=request${effectiveReadUser ? `,u=${effectiveReadUser}` : ''}${effectiveReadPass ? `,p=${effectiveReadPass}` : ''}`
+          ? `#!::r=${config.path_id || '<path>'},m=request${effectiveReadUser ? `,u=${effectiveReadUser}` : ''}${effectiveReadPass ? `,p=••••••••` : ''}`
           : (config.streamid || '');
 
         return (
@@ -609,7 +609,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     <span>⚡</span> {t('sources.srtMediaMtxHub', 'MediaMTX Hub Integration')}
                   </span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime font-mono">
-                    caller → request
+                    caller → request ({config.host || '127.0.0.1'}:{config.port || '8890'})
                   </span>
                 </div>
 
@@ -657,95 +657,45 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         </select>
                       </div>
 
-                      {isCustomPath ? (
-                        <div>
-                          <label htmlFor={`${idPrefix}-srt-path-custom`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
-                            {t('sources.srtCustomPathSlug', 'Custom Path Slug')}
-                          </label>
-                          <input
-                            type="text"
-                            id={`${idPrefix}-srt-path-custom`}
-                            placeholder={t('sources.srtCustomPathPlaceholder', 'e.g. live, studio_main, tx1')}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                            value={config.path_id || ''}
-                            onChange={e => update({ path_id: e.target.value })}
-                          />
-                        </div>
-                      ) : (
-                        <div>
-                          <label htmlFor={`${idPrefix}-srt-latency-mtx`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
-                            {t('sources.latencyMs', 'Latency (ms)')}
-                          </label>
-                          <input
-                            type="number"
-                            id={`${idPrefix}-srt-latency-mtx`}
-                            min={20}
-                            max={8000}
-                            placeholder="250"
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                            value={config.latency || 250}
-                            onChange={e => update({ latency: Number(e.target.value) })}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label htmlFor={`${idPrefix}-srt-host-mtx`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
-                          {t('sources.remoteHostIp', 'Host')}
+                        <label htmlFor={`${idPrefix}-srt-latency-mtx`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.latencyMs', 'Latency (ms)')}
                         </label>
                         <input
-                          type="text"
-                          id={`${idPrefix}-srt-host-mtx`}
+                          type="number"
+                          id={`${idPrefix}-srt-latency-mtx`}
+                          min={20}
+                          max={8000}
+                          placeholder="250"
                           className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                          value={config.host || '127.0.0.1'}
-                          onChange={e => update({ host: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor={`${idPrefix}-srt-port-mtx`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
-                          {t('sources.port', 'Port')}
-                        </label>
-                        <input
-                          type="text"
-                          id={`${idPrefix}-srt-port-mtx`}
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                          value={config.port || '8890'}
-                          onChange={e => update({ port: e.target.value })}
+                          value={config.latency || 250}
+                          onChange={e => update({ latency: Number(e.target.value) })}
                         />
                       </div>
                     </div>
 
-                    {/* Read Credentials */}
-                    <div className="pt-1 border-t border-[var(--glass-border)]">
-                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
-                        {t('sources.srtReadAuth', 'Read Authentication')}
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <input
-                            type="text"
-                            placeholder={t('sources.srtReadUser', 'Read Username (u=...)')}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                            value={effectiveReadUser}
-                            onChange={e => update({ read_user: e.target.value, auth_user: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <input
-                            type="password"
-                            placeholder={t('sources.srtReadPass', 'Read Password (p=...)')}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
-                            value={effectiveReadPass}
-                            onChange={e => update({ read_pass: e.target.value, auth_pass: e.target.value })}
-                          />
-                        </div>
+                    {isCustomPath && (
+                      <div>
+                        <label htmlFor={`${idPrefix}-srt-path-custom`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.srtCustomPathSlug', 'Custom Path Slug')}
+                        </label>
+                        <input
+                          type="text"
+                          id={`${idPrefix}-srt-path-custom`}
+                          placeholder={t('sources.srtCustomPathPlaceholder', 'e.g. live, studio_main, tx1')}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.path_id || ''}
+                          onChange={e => update({ path_id: e.target.value })}
+                        />
                       </div>
-                      {authHint && (
-                        <p className="text-[10px] text-brand-lime/80 mt-1">{authHint}</p>
-                      )}
-                    </div>
+                    )}
+
+                    {authHint && (
+                      <div className="text-[10px] text-brand-lime/90 bg-brand-lime/10 px-2 py-1 rounded border border-brand-lime/20 flex items-center gap-1.5">
+                        <span>🔐</span>
+                        <span>{authHint}</span>
+                      </div>
+                    )}
 
                     {/* Stream ID Preview */}
                     <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2">
