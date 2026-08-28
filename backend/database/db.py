@@ -124,15 +124,11 @@ def init_db():
                 conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN is_system BOOLEAN DEFAULT 0"))
             if "command" not in task_columns:
                 conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN command TEXT DEFAULT NULL"))
+            if "allow_auto_start_deps" not in task_columns:
+                conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN allow_auto_start_deps BOOLEAN DEFAULT 1"))
+            if "allow_auto_stop_deps" not in task_columns:
+                conn.execute(text("ALTER TABLE scheduled_tasks ADD COLUMN allow_auto_stop_deps BOOLEAN DEFAULT 1"))
             
-            # Migración para la columna auto_clean en software_builds
-            result = conn.execute(text("PRAGMA table_info(software_builds)"))
-            build_columns = [row[1] for row in result.fetchall()]
-            if "auto_clean" not in build_columns:
-                conn.execute(text("ALTER TABLE software_builds ADD COLUMN auto_clean BOOLEAN DEFAULT 0"))
-            if "storage_id" not in build_columns:
-                conn.execute(text("ALTER TABLE software_builds ADD COLUMN storage_id INTEGER REFERENCES storages(id) NULL"))
-
             # Migración para reemplazar UNIQUE(name) por UNIQUE(name, software_type) en software_builds
             result = conn.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='software_builds'"))
             table_sql_row = result.fetchone()
@@ -145,8 +141,11 @@ def init_db():
                             id INTEGER PRIMARY KEY,
                             name VARCHAR NOT NULL,
                             software_type VARCHAR DEFAULT 'ffmpeg' NOT NULL,
+                            source_type VARCHAR(32) DEFAULT 'compiled' NOT NULL,
                             version_tag VARCHAR NOT NULL,
                             binary_path VARCHAR,
+                            system_path VARCHAR(512) DEFAULT NULL,
+                            is_managed BOOLEAN DEFAULT 1 NOT NULL,
                             build_options JSON NOT NULL,
                             sdk_paths JSON,
                             install_path VARCHAR NOT NULL,
@@ -182,6 +181,20 @@ def init_db():
                     conn.execute(text("ALTER TABLE software_builds_mig_tmp RENAME TO software_builds"))
             
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_software_builds_name_type ON software_builds(name, software_type)"))
+
+            # Migración para columnas de la tabla software_builds (ejecutada SIEMPRE tras la recreación)
+            result = conn.execute(text("PRAGMA table_info(software_builds)"))
+            build_columns = [row[1] for row in result.fetchall()]
+            if "auto_clean" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN auto_clean BOOLEAN DEFAULT 0"))
+            if "storage_id" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN storage_id INTEGER REFERENCES storages(id) NULL"))
+            if "source_type" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN source_type VARCHAR(32) DEFAULT 'compiled' NOT NULL"))
+            if "system_path" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN system_path VARCHAR(512) DEFAULT NULL"))
+            if "is_managed" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN is_managed BOOLEAN DEFAULT 1 NOT NULL"))
                 
             # Migración para la tabla system_settings
             result = conn.execute(text("PRAGMA table_info(system_settings)"))

@@ -1,0 +1,353 @@
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+import { 
+  PlayIcon, 
+  StopIcon, 
+  RefreshIcon, 
+  PencilIcon, 
+  TrashIcon, 
+  ClipboardIcon,
+  ShieldIcon,
+  LightningIcon,
+  ExportIcon
+} from '../Icons';
+import { EngineLogo } from '../common/EngineLogo';
+import type { ServiceItem } from './UnifiedServiceCard';
+
+interface MediaMtxServiceCardProps {
+  service: ServiceItem;
+  telemetryItem?: any;
+  actionPending?: 'starting' | 'stopping' | 'restarting';
+  onStartService: (procId: number) => void;
+  onStopService: (procId: number, name?: string) => void;
+  onRestartService: (procId: number, name: string) => void;
+  onEditProcess: (service: ServiceItem) => void;
+  onCloneProcess?: (service: ServiceItem) => void;
+  onDeleteProcess: (service: ServiceItem) => void;
+  onSelectedProcess: (service: ServiceItem) => void;
+  onExportProcess?: (service: ServiceItem) => void;
+  API?: string;
+}
+
+const formatUptime = (lastStartStr: string | null | undefined, isRunning: boolean = true): string => {
+  if (!isRunning || !lastStartStr) return '-';
+  const start = new Date(lastStartStr);
+  const diffMs = Date.now() - start.getTime();
+  if (diffMs <= 0) return '0s';
+  const diffSecs = Math.floor(diffMs / 1000);
+  const days = Math.floor(diffSecs / 86400);
+  const hours = Math.floor((diffSecs % 86400) / 3600);
+  const mins = Math.floor((diffSecs % 3600) / 60);
+  const secs = diffSecs % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+};
+
+export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
+  service,
+  telemetryItem,
+  actionPending,
+  onStartService,
+  onStopService,
+  onRestartService,
+  onEditProcess,
+  onCloneProcess,
+  onDeleteProcess,
+  onSelectedProcess,
+  onExportProcess,
+  API = ''
+}) => {
+  const { t } = useTranslation();
+  const isRunning = service.status === 'running';
+  const isError = service.status === 'error';
+  const isPending = !!actionPending;
+  const watchdogEnabled = service.watchdog_enabled ?? service.config?.watchdog_enabled ?? false;
+  const restartCount = service.restart_count ?? telemetryItem?.restart_count ?? 0;
+  const isRetrying = !!watchdogEnabled && restartCount > 0 && service.status !== 'running' && service.status !== 'stopped';
+
+  const cpu = telemetryItem?.cpu ?? service.cpu ?? 0;
+  const ram = telemetryItem?.ram ?? service.ram ?? 0;
+  const pid = telemetryItem?.pid || service.pid;
+
+  const mtxCfg = service.config?.mediamtx_config || service.config || {};
+
+  const pathsCount = (() => {
+    const rawPaths = mtxCfg.paths;
+    if (!rawPaths) return 0;
+    if (Array.isArray(rawPaths)) {
+      return rawPaths.filter((p: any) => {
+        const id = p?.path_id || p?.name || p?.path;
+        return id && id !== 'all_others';
+      }).length;
+    }
+    if (typeof rawPaths === 'object') {
+      return Object.keys(rawPaths).filter((k) => k !== 'all_others').length;
+    }
+    return 0;
+  })();
+
+  return (
+    <div 
+      onClick={() => onSelectedProcess(service)}
+      className={`group relative flex flex-col lg:flex-row lg:items-center justify-between p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+        isRunning 
+          ? 'bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10 hover:border-emerald-500/40' 
+          : isError
+          ? 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10 hover:border-red-500/40'
+          : 'bg-white/2 hover:bg-white/5 border-[var(--glass-border)] opacity-85 hover:opacity-100'
+      }`}
+    >
+      {/* Left Info Column */}
+      <div className="flex flex-col gap-1.5 min-w-0 flex-1 pr-4">
+        {/* Title & Badges Row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Status Indicator Dot */}
+          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+            actionPending === 'starting' ? 'bg-blue-500 animate-pulse' :
+            actionPending === 'stopping' ? 'bg-brand-orange animate-pulse' :
+            actionPending === 'restarting' ? 'bg-purple-500 animate-pulse' :
+            isRetrying ? 'bg-brand-orange animate-pulse' :
+            isRunning ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]' :
+            isError ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]' :
+            'bg-zinc-600'
+          }`} />
+
+          {/* Service Title & Alias */}
+          <span className="font-bold text-[var(--text-primary)] text-sm group-hover:text-emerald-400 transition-colors truncate">
+            {service.alias || service.name}
+            {service.alias && (
+              <span className="text-xs font-normal text-[var(--text-secondary)] ml-1.5 opacity-80" title={`Original Name: ${service.name}`}>
+                [{service.name}]
+              </span>
+            )}
+          </span>
+
+          {/* Service Type Tag */}
+          <span className="text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-bold flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+            <EngineLogo softwareType="mediamtx" size={12} API={API} />
+            MediaMTX Hub
+          </span>
+
+          {/* SSL / TLS Badge */}
+          {mtxCfg.ssl_enabled && (
+            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+              <ShieldIcon size={10} /> TLS/SSL
+            </span>
+          )}
+
+          {/* Configured Paths Telemetry Badge */}
+          {pathsCount > 0 && (
+            <span 
+              className="text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+              title={`${pathsCount} ${t('services.mediamtx.configuredPaths', 'Configured Paths')}`}
+            >
+              📌 {pathsCount} {pathsCount === 1 ? t('services.mediamtx.pathSingular', 'Path') : t('services.mediamtx.pathPlural', 'Paths')}
+            </span>
+          )}
+
+          {/* Pending Changes Reboot */}
+          {service.pending_changes && (
+            <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse">
+              PENDING REBOOT
+            </span>
+          )}
+
+          {/* Autostart on Boot */}
+          {service.auto_start && (
+            <span className="text-[9px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" title={`Auto-starts on boot (Order #${service.startup_order || 1}${service.startup_delay ? `, Delay ${service.startup_delay}s` : ''})`}>
+              <LightningIcon size={10} /> BOOT (#{service.startup_order || 1}{service.startup_delay ? ` | ${service.startup_delay}s` : ''})
+            </span>
+          )}
+
+          {/* Watchdog */}
+          {service.watchdog_enabled && (
+            <span 
+              className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" 
+              title={`Monitored by daemon watchdog${service.restart_count ? ` (${t('services.restartCount', 'Restarts')}: ${service.restart_count})` : ''}`}
+            >
+              <ShieldIcon size={10} /> WATCHDOG{service.restart_count && service.restart_count > 0 ? ` (${service.restart_count})` : ''}
+            </span>
+          )}
+
+          {/* Active Consumers Leases Badge */}
+          {service.active_leases && service.active_leases.length > 0 ? (
+            <span 
+              className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-black flex items-center gap-1 shadow-[0_0_8px_rgba(212,255,91,0.2)]"
+              title={`Active connected consumers: ${service.active_leases.join(', ')}`}
+            >
+              🔗 {service.active_leases.length} {service.active_leases.length === 1 ? 'CONSUMER' : 'CONSUMERS'} ({service.active_leases.join(', ')})
+            </span>
+          ) : (
+            <span 
+              className="text-[9px] bg-white/5 text-[var(--text-secondary)] border border-white/10 px-2 py-0.5 rounded font-medium flex items-center gap-1"
+              title="No active tasks or services currently leasing this Hub."
+            >
+              🔗 0 LEASES (IDLE)
+            </span>
+          )}
+
+          {isRetrying && (
+            <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
+              ⚠️ {t('services.retrying', 'RETRYING')} ({restartCount})
+            </span>
+          )}
+
+          {service.status === 'error' && !isRetrying && (
+            <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Service failed to start or exited abnormally">
+              ⚠ FAILED
+            </span>
+          )}
+        </div>
+
+        {/* MediaMTX Protocol Listeners Strip */}
+        <div className="text-xs text-[var(--text-secondary)] font-mono flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider">Listeners:</span>
+          {mtxCfg.rtmp_enabled !== false && (
+            <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px]">
+              RTMP :{mtxCfg.rtmp_port || 1935}
+            </span>
+          )}
+          {mtxCfg.ssl_enabled && mtxCfg.rtmps_enabled && (
+            <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">
+              RTMPS :{mtxCfg.rtmps_port || 1936}
+            </span>
+          )}
+          {mtxCfg.rtsp_enabled !== false && (
+            <span className="px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px]">
+              RTSP :{mtxCfg.rtsp_port || 8554}
+            </span>
+          )}
+          {mtxCfg.ssl_enabled && mtxCfg.rtsps_enabled && (
+            <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">
+              RTSPS :{mtxCfg.rtsps_port || 8322}
+            </span>
+          )}
+          {mtxCfg.webrtc_enabled !== false && (
+            <span className="px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">
+              WHEP :{mtxCfg.webrtc_port || 8889}
+            </span>
+          )}
+          {mtxCfg.srt_enabled !== false && (
+            <span className="px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px]">
+              SRT :{mtxCfg.srt_port || 8890}
+            </span>
+          )}
+          {mtxCfg.hls_enabled && (
+            <span className="px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px]">
+              HLS :{mtxCfg.hls_port || 8888}
+            </span>
+          )}
+        </div>
+
+        {/* Compact Telemetry Strip */}
+        <div className="flex gap-x-3 gap-y-1 mt-0.5 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
+          <span>PID: <strong className={isRunning && pid ? "text-[var(--text-primary)] font-bold" : "text-zinc-500 font-normal"}>{isRunning && pid ? pid : t('common.offline', 'OFFLINE')}</strong></span>
+          <span className="opacity-20">|</span>
+          <span>Uptime: <strong className="text-[var(--text-primary)]">{formatUptime(service.last_start, isRunning)}</strong></span>
+          <span className="opacity-20">|</span>
+          <span>CPU: <strong className={isRunning && cpu > 80 ? 'text-red-400 font-bold' : 'text-[var(--text-primary)]'}>{isRunning ? `${cpu}%` : '-'}</strong></span>
+          <span className="opacity-20">|</span>
+          <span>RAM: <strong className="text-[var(--text-primary)]">{isRunning ? `${ram} MB` : '-'}</strong></span>
+        </div>
+      </div>
+
+      {/* Right Iconic Action Button Bar */}
+      <div className="flex items-center gap-1.5 mt-3 lg:mt-0 flex-shrink-0" onClick={e => e.stopPropagation()}>
+        {/* Edit Button */}
+        <button
+          disabled={isPending}
+          onClick={() => onEditProcess(service)}
+          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50"
+          title={t('common.edit', 'Edit Service Settings')}
+        >
+          <PencilIcon size={16} />
+        </button>
+
+        {/* Clone Service Button */}
+        {onCloneProcess && (
+          <button
+            disabled={isPending}
+            onClick={() => onCloneProcess(service)}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50"
+            title={t('services.cloneService', 'Clone Service')}
+          >
+            <ClipboardIcon size={16} />
+          </button>
+        )}
+
+        {/* Export Button */}
+        {onExportProcess && (
+          <button
+            disabled={isPending}
+            onClick={() => onExportProcess(service)}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50"
+            title={t('services.exportProfile', 'Export Profile')}
+          >
+            <ExportIcon size={16} />
+          </button>
+        )}
+
+        {/* Restart Button */}
+        {isRunning && (
+          <button
+            disabled={isPending}
+            onClick={() => onRestartService(service.id, service.name)}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 disabled:opacity-50 ${
+              service.pending_changes
+                ? 'bg-brand-orange text-black border-brand-orange/40 animate-pulse shadow-lg shadow-brand-orange/20'
+                : 'bg-white/5 hover:bg-white/10 border-white/10 text-emerald-400'
+            }`}
+            title={t('services.restartService', 'Restart Service')}
+          >
+            {actionPending === 'restarting' ? (
+              <span className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin inline-block" />
+            ) : (
+              <RefreshIcon size={16} />
+            )}
+          </button>
+        )}
+
+        {/* Start / Stop Action Controls */}
+        {isRunning || isRetrying ? (
+          <button
+            disabled={actionPending === 'stopping'}
+            onClick={() => onStopService(service.id, service.name)}
+            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50"
+            title={t('services.stopService', 'Stop Service')}
+          >
+            {actionPending === 'stopping' ? (
+              <span className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" />
+            ) : (
+              <StopIcon size={16} />
+            )}
+          </button>
+        ) : (
+          <button
+            disabled={actionPending === 'starting' || actionPending === 'stopping'}
+            onClick={() => onStartService(service.id)}
+            className="w-9 h-9 rounded-xl bg-emerald-400/20 hover:bg-emerald-400/30 text-emerald-300 border border-emerald-400/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50"
+            title={t('services.startService', 'Start Service')}
+          >
+            {actionPending === 'starting' ? (
+              <span className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin inline-block" />
+            ) : (
+              <PlayIcon size={16} />
+            )}
+          </button>
+        )}
+
+        {/* Delete Button */}
+        <button
+          disabled={isRunning || isRetrying || isPending}
+          onClick={() => onDeleteProcess(service)}
+          className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/15 text-red-400/80 hover:text-red-400 border border-red-500/10 hover:border-red-500/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-30 disabled:hover:scale-100 cursor-pointer"
+          title={isRunning || isRetrying ? t('services.cannotDeleteRunning', 'Stop service before deleting') : t('services.deleteService', 'Delete Service')}
+        >
+          <TrashIcon size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};

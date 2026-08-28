@@ -176,19 +176,54 @@ export function useProcesses() {
 
   const handleCloneProcess = async (proc: any) => {
     try {
+      let cloneConfig = proc.config ? JSON.parse(JSON.stringify(proc.config)) : {};
+      if (proc.service_type === 'mediamtx_hub') {
+        let nextPorts: any = null;
+        try {
+          const portsRes = await fetch(`${API}/api/services/mediamtx/next-available-ports`);
+          if (portsRes.ok) {
+            nextPorts = await portsRes.json();
+          }
+        } catch (portErr) {
+          console.warn("Could not fetch next available ports for clone", portErr);
+        }
+
+        if (!nextPorts) {
+          // Robust client-side fallback offset (+1 / +10) if API unreachable
+          const currMtx = cloneConfig.mediamtx_config || cloneConfig || {};
+          nextPorts = {
+            rtmp_port: (Number(currMtx.rtmp_port) || 1935) + 1,
+            rtsp_port: (Number(currMtx.rtsp_port) || 8554) + 1,
+            rtp_port: (Number(currMtx.rtp_port) || 8000) + 2,
+            rtcp_port: (Number(currMtx.rtcp_port) || 8001) + 2,
+            hls_port: (Number(currMtx.hls_port) || 8888) + 10,
+            webrtc_port: (Number(currMtx.webrtc_port) || 8889) + 10,
+            srt_port: (Number(currMtx.srt_port) || 8890) + 10,
+            api_port: (Number(currMtx.api_port) || 9997) + 1,
+          };
+        }
+
+        cloneConfig.mediamtx_config = {
+          ...(cloneConfig.mediamtx_config || {}),
+          ...nextPorts,
+        };
+      }
+
       const res = await fetch(`${API}/processes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: `${proc.name} (Copy)`,
+          service_type: proc.service_type || 'ffmpeg_stream',
           alias: proc.alias ? `${proc.alias.slice(0, 7)}_copy`.slice(0, 12) : null,
           type: 'service',
+          config: cloneConfig,
           input_config: proc.input_config,
           output_config: proc.output_config,
           codec_config: proc.codec_config,
           filter_config: proc.filter_config,
           ffmpeg_build_id: proc.ffmpeg_build_id,
-          auto_start: proc.auto_start,
+          auto_start: false,
           startup_order: proc.startup_order,
           startup_delay: proc.startup_delay,
           watchdog_enabled: proc.watchdog_enabled,

@@ -95,12 +95,18 @@ class TaskManager:
                 raise val_err
 
             cmd = self._build_ffmpeg_cmd(task, ffmpeg_bin, limit_sec, execution_id=execution_id)
+            task_id = task.id
+            allow_start = getattr(task, 'allow_auto_start_deps', True)
             session.commit()  # Release write locks immediately before slow spawn!
             
-        # 2. Spawn subprocess (outside database session)
-        prepare_process_file_permissions(execution_id=execution_id, logger=self.logger)
-        self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
         try:
+            # Acquire dependency leases
+            from core.dependency_manager import dependency_manager
+            await dependency_manager.acquire_dependencies('task', task_id, allow_auto_start=allow_start)
+
+            # 2. Spawn subprocess (outside database session)
+            prepare_process_file_permissions(execution_id=execution_id, logger=self.logger)
+            self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
             sub_env = {**os.environ, "FFMPEG_GUI_EXECUTION_ID": str(execution_id)}
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -130,7 +136,14 @@ class TaskManager:
                     execution.status = 'error'
                     execution.error_message = str(e)
                     execution.stopped_at = datetime.utcnow()
+                    execution.pid = None
+                    execution.cpu_usage = 0
+                    execution.ram_usage = 0
                     session.commit()
+                    task_name = execution.task.name if execution.task else str(execution_id)
+                    self.notify_task_failure(execution_id, task_name, str(e))
+            from core.dependency_manager import dependency_manager
+            await dependency_manager.release_dependencies('task', task_id, allow_auto_stop=True)
 
     def _resolve_storage_path(self, storage_id: Optional[int], relative_path: Optional[str]) -> Optional[str]:
         if not storage_id:
@@ -224,6 +237,12 @@ class TaskManager:
                 if not os.path.exists(path):
                     raise FileNotFoundError(f"Overlay image does not exist: {path}")
 
+    @staticmethod
+    def _build_srt_url(srt_cfg: dict, direction: str = "output", ffmpeg_bin: str = "ffmpeg", network_timeout: int = 15) -> str:
+        """Helper to build formatted SRT URL supporting MediaMTX access control."""
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+        return FFmpegCommandBuilder._build_srt_url(srt_cfg, direction=direction, ffmpeg_bin=ffmpeg_bin, network_timeout=network_timeout)
+
     def _build_ffmpeg_cmd(self, task, ffmpeg_bin, limit_sec=None, execution_id=None):
         from core.builders.ffmpeg_builder import FFmpegCommandBuilder
         return FFmpegCommandBuilder.build_cmd(
@@ -251,9 +270,14 @@ class TaskManager:
 
         cleanup_rogue_processes(execution_id=execution_id)
 
+        task_id = None
+        allow_stop = True
         with self.db_session_factory() as session:
             execution = session.query(TaskExecution).get(execution_id)
             if execution:
+                task_id = execution.task_id
+                if execution.task:
+                    allow_stop = getattr(execution.task, 'allow_auto_stop_deps', True)
                 execution.status = status
                 if error_msg:
                     execution.error_message = error_msg
@@ -265,6 +289,10 @@ class TaskManager:
                 if status == 'error':
                     task_name = execution.task.name if execution.task else str(execution_id)
                     self.notify_task_failure(execution_id, task_name, error_msg)
+
+        if task_id:
+            from core.dependency_manager import dependency_manager
+            await dependency_manager.release_dependencies('task', task_id, allow_auto_stop=allow_stop)
 
     async def _log_reader(self, execution_id: int, proc):
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
@@ -363,43 +391,54 @@ class TaskManager:
             retry_delay = 10
             max_retries = 0
             
+            task_id = None
+            allow_stop = True
             with self.db_session_factory() as session:
                 execution = session.query(TaskExecution).get(execution_id)
-                if execution and execution.status == 'running':
-                    if exit_code == 0:
-                        execution.status = 'finished'
-                        execution.exit_code = 0
-                        execution.stopped_at = datetime.utcnow()
-                        execution.pid = None
-                        execution.cpu_usage = 0
-                        execution.ram_usage = 0
-                        session.commit()
-                    else:
-                        retry_policy = (execution.task.retry_policy or {}) if execution.task else {}
-                        max_retries = int(retry_policy.get('max_retries', 0) or 0)
-                        retry_delay = int(retry_policy.get('retry_delay', 10) or 10)
-                        current_retries = execution.retry_count or 0
-                        
-                        if current_retries < max_retries:
-                            should_retry = True
-                            execution.retry_count = current_retries + 1
-                            execution.status = 'retrying'
-                            execution.error_message = f"Failed with exit code {exit_code}. Retry {execution.retry_count}/{max_retries} scheduled in {retry_delay}s..."
-                            session.commit()
-                        else:
-                            execution.status = 'error'
-                            execution.exit_code = exit_code
+                if execution:
+                    task_id = execution.task_id
+                    if execution.task:
+                        allow_stop = getattr(execution.task, 'allow_auto_stop_deps', True)
+                    if execution.status == 'running':
+                        if exit_code == 0:
+                            execution.status = 'finished'
+                            execution.exit_code = 0
+                            execution.error_message = None
                             execution.stopped_at = datetime.utcnow()
                             execution.pid = None
                             execution.cpu_usage = 0
                             execution.ram_usage = 0
                             session.commit()
-                            task_name = execution.task.name if execution.task else str(execution_id)
-                            self.notify_task_failure(execution_id, task_name, f"Exited with code {exit_code} (All {max_retries} retries exhausted)")
+                        else:
+                            retry_policy = (execution.task.retry_policy or {}) if execution.task else {}
+                            max_retries = int(retry_policy.get('max_retries', 0) or 0)
+                            retry_delay = int(retry_policy.get('retry_delay', 10) or 10)
+                            current_retries = execution.retry_count or 0
+                            
+                            if current_retries < max_retries:
+                                should_retry = True
+                                execution.retry_count = current_retries + 1
+                                execution.status = 'retrying'
+                                execution.error_message = f"Failed with exit code {exit_code}. Retry {execution.retry_count}/{max_retries} scheduled in {retry_delay}s..."
+                                session.commit()
+                            else:
+                                execution.status = 'error'
+                                execution.exit_code = exit_code
+                                execution.stopped_at = datetime.utcnow()
+                                execution.pid = None
+                                execution.cpu_usage = 0
+                                execution.ram_usage = 0
+                                session.commit()
+                                task_name = execution.task.name if execution.task else str(execution_id)
+                                self.notify_task_failure(execution_id, task_name, f"Exited with code {exit_code} (All {max_retries} retries exhausted)")
 
             self.running_processes.pop(execution_id, None)
             self.last_activity.pop(execution_id, None)
             
+            if not should_retry and task_id:
+                from core.dependency_manager import dependency_manager
+                await dependency_manager.release_dependencies('task', task_id, allow_auto_stop=allow_stop)
+
             if should_retry:
                 self.logger.info(f"Task execution {execution_id} failed. Waiting {retry_delay}s before retry attempt...")
                 await asyncio.sleep(retry_delay)

@@ -11,9 +11,9 @@ import {
   ForgeIcon, 
   ClipboardIcon,
   RefreshIcon,
-  PackageIcon,
-  FfmpegLogoIcon
+  PackageIcon
 } from '../Icons';
+import { EngineLogo } from '../common/EngineLogo';
 import { BuildSdksModal } from '../modals/BuildSdksModal';
 
 const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string>> = {
@@ -270,7 +270,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
           }`}
         >
-          <FfmpegLogoIcon size={16} /> FFmpeg
+          <EngineLogo softwareType="ffmpeg" size={16} API={API} /> FFmpeg
         </button>
 
         <button
@@ -281,7 +281,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
           }`}
         >
-          <span>🎛️</span> DeckLink Tools
+          <EngineLogo softwareType="decklink_tools" size={16} API={API} /> DeckLink Tools
         </button>
       </div>
 
@@ -399,6 +399,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                   if (b) setTerminalBuild({ id, name: b.name })
                 }}
                 onExport={handleExportRecipe}
+                API={API}
               />
             ));
           })()

@@ -18,6 +18,57 @@ class Scheduler:
         if self.is_running:
             return
         self.is_running = True
+
+        # Recalibrate stale next_run timestamps on startup (tasks scheduled when system was offline)
+        # to prevent spurious on-boot execution of historical cron schedules.
+        now = datetime.utcnow()
+        with self.db_session_factory() as session:
+            try:
+                # 1. Recurring tasks: recalibrate next_run to next valid future occurrence
+                stale_recurring = (
+                    session.query(ScheduledTask)
+                    .filter(
+                        ScheduledTask.is_active == True,
+                        ScheduledTask.schedule_type == 'recurring',
+                        ScheduledTask.schedule_cron != None,
+                        ScheduledTask.next_run != None,
+                        ScheduledTask.next_run < now
+                    )
+                    .all()
+                )
+                for task in stale_recurring:
+                    try:
+                        new_next = CronHelper.get_next_run(task.schedule_cron, now)
+                        self.logger.info(
+                            f"Scheduler: Recalibrating stale next_run for recurring task '{task.name}' "
+                            f"(was {task.next_run}) to next future occurrence: {new_next}"
+                        )
+                        task.next_run = new_next
+                    except Exception as e:
+                        self.logger.error(f"Scheduler: Failed to recalibrate cron for task {task.name}: {e}")
+
+                # 2. One-shot tasks whose time expired while offline: mark as expired / deactivated
+                stale_oneshot = (
+                    session.query(ScheduledTask)
+                    .filter(
+                        ScheduledTask.is_active == True,
+                        ScheduledTask.schedule_type == 'one_shot',
+                        ScheduledTask.next_run != None,
+                        ScheduledTask.next_run < now
+                    )
+                    .all()
+                )
+                for task in stale_oneshot:
+                    self.logger.warning(
+                        f"Scheduler: One-shot task '{task.name}' expired while system was offline (scheduled for {task.next_run}). Deactivating."
+                    )
+                    task.next_run = None
+                    task.is_active = False
+
+                session.commit()
+            except Exception as e:
+                self.logger.error(f"Scheduler: Startup recalibration database error: {e}")
+
         self._loop_task = asyncio.create_task(self._poll_loop())
         self.logger.info("Scheduler started successfully.")
 

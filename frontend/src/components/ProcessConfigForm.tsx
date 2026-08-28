@@ -90,6 +90,8 @@ interface ProcessConfig {
   watchdog_retries: number;
   watchdog_min_speed: number | null;
   watchdog_min_speed_duration: number;
+  allow_auto_start_deps?: boolean;
+  allow_auto_stop_deps?: boolean;
 
   schedule_type: string;
   schedule_cron: string;
@@ -442,6 +444,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         network_timeout: initialConfig.network_timeout ?? 15,
         debug_mode: !!initialConfig.debug_mode,
         log_storage_id: initialConfig.log_storage_id ?? null,
+        allow_auto_start_deps: initialConfig.allow_auto_start_deps !== undefined ? !!initialConfig.allow_auto_start_deps : true,
+        allow_auto_stop_deps: initialConfig.allow_auto_stop_deps !== undefined ? !!initialConfig.allow_auto_stop_deps : true,
         is_active: initialConfig.is_active !== undefined ? initialConfig.is_active : true,
       };
     }
@@ -492,6 +496,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       network_timeout: 15,
       debug_mode: false,
       log_storage_id: null,
+      allow_auto_start_deps: true,
+      allow_auto_stop_deps: true,
       is_active: true,
     };
   };
@@ -533,7 +539,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     fetch('/builds')
       .then(r => r.json())
       .then(builds => {
-        const ready = builds.filter((b: any) => b.status === 'ready');
+        const ready = builds.filter((b: any) => b.status === 'ready' && (b.software_type === 'ffmpeg' || !b.software_type));
         setAvailableBuilds(ready);
         
         const currentBuildId = initialConfig?.ffmpeg_build_id ?? null;
@@ -634,7 +640,9 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         retry_policy: {
           max_retries: Number(config.retry_max),
           retry_delay: Number(config.retry_delay)
-        }
+        },
+        allow_auto_start_deps: config.allow_auto_start_deps ?? true,
+        allow_auto_stop_deps: config.allow_auto_stop_deps ?? true,
       } : {
         auto_start: config.auto_start,
         startup_order: config.startup_order,
@@ -643,6 +651,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         watchdog_retries: config.watchdog_retries,
         watchdog_min_speed: config.watchdog_min_speed,
         watchdog_min_speed_duration: config.watchdog_min_speed_duration,
+        allow_auto_start_deps: config.allow_auto_start_deps ?? true,
+        allow_auto_stop_deps: config.allow_auto_stop_deps ?? true,
       })
     };
   };
@@ -1452,6 +1462,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                   duration_end_time={config.duration_end_time}
                   retry_max={config.retry_max}
                   retry_delay={config.retry_delay}
+                  allow_auto_start_deps={config.allow_auto_start_deps}
+                  allow_auto_stop_deps={config.allow_auto_stop_deps}
                   onChange={handleLifecycleOrSchedulingChange}
                 />
               ) : (
@@ -1466,6 +1478,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                   debug_mode={config.debug_mode}
                   log_storage_id={config.log_storage_id}
                   logsStorages={storages.filter((s: any) => s.type === 'logs')}
+                  allow_auto_start_deps={config.allow_auto_start_deps}
+                  allow_auto_stop_deps={config.allow_auto_stop_deps}
                   onChange={handleLifecycleOrSchedulingChange}
                 />
               )}

@@ -11,6 +11,7 @@ import {
   CheckIcon,
   BroomIcon
 } from './Icons'
+import { EngineLogo } from './common/EngineLogo'
 
 export interface BuildProfile {
   id: number
@@ -50,6 +51,7 @@ interface BuildProfileCardProps {
   onEdit: (build: BuildProfile) => void
   onViewLogs: (id: number) => void
   onExport: (id: number) => void
+  API?: string
 }
 
 function formatDate(iso: string | null): string {
@@ -93,7 +95,7 @@ function matchesVersion(sdkVersion: string | null | undefined, reqVersion: strin
 }
 
 export default function BuildProfileCard({
-  build, installedSdks: installedSdksProp, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport,
+  build, installedSdks: installedSdksProp, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport, API = '',
 }: BuildProfileCardProps) {
   const { t } = useTranslation()
   const [fetchedSdks, setFetchedSdks] = useState<any[]>([])
@@ -141,6 +143,7 @@ export default function BuildProfileCard({
       {/* 1. Top Header Bar */}
       <div className="flex items-center justify-between gap-3 mb-3 pb-3 border-b border-[var(--glass-border)]">
         <div className="flex items-center gap-2.5 min-w-0">
+          <EngineLogo softwareType={build.software_type || 'ffmpeg'} size={18} API={API} />
           {build.is_default && (
             <span className="text-brand-lime text-base" title={t('forge.defaultBuildTitle', 'Default Build')}>★</span>
           )}

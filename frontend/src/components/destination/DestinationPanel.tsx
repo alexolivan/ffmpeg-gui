@@ -36,6 +36,19 @@ export interface OutputConfig {
   streamid?: string;
   storage_id?: number | null;
   relative_path?: string;
+  provider_service_id?: number | null;
+  mediamtx_mode?: boolean;
+  path_id?: string;
+  auth_user?: string;
+  auth_pass?: string;
+  publish_user?: string;
+  publish_pass?: string;
+  read_user?: string;
+  read_pass?: string;
+  passphrase?: string;
+  pbkeylen?: number | string;
+  stream_action?: string;
+  service_target?: string;
 }
 
 interface DestinationPanelProps {
@@ -240,6 +253,21 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     return () => { active = false; };
   }, [config.type]);
 
+  const [providers, setProviders] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    let active = true;
+    fetch('/api/dependencies/providers')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (active) setProviders(data || []);
+      })
+      .catch(() => {
+        if (active) setProviders([]);
+      });
+    return () => { active = false; };
+  }, []);
+
   const parseFormatDescription = (desc: string) => {
     const resMatch = desc.match(/(\d+)x(\d+)/);
     const fpsMatch = desc.match(/at ([\d/]+) fps/);
@@ -299,6 +327,53 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         ))}
       </select>
 
+      {/* Auxiliary Hub Quick-Preset Bar (for RTMP and WHIP) */}
+      {providers.length > 0 && ['rtmp', 'whip'].includes(config.type) && (
+        <div className="bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="text-xs">⚡</span>
+            <span className="text-[10px] font-semibold text-brand-lime truncate">
+              {t('destinations.hubPresetTitle', 'Route to Auxiliary Hub')}:
+            </span>
+          </div>
+          <select
+            className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-[10px] font-mono text-[var(--text-primary)] focus:border-brand-lime focus:outline-none"
+            value={config.provider_service_id || ''}
+            onChange={e => {
+              const selectedId = parseInt(e.target.value);
+              if (!selectedId) {
+                update({ provider_service_id: undefined });
+                return;
+              }
+              const provider = providers.find(p => p.id === selectedId);
+              if (!provider) return;
+
+              const cfg = provider.config || {};
+              if (config.type === 'rtmp') {
+                const port = cfg.rtmp_port || 1935;
+                update({ 
+                  provider_service_id: selectedId,
+                  url: `rtmp://127.0.0.1:${port}/live/stream1` 
+                });
+              } else if (config.type === 'whip') {
+                const port = cfg.webrtc_port || 8889;
+                update({ 
+                  provider_service_id: selectedId,
+                  url: `http://127.0.0.1:${port}/live_stream/whip` 
+                });
+              }
+            }}
+          >
+            <option value="">{t('destinations.selectHubPreset', '-- Direct / Standalone (No Managed Provider) --')}</option>
+            {providers.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({p.service_type === 'mediamtx_hub' ? 'MediaMTX' : 'Icecast'})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {/* ── Type-specific fields ── */}
 
       {(config.type === 'udp' || config.type === 'rtp') && (
@@ -314,16 +389,16 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 name="host"
                 placeholder="e.g. 239.0.0.1 or 127.0.0.1"
                 className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                  validationErrors?.host
-                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
+                  validationErrors?.host ? 'border-red-500/50' : 'border-white/10 focus:border-brand-lime'
                 }`}
-                value={config.host || ''} onChange={e => update({ host: e.target.value })}
+                value={config.host || ''}
+                onChange={e => update({ host: e.target.value })}
               />
               {validationErrors?.host && (
-                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.host}</span>
+                <p className="text-[9px] text-red-400 mt-0.5">{validationErrors.host}</p>
               )}
             </div>
+
             <div>
               <label htmlFor={`dest-${config.type}-port`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
                 {t('destinations.port')}<span className="text-red-500 ml-0.5">*</span>
@@ -332,109 +407,123 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 type="text"
                 id={`dest-${config.type}-port`}
                 name="port"
-                placeholder="1234"
-                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
-                  validationErrors?.port
-                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
+                placeholder="e.g. 1234"
+                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                  validationErrors?.port ? 'border-red-500/50' : 'border-white/10 focus:border-brand-lime'
                 }`}
-                value={config.port || ''} onChange={e => update({ port: e.target.value })}
+                value={config.port || ''}
+                onChange={e => update({ port: e.target.value })}
               />
               {validationErrors?.port && (
-                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.port}</span>
+                <p className="text-[9px] text-red-400 mt-0.5">{validationErrors.port}</p>
               )}
             </div>
           </div>
 
           {config.type === 'udp' && (
-            <div className="border border-white/5 bg-white/[0.01] rounded-lg p-2.5 space-y-2">
-              <span className="text-[9px] uppercase font-black tracking-widest text-text-secondary">
-                {t('destinations.mpegTsDvbOptions')}
-              </span>
-
+            <div className="space-y-2 pt-2 border-t border-white/5">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label htmlFor="dest-udp-muxrate" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.constantMuxrate')}</label>
+                  <label htmlFor="dest-udp-pkt-size" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.packetSize')}
+                  </label>
+                  <select
+                    id="dest-udp-pkt-size"
+                    name="pkt_size"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                    value={config.pkt_size || 1316}
+                    onChange={e => update({ pkt_size: Number(e.target.value) })}
+                  >
+                    <option value={1316}>1316 {t('destinations.standardDvb')}</option>
+                    <option value={188}>188 {t('destinations.singlePacket')}</option>
+                    <option value={7}>7 {t('destinations.lanJumbo')}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="dest-udp-muxrate" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.cbrMuxrate')}
+                  </label>
                   <input
                     type="text"
                     id="dest-udp-muxrate"
                     name="muxrate"
-                    placeholder="e.g. 5000000 (5 Mbps)"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.muxrate || ''} onChange={e => update({ muxrate: e.target.value })}
+                    placeholder="e.g. 10M, 5000k"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none placeholder-white/20"
+                    value={config.muxrate || ''}
+                    onChange={e => update({ muxrate: e.target.value })}
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label htmlFor="dest-udp-pkt-size" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.socketPacketSize')}</label>
-                  <input
-                    type="number"
-                    id="dest-udp-pkt-size"
-                    name="pkt_size"
-                    placeholder="1316" min={188} max={65535}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.pkt_size || 1316} onChange={e => update({ pkt_size: Number(e.target.value) })}
-                  />
+              {/* DVB / MPEG-TS SI Table Metadata Form */}
+              <div className="bg-white/[0.03] border border-white/5 rounded-lg p-2.5 space-y-2">
+                <span className="text-[9px] font-bold text-brand-lime uppercase tracking-wider block">
+                  {t('destinations.dvbMetadata')}
+                </span>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="dest-udp-service-prov" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceProvider')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-service-prov"
+                      name="service_provider"
+                      placeholder="e.g. Broadcaster TV"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.service_provider || ''} onChange={e => update({ service_provider: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="dest-udp-service-name" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceName')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-service-name"
+                      name="service_name"
+                      placeholder="e.g. Channel 1 HD"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.service_name || ''} onChange={e => update({ service_name: e.target.value })}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label htmlFor="dest-udp-service-provider" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceProvider')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-service-provider"
-                    name="service_provider"
-                    placeholder="e.g. Antigravity Broadcast"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-                    value={config.service_provider || ''} onChange={e => update({ service_provider: e.target.value })}
-                  />
-                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label htmlFor="dest-udp-ts-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.transportStreamId')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-ts-id"
+                      name="transport_stream_id"
+                      placeholder="e.g. 0x0001 or 1"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.transport_stream_id || ''} onChange={e => update({ transport_stream_id: e.target.value })}
+                    />
+                  </div>
 
-                <div>
-                  <label htmlFor="dest-udp-service-name" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceName')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-service-name"
-                    name="service_name"
-                    placeholder="e.g. Main HD Channel"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-                    value={config.service_name || ''} onChange={e => update({ service_name: e.target.value })}
-                  />
-                </div>
+                  <div>
+                    <label htmlFor="dest-udp-net-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.originalNetworkId')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-net-id"
+                      name="original_network_id"
+                      placeholder="e.g. 0x20fa or 8442"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.original_network_id || ''} onChange={e => update({ original_network_id: e.target.value })}
+                    />
+                  </div>
 
-                <div>
-                  <label htmlFor="dest-udp-ts-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.transportStreamId')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-ts-id"
-                    name="transport_stream_id"
-                    placeholder="e.g. 0x0001 or 1"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.transport_stream_id || ''} onChange={e => update({ transport_stream_id: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="dest-udp-net-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.originalNetworkId')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-net-id"
-                    name="original_network_id"
-                    placeholder="e.g. 0x20fa or 8442"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.original_network_id || ''} onChange={e => update({ original_network_id: e.target.value })}
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label htmlFor="dest-udp-service-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceId')}</label>
-                  <input
-                    type="text"
-                    id="dest-udp-service-id"
-                    name="service_id"
-                    placeholder="e.g. 0x0001 or 1"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                    value={config.service_id || ''} onChange={e => update({ service_id: e.target.value })}
-                  />
+                  <div className="col-span-2">
+                    <label htmlFor="dest-udp-service-id" className="text-[9px] text-text-secondary font-bold block mb-0.5">{t('destinations.serviceId')}</label>
+                    <input
+                      type="text"
+                      id="dest-udp-service-id"
+                      name="service_id"
+                      placeholder="e.g. 0x0001 or 1"
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                      value={config.service_id || ''} onChange={e => update({ service_id: e.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -442,121 +531,411 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         </div>
       )}
 
-      {config.type === 'srt' && (
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="col-span-2">
-              <label htmlFor="dest-srt-mode" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.srtConnectionMode')}</label>
-              <select
-                id="dest-srt-mode"
-                name="mode"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-                value={config.mode || 'caller'}
-                onChange={e => {
-                  const m = e.target.value;
-                  update({ 
-                    mode: m, 
-                    host: m === 'listener' ? '0.0.0.0' : config.host 
-                  });
+      {config.type === 'srt' && (() => {
+        const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        const mtxCfg = selectedProvider?.config || {};
+        const rawPaths = mtxCfg.paths || {};
+        const configuredPaths = Object.keys(rawPaths);
+        const isCustomPath = !config.path_id || !configuredPaths.includes(config.path_id);
+
+        const handleSelectProvider = (provId: number) => {
+          const prov = mediamtxProviders.find(p => p.id === provId);
+          if (!prov) return;
+          const pCfg = prov.config || {};
+          const paths = pCfg.paths || {};
+          const pKeys = Object.keys(paths);
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = paths[firstPath] || {};
+
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || pCfg.security?.publish_user || pCfg.publish_user || '';
+            pubPass = pathConf.publish_pass || pCfg.security?.publish_pass || pCfg.publish_pass || '';
+          }
+
+          update({
+            provider_service_id: prov.id,
+            service_target: 'mediamtx',
+            host: '127.0.0.1',
+            port: String(pCfg.srt_port || 8890),
+            path_id: firstPath,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            mode: 'caller',
+            stream_action: 'publish',
+            mediamtx_mode: true,
+          });
+        };
+
+        const handleSelectPath = (val: string) => {
+          if (val === '__custom__') {
+            update({
+              path_id: config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '',
+            });
+            return;
+          }
+          const pathConf = rawPaths[val] || {};
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || mtxCfg.security?.publish_user || mtxCfg.publish_user || '';
+            pubPass = pathConf.publish_pass || mtxCfg.security?.publish_pass || mtxCfg.publish_pass || '';
+          }
+
+          update({
+            path_id: val,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+          });
+        };
+
+        const currentPathConf = rawPaths[config.path_id || ''];
+        const authHint = isMediaMtxMode ? (
+          currentPathConf?.mode === 'custom'
+            ? t('destinations.srtAuthCustomHint', 'Credentials loaded from path-specific rules')
+            : currentPathConf?.mode === 'open'
+            ? t('destinations.srtAuthOpenHint', 'Open path (no credentials required)')
+            : (config.publish_user || config.auth_user || mtxCfg.security?.publish_user)
+            ? t('destinations.srtAuthInheritedHint', 'Credentials inherited from MediaMTX global security')
+            : null
+        ) : null;
+
+        const effectivePubUser = config.publish_user ?? config.auth_user ?? '';
+        const effectivePubPass = config.publish_pass ?? config.auth_pass ?? '';
+        const streamIdPreview = isMediaMtxMode
+          ? `#!::r=${config.path_id || '<path>'},m=publish${effectivePubUser ? `,u=${effectivePubUser}` : ''}${effectivePubPass ? `,p=••••••••` : ''}`
+          : (config.streamid || '');
+
+        return (
+          <div className="space-y-3">
+            {/* Connection Mode Switch */}
+            <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
+                  !isMediaMtxMode
+                    ? 'bg-purple-600/30 text-[var(--text-primary)] border border-purple-500/40 shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => update({
+                  mediamtx_mode: false,
+                  service_target: undefined,
+                  stream_action: undefined,
+                  path_id: undefined,
+                  provider_service_id: undefined,
+                })}
+              >
+                {t('destinations.srtManualDirect', 'Manual Direct SRT')}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
+                  isMediaMtxMode
+                    ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                  if (defaultProv) {
+                    handleSelectProvider(defaultProv.id);
+                  } else {
+                    update({
+                      mediamtx_mode: true,
+                      mode: 'caller',
+                      stream_action: 'publish',
+                      service_target: 'mediamtx',
+                      host: config.host || '127.0.0.1',
+                      port: config.port || '8890',
+                      path_id: config.path_id || 'stream1',
+                    });
+                  }
                 }}
               >
-                <option value="caller">{t('destinations.callerMode')}</option>
-                <option value="listener">{t('destinations.listenerMode')}</option>
-                <option value="rendezvous">{t('destinations.rendezvousMode')}</option>
-              </select>
+                <span>⚡</span>
+                {t('destinations.srtMediaMtxHub', 'MediaMTX Hub Integration')}
+              </button>
             </div>
 
-            <div>
-              <label htmlFor="dest-srt-host" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                {config.mode === 'listener' ? t('sources.bindInterfaceHost') : t('destinations.hostMulticastIp')}
-                <span className="text-red-500 ml-0.5">*</span>
-              </label>
-              <input
-                type="text"
-                id="dest-srt-host"
-                name="host"
-                placeholder={config.mode === 'listener' ? "0.0.0.0 (all interfaces)" : "e.g. 52.210.205.135"}
-                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                  validationErrors?.host
-                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
-                }`}
-                value={config.host || ''}
-                onChange={e => update({ host: e.target.value })}
-              />
-              {validationErrors?.host && (
-                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.host}</span>
-              )}
-            </div>
+            {isMediaMtxMode ? (
+              /* MediaMTX Hub Integration Mode */
+              <div className="space-y-2.5 bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-brand-lime tracking-wider flex items-center gap-1">
+                    <span>⚡</span> {t('destinations.srtMediaMtxHub', 'MediaMTX Hub Integration')}
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime font-mono">
+                    caller → publish ({config.host || '127.0.0.1'}:{config.port || '8890'})
+                  </span>
+                </div>
 
-            <div>
-              <label htmlFor="dest-srt-port" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                {t('destinations.port')}<span className="text-red-500 ml-0.5">*</span>
-              </label>
-              <input
-                type="text"
-                id="dest-srt-port"
-                name="port"
-                placeholder="9000"
-                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
-                  validationErrors?.port
-                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
-                }`}
-                value={config.port || ''}
-                onChange={e => update({ port: e.target.value })}
-              />
-              {validationErrors?.port && (
-                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.port}</span>
-              )}
-            </div>
+                {mediamtxProviders.length === 0 ? (
+                  <div className="bg-amber-500/10 border border-amber-500/20 text-amber-300 p-2 rounded text-xs">
+                    {t('destinations.srtNoHubsFound', 'No active MediaMTX Hub services found.')}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div>
+                      <label htmlFor="dest-srt-hub" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.srtSelectHub', 'Target MediaMTX Hub')}
+                      </label>
+                      <select
+                        id="dest-srt-hub"
+                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                        value={config.provider_service_id || selectedProvider?.id || ''}
+                        onChange={e => handleSelectProvider(parseInt(e.target.value))}
+                      >
+                        {mediamtxProviders.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} {p.alias ? `(${p.alias})` : ''} — {p.status}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-            <div>
-              <label htmlFor="dest-srt-latency" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.latencyMs')}</label>
-              <input
-                type="number"
-                id="dest-srt-latency"
-                name="latency"
-                placeholder="200"
-                min={20}
-                max={8000}
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                value={config.latency || 200}
-                onChange={e => update({ latency: Number(e.target.value) })}
-              />
-            </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label htmlFor="dest-srt-path-select" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.srtTargetPath', 'Stream Path (Channel)')}
+                        </label>
+                        <select
+                          id="dest-srt-path-select"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={isCustomPath ? '__custom__' : (config.path_id || '')}
+                          onChange={e => handleSelectPath(e.target.value)}
+                        >
+                          {configuredPaths.map(pKey => (
+                            <option key={pKey} value={pKey}>
+                              /{pKey} {rawPaths[pKey]?.mode ? `(${rawPaths[pKey].mode})` : ''}
+                            </option>
+                          ))}
+                          <option value="__custom__">{t('destinations.srtCustomPath', '✏️ Custom Path Slug...')}</option>
+                        </select>
+                      </div>
 
-            <div>
-              <label htmlFor="dest-srt-streamid" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.streamId')}</label>
-              <input
-                type="text"
-                id="dest-srt-streamid"
-                name="streamid"
-                placeholder="e.g. output_stream_1"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                value={config.streamid || ''}
-                onChange={e => update({ streamid: e.target.value })}
-              />
-            </div>
-          </div>
+                      <div>
+                        <label htmlFor="dest-srt-latency-mtx" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.latencyMs', 'Latency (ms)')}
+                        </label>
+                        <input
+                          type="number"
+                          id="dest-srt-latency-mtx"
+                          min={20}
+                          max={8000}
+                          placeholder="200"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.latency || 200}
+                          onChange={e => update({ latency: Number(e.target.value) })}
+                        />
+                      </div>
+                    </div>
 
-          <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-2 text-[10px] text-purple-300">
-            {config.mode === 'caller' ? (
-              <span>
-                <strong>Caller Mode:</strong> {t('destinations.callerDesc')} ({config.host || 'Host'}:{config.port || 'Port'})
-              </span>
-            ) : config.mode === 'listener' ? (
-              <span>
-                <strong>Listener Mode:</strong> {t('destinations.listenerDesc')} (Port: {config.port || '9000'})
-              </span>
+                    {isCustomPath && (
+                      <div>
+                        <label htmlFor="dest-srt-path-custom" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.srtCustomPathSlug', 'Custom Path Slug')}
+                        </label>
+                        <input
+                          type="text"
+                          id="dest-srt-path-custom"
+                          placeholder={t('destinations.srtCustomPathPlaceholder', 'e.g. live, studio_main, tx1')}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.path_id || ''}
+                          onChange={e => update({ path_id: e.target.value })}
+                        />
+                      </div>
+                    )}
+
+                    {authHint && (
+                      <div className="text-[10px] text-brand-lime/90 bg-brand-lime/10 px-2 py-1 rounded border border-brand-lime/20 flex items-center gap-1.5">
+                        <span>🔐</span>
+                        <span>{authHint}</span>
+                      </div>
+                    )}
+
+                    {/* Stream ID Preview */}
+                    <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2">
+                      <span className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.srtStreamIdPreview', 'Generated SRT Stream ID & URI')}
+                      </span>
+                      <p className="text-[11px] font-mono text-brand-lime break-all select-all">
+                        srt://{config.host || '127.0.0.1'}:{config.port || '8890'}?mode=caller&latency={config.latency || 200}&streamid={streamIdPreview}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
-              <span>
-                <strong>Rendezvous Mode:</strong> {t('destinations.rendezvousDesc')}
-              </span>
+              /* Manual Direct SRT Mode */
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="col-span-2">
+                    <label htmlFor="dest-srt-mode" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                      {t('destinations.srtConnectionMode', 'SRT Connection Mode')}
+                    </label>
+                    <select
+                      id="dest-srt-mode"
+                      name="mode"
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-purple-400"
+                      value={config.mode || 'caller'}
+                      onChange={e => {
+                        const m = e.target.value;
+                        update({ 
+                          mode: m, 
+                          host: m === 'listener' ? '0.0.0.0' : (config.host === '0.0.0.0' ? '127.0.0.1' : config.host) 
+                        });
+                      }}
+                    >
+                      <option value="caller">{t('destinations.callerMode')}</option>
+                      <option value="listener">{t('destinations.listenerMode')}</option>
+                      <option value="rendezvous">{t('destinations.rendezvousMode')}</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="dest-srt-host" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                      {config.mode === 'listener' ? t('sources.bindInterfaceHost') : t('destinations.hostMulticastIp')}
+                      <span className="text-red-500 ml-0.5">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="dest-srt-host"
+                      name="host"
+                      placeholder={config.mode === 'listener' ? "0.0.0.0 (all interfaces)" : "e.g. 52.210.205.135"}
+                      className={`w-full bg-[var(--input-bg)] border rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none placeholder-[var(--text-secondary)]/40 ${
+                        validationErrors?.host
+                          ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                          : 'border-[var(--glass-border)] focus:border-purple-400'
+                      }`}
+                      value={config.host || ''}
+                      onChange={e => update({ host: e.target.value })}
+                    />
+                    {validationErrors?.host && (
+                      <span className="text-[10px] text-red-400 block mt-1">{validationErrors.host}</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="dest-srt-port" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                      {t('destinations.port')}<span className="text-red-500 ml-0.5">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="dest-srt-port"
+                      name="port"
+                      placeholder="9000"
+                      className={`w-full bg-[var(--input-bg)] border rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono placeholder-[var(--text-secondary)]/40 ${
+                        validationErrors?.port
+                          ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                          : 'border-[var(--glass-border)] focus:border-purple-400'
+                      }`}
+                      value={config.port || ''}
+                      onChange={e => update({ port: e.target.value })}
+                    />
+                    {validationErrors?.port && (
+                      <span className="text-[10px] text-red-400 block mt-1">{validationErrors.port}</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="dest-srt-latency" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                      {t('sources.latencyMs')}
+                    </label>
+                    <input
+                      type="number"
+                      id="dest-srt-latency"
+                      name="latency"
+                      placeholder="200"
+                      min={20}
+                      max={8000}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-purple-400"
+                      value={config.latency || 200}
+                      onChange={e => update({ latency: Number(e.target.value) })}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="dest-srt-streamid" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                      {t('sources.streamId')}
+                    </label>
+                    <input
+                      type="text"
+                      id="dest-srt-streamid"
+                      name="streamid"
+                      placeholder="e.g. output_stream_1"
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-purple-400"
+                      value={config.streamid || ''}
+                      onChange={e => update({ streamid: e.target.value })}
+                    />
+                  </div>
+
+                  {/* Passphrase & Keylen */}
+                  <div>
+                    <label htmlFor="dest-srt-passphrase" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                      {t('destinations.srtPassphrase', 'Passphrase (Secret Key)')}
+                    </label>
+                    <input
+                      type="password"
+                      id="dest-srt-passphrase"
+                      name="passphrase"
+                      placeholder={t('destinations.srtPassphrasePlaceholder', 'Enter passphrase (optional)...')}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-purple-400"
+                      value={config.passphrase || ''}
+                      onChange={e => update({ passphrase: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="dest-srt-pbkeylen" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                      {t('destinations.srtPbkeylen', 'Key Length (pbkeylen)')}
+                    </label>
+                    <select
+                      id="dest-srt-pbkeylen"
+                      name="pbkeylen"
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-purple-400"
+                      value={config.pbkeylen || ''}
+                      onChange={e => update({ pbkeylen: e.target.value ? Number(e.target.value) : undefined })}
+                    >
+                      <option value="">{t('destinations.srtPbkeylenDefault', 'Auto / Default')}</option>
+                      <option value="16">16 bytes (AES-128)</option>
+                      <option value="24">24 bytes (AES-192)</option>
+                      <option value="32">32 bytes (AES-256)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-2 text-[10px] text-purple-300">
+                  {config.mode === 'caller' ? (
+                    <span>
+                      <strong>Caller Mode:</strong> {t('destinations.callerDesc')} ({config.host || 'Host'}:{config.port || 'Port'})
+                    </span>
+                  ) : config.mode === 'listener' ? (
+                    <span>
+                      <strong>Listener Mode:</strong> {t('destinations.listenerDesc')} (Port: {config.port || '9000'})
+                    </span>
+                  ) : (
+                    <span>
+                      <strong>Rendezvous Mode:</strong> {t('destinations.rendezvousDesc')}
+                    </span>
+                  )}
+                </div>
+              </div>
             )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {config.type === 'rtmp' && (
         <div className="space-y-1.5">

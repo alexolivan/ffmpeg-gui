@@ -28,15 +28,18 @@ class SoftwareBuild(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     software_type = Column(String, nullable=False, default='ffmpeg')  # 'ffmpeg', 'icecast2', 'kiosk_cog', 'mediamtx'
-    version_tag = Column(String, nullable=False)  # main version (e.g. n7.1 or v1.6)
-    binary_path = Column(String, nullable=True)   # main compiled binary location
+    source_type = Column(String, nullable=False, default='compiled')  # 'compiled', 'installed', 'precompiled'
+    version_tag = Column(String, nullable=False)  # main version (e.g. n7.1, v1.9.3 or system)
+    binary_path = Column(String, nullable=True)   # executable binary location
+    system_path = Column(String, nullable=True)   # host system path if source_type='installed' (e.g. /usr/bin/ffmpeg)
+    is_managed = Column(Boolean, default=True, nullable=False)  # True if files live in ffmpeg-gui storage; False if external system binary
 
     # Build configuration
-    build_options = Column(JSON, nullable=False)
+    build_options = Column(JSON, nullable=True, default=dict)
     sdk_paths = Column(JSON, nullable=True)
 
     # Filesystem paths
-    install_path = Column(String, nullable=False)
+    install_path = Column(String, nullable=True)
 
     # Build lifecycle state
     status = Column(String, default='pending')
@@ -279,6 +282,22 @@ class Service(Base):
         self._set_config_key('network_timeout', val)
 
     @property
+    def allow_auto_start_deps(self):
+        return self.config.get('allow_auto_start_deps', True) if self.config else True
+
+    @allow_auto_start_deps.setter
+    def allow_auto_start_deps(self, val):
+        self._set_config_key('allow_auto_start_deps', bool(val))
+
+    @property
+    def allow_auto_stop_deps(self):
+        return self.config.get('allow_auto_stop_deps', True) if self.config else True
+
+    @allow_auto_stop_deps.setter
+    def allow_auto_stop_deps(self, val):
+        self._set_config_key('allow_auto_stop_deps', bool(val))
+
+    @property
     def pending_changes(self) -> bool:
         if self.status != 'running' or not self.last_started_config:
             return False
@@ -391,6 +410,9 @@ class ScheduledTask(Base):
     duration_end_time = Column(DateTime, nullable=True)
 
     retry_policy = Column(JSON, nullable=True)
+
+    allow_auto_start_deps = Column(Boolean, default=True)
+    allow_auto_stop_deps = Column(Boolean, default=True)
 
     alias = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

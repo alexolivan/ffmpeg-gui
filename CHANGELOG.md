@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-08-28
+
+### Added
+- **Universal MediaMTX Stream Paths Management & Granular Security**:
+  - Implemented full CRUD interface supporting `inherit`, `custom`, and `open` LAN security modes.
+  - Decoupled Publish (Push) and Read (Pull) credentials at both global service and individual stream path levels.
+- **Bidirectional SRT Access Control Integration**:
+  - Implemented SRT stream ID formatting and parsing (`#!::r=<path_id>,m=<publish|request>[,u=...,p=...]`).
+  - Integrated interactive, streamlined MediaMTX Hub SRT connection assistant in FFmpeg input and destination forms with masked password previews.
+- **In-RAM HLS Live Distribution & Optional Path Recording**:
+  - Enabled native in-RAM HLS ring buffer distribution by default (zero disk wear) with configurable segment duration and count.
+  - Added optional persistent fMP4/MP4 stream recording to dedicated HLS storage volumes on selected stream paths.
+- **Local SSL/TLS Certificate Binding & Port Collision Protection**:
+  - Added TLS certificate binding (`serverKey`, `serverCert`, `rtmpServerCert`, `rtspServerCert`) for MediaMTX with automatic RTMPS/RTSPS $+10$ port offset safety allocation.
+- **Interactive Stream Connection Matrix & Live URI Generator**:
+  - Added real-time connection string generator in `MediaMtxPreviewModal` across RTSP, RTSPS, RTMP, RTMPS, HLS, WebRTC (WHEP/WHIP), and SRT protocols with 1-click clipboard copying.
+
+### Fixed
+- **Universal Service Auto-Start & Stale Task Execution Prevention**:
+  - Enabled universal service auto-start on boot across all service types (FFmpeg, MediaMTX, Icecast) and eliminated stale historical scheduled task executions on system boot.
+- **SQLite Schema Migration Resilience**:
+  - Corrected table recreation and column verification order in `software_builds` migrations.
+
+## [2.5.0] - 2026-08-26
+
+### Added
+- **Software Engine Registry & Multi-Source Binary Lifecycle**:
+  - Implemented centralized **SOFTWARE** management tab in Settings for `FFmpeg`, `MediaMTX`, `Icecast2`, and `Kiosk Cog`.
+  - Added support for 3 binary source types: `COMPILED` (Forge), `INSTALLED` (automatic `$PATH` discovery via `which`), and `PRE-COMPILED` (standalone GitHub Release downloads).
+  - Implemented strict safety invariant preventing active software engines from disabling all binary sources simultaneously.
+  - Added custom engine logo/icon uploader with real-time thumbnail preview, propagating across Forge, Services, and Tasks.
+- **Adaptive Process Watchdog by Engine Architecture**:
+  - Decoupled transcode-specific checks (zero frames progress `/dev/shm/`, bitrate, speed) from daemon/hub monitoring in `ProcessManager`.
+  - MediaMTX, Icecast2, and auxiliary servers are now monitored via a non-intrusive daemon liveness loop (`psutil` for PID liveness and CPU/RAM metrics) eliminating false-positive crash restarts.
+- **Modular Frontend Architecture (Dedicated Cards & Modals)**:
+  - Extracted `FfmpegServiceCard` preserving video/audio codec, FPS, bitrate, and ABR pipeline metrics.
+  - Created `MediaMtxServiceCard` with active protocol matrix (*RTMP :1935, RTSP :8554, WebRTC :8889, SRT :8890, HLS :8888*) and streamlined actions.
+  - Extracted `FfmpegPreviewModal` and `MediaMtxPreviewModal` with live terminal audit logs, active listener grid, and log download.
+- **Reference-Counted Dependency Leasing Engine & Safety Interlocks**:
+  - Implemented singleton `DependencyManager` managing provider leases (`active_leases`) and pinned manual/boot states (`pinned_services`).
+  - Implemented *"No estás solo en el mundo"* (active consumers protect provider from premature shutdown) and *"El último que apague la luz"* (graceful shutdown when remaining leases reach 0 on on-demand providers).
+  - Added operator capability toggles (`allow_auto_start_deps`, `allow_auto_stop_deps`) in `Service` and `ScheduledTask` configuration.
+  - Added auxiliary Hub preset selector in `DestinationPanel` for quick 1-click routing (RTMP, SRT, WHIP).
+- **MediaMTX Hub Service Orchestration & Ephemeral In-RAM Configuration**:
+  - Implemented `mediamtx_hub` service daemon execution using ephemeral YAML configurations written dynamically to `/dev/shm/` (RAM) with `0600` permissions.
+  - Added granular storage isolation for MediaMTX `hls` storage volume (with ring-buffer segment rotation) and dedicated `logs` volume.
+  - Extended automated log rotation & retention routine to cover all multi-engine service logs across storage volumes.
+  - Added pre-launch socket port validation preventing listening conflicts (RTSP `8554`, RTMP `1935`, HLS `8888`, WebRTC `8889`, SRT `8890`).
+
 ## [2.4.0] - 2026-08-24
 
 ### Added

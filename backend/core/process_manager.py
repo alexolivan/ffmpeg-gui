@@ -27,6 +27,7 @@ class ProcessManager:
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
         self._spawn_lock: Optional[asyncio.Lock] = None
+        self.ephemeral_configs: Dict[int, str] = {}
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -41,51 +42,34 @@ class ProcessManager:
         return "ffmpeg"
 
     def get_service_ref_count(self, provider_id: int) -> int:
-        active_running_service_ids = [sid for sid, p in self.processes.items() if p is not None]
-        with self.db_session_factory() as session:
-            from database.models import ServiceDependency
-            ref_count = session.query(ServiceDependency).filter(
-                ServiceDependency.provider_service_id == provider_id,
-                ServiceDependency.consumer_type == 'service',
-                ServiceDependency.consumer_id.in_(active_running_service_ids)
-            ).count() if active_running_service_ids else 0
-            return ref_count
+        from core.dependency_manager import dependency_manager
+        return len(dependency_manager.get_active_leases(provider_id))
 
-    async def start_dependencies(self, process_id: int):
-        with self.db_session_factory() as session:
-            from database.models import ServiceDependency
-            deps = session.query(ServiceDependency).filter(
-                ServiceDependency.consumer_type == 'service',
-                ServiceDependency.consumer_id == process_id
-            ).all()
-            provider_ids = [dep.provider_service_id for dep in deps]
-            
-        for provider_id in provider_ids:
-            if provider_id not in self.processes:
-                self.logger.info(f"Starting auto-managed dependency service {provider_id} for consumer service {process_id}")
-                await self.start_process(provider_id, is_restart=False)
+    async def start_dependencies(self, process_id: int, allow_auto_start: bool = True):
+        from core.dependency_manager import dependency_manager
+        await dependency_manager.acquire_dependencies('service', process_id, allow_auto_start=allow_auto_start)
 
-    async def stop_unused_dependencies(self, process_id: int):
-        with self.db_session_factory() as session:
-            from database.models import ServiceDependency
-            deps = session.query(ServiceDependency).filter(
-                ServiceDependency.consumer_type == 'service',
-                ServiceDependency.consumer_id == process_id
-            ).all()
-            auto_managed_deps = [dep for dep in deps if dep.is_auto_managed]
-            
-        for dep in auto_managed_deps:
-            provider_id = dep.provider_service_id
-            ref_count = self.get_service_ref_count(provider_id)
-            if ref_count == 0:
-                self.logger.info(f"Stopping unused dependency service {provider_id} (ref_count reached 0)")
-                await self.stop_process(provider_id)
+    async def stop_unused_dependencies(self, process_id: int, allow_auto_stop: bool = True):
+        from core.dependency_manager import dependency_manager
+        await dependency_manager.release_dependencies('service', process_id, allow_auto_stop=allow_auto_stop)
 
-    async def start_process(self, process_id: int, is_restart: bool = False):
+    async def start_process(self, process_id: int, is_restart: bool = False, is_on_demand: bool = False):
         cleanup_rogue_processes(process_id=process_id)
         
+        from core.dependency_manager import dependency_manager
+        if not is_restart and not is_on_demand:
+            dependency_manager.mark_pinned(process_id)
+
+        # Get service config to check dependency permissions
+        allow_start_deps = True
+        with self.db_session_factory() as session:
+            from database.models import Service
+            svc = session.get(Service, process_id)
+            if svc:
+                allow_start_deps = getattr(svc, 'allow_auto_start_deps', True)
+
         # Start auto-managed dependencies first
-        await self.start_dependencies(process_id)
+        await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
         
         logs_dir = None
         debug_mode = False
@@ -137,30 +121,45 @@ class ProcessManager:
             
             logs_dir = log_storage_path
             debug_mode = cfg.get("debug_mode", False)
+            svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
 
-            # Determine which FFmpeg binary to use
-            ffmpeg_bin = self.ffmpeg_path  # Default fallback
-            ffmpeg_build_id = cfg.get("ffmpeg_build_id")
-            if ffmpeg_build_id:
-                build = session.query(FfmpegBuild).get(ffmpeg_build_id)
-                if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
-                    ffmpeg_bin = build.ffmpeg_binary
-                    self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
+            if svc_type == "mediamtx_hub":
+                mediamtx_bin = "mediamtx"
+                build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                if build_id:
+                    build = session.query(FfmpegBuild).get(build_id)
+                    if build and build.binary_path and os.path.exists(build.binary_path):
+                        mediamtx_bin = build.binary_path
+                elif shutil.which("mediamtx"):
+                    mediamtx_bin = shutil.which("mediamtx")
 
-            # Resolve and validate paths before starting
-            import copy
-            val_input = copy.deepcopy(cfg.get("input_config", {}))
-            val_output = copy.deepcopy(cfg.get("output_config", {}))
-            val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
-            self._resolve_config_paths(val_input, val_output, val_filter)
-            try:
-                self._validate_paths(val_input, val_output, val_filter)
-            except Exception as val_err:
-                media_proc.status = 'error'
-                session.commit()
-                raise val_err
+                cmd, ephem_path = self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session)
+                self.ephemeral_configs[process_id] = ephem_path
+            else:
+                # Determine which FFmpeg binary to use
+                ffmpeg_bin = self.ffmpeg_path  # Default fallback
+                ffmpeg_build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                if ffmpeg_build_id:
+                    build = session.query(FfmpegBuild).get(ffmpeg_build_id)
+                    if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+                        ffmpeg_bin = build.ffmpeg_binary
+                        self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
 
-            cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
+                # Resolve and validate paths before starting
+                import copy
+                val_input = copy.deepcopy(cfg.get("input_config", {}))
+                val_output = copy.deepcopy(cfg.get("output_config", {}))
+                val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
+                self._resolve_config_paths(val_input, val_output, val_filter)
+                try:
+                    self._validate_paths(val_input, val_output, val_filter)
+                except Exception as val_err:
+                    media_proc.status = 'error'
+                    session.commit()
+                    raise val_err
+
+                cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
+
             proc_name = media_proc.name
             session.commit()  # Save changes and release write lock immediately!
             
@@ -170,7 +169,7 @@ class ProcessManager:
         prepare_process_file_permissions(process_id=process_id, logger=self.logger)
 
         # 2. Spawn subprocess (outside of any database session locks)
-        self.logger.info(f"Starting FFMPEG for {proc_name}: {shlex.join(cmd)}")
+        self.logger.info(f"Starting service '{proc_name}' ({svc_type}): {shlex.join(cmd)}")
         try:
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
@@ -214,8 +213,8 @@ class ProcessManager:
             async with spawn_lock:
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
                     stdin=asyncio.subprocess.PIPE,
                     env=sub_env
                 )
@@ -339,12 +338,27 @@ class ProcessManager:
                 if process_id in self.processes:
                     del self.processes[process_id]
 
+            # Clean up ephemeral RAM configuration file if present
+            ephem = self.ephemeral_configs.pop(process_id, None)
+            if ephem and os.path.exists(ephem):
+                try:
+                    os.remove(ephem)
+                except Exception:
+                    pass
+
             cleanup_rogue_processes(process_id=process_id)
 
+            # Unmark pinned state if stopped intentionally
+            from core.dependency_manager import dependency_manager
+            if not is_restart:
+                dependency_manager.unmark_pinned(process_id)
+
+            allow_stop_deps = True
             with self.db_session_factory() as session:
                 from database.models import Service
                 media_proc = session.query(Service).get(process_id)
                 if media_proc:
+                    allow_stop_deps = getattr(media_proc, 'allow_auto_stop_deps', True)
                     media_proc.status = 'restarting' if is_restart else 'stopped'
                     media_proc.pid = None
                     media_proc.cpu_usage = 0
@@ -357,7 +371,7 @@ class ProcessManager:
                     session.commit()
 
             # Stop any auto-managed dependencies that are no longer needed
-            await self.stop_unused_dependencies(process_id)
+            await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
         finally:
             self.stopping_processes.discard(process_id)
 
@@ -453,12 +467,284 @@ class ProcessManager:
                 if not os.path.exists(path):
                     raise FileNotFoundError(f"Overlay image does not exist: {path}")
 
+    @staticmethod
+    def _build_srt_url(srt_cfg: dict, direction: str = "output", ffmpeg_bin: str = "ffmpeg", network_timeout: int = 15) -> str:
+        """Helper to build formatted SRT URL supporting MediaMTX access control."""
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+        return FFmpegCommandBuilder._build_srt_url(srt_cfg, direction=direction, ffmpeg_bin=ffmpeg_bin, network_timeout=network_timeout)
+
     def _build_ffmpeg_cmd(self, media_proc, ffmpeg_bin, limit_sec=None, execution_id=None):
         """Build the ffmpeg command line using the dedicated FFmpegCommandBuilder."""
         from core.builders.ffmpeg_builder import FFmpegCommandBuilder
         return FFmpegCommandBuilder.build_cmd(
             media_proc, ffmpeg_bin, limit_sec=limit_sec, execution_id=execution_id, db_session_factory=self.db_session_factory
         )
+
+    _build_ffmpeg_stream_cmd = _build_ffmpeg_cmd
+
+    def _build_mediamtx_config_and_cmd(self, media_proc, mediamtx_bin: str, session):
+        """
+        Builds dynamic configuration for MediaMTX in ephemeral RAM (/dev/shm) and returns subprocess command.
+        """
+        import uuid
+        import yaml
+        from database.models import Storage
+
+        cfg = media_proc.config or {}
+        mtx_cfg = cfg.get("mediamtx_config", {})
+
+        config_dict = {}
+        config_dict["logLevel"] = mtx_cfg.get("log_level", "info")
+        config_dict["logDestinations"] = ["stdout"]
+
+        # Protocols & Ports
+        rtsp_enabled = mtx_cfg.get("rtsp_enabled", True)
+        config_dict["rtsp"] = rtsp_enabled
+        if rtsp_enabled:
+            config_dict["rtspAddress"] = f":{int(mtx_cfg.get('rtsp_port', 8554))}"
+            config_dict["rtpAddress"] = f":{int(mtx_cfg.get('rtp_port', 8000))}"
+            config_dict["rtcpAddress"] = f":{int(mtx_cfg.get('rtcp_port', 8001))}"
+
+        rtmp_enabled = mtx_cfg.get("rtmp_enabled", True)
+        config_dict["rtmp"] = rtmp_enabled
+        if rtmp_enabled:
+            config_dict["rtmpAddress"] = f":{int(mtx_cfg.get('rtmp_port', 1935))}"
+
+        hls_enabled = mtx_cfg.get("hls_enabled", True)
+        config_dict["hls"] = hls_enabled
+        if hls_enabled:
+            config_dict["hlsAddress"] = f":{int(mtx_cfg.get('hls_port', 8888))}"
+            config_dict["hlsSegmentCount"] = int(mtx_cfg.get("hls_segment_count", 7))
+            config_dict["hlsSegmentDuration"] = f"{mtx_cfg.get('hls_segment_duration', 2)}s"
+
+        # Resolve optional HLS storage for path recording
+        hls_storage_id = mtx_cfg.get("hls_storage_id") or cfg.get("hls_storage_id")
+        hls_storage = None
+        hls_dir = None
+        if hls_storage_id:
+            hls_storage = session.query(Storage).get(hls_storage_id)
+            if hls_storage:
+                hls_dir = os.path.join(hls_storage.path, f"mediamtx_svc_{media_proc.id}")
+                try:
+                    os.makedirs(hls_dir, exist_ok=True)
+                except Exception as e:
+                    self.logger.warning(f"[MediaMTX] Could not create storage dir {hls_dir}: {e}")
+
+        webrtc_enabled = mtx_cfg.get("webrtc_enabled", False)
+        config_dict["webrtc"] = webrtc_enabled
+        if webrtc_enabled:
+            config_dict["webrtcAddress"] = f":{int(mtx_cfg.get('webrtc_port', 8889))}"
+            webrtc_udp = int(mtx_cfg.get("webrtc_udp_port", 8189))
+            config_dict["webrtcLocalUDPAddress"] = f":{webrtc_udp}"
+
+        srt_enabled = mtx_cfg.get("srt_enabled", False)
+        config_dict["srt"] = srt_enabled
+        if srt_enabled:
+            config_dict["srtAddress"] = f":{int(mtx_cfg.get('srt_port', 8890))}"
+
+        # API & Diagnostics
+        api_enabled = mtx_cfg.get("api_enabled", True)
+        config_dict["api"] = api_enabled
+        if api_enabled:
+            config_dict["apiAddress"] = f":{int(mtx_cfg.get('api_port', 9997))}"
+
+        # Resolve build version if available to adapt YAML schema safely across releases
+        build_ver_major = 1
+        build_ver_minor = 19
+        build_id = getattr(media_proc, "ffmpeg_build_id", None) or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+        if build_id:
+            from database.models import SoftwareBuild
+            build = session.query(SoftwareBuild).get(build_id)
+            version_str = getattr(build, "version_tag", None) or getattr(build, "name", None) or ""
+            if version_str:
+                import re
+                clean = re.sub(r'^[^\d]*', '', version_str)
+                parts = clean.split('.')
+                try:
+                    build_ver_major = int(parts[0])
+                    build_ver_minor = int(parts[1]) if len(parts) > 1 else 0
+                except Exception:
+                    pass
+
+        # MoQ was introduced in MediaMTX v1.19.0
+        if (build_ver_major > 1) or (build_ver_major == 1 and build_ver_minor >= 19):
+            config_dict["moq"] = False
+
+        # Playback server was introduced in MediaMTX v1.8.0
+        if (build_ver_major > 1) or (build_ver_major == 1 and build_ver_minor >= 8):
+            config_dict["playback"] = False
+
+        config_dict["metrics"] = False
+        config_dict["pprof"] = False
+
+        # SSL / TLS configuration
+        ssl_enabled = mtx_cfg.get("ssl_enabled", False)
+        if ssl_enabled:
+            server_key = mtx_cfg.get("server_key") or mtx_cfg.get("serverKey")
+            server_cert = mtx_cfg.get("server_cert") or mtx_cfg.get("serverCert")
+            if not server_key or not server_cert:
+                try:
+                    from services.cert_manager import CertificateManager
+                    cert_mgr = CertificateManager()
+                    if not server_key:
+                        server_key = cert_mgr.privkey_path
+                    if not server_cert:
+                        server_cert = cert_mgr.fullchain_path
+                except Exception as e:
+                    self.logger.warning(f"[MediaMTX] Error resolving SSL certificates: {e}")
+
+            if server_key:
+                config_dict["serverKey"] = server_key
+                config_dict["rtspServerKey"] = server_key
+                config_dict["rtmpServerKey"] = server_key
+                config_dict["hlsServerKey"] = server_key
+                config_dict["webrtcServerKey"] = server_key
+                config_dict["apiServerKey"] = server_key
+            if server_cert:
+                config_dict["serverCert"] = server_cert
+                config_dict["rtspServerCert"] = server_cert
+                config_dict["rtmpServerCert"] = server_cert
+                config_dict["hlsServerCert"] = server_cert
+                config_dict["webrtcServerCert"] = server_cert
+                config_dict["apiServerCert"] = server_cert
+
+            if mtx_cfg.get("rtmps_enabled", False):
+                config_dict["rtmpEncryption"] = "optional"
+                config_dict["rtmpsAddress"] = f":{int(mtx_cfg.get('rtmps_port', 1936))}"
+
+            if mtx_cfg.get("rtsps_enabled", False):
+                config_dict["rtspEncryption"] = "optional"
+                config_dict["rtspsAddress"] = f":{int(mtx_cfg.get('rtsps_port', 8322))}"
+
+            config_dict["hlsEncryption"] = True
+            config_dict["webrtcEncryption"] = True
+            config_dict["apiEncryption"] = True
+
+        # Paths / Stream routing & Security
+        raw_paths = mtx_cfg.get("paths", {})
+        security = mtx_cfg.get("security", {})
+
+        processed_paths = {}
+
+        # Global credentials for all_others
+        global_pub_user = security.get("publish_user") or security.get("publishUser") or mtx_cfg.get("publish_user")
+        global_pub_pass = security.get("publish_pass") or security.get("publishPass") or mtx_cfg.get("publish_pass")
+        global_read_user = security.get("read_user") or security.get("readUser") or mtx_cfg.get("read_user")
+        global_read_pass = security.get("read_pass") or security.get("readPass") or mtx_cfg.get("read_pass")
+
+        all_others_entry = {}
+        if global_pub_user is not None:
+            all_others_entry["publishUser"] = global_pub_user
+        if global_pub_pass is not None:
+            all_others_entry["publishPass"] = global_pub_pass
+        if global_read_user is not None:
+            all_others_entry["readUser"] = global_read_user
+        if global_read_pass is not None:
+            all_others_entry["readPass"] = global_read_pass
+
+        # If paths is provided as a dict or list
+        paths_map = {}
+        if isinstance(raw_paths, dict):
+            paths_map = dict(raw_paths)
+        elif isinstance(raw_paths, list):
+            for item in raw_paths:
+                if isinstance(item, dict):
+                    name = item.get("name") or item.get("path")
+                    if name:
+                        paths_map[name] = item
+
+        # If all_others was explicitly in paths_map, merge it
+        if "all_others" in paths_map:
+            ao_cfg = paths_map["all_others"]
+            if isinstance(ao_cfg, dict):
+                for k, v in ao_cfg.items():
+                    if k in ["publish_user", "publishUser"]:
+                        all_others_entry["publishUser"] = v
+                    elif k in ["publish_pass", "publishPass"]:
+                        all_others_entry["publishPass"] = v
+                    elif k in ["read_user", "readUser"]:
+                        all_others_entry["readUser"] = v
+                    elif k in ["read_pass", "readPass"]:
+                        all_others_entry["readPass"] = v
+                    elif k not in ["mode", "name", "path"]:
+                        all_others_entry[k] = v
+
+        processed_paths["all_others"] = all_others_entry
+
+        # Process each non-all_others path
+        for path_name, path_cfg in paths_map.items():
+            if path_name == "all_others" or not isinstance(path_cfg, dict):
+                continue
+
+            mode = path_cfg.get("mode", "inherit")
+            entry = {}
+
+            if mode == "open":
+                entry["publishUser"] = ""
+                entry["publishPass"] = ""
+                entry["readUser"] = ""
+                entry["readPass"] = ""
+            elif mode == "custom":
+                pub_u = path_cfg.get("publish_user") if "publish_user" in path_cfg else path_cfg.get("publishUser")
+                pub_p = path_cfg.get("publish_pass") if "publish_pass" in path_cfg else path_cfg.get("publishPass")
+                read_u = path_cfg.get("read_user") if "read_user" in path_cfg else path_cfg.get("readUser")
+                read_p = path_cfg.get("read_pass") if "read_pass" in path_cfg else path_cfg.get("readPass")
+                if pub_u is not None:
+                    entry["publishUser"] = pub_u
+                if pub_p is not None:
+                    entry["publishPass"] = pub_p
+                if read_u is not None:
+                    entry["readUser"] = read_u
+                if read_p is not None:
+                    entry["readPass"] = read_p
+            elif mode == "inherit":
+                pass
+
+            if path_cfg.get("record") and hls_dir:
+                entry["record"] = True
+                entry["recordPath"] = os.path.join(hls_dir, "%path/%Y-%m-%d_%H-%M-%S.mp4")
+                entry["recordFormat"] = "fmp4"
+
+            # Copy any extra keys provided in path_cfg that are not internal
+            internal_keys = {
+                "mode", "name", "path", "publish_user", "publishUser",
+                "publish_pass", "publishPass", "read_user", "readUser",
+                "read_pass", "readPass", "run_on_publish", "runOnPublish",
+                "run_on_read", "runOnRead", "source", "record"
+            }
+            for k, v in path_cfg.items():
+                if k not in internal_keys:
+                    entry[k] = v
+
+            processed_paths[path_name] = entry
+
+        config_dict["paths"] = processed_paths
+
+        # Custom raw YAML overrides if provided
+        raw_yaml = mtx_cfg.get("raw_yaml", "").strip()
+        if raw_yaml:
+            try:
+                parsed_raw = yaml.safe_load(raw_yaml)
+                if isinstance(parsed_raw, dict):
+                    config_dict.update(parsed_raw)
+            except Exception as e:
+                self.logger.warning(f"Error parsing raw_yaml for MediaMTX service {media_proc.id}: {e}")
+
+        # Choose RAM filesystem (/dev/shm) with fallback to /tmp
+        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.path.isdir("/dev/shm") else "/tmp"
+        token = uuid.uuid4().hex[:8]
+        ephem_file = os.path.join(shm_dir, f"ffmpeg_gui_mediamtx_{media_proc.id}_{token}.yml")
+
+        yaml_content = yaml.dump(config_dict, default_flow_style=False)
+        with open(ephem_file, "w", encoding="utf-8") as f:
+            f.write(yaml_content)
+
+        try:
+            os.chmod(ephem_file, 0o600)
+        except Exception:
+            pass
+
+        return [mediamtx_bin, ephem_file], ephem_file
 
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process, log_path: Optional[str] = None):
         import re
@@ -475,9 +761,9 @@ class ProcessManager:
                 
         try:
             while True:
-                if proc is None or proc.stderr is None:
+                if proc is None or proc.stdout is None:
                     break
-                chunk = await proc.stderr.read(4096)
+                chunk = await proc.stdout.read(4096)
                 if not chunk:
                     if buffer:
                         msg = buffer.decode('utf-8', errors='replace').strip()
@@ -771,132 +1057,136 @@ class ProcessManager:
                             if (frame is not None and frame > 0) or (out_time_us is not None and out_time_us > 0):
                                 has_had_activity = True
 
-                            # Check speed degradation
-                            speed_val = None
-                            if speed and speed != "N/A":
-                                try:
-                                    speed_val = float(speed.replace("x", "").strip())
-                                except ValueError:
-                                    pass
+                            is_ffmpeg_service = (getattr(media_proc, 'service_type', 'ffmpeg_stream') == 'ffmpeg_stream')
 
-                            cfg = media_proc.config or {}
-                            watchdog_enabled = cfg.get('watchdog_enabled', False)
-                            watchdog_min_speed = cfg.get('watchdog_min_speed')
-                            if getattr(media_proc, 'service_type', None) == 'ffmpeg_stream' and watchdog_enabled and watchdog_min_speed is not None:
-                                elapsed = (datetime.utcnow() - start_time).total_seconds()
-                                if elapsed > 30:
-                                    if speed_val is not None and speed_val < watchdog_min_speed:
-                                        if self.watchdog_low_speed_since.get(process_id) is None:
-                                            self.watchdog_low_speed_since[process_id] = datetime.utcnow()
+                            # FFmpeg-specific Deep Transcode Watchdog Checks
+                            if is_ffmpeg_service:
+                                # Check speed degradation
+                                speed_val = None
+                                if speed and speed != "N/A":
+                                    try:
+                                        speed_val = float(speed.replace("x", "").strip())
+                                    except ValueError:
+                                        pass
+
+                                cfg = media_proc.config or {}
+                                watchdog_enabled = cfg.get('watchdog_enabled', False)
+                                watchdog_min_speed = cfg.get('watchdog_min_speed')
+                                if watchdog_enabled and watchdog_min_speed is not None:
+                                    elapsed = (datetime.utcnow() - start_time).total_seconds()
+                                    if elapsed > 30:
+                                        if speed_val is not None and speed_val < watchdog_min_speed:
+                                            if self.watchdog_low_speed_since.get(process_id) is None:
+                                                self.watchdog_low_speed_since[process_id] = datetime.utcnow()
+                                            else:
+                                                watchdog_min_speed_duration = cfg.get('watchdog_min_speed_duration', 30)
+                                                duration = watchdog_min_speed_duration if watchdog_min_speed_duration is not None else 30
+                                                low_speed_duration = (datetime.utcnow() - self.watchdog_low_speed_since[process_id]).total_seconds()
+                                                if low_speed_duration > duration:
+                                                    log_msg = f"Watchdog: Stream speed ({speed_val}x) fell below minimum threshold ({watchdog_min_speed}x) for more than {duration}s. Force killing..."
+                                                    self.logger.error(log_msg)
+                                                    
+                                                    from database.models import ProcessLog
+                                                    log = ProcessLog(
+                                                        process_id=process_id,
+                                                        level='ERROR',
+                                                        message=log_msg
+                                                    )
+                                                    session.add(log)
+                                                    session.commit()
+
+                                                    if proc is not None:
+                                                        try:
+                                                            proc.kill()
+                                                        except Exception as kerr:
+                                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
+                                                    else:
+                                                        import signal
+                                                        try:
+                                                            os.kill(pid, signal.SIGKILL)
+                                                        except Exception as kerr:
+                                                            self.logger.error(f"Failed to kill PID {pid} via os.kill: {kerr}")
                                         else:
-                                            watchdog_min_speed_duration = cfg.get('watchdog_min_speed_duration', 30)
-                                            duration = watchdog_min_speed_duration if watchdog_min_speed_duration is not None else 30
-                                            low_speed_duration = (datetime.utcnow() - self.watchdog_low_speed_since[process_id]).total_seconds()
-                                            if low_speed_duration > duration:
-                                                log_msg = f"Watchdog: Stream speed ({speed_val}x) fell below minimum threshold ({media_proc.watchdog_min_speed}x) for more than {duration}s. Force killing..."
-                                                self.logger.error(log_msg)
-                                                
-                                                from database.models import ProcessLog
-                                                log = ProcessLog(
-                                                    process_id=process_id,
-                                                    level='ERROR',
-                                                    message=log_msg
-                                                )
-                                                session.add(log)
-                                                session.commit()
+                                            self.watchdog_low_speed_since[process_id] = None
 
-                                                if proc is not None:
-                                                    try:
-                                                        proc.kill()
-                                                    except Exception as kerr:
-                                                        self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                                else:
-                                                    import signal
-                                                    try:
-                                                        os.kill(pid, signal.SIGKILL)
-                                                    except Exception as kerr:
-                                                        self.logger.error(f"Failed to kill PID {pid} via os.kill: {kerr}")
-                                    else:
-                                        self.watchdog_low_speed_since[process_id] = None
+                                # Check startup stall (process running for > network_wait_timeout with zero activity/frames)
+                                elapsed_since_start = (datetime.utcnow() - start_time).total_seconds()
+                                net_timeout_cfg = self.get_network_wait_timeout()
+                                
+                                # Do not force kill listeners awaiting connections on startup (Rule XIII)
+                                cfg_str = str(media_proc.config or {}).lower()
+                                is_listener = ("mode=listener" in cfg_str) or \
+                                              (isinstance(media_proc.input_config, dict) and media_proc.input_config.get('mode') == 'listener') or \
+                                              (isinstance(media_proc.output_config, dict) and media_proc.output_config.get('mode') == 'listener')
+                                              
+                                if media_proc.type == 'service' and media_proc.watchdog_enabled and not has_had_activity and not is_listener:
+                                    if elapsed_since_start > net_timeout_cfg:
+                                        log_msg = f"Watchdog: Service failed to produce any frames/progress after {int(elapsed_since_start)}s (hung at startup/network connection). Force killing..."
+                                        self.logger.error(log_msg)
+                                        from database.models import ProcessLog
+                                        log = ProcessLog(
+                                            process_id=process_id,
+                                            level='ERROR',
+                                            message=log_msg
+                                        )
+                                        session.add(log)
+                                        session.commit()
 
-                            # Check startup stall (process running for > network_wait_timeout with zero activity/frames)
-                            elapsed_since_start = (datetime.utcnow() - start_time).total_seconds()
-                            net_timeout_cfg = self.get_network_wait_timeout()
-                            
-                            # Do not force kill listeners awaiting connections on startup (Rule XIII)
-                            cfg_str = str(media_proc.config or {}).lower()
-                            is_listener = ("mode=listener" in cfg_str) or \
-                                          (isinstance(media_proc.input_config, dict) and media_proc.input_config.get('mode') == 'listener') or \
-                                          (isinstance(media_proc.output_config, dict) and media_proc.output_config.get('mode') == 'listener')
-                                          
-                            if media_proc.type == 'service' and media_proc.watchdog_enabled and not has_had_activity and not is_listener:
-                                if elapsed_since_start > net_timeout_cfg:
-                                    log_msg = f"Watchdog: Service failed to produce any frames/progress after {int(elapsed_since_start)}s (hung at startup/network connection). Force killing..."
-                                    self.logger.error(log_msg)
-                                    from database.models import ProcessLog
-                                    log = ProcessLog(
-                                        process_id=process_id,
-                                        level='ERROR',
-                                        message=log_msg
-                                    )
-                                    session.add(log)
-                                    session.commit()
+                                        if proc is not None:
+                                            try:
+                                                proc.kill()
+                                            except Exception as kerr:
+                                                self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
+                                        else:
+                                            import signal
+                                            try:
+                                                os.kill(pid, signal.SIGKILL)
+                                            except Exception as kerr:
+                                                self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
 
-                                    if proc is not None:
-                                        try:
-                                            proc.kill()
-                                        except Exception as kerr:
-                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                    else:
-                                        import signal
-                                        try:
-                                            os.kill(pid, signal.SIGKILL)
-                                        except Exception as kerr:
-                                            self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
-
-                            # Compare with previous iteration when activity is present
-                            if has_had_activity:
-                                if prev_out_time_us is None:
-                                    prev_frame = frame
-                                    prev_out_time_us = out_time_us
-                                    self.watchdog_stalled_since[process_id] = None
-                                else:
-                                    if frame == prev_frame and out_time_us == prev_out_time_us:
-                                        if self.watchdog_stalled_since.get(process_id) is None:
-                                            self.watchdog_stalled_since[process_id] = datetime.utcnow()
-                                        elif (datetime.utcnow() - self.watchdog_stalled_since[process_id]).total_seconds() > 15:
-                                            if media_proc.type == 'service' and media_proc.watchdog_enabled:
-                                                log_msg = "Watchdog: Stream pipeline has frozen (frame/time count stalled for 15s). Force killing..."
-                                                self.logger.error(log_msg)
-                                                
-                                                from database.models import ProcessLog
-                                                log = ProcessLog(
-                                                    process_id=process_id,
-                                                    level='ERROR',
-                                                    message=log_msg
-                                                )
-                                                session.add(log)
-                                                session.commit()
-
-                                                # Kill the process
-                                                if proc is not None:
-                                                    try:
-                                                        proc.kill()
-                                                    except Exception as kerr:
-                                                        self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                                else:
-                                                    import signal
-                                                    try:
-                                                        os.kill(pid, signal.SIGKILL)
-                                                    except Exception as kerr:
-                                                        self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
-
-                                                self.watchdog_stalled_since[process_id] = None
-                                    else:
-                                        # They have changed
-                                        self.watchdog_stalled_since[process_id] = None
+                                # Compare with previous iteration when activity is present
+                                if has_had_activity:
+                                    if prev_out_time_us is None:
                                         prev_frame = frame
                                         prev_out_time_us = out_time_us
+                                        self.watchdog_stalled_since[process_id] = None
+                                    else:
+                                        if frame == prev_frame and out_time_us == prev_out_time_us:
+                                            if self.watchdog_stalled_since.get(process_id) is None:
+                                                self.watchdog_stalled_since[process_id] = datetime.utcnow()
+                                            elif (datetime.utcnow() - self.watchdog_stalled_since[process_id]).total_seconds() > 15:
+                                                if media_proc.type == 'service' and media_proc.watchdog_enabled:
+                                                    log_msg = "Watchdog: Stream pipeline has frozen (frame/time count stalled for 15s). Force killing..."
+                                                    self.logger.error(log_msg)
+                                                    
+                                                    from database.models import ProcessLog
+                                                    log = ProcessLog(
+                                                        process_id=process_id,
+                                                        level='ERROR',
+                                                        message=log_msg
+                                                    )
+                                                    session.add(log)
+                                                    session.commit()
+
+                                                    # Kill the process
+                                                    if proc is not None:
+                                                        try:
+                                                            proc.kill()
+                                                        except Exception as kerr:
+                                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
+                                                    else:
+                                                        import signal
+                                                        try:
+                                                            os.kill(pid, signal.SIGKILL)
+                                                        except Exception as kerr:
+                                                            self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
+
+                                                    self.watchdog_stalled_since[process_id] = None
+                                        else:
+                                            # They have changed
+                                            self.watchdog_stalled_since[process_id] = None
+                                            prev_frame = frame
+                                            prev_out_time_us = out_time_us
                 except Exception as db_err:
                     self.logger.error(f"Watchdog database error for process {process_id}: {db_err}")
 

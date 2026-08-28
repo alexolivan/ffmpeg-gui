@@ -12,14 +12,31 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
     active_pids = active_pids or set()
     for proc in psutil.process_iter(['pid', 'name']):
         try:
-            name = proc.info['name']
-            if name and 'ffmpeg' in name.lower():
-                env = proc.environ()
+            name = proc.info['name'] or ''
+            # Check if it is a managed process binary
+            is_candidate = any(target in name.lower() for target in ['ffmpeg', 'mediamtx', 'icecast', 'cog'])
+            if is_candidate:
                 pid = proc.info['pid']
-                
-                gui_proc_id = env.get("FFMPEG_GUI_PROCESS_ID")
-                gui_exec_id = env.get("FFMPEG_GUI_EXECUTION_ID")
-                
+                gui_proc_id = None
+                gui_exec_id = None
+                try:
+                    env = proc.environ()
+                    gui_proc_id = env.get("FFMPEG_GUI_PROCESS_ID")
+                    gui_exec_id = env.get("FFMPEG_GUI_EXECUTION_ID")
+                except Exception:
+                    pass
+
+                # Fallback: check command line arguments for mediamtx ephemeral file pattern
+                if not gui_proc_id and not gui_exec_id:
+                    try:
+                        cmdline = " ".join(proc.cmdline())
+                        import re
+                        m_proc = re.search(r"ffmpeg_gui_mediamtx_(\d+)_", cmdline)
+                        if m_proc:
+                            gui_proc_id = m_proc.group(1)
+                    except Exception:
+                        pass
+
                 if not gui_proc_id and not gui_exec_id:
                     continue
                 

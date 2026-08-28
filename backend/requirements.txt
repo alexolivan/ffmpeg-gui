@@ -12,3 +12,4 @@ pyserial
 acme
 josepy
 cryptography
+PyYAML

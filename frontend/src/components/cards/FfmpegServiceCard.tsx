@@ -114,7 +114,7 @@ export const hasVideo = (proc: ServiceItem): boolean => {
   return true;
 };
 
-export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
+export const FfmpegServiceCard: React.FC<UnifiedServiceCardProps> = ({
   service,
   telemetryItem,
   actionPending,
@@ -240,8 +240,11 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           )}
 
           {service.dependencies && service.dependencies.length > 0 && (
-            <span className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
-              🔗 LINKED ({service.dependencies.length})
+            <span 
+              className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+              title={`Depends on auxiliary service: ${service.dependencies.map((d: any) => d.provider_name).join(', ')}`}
+            >
+              🔗 {service.dependencies.map((d: any) => d.provider_name).join(', ')}
             </span>
           )}
 
