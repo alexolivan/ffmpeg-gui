@@ -238,7 +238,9 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
     document.body.removeChild(textArea);
   };
 
-  const filteredBuilds = builds.filter(b => (b.software_type || 'ffmpeg') === activeEngineTab);
+  const filteredBuilds = builds.filter(
+    b => (b.software_type || 'ffmpeg') === activeEngineTab && (!b.source_type || b.source_type === 'compiled')
+  );
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
