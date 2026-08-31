@@ -282,7 +282,8 @@
       "logoAbbr": "Logo Abbreviation",
       "nodeAlias": "LCD / Node Alias",
       "logoChange": "Click to change logo",
-      "logoUpload": "Upload custom logo"
+      "logoUpload": "Upload custom logo",
+      "logoRemove": "Remove Logo"
     },
     "network": {
       "title": "Network Settings",
@@ -360,14 +361,19 @@
       "utilization": "Space Utilization"
     },
     "security": {
-      "title": "Security & Access",
+      "title": "Authentication & Password Management",
       "newPassword": "New Password",
-      "newPasswordPlaceholder": "Leave empty to remove password",
+      "newPasswordPlaceholder": "Enter new password",
+      "newPasswordPlaceholderKeep": "Leave empty to keep current password",
       "confirmPassword": "Confirm Password",
       "confirmPasswordPlaceholder": "Confirm new password",
       "description": "Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.",
       "passwordUpdatedSuccess": "Password updated successfully",
       "passwordMismatch": "Passwords do not match",
+      "removePasswordBtn": "Remove Password Protection (Open Access)",
+      "confirmRemovePassword": "Are you sure you want to remove password protection from this node?",
+      "passwordRemoved": "Password protection removed successfully",
+      "passwordError": "Failed to remove password",
       "saveSettingsError": "Error saving settings",
       "passwordTitle": "Authentication & Password Management"
     },

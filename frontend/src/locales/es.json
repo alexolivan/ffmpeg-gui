@@ -282,7 +282,8 @@
       "logoAbbr": "Abreviatura del Logo",
       "nodeAlias": "Alias LCD / Nodo",
       "logoChange": "Haz clic para cambiar el logo",
-      "logoUpload": "Subir logo personalizado"
+      "logoUpload": "Subir logo personalizado",
+      "logoRemove": "Eliminar Logo"
     },
     "network": {
       "title": "Configuración de Red",
@@ -362,12 +363,17 @@
     "security": {
       "title": "Seguridad y Acceso",
       "newPassword": "Nueva Contraseña",
-      "newPasswordPlaceholder": "Dejar vacío para eliminar contraseña",
+      "newPasswordPlaceholder": "Introducir nueva contraseña",
+      "newPasswordPlaceholderKeep": "Dejar vacío para conservar la contraseña actual",
       "confirmPassword": "Confirmar Contraseña",
       "confirmPasswordPlaceholder": "Confirmar nueva contraseña",
       "description": "Protege el panel de tu nodo FFmpeg contra modificaciones de stream o ejecución de comandos no autorizadas.",
       "passwordUpdatedSuccess": "Contraseña actualizada con éxito",
       "passwordMismatch": "Las contraseñas no coinciden",
+      "removePasswordBtn": "Eliminar Protección por Contraseña (Acceso Abierto)",
+      "confirmRemovePassword": "¿Seguro que deseas eliminar la protección por contraseña de este nodo?",
+      "passwordRemoved": "Protección por contraseña eliminada con éxito",
+      "passwordError": "Error al eliminar la contraseña",
       "saveSettingsError": "Error al guardar la configuración",
       "passwordTitle": "Gestión de Autenticación y Contraseñas"
     },

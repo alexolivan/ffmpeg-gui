@@ -793,8 +793,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         },
       };
 
-      if (newPassword !== '') {
-        payload.gui_password = newPassword;
+      // Ensure gui_password is only passed if explicitly updated with new value
+      delete payload.gui_password;
+      if (newPassword.trim() !== '') {
+        payload.gui_password = newPassword.trim();
       }
 
       await onUpdateSettings(payload);
@@ -1261,15 +1263,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                   </label>
                   {settings.logo_path ? (
-                    <div className="relative w-20 h-20 flex items-center justify-center">
-                      <img src={`${API}${settings.logo_path}`} alt="Custom Logo" className="max-w-full max-h-full object-contain" />
+                    <div className="relative flex flex-col items-center gap-1.5 z-20">
+                      <div className="relative w-16 h-16 flex items-center justify-center">
+                        <img src={`${API}${settings.logo_path}`} alt="Custom Logo" className="max-w-full max-h-full object-contain" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await onUpdateSettings({ logo_path: '' });
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="text-[9px] text-red-400 hover:text-red-300 font-bold underline cursor-pointer"
+                      >
+                        {t('settings.branding.logoRemove', '✕ Remove Logo')}
+                      </button>
                     </div>
                   ) : (
                     <div className="w-12 h-12 bg-brand-lime/10 border border-brand-lime/30 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
                       <span className="text-brand-lime font-black text-lg uppercase tracking-wider">{logoText || 'FF'}</span>
                     </div>
                   )}
-                  <div className="text-[9px] uppercase font-bold text-text-secondary mt-2.5 text-center tracking-wider">
+                  <div className="text-[9px] uppercase font-bold text-text-secondary mt-2 text-center tracking-wider">
                     {settings.logo_path ? t('settings.branding.logoChange', 'Click to change logo') : t('settings.branding.logoUpload', 'Upload custom logo')}
                   </div>
                 </div>
@@ -1984,7 +2002,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <input 
                     type="password" 
                     autoComplete="new-password"
-                    placeholder={t('settings.security.newPasswordPlaceholder', 'Leave empty to remove password')}
+                    placeholder={settings.gui_password ? t('settings.security.newPasswordPlaceholderKeep', 'Leave empty to keep current password') : t('settings.security.newPasswordPlaceholder', 'Enter new password')}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-red-500 text-[var(--text-primary)] transition-all"
                     value={newPassword}
                     onChange={e => { setNewPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
@@ -2004,6 +2022,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 
                 {passwordError && <p className="text-[10px] text-red-500 font-bold mt-1">{passwordError}</p>}
                 {passwordSuccess && <p className="text-[10px] text-brand-lime font-bold mt-1">{passwordSuccess}</p>}
+
+                {settings.gui_password && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (window.confirm(t('settings.security.confirmRemovePassword', 'Are you sure you want to remove password protection from this node?'))) {
+                          try {
+                            await onUpdateSettings({ gui_password: '' });
+                            setPasswordSuccess(t('settings.security.passwordRemoved', 'Password protection removed successfully'));
+                            setNewPassword('');
+                            setConfirmPassword('');
+                            setTimeout(() => setPasswordSuccess(''), 3000);
+                          } catch (err) {
+                            setPasswordError(t('settings.security.passwordError', 'Failed to remove password'));
+                          }
+                        }
+                      }}
+                      className="text-xs text-red-400 hover:text-red-300 font-bold underline cursor-pointer"
+                    >
+                      🔓 {t('settings.security.removePasswordBtn', 'Remove Password Protection (Open Access)')}
+                    </button>
+                  </div>
+                )}
                 
                 <p className="text-[9px] text-text-secondary leading-tight italic">
                   {t('settings.security.description', 'Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.')}

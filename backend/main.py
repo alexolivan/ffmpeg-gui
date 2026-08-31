@@ -1202,9 +1202,17 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     
     if settings_in.node_name is not None: settings.node_name = settings_in.node_name
     if settings_in.lcd_alias is not None: settings.lcd_alias = settings_in.lcd_alias
-    if settings_in.gui_password is not None: settings.gui_password = settings_in.gui_password
+    if settings_in.gui_password is not None:
+        if settings_in.gui_password.strip() == "":
+            settings.gui_password = None
+        else:
+            settings.gui_password = settings_in.gui_password
     if settings_in.logo_text is not None: settings.logo_text = settings_in.logo_text
-    if settings_in.logo_path is not None: settings.logo_path = settings_in.logo_path
+    if settings_in.logo_path is not None:
+        if settings_in.logo_path.strip() == "":
+            settings.logo_path = None
+        else:
+            settings.logo_path = settings_in.logo_path
     if settings_in.accent_color is not None: settings.accent_color = settings_in.accent_color
     if settings_in.auto_reload_ssl_services is not None: settings.auto_reload_ssl_services = settings_in.auto_reload_ssl_services
     

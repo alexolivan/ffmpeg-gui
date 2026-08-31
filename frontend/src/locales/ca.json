@@ -282,7 +282,8 @@
       "logoAbbr": "Abreviatura del Logotip",
       "nodeAlias": "Àlies LCD / Node",
       "logoChange": "Fes clic per canviar el logotip",
-      "logoUpload": "Pujar logotip personalitzat"
+      "logoUpload": "Pujar logotip personalitzat",
+      "logoRemove": "Eliminar Logotip"
     },
     "network": {
       "title": "Configuració de Xarxa",
@@ -362,12 +363,17 @@
     "security": {
       "title": "Seguretat i Accés",
       "newPassword": "Nova Contrasenya",
-      "newPasswordPlaceholder": "Deixar buit per eliminar la contrasenya",
+      "newPasswordPlaceholder": "Introduir nova contrasenya",
+      "newPasswordPlaceholderKeep": "Deixar buit per conservar la contrasenya actual",
       "confirmPassword": "Confirmar Contrasenya",
       "confirmPasswordPlaceholder": "Confirmar nova contrasenya",
       "description": "Protegeix el panell del teu node FFmpeg contra modificacions de stream o execució de comandes no autoritzades.",
       "passwordUpdatedSuccess": "Contrasenya actualitzada amb èxit",
       "passwordMismatch": "Les contrasenyes no coincideixen",
+      "removePasswordBtn": "Eliminar Protecció per Contrasenya (Accés Obert)",
+      "confirmRemovePassword": "Segur que vols eliminar la protecció per contrasenya d'aquest node?",
+      "passwordRemoved": "Protecció per contrasenya eliminada amb èxit",
+      "passwordError": "Error en eliminar la contrasenya",
       "saveSettingsError": "Error en desar la configuració",
       "passwordTitle": "Gestió d'Autenticació i Contrasenyes"
     },

@@ -145,10 +145,10 @@ function App() {
             {logoUrl ? (
               <img src={logoUrl} alt="Logo" className="w-full h-full object-contain" />
             ) : (
-              <span className="text-black font-black text-3xl">{settings.logo_text}</span>
+              <span className="text-black font-black text-3xl">{settings.logo_text || 'FF'}</span>
             )}
           </div>
-          <h1 className="text-2xl font-bold text-center mb-2 uppercase tracking-tighter">{settings.node_name}</h1>
+          <h1 className="text-2xl font-bold text-center mb-2 uppercase tracking-tighter">{settings.node_name || 'FFMPEG-GUI'}</h1>
           <p className="text-text-secondary text-center text-sm mb-10">{t('auth.accessRestricted')}</p>
           
           <div className="space-y-6">
