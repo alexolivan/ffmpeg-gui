@@ -161,7 +161,7 @@ from core.task_manager import TaskManager
 from core.scheduler import Scheduler
 from utils.cron_helper import CronHelper
 
-task_manager = TaskManager(db_session_factory=SessionLocal)
+task_manager = TaskManager(db_session_factory=SessionLocal, process_manager=process_manager)
 scheduler = Scheduler(db_session_factory=SessionLocal, task_manager=task_manager)
 
 
@@ -5317,7 +5317,7 @@ def get_ssl_status():
 
 
 @app.post("/api/settings/ssl/upload-custom")
-async def upload_custom_ssl(cert_file: UploadFile = File(...), key_file: UploadFile = File(...)):
+async def upload_custom_ssl(cert_file: UploadFile = File(...), key_file: UploadFile = File(...), db: Session = Depends(get_db)):
     from services.cert_manager import CertificateManager
     cert_mgr = CertificateManager()
     cert_bytes = await cert_file.read()
@@ -5326,7 +5326,9 @@ async def upload_custom_ssl(cert_file: UploadFile = File(...), key_file: UploadF
     success, err = cert_mgr.save_custom_cert(cert_bytes, key_bytes, mode="custom")
     if not success:
         raise HTTPException(status_code=400, detail=err or "Invalid SSL certificate or keypair.")
-    return {"success": True, "status": cert_mgr.get_cert_status()}
+    
+    reloaded = await process_manager.reload_ssl_services(db_session=db)
+    return {"success": True, "status": cert_mgr.get_cert_status(), "reloaded_services": reloaded}
 
 
 class AcmeRenewRequest(BaseModel):
@@ -5336,7 +5338,7 @@ class AcmeRenewRequest(BaseModel):
 
 
 @app.post("/api/settings/ssl/renew")
-def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session = Depends(get_db)):
+async def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session = Depends(get_db)):
     config_path = os.environ.get("CONFIG_FILE_PATH")
     if not config_path:
         config_path = "ffmpeg-gui.conf"
@@ -5378,7 +5380,8 @@ def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session =
         ssl_sys_task.next_run = CronHelper.get_next_run("0 3 * * *")
         db.commit()
 
-    return {"success": True, "message": msg, "status": cert_mgr.get_cert_status()}
+    reloaded = await process_manager.reload_ssl_services(db_session=db)
+    return {"success": True, "message": msg, "status": cert_mgr.get_cert_status(), "reloaded_services": reloaded}
 
 
 ACME_CHALLENGES: dict[str, str] = {}

@@ -1370,3 +1370,51 @@ class ProcessManager:
         self.processes[process_id] = None
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
 
+    async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
+        """Gracefully restarts any active/running services configured with TLS/SSL encryption."""
+        from database.models import Service
+
+        def _get_running_services(session):
+            return session.query(Service).filter(Service.status == "running").all()
+
+        if db_session:
+            running_services = _get_running_services(db_session)
+        elif self.db_session_factory:
+            with self.db_session_factory() as session:
+                running_services = _get_running_services(session)
+        else:
+            return []
+
+        reloaded = []
+        for svc in running_services:
+            cfg = svc.config or {}
+            mediamtx_cfg = cfg.get("mediamtx_config", {})
+            icecast_cfg = cfg.get("icecast_config", {})
+
+            is_ssl = (
+                mediamtx_cfg.get("ssl_enabled") is True or
+                icecast_cfg.get("ssl_enabled") is True or
+                cfg.get("ssl_enabled") is True
+            )
+
+            if is_ssl:
+                msg = f"Reloading SSL-enabled service '{svc.name}' (ID: {svc.id}) to apply updated TLS certificates..."
+                self.logger.info(msg)
+                if log_fn:
+                    try:
+                        log_fn(msg)
+                    except Exception:
+                        pass
+
+                await self.stop_process(svc.id, is_restart=True)
+                await asyncio.sleep(0.5)
+                await self.start_process(svc.id, is_restart=True)
+
+                reloaded.append({
+                    "id": svc.id,
+                    "name": svc.name,
+                    "service_type": svc.service_type
+                })
+
+        return reloaded
+
