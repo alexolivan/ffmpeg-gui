@@ -524,6 +524,9 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     ssl_email = None
     ssl_challenge_type = "http-01"
     ssl_auto_renew = True
+    auto_reload_ssl_services = getattr(settings, "auto_reload_ssl_services", True) if settings else True
+    if auto_reload_ssl_services is None:
+        auto_reload_ssl_services = True
 
     # Default notifications values
     notifications_data = {
