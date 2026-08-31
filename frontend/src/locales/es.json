@@ -387,6 +387,8 @@
       "certFile": "Certificado Cadena Completa (.crt / .pem)",
       "keyFile": "Clave Privada (.key / privkey.pem)",
       "uploadBtn": "Cargar y Validar Par de Claves",
+      "autoReloadServices": "Auto-reiniciar servicios dependientes de SSL tras renovación",
+      "autoReloadServicesDesc": "Reinicia automáticamente los servicios multimedia activos que utilizan TLS (MediaMTX Hub, Icecast2) cuando los certificados se renuevan o actualizan.",
       "statusValid": "Certificado Válido",
       "statusWarning": "Próximo a Caducar",
       "statusCritical": "Caducidad Inminente",

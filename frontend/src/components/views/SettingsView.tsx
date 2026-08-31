@@ -181,6 +181,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [sslDomain, setSslDomain] = useState(settings?.ssl_domain || '');
   const [sslEmail, setSslEmail] = useState(settings?.ssl_email || '');
   const [sslChallengeType, setSslChallengeType] = useState(settings?.ssl_challenge_type || 'http-01');
+  const [autoReloadSslServices, setAutoReloadSslServices] = useState(settings?.auto_reload_ssl_services !== undefined ? !!settings?.auto_reload_ssl_services : true);
 
   const [sslStatus, setSslStatus] = useState<any>(null);
   const [isUploadingSsl, setIsUploadingSsl] = useState(false);
@@ -226,6 +227,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSslDomain(settings?.ssl_domain || '');
     setSslEmail(settings?.ssl_email || '');
     setSslChallengeType(settings?.ssl_challenge_type || 'http-01');
+    setAutoReloadSslServices(settings?.auto_reload_ssl_services !== undefined ? !!settings?.auto_reload_ssl_services : true);
     const notif = settings?.notifications;
     setNotifEnabled(!!notif?.enabled);
     setSmtpHost(notif?.smtp_host || '');
@@ -749,6 +751,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ssl_domain: sslDomain,
         ssl_email: sslEmail,
         ssl_challenge_type: sslChallengeType,
+        auto_reload_ssl_services: autoReloadSslServices,
         lcd_enabled: lcdEnabled,
         lcd_port: lcdPort,
         lcd_model: lcdModel,
@@ -2251,6 +2254,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Auto-Reload Services Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
+                <div>
+                  <span className="text-xs font-bold text-[var(--text-primary)] block">
+                    {t('settings.ssl.autoReloadServices', 'Auto-reload SSL services upon certificate renewal')}
+                  </span>
+                  <span className="text-[10px] text-text-secondary block mt-0.5">
+                    {t('settings.ssl.autoReloadServicesDesc', 'Automatically restarts active media services utilizing TLS (MediaMTX Hub, Icecast2) when certificates are renewed or uploaded.')}
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoReloadSslServices}
+                  onChange={e => setAutoReloadSslServices(e.target.checked)}
+                  className="rounded text-brand-lime cursor-pointer w-4 h-4"
+                />
+              </div>
             </div>
 
             {/* CARD 5: EMAIL NOTIFICATIONS & ALERTING */}

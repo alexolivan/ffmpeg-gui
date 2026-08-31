@@ -369,6 +369,7 @@ class SystemSettings(Base):
     logo_text = Column(String, default="FF")
     logo_path = Column(String, nullable=True)     # Path to custom uploaded logo
     accent_color = Column(String, default="#FF6B00")  # Default Brand Orange
+    auto_reload_ssl_services = Column(Boolean, default=True)
 
     # LCD Settings
     lcd_enabled = Column(Boolean, default=False)

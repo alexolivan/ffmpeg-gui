@@ -221,6 +221,8 @@ def init_db():
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN lcd_led2_profile TEXT DEFAULT 'tasks'"))
             if "lcd_led3_profile" not in settings_columns:
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN lcd_led3_profile TEXT DEFAULT 'alert'"))
+            if "auto_reload_ssl_services" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN auto_reload_ssl_services BOOLEAN DEFAULT 1"))
 
             # Verify/insert schema version
             result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_info'"))

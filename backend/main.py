@@ -399,6 +399,7 @@ class SettingsResponse(BaseModel):
     ssl_email: Optional[str] = None
     ssl_challenge_type: Optional[str] = "http-01"
     ssl_auto_renew: Optional[bool] = True
+    auto_reload_ssl_services: Optional[bool] = True
     notifications: NotificationSettings = NotificationSettings()
     watchdog: WatchdogSettings = WatchdogSettings()
 
@@ -409,6 +410,7 @@ class SettingsUpdate(BaseModel):
     logo_text: Optional[str] = None
     logo_path: Optional[str] = None
     accent_color: Optional[str] = None
+    auto_reload_ssl_services: Optional[bool] = None
     lcd_enabled: Optional[bool] = None
     language: Optional[str] = None
     theme: Optional[str] = None
@@ -573,6 +575,8 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 ssl_email = ssl_cfg.get("email", fallback=ssl_email)
                 ssl_challenge_type = ssl_cfg.get("challenge_type", fallback=ssl_challenge_type)
                 try: ssl_auto_renew = ssl_cfg.getboolean("auto_renew", fallback=ssl_auto_renew)
+                except ValueError: pass
+                try: auto_reload_ssl_services = ssl_cfg.getboolean("auto_reload_ssl_services", fallback=auto_reload_ssl_services)
                 except ValueError: pass
             if "notifications" in config:
                 notif_cfg = config["notifications"]
@@ -773,6 +777,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["ssl_email"] = ssl_email
     res["ssl_challenge_type"] = ssl_challenge_type
     res["ssl_auto_renew"] = ssl_auto_renew
+    res["auto_reload_ssl_services"] = auto_reload_ssl_services
     res["notifications"] = notifications_data
     res["watchdog"] = watchdog_data
     
@@ -1166,6 +1171,8 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config["ssl"]["challenge_type"] = settings_in.ssl_challenge_type
         if settings_in.ssl_auto_renew is not None:
             config["ssl"]["auto_renew"] = str(settings_in.ssl_auto_renew).lower()
+        if settings_in.auto_reload_ssl_services is not None:
+            config["ssl"]["auto_reload_ssl_services"] = str(settings_in.auto_reload_ssl_services).lower()
 
         with open(config_path, "w") as f:
             config.write(f)
@@ -1199,6 +1206,7 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.logo_text is not None: settings.logo_text = settings_in.logo_text
     if settings_in.logo_path is not None: settings.logo_path = settings_in.logo_path
     if settings_in.accent_color is not None: settings.accent_color = settings_in.accent_color
+    if settings_in.auto_reload_ssl_services is not None: settings.auto_reload_ssl_services = settings_in.auto_reload_ssl_services
     
     lcd_core_changed = (
         (settings_in.lcd_enabled is not None and settings_in.lcd_enabled != settings.lcd_enabled) or

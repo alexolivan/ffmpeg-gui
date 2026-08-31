@@ -387,6 +387,8 @@
       "certFile": "Certificat Cadena Completa (.crt / .pem)",
       "keyFile": "Clau Privada (.key / privkey.pem)",
       "uploadBtn": "Carregar i Validar Parell de Claus",
+      "autoReloadServices": "Auto-reiniciar serveis dependents de SSL després de la renovació",
+      "autoReloadServicesDesc": "Reinicia automàticament els serveis multimèdia actius que utilitzen TLS (MediaMTX Hub, Icecast2) quan els certificats es renoven o actualitzen.",
       "statusValid": "Certificat Vàlid",
       "statusWarning": "Proper a Caducar",
       "statusCritical": "Caducitat Imminent",

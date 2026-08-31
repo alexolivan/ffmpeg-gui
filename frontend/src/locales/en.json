@@ -387,6 +387,8 @@
       "certFile": "Fullchain Certificate (.crt / .pem)",
       "keyFile": "Private Key (.key / privkey.pem)",
       "uploadBtn": "Upload & Validate Keypair",
+      "autoReloadServices": "Auto-reload SSL services upon certificate renewal",
+      "autoReloadServicesDesc": "Automatically restarts active media services utilizing TLS (MediaMTX Hub, Icecast2) when certificates are renewed or uploaded.",
       "statusValid": "Valid Certificate",
       "statusWarning": "Expiring Soon",
       "statusCritical": "Critical Expiration",

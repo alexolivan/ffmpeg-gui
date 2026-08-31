@@ -1372,6 +1372,25 @@ class ProcessManager:
 
     async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
         """Gracefully restarts any active/running services configured with TLS/SSL encryption."""
+        # Check if auto_reload_ssl_services is explicitly disabled in settings/configuration
+        config_path = os.environ.get("CONFIG_FILE_PATH", "ffmpeg-gui.conf")
+        if os.path.exists(config_path):
+            try:
+                import configparser
+                config = configparser.ConfigParser()
+                config.read(config_path)
+                if "ssl" in config:
+                    auto_reload = config.getboolean("ssl", "auto_reload_ssl_services", fallback=True)
+                    if not auto_reload:
+                        msg = "SSL certificate updated, but auto-reload of SSL services is disabled in Settings. Skipping automatic service restart."
+                        self.logger.info(msg)
+                        if log_fn:
+                            try: log_fn(msg)
+                            except Exception: pass
+                        return []
+            except Exception:
+                pass
+
         from database.models import Service
 
         def _get_running_services(session):
