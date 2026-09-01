@@ -26,7 +26,7 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
                 except Exception:
                     pass
 
-                # Fallback: check command line arguments for mediamtx ephemeral file pattern
+                # Fallback: check command line arguments for mediamtx ephemeral file or progress log pattern
                 if not gui_proc_id and not gui_exec_id:
                     try:
                         cmdline = " ".join(proc.cmdline())
@@ -34,6 +34,14 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
                         m_proc = re.search(r"ffmpeg_gui_mediamtx_(\d+)_", cmdline)
                         if m_proc:
                             gui_proc_id = m_proc.group(1)
+                        else:
+                            m_s = re.search(r"ffmpeg_progress_(\d+)s\.log", cmdline)
+                            if m_s:
+                                gui_proc_id = m_s.group(1)
+                            else:
+                                m_t = re.search(r"ffmpeg_progress_(\d+)t\.log", cmdline)
+                                if m_t:
+                                    gui_exec_id = m_t.group(1)
                     except Exception:
                         pass
 
@@ -58,10 +66,10 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
                         reason = f"stale execution (execution_id={gui_exec_id}) not in active list"
                 
                 if should_kill:
-                    logger.warning(f"Terminating rogue ffmpeg process {pid} because: {reason}")
+                    proc_desc = name if name else "process"
+                    logger.warning(f"Terminating rogue {proc_desc} process {pid} because: {reason}")
                     try:
                         proc.send_signal(signal.SIGKILL)
-                      # Wait for the process to be terminated (zombie status)
                     except Exception as e:
                         logger.error(f"Failed to SIGKILL rogue process {pid}: {e}")
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):

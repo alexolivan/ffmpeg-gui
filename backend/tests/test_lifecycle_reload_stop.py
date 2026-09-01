@@ -66,6 +66,27 @@ class TestLifecycleReloadStop(unittest.IsolatedAsyncioTestCase):
             # stop_all_processes must NOT be called on Warm Reload!
             mock_stop_all.assert_not_called()
 
+    async def test_stop_process_terminates_reattached_os_process(self):
+        # Service running in DB with PID 99999, reattached
+        s = Service(name="MediaMTX Hub", service_type="mediamtx_hub", status="running", pid=99999, config={})
+        self.db.add(s)
+        self.db.commit()
+
+        self.pm.reattached_pids[s.id] = 99999
+        self.pm.processes[s.id] = None
+
+        with patch("psutil.pid_exists", return_value=True), \
+             patch("psutil.Process") as mock_proc_cls:
+            mock_p_inst = MagicMock()
+            mock_p_inst.children.return_value = []
+            mock_proc_cls.return_value = mock_p_inst
+
+            with patch("psutil.wait_procs", return_value=([], [])):
+                await self.pm.stop_process(s.id, graceful=True)
+
+            mock_p_inst.terminate.assert_called_once()
+            self.assertIn(99999, self.pm.stopped_pids)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,7 @@ class ProcessManager:
         self.restart_counts: Dict[int, int] = {}
         self.pending_restarts: Dict[int, asyncio.Task] = {}
         self.watchdog_tasks: Dict[int, asyncio.Task] = {}
+        self.reattached_pids: Dict[int, int] = {}
         self.stopping_processes: Set[int] = set()
         self.stopped_pids: Set[int] = set()
         self.srt_has_had_activity: Dict[int, bool] = {}
@@ -300,12 +301,29 @@ class ProcessManager:
                 except (asyncio.CancelledError, Exception):
                     pass
 
+            # Determine target PID
+            target_pid = None
             proc = self.processes.get(process_id)
+            if proc and hasattr(proc, 'pid') and proc.pid:
+                target_pid = proc.pid
+            else:
+                target_pid = self.reattached_pids.pop(process_id, None)
+                if not target_pid:
+                    try:
+                        with self.db_session_factory() as session:
+                            from database.models import Service
+                            s = session.query(Service).get(process_id)
+                            if s and s.pid:
+                                target_pid = s.pid
+                    except Exception:
+                        pass
+
+            if target_pid:
+                self.stopped_pids.add(target_pid)
+
             self.restart_counts.pop(process_id, None)
             
             if proc:
-                if hasattr(proc, 'pid') and proc.pid:
-                    self.stopped_pids.add(proc.pid)
                 if graceful:
                     if proc.stdin:
                         try:
@@ -337,6 +355,36 @@ class ProcessManager:
                 
                 if process_id in self.processes:
                     del self.processes[process_id]
+
+            # Direct OS process termination for reattached processes or surviving PIDs
+            if target_pid and psutil.pid_exists(target_pid):
+                try:
+                    p = psutil.Process(target_pid)
+                    children = p.children(recursive=True)
+                    if graceful:
+                        p.terminate()
+                        for c in children:
+                            try: c.terminate()
+                            except Exception: pass
+                        _, still_alive = psutil.wait_procs([p] + children, timeout=1.5)
+                    else:
+                        still_alive = [p] + children
+
+                    for remaining in still_alive:
+                        try:
+                            remaining.kill()
+                        except Exception:
+                            pass
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    try:
+                        import signal
+                        os.kill(target_pid, signal.SIGTERM if graceful else signal.SIGKILL)
+                        if graceful:
+                            await asyncio.sleep(0.5)
+                            if psutil.pid_exists(target_pid):
+                                os.kill(target_pid, signal.SIGKILL)
+                    except Exception:
+                        pass
 
             # Clean up ephemeral RAM configuration file if present
             ephem = self.ephemeral_configs.pop(process_id, None)
@@ -392,6 +440,12 @@ class ProcessManager:
         if active_ids:
             tasks = [self.stop_process(pid, graceful=graceful, is_restart=False) for pid in active_ids]
             await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Final sweep to guarantee no rogue child processes remain in OS
+        try:
+            cleanup_rogue_processes(active_pids=set())
+        except Exception as e:
+            self.logger.debug(f"Final rogue process cleanup sweep encountered: {e}")
 
         self.logger.info("ProcessManager: All child processes have been stopped cleanly.")
 
@@ -1388,6 +1442,7 @@ class ProcessManager:
                 return
 
         self.processes[process_id] = None
+        self.reattached_pids[process_id] = pid
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
 
     async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
