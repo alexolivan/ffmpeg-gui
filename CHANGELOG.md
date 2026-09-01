@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-09-01
+
+### Added
+- **Warm Reload & Clean Shutdown Lifecycle Architecture**:
+  - Implemented standard Linux service lifecycle separation between warm daemon reloads (`systemctl reload` / `update.sh` / Web UI Restart) and full clean service shutdowns (`systemctl stop`).
+  - Added `ExecReload=/bin/kill -HUP $MAINPID` and `KillMode=control-group` systemd unit directives with automatic migration in `update.sh` and `install.sh`.
+  - Added `SIGHUP` and `SIGUSR1` signal handling in `run_server.py` and `main.py` allowing zero-downtime hot-reloads of orchestrator code without dropping active 24/7 video/audio streams.
+  - Implemented `ProcessManager.stop_all_processes(graceful=True)` ensuring clean process termination and zero orphan processes on explicit systemd stops.
+
+### Fixed
+- **Settings Persistence & Password Preservation**:
+  - Eliminated accidental database password wipes when saving settings without entering a new password.
+  - Fixed `UnboundLocalError` on `auto_reload_ssl_services` in `make_settings_response` preventing HTTP 500 errors on `GET /settings`.
+  - Added safe fallback branding values for `logo_text` and `node_name` on authentication lock screens and added a custom logo removal action.
+  - Resolved `RuntimeError` on Scheduler task event loop discrepancy during Uvicorn shutdown.
+
 ## [2.6.0] - 2026-08-28
 
 ### Added

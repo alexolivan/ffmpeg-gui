@@ -128,6 +128,12 @@ class NginxAccessLogMiddleware:
 
 app = FastAPI(title="FFMPEG Orchestrator API")
 
+is_reload_mode: bool = False
+
+def set_reload_mode(val: bool = True):
+    global is_reload_mode
+    is_reload_mode = val
+
 app.add_middleware(NginxAccessLogMiddleware)
 
 # CORS
@@ -1287,8 +1293,9 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
 def execute_system_restart():
     import time
     import os
+    set_reload_mode(True)
     time.sleep(2.5) # Wait 2.5s to let the API response flush completely
-    logger.warning("Restart triggered from Web UI. Terminating process now...")
+    logger.warning("Restart triggered from Web UI (Warm Reload). Terminating process now...")
     os._exit(0)
 
 
@@ -2869,6 +2876,15 @@ async def shutdown_event():
     if lcd_manager:
         logger.info("Shutdown: Stopping LCD manager...")
         lcd_manager.stop()
+
+    if is_reload_mode:
+        logger.info("Shutdown: Warm Reload mode active. Preserving child stream processes for re-attach on reload.")
+    else:
+        logger.info("Shutdown: Clean Stop mode active. Stopping all managed child stream processes...")
+        try:
+            await process_manager.stop_all_processes(graceful=True)
+        except Exception as e:
+            logger.error(f"Failed to stop all processes on shutdown: {e}")
 
 
 alerted_storages = set()
@@ -5858,14 +5874,25 @@ def delete_software_icon(software_type: str, db: Session = Depends(get_db)):
 
 
 # Mounting static files and SPA fallback
-FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", "../frontend/dist")
-try:
-    os.makedirs(os.path.join(FRONTEND_DIST_DIR, "assets"), exist_ok=True)
-except Exception as e:
-    logger.warning(f"Could not create static asset dir {FRONTEND_DIST_DIR}/assets: {e}")
+FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR")
+if not FRONTEND_DIST_DIR:
+    cand = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+    if os.path.exists(cand):
+        FRONTEND_DIST_DIR = cand
+    else:
+        FRONTEND_DIST_DIR = os.path.abspath("../frontend/dist")
 
-if os.path.exists(os.path.join(FRONTEND_DIST_DIR, "assets")):
-    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST_DIR, "assets")), name="assets")
+assets_dir = os.path.join(FRONTEND_DIST_DIR, "assets")
+try:
+    os.makedirs(assets_dir, exist_ok=True)
+except Exception:
+    pass
+
+if os.path.exists(assets_dir):
+    try:
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    except Exception as e:
+        logger.warning(f"Could not mount static assets: {e}")
 
 @app.get("/{catchall:path}")
 def serve_spa(catchall: str):

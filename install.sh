@@ -285,9 +285,10 @@ User=ffmpeg-gui
 Group=ffmpeg-gui
 WorkingDirectory=$PROJ_DIR/backend
 ExecStart=$PROJ_DIR/venv/bin/python $PROJ_DIR/backend/run_server.py --config $CONF_FILE
+ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
-RestartSec=5
-KillMode=process
+RestartSec=2
+KillMode=control-group
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 
@@ -312,9 +313,10 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=$PROJ_DIR/backend
 ExecStart=$PROJ_DIR/venv/bin/python $PROJ_DIR/backend/run_server.py --config $CONF_FILE
+ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
-RestartSec=5
-KillMode=process
+RestartSec=2
+KillMode=control-group
 
 [Install]
 WantedBy=default.target

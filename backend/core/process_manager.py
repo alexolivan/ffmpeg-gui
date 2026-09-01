@@ -375,6 +375,26 @@ class ProcessManager:
         finally:
             self.stopping_processes.discard(process_id)
 
+    async def stop_all_processes(self, graceful: bool = True):
+        """Cleanly stops all active managed child processes (MediaMTX, FFmpeg, Icecast)."""
+        self.logger.info("ProcessManager: Stopping all active child processes...")
+        
+        active_ids = set(self.processes.keys())
+        try:
+            with self.db_session_factory() as session:
+                from database.models import Service
+                running_db = session.query(Service).filter(Service.status.in_(["running", "starting", "restarting"])).all()
+                for r in running_db:
+                    active_ids.add(r.id)
+        except Exception as e:
+            self.logger.error(f"Error querying active services for stop_all_processes: {e}")
+
+        if active_ids:
+            tasks = [self.stop_process(pid, graceful=graceful, is_restart=False) for pid in active_ids]
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        self.logger.info("ProcessManager: All child processes have been stopped cleanly.")
+
     def _resolve_storage_path(self, storage_id: Optional[int], relative_path: Optional[str]) -> Optional[str]:
         if not storage_id:
             return None
