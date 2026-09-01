@@ -126,13 +126,32 @@ class ProcessManager:
 
             if svc_type == "mediamtx_hub":
                 mediamtx_bin = "mediamtx"
-                build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                build = None
                 if build_id:
                     build = session.query(FfmpegBuild).get(build_id)
-                    if build and build.binary_path and os.path.exists(build.binary_path):
-                        mediamtx_bin = build.binary_path
+                
+                if not (build and build.binary_path and os.path.exists(build.binary_path)):
+                    # Fallback to default or any ready MediaMTX build in database
+                    build = session.query(FfmpegBuild).filter(
+                        FfmpegBuild.software_type == 'mediamtx',
+                        FfmpegBuild.status == 'ready',
+                        FfmpegBuild.is_default == True
+                    ).first() or session.query(FfmpegBuild).filter(
+                        FfmpegBuild.software_type == 'mediamtx',
+                        FfmpegBuild.status == 'ready'
+                    ).first()
+
+                if build and build.binary_path and os.path.exists(build.binary_path):
+                    mediamtx_bin = build.binary_path
+                    if not cfg.get("software_build_id"):
+                        cfg["software_build_id"] = build.id
+                        cfg["ffmpeg_build_id"] = build.id
+                        media_proc.config = cfg
                 elif shutil.which("mediamtx"):
                     mediamtx_bin = shutil.which("mediamtx")
+                else:
+                    raise FileNotFoundError("MediaMTX binary not found. Please install MediaMTX in Settings → Software Engine.")
 
                 cmd, ephem_path = self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session)
                 self.ephemeral_configs[process_id] = ephem_path
