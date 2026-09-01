@@ -220,6 +220,7 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
         const matrixControls = (g.controls || []).filter((c) => {
           if (!c) return false;
           const nameLower = c.name.toLowerCase();
+          if (c.ctrl_type === 'ignored' || nameLower.includes('monitor playback mode')) return false;
           const grpLower = g.name.toLowerCase();
           const isEnumOrRoute = c.ctrl_type === 'enum' || c.ctrl_type === 'route' || (c.items && c.items.length > 0);
           if (isEnumOrRoute) return false;
@@ -251,6 +252,9 @@ const groupHardwareOutputs = (groups?: AlsaGroup[], cardDriver?: string): Groupe
   const isDirectOutputControl = (ctrl: AlsaControl, groupName: string): boolean => {
     if (!ctrl) return false;
     const nameLower = ctrl.name.toLowerCase().trim();
+    if (ctrl.ctrl_type === 'ignored' || nameLower.includes('monitor playback mode')) {
+      return false;
+    }
     const grpLower = groupName.toLowerCase().trim();
 
     if (ctrl.ctrl_type === 'enum' || ctrl.ctrl_type === 'route' || (ctrl.items && ctrl.items.length > 0)) {
@@ -455,6 +459,7 @@ const AlsaMatrixRoutingModal: React.FC<{
 
     controlsToRender.forEach((c) => {
       if (!c) return;
+      if (c.ctrl_type === 'ignored' || c.name.toLowerCase().includes('monitor playback mode')) return;
 
       const isVol = c.ctrl_type === 'volume' || c.ctrl_type === 'integer' || c.name.toLowerCase().includes('volume') || c.name.toLowerCase().includes('level');
       const isMute = c.ctrl_type === 'mute' || c.ctrl_type === 'switch' || c.name.toLowerCase().includes('switch') || c.name.toLowerCase().includes('mute');
@@ -465,10 +470,14 @@ const AlsaMatrixRoutingModal: React.FC<{
       }
 
       let src = c.matrix_source;
-      if (!src) {
-        const grpPattern = new RegExp(`\\b${group.name}\\b`, 'gi');
+      if (src) {
+        if (src.includes('(Monitor)')) {
+          src = src.replace('(Monitor)', '(Mon)').trim();
+        }
+      } else {
+        const escapedGrpName = group.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         let cleaned = c.name
-          .replace(grpPattern, '')
+          .replace(new RegExp(`\\b${escapedGrpName}\\b`, 'i'), '')
           .replace(/Playback/gi, '')
           .replace(/Volume/gi, '')
           .replace(/Switch/gi, '')
@@ -479,6 +488,7 @@ const AlsaMatrixRoutingModal: React.FC<{
           .trim();
 
         const isMon = c.name.toLowerCase().includes('monitor') || (c.name.toLowerCase().includes('playback') && !cleaned.toLowerCase().startsWith('pcm'));
+        cleaned = cleaned.replace(/Monitor/gi, '').trim();
 
         if (cleaned) {
           src = isMon && !cleaned.toLowerCase().includes('mon') ? `${cleaned} (Mon)` : cleaned;
@@ -1652,6 +1662,9 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
   controls.forEach((c) => {
     if (!c) return;
     const nameLower = c.name.toLowerCase();
+    if (c.ctrl_type === 'ignored' || nameLower.includes('monitor playback mode')) {
+      return;
+    }
     const grpLower = group.name.toLowerCase();
 
     // ENUM/ROUTE selector controls (e.g., Digital 0 Playback Format) are ALWAYS direct controls, never matrix crosspoints
@@ -1723,16 +1736,22 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
   const matrixSourcesMap: Record<string, { vol?: AlsaControl; mute?: AlsaControl }> = {};
   matrixControls.forEach((c) => {
     let src = c.matrix_source;
-    if (!src) {
+    if (src) {
+      if (src.includes('(Monitor)')) {
+        src = src.replace('(Monitor)', '(Mon)').trim();
+      }
+    } else {
       let cleaned = c.name;
       const isMon = /monitor/i.test(cleaned);
 
       // Strip control type noise words
-      cleaned = cleaned.replace(/playback|capture|volume|switch|level|monitor|master/gi, '').trim();
+      cleaned = cleaned.replace(/playback|capture|volume|switch|level|master/gi, '').trim();
 
       // Remove EXACTLY ONE instance of destination group.name (regardless of whether it's first or second in c.name)
       const escapedGrpName = group.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       cleaned = cleaned.replace(new RegExp('\\b' + escapedGrpName + '\\b', 'i'), '').trim();
+
+      cleaned = cleaned.replace(/monitor/gi, '').trim();
 
       // What remains in 'cleaned' IS the pure source name!
       if (cleaned) {

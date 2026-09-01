@@ -104,6 +104,16 @@ class AlsaManager:
         is_int = elem_type == SND_CTL_ELEM_TYPE_INTEGER or elem_str == "INTEGER"
         is_enum = elem_type == SND_CTL_ELEM_TYPE_ENUMERATED or elem_str == "ENUMERATED"
 
+        # Ignore redundant internal monitoring crossover mode enums (e.g. 'Line 0 Line 0 Monitor Playback Mode')
+        if "monitor playback mode" in name.lower():
+            return {
+                "type": "ignored",
+                "group": "Ignored",
+                "category": "ignored",
+                "is_meter": False,
+                "matrix_source": None
+            }
+
         # Detect Read-Only Jack Sensing / Hardware Presence Sensors
         is_jack_sensor = is_readonly and is_bool and ("jack" in name.lower() or "phantom" in name.lower() or "sense" in name.lower())
 
@@ -284,6 +294,9 @@ class AlsaManager:
                     index=ctrl.get("index", 0)
                 )
 
+                if meta.get("category") == "ignored" or meta.get("type") == "ignored":
+                    continue
+
                 grp_key = f"{meta['category']}_{meta['group']}"
                 if grp_key not in groups:
                     groups[grp_key] = {
@@ -296,6 +309,7 @@ class AlsaManager:
 
                 ctrl["ctrl_type"] = meta["type"]
                 ctrl["is_meter"] = meta["is_meter"]
+                ctrl["matrix_source"] = meta.get("matrix_source")
 
                 if meta["is_meter"]:
                     groups[grp_key]["meters"].append(ctrl)

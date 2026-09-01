@@ -122,6 +122,38 @@ class TestAlsaManager(unittest.TestCase):
         self.assertEqual(res_matrix2["group"], "Line 0")
         self.assertEqual(res_matrix2["matrix_source"], "Line 0 (Monitor)")
 
+        res_matrix3 = self.mgr._classify_control(
+            name="Line 1 Line 0 Monitor Playback Volume",
+            iface=2,
+            elem_type=2,
+            access_flags="rw---R--",
+            items=[]
+        )
+        self.assertEqual(res_matrix3["category"], "hardware_outputs")
+        self.assertEqual(res_matrix3["group"], "Line 0")
+        self.assertEqual(res_matrix3["matrix_source"], "Line 1 (Monitor)")
+
+        # Test ignoring internal monitor playback mode crossovers
+        res_ignored1 = self.mgr._classify_control(
+            name="Line 0 Line 0 Monitor Playback Mode",
+            iface=2,
+            elem_type=3,
+            access_flags="rw------",
+            items=["Normal", "Swap", "From Left", "From Right", "To Left", "To Right"]
+        )
+        self.assertEqual(res_ignored1["category"], "ignored")
+        self.assertEqual(res_ignored1["type"], "ignored")
+
+        res_ignored2 = self.mgr._classify_control(
+            name="Line 1 Line 0 Monitor Playback Mode",
+            iface=2,
+            elem_type=3,
+            access_flags="rw------",
+            items=["Normal", "Swap", "From Left", "From Right", "To Left", "To Right"]
+        )
+        self.assertEqual(res_ignored2["category"], "ignored")
+        self.assertEqual(res_ignored2["type"], "ignored")
+
     def test_parse_amixer_contents(self):
         controls = self.mgr._parse_amixer_contents(SAMPLE_AMIXER_OUTPUT)
         self.assertEqual(len(controls), 5)

@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed `UnboundLocalError` on `auto_reload_ssl_services` in `make_settings_response` preventing HTTP 500 errors on `GET /settings`.
   - Added safe fallback branding values for `logo_text` and `node_name` on authentication lock screens and added a custom logo removal action.
   - Resolved `RuntimeError` on Scheduler task event loop discrepancy during Uvicorn shutdown.
+- **AudioScience ALSA Matrix Monitoring & Channel Strips**:
+  - Filtered out redundant internal monitoring crossover mode enums (`* Monitor Playback Mode`) from hardware output channel strips.
+  - Propagated `matrix_source` from backend topology parser and normalized source naming fallback in UI (`Line 0 (Mon)`, `Line 1 (Mon)`).
 
 ## [2.6.0] - 2026-08-28
 
