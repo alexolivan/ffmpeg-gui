@@ -43,6 +43,7 @@ class TestLifecycleReloadStop(unittest.IsolatedAsyncioTestCase):
     async def test_shutdown_event_distinguishes_warm_reload_from_clean_stop(self):
         # 1. Test Clean Stop mode (is_reload_mode = False)
         main.set_reload_mode(False)
+        main._shutdown_initialized = False
         with patch.object(main.process_manager, "stop_all_processes", new_callable=AsyncMock) as mock_stop_all, \
              patch.object(main.scheduler, "stop", new_callable=AsyncMock) as mock_sched_stop, \
              patch.object(main.notification_manager, "stop_worker", new_callable=MagicMock):
@@ -54,6 +55,7 @@ class TestLifecycleReloadStop(unittest.IsolatedAsyncioTestCase):
 
         # 2. Test Warm Reload mode (is_reload_mode = True)
         main.set_reload_mode(True)
+        main._shutdown_initialized = False
         with patch.object(main.process_manager, "stop_all_processes", new_callable=AsyncMock) as mock_stop_all, \
              patch.object(main.scheduler, "stop", new_callable=AsyncMock) as mock_sched_stop, \
              patch.object(main.notification_manager, "stop_worker", new_callable=MagicMock):

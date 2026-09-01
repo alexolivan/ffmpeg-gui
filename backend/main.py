@@ -10,6 +10,7 @@ import uuid
 import shlex
 import platform
 import configparser
+import threading
 from PIL import Image
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
@@ -129,6 +130,10 @@ class NginxAccessLogMiddleware:
 app = FastAPI(title="FFMPEG Orchestrator API")
 
 is_reload_mode: bool = False
+_startup_lock = threading.Lock()
+_startup_initialized = False
+_shutdown_lock = threading.Lock()
+_shutdown_initialized = False
 
 def set_reload_mode(val: bool = True):
     global is_reload_mode
@@ -2738,6 +2743,13 @@ def sanitize_database_processes(db: Session):
 
 @app.on_event("startup")
 async def startup_event():
+    global _startup_initialized
+    with _startup_lock:
+        if _startup_initialized:
+            logger.debug("Startup: Background services already initialized for this process. Skipping duplicate startup invocation.")
+            return
+        _startup_initialized = True
+
     logger.info("Startup: Checking and cleaning up stale build profiles, processes and tasks...")
     active_pids = set()
     try:
@@ -2864,6 +2876,13 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global _shutdown_initialized
+    with _shutdown_lock:
+        if _shutdown_initialized:
+            logger.debug("Shutdown: Orchestrator teardown already executed for this process. Skipping duplicate shutdown call.")
+            return
+        _shutdown_initialized = True
+
     logger.info("Shutdown: Stopping scheduler...")
     await scheduler.stop()
     
