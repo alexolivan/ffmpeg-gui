@@ -127,54 +127,54 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
         {/* Column 1: Process Management & load */}
         <div className="space-y-4">
-          <div className="glass-card p-4 md:p-5 border-brand-lime/10">
-            <h3 className="text-xl font-black mb-3">{t('dashboard.systemStats')}</h3>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
-              <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.activeServices')}</div>
-                <div className="font-black text-xl text-brand-lime">
+          <div className="glass-card p-4 border-brand-lime/10 space-y-3">
+            <h3 className="text-base font-black mb-2 text-[var(--text-primary)] uppercase tracking-wider">{t('dashboard.systemStats')}</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.activeServices')}</div>
+                <div className="font-black text-lg text-brand-lime">
                   {telemetry.filter(p => (p.type === 'service' || !p.type) && isActiveService(p)).length}
                 </div>
               </div>
-              <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.inactiveServices')}</div>
-                <div className="font-black text-xl text-text-secondary">
+              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.inactiveServices')}</div>
+                <div className="font-black text-lg text-text-secondary">
                   {telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p)).length}
                 </div>
               </div>
-              <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.activeTasks')}</div>
-                <div className="font-black text-xl text-brand-blue">
+              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.activeTasks')}</div>
+                <div className="font-black text-lg text-brand-blue">
                   {taskStats.active}
                 </div>
               </div>
-              <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.scheduledTasks')}</div>
-                <div className="font-black text-xl text-brand-orange">
+              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.scheduledTasks')}</div>
+                <div className="font-black text-lg text-brand-orange">
                   {taskStats.scheduled}
                 </div>
               </div>
-              <div className="bg-white/5 border border-white/5 rounded-2xl p-3 text-center col-span-2 lg:col-span-1">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-1">{t('dashboard.inactiveTasks')}</div>
-                <div className="font-black text-xl text-text-secondary">
+              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center col-span-2 sm:col-span-1">
+                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.inactiveTasks')}</div>
+                <div className="font-black text-lg text-text-secondary">
                   {taskStats.inactive}
                 </div>
               </div>
             </div>
 
-            <h4 className="text-xs font-black uppercase text-text-secondary tracking-wider mb-2">{t('dashboard.nodeResourcesLoad')}</h4>
-            <div className="space-y-2.5">
+            <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-1.5">{t('dashboard.nodeResourcesLoad')}</h4>
+            <div className="space-y-2">
               <div>
                 <div className="flex justify-between text-xs mb-0.5">
                   <span className="text-text-secondary">{t('dashboard.cpuLoad')}</span>
-                  <span className="text-brand-lime font-mono font-bold">
+                  <span className="text-brand-lime font-mono font-bold text-xs">
                     {systemTelemetry.cpu}%
                   </span>
                 </div>
-                <div className="h-2 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
+                <div className="h-1.5 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-brand-lime transition-all duration-500" 
                     style={{ width: `${Math.min(100, systemTelemetry.cpu)}%` }}
@@ -184,11 +184,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div>
                 <div className="flex justify-between text-xs mb-0.5">
                   <span className="text-text-secondary">{t('dashboard.memoryUsage')}</span>
-                  <span className="text-brand-orange font-mono font-bold">
+                  <span className="text-brand-orange font-mono font-bold text-xs">
                     {systemTelemetry.ram_used} MB / {systemTelemetry.ram_total || 16384} MB
                   </span>
                 </div>
-                <div className="h-2 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
+                <div className="h-1.5 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-brand-orange transition-all duration-500" 
                     style={{ 
@@ -202,7 +202,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               {systemTelemetry.gpu && systemTelemetry.gpu.vendor && systemTelemetry.gpu.vendor !== 'none' ? (
                 <>
-                  <div className="pt-2 border-t border-[var(--glass-border)]">
+                  <div className="pt-1.5 border-t border-[var(--glass-border)]">
                     <div className="flex justify-between text-xs mb-0.5">
                       <span className="text-text-secondary flex items-center gap-1.5">
                         {t('dashboard.gpuLoad')} 
@@ -210,11 +210,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           {systemTelemetry.gpu.vendor}
                         </span>
                       </span>
-                      <span className="text-blue-400 font-mono font-bold">
+                      <span className="text-blue-400 font-mono font-bold text-xs">
                         {systemTelemetry.gpu.utilization}%
                       </span>
                     </div>
-                    <div className="h-2 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-blue-400 transition-all duration-500" 
                         style={{ width: `${Math.min(100, systemTelemetry.gpu.utilization)}%` }}
@@ -224,11 +224,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <div>
                     <div className="flex justify-between text-xs mb-0.5">
                       <span className="text-text-secondary">{t('dashboard.vramUsage')}</span>
-                      <span className="text-blue-400 font-mono font-bold">
+                      <span className="text-blue-400 font-mono font-bold text-xs">
                         {systemTelemetry.gpu.vram_used} MB / {systemTelemetry.gpu.vram_total} MB
                       </span>
                     </div>
-                    <div className="h-2 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-blue-400 transition-all duration-500" 
                         style={{ 
@@ -241,25 +241,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                 </>
               ) : (
-                <div className="pt-3 border-t border-white/5">
-                  <div className="flex flex-col items-center justify-center p-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-center">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-white/30 font-mono mb-1">{t('dashboard.gpuTelemetry')}</span>
-                    <span className="text-xs font-bold text-text-secondary">{t('dashboard.notDetected')}</span>
+                <div className="pt-1.5 border-t border-[var(--glass-border)]">
+                  <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg text-xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] font-mono">{t('dashboard.gpuTelemetry')}</span>
+                    <span className="text-[10px] font-bold text-[var(--text-secondary)] opacity-60">{t('dashboard.notDetected')}</span>
                   </div>
                 </div>
               )}
             </div>
 
             {systemTelemetry.storages && systemTelemetry.storages.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-white/5">
-                <h4 className="text-xs font-black uppercase text-text-secondary tracking-wider mb-2">
+              <div className="mt-3 pt-3 border-t border-[var(--glass-border)]">
+                <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-2">
                   {t('dashboard.storageCapacities')}
                 </h4>
-                <div
-                  className={`space-y-2.5 ${
-                    systemTelemetry.storages.length > 4 ? 'max-h-48 overflow-y-auto pr-1' : ''
-                  }`}
-                >
+                <div className="space-y-2">
                   {systemTelemetry.storages.map((storage: any) => {
                     const percent = storage.percent !== undefined ? storage.percent : 0;
                     const freeGb = storage.free_gb !== undefined ? storage.free_gb : 0;
@@ -267,10 +263,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <div key={storage.id || storage.name} className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-[var(--text-primary)] font-bold truncate max-w-[120px]" title={storage.name}>
+                            <span className="text-[var(--text-primary)] font-bold truncate max-w-[140px]" title={storage.name}>
                               {storage.name}
                             </span>
-                            <span className="text-[8px] font-black uppercase bg-brand-orange/20 text-brand-orange px-1.5 py-0.5 rounded tracking-wider shrink-0">
+                            <span className="text-[8px] font-black uppercase bg-brand-orange/20 text-brand-orange px-1.5 py-0.2 rounded tracking-wider shrink-0">
                               {storage.type}
                             </span>
                           </div>
@@ -300,9 +296,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Column 2: Hardware Capabilities Detection */}
-        <div className="glass-card p-4 md:p-5 border-brand-orange/10">
-          <h3 className="text-xl font-black mb-3">{t('dashboard.hardwarePeripherals')}</h3>
-          <p className="text-xs text-text-secondary mb-4 leading-relaxed">
+        <div className="glass-card p-4 border-brand-orange/10 space-y-2.5">
+          <h3 className="text-base font-black mb-1.5 text-[var(--text-primary)] uppercase tracking-wider">{t('dashboard.hardwarePeripherals')}</h3>
+          <p className="text-xs text-text-secondary mb-3 leading-normal">
             {t('dashboard.hardwareIntrospection')}
           </p>
           <div className="space-y-2">
@@ -397,7 +393,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Column 3: System Info & Scheduler status */}
         <div className="space-y-4">
           {/* System Info */}
-          <div className="glass-card p-4 md:p-5 border-[var(--glass-border)]">
+          <div className="glass-card p-4 border-[var(--glass-border)]">
             <h3 className="text-sm font-black uppercase text-[var(--text-primary)] tracking-wider mb-2">{t('dashboard.systemInfo')}</h3>
             <div className="space-y-0.5">
               {settings?.ssl_enabled && sslStatus && (
@@ -448,7 +444,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {/* Upcoming Scheduled Tasks */}
-          <div className="glass-card p-4 md:p-5 border-purple-500/10 bg-purple-500/2 space-y-3">
+          <div className="glass-card p-4 border-purple-500/10 bg-purple-500/2 space-y-3">
             <div className="flex items-center justify-between border-b border-purple-500/10 pb-2 mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-xl">📅</span>
