@@ -1689,20 +1689,20 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
       nameLower === `master playback switch` ||
       nameLower === `master volume`;
 
-    const isExplicitMatrix = !!c.matrix_source;
+    const isExplicitMatrix = !isMasterControl && !!c.matrix_source;
 
     // Check if control is an input monitor gain on hardware outputs (e.g. Front Mic, Rear Mic, Line, CD, Aux)
     const isInputMonitorGain =
       isHardwareOutputs &&
       !isMasterControl &&
-      (nameLower.includes('mic') || nameLower.includes('line') || nameLower.includes('cd') || nameLower.includes('aux') || nameLower.includes('pcm'));
+      (nameLower.includes('mic') || nameLower.includes('line in') || nameLower.includes('cd') || nameLower.includes('aux') || nameLower.includes('pcm'));
 
     const hasCrosstalkPattern =
       isInputMonitorGain ||
       ((nameLower.includes('pcm') || nameLower.includes('digital') || nameLower.includes('line') || nameLower.includes('mic') || nameLower.includes('aux')) &&
       (nameLower.includes('monitor') || !!nameLower.match(/(pcm|digital|line|mic|aux)\s+\d+.*(pcm|digital|line|mic|aux)\s+\d+/i)));
 
-    if (isExplicitMatrix || (isHardwareOutputs && !isMasterControl && hasCrosstalkPattern)) {
+    if (!isMasterControl && (isExplicitMatrix || (isHardwareOutputs && hasCrosstalkPattern))) {
       matrixControls.push(c);
     } else {
       directControls.push(c);

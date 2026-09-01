@@ -99,6 +99,29 @@ class TestAlsaManager(unittest.TestCase):
         )
         self.assertEqual(res_line_out["category"], "hardware_outputs")
 
+        # Test AudioScience Direct Endpoint Output controls (must NOT be treated as matrix monitors)
+        res_line0_vol = self.mgr._classify_control(
+            name="Line 0 Playback Volume",
+            iface=2,
+            elem_type=2,
+            access_flags="rw---R--",
+            items=[]
+        )
+        self.assertEqual(res_line0_vol["category"], "hardware_outputs")
+        self.assertEqual(res_line0_vol["group"], "Line 0")
+        self.assertIsNone(res_line0_vol["matrix_source"])
+
+        res_line1_sw = self.mgr._classify_control(
+            name="Line 1 Playback Switch",
+            iface=2,
+            elem_type=1,
+            access_flags="rw------",
+            items=[]
+        )
+        self.assertEqual(res_line1_sw["category"], "hardware_outputs")
+        self.assertEqual(res_line1_sw["group"], "Line 1")
+        self.assertIsNone(res_line1_sw["matrix_source"])
+
         # Test AudioScience Crosspoint Matrix Double-Name classification
         res_matrix1 = self.mgr._classify_control(
             name="PCM 0 Line 0 Playback Volume",

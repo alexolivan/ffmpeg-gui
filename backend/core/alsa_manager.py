@@ -190,11 +190,15 @@ class AlsaManager:
                 # Master Playback controls the physical hardware output mixer!
                 category = "hardware_outputs"
                 group = "Master"
-            elif any(k in name_lower for k in ["mic", "line", "aux", "cd", "input"]) and "playback" in name_lower:
-                # Input monitoring controls (e.g. Front Mic Playback Volume, Line Playback Switch)
+            elif re.search(r'\b(line\s+\d+|line\s+out|speaker|headphone|front|surround|center|lfe)\b', name_lower) and "playback" in name_lower:
+                # Direct physical output endpoint control (e.g. Line 0 Playback Volume, Line 1 Playback Switch)
+                category = "hardware_outputs"
+                matrix_source = None
+            elif any(k in name_lower for k in ["mic", "line in", "aux", "cd", "input"]) and "playback" in name_lower:
+                # Input monitoring controls on generic cards (e.g. Front Mic Playback Volume)
                 # regulate input pass-through into the hardware output mixer!
                 category = "hardware_outputs"
-                input_src = "Mic" if "mic" in name_lower else "Line" if "line" in name_lower else "Aux" if "aux" in name_lower else "CD"
+                input_src = "Mic" if "mic" in name_lower else "Line In" if "line in" in name_lower else "Aux" if "aux" in name_lower else "CD"
                 matrix_source = f"{group} (Monitor)" if group != "General" else f"{input_src} (Monitor)"
             elif "pcm" in name_lower and "playback" in name_lower:
                 category = "virtual_playout"
