@@ -4166,50 +4166,102 @@ async def restart_process(process_id: int):
 
 def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
     if "profile" in payload and isinstance(payload["profile"], dict):
-        profile = payload["profile"]
+        profile = dict(payload["profile"])
     else:
-        profile = payload
+        profile = dict(payload)
         
-    input_cfg = profile.get("input_config", {})
-    
-    # Migration from flat input layout (v1) to nested input1 structure (v2)
-    if "type" in input_cfg and "input1" not in input_cfg:
-        old_type = input_cfg.get("type")
-        input1 = {"type": old_type}
-        for key in ["host", "port", "mode", "path", "url", "interface", "stream_key", "channel", "device"]:
-            if key in input_cfg:
-                input1[key] = input_cfg.pop(key)
-        
-        input_cfg["input1"] = input1
-        input_cfg["use_secondary_input"] = False
-        input_cfg["has_video"] = input_cfg.get("has_video", True)
-        input_cfg["has_audio"] = input_cfg.get("has_audio", True)
-        
-    profile["input_config"] = input_cfg
-    if "output_config" not in profile:
-        profile["output_config"] = {"type": "udp", "host": "239.0.0.1", "port": "1234"}
-    if "codec_config" not in profile:
-        profile["codec_config"] = {}
-    if "filter_config" not in profile:
-        profile["filter_config"] = {}
-        
-    # Gracefully resolve missing or invalid Build IDs
-    from database.models import FfmpegBuild
-    build_id = profile.get("ffmpeg_build_id")
+    service_type = profile.get("service_type")
+    cfg = profile.get("config") or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    else:
+        cfg = dict(cfg)
+
+    # 1. Determine service_type
+    if not service_type:
+        if "mediamtx_config" in profile or "mediamtx_config" in cfg:
+            service_type = "mediamtx_hub"
+        elif "icecast_config" in profile or "icecast_config" in cfg:
+            service_type = "icecast_server"
+        elif "kiosk_config" in profile or "kiosk_config" in cfg:
+            service_type = "kiosk_browser"
+        else:
+            service_type = "ffmpeg_stream"
+    profile["service_type"] = service_type
+
+    # 2. Extract engine-specific configs into cfg
+    if service_type == "mediamtx_hub":
+        if "mediamtx_config" in profile and "mediamtx_config" not in cfg:
+            cfg["mediamtx_config"] = profile["mediamtx_config"]
+    elif service_type == "icecast_server":
+        if "icecast_config" in profile and "icecast_config" not in cfg:
+            cfg["icecast_config"] = profile["icecast_config"]
+    elif service_type in ["kiosk_browser", "kiosk_cog"]:
+        if "kiosk_config" in profile and "kiosk_config" not in cfg:
+            cfg["kiosk_config"] = profile["kiosk_config"]
+    else:
+        # ffmpeg_stream
+        input_cfg = profile.get("input_config", {})
+        if "type" in input_cfg and "input1" not in input_cfg:
+            old_type = input_cfg.get("type")
+            input1 = {"type": old_type}
+            for key in ["host", "port", "mode", "path", "url", "interface", "stream_key", "channel", "device"]:
+                if key in input_cfg:
+                    input1[key] = input_cfg.pop(key)
+            
+            input_cfg["input1"] = input1
+            input_cfg["use_secondary_input"] = False
+            input_cfg["has_video"] = input_cfg.get("has_video", True)
+            input_cfg["has_audio"] = input_cfg.get("has_audio", True)
+            
+        profile["input_config"] = input_cfg
+        if "output_config" not in profile:
+            profile["output_config"] = {"type": "udp", "host": "239.0.0.1", "port": "1234"}
+        if "codec_config" not in profile:
+            profile["codec_config"] = {}
+        if "filter_config" not in profile:
+            profile["filter_config"] = {}
+
+        if "input_config" not in cfg: cfg["input_config"] = profile["input_config"]
+        if "output_config" not in cfg: cfg["output_config"] = profile["output_config"]
+        if "codec_config" not in cfg: cfg["codec_config"] = profile["codec_config"]
+        if "filter_config" not in cfg: cfg["filter_config"] = profile["filter_config"]
+
+    # 3. Synchronize common properties into cfg
+    for key in [
+        "auto_start", "startup_order", "startup_delay", "watchdog_enabled", "watchdog_retries",
+        "watchdog_min_speed", "watchdog_min_speed_duration", "network_timeout", "debug_mode",
+        "log_storage_id", "software_type", "software_version", "software_build_id", "ffmpeg_build_id",
+        "allow_auto_start_deps", "allow_auto_stop_deps"
+    ]:
+        if key in profile and key not in cfg:
+            cfg[key] = profile[key]
+
+    profile["config"] = cfg
+
+    # 4. Gracefully resolve missing or invalid Software / Build IDs
+    from database.models import SoftwareBuild
+    build_id = profile.get("ffmpeg_build_id") or profile.get("software_build_id")
     if build_id:
-        build_exists = db.query(FfmpegBuild).filter(FfmpegBuild.id == build_id).first()
+        build_exists = db.query(SoftwareBuild).filter(SoftwareBuild.id == build_id).first()
         if not build_exists:
-            default_build = db.query(FfmpegBuild).filter(FfmpegBuild.is_default == True, FfmpegBuild.status == 'ready').first()
+            sw_type = profile.get("software_type") or ("ffmpeg" if service_type == "ffmpeg_stream" else "mediamtx" if service_type == "mediamtx_hub" else "icecast2" if service_type == "icecast_server" else None)
+            fallback_query = db.query(SoftwareBuild).filter(SoftwareBuild.status == 'ready')
+            if sw_type:
+                fallback_query = fallback_query.filter(SoftwareBuild.software_type == sw_type)
+            default_build = fallback_query.filter(SoftwareBuild.is_default == True).first() or fallback_query.first()
             if default_build:
                 profile["ffmpeg_build_id"] = default_build.id
+                profile["software_build_id"] = default_build.id
+                cfg["ffmpeg_build_id"] = default_build.id
+                cfg["software_build_id"] = default_build.id
             else:
-                any_build = db.query(FfmpegBuild).filter(FfmpegBuild.status == 'ready').first()
-                if any_build:
-                    profile["ffmpeg_build_id"] = any_build.id
-                else:
-                    profile["ffmpeg_build_id"] = None
+                profile["ffmpeg_build_id"] = None
+                profile["software_build_id"] = None
+                cfg.pop("ffmpeg_build_id", None)
+                cfg.pop("software_build_id", None)
 
-    # Validate alias if present
+    # 5. Validate alias if present
     alias = profile.get("alias")
     if alias:
         import re
@@ -4236,6 +4288,13 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "name": proc.name,
             "alias": proc.alias,
             "type": proc.type,
+            "service_type": getattr(proc, 'service_type', 'ffmpeg_stream') or 'ffmpeg_stream',
+            "config": proc.config or {},
+            "software_type": getattr(proc, 'software_type', None),
+            "software_version": getattr(proc, 'software_version', None),
+            "software_build_id": getattr(proc, 'software_build_id', None),
+            "allow_auto_start_deps": getattr(proc, 'allow_auto_start_deps', True),
+            "allow_auto_stop_deps": getattr(proc, 'allow_auto_stop_deps', True),
             "input_config": proc.input_config,
             "output_config": proc.output_config,
             "codec_config": proc.codec_config,
@@ -4248,6 +4307,9 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "watchdog_retries": proc.watchdog_retries,
             "watchdog_min_speed": proc.watchdog_min_speed,
             "watchdog_min_speed_duration": proc.watchdog_min_speed_duration,
+            "network_timeout": getattr(proc, 'network_timeout', 15),
+            "debug_mode": getattr(proc, 'debug_mode', False),
+            "log_storage_id": getattr(proc, 'log_storage_id', None),
         }
     }
 
@@ -4262,6 +4324,13 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         name=f"Imported: {profile.get('name', 'Untitled')}",
         alias=profile.get('alias'),
         type=profile.get('type', 'service'),
+        service_type=profile.get('service_type', 'ffmpeg_stream') or 'ffmpeg_stream',
+        config=profile.get('config', {}),
+        software_type=profile.get('software_type'),
+        software_version=profile.get('software_version'),
+        software_build_id=profile.get('software_build_id') or profile.get('ffmpeg_build_id'),
+        allow_auto_start_deps=profile.get('allow_auto_start_deps', True),
+        allow_auto_stop_deps=profile.get('allow_auto_stop_deps', True),
         input_config=profile.get('input_config', {}),
         output_config=profile.get('output_config', {}),
         codec_config=profile.get('codec_config', {}),
@@ -4274,11 +4343,17 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         watchdog_retries=profile.get('watchdog_retries', 5),
         watchdog_min_speed=profile.get('watchdog_min_speed'),
         watchdog_min_speed_duration=profile.get('watchdog_min_speed_duration', 30),
+        network_timeout=profile.get('network_timeout', 15),
+        debug_mode=profile.get('debug_mode', False),
+        log_storage_id=profile.get('log_storage_id'),
     )
     db.add(db_proc)
     db.commit()
+
+    from core.dependency_manager import dependency_manager
+    dependency_manager.sync_auto_dependencies('service', db_proc.id, db_proc.input_config, db_proc.output_config, db)
     db.refresh(db_proc)
-    return db_proc
+    return _serialize_service(db_proc)
 
 @app.get("/builds/{build_id}/export")
 def export_build_recipe(build_id: int, db: Session = Depends(get_db)):
