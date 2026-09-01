@@ -267,6 +267,17 @@
       "es": "Español (ES)",
       "ca": "Català (CA)"
     },
+    "tabs": {
+      "general": "General",
+      "software": "Software",
+      "lcd": "Pantalla LCD",
+      "storage": "Almacenamiento",
+      "security": "Red y Seguridad",
+      "alsa": "Audio ALSA",
+      "decklink": "DeckLink",
+      "magewell": "Magewell",
+      "backup": "Copia y Restauración"
+    },
     "theme": {
       "title": "TEMA DE INTERFAZ",
       "description": "Selecciona el tema visual para la interfaz de usuario.",

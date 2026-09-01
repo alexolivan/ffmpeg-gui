@@ -860,7 +860,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl flex flex-col h-[82vh]">
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full flex flex-col flex-1 min-h-0">
       {/* Header */}
       <header className="flex justify-between items-center mb-6 shrink-0">
         <div>
@@ -962,7 +962,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <ShieldIcon size={14} />
-          {t('settings.tabs.security', 'Security')}
+          {t('settings.tabs.security', 'Network & Security')}
         </button>
         {hasAlsaHardware && (
           <button
