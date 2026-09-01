@@ -198,7 +198,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [smtpPort, setSmtpPort] = useState(settings?.smtp_port || 587);
   const [smtpEncryption, setSmtpEncryption] = useState(settings?.smtp_encryption || 'tls');
   const [smtpUser, setSmtpUser] = useState(settings?.smtp_user || '');
-  const [smtpPassword, setSmtpPassword] = useState(settings?.smtp_password || '');
+  const [smtpPassword, setSmtpPassword] = useState((settings?.notifications?.smtp_password || settings?.smtp_password) === '*****' ? '' : (settings?.smtp_password || ''));
   const [senderEmail, setSenderEmail] = useState(settings?.sender_email || '');
   const [recipientEmail, setRecipientEmail] = useState(settings?.recipient_email || '');
   const [notifyServiceFailures, setNotifyServiceFailures] = useState(settings?.notify_service_failures !== undefined ? !!settings?.notify_service_failures : true);
@@ -211,6 +211,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [notifTestMessage, setNotifTestMessage] = useState('');
   const [notifTestSuccess, setNotifTestSuccess] = useState(false);
   const [showNotifPassword, setShowNotifPassword] = useState(false);
+  const [showNotifStoredHint, setShowNotifStoredHint] = useState(false);
+  const isSmtpPasswordStored = (settings?.notifications?.smtp_password || settings?.smtp_password) === '*****';
 
   // Watchdog & Startup Settings States
   const [startupGraceDelay, setStartupGraceDelay] = useState(settings?.watchdog?.startup_grace_delay ?? 10);
@@ -234,7 +236,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSmtpPort(notif?.smtp_port || 587);
     setSmtpEncryption(notif?.smtp_encryption || 'tls');
     setSmtpUser(notif?.smtp_user || '');
-    setSmtpPassword(notif?.smtp_password || '');
+    setSmtpPassword(notif?.smtp_password === '*****' ? '' : (notif?.smtp_password || ''));
     setSenderEmail(notif?.sender_email || '');
     setRecipientEmail(notif?.recipient_email || '');
     setNotifyServiceFailures(notif?.notify_service_failures !== undefined ? !!notif?.notify_service_failures : true);
@@ -372,7 +374,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           smtp_port: Number(smtpPort),
           smtp_encryption: smtpEncryption,
           smtp_user: smtpUser,
-          smtp_password: smtpPassword,
+          smtp_password: smtpPassword || (isSmtpPasswordStored ? '*****' : ''),
           sender_email: senderEmail,
           recipient_email: recipientEmail,
         }),
@@ -705,7 +707,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(smtpPort) !== Number(settings?.notifications?.smtp_port || 587) ||
     smtpEncryption !== (settings?.notifications?.smtp_encryption || 'tls') ||
     smtpUser !== (settings?.notifications?.smtp_user || '') ||
-    smtpPassword !== (settings?.notifications?.smtp_password || '') ||
+    smtpPassword !== '' ||
     senderEmail !== (settings?.notifications?.sender_email || '') ||
     recipientEmail !== (settings?.notifications?.recipient_email || '') ||
     notifyServiceFailures !== (settings?.notifications?.notify_service_failures !== undefined ? !!settings?.notifications?.notify_service_failures : true) ||
@@ -777,7 +779,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           smtp_port: Number(smtpPort),
           smtp_encryption: smtpEncryption,
           smtp_user: smtpUser,
-          smtp_password: smtpPassword,
+          smtp_password: smtpPassword || (isSmtpPasswordStored ? '*****' : ''),
           sender_email: senderEmail,
           recipient_email: recipientEmail,
           notify_service_failures: notifyServiceFailures,
@@ -2411,20 +2413,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="relative">
                       <input
                         type={showNotifPassword ? 'text' : 'password'}
-                        placeholder="••••••••••••"
+                        placeholder={
+                          isSmtpPasswordStored && !smtpPassword
+                            ? t('settings.notifications.passwordSavedPlaceholder', '•••••••• (Stored securely on server)')
+                            : '••••••••••••'
+                        }
                         value={smtpPassword}
-                        onChange={e => setSmtpPassword(e.target.value)}
+                        onChange={e => {
+                          setSmtpPassword(e.target.value);
+                          setShowNotifStoredHint(false);
+                        }}
                         className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 pr-8 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
                       />
                       <button
                         type="button"
-                        onClick={() => setShowNotifPassword(!showNotifPassword)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-[var(--text-primary)] text-xs cursor-pointer"
+                        onClick={() => {
+                          if (isSmtpPasswordStored && !smtpPassword) {
+                            setShowNotifStoredHint(prev => !prev);
+                          } else {
+                            setShowNotifPassword(prev => !prev);
+                          }
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-[var(--text-primary)] text-xs cursor-pointer select-none"
                         title={showNotifPassword ? 'Hide password' : 'Show password'}
                       >
                         {showNotifPassword ? '🙈' : '👁️'}
                       </button>
                     </div>
+                    {showNotifStoredHint && isSmtpPasswordStored && !smtpPassword && (
+                      <span className="text-[10px] text-brand-lime block mt-1 animate-in fade-in">
+                        ℹ️ {t('settings.notifications.passwordStoredNote', 'Password is saved on the server and cannot be viewed in plaintext. Enter a new password to overwrite.')}
+                      </span>
+                    )}
                   </div>
                 </div>
 

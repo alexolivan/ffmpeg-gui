@@ -1503,32 +1503,34 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           </h4>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs items-center">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoStart}
-              onChange={(e) => setAutoStart(e.target.checked)}
-              className="rounded text-brand-lime"
-            />
-            <span className="font-bold uppercase tracking-wide text-xs">
-              {t('services.autoStart', 'Auto-start on Boot')}
-            </span>
-          </label>
+        <div className="flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-6 flex-wrap">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoStart}
+                onChange={(e) => setAutoStart(e.target.checked)}
+                className="rounded text-brand-lime"
+              />
+              <span className="font-bold uppercase tracking-wide text-xs">
+                {t('services.autoStart', 'Auto-start on Boot')}
+              </span>
+            </label>
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={watchdogEnabled}
-              onChange={(e) => setWatchdogEnabled(e.target.checked)}
-              className="rounded text-brand-lime"
-            />
-            <span className="font-bold uppercase tracking-wide text-xs">
-              {t('services.watchdog', 'Watchdog Restart')}
-            </span>
-          </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={watchdogEnabled}
+                onChange={(e) => setWatchdogEnabled(e.target.checked)}
+                className="rounded text-brand-lime"
+              />
+              <span className="font-bold uppercase tracking-wide text-xs">
+                {t('services.watchdog', 'Watchdog Restart')}
+              </span>
+            </label>
+          </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] uppercase font-bold text-[var(--text-secondary)] shrink-0">
                 {t('services.startupOrder', 'Order')}:
@@ -1539,7 +1541,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
                 max={100}
                 value={startupOrder}
                 onChange={(e) => setStartupOrder(Number(e.target.value))}
-                className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono"
+                className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
               />
             </div>
 
@@ -1553,7 +1555,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
                 max={300}
                 value={startupDelay}
                 onChange={(e) => setStartupDelay(Number(e.target.value))}
-                className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono"
+                className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
               />
             </div>
           </div>

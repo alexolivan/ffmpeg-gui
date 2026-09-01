@@ -318,8 +318,10 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           host: '', port: '', path: '', url: '',
           mode: 'caller', latency: 200,
           container: 'mp4', icecast_mount: '', icecast_password: '',
-          hls_method: 'local', hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
-          hls_abr_enabled: false, hls_stream_name: '', variants: [],
+          hls_method: (storages || []).some((s: any) => s.type === 'hls') ? 'local' : 'PUT',
+          storage_id: (storages || []).find((s: any) => s.type === 'hls')?.id || null,
+          hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
+          hls_abr_enabled: false, hls_stream_name: 'stream', variants: [],
         })}
       >
         {availableTypes.map(tItem => (
@@ -1348,222 +1350,252 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         </div>
       )}
 
-      {config.type === 'hls' && (
-        <div className="space-y-2">
-          {storages.filter((s: any) => s.type === 'hls').length === 0 && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-2.5 rounded-lg text-xs leading-relaxed font-bold mb-2">
-              {t('destinations.hlsNoStorageWarning')}
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label htmlFor="dest-hls-method" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.hlsIngestMethod')}</label>
-              <select
-                id="dest-hls-method"
-                name="hls_method"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-purple-400"
-                value={config.hls_method || 'local'}
-                onChange={e => update({ hls_method: e.target.value })}
-              >
-                <option value="local">{t('destinations.localDir')}</option>
-                <option value="PUT">{t('destinations.httpPutUpload')}</option>
-                <option value="POST">{t('destinations.httpPostUpload')}</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <div>
-                <label htmlFor="dest-hls-time" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.segmentSeconds')}</label>
-                <input
-                  type="number"
-                  id="dest-hls-time"
-                  name="hls_time"
-                  min={1} max={60}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                  value={config.hls_time ?? 2}
-                  onChange={e => update({ hls_time: Number(e.target.value) })}
-                />
-              </div>
-              <div>
-                <label htmlFor="dest-hls-list-size" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.listSize')}</label>
-                <input
-                  type="number"
-                  id="dest-hls-list-size"
-                  name="hls_list_size"
-                  min={2} max={100}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
-                  value={config.hls_list_size ?? 5}
-                  onChange={e => update({ hls_list_size: Number(e.target.value) })}
-                />
-              </div>
-            </div>
-          </div>
+      {config.type === 'hls' && (() => {
+        const hlsStorages = (storages || []).filter((s: any) => s.type === 'hls');
+        const hasHlsStorages = hlsStorages.length > 0;
+        const currentMethod = config.hls_method || (hasHlsStorages ? 'local' : 'PUT');
 
-          {config.hls_method === 'local' ? (
-            <div className="grid grid-cols-2 gap-2">
+        return (
+          <div className="space-y-3">
+            {!hasHlsStorages && (
+              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-secondary)] p-3 rounded-xl text-xs leading-relaxed flex items-start gap-2.5">
+                <span className="text-brand-lime shrink-0 text-sm">ℹ️</span>
+                <div>
+                  <p className="font-bold text-[var(--text-primary)]">
+                    {t('destinations.hlsHttpIngestOnly', 'HTTP Streaming Mode (PUT / POST)')}
+                  </p>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                    {t(
+                      'destinations.noHlsStorageNotice',
+                      'No local HLS storage volume is configured. You can stream HLS via HTTP PUT/POST or configure an HLS Storage in Settings → Storages for local disk generation.'
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
               <div>
-                <label htmlFor="dest-hls-storage" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                  {t('destinations.hlsStorage')}<span className="text-red-500 ml-0.5">*</span>
+                <label htmlFor="dest-hls-method" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                  {t('destinations.hlsIngestMethod', 'HLS Ingest Method')}
                 </label>
                 <select
-                  id="dest-hls-storage"
-                  name="storage_id"
-                  className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none focus:border-purple-400 ${
-                    validationErrors?.storage_id || validationErrors?.path
-                      ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                      : 'border-white/10'
-                  }`}
-                  value={config.storage_id || ''}
-                  onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
-                  disabled={storages.filter((s: any) => s.type === 'hls').length === 0}
+                  id="dest-hls-method"
+                  name="hls_method"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)]"
+                  value={currentMethod}
+                  onChange={e => update({ hls_method: e.target.value })}
                 >
-                  <option value="">{t('sources.selectStorage')}</option>
-                  {storages.filter((s: any) => s.type === 'hls').map((s: any) => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
-                  ))}
+                  {hasHlsStorages && (
+                    <option value="local">{t('destinations.localDir', 'Local Storage (HLS Disk Directory)')}</option>
+                  )}
+                  <option value="PUT">{t('destinations.httpPutUpload', 'HTTP PUT Upload')}</option>
+                  <option value="POST">{t('destinations.httpPostUpload', 'HTTP POST Upload')}</option>
                 </select>
               </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="dest-hls-time" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.segmentSeconds', 'Segment Target Duration (s)')}
+                  </label>
+                  <input
+                    type="number"
+                    id="dest-hls-time"
+                    name="hls_time"
+                    min={1}
+                    max={60}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                    value={config.hls_time ?? 2}
+                    onChange={e => update({ hls_time: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="dest-hls-list-size" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.listSize', 'Playlist Segment Capacity (list_size)')}
+                  </label>
+                  <input
+                    type="number"
+                    id="dest-hls-list-size"
+                    name="hls_list_size"
+                    min={2}
+                    max={100}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                    value={config.hls_list_size ?? 5}
+                    onChange={e => update({ hls_list_size: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {hasHlsStorages && currentMethod === 'local' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div>
+                  <label htmlFor="dest-hls-storage" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.hlsStorage', 'HLS Storage Directory')}<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <select
+                    id="dest-hls-storage"
+                    name="storage_id"
+                    className={`w-full bg-[var(--input-bg)] border rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] ${
+                      validationErrors?.storage_id || validationErrors?.path
+                        ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                        : 'border-[var(--glass-border)]'
+                    }`}
+                    value={config.storage_id || ''}
+                    onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
+                  >
+                    <option value="">{t('sources.selectStorage', 'Select HLS Storage Volume')}</option>
+                    {hlsStorages.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="dest-hls-relative-path" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.relativePathDir', 'Relative Output Subfolder')}<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="dest-hls-relative-path"
+                    name="relative_path"
+                    placeholder="e.g. live/stream"
+                    className={`w-full bg-[var(--input-bg)] border rounded-lg p-2 text-xs outline-none placeholder-[var(--text-secondary)]/40 focus:border-brand-lime text-[var(--text-primary)] ${
+                      validationErrors?.relative_path || validationErrors?.path
+                        ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                        : validationWarnings?.path
+                          ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
+                          : 'border-[var(--glass-border)]'
+                    }`}
+                    value={config.relative_path || ''}
+                    onChange={e => update({ relative_path: e.target.value })}
+                  />
+                </div>
+                {(validationErrors?.storage_id || validationErrors?.relative_path || validationErrors?.path) && (
+                  <div className="col-span-1 md:col-span-2">
+                    <span className="text-[10px] text-red-400 block mt-1">
+                      {validationErrors.storage_id || validationErrors.relative_path || validationErrors.path}
+                    </span>
+                  </div>
+                )}
+                {validationWarnings?.path && !(validationErrors?.storage_id || validationErrors?.relative_path || validationErrors?.path) && (
+                  <div className="col-span-1 md:col-span-2">
+                    <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
               <div>
-                <label htmlFor="dest-hls-relative-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                  {t('destinations.relativePathDir')}<span className="text-red-500 ml-0.5">*</span>
+                <label htmlFor="dest-hls-path" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                  {t('destinations.serverIngestUrl', 'Server Ingest URL')}<span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <input
                   type="text"
-                  id="dest-hls-relative-path"
-                  name="relative_path"
-                  placeholder="e.g. live/stream"
-                  className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 focus:border-purple-400 ${
-                    validationErrors?.relative_path || validationErrors?.path
+                  id="dest-hls-path"
+                  name="path"
+                  placeholder="e.g. http://ingest.server/live/"
+                  className={`w-full bg-[var(--input-bg)] border rounded-lg p-2 text-xs outline-none placeholder-[var(--text-secondary)]/40 focus:border-brand-lime text-[var(--text-primary)] ${
+                    validationErrors?.path
                       ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                      : validationWarnings?.path
-                        ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
-                        : 'border-white/10'
+                      : 'border-[var(--glass-border)]'
                   }`}
-                  value={config.relative_path || ''}
-                  onChange={e => update({ relative_path: e.target.value })}
-                  disabled={storages.filter((s: any) => s.type === 'hls').length === 0}
+                  value={config.path || ''}
+                  onChange={e => update({ path: e.target.value })}
                 />
+                {validationErrors?.path && (
+                  <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
+                )}
               </div>
-              {(validationErrors?.storage_id || validationErrors?.relative_path || validationErrors?.path) && (
-                <div className="col-span-2">
-                  <span className="text-[10px] text-red-400 block mt-1">
-                    {validationErrors.storage_id || validationErrors.relative_path || validationErrors.path}
-                  </span>
-                </div>
-              )}
-              {validationWarnings?.path && !(validationErrors?.storage_id || validationErrors?.relative_path || validationErrors?.path) && (
-                <div className="col-span-2">
-                  <span className="text-[10px] text-amber-400 block mt-1">{validationWarnings.path}</span>
-                </div>
-              )}
-            </div>
-          ) : (
+            )}
+
             <div>
-              <label htmlFor="dest-hls-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-                {t('destinations.serverIngestUrl')}<span className="text-red-500 ml-0.5">*</span>
+              <label htmlFor="dest-hls-stream-name" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                {t('destinations.hlsStreamName', 'HLS Stream Name (Playlist / Slug)')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
                 type="text"
-                id="dest-hls-path"
-                name="path"
-                placeholder="e.g. http://ingest.server/live/"
-                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 focus:border-purple-400 ${
-                  validationErrors?.path
+                id="dest-hls-stream-name"
+                name="hls_stream_name"
+                placeholder="e.g. stream"
+                className={`w-full bg-[var(--input-bg)] border rounded-lg p-2 text-xs outline-none placeholder-[var(--text-secondary)]/40 focus:border-brand-lime text-[var(--text-primary)] ${
+                  validationErrors?.hls_stream_name
                     ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
+                    : 'border-[var(--glass-border)]'
                 }`}
-                value={config.path || ''}
-                onChange={e => update({ path: e.target.value })}
+                value={config.hls_stream_name ?? 'stream'}
+                onChange={e => update({ hls_stream_name: e.target.value.replace(/\.m3u8$/, '') })}
+                required
               />
-              {validationErrors?.path && (
-                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.path}</span>
+              <span className="text-[10px] text-[var(--text-secondary)] block mt-0.5">
+                {t('destinations.hlsExtensionNote', 'Path must end with .m3u8 extension')}
+              </span>
+              {validationErrors?.hls_stream_name && (
+                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.hls_stream_name}</span>
               )}
             </div>
-          )}
 
-          <div>
-            <label htmlFor="dest-hls-stream-name" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              {t('destinations.ndiStreamName')}<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              id="dest-hls-stream-name"
-              name="hls_stream_name"
-              placeholder="e.g. stream"
-              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                validationErrors?.hls_stream_name
-                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                  : 'border-white/10'
-              }`}
-              value={config.hls_stream_name ?? 'stream'}
-              onChange={e => update({ hls_stream_name: e.target.value.replace(/\.m3u8$/, '') })}
-              required
-            />
-            <span className="text-[10px] text-white/40 block mt-0.5">
-              {t('destinations.hlsExtensionNote')}
-            </span>
-            {validationErrors?.hls_stream_name && (
-              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.hls_stream_name}</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5">
-            <input
-              type="checkbox"
-              id="hls-abr-enabled-chk"
-              name="hls_abr_enabled"
-              className="w-3.5 h-3.5 accent-purple-400"
-              checked={config.hls_abr_enabled ?? false}
-              onChange={e => {
-                const checked = e.target.checked;
-                update({
-                  hls_abr_enabled: checked,
-                  variants: checked ? (config.variants || []) : [],
-                });
-              }}
-            />
-            <label htmlFor="hls-abr-enabled-chk" className="text-xs font-medium cursor-pointer">
-              {t('destinations.enableAbr')}
-            </label>
-          </div>
-
-          {config.hls_method === 'local' && (
-            <div className="flex items-center gap-2 p-1.5 bg-white/5 rounded-lg border border-white/5">
+            <div className="flex items-center gap-2 p-2 bg-[var(--input-bg)] rounded-lg border border-[var(--glass-border)]">
               <input
-                type="checkbox" id="hls-delete-chk"
-                name="hls_delete_segments"
-                className="w-3.5 h-3.5 accent-purple-400"
-                checked={config.hls_delete_segments ?? true}
-                onChange={e => update({ hls_delete_segments: e.target.checked })}
+                type="checkbox"
+                id="hls-abr-enabled-chk"
+                name="hls_abr_enabled"
+                className="w-3.5 h-3.5 accent-brand-lime rounded"
+                checked={config.hls_abr_enabled ?? false}
+                onChange={e => {
+                  const checked = e.target.checked;
+                  update({
+                    hls_abr_enabled: checked,
+                    variants: checked ? (config.variants || []) : [],
+                  });
+                }}
               />
-              <label htmlFor="hls-delete-chk" className="text-xs font-medium cursor-pointer">
-                {t('destinations.deleteExpiredSegments')}
+              <label htmlFor="hls-abr-enabled-chk" className="text-xs font-medium cursor-pointer text-[var(--text-primary)] select-none">
+                {t('destinations.enableAbr', 'Adaptive Bitrate (ABR) Streaming')}
               </label>
             </div>
-          )}
 
-          {(config.hls_method === 'PUT' || config.hls_method === 'POST') && (
-            <div>
-              <label htmlFor="dest-hls-headers" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('destinations.customHttpHeaders')}</label>
-              <textarea
-                id="dest-hls-headers"
-                name="headers"
-                placeholder="e.g. Authorization: Bearer token123&#10;X-Custom-Header: value"
-                rows={2}
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono resize-none"
-                value={config.headers || ''}
-                onChange={e => update({ headers: e.target.value })}
+            {hasHlsStorages && currentMethod === 'local' && (
+              <div className="flex items-center gap-2 p-2 bg-[var(--input-bg)] rounded-lg border border-[var(--glass-border)]">
+                <input
+                  type="checkbox"
+                  id="hls-delete-chk"
+                  name="hls_delete_segments"
+                  className="w-3.5 h-3.5 accent-brand-lime rounded"
+                  checked={config.hls_delete_segments ?? true}
+                  onChange={e => update({ hls_delete_segments: e.target.checked })}
+                />
+                <label htmlFor="hls-delete-chk" className="text-xs font-medium cursor-pointer text-[var(--text-primary)] select-none">
+                  {t('destinations.deleteExpiredSegments', 'Auto-Delete Expired Segments')}
+                </label>
+              </div>
+            )}
+
+            {(currentMethod === 'PUT' || currentMethod === 'POST') && (
+              <div>
+                <label htmlFor="dest-hls-headers" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                  {t('destinations.customHttpHeaders', 'Custom HTTP Headers')}
+                </label>
+                <textarea
+                  id="dest-hls-headers"
+                  name="headers"
+                  placeholder={'e.g. Authorization: Bearer token123\nX-Custom-Header: value'}
+                  rows={2}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono resize-none"
+                  value={config.headers || ''}
+                  onChange={e => update({ headers: e.target.value })}
+                />
+              </div>
+            )}
+
+            {config.hls_abr_enabled && (
+              <HlsVariantsForm
+                variants={config.variants || []}
+                onChange={variants => update({ variants })}
               />
-            </div>
-          )}
-
-          {config.hls_abr_enabled && (
-            <HlsVariantsForm
-              variants={config.variants || []}
-              onChange={variants => update({ variants })}
-            />
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        );
+      })()}
 
       {config.type === 'whip' && (
         <div className="space-y-1.5 animate-in fade-in duration-200">
