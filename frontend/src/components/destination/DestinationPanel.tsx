@@ -49,6 +49,7 @@ export interface OutputConfig {
   pbkeylen?: number | string;
   stream_action?: string;
   service_target?: string;
+  mediamtx_target_type?: 'local' | 'remote';
 }
 
 interface DestinationPanelProps {
@@ -536,6 +537,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       {config.type === 'srt' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
         const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         const mtxCfg = selectedProvider?.config || {};
         const rawPaths = mtxCfg.paths || {};
@@ -564,6 +566,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           update({
             provider_service_id: prov.id,
             service_target: 'mediamtx',
+            mediamtx_target_type: 'local',
             host: '127.0.0.1',
             port: String(pCfg.srt_port || 8890),
             path_id: firstPath,
@@ -605,7 +608,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         };
 
         const currentPathConf = rawPaths[config.path_id || ''];
-        const authHint = isMediaMtxMode ? (
+        const authHint = isMediaMtxMode && !isRemote ? (
           currentPathConf?.mode === 'custom'
             ? t('destinations.srtAuthCustomHint', 'Credentials loaded from path-specific rules')
             : currentPathConf?.mode === 'open'
@@ -638,6 +641,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   stream_action: undefined,
                   path_id: undefined,
                   provider_service_id: undefined,
+                  mediamtx_target_type: undefined,
                 })}
               >
                 {t('destinations.srtManualDirect', 'Manual Direct SRT')}
@@ -650,16 +654,17 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
                 onClick={() => {
-                  const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
-                  if (defaultProv) {
+                  if (mediamtxProviders.length > 0) {
+                    const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
                     handleSelectProvider(defaultProv.id);
                   } else {
                     update({
                       mediamtx_mode: true,
+                      mediamtx_target_type: 'remote',
                       mode: 'caller',
                       stream_action: 'publish',
                       service_target: 'mediamtx',
-                      host: config.host || '127.0.0.1',
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
                       port: config.port || '8890',
                       path_id: config.path_id || 'stream1',
                     });
@@ -683,11 +688,50 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   </span>
                 </div>
 
-                {mediamtxProviders.length === 0 ? (
-                  <div className="bg-amber-500/10 border border-amber-500/20 text-amber-300 p-2 rounded text-xs">
-                    {t('destinations.srtNoHubsFound', 'No active MediaMTX Hub services found.')}
-                  </div>
-                ) : (
+                {/* Sub-selector: Local Hub vs Remote Server */}
+                <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                  <button
+                    type="button"
+                    disabled={mediamtxProviders.length === 0}
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      !isRemote && mediamtxProviders.length > 0
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => {
+                      const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                      if (defaultProv) {
+                        handleSelectProvider(defaultProv.id);
+                      }
+                    }}
+                  >
+                    <span>🏠</span> {t('destinations.srtLocalHub', 'Local Hub (This Node)')} {mediamtxProviders.length === 0 ? `(${t('common.none', 'None')})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      isRemote
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => update({
+                      mediamtx_target_type: 'remote',
+                      provider_service_id: undefined,
+                      service_target: 'mediamtx',
+                      mediamtx_mode: true,
+                      mode: 'caller',
+                      stream_action: 'publish',
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8890',
+                      path_id: config.path_id || 'stream1',
+                    })}
+                  >
+                    <span>🌐</span> {t('destinations.srtRemoteHub', 'Remote MediaMTX Server (External Host)')}
+                  </button>
+                </div>
+
+                {!isRemote ? (
+                  /* Local Hub selector */
                   <div className="space-y-2">
                     <div>
                       <label htmlFor="dest-srt-hub" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
@@ -774,6 +818,108 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       </span>
                       <p className="text-[11px] font-mono text-brand-lime break-all select-all">
                         srt://{config.host || '127.0.0.1'}:{config.port || '8890'}?mode=caller&latency={config.latency || 200}&streamid={streamIdPreview}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  /* Remote Server fields */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label htmlFor="dest-srt-remote-host" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.srtRemoteHost', 'Remote Host / IP')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="dest-srt-remote-host"
+                          placeholder="e.g. ingest.streamingserver.com"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.host || ''}
+                          onChange={e => update({ host: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="dest-srt-remote-port" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.srtRemotePort', 'SRT Port')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="dest-srt-remote-port"
+                          placeholder="8890"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.port || '8890'}
+                          onChange={e => update({ port: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label htmlFor="dest-srt-remote-path" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.srtTargetPath', 'Stream Path (Channel)')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="dest-srt-remote-path"
+                          placeholder="e.g. live/cam1, tx_main"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.path_id || ''}
+                          onChange={e => update({ path_id: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="dest-srt-remote-latency" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.latencyMs', 'Latency (ms)')}
+                        </label>
+                        <input
+                          type="number"
+                          id="dest-srt-remote-latency"
+                          min={20}
+                          max={8000}
+                          placeholder="200"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.latency || 200}
+                          onChange={e => update({ latency: Number(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label htmlFor="dest-srt-remote-user" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.srtPublishUser', 'Publish Username (Optional)')}
+                        </label>
+                        <input
+                          type="text"
+                          id="dest-srt-remote-user"
+                          placeholder="e.g. publisher"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.publish_user || config.auth_user || ''}
+                          onChange={e => update({ publish_user: e.target.value, auth_user: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="dest-srt-remote-pass" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.srtPublishPass', 'Publish Password (Optional)')}
+                        </label>
+                        <input
+                          type="password"
+                          id="dest-srt-remote-pass"
+                          placeholder="••••••••"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.publish_pass || config.auth_pass || ''}
+                          onChange={e => update({ publish_pass: e.target.value, auth_pass: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Stream ID Preview */}
+                    <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2">
+                      <span className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.srtStreamIdPreview', 'Generated SRT Stream ID & URI')}
+                      </span>
+                      <p className="text-[11px] font-mono text-brand-lime break-all select-all">
+                        srt://{config.host || 'remote.host'}:{config.port || '8890'}?mode=caller&latency={config.latency || 200}&streamid={streamIdPreview}
                       </p>
                     </div>
                   </div>

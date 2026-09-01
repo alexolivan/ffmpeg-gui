@@ -207,14 +207,14 @@
     "restartPanel": "Restart Panel",
     "tabs": {
       "general": "General",
+      "software": "Software",
       "lcd": "LCD Display",
       "storage": "Storage",
       "security": "Network & Security",
-      "alsa": "ALSA AUDIO",
-      "backup": "BACKUP & RESTORE",
-      "decklink": "DECKLINK",
-      "magewell": "MAGEWELL",
-      "software": "SOFTWARE"
+      "alsa": "ALSA Audio",
+      "decklink": "DeckLink",
+      "magewell": "Magewell",
+      "backup": "Backup & Restore"
     },
     "alsa": {
       "title": "ALSA MIXER",
@@ -266,17 +266,6 @@
       "en": "English (US)",
       "es": "Español (ES)",
       "ca": "Català (CA)"
-    },
-    "tabs": {
-      "general": "General",
-      "software": "Software",
-      "lcd": "LCD Display",
-      "storage": "Storage",
-      "security": "Network & Security",
-      "alsa": "ALSA Audio",
-      "decklink": "DeckLink",
-      "magewell": "Magewell",
-      "backup": "Backup & Restore"
     },
     "theme": {
       "title": "INTERFACE THEME",
@@ -881,8 +870,8 @@
     "srtCustomPathSlug": "Custom Path Slug",
     "srtCustomPathPlaceholder": "e.g. live, studio_main, tx1",
     "srtReadAuth": "Read Authentication",
-    "srtReadUser": "Read Username (u=...)",
-    "srtReadPass": "Read Password (p=...)",
+    "srtReadUser": "Read Username (Optional)",
+    "srtReadPass": "Read Password (Optional)",
     "srtAuthInheritedHint": "Credentials inherited from MediaMTX global security",
     "srtAuthCustomHint": "Credentials loaded from path-specific rules",
     "srtAuthOpenHint": "Open path (no credentials required)",
@@ -890,7 +879,12 @@
     "srtPassphrasePlaceholder": "Enter passphrase (optional)...",
     "srtPbkeylen": "Key Length (pbkeylen)",
     "srtPbkeylenDefault": "Auto / Default",
-    "srtStreamIdPreview": "Generated SRT Stream ID & URI"
+    "srtStreamIdPreview": "Generated SRT Stream ID & URI",
+    "srtTargetType": "MediaMTX Hub Location",
+    "srtLocalHub": "Local Hub (This Node)",
+    "srtRemoteHub": "Remote MediaMTX Server (External Host)",
+    "srtRemoteHost": "Remote Host / IP",
+    "srtRemotePort": "SRT Port"
   },
   "destinations": {
     "destination": "Destination",
@@ -978,8 +972,8 @@
     "srtCustomPathSlug": "Custom Path Slug",
     "srtCustomPathPlaceholder": "e.g. live, studio_main, tx1",
     "srtPublishAuth": "Publish Authentication",
-    "srtPublishUser": "Publish Username (u=...)",
-    "srtPublishPass": "Publish Password (p=...)",
+    "srtPublishUser": "Publish Username (Optional)",
+    "srtPublishPass": "Publish Password (Optional)",
     "srtAuthInheritedHint": "Credentials inherited from MediaMTX global security",
     "srtAuthCustomHint": "Credentials loaded from path-specific rules",
     "srtAuthOpenHint": "Open path (no credentials required)",
@@ -987,7 +981,12 @@
     "srtPassphrasePlaceholder": "Enter passphrase (optional)...",
     "srtPbkeylen": "Key Length (pbkeylen)",
     "srtPbkeylenDefault": "Auto / Default",
-    "srtStreamIdPreview": "Generated SRT Stream ID & URI"
+    "srtStreamIdPreview": "Generated SRT Stream ID & URI",
+    "srtTargetType": "MediaMTX Hub Location",
+    "srtLocalHub": "Local Hub (This Node)",
+    "srtRemoteHub": "Remote MediaMTX Server (External Host)",
+    "srtRemoteHost": "Remote Host / IP",
+    "srtRemotePort": "SRT Port"
   },
   "filters": {
     "filtersNotAvailable": "Filters are only available when video or audio streams are enabled.",

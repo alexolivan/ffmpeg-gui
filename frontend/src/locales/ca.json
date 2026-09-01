@@ -207,14 +207,14 @@
     "restartPanel": "Reiniciar Panell",
     "tabs": {
       "general": "General",
+      "software": "Programari",
       "lcd": "Pantalla LCD",
       "storage": "Emmagatzematge",
-      "security": "Seguretat",
+      "security": "Xarxa i Seguretat",
       "alsa": "Àudio ALSA",
-      "backup": "Còpia de Seguretat",
-      "decklink": "DECKLINK",
-      "magewell": "MAGEWELL",
-      "software": "SOFTWARE"
+      "decklink": "DeckLink",
+      "magewell": "Magewell",
+      "backup": "Còpia i Restauració"
     },
     "alsa": {
       "title": "MESCLADOR ALSA",
@@ -266,17 +266,6 @@
       "en": "English (US)",
       "es": "Español (ES)",
       "ca": "Català (CA)"
-    },
-    "tabs": {
-      "general": "General",
-      "software": "Programari",
-      "lcd": "Pantalla LCD",
-      "storage": "Emmagatzematge",
-      "security": "Xarxa i Seguretat",
-      "alsa": "Àudio ALSA",
-      "decklink": "DeckLink",
-      "magewell": "Magewell",
-      "backup": "Còpia i Restauració"
     },
     "theme": {
       "title": "TEMA DE INTERFÍCIE",
@@ -881,8 +870,8 @@
     "srtCustomPathSlug": "Slug de Ruta Personalitzat",
     "srtCustomPathPlaceholder": "ex. live, studio_main, tx1",
     "srtReadAuth": "Autenticació de Lectura",
-    "srtReadUser": "Usuari de Lectura (u=...)",
-    "srtReadPass": "Contrasenya de Lectura (p=...)",
+    "srtReadUser": "Usuari de Lectura (Opcional)",
+    "srtReadPass": "Contrasenya de Lectura (Opcional)",
     "srtAuthInheritedHint": "Credencials heretades de la seguretat global de MediaMTX",
     "srtAuthCustomHint": "Credencials carregades de les regles específiques de la ruta",
     "srtAuthOpenHint": "Ruta oberta (no requereix credencials)",
@@ -890,7 +879,12 @@
     "srtPassphrasePlaceholder": "Introduir clau de xifrat (opcional)...",
     "srtPbkeylen": "Longitud de Clau (pbkeylen)",
     "srtPbkeylenDefault": "Automàtic / Per Defecte",
-    "srtStreamIdPreview": "URI i Stream ID SRT Generats"
+    "srtStreamIdPreview": "URI i Stream ID SRT Generats",
+    "srtTargetType": "Ubicació del MediaMTX Hub",
+    "srtLocalHub": "Hub Local (Aquest Node)",
+    "srtRemoteHub": "Servidor MediaMTX Remot (Host Extern)",
+    "srtRemoteHost": "Host / IP Remota",
+    "srtRemotePort": "Port SRT"
   },
   "destinations": {
     "destination": "Destinació",
@@ -978,8 +972,8 @@
     "srtCustomPathSlug": "Slug de Ruta Personalitzat",
     "srtCustomPathPlaceholder": "ex. live, studio_main, tx1",
     "srtPublishAuth": "Autenticació de Publicació",
-    "srtPublishUser": "Usuari de Publicació (u=...)",
-    "srtPublishPass": "Contrasenya de Publicació (p=...)",
+    "srtPublishUser": "Usuari de Publicació (Opcional)",
+    "srtPublishPass": "Contrasenya de Publicació (Opcional)",
     "srtAuthInheritedHint": "Credencials heretades de la seguretat global de MediaMTX",
     "srtAuthCustomHint": "Credencials carregades de les regles específiques de la ruta",
     "srtAuthOpenHint": "Ruta oberta (no requereix credencials)",
@@ -987,7 +981,12 @@
     "srtPassphrasePlaceholder": "Introduir clau de xifrat (opcional)...",
     "srtPbkeylen": "Longitud de Clau (pbkeylen)",
     "srtPbkeylenDefault": "Automàtic / Per Defecte",
-    "srtStreamIdPreview": "URI i Stream ID SRT Generats"
+    "srtStreamIdPreview": "URI i Stream ID SRT Generats",
+    "srtTargetType": "Ubicació del MediaMTX Hub",
+    "srtLocalHub": "Hub Local (Aquest Node)",
+    "srtRemoteHub": "Servidor MediaMTX Remot (Host Extern)",
+    "srtRemoteHost": "Host / IP Remota",
+    "srtRemotePort": "Port SRT"
   },
   "filters": {
     "filtersNotAvailable": "Els filtres només estan disponibles quan els fluxos de vídeo o àudio estan habilitats.",
