@@ -68,14 +68,23 @@ echo "[PHASE 1.5/3] Verifying Systemd Service Units..."
 # 1. System-wide service check
 SYSTEM_SERVICE="/etc/systemd/system/ffmpeg-gui.service"
 if [ -f "$SYSTEM_SERVICE" ]; then
-    # Migrate KillMode=process to KillMode=control-group
-    if grep -q "KillMode=process" "$SYSTEM_SERVICE"; then
-        echo "--> Migrating KillMode=process to KillMode=control-group in system-wide service..."
+    # Ensure KillMode=process (so systemd does not kill surviving stream processes on reload)
+    if grep -q "KillMode=control-group" "$SYSTEM_SERVICE"; then
+        echo "--> Setting KillMode=process in system-wide service..."
         if [ "$EUID" -eq 0 ]; then
-            sed -i 's/KillMode=process/KillMode=control-group/g' "$SYSTEM_SERVICE"
+            sed -i 's/KillMode=control-group/KillMode=process/g' "$SYSTEM_SERVICE"
             systemctl daemon-reload
         else
-            sudo sed -i 's/KillMode=process/KillMode=control-group/g' "$SYSTEM_SERVICE"
+            sudo sed -i 's/KillMode=control-group/KillMode=process/g' "$SYSTEM_SERVICE"
+            sudo systemctl daemon-reload
+        fi
+    elif ! grep -q "KillMode=process" "$SYSTEM_SERVICE"; then
+        echo "--> Ensuring KillMode=process is configured in system-wide service..."
+        if [ "$EUID" -eq 0 ]; then
+            sed -i '/\[Service\]/a KillMode=process' "$SYSTEM_SERVICE"
+            systemctl daemon-reload
+        else
+            sudo sed -i '/\[Service\]/a KillMode=process' "$SYSTEM_SERVICE"
             sudo systemctl daemon-reload
         fi
     fi
@@ -148,10 +157,14 @@ fi
 # 2. User-space service check
 USER_SERVICE="$HOME/.config/systemd/user/ffmpeg-gui.service"
 if [ -f "$USER_SERVICE" ]; then
-    # Migrate KillMode=process to KillMode=control-group
-    if grep -q "KillMode=process" "$USER_SERVICE"; then
-        echo "--> Migrating KillMode=process to KillMode=control-group in user-space service..."
-        sed -i 's/KillMode=process/KillMode=control-group/g' "$USER_SERVICE"
+    # Ensure KillMode=process
+    if grep -q "KillMode=control-group" "$USER_SERVICE"; then
+        echo "--> Setting KillMode=process in user-space service..."
+        sed -i 's/KillMode=control-group/KillMode=process/g' "$USER_SERVICE"
+        systemctl --user daemon-reload
+    elif ! grep -q "KillMode=process" "$USER_SERVICE"; then
+        echo "--> Ensuring KillMode=process is configured in user-space service..."
+        sed -i '/\[Service\]/a KillMode=process' "$USER_SERVICE"
         systemctl --user daemon-reload
     fi
     # Ensure ExecReload=/bin/kill -HUP $MAINPID

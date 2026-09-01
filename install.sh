@@ -288,7 +288,7 @@ ExecStart=$PROJ_DIR/venv/bin/python $PROJ_DIR/backend/run_server.py --config $CO
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=2
-KillMode=control-group
+KillMode=process
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 
@@ -316,7 +316,7 @@ ExecStart=$PROJ_DIR/venv/bin/python $PROJ_DIR/backend/run_server.py --config $CO
 ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=2
-KillMode=control-group
+KillMode=process
 
 [Install]
 WantedBy=default.target
