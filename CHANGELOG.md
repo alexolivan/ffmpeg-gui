@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2026-09-03
+
+### Added
+- **Native Icecast2 Server Service Integration**:
+  - Full heterogeneous service lifecycle management for Icecast2 instances (`icecast_server`) alongside FFmpeg and MediaMTX.
+  - Automated generation of isolated, well-formed `icecast.xml` configurations with runtime log isolation and webroot/adminroot discovery.
+  - Dual listen socket architecture supporting plain HTTP and HTTPS/TLS with automatic concatenated PEM bundle creation (`<ssl-certificate>`).
+  - Static and dynamic mountpoints management (CRUD) with `max-listeners`, `fallback-mount`, `fallback-override`, `burst-size`, and source password overrides.
+  - Real-time `/status-json.xsl` telemetry poller monitoring connected listeners, peak audience, and active mountpoints.
+- **Dedicated TCP 7XXX Port Allocator & Pre-Flight Collision Protection**:
+  - Allocated Icecast2 in dedicated TCP 7XXX range (base HTTP 7000, base HTTPS 7443, step offset +10) avoiding collisions with MediaMTX (8XXX), web panel, or streaming outputs.
+- **Forge Build Engine & Software Manager Enhancements**:
+  - Added Xiph GitLab repository integration (`icecast-server.git`) with tag normalization and fallback source distribution mirrors.
+  - Registered `libxml2`, `libxslt`, and `libssl-dev` in dependency auditor, with dual system binary detection (`/usr/bin/icecast2` and `icecast`).
+- **FFmpeg Icecast Output Assistant & Automated Audio Codec/MIME Resolution**:
+  - Interactive destination selector in `DestinationPanel.tsx` supporting 1-click Local Hub integration (auto-populating host, port, mount, and password from managed servers) vs Remote Server manual mode.
+  - Automated CLI argument generation mapping audio codecs to proper containers and MIME types (`libmp3lame` → `-f mp3 -content_type audio/mpeg`, `aac` → `-f adts -content_type audio/aac`, `libopus` → `-f ogg -content_type audio/ogg`, `flac` → `-f flac -content_type audio/flac`).
+  - Added broadcast stream metadata flags (`-ice_name`, `-ice_genre`, `-ice_description`, `-ice_public`).
+- **Modern UI & Full 100% i18n Key Parity**:
+  - Added `IcecastConfigForm.tsx` and compact `IcecastServiceCard.tsx` with 1-click access to web admin console (`/admin/`) and live audience telemetry.
+  - Added 51 new translation keys with 100% key parity across English, Spanish, and Catalan.
+
 ## [2.8.0] - 2026-09-03
 
 ### Added
