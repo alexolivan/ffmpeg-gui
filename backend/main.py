@@ -3166,7 +3166,7 @@ async def get_nvenc_tags():
 async def get_software_tags(software_type: str):
     """List available tags for the specified software type."""
     if software_type == "icecast2":
-        tags = await build_manager.fetch_available_tags("https://github.com/xiph/icecast-server.git")
+        tags = await build_manager.fetch_available_tags("https://gitlab.xiph.org/xiph/icecast-server.git")
     elif software_type == "mediamtx":
         tags = await build_manager.fetch_available_tags("https://github.com/bluenviron/mediamtx.git")
     elif software_type == "kiosk_cog":
@@ -3179,7 +3179,7 @@ async def get_software_tags(software_type: str):
     # Si por algún motivo no hay tags o falla, retornar un fallback básico
     if not tags:
         if software_type == "icecast2":
-            tags = ["2.4.4", "2.4.3", "2.4.2"]
+            tags = ["2.5.0", "2.4.4", "2.4.3", "2.4.2"]
         elif software_type == "mediamtx":
             tags = ["v1.9.0", "v1.8.0", "v1.7.0"]
         elif software_type == "kiosk_cog":

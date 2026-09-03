@@ -133,7 +133,10 @@ class SoftwareManager:
         bin_name = meta.get("default_binary", software_type)
         bin_path = shutil.which(bin_name)
         if not bin_path or not os.path.isfile(bin_path):
-            return {"found": False, "path": None, "version": None}
+            if software_type == "icecast2":
+                bin_path = shutil.which("icecast") or shutil.which("icecast2")
+            if not bin_path or not os.path.isfile(bin_path):
+                return {"found": False, "path": None, "version": None}
 
         version_str = None
         cmd = [bin_path] + meta.get("version_cmd", ["--version"])

@@ -5,6 +5,7 @@ import logging
 import shutil
 import datetime
 import shlex
+import re
 
 
 class BuildManager:
@@ -85,6 +86,8 @@ class BuildManager:
             "libx264": {"pkg": "x264", "type": "required", "description": "Biblioteca para codificación H.264/AVC (libx264)"},
             "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
             "libssl": {"pkg": "openssl", "type": "required", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
+            "libxml2": {"pkg": "libxml-2.0", "type": "optional", "description": "Biblioteca XML para Icecast2 y streaming (libxml2-dev)"},
+            "libxslt": {"pkg": "libxslt", "type": "optional", "description": "Motor de plantillas XSLT para consola web de Icecast2 (libxslt1-dev)"},
             "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
             "libmp3lame": {"pkg": "mp3lame", "type": "optional", "description": "Biblioteca LAME para codificación de audio MP3 (libmp3lame-dev)"},
             "libvorbis": {"pkg": "vorbis", "type": "optional", "description": "Biblioteca Ogg Vorbis para codificación de audio (libvorbis-dev)"},
@@ -186,7 +189,13 @@ class BuildManager:
                 if ref.endswith("^{}"):
                     continue
                 tag_name = ref.replace("refs/tags/", "")
-                tags.append(tag_name)
+                if "icecast" in url.lower():
+                    # Strip 'icecast-' or 'v' prefix for user-friendly version presentation
+                    clean_tag = re.sub(r'^(?:icecast[-_]|v)', '', tag_name, flags=re.IGNORECASE)
+                    if clean_tag and clean_tag not in tags:
+                        tags.append(clean_tag)
+                else:
+                    tags.append(tag_name)
             return tags
         except Exception as exc:
             self.logger.error(f"Failed to fetch tags for {repo}: {exc}")
