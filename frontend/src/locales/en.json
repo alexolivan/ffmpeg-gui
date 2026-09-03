@@ -247,6 +247,7 @@
         "webConsole": "Icecast Web Admin & Status GUI",
         "statusPage": "Status Page",
         "adminPage": "Admin Console",
+        "refreshPreview": "Refresh Preview",
         "openWebConsole": "Open Web Console (New Tab)",
         "webConsoleHint": "Inspect detailed XML/HTML station status, active listeners, and connected broadcaster clients.",
         "perMountTitle": "Extended Mountpoint Telemetry & Live Player",

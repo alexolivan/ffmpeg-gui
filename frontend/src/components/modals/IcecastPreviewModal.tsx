@@ -65,6 +65,8 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   const [copyLogsSuccess, setCopyLogsSuccess] = useState(false);
   const [copiedUrlKey, setCopiedUrlKey] = useState<string | null>(null);
   const [liveStats, setLiveStats] = useState<any>(null);
+  const [previewTimestamp, setPreviewTimestamp] = useState<number>(() => Date.now());
+  const prevMountsSignatureRef = useRef<string>('');
 
   const iceCfg = currentProcess.config?.icecast_config || currentProcess.icecast_config || {};
   const httpPort = iceCfg.port || 7000;
@@ -119,6 +121,27 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
     const interval = setInterval(fetchStatus, 3000);
     return () => clearInterval(interval);
   }, [isRunning, currentProcess.id, API]);
+
+  // Periodic background refresh of the preview iframe every 6 seconds
+  useEffect(() => {
+    if (!isRunning) return;
+    const interval = setInterval(() => {
+      setPreviewTimestamp(Date.now());
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [isRunning]);
+
+  // Reactive trigger: instantly reload preview iframe if mounts enter, leave, or title/listeners change
+  useEffect(() => {
+    if (!liveStats) return;
+    const rawSources = liveStats.sources || (liveStats.icestats && liveStats.icestats.source) || [];
+    const sourcesList = Array.isArray(rawSources) ? rawSources : [rawSources];
+    const currentSignature = sourcesList.map((s: any) => `${s.mount || s['@mount'] || ''}:${s.listeners || 0}:${s.title || ''}`).join('|');
+    if (prevMountsSignatureRef.current !== '' && prevMountsSignatureRef.current !== currentSignature) {
+      setPreviewTimestamp(Date.now());
+    }
+    prevMountsSignatureRef.current = currentSignature;
+  }, [liveStats]);
 
   // Poll server daemon logs (stdout / stderr / error.log)
   useEffect(() => {
@@ -471,7 +494,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                       }}
                     >
                       <iframe
-                        src={webStatusUrl}
+                        src={`${webStatusUrl}${webStatusUrl.includes('?') ? '&' : '?'}_preview_t=${previewTimestamp}`}
                         title="Icecast Web Status Preview"
                         className="w-[1280px] h-[720px] border-0 bg-white pointer-events-none select-none"
                         sandbox="allow-same-origin allow-scripts"
@@ -497,6 +520,20 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                     <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-brand-lime text-black text-[8px] font-black rounded tracking-wider uppercase animate-pulse shadow pointer-events-none z-20">
                       LIVE
                     </div>
+
+                    {/* 1-click manual refresh button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setPreviewTimestamp(Date.now());
+                      }}
+                      className="absolute top-2.5 right-2.5 z-20 p-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white/70 hover:text-cyan-400 border border-white/10 backdrop-blur-sm transition-all cursor-pointer shadow-lg group-hover:opacity-100 opacity-60 flex items-center gap-1"
+                      title={t('services.icecast.preview.refreshPreview', 'Actualizar Vista Previa')}
+                    >
+                      <RefreshIcon size={12} />
+                    </button>
                   </>
                 ) : (
                   <div className="text-center p-4 text-xs text-[var(--text-secondary)]">

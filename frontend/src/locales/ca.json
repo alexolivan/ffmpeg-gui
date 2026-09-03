@@ -247,6 +247,7 @@
         "webConsole": "Consola Web d'Administració i Estat",
         "statusPage": "Pàgina d'Estat",
         "adminPage": "Consola d'Administració",
+        "refreshPreview": "Actualitzar Vista Prèvia",
         "openWebConsole": "Obrir Consola Web (Nova Pestanya)",
         "webConsoleHint": "Inspecciona l'estat XML/HTML de l'estació, oients actius i clients emissors connectats.",
         "perMountTitle": "Telemetria Estesa per Punt de Muntatge i Reproductor",

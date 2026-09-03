@@ -247,6 +247,7 @@
         "webConsole": "Consola Web de Administración y Estado",
         "statusPage": "Página de Estado",
         "adminPage": "Consola de Administración",
+        "refreshPreview": "Actualizar Vista Previa",
         "openWebConsole": "Abrir Consola Web (Nueva Pestaña)",
         "webConsoleHint": "Inspecciona el estado XML/HTML de la estación, oyentes activos y clientes emisores conectados.",
         "perMountTitle": "Telemetría Extendida por Punto de Montaje y Reproductor",
