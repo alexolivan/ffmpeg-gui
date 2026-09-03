@@ -31,6 +31,26 @@ class TestIcecastForgeAndSoftware(unittest.IsolatedAsyncioTestCase):
         self.assertIn("libxslt1-dev", deps)
         self.assertIn("libvorbis-dev", deps)
         self.assertIn("libogg-dev", deps)
+        self.assertIn("libigloo-dev", deps)
+
+    async def test_icecast_recipe_auto_builds_libigloo_when_missing(self):
+        recipe = IcecastRecipe(self.builds_root, self.runner)
+        log_mock = AsyncMock()
+        
+        # When system igloo is missing, recipe should download and compile libigloo
+        with patch("subprocess.run", side_effect=Exception("not found")):
+            res = await recipe.compile(
+                build_id=1,
+                version_tag="2.5.0",
+                options={},
+                sdk_paths=None,
+                install_path=os.path.join(self.builds_root, "1", "install"),
+                log_callback=log_mock
+            )
+            self.assertTrue(res["success"])
+            # Verify libigloo commands were logged
+            log_calls = [c[0][0] for c in log_mock.call_args_list if c[0]]
+            self.assertTrue(any("libigloo" in str(line) for line in log_calls))
 
     def test_build_manager_checks_libxml2_and_libxslt(self):
         bm = BuildManager(self.builds_root)

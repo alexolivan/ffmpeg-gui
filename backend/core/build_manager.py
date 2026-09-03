@@ -100,6 +100,7 @@ class BuildManager:
             "libvorbis": {"pkg": "vorbis", "type": "optional", "description": "Biblioteca Ogg Vorbis para codificación de audio (libvorbis-dev)", "engines": ["ffmpeg", "icecast2"]},
             "libogg": {"pkg": "ogg", "type": "optional", "description": "Biblioteca contenedor de audio Ogg (libogg-dev)", "engines": ["icecast2"]},
             "libcurl": {"pkg": "libcurl", "type": "optional", "description": "Biblioteca cliente HTTP/URL auth (libcurl4-openssl-dev)", "engines": ["icecast2"]},
+            "libigloo": {"pkg": "igloo >= 0.9.4", "type": "optional", "description": "Framework C de base para Icecast 2.5+ (libigloo-dev, auto-compilado en la receta si falta)", "engines": ["icecast2"]},
             "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)", "engines": ["ffmpeg"]},
             "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)", "engines": ["ffmpeg"]},
             "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)", "engines": ["ffmpeg"]},
