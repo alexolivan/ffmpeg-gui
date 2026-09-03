@@ -3195,10 +3195,10 @@ def get_disk_info():
     return build_manager.get_partition_free_space()
 
 @app.get("/builds/check")
-def check_build_deps():
+def check_build_deps(software_type: Optional[str] = Query(None)):
     """Pre-flight check of required system build dependencies."""
-    logger.info("GET /builds/check received")
-    return build_manager.check_dependencies()
+    logger.info(f"GET /builds/check received for software_type={software_type}")
+    return build_manager.check_dependencies(software_type=software_type)
 
 
 @app.get("/sdks")

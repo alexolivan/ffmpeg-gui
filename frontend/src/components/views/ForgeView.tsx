@@ -28,7 +28,11 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libx265": "libx265-dev",
     "libssl": "libssl-dev",
     "libxml-2.0": "libxml2-dev",
+    "libxml2": "libxml2-dev",
     "libxslt": "libxslt1-dev",
+    "libogg": "libogg-dev",
+    "libcurl": "libcurl4-openssl-dev",
+    "curl": "curl",
     "libva": "libva-dev",
     "libdrm": "libdrm-dev",
     "libmp3lame": "libmp3lame-dev",
@@ -55,7 +59,11 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libx265": "x265-devel",
     "libssl": "openssl-devel",
     "libxml-2.0": "libxml2-devel",
+    "libxml2": "libxml2-devel",
     "libxslt": "libxslt-devel",
+    "libogg": "libogg-devel",
+    "libcurl": "libcurl-devel",
+    "curl": "curl",
     "libva": "libva-devel",
     "libdrm": "libdrm-devel",
     "libmp3lame": "lame-devel",
@@ -82,7 +90,11 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libx265": "x265",
     "libssl": "openssl",
     "libxml-2.0": "libxml2",
+    "libxml2": "libxml2",
     "libxslt": "libxslt",
+    "libogg": "libogg",
+    "libcurl": "curl",
+    "curl": "curl",
     "libva": "libva",
     "libdrm": "libdrm",
     "libmp3lame": "lame",
@@ -143,7 +155,7 @@ interface ForgeViewProps {
   importRecipeRef: React.RefObject<HTMLInputElement | null>;
   refreshBuilds: () => Promise<void>;
   refreshDiskInfo: () => Promise<void>;
-  refreshDeps: () => Promise<void>;
+  refreshDeps: (softwareType?: string) => Promise<void>;
   storages?: any[];
   API?: string;
   initialSoftwareType?: 'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog';
@@ -232,10 +244,14 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   }, [showSdksModal, API, storages.length]);
 
   useEffect(() => {
+    refreshDeps(activeEngineTab);
+  }, [activeEngineTab, refreshDeps]);
+
+  useEffect(() => {
     if (showEnvModal) {
-      refreshDeps();
+      refreshDeps(activeEngineTab);
     }
-  }, [showEnvModal, refreshDeps]);
+  }, [showEnvModal, activeEngineTab, refreshDeps]);
 
   const fallbackCopy = (text: string) => {
     const textArea = document.createElement("textarea");
@@ -340,20 +356,9 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
       </div>
 
       {(() => {
-        const isFfmpeg = activeEngineTab === 'ffmpeg';
-        const isDecklinkTools = activeEngineTab === 'decklink_tools';
-        const isIcecast = activeEngineTab === 'icecast2';
-        const isDecklinkEnvReady = (buildDeps?.dependencies?.gcc?.installed !== false) && (buildDeps?.dependencies?.make?.installed !== false);
-        const isIcecastEnvReady = (buildDeps?.dependencies?.gcc?.installed !== false) &&
-                                  (buildDeps?.dependencies?.make?.installed !== false) &&
-                                  (buildDeps?.dependencies?.['pkg-config']?.installed !== false) &&
-                                  (buildDeps?.dependencies?.['libssl']?.installed !== false) &&
-                                  (buildDeps?.dependencies?.['libxml-2.0']?.installed !== false) &&
-                                  (buildDeps?.dependencies?.['libxslt']?.installed !== false);
-        const isReady = isFfmpeg ? buildDeps?.all_required_met : (isDecklinkTools ? isDecklinkEnvReady : isIcecastEnvReady);
-
-        const engineSupportsSdks = isFfmpeg || isDecklinkTools;
-        const engineRequiresCompilation = isFfmpeg || isDecklinkTools || isIcecast;
+        const isReady = Boolean(buildDeps?.all_required_met);
+        const engineSupportsSdks = activeEngineTab === 'ffmpeg' || activeEngineTab === 'decklink_tools';
+        const engineRequiresCompilation = true;
 
         return (
           <div className="glass-card p-6 mb-8 bg-white/2 border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -505,7 +510,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             
             {/* Refresh button */}
             <button 
-              onClick={refreshDeps}
+              onClick={() => refreshDeps(activeEngineTab)}
               disabled={checkStatus === 'loading'}
               className="absolute top-5 right-15 w-8 h-8 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white transition-colors disabled:opacity-50"
               title="Recargar dependencias"
@@ -522,7 +527,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             </button>
 
             <h3 className="text-lg font-black tracking-tight mb-1 flex items-center gap-2">
-              <ForgeIcon size={16} /> {t('forge.compilationEnvState', 'COMPILATION ENVIRONMENT STATUS')}
+              <ForgeIcon size={16} /> {t('forge.compilationEnvState', 'COMPILATION ENVIRONMENT STATUS')} — <span className="text-brand-orange">{activeEngineTab.replace('_', ' ').toUpperCase()}</span>
             </h3>
             <p className="text-xs text-text-secondary mb-6 leading-relaxed">
               {t('forge.envDescription')}
@@ -550,12 +555,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">{t('forge.requiredTools')}</h4>
                 <div className="space-y-2">
                   {Object.entries(buildDeps?.dependencies || {})
-                    .filter(([name, info]: any) => {
-                      if (activeEngineTab === 'decklink_tools') {
-                        return name === 'gcc' || name === 'make';
-                      }
-                      return info.type === 'required';
-                    })
+                    .filter(([, info]: any) => info.type === 'required')
                     .map(([name, info]: any) => (
                       <div key={name} className="flex flex-col p-3 bg-white/2 border border-white/5 rounded-xl gap-2">
                         <div className="flex items-center justify-between">
@@ -593,10 +593,10 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 </div>
               </div>
 
-              {/* Optional Deps Section (Only for FFmpeg) */}
-              {activeEngineTab === 'ffmpeg' && (
+              {/* Optional Deps Section */}
+              {Object.values(buildDeps?.dependencies || {}).some((info: any) => info.type === 'optional') && (
                 <div>
-                  <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">{t('forge.optionalLibs')}</h4>
+                  <h4 className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3">{t('forge.optionalLibs', 'OPTIONAL LIBRARIES & CODECS')}</h4>
                   <div className="space-y-2">
                     {Object.entries(buildDeps?.dependencies || {})
                       .filter(([, info]: any) => info.type === 'optional')
@@ -640,27 +640,19 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 
               {/* Command Generator */}
               {(() => {
-                const isDecklinkTools = activeEngineTab === 'decklink_tools';
                 const hasNvidia = !!(systemTelemetry?.capabilities?.nvenc?.available || (systemTelemetry?.gpu?.vendor && systemTelemetry.gpu.vendor.toLowerCase().includes('nvidia')));
 
                 let missingRequired = Object.entries(buildDeps?.dependencies || {})
-                  .filter(([name, info]: any) => {
-                    if (isDecklinkTools) {
-                      return (name === 'gcc' || name === 'make') && !info.installed;
-                    }
-                    return info.type === 'required' && !info.installed;
-                  })
+                  .filter(([, info]: any) => info.type === 'required' && !info.installed)
                   .map(([name]) => name);
 
-                let missingOptional = isDecklinkTools
-                  ? []
-                  : Object.entries(buildDeps?.dependencies || {})
-                      .filter(([, info]: any) => info.type === 'optional' && !info.installed)
-                      .map(([name]) => name);
+                let missingOptional = Object.entries(buildDeps?.dependencies || {})
+                  .filter(([, info]: any) => info.type === 'optional' && !info.installed)
+                  .map(([name]) => name);
 
                 let allMissing = [...missingRequired, ...missingOptional];
 
-                if (!hasNvidia && !isDecklinkTools) {
+                if (!hasNvidia && activeEngineTab === 'ffmpeg') {
                   allMissing = allMissing.filter(dep => dep !== 'clang' && dep !== 'nvidia-cuda-dev');
                 }
 
@@ -710,7 +702,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                         <ClipboardIcon size={14} />
                       </button>
                     </div>
-                    {!hasNvidia && !isDecklinkTools && (
+                    {!hasNvidia && activeEngineTab === 'ffmpeg' && (
                       <p className="text-[9px] text-brand-orange mt-2">
                         {t('forge.nvidiaExcludedNote')}
                       </p>

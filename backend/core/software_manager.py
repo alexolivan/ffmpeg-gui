@@ -182,17 +182,6 @@ class SoftwareManager:
             has_any_source = True
 
         if not has_any_source:
-            if meta.get("supports_installed"):
-                proposed_config[f"{software_type}_installed_enabled"] = True
-                has_any_source = True
-            if meta.get("supports_forge"):
-                proposed_config[f"{software_type}_forge_enabled"] = True
-                has_any_source = True
-            if meta.get("supports_precompiled") and not has_any_source:
-                proposed_config[f"{software_type}_precompiled_enabled"] = True
-                has_any_source = True
-
-        if not has_any_source:
             raise ValueError(f"Engine '{meta['name']}' is active and must have at least one binary source (Forge, Installed, or Precompiled) enabled.")
 
     def get_engines_status(self, db_session: Session) -> Dict[str, Any]:

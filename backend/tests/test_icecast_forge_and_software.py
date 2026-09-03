@@ -41,6 +41,35 @@ class TestIcecastForgeAndSoftware(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(deps["libxml2"]["type"], "optional")
         self.assertEqual(deps["libxslt"]["type"], "optional")
 
+    def test_build_manager_checks_dependencies_per_software_type(self):
+        bm = BuildManager(self.builds_root)
+        
+        # Test Icecast2 dependencies: NO video codecs, YES XML/XSLT/SSL
+        ice_results = bm.check_dependencies(software_type="icecast2")
+        ice_deps = ice_results.get("dependencies", {})
+        self.assertEqual(ice_results.get("software_type"), "icecast2")
+        self.assertIn("libxml2", ice_deps)
+        self.assertEqual(ice_deps["libxml2"]["type"], "required")
+        self.assertIn("libxslt", ice_deps)
+        self.assertEqual(ice_deps["libxslt"]["type"], "required")
+        self.assertIn("libssl", ice_deps)
+        self.assertIn("gcc", ice_deps)
+        self.assertIn("make", ice_deps)
+        self.assertNotIn("libx264", ice_deps)
+        self.assertNotIn("libx265", ice_deps)
+        self.assertNotIn("yasm/nasm", ice_deps)
+        self.assertNotIn("vainfo", ice_deps)
+        self.assertNotIn("clang", ice_deps)
+
+        # Test DeckLink Tools dependencies: only gcc/g++ and make
+        dl_results = bm.check_dependencies(software_type="decklink_tools")
+        dl_deps = dl_results.get("dependencies", {})
+        self.assertIn("gcc", dl_deps)
+        self.assertIn("make", dl_deps)
+        self.assertNotIn("libx264", dl_deps)
+        self.assertNotIn("libxml2", dl_deps)
+        self.assertNotIn("libssl", dl_deps)
+
     async def test_tag_normalization_in_fetch_available_tags(self):
         bm = BuildManager(self.builds_root)
         fake_stdout = b"hash1\trefs/tags/icecast-2.5.0\nhash2\trefs/tags/icecast-2.4.4\nhash3\trefs/tags/icecast-2.4.4^{}\n"

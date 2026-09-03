@@ -34,10 +34,11 @@ export function useBuilds(activeView: string) {
     }
   };
 
-  const fetchDeps = useCallback(async () => {
+  const fetchDeps = useCallback(async (softwareType?: string) => {
     setCheckStatus('loading');
     try {
-      const res = await fetch(`${API}/builds/check`);
+      const url = softwareType ? `${API}/builds/check?software_type=${softwareType}` : `${API}/builds/check`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error();
       setBuildDeps(await res.json());
       setCheckStatus('ready');
