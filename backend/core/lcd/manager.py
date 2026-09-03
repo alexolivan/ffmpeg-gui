@@ -136,7 +136,7 @@ class LCDManager:
                     try:
                         # 1. Check streams/services
                         from database.models import Service
-                        services = db.query(Service).filter(Service.service_type == 'ffmpeg_stream').all()
+                        services = db.query(Service).all()
                         has_running = any(s.status == 'running' for s in services)
                         has_error = any(s.status == 'error' for s in services)
                         
@@ -531,3 +531,21 @@ class LCDManager:
             except Exception:
                 pass
             await asyncio.sleep(2.0)
+
+    def restart_panel(self):
+        """Trigger graceful warm reload of the application from LCD."""
+        import threading
+        import time
+        import os
+        try:
+            from main import set_reload_mode
+            set_reload_mode(True)
+        except Exception as e:
+            logger.warning(f"Could not call set_reload_mode: {e}")
+
+        def _do_exit():
+            time.sleep(1.2)
+            logger.warning("Restart triggered from LCD menu (Warm Reload). Terminating process now...")
+            os._exit(0)
+
+        threading.Thread(target=_do_exit, daemon=True).start()

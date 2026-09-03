@@ -83,6 +83,8 @@ class TestLoggingHandler(unittest.TestCase):
         
         with patch("configparser.ConfigParser") as mock_parser, \
              patch("os.path.exists", return_value=True), \
+             patch("uvicorn.Config") as mock_cfg, \
+             patch("uvicorn.Server") as mock_srv, \
              patch("uvicorn.run") as mock_run:
              
             # Setup ConfigParser mock
@@ -99,8 +101,11 @@ class TestLoggingHandler(unittest.TestCase):
             with patch("sys.argv", ["run_server.py", "--config", "dummy.conf"]):
                 run_server.main()
                 
-            # Get the log_config passed to uvicorn.run
-            called_args, called_kwargs = mock_run.call_args
+            # Get the log_config passed to uvicorn.Config or uvicorn.run
+            if mock_cfg.called:
+                called_args, called_kwargs = mock_cfg.call_args
+            else:
+                called_args, called_kwargs = mock_run.call_args
             log_config = called_kwargs["log_config"]
             
             # In journalctl mode, root and FFMPEG-GUI should use default (console) only
@@ -127,6 +132,8 @@ class TestLoggingHandler(unittest.TestCase):
         
         with patch("configparser.ConfigParser") as mock_parser, \
              patch("os.path.exists", return_value=True), \
+             patch("uvicorn.Config") as mock_cfg, \
+             patch("uvicorn.Server") as mock_srv, \
              patch("uvicorn.run") as mock_run:
              
             parser_inst = mock_parser.return_value
@@ -141,7 +148,10 @@ class TestLoggingHandler(unittest.TestCase):
             with patch("sys.argv", ["run_server.py", "--config", "dummy.conf"]):
                 run_server.main()
                 
-            called_args, called_kwargs = mock_run.call_args
+            if mock_cfg.called:
+                called_args, called_kwargs = mock_cfg.call_args
+            else:
+                called_args, called_kwargs = mock_run.call_args
             log_config = called_kwargs["log_config"]
             
             # In file mode, root and FFMPEG-GUI should use file handler only

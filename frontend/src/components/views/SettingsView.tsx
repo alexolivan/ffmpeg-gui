@@ -181,6 +181,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [sslDomain, setSslDomain] = useState(settings?.ssl_domain || '');
   const [sslEmail, setSslEmail] = useState(settings?.ssl_email || '');
   const [sslChallengeType, setSslChallengeType] = useState(settings?.ssl_challenge_type || 'http-01');
+  const [autoReloadSslServices, setAutoReloadSslServices] = useState(settings?.auto_reload_ssl_services !== undefined ? !!settings?.auto_reload_ssl_services : true);
 
   const [sslStatus, setSslStatus] = useState<any>(null);
   const [isUploadingSsl, setIsUploadingSsl] = useState(false);
@@ -197,7 +198,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [smtpPort, setSmtpPort] = useState(settings?.smtp_port || 587);
   const [smtpEncryption, setSmtpEncryption] = useState(settings?.smtp_encryption || 'tls');
   const [smtpUser, setSmtpUser] = useState(settings?.smtp_user || '');
-  const [smtpPassword, setSmtpPassword] = useState(settings?.smtp_password || '');
+  const [smtpPassword, setSmtpPassword] = useState((settings?.notifications?.smtp_password || settings?.smtp_password) === '*****' ? '' : (settings?.smtp_password || ''));
   const [senderEmail, setSenderEmail] = useState(settings?.sender_email || '');
   const [recipientEmail, setRecipientEmail] = useState(settings?.recipient_email || '');
   const [notifyServiceFailures, setNotifyServiceFailures] = useState(settings?.notify_service_failures !== undefined ? !!settings?.notify_service_failures : true);
@@ -210,6 +211,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [notifTestMessage, setNotifTestMessage] = useState('');
   const [notifTestSuccess, setNotifTestSuccess] = useState(false);
   const [showNotifPassword, setShowNotifPassword] = useState(false);
+  const [showNotifStoredHint, setShowNotifStoredHint] = useState(false);
+  const isSmtpPasswordStored = (settings?.notifications?.smtp_password || settings?.smtp_password) === '*****';
 
   // Watchdog & Startup Settings States
   const [startupGraceDelay, setStartupGraceDelay] = useState(settings?.watchdog?.startup_grace_delay ?? 10);
@@ -226,13 +229,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSslDomain(settings?.ssl_domain || '');
     setSslEmail(settings?.ssl_email || '');
     setSslChallengeType(settings?.ssl_challenge_type || 'http-01');
+    setAutoReloadSslServices(settings?.auto_reload_ssl_services !== undefined ? !!settings?.auto_reload_ssl_services : true);
     const notif = settings?.notifications;
     setNotifEnabled(!!notif?.enabled);
     setSmtpHost(notif?.smtp_host || '');
     setSmtpPort(notif?.smtp_port || 587);
     setSmtpEncryption(notif?.smtp_encryption || 'tls');
     setSmtpUser(notif?.smtp_user || '');
-    setSmtpPassword(notif?.smtp_password || '');
+    setSmtpPassword(notif?.smtp_password === '*****' ? '' : (notif?.smtp_password || ''));
     setSenderEmail(notif?.sender_email || '');
     setRecipientEmail(notif?.recipient_email || '');
     setNotifyServiceFailures(notif?.notify_service_failures !== undefined ? !!notif?.notify_service_failures : true);
@@ -370,7 +374,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           smtp_port: Number(smtpPort),
           smtp_encryption: smtpEncryption,
           smtp_user: smtpUser,
-          smtp_password: smtpPassword,
+          smtp_password: smtpPassword || (isSmtpPasswordStored ? '*****' : ''),
           sender_email: senderEmail,
           recipient_email: recipientEmail,
         }),
@@ -703,7 +707,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(smtpPort) !== Number(settings?.notifications?.smtp_port || 587) ||
     smtpEncryption !== (settings?.notifications?.smtp_encryption || 'tls') ||
     smtpUser !== (settings?.notifications?.smtp_user || '') ||
-    smtpPassword !== (settings?.notifications?.smtp_password || '') ||
+    smtpPassword !== '' ||
     senderEmail !== (settings?.notifications?.sender_email || '') ||
     recipientEmail !== (settings?.notifications?.recipient_email || '') ||
     notifyServiceFailures !== (settings?.notifications?.notify_service_failures !== undefined ? !!settings?.notifications?.notify_service_failures : true) ||
@@ -749,6 +753,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ssl_domain: sslDomain,
         ssl_email: sslEmail,
         ssl_challenge_type: sslChallengeType,
+        auto_reload_ssl_services: autoReloadSslServices,
         lcd_enabled: lcdEnabled,
         lcd_port: lcdPort,
         lcd_model: lcdModel,
@@ -774,7 +779,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           smtp_port: Number(smtpPort),
           smtp_encryption: smtpEncryption,
           smtp_user: smtpUser,
-          smtp_password: smtpPassword,
+          smtp_password: smtpPassword || (isSmtpPasswordStored ? '*****' : ''),
           sender_email: senderEmail,
           recipient_email: recipientEmail,
           notify_service_failures: notifyServiceFailures,
@@ -790,8 +795,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         },
       };
 
-      if (newPassword !== '') {
-        payload.gui_password = newPassword;
+      // Ensure gui_password is only passed if explicitly updated with new value
+      delete payload.gui_password;
+      if (newPassword.trim() !== '') {
+        payload.gui_password = newPassword.trim();
       }
 
       await onUpdateSettings(payload);
@@ -853,7 +860,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl flex flex-col h-[82vh]">
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full flex flex-col flex-1 min-h-0">
       {/* Header */}
       <header className="flex justify-between items-center mb-6 shrink-0">
         <div>
@@ -955,7 +962,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <ShieldIcon size={14} />
-          {t('settings.tabs.security', 'Security')}
+          {t('settings.tabs.security', 'Network & Security')}
         </button>
         {hasAlsaHardware && (
           <button
@@ -1258,15 +1265,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
                   </label>
                   {settings.logo_path ? (
-                    <div className="relative w-20 h-20 flex items-center justify-center">
-                      <img src={`${API}${settings.logo_path}`} alt="Custom Logo" className="max-w-full max-h-full object-contain" />
+                    <div className="relative flex flex-col items-center gap-1.5 z-20">
+                      <div className="relative w-16 h-16 flex items-center justify-center">
+                        <img src={`${API}${settings.logo_path}`} alt="Custom Logo" className="max-w-full max-h-full object-contain" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await onUpdateSettings({ logo_path: '' });
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="text-[9px] text-red-400 hover:text-red-300 font-bold underline cursor-pointer"
+                      >
+                        {t('settings.branding.logoRemove', '✕ Remove Logo')}
+                      </button>
                     </div>
                   ) : (
                     <div className="w-12 h-12 bg-brand-lime/10 border border-brand-lime/30 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
                       <span className="text-brand-lime font-black text-lg uppercase tracking-wider">{logoText || 'FF'}</span>
                     </div>
                   )}
-                  <div className="text-[9px] uppercase font-bold text-text-secondary mt-2.5 text-center tracking-wider">
+                  <div className="text-[9px] uppercase font-bold text-text-secondary mt-2 text-center tracking-wider">
                     {settings.logo_path ? t('settings.branding.logoChange', 'Click to change logo') : t('settings.branding.logoUpload', 'Upload custom logo')}
                   </div>
                 </div>
@@ -1981,7 +2004,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <input 
                     type="password" 
                     autoComplete="new-password"
-                    placeholder={t('settings.security.newPasswordPlaceholder', 'Leave empty to remove password')}
+                    placeholder={settings.gui_password ? t('settings.security.newPasswordPlaceholderKeep', 'Leave empty to keep current password') : t('settings.security.newPasswordPlaceholder', 'Enter new password')}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-red-500 text-[var(--text-primary)] transition-all"
                     value={newPassword}
                     onChange={e => { setNewPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
@@ -2001,6 +2024,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 
                 {passwordError && <p className="text-[10px] text-red-500 font-bold mt-1">{passwordError}</p>}
                 {passwordSuccess && <p className="text-[10px] text-brand-lime font-bold mt-1">{passwordSuccess}</p>}
+
+                {settings.gui_password && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (window.confirm(t('settings.security.confirmRemovePassword', 'Are you sure you want to remove password protection from this node?'))) {
+                          try {
+                            await onUpdateSettings({ gui_password: '' });
+                            setPasswordSuccess(t('settings.security.passwordRemoved', 'Password protection removed successfully'));
+                            setNewPassword('');
+                            setConfirmPassword('');
+                            setTimeout(() => setPasswordSuccess(''), 3000);
+                          } catch (err) {
+                            setPasswordError(t('settings.security.passwordError', 'Failed to remove password'));
+                          }
+                        }
+                      }}
+                      className="text-xs text-red-400 hover:text-red-300 font-bold underline cursor-pointer"
+                    >
+                      🔓 {t('settings.security.removePasswordBtn', 'Remove Password Protection (Open Access)')}
+                    </button>
+                  </div>
+                )}
                 
                 <p className="text-[9px] text-text-secondary leading-tight italic">
                   {t('settings.security.description', 'Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.')}
@@ -2251,6 +2298,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Auto-Reload Services Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
+                <div>
+                  <span className="text-xs font-bold text-[var(--text-primary)] block">
+                    {t('settings.ssl.autoReloadServices', 'Auto-reload SSL services upon certificate renewal')}
+                  </span>
+                  <span className="text-[10px] text-text-secondary block mt-0.5">
+                    {t('settings.ssl.autoReloadServicesDesc', 'Automatically restarts active media services utilizing TLS (MediaMTX Hub, Icecast2) when certificates are renewed or uploaded.')}
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoReloadSslServices}
+                  onChange={e => setAutoReloadSslServices(e.target.checked)}
+                  className="rounded text-brand-lime cursor-pointer w-4 h-4"
+                />
+              </div>
             </div>
 
             {/* CARD 5: EMAIL NOTIFICATIONS & ALERTING */}
@@ -2348,20 +2413,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="relative">
                       <input
                         type={showNotifPassword ? 'text' : 'password'}
-                        placeholder="••••••••••••"
+                        placeholder={
+                          isSmtpPasswordStored && !smtpPassword
+                            ? t('settings.notifications.passwordSavedPlaceholder', '•••••••• (Stored securely on server)')
+                            : '••••••••••••'
+                        }
                         value={smtpPassword}
-                        onChange={e => setSmtpPassword(e.target.value)}
+                        onChange={e => {
+                          setSmtpPassword(e.target.value);
+                          setShowNotifStoredHint(false);
+                        }}
                         className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 pr-8 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
                       />
                       <button
                         type="button"
-                        onClick={() => setShowNotifPassword(!showNotifPassword)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-[var(--text-primary)] text-xs cursor-pointer"
+                        onClick={() => {
+                          if (isSmtpPasswordStored && !smtpPassword) {
+                            setShowNotifStoredHint(prev => !prev);
+                          } else {
+                            setShowNotifPassword(prev => !prev);
+                          }
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-[var(--text-primary)] text-xs cursor-pointer select-none"
                         title={showNotifPassword ? 'Hide password' : 'Show password'}
                       >
                         {showNotifPassword ? '🙈' : '👁️'}
                       </button>
                     </div>
+                    {showNotifStoredHint && isSmtpPasswordStored && !smtpPassword && (
+                      <span className="text-[10px] text-brand-lime block mt-1 animate-in fade-in">
+                        ℹ️ {t('settings.notifications.passwordStoredNote', 'Password is saved on the server and cannot be viewed in plaintext. Enter a new password to overwrite.')}
+                      </span>
+                    )}
                   </div>
                 </div>
 

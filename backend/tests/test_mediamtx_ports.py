@@ -41,6 +41,28 @@ class TestMediaMtxPorts(unittest.TestCase):
             output_config={}
         )
 
+    def test_rtp_udp_8000_does_not_collide_with_gui_tcp_8000(self):
+        # Set GUI active port to 8000 (standard web panel port)
+        os.environ["ACTIVE_PORT"] = "8000"
+        validate_service_port_conflicts(
+            db=self.db,
+            service_id=None,
+            service_name="MediaMTX Web Panel Port Test",
+            service_type="mediamtx_hub",
+            config={
+                "mediamtx_config": {
+                    "rtmp_port": 1935,
+                    "rtsp_port": 8554,
+                    "rtp_port": 8000, # UDP - should NOT conflict with GUI TCP 8000!
+                    "rtcp_port": 8001,
+                    "hls_port": 8888,
+                    "api_port": 9997
+                }
+            },
+            input_config={},
+            output_config={}
+        )
+
     def test_duplicate_port_detected_between_mediamtx_services(self):
         # Insert MediaMTX 1
         s1 = Service(

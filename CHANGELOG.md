@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-09-03
+
+### Added
+- **Heterogeneous Service Support & Warm Reload Restart Panel in LCD Driver**:
+  - CrystalFontz CFA635 / CFA631 display menus now enumerate and manage all service types dynamically (`[FFM]` for FFmpeg, `[MTX]` for MediaMTX Hub, `[ICE]` for Icecast).
+  - Dynamic metrics per service type in status detail view (`PATHS:{count} SRT:{port}` for MediaMTX).
+  - Added interactive `Restart Panel` action in LCD Main Menu with two-step confirmation dialogue triggering zero-downtime warm reload (`SIGHUP` reload mode) while active streaming processes remain unaffected.
+- **Modernized Settings Backup & Restore Facility (v2 Parity)**:
+  - Updated `/api/backup/export` and `/api/backup/import` to support universal services, preserving `service_type`, `mediamtx_config`, dependencies leasing flags (`allow_auto_start_deps`, `allow_auto_stop_deps`), and compilation engine bindings.
+  - Added dedicated Software Engines & Forge Builds backup section (`software_engines`) with granular export selector and import restoration.
+  - Exported and restored modern system preferences: `auto_restart_panel` and `auto_reload_ssl_services`.
+  - Modernized `BackupRestoreCard.tsx` UI with categorized selectors, refreshed descriptions, and import preview badge for Software Engines.
+
+## [2.7.0] - 2026-09-01
+
+### Added
+- **Warm Reload & Clean Shutdown Lifecycle Architecture**:
+  - Implemented standard Linux service lifecycle separation between warm daemon reloads (`systemctl reload` / `update.sh` / Web UI Restart) and full clean service shutdowns (`systemctl stop`).
+  - Added `ExecReload=/bin/kill -HUP $MAINPID` and `KillMode=control-group` systemd unit directives with automatic migration in `update.sh` and `install.sh`.
+  - Added `SIGHUP` and `SIGUSR1` signal handling in `run_server.py` and `main.py` allowing zero-downtime hot-reloads of orchestrator code without dropping active 24/7 video/audio streams.
+  - Implemented `ProcessManager.stop_all_processes(graceful=True)` ensuring clean process termination and zero orphan processes on explicit systemd stops.
+
+### Fixed
+- **Settings Persistence & Password Preservation**:
+  - Eliminated accidental database password wipes when saving settings without entering a new password.
+  - Fixed `UnboundLocalError` on `auto_reload_ssl_services` in `make_settings_response` preventing HTTP 500 errors on `GET /settings`.
+  - Added safe fallback branding values for `logo_text` and `node_name` on authentication lock screens and added a custom logo removal action.
+  - Resolved `RuntimeError` on Scheduler task event loop discrepancy during Uvicorn shutdown.
+- **AudioScience ALSA Matrix Monitoring & Channel Strips**:
+  - Filtered out redundant internal monitoring crossover mode enums (`* Monitor Playback Mode`) from hardware output channel strips.
+  - Propagated `matrix_source` from backend topology parser and normalized source naming fallback in UI (`Line 0 (Mon)`, `Line 1 (Mon)`).
+
 ## [2.6.0] - 2026-08-28
 
 ### Added

@@ -104,6 +104,16 @@ class AlsaManager:
         is_int = elem_type == SND_CTL_ELEM_TYPE_INTEGER or elem_str == "INTEGER"
         is_enum = elem_type == SND_CTL_ELEM_TYPE_ENUMERATED or elem_str == "ENUMERATED"
 
+        # Ignore redundant internal monitoring crossover mode enums (e.g. 'Line 0 Line 0 Monitor Playback Mode')
+        if "monitor playback mode" in name.lower():
+            return {
+                "type": "ignored",
+                "group": "Ignored",
+                "category": "ignored",
+                "is_meter": False,
+                "matrix_source": None
+            }
+
         # Detect Read-Only Jack Sensing / Hardware Presence Sensors
         is_jack_sensor = is_readonly and is_bool and ("jack" in name.lower() or "phantom" in name.lower() or "sense" in name.lower())
 
@@ -180,11 +190,15 @@ class AlsaManager:
                 # Master Playback controls the physical hardware output mixer!
                 category = "hardware_outputs"
                 group = "Master"
-            elif any(k in name_lower for k in ["mic", "line", "aux", "cd", "input"]) and "playback" in name_lower:
-                # Input monitoring controls (e.g. Front Mic Playback Volume, Line Playback Switch)
+            elif re.search(r'\b(line\s+\d+|line\s+out|speaker|headphone|front|surround|center|lfe)\b', name_lower) and "playback" in name_lower:
+                # Direct physical output endpoint control (e.g. Line 0 Playback Volume, Line 1 Playback Switch)
+                category = "hardware_outputs"
+                matrix_source = None
+            elif any(k in name_lower for k in ["mic", "line in", "aux", "cd", "input"]) and "playback" in name_lower:
+                # Input monitoring controls on generic cards (e.g. Front Mic Playback Volume)
                 # regulate input pass-through into the hardware output mixer!
                 category = "hardware_outputs"
-                input_src = "Mic" if "mic" in name_lower else "Line" if "line" in name_lower else "Aux" if "aux" in name_lower else "CD"
+                input_src = "Mic" if "mic" in name_lower else "Line In" if "line in" in name_lower else "Aux" if "aux" in name_lower else "CD"
                 matrix_source = f"{group} (Monitor)" if group != "General" else f"{input_src} (Monitor)"
             elif "pcm" in name_lower and "playback" in name_lower:
                 category = "virtual_playout"
@@ -284,6 +298,9 @@ class AlsaManager:
                     index=ctrl.get("index", 0)
                 )
 
+                if meta.get("category") == "ignored" or meta.get("type") == "ignored":
+                    continue
+
                 grp_key = f"{meta['category']}_{meta['group']}"
                 if grp_key not in groups:
                     groups[grp_key] = {
@@ -296,6 +313,7 @@ class AlsaManager:
 
                 ctrl["ctrl_type"] = meta["type"]
                 ctrl["is_meter"] = meta["is_meter"]
+                ctrl["matrix_source"] = meta.get("matrix_source")
 
                 if meta["is_meter"]:
                     groups[grp_key]["meters"].append(ctrl)

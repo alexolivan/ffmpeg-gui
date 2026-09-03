@@ -80,9 +80,13 @@ class Scheduler:
         if self._loop_task:
             self._loop_task.cancel()
             try:
-                await self._loop_task
-            except asyncio.CancelledError:
+                cur_loop = asyncio.get_running_loop()
+                task_loop = getattr(self._loop_task, "_loop", None) or (self._loop_task.get_loop() if hasattr(self._loop_task, 'get_loop') else None)
+                if task_loop is None or cur_loop == task_loop:
+                    await self._loop_task
+            except (asyncio.CancelledError, RuntimeError):
                 pass
+            self._loop_task = None
         self.logger.info("Scheduler stopped.")
 
     async def _poll_loop(self):

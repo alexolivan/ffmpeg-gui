@@ -18,6 +18,7 @@ class ProcessManager:
         self.restart_counts: Dict[int, int] = {}
         self.pending_restarts: Dict[int, asyncio.Task] = {}
         self.watchdog_tasks: Dict[int, asyncio.Task] = {}
+        self.reattached_pids: Dict[int, int] = {}
         self.stopping_processes: Set[int] = set()
         self.stopped_pids: Set[int] = set()
         self.srt_has_had_activity: Dict[int, bool] = {}
@@ -125,13 +126,32 @@ class ProcessManager:
 
             if svc_type == "mediamtx_hub":
                 mediamtx_bin = "mediamtx"
-                build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                build = None
                 if build_id:
                     build = session.query(FfmpegBuild).get(build_id)
-                    if build and build.binary_path and os.path.exists(build.binary_path):
-                        mediamtx_bin = build.binary_path
+                
+                if not (build and build.binary_path and os.path.exists(build.binary_path)):
+                    # Fallback to default or any ready MediaMTX build in database
+                    build = session.query(FfmpegBuild).filter(
+                        FfmpegBuild.software_type == 'mediamtx',
+                        FfmpegBuild.status == 'ready',
+                        FfmpegBuild.is_default == True
+                    ).first() or session.query(FfmpegBuild).filter(
+                        FfmpegBuild.software_type == 'mediamtx',
+                        FfmpegBuild.status == 'ready'
+                    ).first()
+
+                if build and build.binary_path and os.path.exists(build.binary_path):
+                    mediamtx_bin = build.binary_path
+                    if not cfg.get("software_build_id"):
+                        cfg["software_build_id"] = build.id
+                        cfg["ffmpeg_build_id"] = build.id
+                        media_proc.config = cfg
                 elif shutil.which("mediamtx"):
                     mediamtx_bin = shutil.which("mediamtx")
+                else:
+                    raise FileNotFoundError("MediaMTX binary not found. Please install MediaMTX in Settings → Software Engine.")
 
                 cmd, ephem_path = self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session)
                 self.ephemeral_configs[process_id] = ephem_path
@@ -300,12 +320,29 @@ class ProcessManager:
                 except (asyncio.CancelledError, Exception):
                     pass
 
+            # Determine target PID
+            target_pid = None
             proc = self.processes.get(process_id)
+            if proc and hasattr(proc, 'pid') and proc.pid:
+                target_pid = proc.pid
+            else:
+                target_pid = self.reattached_pids.pop(process_id, None)
+                if not target_pid:
+                    try:
+                        with self.db_session_factory() as session:
+                            from database.models import Service
+                            s = session.query(Service).get(process_id)
+                            if s and s.pid:
+                                target_pid = s.pid
+                    except Exception:
+                        pass
+
+            if target_pid:
+                self.stopped_pids.add(target_pid)
+
             self.restart_counts.pop(process_id, None)
             
             if proc:
-                if hasattr(proc, 'pid') and proc.pid:
-                    self.stopped_pids.add(proc.pid)
                 if graceful:
                     if proc.stdin:
                         try:
@@ -337,6 +374,36 @@ class ProcessManager:
                 
                 if process_id in self.processes:
                     del self.processes[process_id]
+
+            # Direct OS process termination for reattached processes or surviving PIDs
+            if target_pid and psutil.pid_exists(target_pid):
+                try:
+                    p = psutil.Process(target_pid)
+                    children = p.children(recursive=True)
+                    if graceful:
+                        p.terminate()
+                        for c in children:
+                            try: c.terminate()
+                            except Exception: pass
+                        _, still_alive = psutil.wait_procs([p] + children, timeout=1.5)
+                    else:
+                        still_alive = [p] + children
+
+                    for remaining in still_alive:
+                        try:
+                            remaining.kill()
+                        except Exception:
+                            pass
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    try:
+                        import signal
+                        os.kill(target_pid, signal.SIGTERM if graceful else signal.SIGKILL)
+                        if graceful:
+                            await asyncio.sleep(0.5)
+                            if psutil.pid_exists(target_pid):
+                                os.kill(target_pid, signal.SIGKILL)
+                    except Exception:
+                        pass
 
             # Clean up ephemeral RAM configuration file if present
             ephem = self.ephemeral_configs.pop(process_id, None)
@@ -374,6 +441,32 @@ class ProcessManager:
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
         finally:
             self.stopping_processes.discard(process_id)
+
+    async def stop_all_processes(self, graceful: bool = True):
+        """Cleanly stops all active managed child processes (MediaMTX, FFmpeg, Icecast)."""
+        self.logger.info("ProcessManager: Stopping all active child processes...")
+        
+        active_ids = set(self.processes.keys())
+        try:
+            with self.db_session_factory() as session:
+                from database.models import Service
+                running_db = session.query(Service).filter(Service.status.in_(["running", "starting", "restarting"])).all()
+                for r in running_db:
+                    active_ids.add(r.id)
+        except Exception as e:
+            self.logger.error(f"Error querying active services for stop_all_processes: {e}")
+
+        if active_ids:
+            tasks = [self.stop_process(pid, graceful=graceful, is_restart=False) for pid in active_ids]
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Final sweep to guarantee no rogue child processes remain in OS
+        try:
+            cleanup_rogue_processes(active_pids=set())
+        except Exception as e:
+            self.logger.debug(f"Final rogue process cleanup sweep encountered: {e}")
+
+        self.logger.info("ProcessManager: All child processes have been stopped cleanly.")
 
     def _resolve_storage_path(self, storage_id: Optional[int], relative_path: Optional[str]) -> Optional[str]:
         if not storage_id:
@@ -1368,5 +1461,73 @@ class ProcessManager:
                 return
 
         self.processes[process_id] = None
+        self.reattached_pids[process_id] = pid
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
+
+    async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
+        """Gracefully restarts any active/running services configured with TLS/SSL encryption."""
+        # Check if auto_reload_ssl_services is explicitly disabled in settings/configuration
+        config_path = os.environ.get("CONFIG_FILE_PATH", "ffmpeg-gui.conf")
+        if os.path.exists(config_path):
+            try:
+                import configparser
+                config = configparser.ConfigParser()
+                config.read(config_path)
+                if "ssl" in config:
+                    auto_reload = config.getboolean("ssl", "auto_reload_ssl_services", fallback=True)
+                    if not auto_reload:
+                        msg = "SSL certificate updated, but auto-reload of SSL services is disabled in Settings. Skipping automatic service restart."
+                        self.logger.info(msg)
+                        if log_fn:
+                            try: log_fn(msg)
+                            except Exception: pass
+                        return []
+            except Exception:
+                pass
+
+        from database.models import Service
+
+        def _get_running_services(session):
+            return session.query(Service).filter(Service.status == "running").all()
+
+        if db_session:
+            running_services = _get_running_services(db_session)
+        elif self.db_session_factory:
+            with self.db_session_factory() as session:
+                running_services = _get_running_services(session)
+        else:
+            return []
+
+        reloaded = []
+        for svc in running_services:
+            cfg = svc.config or {}
+            mediamtx_cfg = cfg.get("mediamtx_config", {})
+            icecast_cfg = cfg.get("icecast_config", {})
+
+            is_ssl = (
+                mediamtx_cfg.get("ssl_enabled") is True or
+                icecast_cfg.get("ssl_enabled") is True or
+                cfg.get("ssl_enabled") is True
+            )
+
+            if is_ssl:
+                msg = f"Reloading SSL-enabled service '{svc.name}' (ID: {svc.id}) to apply updated TLS certificates..."
+                self.logger.info(msg)
+                if log_fn:
+                    try:
+                        log_fn(msg)
+                    except Exception:
+                        pass
+
+                await self.stop_process(svc.id, is_restart=True)
+                await asyncio.sleep(0.5)
+                await self.start_process(svc.id, is_restart=True)
+
+                reloaded.append({
+                    "id": svc.id,
+                    "name": svc.name,
+                    "service_type": svc.service_type
+                })
+
+        return reloaded
 

@@ -298,6 +298,38 @@ class Service(Base):
         self._set_config_key('allow_auto_stop_deps', bool(val))
 
     @property
+    def mediamtx_config(self):
+        return self.config.get('mediamtx_config', {}) if self.config else {}
+
+    @mediamtx_config.setter
+    def mediamtx_config(self, val):
+        self._set_config_key('mediamtx_config', val)
+
+    @property
+    def software_type(self):
+        return self.config.get('software_type') if self.config else None
+
+    @software_type.setter
+    def software_type(self, val):
+        self._set_config_key('software_type', val)
+
+    @property
+    def software_version(self):
+        return self.config.get('software_version') if self.config else None
+
+    @software_version.setter
+    def software_version(self, val):
+        self._set_config_key('software_version', val)
+
+    @property
+    def software_build_id(self):
+        return self.config.get('software_build_id') if self.config else None
+
+    @software_build_id.setter
+    def software_build_id(self, val):
+        self._set_config_key('software_build_id', val)
+
+    @property
     def pending_changes(self) -> bool:
         if self.status != 'running' or not self.last_started_config:
             return False
@@ -369,6 +401,7 @@ class SystemSettings(Base):
     logo_text = Column(String, default="FF")
     logo_path = Column(String, nullable=True)     # Path to custom uploaded logo
     accent_color = Column(String, default="#FF6B00")  # Default Brand Orange
+    auto_reload_ssl_services = Column(Boolean, default=True)
 
     # LCD Settings
     lcd_enabled = Column(Boolean, default=False)

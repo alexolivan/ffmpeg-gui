@@ -127,27 +127,96 @@ def test_2_row_scrolling():
     
     manager = MagicMock()
     manager.driver.rows = 2
+    manager.driver.cols = 20
     
     db_mock = MagicMock()
     manager.db_session_factory.return_value = db_mock
     
-    svc1 = MediaProcess(id=1, name="Svc1", status="running")
-    svc2 = MediaProcess(id=2, name="Svc2", status="stopped")
+    svc1 = MediaProcess(id=1, name="Svc1", status="running", service_type="ffmpeg_stream")
+    svc2 = MediaProcess(id=2, name="Svc2", status="stopped", service_type="mediamtx_hub")
     
     db_mock.query.return_value.filter.return_value.all.return_value = [svc1, svc2]
+    db_mock.query.return_value.order_by.return_value.all.return_value = [svc1, svc2]
+    db_mock.query.return_value.all.return_value = [svc1, svc2]
     
     menu = ServicesMenuView(manager)
     # Selected index 0
     menu.selected_index = 0
     lines = menu.render()
     assert lines[0] == "-- SERVICES MENU -"
-    assert "> * Svc1" in lines[1]
+    assert "> * (FFM) Svc1" in lines[1]
     
     # Selected index 1
     menu.selected_index = 1
     lines = menu.render()
     assert lines[0] == "-- SERVICES MENU -"
-    assert ">   Svc2" in lines[1]
+    assert ">   (MTX) Svc2" in lines[1]
+
+
+def test_main_menu_restart_panel_and_confirm():
+    from unittest.mock import MagicMock
+    from core.lcd.views.menu import MainMenuView
+    from core.lcd.views.submenu import RestartConfirmView
+    
+    manager = MagicMock()
+    manager.driver.rows = 4
+    manager.driver.cols = 20
+    
+    menu = MainMenuView(manager)
+    assert "4. Restart Panel" in menu.options[3]
+    
+    # Navigate to Restart Panel (index 3) and press TICK
+    menu.selected_index = 3
+    menu.handle_key("TICK")
+    
+    # Check that manager switched to RestartConfirmView
+    assert len(manager.switch_to_view.call_args_list) > 0
+    new_view = manager.switch_to_view.call_args[0][0]
+    assert isinstance(new_view, RestartConfirmView)
+    
+    # Render RestartConfirmView
+    confirm_lines = new_view.render()
+    assert "-- RESTART PANEL? --" in confirm_lines[0]
+    assert "> Cancel" in confirm_lines[1]
+    
+    # Select Yes (Reload) and TICK
+    new_view.handle_key("DOWN")
+    assert new_view.selected_index == 1
+    new_view.handle_key("TICK")
+    
+    # Verify manager.restart_panel was called
+    manager.restart_panel.assert_called_once()
+    restarting_lines = new_view.render()
+    assert "RESTARTING PANEL..." in restarting_lines[0]
+
+
+def test_mediamtx_service_status_detail_view():
+    from unittest.mock import MagicMock
+    from database.models import MediaProcess
+    from core.lcd.views.submenu import ServiceStatusDetailView
+    
+    manager = MagicMock()
+    db_mock = MagicMock()
+    manager.db_session_factory.return_value = db_mock
+    
+    mtx_svc = MediaProcess(
+        id=2,
+        name="MediaMTX Main Hub",
+        alias="HubMain",
+        status="running",
+        cpu_usage=5,
+        pid=9876,
+        service_type="mediamtx_hub",
+        mediamtx_config={"paths": {"live": {}, "cam1": {}}, "srt_port": 8890}
+    )
+    db_mock.query.return_value.get.return_value = mtx_svc
+    
+    status_view = ServiceStatusDetailView(manager, 2)
+    lines = status_view.render()
+    assert "(MTX) HubMain" in lines[0]
+    assert "Status:running" in lines[1]
+    assert "PID:9876" in lines[2]
+    assert "PATHS:2 SRT:8890" in lines[3]
 
 
 def test_system_info_view():
@@ -182,3 +251,28 @@ def test_system_info_view():
     assert info_view.current_page == 1
     lines_p1 = info_view.render()
     assert "BE:v1.29 FE:v1.26" in lines_p1[0]
+
+
+def test_cfa635_bracket_sanitization():
+    from unittest.mock import MagicMock
+    from core.lcd.drivers.cfa635 import Cfa635Driver
+
+    driver = Cfa635Driver(port="/dev/ttyUSB0", cols=20, rows=4)
+    driver.ser = MagicMock()
+    driver.ser.is_open = True
+
+    # Send text containing square brackets
+    driver.write_line(0, "> [FFM] Stream [1]")
+
+    # Inspect bytes written to serial port
+    # write_line sends command 31 (0x1f), length 22 (row=1, col=1, 20 chars text), plus 2 bytes CRC = 26 bytes
+    assert driver.ser.write.called
+    written_packet = driver.ser.write.call_args[0][0]
+    command = written_packet[0]
+    assert command == 31  # command 31 is send data to LCD
+    text_bytes = written_packet[4:24]  # payload bytes after command, len, col, row
+    text_str = text_bytes.decode('ascii')
+    assert "> (FFM) Stream (1)" in text_str
+    assert "[" not in text_str
+    assert "]" not in text_str
+

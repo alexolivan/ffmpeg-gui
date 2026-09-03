@@ -8,6 +8,8 @@ import main
 class TestStartupReattach(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         init_db()
+        main._startup_initialized = False
+        main._shutdown_initialized = False
         self.db = SessionLocal()
         self.db.query(MediaProcess).delete()
         self.db.commit()

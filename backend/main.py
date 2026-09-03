@@ -10,6 +10,7 @@ import uuid
 import shlex
 import platform
 import configparser
+import threading
 from PIL import Image
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
@@ -128,6 +129,16 @@ class NginxAccessLogMiddleware:
 
 app = FastAPI(title="FFMPEG Orchestrator API")
 
+is_reload_mode: bool = False
+_startup_lock = threading.Lock()
+_startup_initialized = False
+_shutdown_lock = threading.Lock()
+_shutdown_initialized = False
+
+def set_reload_mode(val: bool = True):
+    global is_reload_mode
+    is_reload_mode = val
+
 app.add_middleware(NginxAccessLogMiddleware)
 
 # CORS
@@ -161,7 +172,7 @@ from core.task_manager import TaskManager
 from core.scheduler import Scheduler
 from utils.cron_helper import CronHelper
 
-task_manager = TaskManager(db_session_factory=SessionLocal)
+task_manager = TaskManager(db_session_factory=SessionLocal, process_manager=process_manager)
 scheduler = Scheduler(db_session_factory=SessionLocal, task_manager=task_manager)
 
 
@@ -325,6 +336,7 @@ class BackupExportRequest(BaseModel):
     tasks: bool = True
     storage_volumes: bool = True
     notifications: bool = True
+    software_engines: bool = True
 
 class BackupImportPayload(BaseModel):
     app: str
@@ -399,6 +411,7 @@ class SettingsResponse(BaseModel):
     ssl_email: Optional[str] = None
     ssl_challenge_type: Optional[str] = "http-01"
     ssl_auto_renew: Optional[bool] = True
+    auto_reload_ssl_services: Optional[bool] = True
     notifications: NotificationSettings = NotificationSettings()
     watchdog: WatchdogSettings = WatchdogSettings()
 
@@ -409,6 +422,7 @@ class SettingsUpdate(BaseModel):
     logo_text: Optional[str] = None
     logo_path: Optional[str] = None
     accent_color: Optional[str] = None
+    auto_reload_ssl_services: Optional[bool] = None
     lcd_enabled: Optional[bool] = None
     language: Optional[str] = None
     theme: Optional[str] = None
@@ -522,6 +536,9 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     ssl_email = None
     ssl_challenge_type = "http-01"
     ssl_auto_renew = True
+    auto_reload_ssl_services = getattr(settings, "auto_reload_ssl_services", True) if settings else True
+    if auto_reload_ssl_services is None:
+        auto_reload_ssl_services = True
 
     # Default notifications values
     notifications_data = {
@@ -573,6 +590,8 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 ssl_email = ssl_cfg.get("email", fallback=ssl_email)
                 ssl_challenge_type = ssl_cfg.get("challenge_type", fallback=ssl_challenge_type)
                 try: ssl_auto_renew = ssl_cfg.getboolean("auto_renew", fallback=ssl_auto_renew)
+                except ValueError: pass
+                try: auto_reload_ssl_services = ssl_cfg.getboolean("auto_reload_ssl_services", fallback=auto_reload_ssl_services)
                 except ValueError: pass
             if "notifications" in config:
                 notif_cfg = config["notifications"]
@@ -773,6 +792,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["ssl_email"] = ssl_email
     res["ssl_challenge_type"] = ssl_challenge_type
     res["ssl_auto_renew"] = ssl_auto_renew
+    res["auto_reload_ssl_services"] = auto_reload_ssl_services
     res["notifications"] = notifications_data
     res["watchdog"] = watchdog_data
     
@@ -1166,6 +1186,8 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config["ssl"]["challenge_type"] = settings_in.ssl_challenge_type
         if settings_in.ssl_auto_renew is not None:
             config["ssl"]["auto_renew"] = str(settings_in.ssl_auto_renew).lower()
+        if settings_in.auto_reload_ssl_services is not None:
+            config["ssl"]["auto_reload_ssl_services"] = str(settings_in.auto_reload_ssl_services).lower()
 
         with open(config_path, "w") as f:
             config.write(f)
@@ -1195,10 +1217,19 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     
     if settings_in.node_name is not None: settings.node_name = settings_in.node_name
     if settings_in.lcd_alias is not None: settings.lcd_alias = settings_in.lcd_alias
-    if settings_in.gui_password is not None: settings.gui_password = settings_in.gui_password
+    if settings_in.gui_password is not None:
+        if settings_in.gui_password.strip() == "":
+            settings.gui_password = None
+        else:
+            settings.gui_password = settings_in.gui_password
     if settings_in.logo_text is not None: settings.logo_text = settings_in.logo_text
-    if settings_in.logo_path is not None: settings.logo_path = settings_in.logo_path
+    if settings_in.logo_path is not None:
+        if settings_in.logo_path.strip() == "":
+            settings.logo_path = None
+        else:
+            settings.logo_path = settings_in.logo_path
     if settings_in.accent_color is not None: settings.accent_color = settings_in.accent_color
+    if settings_in.auto_reload_ssl_services is not None: settings.auto_reload_ssl_services = settings_in.auto_reload_ssl_services
     
     lcd_core_changed = (
         (settings_in.lcd_enabled is not None and settings_in.lcd_enabled != settings.lcd_enabled) or
@@ -1268,8 +1299,9 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
 def execute_system_restart():
     import time
     import os
+    set_reload_mode(True)
     time.sleep(2.5) # Wait 2.5s to let the API response flush completely
-    logger.warning("Restart triggered from Web UI. Terminating process now...")
+    logger.warning("Restart triggered from Web UI (Warm Reload). Terminating process now...")
     os._exit(0)
 
 
@@ -1300,7 +1332,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     if req.gui_general:
         gen_dict = {}
         if "general" in config:
-            for k in ["language", "theme", "node_name", "logo_text", "lcd_alias", "gui_password"]:
+            for k in ["language", "theme", "node_name", "logo_text", "lcd_alias", "gui_password", "auto_restart_panel"]:
                 if k in config["general"]:
                     gen_dict[k] = config["general"][k]
         sections["gui_general"] = gen_dict
@@ -1309,7 +1341,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     if req.gui_network_ssl:
         net_dict = {}
         if "general" in config:
-            for k in ["bind_address", "gui_port", "http_port", "https_port", "ssl_enabled", "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email", "ssl_challenge_type"]:
+            for k in ["bind_address", "gui_port", "http_port", "https_port", "ssl_enabled", "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email", "ssl_challenge_type", "auto_reload_ssl_services"]:
                 if k in config["general"]:
                     net_dict[k] = config["general"][k]
         sections["gui_network_ssl"] = net_dict
@@ -1350,16 +1382,19 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 notif_dict["smtp_password"] = "*****"
         sections["notifications"] = notif_dict
 
-    # 7. Services
+    # 7. Services (Universal: FFmpeg, MediaMTX Hubs, Icecast)
     if req.services:
-        procs = db.query(MediaProcess).filter(MediaProcess.service_type == "ffmpeg_stream").all()
+        from database.models import Service
+        procs = db.query(Service).all()
         sections["services"] = [
             {
                 "name": p.name,
+                "service_type": p.service_type or "ffmpeg_stream",
                 "input_config": p.input_config,
                 "output_config": p.output_config,
                 "codec_config": p.codec_config,
                 "filter_config": p.filter_config,
+                "mediamtx_config": p.mediamtx_config,
                 "auto_start": p.auto_start,
                 "startup_order": p.startup_order,
                 "startup_delay": p.startup_delay,
@@ -1370,6 +1405,10 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "alias": p.alias,
                 "network_timeout": p.network_timeout,
                 "debug_mode": p.debug_mode,
+                "allow_auto_start_deps": p.allow_auto_start_deps,
+                "allow_auto_stop_deps": p.allow_auto_stop_deps,
+                "software_type": p.software_type,
+                "ffmpeg_build_id": p.ffmpeg_build_id,
             }
             for p in procs
         ]
@@ -1384,6 +1423,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "output_config": t.output_config,
                 "codec_config": t.codec_config,
                 "filter_config": t.filter_config,
+                "ffmpeg_build_id": t.ffmpeg_build_id,
                 "schedule_type": t.schedule_type,
                 "schedule_cron": t.schedule_cron,
                 "schedule_datetime": t.schedule_datetime.isoformat() if t.schedule_datetime else None,
@@ -1392,6 +1432,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
                 "is_active": t.is_active,
                 "retry_policy": t.retry_policy,
+                "allow_auto_start_deps": t.allow_auto_start_deps,
+                "allow_auto_stop_deps": t.allow_auto_stop_deps,
                 "alias": t.alias,
             }
             for t in tasks
@@ -1409,6 +1451,28 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             }
             for s in storages
         ]
+
+    # 10. Software Engines & Compilations
+    if req.software_engines:
+        from database.models import FfmpegBuild
+        builds = db.query(FfmpegBuild).all()
+        sections["software_engines"] = [
+            {
+                "name": b.name,
+                "software_type": b.software_type,
+                "source_type": b.source_type,
+                "version_tag": b.version_tag,
+                "binary_path": b.binary_path,
+                "system_path": b.system_path,
+                "is_managed": b.is_managed,
+                "build_options": b.build_options,
+                "sdk_paths": b.sdk_paths,
+                "is_default": b.is_default,
+                "status": b.status,
+            }
+            for b in builds
+        ]
+
 
     return {
         "app": "ffmpeg-gui",
@@ -1432,6 +1496,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         "services": 0,
         "tasks": 0,
         "storage_volumes": 0,
+        "software_engines": 0,
         "notifications": False
     }
     sections = payload.sections or {}
@@ -1512,19 +1577,21 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                 db.add(st)
                 imported_summary["storage_volumes"] += 1
 
-    # Restore Services
+    # Restore Services (Universal: FFmpeg, MediaMTX Hubs, Icecast)
     if "services" in sections and isinstance(sections["services"], list):
+        from database.models import Service
         for p_data in sections["services"]:
-            existing = db.query(MediaProcess).filter(MediaProcess.name == p_data.get("name")).first()
+            existing = db.query(Service).filter(Service.name == p_data.get("name")).first()
             if not existing:
-                proc = MediaProcess(
+                proc = Service(
                     name=p_data.get("name"),
-                    type="service",
+                    service_type=p_data.get("service_type", "ffmpeg_stream"),
                     status="stopped",
                     input_config=p_data.get("input_config") or {},
                     output_config=p_data.get("output_config") or {},
                     codec_config=p_data.get("codec_config") or {},
                     filter_config=p_data.get("filter_config") or {},
+                    mediamtx_config=p_data.get("mediamtx_config") or {},
                     auto_start=p_data.get("auto_start", False),
                     startup_order=p_data.get("startup_order", 1),
                     startup_delay=p_data.get("startup_delay", 0),
@@ -1535,6 +1602,10 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     alias=p_data.get("alias"),
                     network_timeout=p_data.get("network_timeout", 30),
                     debug_mode=p_data.get("debug_mode", False),
+                    allow_auto_start_deps=p_data.get("allow_auto_start_deps", True),
+                    allow_auto_stop_deps=p_data.get("allow_auto_stop_deps", True),
+                    software_type=p_data.get("software_type"),
+                    ffmpeg_build_id=p_data.get("ffmpeg_build_id"),
                 )
                 db.add(proc)
                 imported_summary["services"] += 1
@@ -1563,6 +1634,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     output_config=t_data.get("output_config") or {},
                     codec_config=t_data.get("codec_config") or {},
                     filter_config=t_data.get("filter_config") or {},
+                    ffmpeg_build_id=t_data.get("ffmpeg_build_id"),
                     schedule_type=t_data.get("schedule_type", "manual"),
                     schedule_cron=t_data.get("schedule_cron"),
                     schedule_datetime=sched_dt,
@@ -1571,10 +1643,38 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     duration_end_time=dur_end,
                     is_active=t_data.get("is_active", False),
                     retry_policy=t_data.get("retry_policy", {"max_retries": 3, "retry_delay": 5}),
+                    allow_auto_start_deps=t_data.get("allow_auto_start_deps", True),
+                    allow_auto_stop_deps=t_data.get("allow_auto_stop_deps", True),
                     alias=t_data.get("alias"),
                 )
                 db.add(task)
                 imported_summary["tasks"] += 1
+
+    # Restore Software Engines & Builds
+    if "software_engines" in sections and isinstance(sections["software_engines"], list):
+        from database.models import FfmpegBuild
+        for b_data in sections["software_engines"]:
+            existing = db.query(FfmpegBuild).filter(
+                FfmpegBuild.name == b_data.get("name"),
+                FfmpegBuild.software_type == b_data.get("software_type", "ffmpeg")
+            ).first()
+            if not existing:
+                build = FfmpegBuild(
+                    name=b_data.get("name"),
+                    software_type=b_data.get("software_type", "ffmpeg"),
+                    source_type=b_data.get("source_type", "installed"),
+                    version_tag=b_data.get("version_tag", "system"),
+                    binary_path=b_data.get("binary_path"),
+                    system_path=b_data.get("system_path"),
+                    is_managed=b_data.get("is_managed", False),
+                    build_options=b_data.get("build_options") or {},
+                    sdk_paths=b_data.get("sdk_paths"),
+                    is_default=b_data.get("is_default", False),
+                    status=b_data.get("status", "ready"),
+                )
+                db.add(build)
+                imported_summary["software_engines"] += 1
+
 
     db.commit()
     return {
@@ -2712,6 +2812,13 @@ def sanitize_database_processes(db: Session):
 
 @app.on_event("startup")
 async def startup_event():
+    global _startup_initialized
+    with _startup_lock:
+        if _startup_initialized:
+            logger.debug("Startup: Background services already initialized for this process. Skipping duplicate startup invocation.")
+            return
+        _startup_initialized = True
+
     logger.info("Startup: Checking and cleaning up stale build profiles, processes and tasks...")
     active_pids = set()
     try:
@@ -2838,6 +2945,13 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global _shutdown_initialized
+    with _shutdown_lock:
+        if _shutdown_initialized:
+            logger.debug("Shutdown: Orchestrator teardown already executed for this process. Skipping duplicate shutdown call.")
+            return
+        _shutdown_initialized = True
+
     logger.info("Shutdown: Stopping scheduler...")
     await scheduler.stop()
     
@@ -2850,6 +2964,15 @@ async def shutdown_event():
     if lcd_manager:
         logger.info("Shutdown: Stopping LCD manager...")
         lcd_manager.stop()
+
+    if is_reload_mode:
+        logger.info("Shutdown: Warm Reload mode active. Preserving child stream processes for re-attach on reload.")
+    else:
+        logger.info("Shutdown: Clean Stop mode active. Stopping all managed child stream processes...")
+        try:
+            await process_manager.stop_all_processes(graceful=True)
+        except Exception as e:
+            logger.error(f"Failed to stop all processes on shutdown: {e}")
 
 
 alerted_storages = set()
@@ -4112,50 +4235,102 @@ async def restart_process(process_id: int):
 
 def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
     if "profile" in payload and isinstance(payload["profile"], dict):
-        profile = payload["profile"]
+        profile = dict(payload["profile"])
     else:
-        profile = payload
+        profile = dict(payload)
         
-    input_cfg = profile.get("input_config", {})
-    
-    # Migration from flat input layout (v1) to nested input1 structure (v2)
-    if "type" in input_cfg and "input1" not in input_cfg:
-        old_type = input_cfg.get("type")
-        input1 = {"type": old_type}
-        for key in ["host", "port", "mode", "path", "url", "interface", "stream_key", "channel", "device"]:
-            if key in input_cfg:
-                input1[key] = input_cfg.pop(key)
-        
-        input_cfg["input1"] = input1
-        input_cfg["use_secondary_input"] = False
-        input_cfg["has_video"] = input_cfg.get("has_video", True)
-        input_cfg["has_audio"] = input_cfg.get("has_audio", True)
-        
-    profile["input_config"] = input_cfg
-    if "output_config" not in profile:
-        profile["output_config"] = {"type": "udp", "host": "239.0.0.1", "port": "1234"}
-    if "codec_config" not in profile:
-        profile["codec_config"] = {}
-    if "filter_config" not in profile:
-        profile["filter_config"] = {}
-        
-    # Gracefully resolve missing or invalid Build IDs
-    from database.models import FfmpegBuild
-    build_id = profile.get("ffmpeg_build_id")
+    service_type = profile.get("service_type")
+    cfg = profile.get("config") or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    else:
+        cfg = dict(cfg)
+
+    # 1. Determine service_type
+    if not service_type:
+        if "mediamtx_config" in profile or "mediamtx_config" in cfg:
+            service_type = "mediamtx_hub"
+        elif "icecast_config" in profile or "icecast_config" in cfg:
+            service_type = "icecast_server"
+        elif "kiosk_config" in profile or "kiosk_config" in cfg:
+            service_type = "kiosk_browser"
+        else:
+            service_type = "ffmpeg_stream"
+    profile["service_type"] = service_type
+
+    # 2. Extract engine-specific configs into cfg
+    if service_type == "mediamtx_hub":
+        if "mediamtx_config" in profile and "mediamtx_config" not in cfg:
+            cfg["mediamtx_config"] = profile["mediamtx_config"]
+    elif service_type == "icecast_server":
+        if "icecast_config" in profile and "icecast_config" not in cfg:
+            cfg["icecast_config"] = profile["icecast_config"]
+    elif service_type in ["kiosk_browser", "kiosk_cog"]:
+        if "kiosk_config" in profile and "kiosk_config" not in cfg:
+            cfg["kiosk_config"] = profile["kiosk_config"]
+    else:
+        # ffmpeg_stream
+        input_cfg = profile.get("input_config", {})
+        if "type" in input_cfg and "input1" not in input_cfg:
+            old_type = input_cfg.get("type")
+            input1 = {"type": old_type}
+            for key in ["host", "port", "mode", "path", "url", "interface", "stream_key", "channel", "device"]:
+                if key in input_cfg:
+                    input1[key] = input_cfg.pop(key)
+            
+            input_cfg["input1"] = input1
+            input_cfg["use_secondary_input"] = False
+            input_cfg["has_video"] = input_cfg.get("has_video", True)
+            input_cfg["has_audio"] = input_cfg.get("has_audio", True)
+            
+        profile["input_config"] = input_cfg
+        if "output_config" not in profile:
+            profile["output_config"] = {"type": "udp", "host": "239.0.0.1", "port": "1234"}
+        if "codec_config" not in profile:
+            profile["codec_config"] = {}
+        if "filter_config" not in profile:
+            profile["filter_config"] = {}
+
+        if "input_config" not in cfg: cfg["input_config"] = profile["input_config"]
+        if "output_config" not in cfg: cfg["output_config"] = profile["output_config"]
+        if "codec_config" not in cfg: cfg["codec_config"] = profile["codec_config"]
+        if "filter_config" not in cfg: cfg["filter_config"] = profile["filter_config"]
+
+    # 3. Synchronize common properties into cfg
+    for key in [
+        "auto_start", "startup_order", "startup_delay", "watchdog_enabled", "watchdog_retries",
+        "watchdog_min_speed", "watchdog_min_speed_duration", "network_timeout", "debug_mode",
+        "log_storage_id", "software_type", "software_version", "software_build_id", "ffmpeg_build_id",
+        "allow_auto_start_deps", "allow_auto_stop_deps"
+    ]:
+        if key in profile and key not in cfg:
+            cfg[key] = profile[key]
+
+    profile["config"] = cfg
+
+    # 4. Gracefully resolve missing or invalid Software / Build IDs
+    from database.models import SoftwareBuild
+    build_id = profile.get("ffmpeg_build_id") or profile.get("software_build_id")
     if build_id:
-        build_exists = db.query(FfmpegBuild).filter(FfmpegBuild.id == build_id).first()
+        build_exists = db.query(SoftwareBuild).filter(SoftwareBuild.id == build_id).first()
         if not build_exists:
-            default_build = db.query(FfmpegBuild).filter(FfmpegBuild.is_default == True, FfmpegBuild.status == 'ready').first()
+            sw_type = profile.get("software_type") or ("ffmpeg" if service_type == "ffmpeg_stream" else "mediamtx" if service_type == "mediamtx_hub" else "icecast2" if service_type == "icecast_server" else None)
+            fallback_query = db.query(SoftwareBuild).filter(SoftwareBuild.status == 'ready')
+            if sw_type:
+                fallback_query = fallback_query.filter(SoftwareBuild.software_type == sw_type)
+            default_build = fallback_query.filter(SoftwareBuild.is_default == True).first() or fallback_query.first()
             if default_build:
                 profile["ffmpeg_build_id"] = default_build.id
+                profile["software_build_id"] = default_build.id
+                cfg["ffmpeg_build_id"] = default_build.id
+                cfg["software_build_id"] = default_build.id
             else:
-                any_build = db.query(FfmpegBuild).filter(FfmpegBuild.status == 'ready').first()
-                if any_build:
-                    profile["ffmpeg_build_id"] = any_build.id
-                else:
-                    profile["ffmpeg_build_id"] = None
+                profile["ffmpeg_build_id"] = None
+                profile["software_build_id"] = None
+                cfg.pop("ffmpeg_build_id", None)
+                cfg.pop("software_build_id", None)
 
-    # Validate alias if present
+    # 5. Validate alias if present
     alias = profile.get("alias")
     if alias:
         import re
@@ -4182,6 +4357,13 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "name": proc.name,
             "alias": proc.alias,
             "type": proc.type,
+            "service_type": getattr(proc, 'service_type', 'ffmpeg_stream') or 'ffmpeg_stream',
+            "config": proc.config or {},
+            "software_type": getattr(proc, 'software_type', None),
+            "software_version": getattr(proc, 'software_version', None),
+            "software_build_id": getattr(proc, 'software_build_id', None),
+            "allow_auto_start_deps": getattr(proc, 'allow_auto_start_deps', True),
+            "allow_auto_stop_deps": getattr(proc, 'allow_auto_stop_deps', True),
             "input_config": proc.input_config,
             "output_config": proc.output_config,
             "codec_config": proc.codec_config,
@@ -4194,6 +4376,9 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "watchdog_retries": proc.watchdog_retries,
             "watchdog_min_speed": proc.watchdog_min_speed,
             "watchdog_min_speed_duration": proc.watchdog_min_speed_duration,
+            "network_timeout": getattr(proc, 'network_timeout', 15),
+            "debug_mode": getattr(proc, 'debug_mode', False),
+            "log_storage_id": getattr(proc, 'log_storage_id', None),
         }
     }
 
@@ -4208,6 +4393,13 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         name=f"Imported: {profile.get('name', 'Untitled')}",
         alias=profile.get('alias'),
         type=profile.get('type', 'service'),
+        service_type=profile.get('service_type', 'ffmpeg_stream') or 'ffmpeg_stream',
+        config=profile.get('config', {}),
+        software_type=profile.get('software_type'),
+        software_version=profile.get('software_version'),
+        software_build_id=profile.get('software_build_id') or profile.get('ffmpeg_build_id'),
+        allow_auto_start_deps=profile.get('allow_auto_start_deps', True),
+        allow_auto_stop_deps=profile.get('allow_auto_stop_deps', True),
         input_config=profile.get('input_config', {}),
         output_config=profile.get('output_config', {}),
         codec_config=profile.get('codec_config', {}),
@@ -4220,11 +4412,17 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         watchdog_retries=profile.get('watchdog_retries', 5),
         watchdog_min_speed=profile.get('watchdog_min_speed'),
         watchdog_min_speed_duration=profile.get('watchdog_min_speed_duration', 30),
+        network_timeout=profile.get('network_timeout', 15),
+        debug_mode=profile.get('debug_mode', False),
+        log_storage_id=profile.get('log_storage_id'),
     )
     db.add(db_proc)
     db.commit()
+
+    from core.dependency_manager import dependency_manager
+    dependency_manager.sync_auto_dependencies('service', db_proc.id, db_proc.input_config, db_proc.output_config, db)
     db.refresh(db_proc)
-    return db_proc
+    return _serialize_service(db_proc)
 
 @app.get("/builds/{build_id}/export")
 def export_build_recipe(build_id: int, db: Session = Depends(get_db)):
@@ -4599,7 +4797,10 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "created_at": build.created_at.isoformat() if build.created_at else None,
         "built_at": build.built_at.isoformat() if build.built_at else None,
         "storage_id": build.storage_id,
-        "software_type": build.software_type,
+        "software_type": build.software_type or "ffmpeg",
+        "source_type": getattr(build, "source_type", "compiled") or "compiled",
+        "system_path": getattr(build, "system_path", None),
+        "is_managed": getattr(build, "is_managed", True),
         "version_tag": build.version_tag,
         "binary_path": build.binary_path,
         "version_output": build.version_output,
@@ -5314,7 +5515,7 @@ def get_ssl_status():
 
 
 @app.post("/api/settings/ssl/upload-custom")
-async def upload_custom_ssl(cert_file: UploadFile = File(...), key_file: UploadFile = File(...)):
+async def upload_custom_ssl(cert_file: UploadFile = File(...), key_file: UploadFile = File(...), db: Session = Depends(get_db)):
     from services.cert_manager import CertificateManager
     cert_mgr = CertificateManager()
     cert_bytes = await cert_file.read()
@@ -5323,7 +5524,9 @@ async def upload_custom_ssl(cert_file: UploadFile = File(...), key_file: UploadF
     success, err = cert_mgr.save_custom_cert(cert_bytes, key_bytes, mode="custom")
     if not success:
         raise HTTPException(status_code=400, detail=err or "Invalid SSL certificate or keypair.")
-    return {"success": True, "status": cert_mgr.get_cert_status()}
+    
+    reloaded = await process_manager.reload_ssl_services(db_session=db)
+    return {"success": True, "status": cert_mgr.get_cert_status(), "reloaded_services": reloaded}
 
 
 class AcmeRenewRequest(BaseModel):
@@ -5333,7 +5536,7 @@ class AcmeRenewRequest(BaseModel):
 
 
 @app.post("/api/settings/ssl/renew")
-def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session = Depends(get_db)):
+async def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session = Depends(get_db)):
     config_path = os.environ.get("CONFIG_FILE_PATH")
     if not config_path:
         config_path = "ffmpeg-gui.conf"
@@ -5375,7 +5578,8 @@ def renew_ssl_certificate(body: Optional[AcmeRenewRequest] = None, db: Session =
         ssl_sys_task.next_run = CronHelper.get_next_run("0 3 * * *")
         db.commit()
 
-    return {"success": True, "message": msg, "status": cert_mgr.get_cert_status()}
+    reloaded = await process_manager.reload_ssl_services(db_session=db)
+    return {"success": True, "message": msg, "status": cert_mgr.get_cert_status(), "reloaded_services": reloaded}
 
 
 ACME_CHALLENGES: dict[str, str] = {}
@@ -5833,14 +6037,25 @@ def delete_software_icon(software_type: str, db: Session = Depends(get_db)):
 
 
 # Mounting static files and SPA fallback
-FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR", "../frontend/dist")
-try:
-    os.makedirs(os.path.join(FRONTEND_DIST_DIR, "assets"), exist_ok=True)
-except Exception as e:
-    logger.warning(f"Could not create static asset dir {FRONTEND_DIST_DIR}/assets: {e}")
+FRONTEND_DIST_DIR = os.getenv("FRONTEND_DIST_DIR")
+if not FRONTEND_DIST_DIR:
+    cand = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+    if os.path.exists(cand):
+        FRONTEND_DIST_DIR = cand
+    else:
+        FRONTEND_DIST_DIR = os.path.abspath("../frontend/dist")
 
-if os.path.exists(os.path.join(FRONTEND_DIST_DIR, "assets")):
-    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST_DIR, "assets")), name="assets")
+assets_dir = os.path.join(FRONTEND_DIST_DIR, "assets")
+try:
+    os.makedirs(assets_dir, exist_ok=True)
+except Exception:
+    pass
+
+if os.path.exists(assets_dir):
+    try:
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    except Exception as e:
+        logger.warning(f"Could not mount static assets: {e}")
 
 @app.get("/{catchall:path}")
 def serve_spa(catchall: str):

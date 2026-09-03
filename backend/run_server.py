@@ -239,7 +239,24 @@ def main():
             print(f"Error checking SSL certificates: {e}")
             ssl_enabled = False
 
-    # 6. Run Uvicorn server(s)
+    # 6. Run Uvicorn server(s) with Warm Reload signal support
+    import signal
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from main import set_reload_mode
+
+    active_servers = []
+
+    def handle_reload_signal(signum, frame):
+        sig_name = "SIGHUP" if signum == signal.SIGHUP else ("SIGUSR1" if hasattr(signal, 'SIGUSR1') and signum == signal.SIGUSR1 else str(signum))
+        print(f"\n[FFMPEG-GUI] Received {sig_name} signal -> Initiating Warm Reload (preserving stream processes)...")
+        set_reload_mode(True)
+        for s in active_servers:
+            s.should_exit = True
+
+    signal.signal(signal.SIGHUP, handle_reload_signal)
+    if hasattr(signal, "SIGUSR1"):
+        signal.signal(signal.SIGUSR1, handle_reload_signal)
+
     if ssl_enabled and ssl_keyfile and ssl_certfile:
         import threading
         print(f"Starting FFMPEG-GUI HTTPS Server on https://{host}:{https_port}...")
@@ -254,15 +271,33 @@ def main():
                 access_log=False
             )
             https_server = uvicorn.Server(https_config)
+            active_servers.append(https_server)
             threading.Thread(target=https_server.run, daemon=True).start()
 
             print(f"Starting FFMPEG-GUI HTTP Server on http://{host}:{port}...")
-            uvicorn.run("main:app", host=host, port=port, log_config=log_config, access_log=False)
+            http_config = uvicorn.Config("main:app", host=host, port=port, log_config=log_config, access_log=False)
+            http_server = uvicorn.Server(http_config)
+            active_servers.append(http_server)
+            http_server.run()
         else:
-            uvicorn.run("main:app", host=host, port=https_port, ssl_keyfile=ssl_keyfile, ssl_certfile=ssl_certfile, log_config=log_config, access_log=False)
+            https_config = uvicorn.Config(
+                "main:app",
+                host=host,
+                port=https_port,
+                ssl_keyfile=ssl_keyfile,
+                ssl_certfile=ssl_certfile,
+                log_config=log_config,
+                access_log=False
+            )
+            https_server = uvicorn.Server(https_config)
+            active_servers.append(https_server)
+            https_server.run()
     else:
         print(f"Starting FFMPEG-GUI HTTP Server on http://{host}:{port}...")
-        uvicorn.run("main:app", host=host, port=port, log_config=log_config, access_log=False)
+        http_config = uvicorn.Config("main:app", host=host, port=port, log_config=log_config, access_log=False)
+        http_server = uvicorn.Server(http_config)
+        active_servers.append(http_server)
+        http_server.run()
 
 if __name__ == "__main__":
     main()

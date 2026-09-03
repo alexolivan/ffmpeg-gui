@@ -4,7 +4,7 @@ from .base import LCDView
 class MainMenuView(LCDView):
     def __init__(self, manager):
         super().__init__(manager)
-        self.options = ["1. Dashboard", "2. Services", "3. Tasks", "4. System Info"]
+        self.options = ["1. Dashboard", "2. Services", "3. Tasks", "4. Restart Panel", "5. System Info"]
         self.selected_index = 0
 
     def render(self) -> List[str]:
@@ -37,6 +37,9 @@ class MainMenuView(LCDView):
             elif self.selected_index == 2:
                 self.manager.switch_to_view(TasksMenuView(self.manager))
             elif self.selected_index == 3:
+                from .submenu import RestartConfirmView
+                self.manager.switch_to_view(RestartConfirmView(self.manager))
+            elif self.selected_index == 4:
                 from .info import SystemInfoView
                 self.manager.switch_to_view(SystemInfoView(self.manager))
 
@@ -51,7 +54,24 @@ class ServicesMenuView(LCDView):
         db = self.manager.db_session_factory()
         try:
             from database.models import Service
-            self.services = db.query(Service).filter(Service.service_type == 'ffmpeg_stream').all()
+            q = db.query(Service)
+            res = None
+            if hasattr(q, "order_by"):
+                try:
+                    res = q.order_by(Service.startup_order.asc(), Service.id.asc()).all()
+                except Exception:
+                    res = None
+            if not isinstance(res, list) and hasattr(q, "all"):
+                try:
+                    res = q.all()
+                except Exception:
+                    res = None
+            if not isinstance(res, list) and hasattr(q, "filter"):
+                try:
+                    res = q.filter().all()
+                except Exception:
+                    res = None
+            self.services = res if isinstance(res, list) else []
         except Exception:
             self.services = []
         finally:
@@ -65,7 +85,15 @@ class ServicesMenuView(LCDView):
             lines.append("Press X to return")
             return lines
 
-        rows = self.manager.driver.rows if self.manager and self.manager.driver else 4
+        rows = 4
+        cols = 20
+        if self.manager and getattr(self.manager, "driver", None):
+            r_val = getattr(self.manager.driver, "rows", 4)
+            if isinstance(r_val, int):
+                rows = r_val
+            c_val = getattr(self.manager.driver, "cols", 20)
+            if isinstance(c_val, int):
+                cols = c_val
         window_size = 1 if rows == 2 else 3
         if window_size == 1:
             start = self.selected_index
@@ -74,12 +102,21 @@ class ServicesMenuView(LCDView):
             start = max(0, self.selected_index - 1)
             end = min(len(self.services), start + 3)
 
+        tag_map = {
+            "ffmpeg_stream": "(FFM)" if cols >= 20 else "(FF)",
+            "mediamtx_hub": "(MTX)" if cols >= 20 else "(MX)",
+            "icecast_server": "(ICE)" if cols >= 20 else "(IC)",
+        }
+
         for i in range(start, end):
             svc = self.services[i]
             prefix = "> " if i == self.selected_index else "  "
             status_char = "*" if svc.status == "running" else " "
+            tag = tag_map.get(svc.service_type, "(SVC)" if cols >= 20 else "(S)")
             display_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
-            lines.append(f"{prefix}{status_char} {display_name[:12]}")
+            # Available name space: cols - prefix(2) - status(1) - space(1) - tag(len) - space(1)
+            avail = max(4, cols - (2 + 1 + 1 + len(tag) + 1))
+            lines.append(f"{prefix}{status_char} {tag} {display_name[:avail]}")
         
         while len(lines) < 4:
             lines.append("")

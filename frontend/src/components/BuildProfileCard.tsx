@@ -31,6 +31,9 @@ export interface BuildProfile {
   ffmpeg_version_output?: string | null
   created_at?: string | null
   software_type?: string
+  source_type?: string
+  system_path?: string
+  is_managed?: boolean
   version_tag?: string
   binary_path?: string
   version_output?: string

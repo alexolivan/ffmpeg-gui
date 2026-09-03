@@ -37,7 +37,10 @@ class Cfa635Driver(LCDDisplayInterface):
 
     def write_line(self, row: int, text: str) -> None:
         formatted_text = text[:self.cols].ljust(self.cols)
-        payload = struct.pack(f"BB{self.cols}s", 0, row, formatted_text.encode('ascii', errors='ignore'))
+        # Crystalfontz / HD44780 European CGROM substitutes 0x5B ([) with Ä and 0x5D (]) with ñ.
+        # Normalize brackets to parentheses for guaranteed display integrity across all firmware ROMs.
+        sanitized_text = formatted_text.replace('[', '(').replace(']', ')')
+        payload = struct.pack(f"BB{self.cols}s", 0, row, sanitized_text.encode('ascii', errors='ignore'))
         self._send_packet(31, payload)
 
     def clear(self) -> None:

@@ -68,14 +68,35 @@ echo "[PHASE 1.5/3] Verifying Systemd Service Units..."
 # 1. System-wide service check
 SYSTEM_SERVICE="/etc/systemd/system/ffmpeg-gui.service"
 if [ -f "$SYSTEM_SERVICE" ]; then
-    # Ensure KillMode=process
-    if ! grep -q "KillMode=process" "$SYSTEM_SERVICE"; then
+    # Ensure KillMode=process (so systemd does not kill surviving stream processes on reload)
+    if grep -q "KillMode=control-group" "$SYSTEM_SERVICE"; then
+        echo "--> Setting KillMode=process in system-wide service..."
+        if [ "$EUID" -eq 0 ]; then
+            sed -i 's/KillMode=control-group/KillMode=process/g' "$SYSTEM_SERVICE"
+            systemctl daemon-reload
+        else
+            sudo sed -i 's/KillMode=control-group/KillMode=process/g' "$SYSTEM_SERVICE"
+            sudo systemctl daemon-reload
+        fi
+    elif ! grep -q "KillMode=process" "$SYSTEM_SERVICE"; then
         echo "--> Ensuring KillMode=process is configured in system-wide service..."
         if [ "$EUID" -eq 0 ]; then
             sed -i '/\[Service\]/a KillMode=process' "$SYSTEM_SERVICE"
             systemctl daemon-reload
         else
             sudo sed -i '/\[Service\]/a KillMode=process' "$SYSTEM_SERVICE"
+            sudo systemctl daemon-reload
+        fi
+    fi
+    
+    # Ensure ExecReload=/bin/kill -HUP $MAINPID
+    if ! grep -q "ExecReload=" "$SYSTEM_SERVICE"; then
+        echo "--> Adding ExecReload warm reload hook to system-wide service..."
+        if [ "$EUID" -eq 0 ]; then
+            sed -i '/\[Service\]/a ExecReload=\/bin\/kill -HUP $MAINPID' "$SYSTEM_SERVICE"
+            systemctl daemon-reload
+        else
+            sudo sed -i '/\[Service\]/a ExecReload=\/bin\/kill -HUP $MAINPID' "$SYSTEM_SERVICE"
             sudo systemctl daemon-reload
         fi
     fi
@@ -137,9 +158,19 @@ fi
 USER_SERVICE="$HOME/.config/systemd/user/ffmpeg-gui.service"
 if [ -f "$USER_SERVICE" ]; then
     # Ensure KillMode=process
-    if ! grep -q "KillMode=process" "$USER_SERVICE"; then
+    if grep -q "KillMode=control-group" "$USER_SERVICE"; then
+        echo "--> Setting KillMode=process in user-space service..."
+        sed -i 's/KillMode=control-group/KillMode=process/g' "$USER_SERVICE"
+        systemctl --user daemon-reload
+    elif ! grep -q "KillMode=process" "$USER_SERVICE"; then
         echo "--> Ensuring KillMode=process is configured in user-space service..."
         sed -i '/\[Service\]/a KillMode=process' "$USER_SERVICE"
+        systemctl --user daemon-reload
+    fi
+    # Ensure ExecReload=/bin/kill -HUP $MAINPID
+    if ! grep -q "ExecReload=" "$USER_SERVICE"; then
+        echo "--> Adding ExecReload warm reload hook to user-space service..."
+        sed -i '/\[Service\]/a ExecReload=\/bin\/kill -HUP $MAINPID' "$USER_SERVICE"
         systemctl --user daemon-reload
     fi
 fi
@@ -160,22 +191,22 @@ else
 fi
 
 # ---------------------------------------------------------
-# [PHASE 3/3] Restarting Systemd Service
+# [PHASE 3/3] Reloading Systemd Service (Warm Reload)
 # ---------------------------------------------------------
 echo ""
-echo "[PHASE 3/3] Restarting Systemd Service..."
+echo "[PHASE 3/3] Reloading Systemd Service (Warm Reload)..."
 if systemctl --user is-active ffmpeg-gui.service &>/dev/null; then
-    echo "--> Restarting user-space service..."
-    systemctl --user restart ffmpeg-gui.service
-    echo "User-space service restarted successfully!"
+    echo "--> Performing warm reload on user-space service (preserving active streams)..."
+    systemctl --user reload ffmpeg-gui.service || systemctl --user restart ffmpeg-gui.service
+    echo "User-space service reloaded successfully!"
 elif systemctl is-active ffmpeg-gui.service &>/dev/null; then
-    echo "--> Restarting system-wide service..."
+    echo "--> Performing warm reload on system-wide service (preserving active streams)..."
     if [ "$EUID" -eq 0 ]; then
-        systemctl restart ffmpeg-gui.service
+        systemctl reload ffmpeg-gui.service || systemctl restart ffmpeg-gui.service
     else
-        sudo systemctl restart ffmpeg-gui.service
+        sudo systemctl reload ffmpeg-gui.service || sudo systemctl restart ffmpeg-gui.service
     fi
-    echo "System-wide service restarted successfully!"
+    echo "System-wide service reloaded successfully!"
 else
     echo "Service is not active. Run install.sh or start the service manually."
 fi

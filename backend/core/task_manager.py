@@ -10,9 +10,10 @@ from database.models import ScheduledTask, TaskExecution, TaskExecutionLog, Ffmp
 from utils.process_utils import cleanup_rogue_processes, prepare_process_file_permissions
 
 class TaskManager:
-    def __init__(self, db_session_factory, ffmpeg_path="ffmpeg"):
+    def __init__(self, db_session_factory, ffmpeg_path="ffmpeg", process_manager=None):
         self.db_session_factory = db_session_factory
         self.ffmpeg_path = ffmpeg_path
+        self.process_manager = process_manager
         self.logger = logging.getLogger("TaskManager")
         self.running_processes = {}
         self.last_activity = {}
@@ -627,3 +628,11 @@ class TaskManager:
         if not success:
             raise RuntimeError(f"ACME SSL renewal failed: {msg}")
         log_info(f"SSL renewal routine finished successfully: {msg}")
+
+        # Cascade reload of running SSL services
+        if self.process_manager:
+            reloaded = await self.process_manager.reload_ssl_services(log_fn=log_info)
+            if reloaded:
+                log_info(f"Cascade reloaded {len(reloaded)} active SSL-enabled service(s): {', '.join([s['name'] for s in reloaded])}.")
+            else:
+                log_info("No active SSL-enabled services requiring restart.")

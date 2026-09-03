@@ -20,6 +20,7 @@ interface ServicePortMap {
   label: string;
   serviceName: string;
   serviceId: number;
+  proto?: 'tcp' | 'udp';
 }
 
 export interface PathConfig {
@@ -226,35 +227,35 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           const cfg = s.config?.mediamtx_config || s.config || {};
           if (sType === 'mediamtx_hub') {
             if (cfg.rtmp_enabled !== false && cfg.rtmp_port) {
-              portList.push({ port: Number(cfg.rtmp_port), label: 'RTMP', serviceName: s.name, serviceId: s.id });
+              portList.push({ port: Number(cfg.rtmp_port), label: 'RTMP', serviceName: s.name, serviceId: s.id, proto: 'tcp' });
             }
             if (cfg.ssl_enabled && cfg.rtmps_enabled && cfg.rtmps_port) {
-              portList.push({ port: Number(cfg.rtmps_port), label: 'RTMPS', serviceName: s.name, serviceId: s.id });
+              portList.push({ port: Number(cfg.rtmps_port), label: 'RTMPS', serviceName: s.name, serviceId: s.id, proto: 'tcp' });
             }
             if (cfg.rtsp_enabled !== false) {
-              if (cfg.rtsp_port) portList.push({ port: Number(cfg.rtsp_port), label: 'RTSP', serviceName: s.name, serviceId: s.id });
-              portList.push({ port: Number(cfg.rtp_port || 8000), label: 'RTP', serviceName: s.name, serviceId: s.id });
-              portList.push({ port: Number(cfg.rtcp_port || 8001), label: 'RTCP', serviceName: s.name, serviceId: s.id });
+              if (cfg.rtsp_port) portList.push({ port: Number(cfg.rtsp_port), label: 'RTSP', serviceName: s.name, serviceId: s.id, proto: 'tcp' });
+              portList.push({ port: Number(cfg.rtp_port || 8000), label: 'RTP', serviceName: s.name, serviceId: s.id, proto: 'udp' });
+              portList.push({ port: Number(cfg.rtcp_port || 8001), label: 'RTCP', serviceName: s.name, serviceId: s.id, proto: 'udp' });
             }
             if (cfg.ssl_enabled && cfg.rtsps_enabled && cfg.rtsps_port) {
-              portList.push({ port: Number(cfg.rtsps_port), label: 'RTSPS', serviceName: s.name, serviceId: s.id });
+              portList.push({ port: Number(cfg.rtsps_port), label: 'RTSPS', serviceName: s.name, serviceId: s.id, proto: 'tcp' });
             }
             if (cfg.hls_enabled !== false && cfg.hls_port) {
-              portList.push({ port: Number(cfg.hls_port), label: 'HLS', serviceName: s.name, serviceId: s.id });
+              portList.push({ port: Number(cfg.hls_port), label: 'HLS', serviceName: s.name, serviceId: s.id, proto: 'tcp' });
             }
             if (cfg.webrtc_enabled !== false) {
-              if (cfg.webrtc_port) portList.push({ port: Number(cfg.webrtc_port), label: 'WebRTC HTTP', serviceName: s.name, serviceId: s.id });
-              portList.push({ port: Number(cfg.webrtc_udp_port || 8189), label: 'WebRTC UDP', serviceName: s.name, serviceId: s.id });
+              if (cfg.webrtc_port) portList.push({ port: Number(cfg.webrtc_port), label: 'WebRTC HTTP', serviceName: s.name, serviceId: s.id, proto: 'tcp' });
+              portList.push({ port: Number(cfg.webrtc_udp_port || 8189), label: 'WebRTC UDP', serviceName: s.name, serviceId: s.id, proto: 'udp' });
             }
             if (cfg.srt_enabled && cfg.srt_port) {
-              portList.push({ port: Number(cfg.srt_port), label: 'SRT', serviceName: s.name, serviceId: s.id });
+              portList.push({ port: Number(cfg.srt_port), label: 'SRT', serviceName: s.name, serviceId: s.id, proto: 'udp' });
             }
             if (cfg.api_enabled !== false) {
-              portList.push({ port: Number(cfg.api_port || 9997), label: 'API', serviceName: s.name, serviceId: s.id });
+              portList.push({ port: Number(cfg.api_port || 9997), label: 'API', serviceName: s.name, serviceId: s.id, proto: 'tcp' });
             }
           } else if (sType === 'icecast_server') {
             const ice = s.config?.icecast_config || s.config || {};
-            if (ice.port) portList.push({ port: Number(ice.port), label: 'Icecast', serviceName: s.name, serviceId: s.id });
+            if (ice.port) portList.push({ port: Number(ice.port), label: 'Icecast', serviceName: s.name, serviceId: s.id, proto: 'tcp' });
           }
         }
         setAllOtherServicePorts(portList);
@@ -287,45 +288,46 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
     }
   };
 
-  const getConflict = (portNum: number) => {
+  const getConflict = (portNum: number, proto: 'tcp' | 'udp' = 'tcp') => {
     if (!portNum) return null;
-    return allOtherServicePorts.find((p) => p.port === portNum);
+    return allOtherServicePorts.find((p) => p.port === portNum && (!p.proto || p.proto === proto));
   };
 
   // Active ports in current form
-  const activeFormPorts = [
-    ...(rtmpEnabled ? [{ port: Number(rtmpPort), label: 'RTMP' }] : []),
-    ...(sslEnabled && rtmpsEnabled ? [{ port: Number(rtmpsPort), label: 'RTMPS' }] : []),
+  const activeFormPorts: { port: number; label: string; proto: 'tcp' | 'udp' }[] = [
+    ...(rtmpEnabled ? [{ port: Number(rtmpPort), label: 'RTMP', proto: 'tcp' as const }] : []),
+    ...(sslEnabled && rtmpsEnabled ? [{ port: Number(rtmpsPort), label: 'RTMPS', proto: 'tcp' as const }] : []),
     ...(rtspEnabled
       ? [
-          { port: Number(rtspPort), label: 'RTSP' },
-          { port: Number(rtpPort), label: 'RTP' },
-          { port: Number(rtcpPort), label: 'RTCP' },
+          { port: Number(rtspPort), label: 'RTSP', proto: 'tcp' as const },
+          { port: Number(rtpPort), label: 'RTP', proto: 'udp' as const },
+          { port: Number(rtcpPort), label: 'RTCP', proto: 'udp' as const },
         ]
       : []),
-    ...(sslEnabled && rtspsEnabled ? [{ port: Number(rtspsPort), label: 'RTSPS' }] : []),
-    ...(hlsEnabled ? [{ port: Number(hlsPort), label: 'HLS' }] : []),
+    ...(sslEnabled && rtspsEnabled ? [{ port: Number(rtspsPort), label: 'RTSPS', proto: 'tcp' as const }] : []),
+    ...(hlsEnabled ? [{ port: Number(hlsPort), label: 'HLS', proto: 'tcp' as const }] : []),
     ...(webrtcEnabled
       ? [
-          { port: Number(webrtcPort), label: 'WebRTC HTTP' },
-          { port: Number(webrtcUdpPort), label: 'WebRTC UDP' },
+          { port: Number(webrtcPort), label: 'WebRTC HTTP', proto: 'tcp' as const },
+          { port: Number(webrtcUdpPort), label: 'WebRTC UDP', proto: 'udp' as const },
         ]
       : []),
-    ...(srtEnabled ? [{ port: Number(srtPort), label: 'SRT' }] : []),
-    ...(apiEnabled ? [{ port: Number(apiPort), label: 'API' }] : []),
+    ...(srtEnabled ? [{ port: Number(srtPort), label: 'SRT', proto: 'udp' as const }] : []),
+    ...(apiEnabled ? [{ port: Number(apiPort), label: 'API', proto: 'tcp' as const }] : []),
   ];
 
   const hasInternalDuplicate = () => {
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     for (const item of activeFormPorts) {
-      if (seen.has(item.port)) return true;
-      seen.add(item.port);
+      const key = `${item.port}_${item.proto}`;
+      if (seen.has(key)) return true;
+      seen.add(key);
     }
     return false;
   };
 
   const hasExternalCollision = () => {
-    return activeFormPorts.some((item) => getConflict(item.port) !== undefined);
+    return activeFormPorts.some((item) => getConflict(item.port, item.proto) !== undefined);
   };
 
   const hasAnyConflict = hasInternalDuplicate() || hasExternalCollision();
@@ -1501,32 +1503,34 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
           </h4>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs items-center">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoStart}
-              onChange={(e) => setAutoStart(e.target.checked)}
-              className="rounded text-brand-lime"
-            />
-            <span className="font-bold uppercase tracking-wide text-xs">
-              {t('services.autoStart', 'Auto-start on Boot')}
-            </span>
-          </label>
+        <div className="flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-6 flex-wrap">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoStart}
+                onChange={(e) => setAutoStart(e.target.checked)}
+                className="rounded text-brand-lime"
+              />
+              <span className="font-bold uppercase tracking-wide text-xs">
+                {t('services.autoStart', 'Auto-start on Boot')}
+              </span>
+            </label>
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={watchdogEnabled}
-              onChange={(e) => setWatchdogEnabled(e.target.checked)}
-              className="rounded text-brand-lime"
-            />
-            <span className="font-bold uppercase tracking-wide text-xs">
-              {t('services.watchdog', 'Watchdog Restart')}
-            </span>
-          </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={watchdogEnabled}
+                onChange={(e) => setWatchdogEnabled(e.target.checked)}
+                className="rounded text-brand-lime"
+              />
+              <span className="font-bold uppercase tracking-wide text-xs">
+                {t('services.watchdog', 'Watchdog Restart')}
+              </span>
+            </label>
+          </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] uppercase font-bold text-[var(--text-secondary)] shrink-0">
                 {t('services.startupOrder', 'Order')}:
@@ -1537,7 +1541,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
                 max={100}
                 value={startupOrder}
                 onChange={(e) => setStartupOrder(Number(e.target.value))}
-                className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono"
+                className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
               />
             </div>
 
@@ -1551,7 +1555,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
                 max={300}
                 value={startupDelay}
                 onChange={(e) => setStartupDelay(Number(e.target.value))}
-                className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono"
+                className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
               />
             </div>
           </div>
