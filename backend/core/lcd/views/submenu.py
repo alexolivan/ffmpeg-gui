@@ -92,11 +92,30 @@ class ServiceStatusDetailView(LCDView):
             svc = db.query(Service).get(self.svc_id)
             if svc:
                 display_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
+                stype = getattr(svc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
+                tag_map = {
+                    "ffmpeg_stream": "FFM",
+                    "mediamtx_hub": "MTX",
+                    "icecast_server": "ICE",
+                }
+                tag = tag_map.get(stype, "SVC")
+
+                if stype == "ffmpeg_stream":
+                    metrics_line = f"FPS:{svc.fps or '0'} SPD:{svc.speed or '0x'}"
+                elif stype == "mediamtx_hub":
+                    cfg = getattr(svc, "mediamtx_config", {}) or {}
+                    p_cnt = len(cfg.get("paths", {}))
+                    metrics_line = f"PATHS:{p_cnt} SRT:{cfg.get('srt_port', 8890)}"
+                elif stype == "icecast_server":
+                    metrics_line = "TYPE:Icecast2 Server"
+                else:
+                    metrics_line = f"TYPE:{stype[:15]}"
+
                 lines = [
-                    f"SVC:{display_name[:12]}",
+                    f"[{tag}] {display_name[:14]}",
                     f"Status:{svc.status}",
                     f"PID:{svc.pid or 'N/A'} C:{int(svc.cpu_usage or 0)}%",
-                    f"FPS:{svc.fps or '0'} SPD:{svc.speed or '0x'}"
+                    metrics_line
                 ]
         except Exception:
             lines = ["Error reading svc", "", "", ""]
@@ -107,6 +126,52 @@ class ServiceStatusDetailView(LCDView):
     def handle_key(self, key: str) -> None:
         if key in ("X", "TICK"):
             self.manager.switch_to_view(ServiceDetailMenuView(self.manager, self.svc_id))
+
+
+class RestartConfirmView(LCDView):
+    def __init__(self, manager):
+        super().__init__(manager)
+        self.options = ["Cancel", "Yes (Reload)"]
+        self.selected_index = 0
+        self.restarting = False
+
+    def render(self) -> List[str]:
+        if self.restarting:
+            return [
+                "RESTARTING PANEL...",
+                "Warm Reload Active",
+                "Streams Preserved",
+                "Please wait..."
+            ]
+
+        lines = ["-- RESTART PANEL? --"]
+        for idx, opt in enumerate(self.options):
+            prefix = "> " if idx == self.selected_index else "  "
+            lines.append(f"{prefix}{opt}")
+        while len(lines) < 3:
+            lines.append("")
+        lines.append("Press X to return")
+        return lines
+
+    def handle_key(self, key: str) -> None:
+        if self.restarting:
+            return
+        if key == "X":
+            from .menu import MainMenuView
+            self.manager.switch_to_view(MainMenuView(self.manager))
+            return
+        if key in ("UP", "DOWN", "LEFT", "RIGHT"):
+            self.selected_index = (self.selected_index + 1) % len(self.options)
+        elif key == "TICK":
+            if self.selected_index == 0:
+                # Cancel
+                from .menu import MainMenuView
+                self.manager.switch_to_view(MainMenuView(self.manager))
+            elif self.selected_index == 1:
+                # Yes (Reload)
+                self.restarting = True
+                self.manager.refresh_display()
+                self.manager.restart_panel()
 
 
 class TaskDetailMenuView(LCDView):

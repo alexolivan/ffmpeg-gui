@@ -298,6 +298,14 @@ class Service(Base):
         self._set_config_key('allow_auto_stop_deps', bool(val))
 
     @property
+    def mediamtx_config(self):
+        return self.config.get('mediamtx_config', {}) if self.config else {}
+
+    @mediamtx_config.setter
+    def mediamtx_config(self, val):
+        self._set_config_key('mediamtx_config', val)
+
+    @property
     def software_type(self):
         return self.config.get('software_type') if self.config else None
 
