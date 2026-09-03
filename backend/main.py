@@ -4777,16 +4777,43 @@ def list_available_dependency_providers(db: Session = Depends(get_db)):
     ).all()
     
     result = []
+    from core.builders.ffmpeg_builder import FFmpegCommandBuilder
     for p in providers:
         cfg = p.config or {}
-        prov_cfg = cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg
+        prov_cfg = dict(cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg)
+        is_legacy = False
+        software_version = None
+        if p.service_type == "icecast_server":
+            build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or getattr(p, 'ffmpeg_build_id', None)
+            build = None
+            if build_id:
+                build = db.query(SoftwareBuild).get(build_id)
+            if not build:
+                build = db.query(SoftwareBuild).filter(
+                    SoftwareBuild.software_type == 'icecast2',
+                    SoftwareBuild.status == 'ready',
+                    SoftwareBuild.is_default == True
+                ).first() or db.query(SoftwareBuild).filter(
+                    SoftwareBuild.software_type == 'icecast2',
+                    SoftwareBuild.status == 'ready'
+                ).first()
+            if build:
+                software_version = build.version_tag or build.name
+                is_legacy = FFmpegCommandBuilder._is_legacy_icecast(software_version)
+            if not is_legacy:
+                is_legacy = FFmpegCommandBuilder._is_legacy_icecast(p.name or '') or FFmpegCommandBuilder._is_legacy_icecast(p.alias or '')
+            prov_cfg["is_legacy"] = is_legacy
+            prov_cfg["software_version"] = software_version
+
         result.append({
             "id": p.id,
             "name": p.name,
             "alias": p.alias,
             "service_type": p.service_type,
             "status": p.status,
-            "config": prov_cfg
+            "config": prov_cfg,
+            "is_legacy": is_legacy,
+            "software_version": software_version
         })
     return result
 

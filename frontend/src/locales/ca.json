@@ -1069,8 +1069,10 @@
       "targetServer": "Servidor Icecast Destinació",
       "legacyIcecast": "Mode Servidor Legacy (Icecast < v2.4)",
       "legacyIcecastDesc": "Activa el mètode HTTP SOURCE (en lloc d'HTTP PUT). Imprescindible per a servidors Icecast 2.3.x o anteriors.",
+      "legacyAutoManaged": "Servidor Icecast Legacy (< 2.4) detectat: el mètode HTTP SOURCE es gestiona automàticament.",
       "tls": "Connexió Xifrada TLS / SSL",
-      "tlsDesc": "Força transmissió xifrada TLS (-tls 1) per connectar amb ports segurs HTTPS/TLS d'Icecast."
+      "tlsDesc": "Força transmissió xifrada TLS (-tls 1) per connectar amb ports segurs HTTPS/TLS d'Icecast.",
+      "tlsAutoManaged": "Connexió xifrada TLS / SSL auto-gestionada per a aquest servidor."
     }
   },
   "filters": {

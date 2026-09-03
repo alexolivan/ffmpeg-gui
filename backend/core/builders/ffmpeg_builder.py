@@ -47,6 +47,55 @@ class FFmpegCommandBuilder:
                 if resolved:
                     overlay['path'] = resolved
 
+        # Auto-resolve Icecast properties (TLS & legacy_icecast) from local provider service
+        if output_cfg.get('type') == 'icecast':
+            prov_id = output_cfg.get('provider_service_id')
+            if prov_id and db_session_factory:
+                try:
+                    with db_session_factory() as session:
+                        from database.models import MediaProcess, SoftwareBuild
+                        prov = session.query(MediaProcess).get(prov_id)
+                        if prov:
+                            p_cfg = prov.config or {}
+                            ice_cfg = p_cfg.get('icecast_config', {})
+                            if output_cfg.get('tls') is None:
+                                output_cfg['tls'] = bool(ice_cfg.get('ssl_enabled'))
+                            if output_cfg.get('legacy_icecast') is None:
+                                build_id = p_cfg.get('software_build_id') or p_cfg.get('ffmpeg_build_id') or getattr(prov, 'ffmpeg_build_id', None)
+                                build = None
+                                if build_id:
+                                    build = session.query(SoftwareBuild).get(build_id)
+                                if not build:
+                                    build = session.query(SoftwareBuild).filter(
+                                        SoftwareBuild.software_type == 'icecast2',
+                                        SoftwareBuild.status == 'ready',
+                                        SoftwareBuild.is_default == True
+                                    ).first() or session.query(SoftwareBuild).filter(
+                                        SoftwareBuild.software_type == 'icecast2',
+                                        SoftwareBuild.status == 'ready'
+                                    ).first()
+                                if build:
+                                    v_tag = build.version_tag or build.name or ''
+                                    output_cfg['legacy_icecast'] = cls._is_legacy_icecast(v_tag)
+                                else:
+                                    name_str = f"{prov.name} {prov.alias or ''}"
+                                    output_cfg['legacy_icecast'] = cls._is_legacy_icecast(name_str)
+                except Exception:
+                    pass
+
+    @classmethod
+    def _is_legacy_icecast(cls, version_str: str) -> bool:
+        """Determines if an Icecast version or name indicates < v2.4 (which requires SOURCE method)."""
+        if not version_str:
+            return False
+        import re
+        m = re.search(r'(\d+)\.(\d+)', str(version_str))
+        if m:
+            major, minor = int(m.group(1)), int(m.group(2))
+            if major < 2 or (major == 2 and minor < 4):
+                return True
+        return 'legacy' in str(version_str).lower()
+
     @classmethod
     def _build_srt_url(cls, srt_cfg: dict, direction: str = "output", ffmpeg_bin: str = "ffmpeg", network_timeout: int = 15) -> str:
         """

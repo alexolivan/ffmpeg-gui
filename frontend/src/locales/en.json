@@ -1069,8 +1069,10 @@
       "targetServer": "Target Icecast Server",
       "legacyIcecast": "Legacy Server Mode (Icecast < v2.4)",
       "legacyIcecastDesc": "Enables legacy HTTP SOURCE method instead of HTTP PUT. Required for Icecast v2.3.x or older servers.",
+      "legacyAutoManaged": "Legacy Icecast server (< 2.4) detected: HTTP SOURCE method is automatically configured.",
       "tls": "Encrypted TLS / SSL Connection",
-      "tlsDesc": "Enforces TLS encryption (-tls 1) when connecting to secure HTTPS/TLS Icecast ports."
+      "tlsDesc": "Enforces TLS encryption (-tls 1) when connecting to secure HTTPS/TLS Icecast ports.",
+      "tlsAutoManaged": "Encrypted TLS / SSL connection automatically configured for this server."
     }
   },
   "filters": {
