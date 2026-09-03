@@ -87,9 +87,9 @@ class SoftwareManager:
             "mediamtx_enabled": True,
             "mediamtx_installed_enabled": False,
             "mediamtx_precompiled_enabled": True,
-            "icecast2_enabled": False,
-            "icecast2_installed_enabled": False,
-            "icecast2_forge_enabled": False,
+            "icecast2_enabled": True,
+            "icecast2_installed_enabled": True,
+            "icecast2_forge_enabled": True,
             "kiosk_cog_enabled": False,
             "kiosk_cog_installed_enabled": False,
             "kiosk_cog_forge_enabled": False,
@@ -180,6 +180,17 @@ class SoftwareManager:
             has_any_source = True
         if meta.get("supports_precompiled") and proposed_config.get(f"{software_type}_precompiled_enabled"):
             has_any_source = True
+
+        if not has_any_source:
+            if meta.get("supports_installed"):
+                proposed_config[f"{software_type}_installed_enabled"] = True
+                has_any_source = True
+            if meta.get("supports_forge"):
+                proposed_config[f"{software_type}_forge_enabled"] = True
+                has_any_source = True
+            if meta.get("supports_precompiled") and not has_any_source:
+                proposed_config[f"{software_type}_precompiled_enabled"] = True
+                has_any_source = True
 
         if not has_any_source:
             raise ValueError(f"Engine '{meta['name']}' is active and must have at least one binary source (Forge, Installed, or Precompiled) enabled.")

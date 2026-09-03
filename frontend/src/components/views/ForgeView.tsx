@@ -27,6 +27,8 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libx264": "libx264-dev",
     "libx265": "libx265-dev",
     "libssl": "libssl-dev",
+    "libxml-2.0": "libxml2-dev",
+    "libxslt": "libxslt1-dev",
     "libva": "libva-dev",
     "libdrm": "libdrm-dev",
     "libmp3lame": "libmp3lame-dev",
@@ -52,6 +54,8 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libx264": "x264-devel",
     "libx265": "x265-devel",
     "libssl": "openssl-devel",
+    "libxml-2.0": "libxml2-devel",
+    "libxslt": "libxslt-devel",
     "libva": "libva-devel",
     "libdrm": "libdrm-devel",
     "libmp3lame": "lame-devel",
@@ -77,6 +81,8 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libx264": "x264",
     "libx265": "x265",
     "libssl": "openssl",
+    "libxml-2.0": "libxml2",
+    "libxslt": "libxslt",
     "libva": "libva",
     "libdrm": "libdrm",
     "libmp3lame": "lame",
@@ -184,6 +190,16 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
   const [installedSdks, setInstalledSdks] = React.useState<any[]>([]);
   const [activeEngineTab, setActiveEngineTab] = React.useState<'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog'>(initialSoftwareType);
+  const [softwareEngines, setSoftwareEngines] = React.useState<Record<string, any>>({});
+
+  useEffect(() => {
+    fetch(`${API}/api/settings/software`)
+      .then(res => res.ok ? res.json() : {})
+      .then(data => {
+        if (data && typeof data === 'object') setSoftwareEngines(data);
+      })
+      .catch(err => console.error("Failed to fetch software engines in ForgeView:", err));
+  }, [API]);
 
   const fetchSdks = React.useCallback(() => {
     fetch(`${API}/sdks`)
@@ -285,6 +301,19 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         >
           <EngineLogo softwareType="decklink_tools" size={16} API={API} /> DeckLink Tools
         </button>
+
+        {(!softwareEngines.icecast2 || (softwareEngines.icecast2.is_enabled && softwareEngines.icecast2.forge_enabled)) && (
+          <button
+            onClick={() => setActiveEngineTab('icecast2')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
+              activeEngineTab === 'icecast2'
+                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shadow-sm'
+                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+            }`}
+          >
+            <EngineLogo softwareType="icecast2" size={16} API={API} /> Icecast2 Server
+          </button>
+        )}
       </div>
 
       <div className="flex justify-between items-center mb-6">
@@ -302,7 +331,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             className="hidden" 
             accept=".json" 
             onChange={handleImportRecipeChange} 
-          />
+            />
           <button onClick={() => { setEditingBuild(null); setShowBuildForm(true) }}
             className="pill-button bg-brand-orange text-black font-black hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
             <PlusIcon size={14} /> {t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
@@ -313,11 +342,18 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
       {(() => {
         const isFfmpeg = activeEngineTab === 'ffmpeg';
         const isDecklinkTools = activeEngineTab === 'decklink_tools';
+        const isIcecast = activeEngineTab === 'icecast2';
         const isDecklinkEnvReady = (buildDeps?.dependencies?.gcc?.installed !== false) && (buildDeps?.dependencies?.make?.installed !== false);
-        const isReady = isFfmpeg ? buildDeps?.all_required_met : isDecklinkEnvReady;
+        const isIcecastEnvReady = (buildDeps?.dependencies?.gcc?.installed !== false) &&
+                                  (buildDeps?.dependencies?.make?.installed !== false) &&
+                                  (buildDeps?.dependencies?.['pkg-config']?.installed !== false) &&
+                                  (buildDeps?.dependencies?.['libssl']?.installed !== false) &&
+                                  (buildDeps?.dependencies?.['libxml-2.0']?.installed !== false) &&
+                                  (buildDeps?.dependencies?.['libxslt']?.installed !== false);
+        const isReady = isFfmpeg ? buildDeps?.all_required_met : (isDecklinkTools ? isDecklinkEnvReady : isIcecastEnvReady);
 
         const engineSupportsSdks = isFfmpeg || isDecklinkTools;
-        const engineRequiresCompilation = isFfmpeg || isDecklinkTools;
+        const engineRequiresCompilation = isFfmpeg || isDecklinkTools || isIcecast;
 
         return (
           <div className="glass-card p-6 mb-8 bg-white/2 border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4">

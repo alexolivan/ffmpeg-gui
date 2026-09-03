@@ -113,6 +113,17 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
 
       Object.assign(payload, patch);
 
+      if (patch[`${engine.key}_enabled`] === true) {
+        const hasSource = (engine.supports_forge && Boolean(payload[`${engine.key}_forge_enabled`])) ||
+                          (engine.supports_installed && Boolean(payload[`${engine.key}_installed_enabled`])) ||
+                          (engine.supports_precompiled && Boolean(payload[`${engine.key}_precompiled_enabled`]));
+        if (!hasSource) {
+          if (engine.supports_installed) payload[`${engine.key}_installed_enabled`] = true;
+          if (engine.supports_forge) payload[`${engine.key}_forge_enabled`] = true;
+          if (engine.supports_precompiled) payload[`${engine.key}_precompiled_enabled`] = true;
+        }
+      }
+
       const res = await fetch(`${API}/api/settings/software/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
