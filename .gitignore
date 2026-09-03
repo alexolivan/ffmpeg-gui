@@ -9,9 +9,10 @@ __pycache__/
 venv/
 .env
 
-# Database
+# Database & Config
 *.db
 *.sqlite3
+*.conf
 
 # IDEs
 .vscode/
