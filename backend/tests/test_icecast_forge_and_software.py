@@ -34,11 +34,16 @@ class TestIcecastForgeAndSoftware(unittest.IsolatedAsyncioTestCase):
         self.assertIn("libigloo-dev", deps)
         self.assertIn("librhash-dev", deps)
 
-    async def test_icecast_recipe_auto_builds_libigloo_when_missing(self):
+    async def test_icecast_recipe_auto_builds_libigloo_when_missing_for_2_5(self):
         recipe = IcecastRecipe(self.builds_root, self.runner)
         log_mock = AsyncMock()
         
-        # When system igloo is missing, recipe should download and compile libigloo
+        # Mock extracted source directory containing configure.ac with igloo requirement
+        src_dir = os.path.join(self.builds_root, "1", "src", "icecast-2.5.0")
+        os.makedirs(src_dir, exist_ok=True)
+        with open(os.path.join(src_dir, "configure.ac"), "w") as f:
+            f.write("AC_INIT\nPKG_CHECK_MODULES([LIBIGLOO], [igloo >= 0.9.4])\n")
+
         with patch("subprocess.run", side_effect=Exception("not found")):
             res = await recipe.compile(
                 build_id=1,
@@ -49,25 +54,48 @@ class TestIcecastForgeAndSoftware(unittest.IsolatedAsyncioTestCase):
                 log_callback=log_mock
             )
             self.assertTrue(res["success"])
-            # Verify libigloo commands were logged
             log_calls = [c[0][0] for c in log_mock.call_args_list if c[0]]
             self.assertTrue(any("libigloo" in str(line) for line in log_calls))
+
+    async def test_icecast_2_4_skips_libigloo_compilation(self):
+        recipe = IcecastRecipe(self.builds_root, self.runner)
+        log_mock = AsyncMock()
+        
+        # Mock extracted source directory for 2.4.4 without igloo
+        src_dir = os.path.join(self.builds_root, "2", "src", "icecast-2.4.4")
+        os.makedirs(src_dir, exist_ok=True)
+        with open(os.path.join(src_dir, "configure.ac"), "w") as f:
+            f.write("AC_INIT\nPKG_CHECK_MODULES([LIBXML2], [libxml-2.0])\n")
+
+        res = await recipe.compile(
+            build_id=2,
+            version_tag="2.4.4",
+            options={},
+            sdk_paths=None,
+            install_path=os.path.join(self.builds_root, "2", "install"),
+            log_callback=log_mock
+        )
+        self.assertTrue(res["success"])
+        log_calls = [c[0][0] for c in log_mock.call_args_list if c[0]]
+        # Verify libigloo was NOT compiled for 2.4.4
+        self.assertFalse(any("libigloo" in str(line) for line in log_calls))
 
     async def test_icecast_recipe_validate_executes_version(self):
         recipe = IcecastRecipe(self.builds_root, self.runner)
         fake_bin = os.path.join(self.test_dir, "bin", "icecast")
         os.makedirs(os.path.dirname(fake_bin), exist_ok=True)
         with open(fake_bin, "w") as f:
-            f.write("#!/bin/sh\necho 'Icecast 2.5.0'")
+            f.write("#!/bin/sh\necho 'Icecast 2.4.4'")
         os.chmod(fake_bin, 0o755)
 
-        self.runner._get_command_output = AsyncMock(return_value="Icecast 2.5.0\nCompile time flags: ...\nDependencies:\n libigloo")
+        # Mock -v returning Icecast 2.4.4 and -V failing or returning usage
+        self.runner._get_command_output = AsyncMock(side_effect=[
+            "Icecast 2.4.4",
+            "usage: icecast [-b] -c <file>\nFATAL: Invalid option: -V"
+        ])
         res = await recipe.validate(fake_bin)
         self.assertTrue(res["valid"])
-        self.assertIn("Icecast 2.5.0", res["output"])
-        self.runner._get_command_output.assert_called_once()
-        called_cmd = self.runner._get_command_output.call_args[0][0]
-        self.assertEqual(called_cmd, [fake_bin, "-V"])
+        self.assertEqual(res["output"], "Icecast 2.4.4")
 
     def test_build_manager_checks_libxml2_and_libxslt(self):
         bm = BuildManager(self.builds_root)

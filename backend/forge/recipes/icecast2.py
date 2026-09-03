@@ -74,79 +74,103 @@ class IcecastRecipe(BaseRecipe):
                 await log_callback("Generando scripts de configuración (autogen.sh)...\n")
                 await self.runner._run_logged_cmd(["./autogen.sh"], log_callback, cwd=extracted_dir)
 
-        # ── Dependency check & auto-build: libigloo (prerequisite for Icecast >= 2.5) ──
-        has_system_igloo = False
-        try:
-            cmd = ["pkg-config", "--exists", "igloo >= 0.9.4"]
-            subprocess.run(cmd, capture_output=True, check=True)
-            has_system_igloo = True
-        except Exception:
-            has_system_igloo = False
-
-        igloo_pc_path = os.path.join(install_path, "lib", "pkgconfig", "igloo.pc")
-        igloo_pc64_path = os.path.join(install_path, "lib64", "pkgconfig", "igloo.pc")
-        has_vendored_igloo = os.path.exists(igloo_pc_path) or os.path.exists(igloo_pc64_path)
-
-        if not has_system_igloo and not has_vendored_igloo:
-            await log_callback("\n━━━ AUTO-COMPILANDO DEPENDENCIA: libigloo v0.9.5 (Requerida por Icecast 2.5+) ━━━\n")
-            igloo_version = "0.9.5"
-            igloo_url = f"https://downloads.xiph.org/releases/igloo/libigloo-{igloo_version}.tar.gz"
-            igloo_tarball = os.path.join(src_path, f"libigloo-{igloo_version}.tar.gz")
-            igloo_dir = os.path.join(src_path, f"libigloo-{igloo_version}")
-
-            if os.path.exists(igloo_dir):
-                shutil.rmtree(igloo_dir)
-
-            igloo_dl_ok = False
-            await log_callback(f"Descargando libigloo v{igloo_version} desde Xiph Downloads...\n")
+        # ── Dependency check & auto-build: libigloo (only if required, e.g. Icecast >= 2.5) ──
+        needs_igloo = False
+        if clean_version:
             try:
+                parts = [int(p) for p in re.findall(r'\d+', clean_version)]
+                if len(parts) >= 2 and (parts[0] > 2 or (parts[0] == 2 and parts[1] >= 5)):
+                    needs_igloo = True
+            except Exception:
+                pass
+
+        for cfg_name in ["configure.ac", "configure.in", "configure"]:
+            cfg_file = os.path.join(extracted_dir, cfg_name)
+            if os.path.exists(cfg_file):
+                try:
+                    with open(cfg_file, "r", errors="ignore") as f:
+                        content = f.read()
+                        if "igloo" in content:
+                            needs_igloo = True
+                            break
+                        elif "LIBXML" in content or "AC_INIT" in content:
+                            needs_igloo = False
+                except Exception:
+                    pass
+
+        if needs_igloo:
+            has_system_igloo = False
+            try:
+                cmd = ["pkg-config", "--exists", "igloo >= 0.9.4"]
+                subprocess.run(cmd, capture_output=True, check=True)
+                has_system_igloo = True
+            except Exception:
+                has_system_igloo = False
+
+            igloo_pc_path = os.path.join(install_path, "lib", "pkgconfig", "igloo.pc")
+            igloo_pc64_path = os.path.join(install_path, "lib64", "pkgconfig", "igloo.pc")
+            has_vendored_igloo = os.path.exists(igloo_pc_path) or os.path.exists(igloo_pc64_path)
+
+            if not has_system_igloo and not has_vendored_igloo:
+                await log_callback("\n━━━ AUTO-COMPILANDO DEPENDENCIA: libigloo v0.9.5 (Requerida por Icecast 2.5+) ━━━\n")
+                igloo_version = "0.9.5"
+                igloo_url = f"https://downloads.xiph.org/releases/igloo/libigloo-{igloo_version}.tar.gz"
+                igloo_tarball = os.path.join(src_path, f"libigloo-{igloo_version}.tar.gz")
+                igloo_dir = os.path.join(src_path, f"libigloo-{igloo_version}")
+
+                if os.path.exists(igloo_dir):
+                    shutil.rmtree(igloo_dir)
+
+                igloo_dl_ok = False
+                await log_callback(f"Descargando libigloo v{igloo_version} desde Xiph Downloads...\n")
+                try:
+                    await self.runner._run_logged_cmd(
+                        ["curl", "-L", "-f", "-o", igloo_tarball, igloo_url],
+                        log_callback
+                    )
+                    if os.path.exists(igloo_tarball) and os.path.getsize(igloo_tarball) > 10000:
+                        igloo_dl_ok = True
+                except Exception as e:
+                    await log_callback(f"Aviso: Falló descarga directa de libigloo ({e}). Intentando Git clone...\n")
+
+                if igloo_dl_ok:
+                    await log_callback("Extrayendo tarball de libigloo...\n")
+                    await self.runner._run_logged_cmd(
+                        ["tar", "-zxf", igloo_tarball, "-C", src_path],
+                        log_callback
+                    )
+                else:
+                    await log_callback("Clonando libigloo desde GitLab Xiph...\n")
+                    await self.runner._run_logged_cmd(
+                        ["git", "clone", "--depth", "1", "--branch", f"v{igloo_version}", "https://gitlab.xiph.org/xiph/icecast-libigloo.git", igloo_dir],
+                        log_callback
+                    )
+                    igloo_autogen = os.path.join(igloo_dir, "autogen.sh")
+                    if os.path.exists(igloo_autogen):
+                        await log_callback("Generando configuración de libigloo (autogen.sh)...\n")
+                        await self.runner._run_logged_cmd(["./autogen.sh"], log_callback, cwd=igloo_dir)
+
+                await log_callback("Configurando libigloo...\n")
                 await self.runner._run_logged_cmd(
-                    ["curl", "-L", "-f", "-o", igloo_tarball, igloo_url],
-                    log_callback
+                    ["./configure", f"--prefix={install_path}"],
+                    log_callback,
+                    cwd=igloo_dir
                 )
-                if os.path.exists(igloo_tarball) and os.path.getsize(igloo_tarball) > 10000:
-                    igloo_dl_ok = True
-            except Exception as e:
-                await log_callback(f"Aviso: Falló descarga directa de libigloo ({e}). Intentando Git clone...\n")
 
-            if igloo_dl_ok:
-                await log_callback("Extrayendo tarball de libigloo...\n")
+                await log_callback("Compilando libigloo...\n")
                 await self.runner._run_logged_cmd(
-                    ["tar", "-zxf", igloo_tarball, "-C", src_path],
-                    log_callback
+                    ["make", "-j4"],
+                    log_callback,
+                    cwd=igloo_dir
                 )
-            else:
-                await log_callback("Clonando libigloo desde GitLab Xiph...\n")
+
+                await log_callback("Instalando libigloo en prefijo local...\n")
                 await self.runner._run_logged_cmd(
-                    ["git", "clone", "--depth", "1", "--branch", f"v{igloo_version}", "https://gitlab.xiph.org/xiph/icecast-libigloo.git", igloo_dir],
-                    log_callback
+                    ["make", "install"],
+                    log_callback,
+                    cwd=igloo_dir
                 )
-                igloo_autogen = os.path.join(igloo_dir, "autogen.sh")
-                if os.path.exists(igloo_autogen):
-                    await log_callback("Generando configuración de libigloo (autogen.sh)...\n")
-                    await self.runner._run_logged_cmd(["./autogen.sh"], log_callback, cwd=igloo_dir)
-
-            await log_callback("Configurando libigloo...\n")
-            await self.runner._run_logged_cmd(
-                ["./configure", f"--prefix={install_path}"],
-                log_callback,
-                cwd=igloo_dir
-            )
-
-            await log_callback("Compilando libigloo...\n")
-            await self.runner._run_logged_cmd(
-                ["make", "-j4"],
-                log_callback,
-                cwd=igloo_dir
-            )
-
-            await log_callback("Instalando libigloo en prefijo local...\n")
-            await self.runner._run_logged_cmd(
-                ["make", "install"],
-                log_callback,
-                cwd=igloo_dir
-            )
-            await log_callback("✓ Dependencia libigloo instalada con éxito.\n\n")
+                await log_callback("✓ Dependencia libigloo instalada con éxito.\n\n")
 
         # Configure environment variables to locate vendored and system dependencies
         build_env = os.environ.copy()
@@ -213,16 +237,21 @@ class IcecastRecipe(BaseRecipe):
             lib_path = os.path.join(install_path, "lib")
             lib64_path = os.path.join(install_path, "lib64")
             run_env["LD_LIBRARY_PATH"] = f"{lib_path}:{lib64_path}:{run_env.get('LD_LIBRARY_PATH', '')}".strip(":")
+            
             try:
-                version_output = await self.runner._get_command_output([icecast_bin, "-V"], env=run_env)
-                await log_callback(f"\n━━━ VERIFICACIÓN DEL BINARIO (icecast -V) ━━━\n{version_output}\n")
+                version_output = await self.runner._get_command_output([icecast_bin, "-v"], env=run_env)
             except Exception:
-                try:
-                    version_output = await self.runner._get_command_output([icecast_bin, "-v"], env=run_env)
-                    await log_callback(f"\n━━━ VERIFICACIÓN DEL BINARIO (icecast -v) ━━━\n{version_output}\n")
-                except Exception as e:
-                    version_output = f"Icecast {clean_version}\n"
-                    await log_callback(f"Aviso: no se pudo verificar versión de Icecast ({e})\n")
+                version_output = f"Icecast {clean_version}\n"
+
+            # Check if rich -V is supported without falling back to usage error (Icecast 2.5+)
+            try:
+                full_v = await self.runner._get_command_output([icecast_bin, "-V"], env=run_env)
+                if full_v and "usage:" not in full_v.lower():
+                    version_output = full_v
+            except Exception:
+                pass
+
+            await log_callback(f"\n━━━ VERIFICACIÓN DEL BINARIO (icecast -v) ━━━\n{version_output}\n")
         
         return {
             "success": True,
@@ -244,11 +273,13 @@ class IcecastRecipe(BaseRecipe):
         run_env["LD_LIBRARY_PATH"] = f"{lib_path}:{lib64_path}:{run_env.get('LD_LIBRARY_PATH', '')}".strip(":")
 
         try:
-            output = await self.runner._get_command_output([binary_path, "-V"], env=run_env)
-            return {"valid": True, "output": output}
-        except Exception:
+            output = await self.runner._get_command_output([binary_path, "-v"], env=run_env)
             try:
-                output = await self.runner._get_command_output([binary_path, "-v"], env=run_env)
-                return {"valid": True, "output": output}
-            except Exception as exc:
-                return {"valid": False, "error": str(exc)}
+                full_v = await self.runner._get_command_output([binary_path, "-V"], env=run_env)
+                if full_v and "usage:" not in full_v.lower():
+                    output = full_v
+            except Exception:
+                pass
+            return {"valid": True, "output": output}
+        except Exception as exc:
+            return {"valid": False, "error": str(exc)}

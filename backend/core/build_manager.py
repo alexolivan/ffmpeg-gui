@@ -393,7 +393,7 @@ class BuildManager:
                 if software_type == "decklink_tools":
                     cmd_flag = "--version"
                 elif software_type == "icecast2":
-                    cmd_flag = "-V"
+                    cmd_flag = "-v"
                 else:
                     cmd_flag = "-version"
                 output = await self._get_command_output([binary_path, cmd_flag])
