@@ -3678,6 +3678,12 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
         install_path = build.install_path or build_manager.get_install_path(build.id, builds_root=storage_path)
         if stype == "decklink_tools":
             candidate = os.path.join(install_path, "decklink-ctl")
+        elif stype == "icecast2":
+            candidate = os.path.join(install_path, "bin", "icecast")
+            if not os.path.isfile(candidate):
+                candidate = os.path.join(install_path, "bin", "icecast2")
+        elif stype == "mediamtx":
+            candidate = os.path.join(install_path, "mediamtx")
         else:
             candidate = os.path.join(install_path, "bin", "ffmpeg")
         if os.path.isfile(candidate):

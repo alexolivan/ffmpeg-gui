@@ -202,7 +202,27 @@ class IcecastRecipe(BaseRecipe):
         )
         
         icecast_bin = os.path.join(install_path, "bin", "icecast")
-        version_output = f"Icecast {clean_version}\n"
+        if not os.path.exists(icecast_bin):
+            alt_bin = os.path.join(install_path, "bin", "icecast2")
+            if os.path.exists(alt_bin):
+                icecast_bin = alt_bin
+
+        version_output = ""
+        if os.path.exists(icecast_bin):
+            run_env = os.environ.copy()
+            lib_path = os.path.join(install_path, "lib")
+            lib64_path = os.path.join(install_path, "lib64")
+            run_env["LD_LIBRARY_PATH"] = f"{lib_path}:{lib64_path}:{run_env.get('LD_LIBRARY_PATH', '')}".strip(":")
+            try:
+                version_output = await self.runner._get_command_output([icecast_bin, "-V"], env=run_env)
+                await log_callback(f"\n━━━ VERIFICACIÓN DEL BINARIO (icecast -V) ━━━\n{version_output}\n")
+            except Exception:
+                try:
+                    version_output = await self.runner._get_command_output([icecast_bin, "-v"], env=run_env)
+                    await log_callback(f"\n━━━ VERIFICACIÓN DEL BINARIO (icecast -v) ━━━\n{version_output}\n")
+                except Exception as e:
+                    version_output = f"Icecast {clean_version}\n"
+                    await log_callback(f"Aviso: no se pudo verificar versión de Icecast ({e})\n")
         
         return {
             "success": True,
@@ -212,6 +232,23 @@ class IcecastRecipe(BaseRecipe):
         }
 
     async def validate(self, binary_path: str) -> dict:
-        if not binary_path or not os.path.exists(binary_path):
-            return {"valid": False, "error": "El binario de Icecast no existe"}
-        return {"valid": True, "output": "Icecast binary validation successful"}
+        """Runs a harmless version test on icecast binary."""
+        if not binary_path or not os.path.isfile(binary_path):
+            return {"valid": False, "error": f"Binary not found: {binary_path}"}
+        
+        run_env = os.environ.copy()
+        bin_dir = os.path.dirname(binary_path)
+        install_path = os.path.dirname(bin_dir)
+        lib_path = os.path.join(install_path, "lib")
+        lib64_path = os.path.join(install_path, "lib64")
+        run_env["LD_LIBRARY_PATH"] = f"{lib_path}:{lib64_path}:{run_env.get('LD_LIBRARY_PATH', '')}".strip(":")
+
+        try:
+            output = await self.runner._get_command_output([binary_path, "-V"], env=run_env)
+            return {"valid": True, "output": output}
+        except Exception:
+            try:
+                output = await self.runner._get_command_output([binary_path, "-v"], env=run_env)
+                return {"valid": True, "output": output}
+            except Exception as exc:
+                return {"valid": False, "error": str(exc)}

@@ -390,7 +390,12 @@ class BuildManager:
             return await recipe.validate(binary_path)
         except Exception:
             try:
-                cmd_flag = "--version" if software_type == "decklink_tools" else "-version"
+                if software_type == "decklink_tools":
+                    cmd_flag = "--version"
+                elif software_type == "icecast2":
+                    cmd_flag = "-V"
+                else:
+                    cmd_flag = "-version"
                 output = await self._get_command_output([binary_path, cmd_flag])
                 return {"valid": True, "output": output}
             except Exception as exc:
@@ -489,9 +494,11 @@ class BuildManager:
             raise Exception(f"Command failed with exit code {return_code}")
         return return_code
 
-    async def _get_command_output(self, cmd) -> str:
+    async def _get_command_output(self, cmd, env: dict | None = None) -> str:
         """Run a command and return its full stdout as a string."""
         custom_env = os.environ.copy()
+        if env:
+            custom_env.update(env)
         custom_env["GIT_TERMINAL_PROMPT"] = "0"
         custom_env["GIT_ASKPASS"] = "true"
         custom_env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"

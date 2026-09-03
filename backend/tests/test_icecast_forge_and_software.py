@@ -53,6 +53,22 @@ class TestIcecastForgeAndSoftware(unittest.IsolatedAsyncioTestCase):
             log_calls = [c[0][0] for c in log_mock.call_args_list if c[0]]
             self.assertTrue(any("libigloo" in str(line) for line in log_calls))
 
+    async def test_icecast_recipe_validate_executes_version(self):
+        recipe = IcecastRecipe(self.builds_root, self.runner)
+        fake_bin = os.path.join(self.test_dir, "bin", "icecast")
+        os.makedirs(os.path.dirname(fake_bin), exist_ok=True)
+        with open(fake_bin, "w") as f:
+            f.write("#!/bin/sh\necho 'Icecast 2.5.0'")
+        os.chmod(fake_bin, 0o755)
+
+        self.runner._get_command_output = AsyncMock(return_value="Icecast 2.5.0\nCompile time flags: ...\nDependencies:\n libigloo")
+        res = await recipe.validate(fake_bin)
+        self.assertTrue(res["valid"])
+        self.assertIn("Icecast 2.5.0", res["output"])
+        self.runner._get_command_output.assert_called_once()
+        called_cmd = self.runner._get_command_output.call_args[0][0]
+        self.assertEqual(called_cmd, [fake_bin, "-V"])
+
     def test_build_manager_checks_libxml2_and_libxslt(self):
         bm = BuildManager(self.builds_root)
         results = bm.check_dependencies()
