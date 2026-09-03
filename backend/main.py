@@ -3837,6 +3837,12 @@ def get_mediamtx_next_available_ports(exclude_service_id: Optional[int] = Query(
     from utils.port_validator import get_next_available_mediamtx_ports
     return get_next_available_mediamtx_ports(db, exclude_service_id=exclude_service_id)
 
+@app.get("/api/services/icecast/next-available-ports")
+@app.get("/services/icecast/next-available-ports")
+def get_icecast_next_available_ports_endpoint(db: Session = Depends(get_db)):
+    from utils.port_validator import get_next_available_icecast_ports
+    return get_next_available_icecast_ports(db)
+
 @app.post("/processes/preview-cmd")
 def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
     # Sanitize configs for preview

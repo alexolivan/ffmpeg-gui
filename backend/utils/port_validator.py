@@ -104,8 +104,21 @@ def extract_ports_from_service(
 
     elif s_type == "icecast_server":
         ice = cfg.get("icecast_config", cfg)
-        if ice.get("port"):
+        if ice.get("http_enabled", True) and ice.get("port"):
             try: ports.append((int(ice["port"]), "Icecast HTTP", service_name, service_id, "tcp"))
+            except (ValueError, TypeError): pass
+        elif ice.get("port") and ice.get("http_enabled") is not False:
+            try: ports.append((int(ice["port"]), "Icecast HTTP", service_name, service_id, "tcp"))
+            except (ValueError, TypeError): pass
+
+        if ice.get("ssl_enabled", False):
+            if ice.get("ssl_port"):
+                try: ports.append((int(ice["ssl_port"]), "Icecast HTTPS/TLS", service_name, service_id, "tcp"))
+                except (ValueError, TypeError): pass
+            else:
+                ports.append((7443, "Icecast HTTPS/TLS (Default)", service_name, service_id, "tcp"))
+        elif ice.get("ssl_port") and ice.get("ssl_enabled") is not False:
+            try: ports.append((int(ice["ssl_port"]), "Icecast HTTPS/TLS", service_name, service_id, "tcp"))
             except (ValueError, TypeError): pass
 
     elif s_type == "ffmpeg_stream":
@@ -308,3 +321,96 @@ def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[
         "srt_port": 18890,
         "api_port": 19997,
     }
+
+
+def get_next_available_icecast_ports(db: Session) -> Dict[str, int]:
+    """
+    Calculates conflict-free candidate ports for a new Icecast2 service.
+    Allocates in the dedicated TCP 7XXX range:
+      - HTTP Port: 7000 (step +10 -> 7010, 7020...)
+      - HTTPS/TLS Port: 7443 (step +10 -> 7453, 7463...)
+    """
+    occupied_ports: Set[Tuple[int, str]] = set()
+    services = db.query(Service).all()
+    for svc in services:
+        for p, _, _, _, proto in extract_ports_from_service(
+            svc.id, svc.name, svc.service_type, svc.config, svc.input_config, svc.output_config
+        ):
+            occupied_ports.add((p, proto))
+
+    base_http = 7000
+    base_https = 7443
+
+    for offset in range(50):
+        cand_http = base_http + (offset * 10)
+        cand_https = base_https + (offset * 10)
+
+        cand_specs = [
+            (cand_http, "tcp"),
+            (cand_https, "tcp"),
+        ]
+
+        if not any(spec in occupied_ports for spec in cand_specs):
+            return {
+                "port": cand_http,
+                "ssl_port": cand_https,
+            }
+
+    return {
+        "port": 17000,
+        "ssl_port": 17443,
+    }
+
+
+def validate_icecast_ports(
+    service_id: Optional[int],
+    service_name: str,
+    icecast_config: dict,
+    db: Session
+) -> None:
+    """
+    Validates that proposed Icecast ports do not collide with active services.
+    Raises HTTPException(status_code=400) on collision.
+    """
+    proposed_specs = []
+    http_enabled = icecast_config.get("http_enabled", True)
+    http_port = icecast_config.get("port")
+    if http_enabled and http_port:
+        try:
+            p = int(http_port)
+            proposed_specs.append((p, "Icecast HTTP", "tcp"))
+        except (ValueError, TypeError):
+            pass
+
+    ssl_enabled = icecast_config.get("ssl_enabled", False)
+    ssl_port = icecast_config.get("ssl_port")
+    if ssl_enabled:
+        p = int(ssl_port) if ssl_port else 7443
+        proposed_specs.append((p, "Icecast HTTPS/TLS", "tcp"))
+
+    # Check internal duplicate between HTTP and HTTPS
+    seen = {}
+    for p, label, proto in proposed_specs:
+        if (p, proto) in seen:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Port conflict within Icecast configuration: Port {p}/{proto.upper()} is defined for both '{seen[(p, proto)]}' and '{label}'."
+            )
+        seen[(p, proto)] = label
+
+    # Check against database
+    services = db.query(Service).all()
+    for svc in services:
+        if service_id and svc.id == service_id:
+            continue
+        existing_ports = extract_ports_from_service(
+            svc.id, svc.name, svc.service_type, svc.config, svc.input_config, svc.output_config
+        )
+        for ep, elabel, esvc_name, _, eproto in existing_ports:
+            for pp, plabel, pproto in proposed_specs:
+                if pp == ep and pproto == eproto:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Port collision on {pp}/{pproto.upper()} ({plabel}): already in use by service '{esvc_name}' ({elabel})."
+                    )
+
