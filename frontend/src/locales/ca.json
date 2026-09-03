@@ -1066,7 +1066,11 @@
       "remoteServer": "Servidor Remot / Manual",
       "streamMeta": "Metadades de l'Emissió (Opcional)",
       "targetMount": "Punt de Muntatge (Mountpoint)",
-      "targetServer": "Servidor Icecast Destinació"
+      "targetServer": "Servidor Icecast Destinació",
+      "legacyIcecast": "Mode Servidor Legacy (Icecast < v2.4)",
+      "legacyIcecastDesc": "Activa el mètode HTTP SOURCE (en lloc d'HTTP PUT). Imprescindible per a servidors Icecast 2.3.x o anteriors.",
+      "tls": "Connexió Xifrada TLS / SSL",
+      "tlsDesc": "Força transmissió xifrada TLS (-tls 1) per connectar amb ports segurs HTTPS/TLS d'Icecast."
     }
   },
   "filters": {

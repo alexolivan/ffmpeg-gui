@@ -177,6 +177,23 @@ export const IcecastServiceCard: React.FC<IcecastServiceCardProps> = ({
             </span>
           )}
 
+          {/* Active Broadcasters / Consumers Leases Badge */}
+          {service.active_leases && service.active_leases.length > 0 ? (
+            <span 
+              className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-black flex items-center gap-1 shadow-[0_0_8px_rgba(212,255,91,0.2)]"
+              title={`Active connected broadcasters / consumers: ${service.active_leases.join(', ')}`}
+            >
+              🔗 {service.active_leases.length} {service.active_leases.length === 1 ? 'CONSUMER' : 'CONSUMERS'} ({service.active_leases.join(', ')})
+            </span>
+          ) : (
+            <span 
+              className="text-[9px] bg-white/5 text-[var(--text-secondary)] border border-white/10 px-2 py-0.5 rounded font-medium flex items-center gap-1"
+              title="No active tasks or services currently leasing this Icecast server."
+            >
+              🔗 0 LEASES (IDLE)
+            </span>
+          )}
+
           {isRetrying && (
             <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
               ⚠️ {t('services.retrying', 'RETRYING')} ({service.restart_count || 0})

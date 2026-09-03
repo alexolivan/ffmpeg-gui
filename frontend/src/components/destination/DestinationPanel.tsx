@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SystemCapabilities } from '../codec/codecRegistry';
 import { HlsVariantsForm, type HlsVariant } from './HlsVariantsForm';
+import { ShieldIcon } from '../Icons';
 
 export interface OutputConfig {
   type: string;
@@ -56,6 +57,8 @@ export interface OutputConfig {
   ice_genre?: string;
   ice_description?: string;
   ice_public?: boolean;
+  legacy_icecast?: boolean;
+  tls?: boolean;
 }
 
 interface DestinationPanelProps {
@@ -1433,14 +1436,16 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           const firstMount = pMounts.length > 0 ? pMounts[0].mount_name : (config.icecast_mount || '/live.mp3');
           const firstMountObj = pMounts.find((m: any) => m.mount_name === firstMount);
           const pass = firstMountObj?.source_password || pCfg.source_password || 'hackme';
+          const isTls = pCfg.ssl_enabled === true;
 
           update({
             provider_service_id: prov.id,
             icecast_mode: 'local',
             host: '127.0.0.1',
-            port: String(pCfg.port || 7000),
+            port: String(isTls ? (pCfg.ssl_port || 7443) : (pCfg.port || 7000)),
             icecast_mount: firstMount,
             icecast_password: pass,
+            tls: isTls,
           });
         };
 
@@ -1698,6 +1703,51 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 </div>
               </div>
             </details>
+
+            {/* Protocol & Compatibility Options: Legacy SOURCE method (< v2.4) & TLS */}
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col pr-2">
+                  <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <span>⚡</span>
+                    <span>{t('destinations.icecast.legacyIcecast', 'Modo Servidor Legacy (Icecast < v2.4)')}</span>
+                  </span>
+                  <span className="text-[10px] text-[var(--text-secondary)]">
+                    {t('destinations.icecast.legacyIcecastDesc', 'Activa el método HTTP SOURCE (en lugar de HTTP PUT). Imprescindible para servidores Icecast 2.3.x o anteriores.')}
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.legacy_icecast)}
+                    onChange={(e) => update({ legacy_icecast: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime peer-checked:after:border-black peer-checked:after:bg-black"></div>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-[var(--glass-border)]">
+                <div className="flex flex-col pr-2">
+                  <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <ShieldIcon size={12} />
+                    <span>{t('destinations.icecast.tls', 'Conexión Cifrada TLS / SSL')}</span>
+                  </span>
+                  <span className="text-[10px] text-[var(--text-secondary)]">
+                    {t('destinations.icecast.tlsDesc', 'Fuerza transmisión cifrada TLS (-tls 1) para conectar con puertos seguros HTTPS/TLS de Icecast.')}
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.tls)}
+                    onChange={(e) => update({ tls: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:border-black peer-checked:after:bg-black"></div>
+                </label>
+              </div>
+            </div>
 
             {/* Auto-negotiated Codec Notice */}
             <div className="bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-2.5 text-[11px] text-text-secondary flex items-start gap-2">

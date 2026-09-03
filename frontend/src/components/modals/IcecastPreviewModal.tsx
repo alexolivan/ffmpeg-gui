@@ -290,6 +290,15 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                   />
                   {currentProcess.status}
                 </span>
+
+                {currentProcess.active_leases && currentProcess.active_leases.length > 0 && (
+                  <span
+                    className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-black flex items-center gap-1 shadow-[0_0_8px_rgba(212,255,91,0.2)]"
+                    title={`Active connected broadcasters: ${currentProcess.active_leases.join(', ')}`}
+                  >
+                    🔗 {currentProcess.active_leases.length} {currentProcess.active_leases.length === 1 ? 'CONSUMER' : 'CONSUMERS'}
+                  </span>
+                )}
               </div>
               <p className="text-[var(--text-secondary)] text-xs flex items-center gap-2 mt-0.5">
                 <span>{t('services.icecast.preview.title', 'Servidor de Audio Icecast2')}</span>

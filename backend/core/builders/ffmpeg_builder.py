@@ -600,6 +600,14 @@ class FFmpegCommandBuilder:
             if 'ice_public' in output_cfg:
                 cmd += ["-ice_public", "1" if output_cfg['ice_public'] else "0"]
 
+            # Legacy Icecast server support (< v2.4, uses SOURCE method instead of PUT)
+            if output_cfg.get('legacy_icecast'):
+                cmd += ["-legacy_icecast", "1"]
+
+            # TLS connection support
+            if output_cfg.get('tls'):
+                cmd += ["-tls", "1"]
+
             cmd += [f"icecast://{username}:{password}@{host}:{port}{mount}"]
         elif output_type == 'hls':
             path = output_cfg.get('path', '')

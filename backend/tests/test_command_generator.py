@@ -373,5 +373,52 @@ class TestCommandGenerator(unittest.TestCase):
         cmd_str = " ".join(cmd)
         self.assertIn("-rw_timeout 15000000 -i rtmp://example.com/live/stream", cmd_str)
 
+    def test_icecast_output_command_generation(self):
+        # Case 1: Standard Icecast 2.4+ output
+        proc = MagicMock()
+        proc.id = 601
+        proc.type = "service"
+        proc.input_config = {'type': 'lavfi_audio', 'has_video': False, 'has_audio': True}
+        proc.codec_config = {'vcodec': 'none', 'acodec': 'libmp3lame'}
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'icecast',
+            'host': '127.0.0.1',
+            'port': '7000',
+            'icecast_mount': '/radio.mp3',
+            'icecast_username': 'source',
+            'icecast_password': 'mypassword',
+            'ice_name': 'My Station',
+            'ice_genre': 'Rock'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f mp3 -content_type audio/mpeg", cmd_str)
+        self.assertIn("-ice_name My Station -ice_genre Rock", cmd_str)
+        self.assertNotIn("-legacy_icecast", cmd_str)
+        self.assertNotIn("-tls", cmd_str)
+        self.assertIn("icecast://source:mypassword@127.0.0.1:7000/radio.mp3", cmd_str)
+
+        # Case 2: Legacy Icecast server (< v2.4, e.g. 2.3.3) with TLS enabled
+        proc.output_config = {
+            'type': 'icecast',
+            'host': '192.168.1.50',
+            'port': '8000',
+            'icecast_mount': '/legacy.mp3',
+            'icecast_username': 'source',
+            'icecast_password': 'secret',
+            'legacy_icecast': True,
+            'tls': True
+        }
+
+        cmd_legacy = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_legacy_str = " ".join(cmd_legacy)
+
+        self.assertIn("-legacy_icecast 1", cmd_legacy_str)
+        self.assertIn("-tls 1", cmd_legacy_str)
+        self.assertIn("icecast://source:secret@192.168.1.50:8000/legacy.mp3", cmd_legacy_str)
+
 if __name__ == '__main__':
     unittest.main()
