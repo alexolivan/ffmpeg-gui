@@ -240,7 +240,25 @@
       "logStorageTitle": "Log Storage Volume",
       "logStorage": "Dedicated Log Storage Volume",
       "logStorageDesc": "Stores Icecast access.log, error.log, and stdout/stderr with automated log rotation.",
-      "lifecycleTitle": "Lifecycle & Autostart"
+      "lifecycleTitle": "Lifecycle & Autostart",
+      "listeners": "Listeners",
+      "preview": {
+        "title": "Icecast2 Audio Server",
+        "webConsole": "Icecast Web Admin & Status GUI",
+        "openWebConsole": "Open Web Console (New Tab)",
+        "webConsoleHint": "Inspect detailed XML/HTML station status, active listeners, and connected broadcaster clients.",
+        "perMountTitle": "Extended Mountpoint Telemetry & Live Player",
+        "noMountsRunning": "No active broadcasting sources connected yet. Broadcasters can stream to this server using the source password.",
+        "mount": "Mountpoint",
+        "listeners": "Listeners",
+        "peak": "Peak",
+        "format": "Format / Bitrate",
+        "titleCol": "Stream Title / Metadata",
+        "listenLive": "Live Audio Player",
+        "copyUrl": "Copy Stream URL",
+        "copied": "Copied!",
+        "logsTitle": "Server Logs (Stdout / Error Log)"
+      }
     }
   },
   "settings": {

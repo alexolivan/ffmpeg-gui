@@ -1365,9 +1365,6 @@ class ProcessManager:
                                                 peak = s.get("listener_peak", 0)
                                                 if isinstance(peak, int) and peak > max_peak:
                                                     max_peak = peak
-                                            fps = f"{g_listeners}"
-                                            speed = f"Peak: {max_peak}"
-                                            bitrate = f"{active_mounts} mounts"
                                             new_cfg = dict(media_proc.config)
                                             new_cfg["icecast_stats"] = {
                                                 "listeners": g_listeners,
@@ -1388,9 +1385,14 @@ class ProcessManager:
                                 except Exception:
                                     pass
 
-                            media_proc.fps = fps if fps is not None else "0"
-                            media_proc.bitrate = bitrate if bitrate is not None else "0 kb/s"
-                            media_proc.speed = speed if speed is not None else "0x"
+                            if is_icecast:
+                                media_proc.fps = None
+                                media_proc.bitrate = None
+                                media_proc.speed = None
+                            else:
+                                media_proc.fps = fps if fps is not None else "0"
+                                media_proc.bitrate = bitrate if bitrate is not None else "0 kb/s"
+                                media_proc.speed = speed if speed is not None else "0x"
                             media_proc.cpu_usage = int(cpu)
                             media_proc.ram_usage = int(mem)
                             session.commit()

@@ -240,7 +240,25 @@
       "logStorageTitle": "Volum d'Emmagatzematge de Registres",
       "logStorage": "Volum d'Emmagatzematge de Registres Dedicat",
       "logStorageDesc": "Emmagatzema els fitxers access.log, error.log i stdout/stderr d'Icecast amb rotació automàtica.",
-      "lifecycleTitle": "Cicle de Vida i Auto-Arrencada"
+      "lifecycleTitle": "Cicle de Vida i Auto-Arrencada",
+      "listeners": "Oients",
+      "preview": {
+        "title": "Servidor d'Àudio Icecast2",
+        "webConsole": "Consola Web d'Administració i Estat",
+        "openWebConsole": "Obrir Consola Web (Nova Pestanya)",
+        "webConsoleHint": "Inspecciona l'estat XML/HTML de l'estació, oients actius i clients emissors connectats.",
+        "perMountTitle": "Telemetria Estesa per Punt de Muntatge i Reproductor",
+        "noMountsRunning": "Encara no hi ha canals emissors actius connectats. Els emissors poden transmetre usant la contrasenya de source.",
+        "mount": "Punt de Muntatge",
+        "listeners": "Oients",
+        "peak": "Pic",
+        "format": "Format / Bitrate",
+        "titleCol": "Títol d'Emissió / Metadades",
+        "listenLive": "Reproductor en Viu",
+        "copyUrl": "Copiar URL del Flux",
+        "copied": "Copiat!",
+        "logsTitle": "Registres del Servidor (Stdout / Error Log)"
+      }
     }
   },
   "settings": {

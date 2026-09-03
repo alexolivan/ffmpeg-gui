@@ -4201,31 +4201,73 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
         if not log_storage_path:
             log_storage_path = os.path.abspath("data/logs")
 
+        lines = []
         log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
         if os.path.exists(log_file):
             try:
                 with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                    lines = f.readlines()
-                    parsed_logs = []
-                    for line in lines[-100:]:
-                        line_str = line.strip()
-                        if not line_str:
-                            continue
-                        lower = line_str.lower()
-                        level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot"]) else "INFO"
-                        parsed_logs.append({
-                            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                            "level": level,
-                            "message": line_str
-                        })
-                    return parsed_logs
+                    lines.extend(f.readlines())
             except Exception as e:
                 logger.error(f"Error reading log file {log_file} for process {process_id}: {e}")
+
+        # Also inspect icecast error.log if it's an Icecast server
+        if getattr(db_proc, 'service_type', '') == 'icecast_server':
+            ice_err = os.path.join(log_storage_path, f"icecast_{process_id}", "error.log")
+            if os.path.exists(ice_err):
+                try:
+                    with open(ice_err, "r", encoding="utf-8", errors="replace") as f:
+                        lines.extend(f.readlines())
+                except Exception:
+                    pass
+
+        if lines:
+            parsed_logs = []
+            for line in lines[-100:]:
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                lower = line_str.lower()
+                level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else "INFO"
+                parsed_logs.append({
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    "level": level,
+                    "message": line_str
+                })
+            return parsed_logs
 
     # 3. Fall back to database query
     return db.query(ProcessLog).filter(
         ProcessLog.process_id == process_id
     ).order_by(ProcessLog.id.asc()).limit(100).all()
+
+
+@app.get("/processes/{process_id}/icecast-status")
+@app.get("/api/processes/{process_id}/icecast-status")
+def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    cfg = db_proc.config or {}
+    ice_cfg = cfg.get("icecast_config") or {}
+    port = ice_cfg.get("port", 7000)
+    
+    try:
+        import urllib.request
+        import json as pyjson
+        url = f"http://127.0.0.1:{port}/status-json.xsl"
+        req = urllib.request.Request(url, headers={"User-Agent": "ffmpeg-gui"})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            if resp.status == 200:
+                return pyjson.loads(resp.read().decode("utf-8"))
+    except Exception:
+        pass
+    
+    cached_stats = cfg.get("icecast_stats")
+    if cached_stats:
+        return {"icestats": cached_stats}
+    return {"icestats": {"listeners": 0, "source": []}}
+
 
 @app.post("/processes/{process_id}/start")
 async def start_process(process_id: int):

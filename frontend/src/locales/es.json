@@ -240,7 +240,25 @@
       "logStorageTitle": "Volumen de Almacenamiento de Logs",
       "logStorage": "Volumen de Almacenamiento de Logs Dedicado",
       "logStorageDesc": "Almacena los ficheros access.log, error.log y stdout/stderr de Icecast con rotación automática.",
-      "lifecycleTitle": "Ciclo de Vida y Auto-Arranque"
+      "lifecycleTitle": "Ciclo de Vida y Auto-Arranque",
+      "listeners": "Oyentes",
+      "preview": {
+        "title": "Servidor de Audio Icecast2",
+        "webConsole": "Consola Web de Administración y Estado",
+        "openWebConsole": "Abrir Consola Web (Nueva Pestaña)",
+        "webConsoleHint": "Inspecciona el estado XML/HTML de la estación, oyentes activos y clientes emisores conectados.",
+        "perMountTitle": "Telemetría Extendida por Punto de Montaje y Reproductor",
+        "noMountsRunning": "No hay canales emisores activos conectados todavía. Los emisores pueden transmitir usando la contraseña de source.",
+        "mount": "Punto de Montaje",
+        "listeners": "Oyentes",
+        "peak": "Pico",
+        "format": "Formato / Bitrate",
+        "titleCol": "Título de Emisión / Metadatos",
+        "listenLive": "Reproductor en Vivo",
+        "copyUrl": "Copiar URL del Stream",
+        "copied": "¡Copiado!",
+        "logsTitle": "Registros del Servidor (Stdout / Error Log)"
+      }
     }
   },
   "settings": {

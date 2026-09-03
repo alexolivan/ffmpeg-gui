@@ -12,6 +12,7 @@ import { SettingsView } from './components/views/SettingsView';
 import { ForgeView } from './components/views/ForgeView';
 import { FfmpegPreviewModal } from './components/modals/FfmpegPreviewModal';
 import { MediaMtxPreviewModal } from './components/modals/MediaMtxPreviewModal';
+import { IcecastPreviewModal } from './components/modals/IcecastPreviewModal';
 import { ServiceTypePickerModal } from './components/modals/ServiceTypePickerModal';
 import { MediaMtxConfigForm } from './components/forms/MediaMtxConfigForm';
 import { IcecastConfigForm } from './components/forms/IcecastConfigForm';
@@ -560,6 +561,20 @@ function App() {
       {selectedProcess && (
         selectedProcess.service_type === 'mediamtx_hub' ? (
           <MediaMtxPreviewModal
+            selectedProcess={selectedProcess}
+            telemetry={telemetry}
+            actionPending={actionPending}
+            logs={logs}
+            onClose={() => setSelectedProcess(null)}
+            onEditProcess={setEditingProcess}
+            onCloneProcess={handleCloneProcess}
+            onStartService={handleStartService}
+            onStopService={handleStopService}
+            onRestartService={handleRestartService}
+            API={API}
+          />
+        ) : selectedProcess.service_type === 'icecast_server' ? (
+          <IcecastPreviewModal
             selectedProcess={selectedProcess}
             telemetry={telemetry}
             actionPending={actionPending}
