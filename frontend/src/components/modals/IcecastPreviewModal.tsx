@@ -54,6 +54,8 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
+  const previewBoxRef = useRef<HTMLDivElement | null>(null);
+  const [iframeScale, setIframeScale] = useState(0.35);
 
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
   const isRunning = currentProcess.status === 'running';
@@ -72,10 +74,30 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
 
   const configuredMounts: any[] = Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [];
 
-  // Host resolver
+  // Host & admin authentication resolver
   const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
-  const webConsoleUrl = sslEnabled ? `https://${host}:${sslPort}/admin/` : `http://${host}:${httpPort}/admin/`;
+  const adminUser = iceCfg.admin_user || 'admin';
+  const adminPass = iceCfg.admin_password || '';
+  const adminAuthPrefix = adminPass ? `${encodeURIComponent(adminUser)}:${encodeURIComponent(adminPass)}@` : '';
+  const webConsoleUrl = sslEnabled ? `https://${adminAuthPrefix}${host}:${sslPort}/admin/` : `http://${adminAuthPrefix}${host}:${httpPort}/admin/`;
   const webStatusUrl = sslEnabled ? `https://${host}:${sslPort}/status.xsl` : `http://${host}:${httpPort}/status.xsl`;
+
+  // Scale iframe to match 1280x720 virtual desktop in aspect-video box
+  useEffect(() => {
+    if (!previewBoxRef.current) return;
+    const updateScale = () => {
+      if (previewBoxRef.current) {
+        const width = previewBoxRef.current.clientWidth;
+        if (width > 0) {
+          setIframeScale(width / 1280);
+        }
+      }
+    };
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(previewBoxRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   // Poll live Icecast JSON status
   useEffect(() => {
@@ -423,18 +445,47 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
               )}
             </div>
 
-            {/* Col 2: Live Web Preview in aspect-video box (exact same dimension as FFmpeg video preview) */}
+            {/* Col 2: Live Web Preview in aspect-video box (scaled virtual desktop preview) */}
             <div className="flex flex-col justify-center">
-              <div className="aspect-video bg-black rounded-xl overflow-hidden border border-[var(--glass-border)] flex items-center justify-center relative shadow-2xl">
+              <div
+                ref={previewBoxRef}
+                className="aspect-video bg-black rounded-xl overflow-hidden border border-[var(--glass-border)] flex items-center justify-center relative shadow-2xl group select-none"
+              >
                 {isRunning ? (
                   <>
-                    <iframe
-                      src={webStatusUrl}
-                      title="Icecast Web Status"
-                      className="w-full h-full border-0 bg-white"
-                      sandbox="allow-same-origin allow-scripts allow-forms"
-                    />
-                    <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-brand-lime text-black text-[8px] font-black rounded tracking-wider uppercase animate-pulse shadow">
+                    <div
+                      className="w-[1280px] h-[720px] origin-top-left pointer-events-none select-none overflow-hidden absolute top-0 left-0"
+                      style={{
+                        transform: `scale(${iframeScale})`,
+                        width: '1280px',
+                        height: '720px',
+                      }}
+                    >
+                      <iframe
+                        src={webStatusUrl}
+                        title="Icecast Web Status Preview"
+                        className="w-[1280px] h-[720px] border-0 bg-white pointer-events-none select-none"
+                        sandbox="allow-same-origin allow-scripts"
+                        tabIndex={-1}
+                      />
+                    </div>
+
+                    {/* Non-intrusive hover overlay allowing 1-click opening to status page */}
+                    <a
+                      href={webStatusUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="absolute inset-0 cursor-pointer z-10 opacity-0 group-hover:opacity-100 bg-black/20 transition-opacity flex items-center justify-center"
+                      title={t('services.icecast.preview.statusPage', 'Página de Estado')}
+                    >
+                      <span className="text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg bg-black/80 text-cyan-400 border border-cyan-500/30 backdrop-blur-sm shadow-xl flex items-center gap-1.5 transition-transform group-hover:scale-105">
+                        <span>📊</span>
+                        <span>{t('services.icecast.preview.statusPage', 'Página de Estado')}</span>
+                        <span className="text-xs">↗</span>
+                      </span>
+                    </a>
+
+                    <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-brand-lime text-black text-[8px] font-black rounded tracking-wider uppercase animate-pulse shadow pointer-events-none z-20">
                       LIVE
                     </div>
                   </>
