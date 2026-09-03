@@ -236,7 +236,11 @@
       "sourcePassword": "Contrasenya d'Emissió (Source Password)",
       "sourcesLimit": "Límit de Fonts Emissores",
       "sslPortLabel": "Port HTTPS / TLS (Segur)",
-      "systemDefault": "Binari del Sistema Host ($PATH / icecast2)"
+      "systemDefault": "Binari del Sistema Host ($PATH / icecast2)",
+      "logStorageTitle": "Volum d'Emmagatzematge de Registres",
+      "logStorage": "Volum d'Emmagatzematge de Registres Dedicat",
+      "logStorageDesc": "Emmagatzema els fitxers access.log, error.log i stdout/stderr d'Icecast amb rotació automàtica.",
+      "lifecycleTitle": "Cicle de Vida i Auto-Arrencada"
     }
   },
   "settings": {

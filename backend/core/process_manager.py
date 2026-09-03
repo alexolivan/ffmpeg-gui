@@ -186,7 +186,7 @@ class ProcessManager:
                 else:
                     raise FileNotFoundError("Icecast2 binary not found. Please install Icecast2 ('sudo apt install icecast2') or compile it in Settings → Software Engine.")
 
-                cmd, ephem_path = self._build_icecast_config_and_cmd(media_proc, icecast_bin, session)
+                cmd, ephem_path = self._build_icecast_config_and_cmd(media_proc, icecast_bin, session, log_storage_path=logs_dir)
                 self.ephemeral_configs[process_id] = ephem_path
             else:
                 # Determine which FFmpeg binary to use
@@ -872,7 +872,7 @@ class ProcessManager:
 
         return [mediamtx_bin, ephem_file], ephem_file
 
-    def _build_icecast_config_and_cmd(self, media_proc, icecast_bin: str, session):
+    def _build_icecast_config_and_cmd(self, media_proc, icecast_bin: str, session, log_storage_path: Optional[str] = None):
         """
         Generates a customized, isolated icecast.xml configuration and builds
         the command line execution arguments for an Icecast2 server instance.
@@ -902,7 +902,10 @@ class ProcessManager:
         token = uuid.uuid4().hex[:8]
 
         # Log directory
-        log_dir = os.path.join(shm_dir, f"ffmpeg_gui_icecast_logs_{media_proc.id}")
+        if log_storage_path and os.path.exists(log_storage_path):
+            log_dir = os.path.join(log_storage_path, f"icecast_{media_proc.id}")
+        else:
+            log_dir = os.path.join(shm_dir, f"ffmpeg_gui_icecast_logs_{media_proc.id}")
         os.makedirs(log_dir, exist_ok=True)
 
         # Webroot & Adminroot resolution

@@ -80,7 +80,28 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
   const [hasCertificates, setHasCertificates] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch available Icecast builds and next available ports
+  // Storage & Lifecycle
+  const [storages, setStorages] = useState<any[]>([]);
+  const [logStorageId, setLogStorageId] = useState<number | null>(
+    initialConfig?.log_storage_id ?? initialConfig?.config?.log_storage_id ?? null
+  );
+  const [autoStart, setAutoStart] = useState(
+    initialConfig?.auto_start ?? initialConfig?.config?.auto_start ?? false
+  );
+  const [startupOrder, setStartupOrder] = useState(
+    initialConfig?.startup_order ?? initialConfig?.config?.startup_order ?? 1
+  );
+  const [startupDelay, setStartupDelay] = useState(
+    initialConfig?.startup_delay ?? initialConfig?.config?.startup_delay ?? 0
+  );
+  const [watchdogEnabled, setWatchdogEnabled] = useState(
+    initialConfig?.watchdog_enabled ?? initialConfig?.config?.watchdog_enabled !== false
+  );
+  const [watchdogRetries, setWatchdogRetries] = useState(
+    initialConfig?.watchdog_retries ?? initialConfig?.config?.watchdog_retries ?? 5
+  );
+
+  // Fetch available Icecast builds, next available ports, and storage volumes
   useEffect(() => {
     fetch(`${API}/builds`)
       .then((r) => (r.ok ? r.json() : []))
@@ -102,6 +123,21 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
       .then((sslData) => {
         if (sslData && (sslData.has_certificate || sslData.ssl_enabled)) {
           setHasCertificates(true);
+        }
+      })
+      .catch(() => {});
+
+    // Fetch storage volumes for dedicated log storage selection
+    fetch(`${API}/settings/storages`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setStorages(data);
+          const logsList = data.filter((s: any) => s.type === 'logs');
+          if (!logStorageId && logsList.length > 0) {
+            const defLog = logsList.find((s: any) => s.is_default);
+            setLogStorageId(defLog ? defLog.id : logsList[0].id);
+          }
         }
       })
       .catch(() => {});
@@ -171,11 +207,24 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
     setIsSubmitting(true);
 
     const payload = {
-      name,
+      name: name.trim(),
       alias: alias.trim() || undefined,
+      type: 'service',
       service_type: 'icecast_server',
       ffmpeg_build_id: buildId,
+      auto_start: autoStart,
+      startup_order: Number(startupOrder) || 1,
+      startup_delay: Number(startupDelay) || 0,
+      watchdog_enabled: watchdogEnabled,
+      watchdog_retries: Number(watchdogRetries) || 5,
+      log_storage_id: logStorageId ? Number(logStorageId) : null,
       config: {
+        auto_start: autoStart,
+        startup_order: Number(startupOrder) || 1,
+        startup_delay: Number(startupDelay) || 0,
+        watchdog_enabled: watchdogEnabled,
+        watchdog_retries: Number(watchdogRetries) || 5,
+        log_storage_id: logStorageId ? Number(logStorageId) : null,
         icecast_config: {
           port: Number(port),
           http_enabled: httpEnabled,
@@ -203,15 +252,19 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
     }
   };
 
+  const logStorages = storages.filter((s) => s.type === 'logs');
+
   return (
     <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden text-xs text-[var(--text-primary)]">
       {/* ── Scrollable Body with custom scrollbar ── */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1.5 custom-scrollbar">
         {/* ── Section 1: Identity & Engine ── */}
         <div className="bg-[var(--input-bg)]/35 p-3 rounded-xl border border-[var(--glass-border)] space-y-2.5">
-          <div className="flex items-center gap-2 text-brand-lime font-bold uppercase text-[11px] tracking-wider border-b border-[var(--glass-border)] pb-1.5">
-            <span>📻</span>
-            <span>{t('services.icecast.identityTitle', 'Identidad del Servidor Icecast')}</span>
+          <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-1.5">
+            <span className="w-2 h-2 rounded-full bg-brand-lime" />
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-brand-lime">
+              1. {t('services.icecast.identityTitle', 'Identidad del Servidor Icecast')}
+            </h4>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -268,9 +321,11 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
         {/* ── Section 2: Network Ports & TLS/SSL ── */}
         <div className="bg-[var(--input-bg)]/35 p-3 rounded-xl border border-[var(--glass-border)] space-y-2.5">
           <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-1.5">
-            <div className="flex items-center gap-2 text-brand-lime font-bold uppercase text-[11px] tracking-wider">
-              <span>🌐</span>
-              <span>{t('services.icecast.networkTitle', 'Red y Puertos de Escucha (TCP 7XXX)')}</span>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">
+                2. {t('services.icecast.networkTitle', 'Red y Puertos de Escucha (TCP 7XXX)')}
+              </h4>
             </div>
 
             <label className="flex items-center gap-1.5 cursor-pointer">
@@ -344,9 +399,11 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
         {/* ── Section 3: Credentials & Access Control ── */}
         <div className="bg-[var(--input-bg)]/35 p-3 rounded-xl border border-[var(--glass-border)] space-y-2.5">
           <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-1.5">
-            <div className="flex items-center gap-1.5 text-brand-lime font-bold uppercase text-[11px] tracking-wider">
-              <ShieldIcon size={14} />
-              <span>{t('services.icecast.securityTitle', 'Seguridad y Contraseñas de Emisión')}</span>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
+                3. {t('services.icecast.securityTitle', 'Seguridad y Contraseñas de Emisión')}
+              </h4>
             </div>
 
             <button
@@ -422,9 +479,11 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
         {/* ── Section 4: Mountpoints CRUD ── */}
         <div className="bg-[var(--input-bg)]/35 p-3 rounded-xl border border-[var(--glass-border)] space-y-2.5">
           <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-1.5">
-            <div className="flex items-center gap-1.5 text-brand-lime font-bold uppercase text-[11px] tracking-wider">
-              <span>📡</span>
-              <span>{t('services.icecast.mountsTitle', 'Puntos de Montaje (Mountpoints)')}</span>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-400" />
+              <h4 className="text-[11px] font-bold uppercase tracking-wider text-purple-400">
+                4. {t('services.icecast.mountsTitle', 'Puntos de Montaje (Mountpoints)')}
+              </h4>
             </div>
 
             <button
@@ -502,9 +561,11 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
 
         {/* ── Section 5: Station Metadata ── */}
         <div className="bg-[var(--input-bg)]/35 p-3 rounded-xl border border-[var(--glass-border)] space-y-2.5">
-          <div className="flex items-center gap-1.5 text-brand-lime font-bold uppercase text-[11px] tracking-wider border-b border-[var(--glass-border)] pb-1.5">
-            <span>ℹ️</span>
-            <span>{t('services.icecast.metaTitle', 'Metadatos de Estación y Límites Globales')}</span>
+          <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-1.5">
+            <span className="w-2 h-2 rounded-full bg-blue-400" />
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-blue-400">
+              5. {t('services.icecast.metaTitle', 'Metadatos de Estación y Límites Globales')}
+            </h4>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
@@ -586,6 +647,120 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
                 className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-brand-lime"
                 placeholder="65536"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section 6: Dedicated Log Storage Volume ── */}
+        <div className="bg-[var(--input-bg)]/35 p-3 rounded-xl border border-[var(--glass-border)] space-y-2.5">
+          <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-1.5">
+            <span className="w-2 h-2 rounded-full bg-orange-400" />
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-orange-400">
+              6. {t('services.icecast.logStorageTitle', 'Almacenamiento de Registros (Logs)')}
+            </h4>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-1">
+              {t('services.icecast.logStorage', 'Volumen de Almacenamiento de Logs')}
+            </label>
+            <select
+              value={logStorageId || ''}
+              onChange={(e) => setLogStorageId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs focus:border-brand-lime outline-none"
+            >
+              <option value="">{t('common.default', 'Por Defecto (Volumen de Logs del Sistema)')}</option>
+              {logStorages.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.path}) {s.is_default ? `[${t('common.default', 'Default')}]` : ''}
+                </option>
+              ))}
+            </select>
+            <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
+              {t('services.icecast.logStorageDesc', 'Almacena los ficheros access.log, error.log y stdout/stderr de Icecast con rotación automática.')}
+            </span>
+          </div>
+        </div>
+
+        {/* ── Section 7: Lifecycle & Autostart ── */}
+        <div className="bg-[var(--input-bg)]/35 p-3 rounded-xl border border-[var(--glass-border)] space-y-2.5">
+          <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+              7. {t('services.icecast.lifecycleTitle', 'Ciclo de Vida y Auto-Arranque')}
+            </h4>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-5 flex-wrap">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoStart}
+                  onChange={(e) => setAutoStart(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 cursor-pointer"
+                />
+                <span className="font-bold uppercase tracking-wide text-xs">
+                  {t('services.autoStart', 'Auto-start on Boot')}
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={watchdogEnabled}
+                  onChange={(e) => setWatchdogEnabled(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 cursor-pointer"
+                />
+                <span className="font-bold uppercase tracking-wide text-xs">
+                  {t('services.watchdog', 'Watchdog Restart')}
+                </span>
+              </label>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] uppercase font-bold text-[var(--text-secondary)] shrink-0">
+                  {t('services.startupOrder', 'Order')}:
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={startupOrder}
+                  onChange={(e) => setStartupOrder(Number(e.target.value))}
+                  className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] uppercase font-bold text-[var(--text-secondary)] shrink-0">
+                  {t('services.startupDelay', 'Delay (s)')}:
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={300}
+                  value={startupDelay}
+                  onChange={(e) => setStartupDelay(Number(e.target.value))}
+                  className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] uppercase font-bold text-[var(--text-secondary)] shrink-0">
+                  {t('common.retries', 'Reintentos')}:
+                </label>
+                <input
+                  type="number"
+                  min={-1}
+                  max={50}
+                  value={watchdogRetries}
+                  onChange={(e) => setWatchdogRetries(Number(e.target.value))}
+                  className="w-14 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
+                  title="-1 para reintentos infinitos"
+                />
+              </div>
             </div>
           </div>
         </div>

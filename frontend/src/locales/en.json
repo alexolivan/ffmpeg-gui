@@ -236,7 +236,11 @@
       "sourcePassword": "Source Password",
       "sourcesLimit": "Broadcasting Sources Limit",
       "sslPortLabel": "HTTPS / TLS Port (Secure)",
-      "systemDefault": "Host System Binary ($PATH / icecast2)"
+      "systemDefault": "Host System Binary ($PATH / icecast2)",
+      "logStorageTitle": "Log Storage Volume",
+      "logStorage": "Dedicated Log Storage Volume",
+      "logStorageDesc": "Stores Icecast access.log, error.log, and stdout/stderr with automated log rotation.",
+      "lifecycleTitle": "Lifecycle & Autostart"
     }
   },
   "settings": {

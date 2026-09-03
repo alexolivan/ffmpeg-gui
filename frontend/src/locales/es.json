@@ -236,7 +236,11 @@
       "sourcePassword": "Contraseña de Emisión (Source Password)",
       "sourcesLimit": "Límite Canales Emisores",
       "sslPortLabel": "Puerto HTTPS / TLS (Seguro)",
-      "systemDefault": "Binario del Sistema Host ($PATH / icecast2)"
+      "systemDefault": "Binario del Sistema Host ($PATH / icecast2)",
+      "logStorageTitle": "Volumen de Almacenamiento de Logs",
+      "logStorage": "Volumen de Almacenamiento de Logs Dedicado",
+      "logStorageDesc": "Almacena los ficheros access.log, error.log y stdout/stderr de Icecast con rotación automática.",
+      "lifecycleTitle": "Ciclo de Vida y Auto-Arranque"
     }
   },
   "settings": {
