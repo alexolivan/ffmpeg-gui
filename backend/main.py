@@ -336,6 +336,7 @@ class BackupExportRequest(BaseModel):
     tasks: bool = True
     storage_volumes: bool = True
     notifications: bool = True
+    software_engines: bool = True
 
 class BackupImportPayload(BaseModel):
     app: str
@@ -1331,7 +1332,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     if req.gui_general:
         gen_dict = {}
         if "general" in config:
-            for k in ["language", "theme", "node_name", "logo_text", "lcd_alias", "gui_password"]:
+            for k in ["language", "theme", "node_name", "logo_text", "lcd_alias", "gui_password", "auto_restart_panel"]:
                 if k in config["general"]:
                     gen_dict[k] = config["general"][k]
         sections["gui_general"] = gen_dict
@@ -1340,7 +1341,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     if req.gui_network_ssl:
         net_dict = {}
         if "general" in config:
-            for k in ["bind_address", "gui_port", "http_port", "https_port", "ssl_enabled", "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email", "ssl_challenge_type"]:
+            for k in ["bind_address", "gui_port", "http_port", "https_port", "ssl_enabled", "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email", "ssl_challenge_type", "auto_reload_ssl_services"]:
                 if k in config["general"]:
                     net_dict[k] = config["general"][k]
         sections["gui_network_ssl"] = net_dict
@@ -1381,16 +1382,19 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 notif_dict["smtp_password"] = "*****"
         sections["notifications"] = notif_dict
 
-    # 7. Services
+    # 7. Services (Universal: FFmpeg, MediaMTX Hubs, Icecast)
     if req.services:
-        procs = db.query(MediaProcess).filter(MediaProcess.service_type == "ffmpeg_stream").all()
+        from database.models import Service
+        procs = db.query(Service).all()
         sections["services"] = [
             {
                 "name": p.name,
+                "service_type": p.service_type or "ffmpeg_stream",
                 "input_config": p.input_config,
                 "output_config": p.output_config,
                 "codec_config": p.codec_config,
                 "filter_config": p.filter_config,
+                "mediamtx_config": p.mediamtx_config,
                 "auto_start": p.auto_start,
                 "startup_order": p.startup_order,
                 "startup_delay": p.startup_delay,
@@ -1401,6 +1405,10 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "alias": p.alias,
                 "network_timeout": p.network_timeout,
                 "debug_mode": p.debug_mode,
+                "allow_auto_start_deps": p.allow_auto_start_deps,
+                "allow_auto_stop_deps": p.allow_auto_stop_deps,
+                "software_type": p.software_type,
+                "ffmpeg_build_id": p.ffmpeg_build_id,
             }
             for p in procs
         ]
@@ -1415,6 +1423,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "output_config": t.output_config,
                 "codec_config": t.codec_config,
                 "filter_config": t.filter_config,
+                "ffmpeg_build_id": t.ffmpeg_build_id,
                 "schedule_type": t.schedule_type,
                 "schedule_cron": t.schedule_cron,
                 "schedule_datetime": t.schedule_datetime.isoformat() if t.schedule_datetime else None,
@@ -1423,6 +1432,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
                 "is_active": t.is_active,
                 "retry_policy": t.retry_policy,
+                "allow_auto_start_deps": t.allow_auto_start_deps,
+                "allow_auto_stop_deps": t.allow_auto_stop_deps,
                 "alias": t.alias,
             }
             for t in tasks
@@ -1440,6 +1451,28 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             }
             for s in storages
         ]
+
+    # 10. Software Engines & Compilations
+    if req.software_engines:
+        from database.models import FfmpegBuild
+        builds = db.query(FfmpegBuild).all()
+        sections["software_engines"] = [
+            {
+                "name": b.name,
+                "software_type": b.software_type,
+                "source_type": b.source_type,
+                "version_tag": b.version_tag,
+                "binary_path": b.binary_path,
+                "system_path": b.system_path,
+                "is_managed": b.is_managed,
+                "build_options": b.build_options,
+                "sdk_paths": b.sdk_paths,
+                "is_default": b.is_default,
+                "status": b.status,
+            }
+            for b in builds
+        ]
+
 
     return {
         "app": "ffmpeg-gui",
@@ -1463,6 +1496,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         "services": 0,
         "tasks": 0,
         "storage_volumes": 0,
+        "software_engines": 0,
         "notifications": False
     }
     sections = payload.sections or {}
@@ -1543,19 +1577,21 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                 db.add(st)
                 imported_summary["storage_volumes"] += 1
 
-    # Restore Services
+    # Restore Services (Universal: FFmpeg, MediaMTX Hubs, Icecast)
     if "services" in sections and isinstance(sections["services"], list):
+        from database.models import Service
         for p_data in sections["services"]:
-            existing = db.query(MediaProcess).filter(MediaProcess.name == p_data.get("name")).first()
+            existing = db.query(Service).filter(Service.name == p_data.get("name")).first()
             if not existing:
-                proc = MediaProcess(
+                proc = Service(
                     name=p_data.get("name"),
-                    type="service",
+                    service_type=p_data.get("service_type", "ffmpeg_stream"),
                     status="stopped",
                     input_config=p_data.get("input_config") or {},
                     output_config=p_data.get("output_config") or {},
                     codec_config=p_data.get("codec_config") or {},
                     filter_config=p_data.get("filter_config") or {},
+                    mediamtx_config=p_data.get("mediamtx_config") or {},
                     auto_start=p_data.get("auto_start", False),
                     startup_order=p_data.get("startup_order", 1),
                     startup_delay=p_data.get("startup_delay", 0),
@@ -1566,6 +1602,10 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     alias=p_data.get("alias"),
                     network_timeout=p_data.get("network_timeout", 30),
                     debug_mode=p_data.get("debug_mode", False),
+                    allow_auto_start_deps=p_data.get("allow_auto_start_deps", True),
+                    allow_auto_stop_deps=p_data.get("allow_auto_stop_deps", True),
+                    software_type=p_data.get("software_type"),
+                    ffmpeg_build_id=p_data.get("ffmpeg_build_id"),
                 )
                 db.add(proc)
                 imported_summary["services"] += 1
@@ -1594,6 +1634,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     output_config=t_data.get("output_config") or {},
                     codec_config=t_data.get("codec_config") or {},
                     filter_config=t_data.get("filter_config") or {},
+                    ffmpeg_build_id=t_data.get("ffmpeg_build_id"),
                     schedule_type=t_data.get("schedule_type", "manual"),
                     schedule_cron=t_data.get("schedule_cron"),
                     schedule_datetime=sched_dt,
@@ -1602,10 +1643,38 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     duration_end_time=dur_end,
                     is_active=t_data.get("is_active", False),
                     retry_policy=t_data.get("retry_policy", {"max_retries": 3, "retry_delay": 5}),
+                    allow_auto_start_deps=t_data.get("allow_auto_start_deps", True),
+                    allow_auto_stop_deps=t_data.get("allow_auto_stop_deps", True),
                     alias=t_data.get("alias"),
                 )
                 db.add(task)
                 imported_summary["tasks"] += 1
+
+    # Restore Software Engines & Builds
+    if "software_engines" in sections and isinstance(sections["software_engines"], list):
+        from database.models import FfmpegBuild
+        for b_data in sections["software_engines"]:
+            existing = db.query(FfmpegBuild).filter(
+                FfmpegBuild.name == b_data.get("name"),
+                FfmpegBuild.software_type == b_data.get("software_type", "ffmpeg")
+            ).first()
+            if not existing:
+                build = FfmpegBuild(
+                    name=b_data.get("name"),
+                    software_type=b_data.get("software_type", "ffmpeg"),
+                    source_type=b_data.get("source_type", "installed"),
+                    version_tag=b_data.get("version_tag", "system"),
+                    binary_path=b_data.get("binary_path"),
+                    system_path=b_data.get("system_path"),
+                    is_managed=b_data.get("is_managed", False),
+                    build_options=b_data.get("build_options") or {},
+                    sdk_paths=b_data.get("sdk_paths"),
+                    is_default=b_data.get("is_default", False),
+                    status=b_data.get("status", "ready"),
+                )
+                db.add(build)
+                imported_summary["software_engines"] += 1
+
 
     db.commit()
     return {

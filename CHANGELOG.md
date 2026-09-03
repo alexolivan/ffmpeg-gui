@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2026-09-03
+
+### Added
+- **Heterogeneous Service Support & Warm Reload Restart Panel in LCD Driver**:
+  - CrystalFontz CFA635 / CFA631 display menus now enumerate and manage all service types dynamically (`[FFM]` for FFmpeg, `[MTX]` for MediaMTX Hub, `[ICE]` for Icecast).
+  - Dynamic metrics per service type in status detail view (`PATHS:{count} SRT:{port}` for MediaMTX).
+  - Added interactive `Restart Panel` action in LCD Main Menu with two-step confirmation dialogue triggering zero-downtime warm reload (`SIGHUP` reload mode) while active streaming processes remain unaffected.
+- **Modernized Settings Backup & Restore Facility (v2 Parity)**:
+  - Updated `/api/backup/export` and `/api/backup/import` to support universal services, preserving `service_type`, `mediamtx_config`, dependencies leasing flags (`allow_auto_start_deps`, `allow_auto_stop_deps`), and compilation engine bindings.
+  - Added dedicated Software Engines & Forge Builds backup section (`software_engines`) with granular export selector and import restoration.
+  - Exported and restored modern system preferences: `auto_restart_panel` and `auto_reload_ssl_services`.
+  - Modernized `BackupRestoreCard.tsx` UI with categorized selectors, refreshed descriptions, and import preview badge for Software Engines.
+
 ## [2.7.0] - 2026-09-01
 
 ### Added

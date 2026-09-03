@@ -18,6 +18,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
   const [exportServices, setExportServices] = useState(true);
   const [exportTasks, setExportTasks] = useState(true);
   const [exportStorageVolumes, setExportStorageVolumes] = useState(true);
+  const [exportSoftwareEngines, setExportSoftwareEngines] = useState(true);
   const [exportNotifications, setExportNotifications] = useState(true);
 
   const [isExporting, setIsExporting] = useState(false);
@@ -39,6 +40,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
     setExportServices(val);
     setExportTasks(val);
     setExportStorageVolumes(val);
+    setExportSoftwareEngines(val);
     setExportNotifications(val);
   };
 
@@ -54,6 +56,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
         services: exportServices,
         tasks: exportTasks,
         storage_volumes: exportStorageVolumes,
+        software_engines: exportSoftwareEngines,
         notifications: exportNotifications,
       };
 
@@ -131,7 +134,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
       }
 
       const counts = result.imported || {};
-      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('nav.services', 'Services')}: ${counts.services || 0}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0})`;
+      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('nav.services', 'Services')}: ${counts.services || 0}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0}${counts.software_engines !== undefined ? `, ${t('settings.tabs.engines', 'Engines')}: ${counts.software_engines}` : ''})`;
       setImportSuccess(summaryMsg);
       setImportFile(null);
       setImportData(null);
@@ -142,7 +145,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
     }
   };
 
-  const anyExportSelected = exportGuiGeneral || exportGuiNetworkSsl || exportLcdDisplay || exportLoggingRetention || exportWatchdogGrace || exportServices || exportTasks || exportStorageVolumes || exportNotifications;
+  const anyExportSelected = exportGuiGeneral || exportGuiNetworkSsl || exportLcdDisplay || exportLoggingRetention || exportWatchdogGrace || exportServices || exportTasks || exportStorageVolumes || exportSoftwareEngines || exportNotifications;
 
   return (
     <div className="space-y-6">
@@ -279,7 +282,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
             <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <ServerIcon size={12} /> Media Pipeline & Automation
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
               <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
                 <input
                   type="checkbox"
@@ -289,7 +292,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 />
                 <div className="text-xs min-w-0">
                   <span className="font-bold text-[var(--text-primary)] block truncate">{t('nav.services', 'Media Services')}</span>
-                  <span className="text-[10px] text-text-secondary truncate block">FFmpeg streaming pipelines & codecs</span>
+                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionServicesDesc', 'Broadcast pipelines, MediaMTX Hubs & codecs')}</span>
                 </div>
               </label>
 
@@ -302,7 +305,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 />
                 <div className="text-xs min-w-0">
                   <span className="font-bold text-[var(--text-primary)] block truncate">{t('nav.tasks', 'Scheduled Tasks')}</span>
-                  <span className="text-[10px] text-text-secondary truncate block">Cron & one-shot automation routines</span>
+                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionTasksDesc', 'Cron & one-shot automation routines')}</span>
                 </div>
               </label>
 
@@ -315,7 +318,20 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 />
                 <div className="text-xs min-w-0">
                   <span className="font-bold text-[var(--text-primary)] block truncate">{t('settings.tabs.storage', 'Storage Volumes')}</span>
-                  <span className="text-[10px] text-text-secondary truncate block">Media directories & mount paths</span>
+                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionStorageDesc', 'Media directories & mount paths')}</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportSoftwareEngines}
+                  onChange={(e) => setExportSoftwareEngines(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">{t('settings.backup.sectionEnginesTitle', 'Software Engines')}</span>
+                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionEnginesDesc', 'Forge recipes, system binaries & engine builds')}</span>
                 </div>
               </label>
             </div>
@@ -385,7 +401,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs font-mono">
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">GUI General & Theme</span>
                   <strong className="text-[var(--text-primary)]">{importData.sections?.gui_general || importData.sections?.system_settings ? '✓ Present' : 'None'}</strong>
@@ -401,6 +417,10 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">Tasks</span>
                   <strong className="text-[var(--text-primary)]">{importData.sections?.tasks?.length || 0} entries</strong>
+                </div>
+                <div className="p-2 rounded bg-white/5 border border-white/5">
+                  <span className="text-[10px] text-text-secondary block">Engines</span>
+                  <strong className="text-[var(--text-primary)]">{importData.sections?.software_engines?.length || 0} entries</strong>
                 </div>
               </div>
 
