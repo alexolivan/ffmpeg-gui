@@ -4731,14 +4731,14 @@ def list_available_dependency_providers(db: Session = Depends(get_db)):
     result = []
     for p in providers:
         cfg = p.config or {}
-        mtx_cfg = cfg.get("mediamtx_config", cfg)
+        prov_cfg = cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg
         result.append({
             "id": p.id,
             "name": p.name,
             "alias": p.alias,
             "service_type": p.service_type,
             "status": p.status,
-            "config": mtx_cfg
+            "config": prov_cfg
         })
     return result
 
