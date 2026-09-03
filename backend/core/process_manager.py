@@ -9,6 +9,7 @@ from typing import Dict, Optional
 import json
 import collections
 import random
+import uuid
 from utils.process_utils import cleanup_rogue_processes, prepare_process_file_permissions
 
 class ProcessManager:
@@ -154,6 +155,38 @@ class ProcessManager:
                     raise FileNotFoundError("MediaMTX binary not found. Please install MediaMTX in Settings → Software Engine.")
 
                 cmd, ephem_path = self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session)
+                self.ephemeral_configs[process_id] = ephem_path
+            elif svc_type == "icecast_server":
+                icecast_bin = "icecast2"
+                build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                build = None
+                if build_id:
+                    build = session.query(FfmpegBuild).get(build_id)
+
+                if not (build and build.binary_path and os.path.exists(build.binary_path)):
+                    build = session.query(FfmpegBuild).filter(
+                        FfmpegBuild.software_type == 'icecast2',
+                        FfmpegBuild.status == 'ready',
+                        FfmpegBuild.is_default == True
+                    ).first() or session.query(FfmpegBuild).filter(
+                        FfmpegBuild.software_type == 'icecast2',
+                        FfmpegBuild.status == 'ready'
+                    ).first()
+
+                if build and build.binary_path and os.path.exists(build.binary_path):
+                    icecast_bin = build.binary_path
+                    if not cfg.get("software_build_id"):
+                        cfg["software_build_id"] = build.id
+                        cfg["ffmpeg_build_id"] = build.id
+                        media_proc.config = cfg
+                elif shutil.which("icecast2"):
+                    icecast_bin = shutil.which("icecast2")
+                elif shutil.which("icecast"):
+                    icecast_bin = shutil.which("icecast")
+                else:
+                    raise FileNotFoundError("Icecast2 binary not found. Please install Icecast2 ('sudo apt install icecast2') or compile it in Settings → Software Engine.")
+
+                cmd, ephem_path = self._build_icecast_config_and_cmd(media_proc, icecast_bin, session)
                 self.ephemeral_configs[process_id] = ephem_path
             else:
                 # Determine which FFmpeg binary to use
@@ -839,6 +872,179 @@ class ProcessManager:
 
         return [mediamtx_bin, ephem_file], ephem_file
 
+    def _build_icecast_config_and_cmd(self, media_proc, icecast_bin: str, session):
+        """
+        Generates a customized, isolated icecast.xml configuration and builds
+        the command line execution arguments for an Icecast2 server instance.
+        """
+        cfg = media_proc.config or {}
+        ice_cfg = cfg.get("icecast_config", {})
+
+        port = int(ice_cfg.get("port", 7000))
+        http_enabled = ice_cfg.get("http_enabled", True)
+        ssl_enabled = ice_cfg.get("ssl_enabled", False)
+        ssl_port = int(ice_cfg.get("ssl_port", 7443))
+
+        source_password = ice_cfg.get("source_password", "hackme")
+        admin_user = ice_cfg.get("admin_user", "admin")
+        admin_password = ice_cfg.get("admin_password", "hackme")
+        relay_password = ice_cfg.get("relay_password", "hackme")
+
+        hostname = ice_cfg.get("hostname", "127.0.0.1")
+        location = ice_cfg.get("location", "Local Studio")
+        admin_email = ice_cfg.get("admin_email", "admin@localhost")
+
+        clients_limit = int(ice_cfg.get("clients_limit", 100))
+        sources_limit = int(ice_cfg.get("sources_limit", 10))
+        burst_size = int(ice_cfg.get("burst_size", 65536))
+
+        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
+        token = uuid.uuid4().hex[:8]
+
+        # Log directory
+        log_dir = os.path.join(shm_dir, f"ffmpeg_gui_icecast_logs_{media_proc.id}")
+        os.makedirs(log_dir, exist_ok=True)
+
+        # Webroot & Adminroot resolution
+        webroot = "/usr/share/icecast2/web"
+        adminroot = "/usr/share/icecast2/admin"
+        if icecast_bin:
+            base_dir = os.path.dirname(os.path.dirname(icecast_bin))
+            cand_web = os.path.join(base_dir, "share", "icecast", "web")
+            cand_admin = os.path.join(base_dir, "share", "icecast", "admin")
+            if os.path.exists(cand_web):
+                webroot = cand_web
+            if os.path.exists(cand_admin):
+                adminroot = cand_admin
+        if not os.path.exists(webroot):
+            for cand in ["/usr/share/icecast/web", "/usr/local/share/icecast/web"]:
+                if os.path.exists(cand):
+                    webroot = cand
+                    adminroot = cand.replace("/web", "/admin")
+                    break
+
+        # SSL Configuration and Certificate Bundling
+        ssl_cert_xml = ""
+        ssl_socket_xml = ""
+        if ssl_enabled:
+            server_key = ice_cfg.get("server_key")
+            server_cert = ice_cfg.get("server_cert")
+            if not server_key or not server_cert:
+                try:
+                    from services.cert_manager import CertificateManager
+                    cert_mgr = CertificateManager()
+                    if not server_key:
+                        server_key = cert_mgr.privkey_path
+                    if not server_cert:
+                        server_cert = cert_mgr.fullchain_path
+                except Exception as e:
+                    self.logger.warning(f"[Icecast] Error resolving SSL certificates: {e}")
+
+            if server_key and server_cert and os.path.exists(server_key) and os.path.exists(server_cert):
+                bundle_path = os.path.join(shm_dir, f"ffmpeg_gui_icecast_ssl_{media_proc.id}_{token}.pem")
+                try:
+                    with open(bundle_path, "w") as f_bundle:
+                        with open(server_cert, "r") as f_c:
+                            f_bundle.write(f_c.read().strip() + "\n\n")
+                        with open(server_key, "r") as f_k:
+                            f_bundle.write(f_k.read().strip() + "\n")
+                    ssl_cert_xml = f"<ssl-certificate>{bundle_path}</ssl-certificate>"
+                    ssl_socket_xml = f"""
+    <listen-socket>
+        <port>{ssl_port}</port>
+        <ssl>1</ssl>
+    </listen-socket>"""
+                except Exception as b_err:
+                    self.logger.error(f"[Icecast] Failed to generate concatenated SSL bundle: {b_err}")
+
+        # HTTP Listen socket
+        http_socket_xml = ""
+        if http_enabled or not ssl_socket_xml:
+            http_socket_xml = f"""
+    <listen-socket>
+        <port>{port}</port>
+    </listen-socket>"""
+
+        # Mountpoints
+        mounts_list = ice_cfg.get("mounts", [])
+        mounts_xml_parts = []
+        if isinstance(mounts_list, list):
+            for m in mounts_list:
+                if not isinstance(m, dict):
+                    continue
+                m_name = m.get("mount_name", "").strip()
+                if not m_name:
+                    continue
+                if not m_name.startswith("/"):
+                    m_name = "/" + m_name
+                m_max = m.get("max_listeners")
+                fallback = m.get("fallback_mount", "").strip()
+                if fallback and not fallback.startswith("/"):
+                    fallback = "/" + fallback
+                fallback_ovr = m.get("fallback_override", True)
+                m_burst = m.get("burst_size")
+                m_pass = m.get("source_password", "").strip()
+
+                m_lines = [f'    <mount type="normal">', f'        <mount-name>{m_name}</mount-name>']
+                if m_max:
+                    m_lines.append(f'        <max-listeners>{int(m_max)}</max-listeners>')
+                if fallback:
+                    m_lines.append(f'        <fallback-mount>{fallback}</fallback-mount>')
+                    m_lines.append(f'        <fallback-override>{1 if fallback_ovr else 0}</fallback-override>')
+                if m_burst:
+                    m_lines.append(f'        <burst-size>{int(m_burst)}</burst-size>')
+                if m_pass:
+                    m_lines.append(f'        <password>{m_pass}</password>')
+                m_lines.append('    </mount>')
+                mounts_xml_parts.append("\n".join(m_lines))
+
+        mounts_block = "\n".join(mounts_xml_parts)
+
+        xml_content = f"""<icecast>
+    <location>{location}</location>
+    <admin>{admin_email}</admin>
+    <hostname>{hostname}</hostname>
+
+    <limits>
+        <clients>{clients_limit}</clients>
+        <sources>{sources_limit}</sources>
+        <queue-size>524288</queue-size>
+        <client-timeout>30</client-timeout>
+        <header-timeout>15</header-timeout>
+        <source-timeout>10</source-timeout>
+        <burst-size>{burst_size}</burst-size>
+    </limits>
+
+    <authentication>
+        <source-password>{source_password}</source-password>
+        <relay-password>{relay_password}</relay-password>
+        <admin-user>{admin_user}</admin-user>
+        <admin-password>{admin_password}</admin-password>
+    </authentication>
+{http_socket_xml}
+{ssl_socket_xml}
+{mounts_block}
+
+    <paths>
+        <logdir>{log_dir}</logdir>
+        <webroot>{webroot}</webroot>
+        <adminroot>{adminroot}</adminroot>
+        {ssl_cert_xml}
+    </paths>
+
+    <logging>
+        <accesslog>access.log</accesslog>
+        <errorlog>error.log</errorlog>
+        <loglevel>3</loglevel>
+    </logging>
+</icecast>
+"""
+        ephem_file = os.path.join(shm_dir, f"ffmpeg_gui_icecast_{media_proc.id}_{token}.xml")
+        with open(ephem_file, "w") as f:
+            f.write(xml_content)
+
+        return [icecast_bin, "-c", ephem_file], ephem_file
+
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process, log_path: Optional[str] = None):
         import re
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
@@ -1133,6 +1339,52 @@ class ProcessManager:
                         from database.models import Service
                         media_proc = session.query(Service).get(process_id)
                         if media_proc:
+                            is_icecast = (getattr(media_proc, 'service_type', '') == 'icecast_server')
+                            if is_icecast:
+                                ice_cfg = media_proc.config.get('icecast_config', {}) if media_proc.config else {}
+                                h_port = ice_cfg.get('port', 7000)
+                                try:
+                                    import urllib.request
+                                    import json as pyjson
+                                    url = f"http://127.0.0.1:{h_port}/status-json.xsl"
+                                    req = urllib.request.Request(url, headers={"User-Agent": "ffmpeg-gui"})
+                                    with urllib.request.urlopen(req, timeout=1.5) as resp:
+                                        if resp.status == 200:
+                                            data = pyjson.loads(resp.read().decode('utf-8'))
+                                            icestats = data.get("icestats", {})
+                                            g_listeners = icestats.get("listeners", 0)
+                                            sources = icestats.get("source", [])
+                                            if isinstance(sources, dict):
+                                                sources = [sources]
+                                            max_peak = 0
+                                            active_mounts = len(sources)
+                                            for s in sources:
+                                                peak = s.get("listener_peak", 0)
+                                                if isinstance(peak, int) and peak > max_peak:
+                                                    max_peak = peak
+                                            fps = f"{g_listeners}"
+                                            speed = f"Peak: {max_peak}"
+                                            bitrate = f"{active_mounts} mounts"
+                                            new_cfg = dict(media_proc.config)
+                                            new_cfg["icecast_stats"] = {
+                                                "listeners": g_listeners,
+                                                "listener_peak": max_peak,
+                                                "active_mounts": active_mounts,
+                                                "sources": [
+                                                    {
+                                                        "mount": s.get("listenurl", "").split(f":{h_port}")[-1] or s.get("listenurl", ""),
+                                                        "listeners": s.get("listeners", 0),
+                                                        "peak": s.get("listener_peak", 0),
+                                                        "bitrate": s.get("bitrate", 0),
+                                                        "title": s.get("title") or s.get("stream_name", "")
+                                                    }
+                                                    for s in sources
+                                                ]
+                                            }
+                                            media_proc.config = new_cfg
+                                except Exception:
+                                    pass
+
                             media_proc.fps = fps if fps is not None else "0"
                             media_proc.bitrate = bitrate if bitrate is not None else "0 kb/s"
                             media_proc.speed = speed if speed is not None else "0x"

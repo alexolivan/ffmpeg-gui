@@ -554,8 +554,11 @@ class FFmpegCommandBuilder:
             cmd += ["-f", "alsa", device]
         elif output_type == 'icecast':
             host = output_cfg.get('host', 'localhost')
-            port = output_cfg.get('port', '8000')
+            port = output_cfg.get('port', '7000')
             mount = output_cfg.get('icecast_mount', '/live')
+            if not mount.startswith('/'):
+                mount = '/' + mount
+            username = output_cfg.get('icecast_username', 'source')
             password = output_cfg.get('icecast_password', 'hackme')
 
             acodec = (codec_cfg.get('acodec') or 'aac').lower()
@@ -566,9 +569,12 @@ class FFmpegCommandBuilder:
             elif acodec in ('libopus', 'opus'):
                 fmt = 'ogg'
                 c_type = 'audio/ogg'
-            elif acodec in ('libvorbis', 'vorbis', 'flac'):
+            elif acodec in ('libvorbis', 'vorbis'):
                 fmt = 'ogg'
                 c_type = 'application/ogg'
+            elif acodec in ('flac',):
+                fmt = 'flac'
+                c_type = 'audio/flac'
             elif acodec in ('aac', 'libfdk_aac'):
                 fmt = 'adts'
                 c_type = 'audio/aac'
@@ -576,8 +582,25 @@ class FFmpegCommandBuilder:
                 fmt = 'ogg'
                 c_type = 'application/ogg'
 
-            cmd += ["-f", fmt, "-content_type", c_type,
-                    f"icecast://source:{password}@{host}:{port}{mount}"]
+            # Allow manual override of format or content_type if specified
+            if output_cfg.get('format'):
+                fmt = output_cfg['format']
+            if output_cfg.get('content_type'):
+                c_type = output_cfg['content_type']
+
+            cmd += ["-f", fmt, "-content_type", c_type]
+
+            # Optional Icecast stream metadata tags
+            if output_cfg.get('ice_name'):
+                cmd += ["-ice_name", str(output_cfg['ice_name'])]
+            if output_cfg.get('ice_description'):
+                cmd += ["-ice_description", str(output_cfg['ice_description'])]
+            if output_cfg.get('ice_genre'):
+                cmd += ["-ice_genre", str(output_cfg['ice_genre'])]
+            if 'ice_public' in output_cfg:
+                cmd += ["-ice_public", "1" if output_cfg['ice_public'] else "0"]
+
+            cmd += [f"icecast://{username}:{password}@{host}:{port}{mount}"]
         elif output_type == 'hls':
             path = output_cfg.get('path', '')
             method = output_cfg.get('hls_method', 'local')
