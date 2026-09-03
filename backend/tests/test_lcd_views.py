@@ -144,13 +144,13 @@ def test_2_row_scrolling():
     menu.selected_index = 0
     lines = menu.render()
     assert lines[0] == "-- SERVICES MENU -"
-    assert "> * [FFM] Svc1" in lines[1]
+    assert "> * (FFM) Svc1" in lines[1]
     
     # Selected index 1
     menu.selected_index = 1
     lines = menu.render()
     assert lines[0] == "-- SERVICES MENU -"
-    assert ">   [MTX] Svc2" in lines[1]
+    assert ">   (MTX) Svc2" in lines[1]
 
 
 def test_main_menu_restart_panel_and_confirm():
@@ -213,7 +213,7 @@ def test_mediamtx_service_status_detail_view():
     
     status_view = ServiceStatusDetailView(manager, 2)
     lines = status_view.render()
-    assert "[MTX] HubMain" in lines[0]
+    assert "(MTX) HubMain" in lines[0]
     assert "Status:running" in lines[1]
     assert "PID:9876" in lines[2]
     assert "PATHS:2 SRT:8890" in lines[3]
@@ -251,3 +251,28 @@ def test_system_info_view():
     assert info_view.current_page == 1
     lines_p1 = info_view.render()
     assert "BE:v1.29 FE:v1.26" in lines_p1[0]
+
+
+def test_cfa635_bracket_sanitization():
+    from unittest.mock import MagicMock
+    from core.lcd.drivers.cfa635 import Cfa635Driver
+
+    driver = Cfa635Driver(port="/dev/ttyUSB0", cols=20, rows=4)
+    driver.ser = MagicMock()
+    driver.ser.is_open = True
+
+    # Send text containing square brackets
+    driver.write_line(0, "> [FFM] Stream [1]")
+
+    # Inspect bytes written to serial port
+    # write_line sends command 31 (0x1f), length 22 (row=1, col=1, 20 chars text), plus 2 bytes CRC = 26 bytes
+    assert driver.ser.write.called
+    written_packet = driver.ser.write.call_args[0][0]
+    command = written_packet[0]
+    assert command == 31  # command 31 is send data to LCD
+    text_bytes = written_packet[4:24]  # payload bytes after command, len, col, row
+    text_str = text_bytes.decode('ascii')
+    assert "> (FFM) Stream (1)" in text_str
+    assert "[" not in text_str
+    assert "]" not in text_str
+

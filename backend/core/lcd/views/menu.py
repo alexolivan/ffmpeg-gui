@@ -103,16 +103,16 @@ class ServicesMenuView(LCDView):
             end = min(len(self.services), start + 3)
 
         tag_map = {
-            "ffmpeg_stream": "[FFM]" if cols >= 20 else "[FF]",
-            "mediamtx_hub": "[MTX]" if cols >= 20 else "[MX]",
-            "icecast_server": "[ICE]" if cols >= 20 else "[IC]",
+            "ffmpeg_stream": "(FFM)" if cols >= 20 else "(FF)",
+            "mediamtx_hub": "(MTX)" if cols >= 20 else "(MX)",
+            "icecast_server": "(ICE)" if cols >= 20 else "(IC)",
         }
 
         for i in range(start, end):
             svc = self.services[i]
             prefix = "> " if i == self.selected_index else "  "
             status_char = "*" if svc.status == "running" else " "
-            tag = tag_map.get(svc.service_type, "[SVC]" if cols >= 20 else "[S]")
+            tag = tag_map.get(svc.service_type, "(SVC)" if cols >= 20 else "(S)")
             display_name = svc.alias if svc.alias and svc.alias.strip() else svc.name
             # Available name space: cols - prefix(2) - status(1) - space(1) - tag(len) - space(1)
             avail = max(4, cols - (2 + 1 + 1 + len(tag) + 1))

@@ -112,7 +112,7 @@ class ServiceStatusDetailView(LCDView):
                     metrics_line = f"TYPE:{stype[:15]}"
 
                 lines = [
-                    f"[{tag}] {display_name[:14]}",
+                    f"({tag}) {display_name[:14]}",
                     f"Status:{svc.status}",
                     f"PID:{svc.pid or 'N/A'} C:{int(svc.cpu_usage or 0)}%",
                     metrics_line
