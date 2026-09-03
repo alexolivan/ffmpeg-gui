@@ -32,6 +32,7 @@ class TestIcecastForgeAndSoftware(unittest.IsolatedAsyncioTestCase):
         self.assertIn("libvorbis-dev", deps)
         self.assertIn("libogg-dev", deps)
         self.assertIn("libigloo-dev", deps)
+        self.assertIn("librhash-dev", deps)
 
     async def test_icecast_recipe_auto_builds_libigloo_when_missing(self):
         recipe = IcecastRecipe(self.builds_root, self.runner)
@@ -64,7 +65,7 @@ class TestIcecastForgeAndSoftware(unittest.IsolatedAsyncioTestCase):
     def test_build_manager_checks_dependencies_per_software_type(self):
         bm = BuildManager(self.builds_root)
         
-        # Test Icecast2 dependencies: NO video codecs, YES XML/XSLT/SSL
+        # Test Icecast2 dependencies: NO video codecs, YES XML/XSLT/SSL/RHASH
         ice_results = bm.check_dependencies(software_type="icecast2")
         ice_deps = ice_results.get("dependencies", {})
         self.assertEqual(ice_results.get("software_type"), "icecast2")
@@ -72,6 +73,8 @@ class TestIcecastForgeAndSoftware(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ice_deps["libxml2"]["type"], "required")
         self.assertIn("libxslt", ice_deps)
         self.assertEqual(ice_deps["libxslt"]["type"], "required")
+        self.assertIn("librhash", ice_deps)
+        self.assertEqual(ice_deps["librhash"]["type"], "required")
         self.assertIn("libssl", ice_deps)
         self.assertIn("gcc", ice_deps)
         self.assertIn("make", ice_deps)

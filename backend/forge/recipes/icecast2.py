@@ -13,7 +13,7 @@ class IcecastRecipe(BaseRecipe):
         self.runner = runner
 
     def get_dependencies(self) -> list[str]:
-        return ["curl", "make", "gcc", "pkg-config", "libxml2-dev", "libxslt1-dev", "libssl-dev", "libvorbis-dev", "libogg-dev", "libcurl4-openssl-dev", "libigloo-dev"]
+        return ["curl", "make", "gcc", "pkg-config", "librhash-dev", "libxml2-dev", "libxslt1-dev", "libssl-dev", "libvorbis-dev", "libogg-dev", "libcurl4-openssl-dev", "libigloo-dev"]
 
     async def compile(self, build_id: int, version_tag: str, options: dict,
                       sdk_paths: dict | None, install_path: str, log_callback) -> dict:
