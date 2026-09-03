@@ -336,125 +336,116 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
 
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 min-h-0 custom-scrollbar">
-          {/* Top Telemetry Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2.5 text-center">
-              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block mb-0.5">
-                {t('services.icecast.preview.listeners', 'Oyentes Conectados')}
-              </span>
-              <span className="text-base font-mono font-bold text-cyan-400">
-                🎧 {globalListeners}
-              </span>
-            </div>
+          {/* Top Section: 2 Columns (Left: Stats & Actions, Right: Aspect-Video GUI Preview) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+            {/* Col 1: Telemetry & Actions */}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 text-center">
+                  <div className="text-[9px] uppercase font-bold text-[var(--text-secondary)] mb-0.5">
+                    {t('services.icecast.preview.listeners', 'Oyentes Conectados')}
+                  </div>
+                  <div className="text-base font-mono font-bold text-cyan-400">
+                    🎧 {globalListeners}
+                  </div>
+                </div>
 
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2.5 text-center">
-              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block mb-0.5">
-                {t('services.icecast.peak', 'Pico de Oyentes')}
-              </span>
-              <span className="text-base font-mono font-bold text-amber-400">
-                {globalPeak}
-              </span>
-            </div>
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 text-center">
+                  <div className="text-[9px] uppercase font-bold text-[var(--text-secondary)] mb-0.5">
+                    {t('services.icecast.peak', 'Pico de Oyentes')}
+                  </div>
+                  <div className="text-base font-mono font-bold text-amber-400">
+                    {globalPeak}
+                  </div>
+                </div>
 
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2.5 text-center">
-              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block mb-0.5">
-                {t('services.icecast.sourcesLimit', 'Fuentes Activas')}
-              </span>
-              <span className="text-base font-mono font-bold text-purple-400">
-                📻 {activeSourcesCount} / {mergedMountpoints.length}
-              </span>
-            </div>
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 text-center">
+                  <div className="text-[9px] uppercase font-bold text-[var(--text-secondary)] mb-0.5">
+                    {t('services.icecast.sourcesLimit', 'Fuentes Activas')}
+                  </div>
+                  <div className="text-base font-mono font-bold text-purple-400">
+                    📻 {activeSourcesCount} / {mergedMountpoints.length}
+                  </div>
+                </div>
 
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2.5 text-center">
-              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block mb-0.5">
-                HTTP / HTTPS
-              </span>
-              <span className="text-xs font-mono font-bold text-[var(--text-primary)]">
-                {httpEnabled ? `:${httpPort}` : ''} {sslEnabled ? `(:${sslPort})` : ''}
-              </span>
-            </div>
-
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2.5 text-center">
-              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block mb-0.5">
-                CPU Usage
-              </span>
-              <span className={`text-base font-mono font-bold ${cpu > 75 ? 'text-red-400' : 'text-emerald-400'}`}>
-                {isRunning ? `${cpu}%` : '-'}
-              </span>
-            </div>
-
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2.5 text-center">
-              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block mb-0.5">
-                RAM Memory
-              </span>
-              <span className="text-base font-mono font-bold text-blue-400">
-                {isRunning ? `${ram} MB` : '-'}
-              </span>
-            </div>
-          </div>
-
-          {/* Section 1: Icecast Web Console & GUI Preview */}
-          <div className="bg-[var(--input-bg)]/35 border border-[var(--glass-border)] rounded-xl p-3.5 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--glass-border)] pb-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400">
-                  {t('services.icecast.preview.webConsole', 'Consola Web de Administración y Estado (Icecast GUI)')}
-                </h4>
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 text-center">
+                  <div className="text-[9px] uppercase font-bold text-[var(--text-secondary)] mb-0.5">
+                    HTTP / HTTPS
+                  </div>
+                  <div className="text-xs font-mono font-bold text-[var(--text-primary)]">
+                    {httpEnabled ? `:${httpPort}` : ''} {sslEnabled ? `(:${sslPort})` : ''}
+                  </div>
+                </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 flex justify-between items-center">
+                  <span className="text-[9px] uppercase font-black text-[var(--text-secondary)]">CPU Usage</span>
+                  <span className={`font-mono font-bold text-xs ${cpu > 75 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {isRunning ? `${cpu}%` : '-'}
+                  </span>
+                </div>
+                <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 flex justify-between items-center">
+                  <span className="text-[9px] uppercase font-black text-[var(--text-secondary)]">RAM Usage</span>
+                  <span className="font-mono font-bold text-blue-400 text-xs">
+                    {isRunning ? `${ram} MB` : '-'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Navigation buttons: Status Page & Admin Console */}
               {isRunning && (
-                <div className="flex items-center gap-2">
-                  <a
-                    href={webConsoleUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1 bg-brand-lime text-black rounded-lg text-xs font-bold uppercase tracking-wider hover:brightness-110 active:scale-95 transition-all shadow flex items-center gap-1.5 cursor-pointer"
-                    title={t('services.icecast.preview.openWebConsole', 'Abrir Consola Web (Nueva Pestaña)')}
-                  >
-                    <span>🌐</span>
-                    <span>{t('services.icecast.preview.openWebConsole', 'Abrir Consola Web')}</span>
-                  </a>
+                <div className="flex items-center gap-2.5 pt-1">
                   <a
                     href={webStatusUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-2.5 py-1 border border-[var(--glass-border)] hover:bg-[var(--input-bg)] text-[var(--text-secondary)] rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                    className="flex-1 px-3 py-2 rounded-xl border border-[var(--glass-border)] bg-[var(--input-bg)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] hover:border-cyan-400 text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm group cursor-pointer"
+                    title={t('services.icecast.preview.statusPage', 'Página de Estado')}
                   >
-                    <span>/status.xsl</span>
+                    <span className="text-cyan-400">📊</span>
+                    <span>{t('services.icecast.preview.statusPage', 'Página de Estado')}</span>
+                    <span className="text-[10px] text-[var(--text-secondary)] opacity-60 group-hover:opacity-100">↗</span>
+                  </a>
+
+                  <a
+                    href={webConsoleUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 px-3 py-2 rounded-xl border border-[var(--glass-border)] bg-[var(--input-bg)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] hover:border-brand-lime text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm group cursor-pointer"
+                    title={t('services.icecast.preview.adminPage', 'Consola de Administración')}
+                  >
+                    <span className="text-brand-lime">⚙️</span>
+                    <span>{t('services.icecast.preview.adminPage', 'Consola de Administración')}</span>
+                    <span className="text-[10px] text-[var(--text-secondary)] opacity-60 group-hover:opacity-100">↗</span>
                   </a>
                 </div>
               )}
             </div>
 
-            <p className="text-xs text-[var(--text-secondary)]">
-              {t('services.icecast.preview.webConsoleHint', 'Inspecciona el estado XML/HTML de la estación, oyentes activos y clientes emisores conectados.')}
-            </p>
-
-            {isRunning ? (
-              <div className="relative rounded-lg overflow-hidden border border-[var(--glass-border)] bg-black/40 h-56 sm:h-72">
-                <iframe
-                  src={webStatusUrl}
-                  title="Icecast Web Status"
-                  className="w-full h-full border-0 bg-white"
-                  sandbox="allow-same-origin allow-scripts allow-forms"
-                />
-                <div className="absolute top-2 right-2">
-                  <a
-                    href={webConsoleUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] bg-black/80 hover:bg-black text-brand-lime border border-brand-lime/40 px-2 py-1 rounded backdrop-blur-md font-mono flex items-center gap-1 shadow"
-                  >
-                    <span>↗</span> {webConsoleUrl}
-                  </a>
-                </div>
+            {/* Col 2: Live Web Preview in aspect-video box (exact same dimension as FFmpeg video preview) */}
+            <div className="flex flex-col justify-center">
+              <div className="aspect-video bg-black rounded-xl overflow-hidden border border-[var(--glass-border)] flex items-center justify-center relative shadow-2xl">
+                {isRunning ? (
+                  <>
+                    <iframe
+                      src={webStatusUrl}
+                      title="Icecast Web Status"
+                      className="w-full h-full border-0 bg-white"
+                      sandbox="allow-same-origin allow-scripts allow-forms"
+                    />
+                    <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-brand-lime text-black text-[8px] font-black rounded tracking-wider uppercase animate-pulse shadow">
+                      LIVE
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center p-4 text-xs text-[var(--text-secondary)]">
+                    <span className="block text-2xl mb-1">📻</span>
+                    <span>{t('common.offline', 'Servidor detenido')}</span>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="text-center py-6 border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-[var(--text-secondary)]">
-                {t('common.offline', 'Servidor detenido. Inicia el servicio para acceder a la consola web y reproducir transmisiones.')}
-              </div>
-            )}
+            </div>
           </div>
 
           {/* Section 2: Extended Per-Mountpoint Telemetry & Live Audio Player */}

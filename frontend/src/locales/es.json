@@ -245,6 +245,8 @@
       "preview": {
         "title": "Servidor de Audio Icecast2",
         "webConsole": "Consola Web de Administración y Estado",
+        "statusPage": "Página de Estado",
+        "adminPage": "Consola de Administración",
         "openWebConsole": "Abrir Consola Web (Nueva Pestaña)",
         "webConsoleHint": "Inspecciona el estado XML/HTML de la estación, oyentes activos y clientes emisores conectados.",
         "perMountTitle": "Telemetría Extendida por Punto de Montaje y Reproductor",
