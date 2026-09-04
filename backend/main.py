@@ -4673,15 +4673,21 @@ def export_build_recipe(build_id: int, db: Session = Depends(get_db)):
     build = db.query(FfmpegBuild).get(build_id)
     if not build:
         raise HTTPException(status_code=404, detail="Build profile not found")
+    stype = build.software_type or "ffmpeg"
+    ver = build.version_tag or build.ffmpeg_version or "latest"
     return {
-        "type": "ffmpeg_build_recipe",
-        "version": 1,
+        "type": "software_build_recipe",
+        "version": 2,
+        "software_type": stype,
         "recipe": {
             "name": build.name,
-            "ffmpeg_version": build.ffmpeg_version,
-            "srt_version": build.srt_version,
-            "build_options": build.build_options,
-            "sdk_paths": build.sdk_paths,
+            "software_type": stype,
+            "version_tag": ver,
+            "version": ver,
+            "ffmpeg_version": ver,  # Backwards compatibility alias
+            "srt_version": build.srt_version if stype == "ffmpeg" else None,
+            "build_options": build.build_options or {},
+            "sdk_paths": build.sdk_paths or {},
             "auto_clean": build.auto_clean,
             "storage_id": build.storage_id,
         }
@@ -4689,47 +4695,49 @@ def export_build_recipe(build_id: int, db: Session = Depends(get_db)):
 
 @app.post("/builds/import")
 def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
-    if payload.get("type") != "ffmpeg_build_recipe":
+    valid_types = ["software_build_recipe", "ffmpeg_build_recipe", "build_recipe", "engine_build_recipe"]
+    if payload.get("type") not in valid_types:
         raise HTTPException(status_code=400, detail="Invalid file format. Not a compilation recipe.")
     
     recipe = payload.get("recipe", {})
     if not recipe:
         raise HTTPException(status_code=400, detail="Missing recipe payload.")
         
-    build_options = recipe.get("build_options", {})
+    software_type = recipe.get("software_type") or payload.get("software_type") or "ffmpeg"
+    build_options = recipe.get("build_options", {}) or {}
     sdk_paths = recipe.get("sdk_paths", {}) or {}
     
-    # 1. SDK Dependency checking
-    if build_options.get("enable_ndi"):
-        ndi_ver = sdk_paths.get("ndi")
-        if not ndi_ver:
-            raise HTTPException(status_code=400, detail="NDI enabled but no version specified in recipe")
-        installed_ndis = sdk_manager.list_installed_sdks("ndi")
-        installed_versions = [s["version"] for s in installed_ndis]
-        if ndi_ver not in installed_versions:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Missing required NDI SDK Version '{ndi_ver}'. Please install/upload it first, or edit the compilation options."
-            )
-            
-    if build_options.get("enable_decklink"):
-        dl_ver = sdk_paths.get("decklink")
-        if not dl_ver:
-            raise HTTPException(status_code=400, detail="DeckLink enabled but no version specified in recipe")
-        installed_dls = sdk_manager.list_installed_sdks("decklink")
-        installed_versions = [s["version"] for s in installed_dls]
-        if dl_ver not in installed_versions:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Missing required DeckLink SDK Version '{dl_ver}'. Please install/upload it first, or edit the compilation options."
-            )
+    # 1. SDK Dependency checking (only applicable to ffmpeg builds that use external SDKs)
+    if software_type == "ffmpeg":
+        if build_options.get("enable_ndi"):
+            ndi_ver = sdk_paths.get("ndi")
+            if not ndi_ver:
+                raise HTTPException(status_code=400, detail="NDI enabled but no version specified in recipe")
+            installed_ndis = sdk_manager.list_installed_sdks("ndi")
+            installed_versions = [s["version"] for s in installed_ndis]
+            if ndi_ver not in installed_versions:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Missing required NDI SDK Version '{ndi_ver}'. Please install/upload it first, or edit the compilation options."
+                )
+                
+        if build_options.get("enable_decklink"):
+            dl_ver = sdk_paths.get("decklink")
+            if not dl_ver:
+                raise HTTPException(status_code=400, detail="DeckLink enabled but no version specified in recipe")
+            installed_dls = sdk_manager.list_installed_sdks("decklink")
+            installed_versions = [s["version"] for s in installed_dls]
+            if dl_ver not in installed_versions:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Missing required DeckLink SDK Version '{dl_ver}'. Please install/upload it first, or edit the compilation options."
+                )
     
-    # 2. Check name duplication and rename
-    stype = recipe.get("software_type", "ffmpeg")
-    base_name = recipe.get("name", "Imported-Build")
+    # 2. Check name duplication and rename per software engine
+    base_name = recipe.get("name", f"Imported-{software_type}")
     name = base_name
     counter = 1
-    while db.query(FfmpegBuild).filter(FfmpegBuild.name == name, FfmpegBuild.software_type == stype).first():
+    while db.query(FfmpegBuild).filter(FfmpegBuild.name == name, FfmpegBuild.software_type == software_type).first():
         name = f"{base_name}-Imported-{counter}"
         counter += 1
         
@@ -4739,10 +4747,18 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
         if not storage or storage.type != "build":
             raise HTTPException(status_code=400, detail="Invalid storage selected for build")
 
+    version_tag = (
+        recipe.get("version_tag")
+        or recipe.get("version")
+        or recipe.get("ffmpeg_version")
+        or ("6.0" if software_type == "ffmpeg" else "latest")
+    )
+
     db_build = FfmpegBuild(
         name=name,
-        ffmpeg_version=recipe.get("ffmpeg_version", "6.0"),
-        srt_version=recipe.get("srt_version"),
+        software_type=software_type,
+        version_tag=version_tag,
+        srt_version=recipe.get("srt_version") if software_type == "ffmpeg" else None,
         build_options=build_options,
         sdk_paths=sdk_paths,
         auto_clean=recipe.get("auto_clean", False),

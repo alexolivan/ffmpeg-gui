@@ -187,7 +187,8 @@ export function useBuilds(activeView: string) {
         }
         
         const newBuild = await response.json();
-        alert(`Successfully imported build recipe: ${newBuild.name}`);
+        const engineLabel = newBuild.software_type ? `[${newBuild.software_type}] ` : '';
+        alert(`Successfully imported build recipe: ${engineLabel}${newBuild.name}`);
         e.target.value = '';
         refreshBuilds();
       } catch (err: any) {
@@ -204,12 +205,13 @@ export function useBuilds(activeView: string) {
         return r.json();
       })
       .then(data => {
+        const stype = data.software_type || data.recipe?.software_type || 'software';
         const rawName = data.recipe?.name || data.name || (builds.find(b => Number(b.id) === Number(id))?.name) || `build_${id}`;
         const safeName = rawName.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = `ffmpeg_recipe_${safeName || 'export'}.json`;
+        a.download = `${stype}_recipe_${safeName || 'export'}.json`;
         a.click();
       })
       .catch(err => alert(err.message || err));

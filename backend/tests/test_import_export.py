@@ -120,22 +120,57 @@ def test_import_export():
 
     with SessionLocal() as db:
         imported_proc = import_process(v2_import_payload, db)
-        assert imported_proc.name == "Imported: Version 2"
-        assert imported_proc.auto_start is True
-        assert imported_proc.watchdog_enabled is False
+        assert imported_proc["name"] == "Imported: Version 2"
+        assert imported_proc["auto_start"] is True
+        assert imported_proc["watchdog_enabled"] is False
 
     # 5. Test Build Recipe Export directly
     with SessionLocal() as db:
         recipe_data = export_build_recipe(build_id, db)
-        assert recipe_data["type"] == "ffmpeg_build_recipe"
+        assert recipe_data["type"] in ["software_build_recipe", "ffmpeg_build_recipe"]
         assert recipe_data["recipe"]["name"] == "Test Import Build"
+        assert recipe_data["software_type"] == "ffmpeg"
+
+    # 5b. Test Icecast2 Build Recipe Export & Import
+    with SessionLocal() as db:
+        ice_build = FfmpegBuild(
+            name="Test Icecast Legacy 2.3",
+            software_type="icecast2",
+            version_tag="2.3.3",
+            build_options={},
+            sdk_paths={},
+            status="ready"
+        )
+        db.add(ice_build)
+        db.commit()
+        db.refresh(ice_build)
+        ice_id = ice_build.id
+
+        ice_recipe = export_build_recipe(ice_id, db)
+        assert ice_recipe["software_type"] == "icecast2"
+        assert ice_recipe["recipe"]["version_tag"] == "2.3.3"
+
+        # Import the exported icecast recipe
+        imported_ice = import_build_recipe(ice_recipe, db)
+        assert imported_ice["software_type"] == "icecast2"
+        assert imported_ice["version_tag"] == "2.3.3"
+        assert "Test Icecast Legacy 2.3" in imported_ice["name"]
+
+        # Clean up
+        db.delete(ice_build)
+        imported_ice_obj = db.query(FfmpegBuild).get(imported_ice["id"])
+        if imported_ice_obj:
+            db.delete(imported_ice_obj)
+        db.commit()
 
     # 6. Test Build Recipe Import with missing SDK dependency validation
     unsupported_recipe_payload = {
-        "type": "ffmpeg_build_recipe",
-        "version": 1,
+        "type": "software_build_recipe",
+        "version": 2,
+        "software_type": "ffmpeg",
         "recipe": {
             "name": "Imported-Recipe-Test",
+            "software_type": "ffmpeg",
             "ffmpeg_version": "6.0",
             "srt_version": "1.5.0",
             "build_options": {

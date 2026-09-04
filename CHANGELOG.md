@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] - 2026-09-04
+
+### Added
+- **Multi-Engine Software Build Recipe Export & Import Protocol (`software_build_recipe` v2)**:
+  - Transitioned Forge build recipe export and import from FFmpeg-centric (`ffmpeg_build_recipe` v1) to a generic, engine-agnostic schema (`software_build_recipe` v2) supporting `ffmpeg`, `icecast2`, `mediamtx`, and future software engines.
+  - Retained 100% backward compatibility for existing `ffmpeg_build_recipe` JSON files.
+  - Isolated external SDK dependency checks (NDI, DeckLink) strictly to FFmpeg builds.
+  - Added dynamic recipe export filenames scoped by software engine (`{software_type}_recipe_{name}.json`) and engine badge feedback during recipe import.
+- **Dedicated Atomic Service Cloning Endpoint for Heterogeneous Services**:
+  - Implemented `@app.post("/processes/{process_id}/clone")` with automatic conflict-free port re-allocation (`get_next_available_mediamtx_ports` for MediaMTX, `get_next_available_icecast_ports` for Icecast2, and port-offset listener collision resolution for FFmpeg).
+  - Integrated Clone Service button directly into `IcecastPreviewModal`.
+- **Icecast2 Preview & Legacy Protocol Support**:
+  - Implemented live interactive iframe preview with periodic auto-refresh in `IcecastPreviewModal`.
+  - Added automatic detection and configuration of legacy Icecast2 SOURCE protocol (`-legacy_icecast 1`) and TLS for managed Icecast endpoints.
+  - Added active leases telemetry badge to Icecast2 cards and modals.
+
 ## [2.9.0] - 2026-09-03
 
 ### Added
