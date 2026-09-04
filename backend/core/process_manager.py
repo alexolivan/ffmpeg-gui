@@ -926,9 +926,51 @@ class ProcessManager:
                     adminroot = cand.replace("/web", "/admin")
                     break
 
+        # Check if status-json.xsl stylesheet exists in webroot
+        has_status_json = os.path.exists(os.path.join(webroot, "status-json.xsl"))
+        ice_cfg["has_status_json"] = has_status_json
+
+        # Check Icecast version for version-specific XML tags (2.5+ vs 2.4/2.3)
+        version_tag = getattr(media_proc, 'software_version', None)
+        if not version_tag and media_proc.config and isinstance(media_proc.config, dict):
+            version_tag = media_proc.config.get('software_version')
+        build_id = getattr(media_proc, 'software_build_id', None) or getattr(media_proc, 'ffmpeg_build_id', None)
+        if not version_tag and build_id and session:
+            try:
+                from database.models import SoftwareBuild
+                sb = session.query(SoftwareBuild).get(build_id)
+                if sb and sb.version_tag:
+                    version_tag = sb.version_tag
+            except Exception:
+                pass
+
+        if not version_tag and icecast_bin and os.path.exists(icecast_bin):
+            try:
+                import subprocess
+                res = subprocess.run([icecast_bin, "-v"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
+                out = (res.stdout or "") + (res.stderr or "")
+                import re as re_mod
+                m_bin = re_mod.search(r"Icecast\s+([0-9.]+)", out, re_mod.IGNORECASE)
+                if m_bin:
+                    version_tag = m_bin.group(1)
+            except Exception:
+                pass
+
+        is_v25_or_newer = False
+        if version_tag:
+            import re
+            m = re.search(r"(\d+)\.(\d+)", str(version_tag))
+            if m:
+                major, minor = int(m.group(1)), int(m.group(2))
+                if major > 2 or (major == 2 and minor >= 5):
+                    is_v25_or_newer = True
+
+        prng_seed_xml = "    <prng-seed>/dev/urandom</prng-seed>\n" if is_v25_or_newer else ""
+
         # SSL Configuration and Certificate Bundling
         ssl_cert_xml = ""
         ssl_socket_xml = ""
+        tls_context_xml = ""
         if ssl_enabled:
             server_key = ice_cfg.get("server_key")
             server_cert = ice_cfg.get("server_cert")
@@ -951,7 +993,21 @@ class ProcessManager:
                             f_bundle.write(f_c.read().strip() + "\n\n")
                         with open(server_key, "r") as f_k:
                             f_bundle.write(f_k.read().strip() + "\n")
-                    ssl_cert_xml = f"<ssl-certificate>{bundle_path}</ssl-certificate>"
+                    try:
+                        os.chmod(bundle_path, 0o600)
+                    except Exception:
+                        pass
+
+                    if is_v25_or_newer:
+                        tls_context_xml = f"""
+    <tls-context>
+        <tls-certificate>{bundle_path}</tls-certificate>
+    </tls-context>"""
+                        ssl_cert_xml = ""
+                    else:
+                        tls_context_xml = ""
+                        ssl_cert_xml = f"<ssl-certificate>{bundle_path}</ssl-certificate>"
+
                     ssl_socket_xml = f"""
     <listen-socket>
         <port>{ssl_port}</port>
@@ -1007,7 +1063,7 @@ class ProcessManager:
     <location>{location}</location>
     <admin>{admin_email}</admin>
     <hostname>{hostname}</hostname>
-
+{prng_seed_xml}
     <limits>
         <clients>{clients_limit}</clients>
         <sources>{sources_limit}</sources>
@@ -1026,6 +1082,7 @@ class ProcessManager:
     </authentication>
 {http_socket_xml}
 {ssl_socket_xml}
+{tls_context_xml}
 {mounts_block}
 
     <paths>
@@ -1045,6 +1102,10 @@ class ProcessManager:
         ephem_file = os.path.join(shm_dir, f"ffmpeg_gui_icecast_{media_proc.id}_{token}.xml")
         with open(ephem_file, "w") as f:
             f.write(xml_content)
+        try:
+            os.chmod(ephem_file, 0o600)
+        except Exception:
+            pass
 
         return [icecast_bin, "-c", ephem_file], ephem_file
 
@@ -1346,42 +1407,44 @@ class ProcessManager:
                             if is_icecast:
                                 ice_cfg = media_proc.config.get('icecast_config', {}) if media_proc.config else {}
                                 h_port = ice_cfg.get('port', 7000)
+                                admin_user = ice_cfg.get('admin_user', 'admin')
+                                admin_password = ice_cfg.get('admin_password', 'hackme')
+                                has_status_json = ice_cfg.get('has_status_json', True)
                                 try:
-                                    import urllib.request
-                                    import json as pyjson
-                                    url = f"http://127.0.0.1:{h_port}/status-json.xsl"
-                                    req = urllib.request.Request(url, headers={"User-Agent": "ffmpeg-gui"})
-                                    with urllib.request.urlopen(req, timeout=1.5) as resp:
-                                        if resp.status == 200:
-                                            data = pyjson.loads(resp.read().decode('utf-8'))
-                                            icestats = data.get("icestats", {})
-                                            g_listeners = icestats.get("listeners", 0)
-                                            sources = icestats.get("source", [])
-                                            if isinstance(sources, dict):
-                                                sources = [sources]
-                                            max_peak = 0
-                                            active_mounts = len(sources)
-                                            for s in sources:
-                                                peak = s.get("listener_peak", 0)
-                                                if isinstance(peak, int) and peak > max_peak:
-                                                    max_peak = peak
-                                            new_cfg = dict(media_proc.config)
-                                            new_cfg["icecast_stats"] = {
-                                                "listeners": g_listeners,
-                                                "listener_peak": max_peak,
-                                                "active_mounts": active_mounts,
-                                                "sources": [
-                                                    {
-                                                        "mount": s.get("listenurl", "").split(f":{h_port}")[-1] or s.get("listenurl", ""),
-                                                        "listeners": s.get("listeners", 0),
-                                                        "peak": s.get("listener_peak", 0),
-                                                        "bitrate": s.get("bitrate", 0),
-                                                        "title": s.get("title") or s.get("stream_name", "")
-                                                    }
-                                                    for s in sources
-                                                ]
-                                            }
-                                            media_proc.config = new_cfg
+                                    from core.icecast_telemetry import fetch_icecast_telemetry
+                                    data = fetch_icecast_telemetry(h_port, admin_user, admin_password, has_status_json)
+                                    if data:
+                                        icestats = data.get("icestats", {})
+                                        g_listeners = icestats.get("listeners", 0)
+                                        sources = icestats.get("source", [])
+                                        if isinstance(sources, dict):
+                                            sources = [sources]
+                                        max_peak = 0
+                                        active_mounts = len(sources)
+                                        sources_list = []
+                                        for s in sources:
+                                            peak = s.get("listener_peak", s.get("peak", 0))
+                                            if isinstance(peak, int) and peak > max_peak:
+                                                max_peak = peak
+                                            mount_path = s.get("mount")
+                                            if not mount_path:
+                                                listen_url = s.get("listenurl", "")
+                                                mount_path = listen_url.split(f":{h_port}")[-1] if f":{h_port}" in listen_url else listen_url
+                                            sources_list.append({
+                                                "mount": mount_path,
+                                                "listeners": s.get("listeners", 0),
+                                                "peak": peak,
+                                                "bitrate": s.get("bitrate", 0),
+                                                "title": s.get("title") or s.get("stream_name", "")
+                                            })
+                                        new_cfg = dict(media_proc.config)
+                                        new_cfg["icecast_stats"] = {
+                                            "listeners": g_listeners,
+                                            "listener_peak": max_peak,
+                                            "active_mounts": active_mounts,
+                                            "sources": sources_list
+                                        }
+                                        media_proc.config = new_cfg
                                 except Exception:
                                     pass
 

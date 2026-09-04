@@ -4460,15 +4460,15 @@ def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
     cfg = db_proc.config or {}
     ice_cfg = cfg.get("icecast_config") or {}
     port = ice_cfg.get("port", 7000)
+    admin_user = ice_cfg.get("admin_user", "admin")
+    admin_password = ice_cfg.get("admin_password", "hackme")
+    has_status_json = ice_cfg.get("has_status_json", True)
     
     try:
-        import urllib.request
-        import json as pyjson
-        url = f"http://127.0.0.1:{port}/status-json.xsl"
-        req = urllib.request.Request(url, headers={"User-Agent": "ffmpeg-gui"})
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
-            if resp.status == 200:
-                return pyjson.loads(resp.read().decode("utf-8"))
+        from core.icecast_telemetry import fetch_icecast_telemetry
+        telemetry = fetch_icecast_telemetry(port, admin_user, admin_password, has_status_json)
+        if telemetry:
+            return telemetry
     except Exception:
         pass
     

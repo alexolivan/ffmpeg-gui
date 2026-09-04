@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added active leases telemetry badge to Icecast2 cards and modals.
 
 ### Fixed
+- **Icecast2 Multi-Version Compatibility & Log Warnings Resolution**:
+  - Eliminated repetitive XSLT 404 error log spam in legacy Icecast 2.3.x instances by verifying `status-json.xsl` stylesheet presence before polling and introducing a universal XML stats fallback (`/admin/stats.xml` with HTTP Basic Auth) that works reliably across all Icecast releases (2.0 to 2.5+).
+  - Resolved Icecast 2.5+ configuration obsolescence warnings by dynamically routing TLS certificates to `<tls-context><tls-certificate>` instead of the deprecated `<paths><ssl-certificate>` tag when running Icecast >= 2.5.0, while preserving legacy tag compatibility for 2.4.x and 2.3.x.
+  - Added `<prng-seed>/dev/urandom</prng-seed>` injection for Icecast 2.5+ instances to eliminate libigloo PRNG fallback warnings.
+  - Enforced strict `0600` (`-rw-------`) file permissions on generated ephemeral configuration files and concatenated SSL PEM bundles to satisfy Icecast 2.5 security permission checks.
 - **System SSL Certificate Detection in Icecast Configuration**:
   - Corrected API status endpoint resolution to `/api/settings/ssl/status` and validated certificate payload using `valid` and `days_remaining`.
   - Added real-time active certificate confirmation badge displaying the detected domain in `IcecastConfigForm`.
