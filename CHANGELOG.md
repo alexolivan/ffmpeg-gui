@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added active leases telemetry badge to Icecast2 cards and modals.
 
 ### Fixed
+- **SoftwareBuild Import in Dependency Providers Endpoint**:
+  - Fixed a `NameError: name 'SoftwareBuild' is not defined` regression in `GET /api/dependencies/providers` when auxiliary Icecast services exist in the database, which prevented the frontend from populating MediaMTX and Icecast Hub integration instances in input/output stream forms.
 - **Icecast2 Multi-Version Compatibility & Log Warnings Resolution**:
   - Eliminated repetitive XSLT 404 error log spam in legacy Icecast 2.3.x instances by introducing a multi-tier resolution:
     - Bypassing `/status-json.xsl` queries entirely for instances identified as legacy (`< 2.4`) in favor of native `/admin/stats.xml` with HTTP Basic Auth.

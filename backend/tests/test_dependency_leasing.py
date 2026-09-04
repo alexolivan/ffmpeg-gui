@@ -193,5 +193,79 @@ class TestDependencyLeasing(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(detected4, [])
 
 
+class TestDependencyProvidersAPI(unittest.TestCase):
+    def test_list_available_dependency_providers_with_icecast_and_mediamtx(self):
+        """Verifies GET /api/dependencies/providers works without NameError when both MediaMTX and Icecast exist."""
+        from fastapi.testclient import TestClient
+        from database.db import SessionLocal, init_db
+        from database.models import Service, SoftwareBuild
+        import main
+
+        init_db()
+        db = SessionLocal()
+        client = TestClient(main.app)
+
+        # Create a build for icecast
+        build = SoftwareBuild(
+            name="Icecast Test Build",
+            software_type="icecast2",
+            version_tag="2.4.4",
+            status="ready",
+            is_default=True
+        )
+        db.add(build)
+        db.commit()
+        db.refresh(build)
+
+        # Create an icecast provider
+        ice_svc = Service(
+            name="Icecast Provider Hub",
+            service_type="icecast_server",
+            status="running",
+            software_build_id=build.id,
+            config={
+                "software_build_id": build.id,
+                "icecast_config": {"port": 7000}
+            }
+        )
+        db.add(ice_svc)
+
+        # Create a mediamtx provider
+        mtx_svc = Service(
+            name="MediaMTX Provider Hub",
+            service_type="mediamtx_hub",
+            status="running",
+            config={
+                "mediamtx_config": {"srt_port": 8890, "paths": {"stream1": {}}}
+            }
+        )
+        db.add(mtx_svc)
+        db.commit()
+        db.refresh(ice_svc)
+        db.refresh(mtx_svc)
+
+        try:
+            res = client.get("/api/dependencies/providers")
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            provider_ids = [p["id"] for p in data]
+            self.assertIn(ice_svc.id, provider_ids)
+            self.assertIn(mtx_svc.id, provider_ids)
+
+            ice_entry = next(p for p in data if p["id"] == ice_svc.id)
+            self.assertEqual(ice_entry["service_type"], "icecast_server")
+            self.assertFalse(ice_entry["is_legacy"])
+
+            mtx_entry = next(p for p in data if p["id"] == mtx_svc.id)
+            self.assertEqual(mtx_entry["service_type"], "mediamtx_hub")
+            self.assertEqual(mtx_entry["config"]["srt_port"], 8890)
+        finally:
+            db.delete(ice_svc)
+            db.delete(mtx_svc)
+            db.delete(build)
+            db.commit()
+            db.close()
+
+
 if __name__ == '__main__':
     unittest.main()
