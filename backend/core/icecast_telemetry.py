@@ -44,8 +44,9 @@ def fetch_icecast_telemetry(
     port: int,
     admin_user: str = "admin",
     admin_password: str = "hackme",
-    has_status_json: bool = False,
-    is_legacy: bool = False
+    has_status_json: bool = True,
+    is_legacy: bool = False,
+    use_ssl: bool = False
 ) -> Optional[Dict[str, Any]]:
     """
     Fetches real-time Icecast telemetry.
@@ -54,12 +55,16 @@ def fetch_icecast_telemetry(
     If /status-json.xsl fails or returns 404, the port is cached in _MISSING_STATUS_JSON_PORTS
     so all subsequent calls proceed directly to native /admin/stats.xml without causing XSLT errors in logs.
     """
+    import ssl
+    ssl_ctx = ssl._create_unverified_context() if use_ssl else None
+    proto = "https" if use_ssl else "http"
+
     # 1. Attempt /status-json.xsl only if explicitly enabled, not legacy, and not marked missing
     if has_status_json and not is_legacy and port not in _MISSING_STATUS_JSON_PORTS:
         try:
-            url = f"http://127.0.0.1:{port}/status-json.xsl"
+            url = f"{proto}://127.0.0.1:{port}/status-json.xsl"
             req = urllib.request.Request(url, headers={"User-Agent": "ffmpeg-gui"})
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
+            with urllib.request.urlopen(req, timeout=1.5, context=ssl_ctx) as resp:
                 if resp.status == 200:
                     return pyjson.loads(resp.read().decode("utf-8"))
         except Exception:
@@ -67,13 +72,13 @@ def fetch_icecast_telemetry(
 
     # 2. Universal fallback: /admin/stats.xml (supported natively by Icecast 2.0 through 2.5+)
     try:
-        url = f"http://127.0.0.1:{port}/admin/stats.xml"
+        url = f"{proto}://127.0.0.1:{port}/admin/stats.xml"
         req = urllib.request.Request(url, headers={"User-Agent": "ffmpeg-gui"})
         if admin_user and admin_password:
             auth_str = f"{admin_user}:{admin_password}"
             b64_auth = base64.b64encode(auth_str.encode("utf-8")).decode("ascii")
             req.add_header("Authorization", f"Basic {b64_auth}")
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
+        with urllib.request.urlopen(req, timeout=1.5, context=ssl_ctx) as resp:
             if resp.status == 200:
                 raw_xml = resp.read().decode("utf-8", errors="replace")
                 root = ET.fromstring(raw_xml)

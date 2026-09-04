@@ -4459,7 +4459,10 @@ def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
     
     cfg = db_proc.config or {}
     ice_cfg = cfg.get("icecast_config") or {}
-    port = ice_cfg.get("port", 7000)
+    http_enabled = ice_cfg.get("http_enabled", True)
+    ssl_enabled = ice_cfg.get("ssl_enabled", False)
+    use_ssl = (not http_enabled) and ssl_enabled
+    port = ice_cfg.get("ssl_port", 7443) if use_ssl else ice_cfg.get("port", 7000)
     admin_user = ice_cfg.get("admin_user", "admin")
     admin_password = ice_cfg.get("admin_password", "hackme")
     v_tag = getattr(db_proc, 'software_version', None) or (cfg.get('software_version') if isinstance(cfg, dict) else None)
@@ -4474,11 +4477,11 @@ def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
             pass
     from core.builders.ffmpeg_builder import FFmpegCommandBuilder
     is_legacy = FFmpegCommandBuilder._is_legacy_icecast(v_tag or db_proc.name or "")
-    has_status_json = (not is_legacy) and ice_cfg.get("has_status_json", False)
+    has_status_json = not is_legacy
     
     try:
         from core.icecast_telemetry import fetch_icecast_telemetry
-        telemetry = fetch_icecast_telemetry(port, admin_user, admin_password, has_status_json=has_status_json, is_legacy=is_legacy)
+        telemetry = fetch_icecast_telemetry(port, admin_user, admin_password, has_status_json=has_status_json, is_legacy=is_legacy, use_ssl=use_ssl)
         if telemetry:
             return telemetry
     except Exception:

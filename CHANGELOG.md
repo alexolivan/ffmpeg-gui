@@ -28,8 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Bypassing `/status-json.xsl` queries entirely for instances identified as legacy (`< 2.4`) in favor of native `/admin/stats.xml` with HTTP Basic Auth.
     - Implementing in-memory port failure caching (`_MISSING_STATUS_JSON_PORTS`) to prevent repeated polling if a server returns 404 on `/status-json.xsl`.
     - Automatically deploying a standalone fallback `status-json.xsl` stylesheet into the instance's `webroot` on startup and during Forge build installs for Icecast versions that do not ship it.
-  - Resolved Icecast 2.5+ configuration obsolescence warnings by dynamically routing TLS certificates to `<tls-context><tls-certificate>` instead of the deprecated `<paths><ssl-certificate>` tag when running Icecast >= 2.5.0, while preserving legacy tag compatibility for 2.4.x and 2.3.x.
-  - Added `<prng-seed>/dev/urandom</prng-seed>` injection for Icecast 2.5+ instances to eliminate libigloo PRNG fallback warnings.
+  - Resolved Icecast 2.5+ configuration syntax and unknown tag errors by nesting `<prng-seed type="device" size="32">/dev/urandom</prng-seed>` and `<tls-context><tls-certificate>` strictly inside `<security>`, eliminating `/icecast/prng-seed` and `/icecast/tls-context` unknown tag errors and libigloo fallback warnings.
+  - Fixed telemetry polling for modern non-legacy Icecast instances (2.4+, 2.5+) using native `/status-json.xsl` and added automatic TLS support (`use_ssl`) for HTTPS-only services.
   - Enforced strict `0600` (`-rw-------`) file permissions on generated ephemeral configuration files and concatenated SSL PEM bundles to satisfy Icecast 2.5 security permission checks.
 - **System SSL Certificate Detection in Icecast Configuration**:
   - Corrected API status endpoint resolution to `/api/settings/ssl/status` and validated certificate payload using `valid` and `days_remaining`.

@@ -275,11 +275,18 @@ class TestIcecastService(unittest.TestCase):
                 xml_str = f.read()
 
             root = ET.fromstring(xml_str)
-            # PRNG seed tag must be present for 2.5+
-            self.assertEqual(root.findtext("prng-seed"), "/dev/urandom")
+            # PRNG seed and TLS context must be nested inside <security> for 2.5+
+            security_elem = root.find("security")
+            self.assertIsNotNone(security_elem)
+            self.assertEqual(security_elem.findtext("prng-seed"), "/dev/urandom")
+            self.assertEqual(security_elem.find("prng-seed").get("type"), "device")
 
-            # TLS context must be present
-            tls_context = root.find("tls-context")
+            # Must NOT be direct children of <icecast> root
+            self.assertIsNone(root.find("prng-seed"))
+            self.assertIsNone(root.find("tls-context"))
+
+            # TLS context must be inside <security>
+            tls_context = security_elem.find("tls-context")
             self.assertIsNotNone(tls_context)
             bundle_path = tls_context.findtext("tls-certificate")
             self.assertTrue(os.path.exists(bundle_path))
@@ -510,6 +517,34 @@ class TestIcecastService(unittest.TestCase):
             self.assertIn("<xsl:stylesheet", content)
         finally:
             if os.path.exists(xml_path): os.remove(xml_path)
+
+    def test_fetch_icecast_telemetry_use_ssl(self):
+        from core.icecast_telemetry import fetch_icecast_telemetry, clear_status_json_cache
+        clear_status_json_cache()
+        sample_json = b'{"icestats": {"listeners": 15, "source": []}}'
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = sample_json
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+            res = fetch_icecast_telemetry(
+                port=7443,
+                admin_user="admin",
+                admin_password="hackme",
+                has_status_json=True,
+                is_legacy=False,
+                use_ssl=True
+            )
+
+            self.assertIsNotNone(res)
+            self.assertEqual(res["icestats"]["listeners"], 15)
+            call_args = mock_urlopen.call_args[0]
+            req = call_args[0]
+            self.assertTrue(req.full_url.startswith("https://127.0.0.1:7443/status-json.xsl"))
+            # SSL context must be passed
+            self.assertIsNotNone(mock_urlopen.call_args[1].get("context"))
 
 if __name__ == "__main__":
     unittest.main()

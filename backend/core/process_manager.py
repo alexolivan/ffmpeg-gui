@@ -974,12 +974,11 @@ class ProcessManager:
                 if major > 2 or (major == 2 and minor >= 5):
                     is_v25_or_newer = True
 
-        prng_seed_xml = "    <prng-seed>/dev/urandom</prng-seed>\n" if is_v25_or_newer else ""
-
         # SSL Configuration and Certificate Bundling
         ssl_cert_xml = ""
         ssl_socket_xml = ""
-        tls_context_xml = ""
+        security_xml = ""
+        bundle_path = None
         if ssl_enabled:
             server_key = ice_cfg.get("server_key")
             server_cert = ice_cfg.get("server_cert")
@@ -1007,14 +1006,7 @@ class ProcessManager:
                     except Exception:
                         pass
 
-                    if is_v25_or_newer:
-                        tls_context_xml = f"""
-    <tls-context>
-        <tls-certificate>{bundle_path}</tls-certificate>
-    </tls-context>"""
-                        ssl_cert_xml = ""
-                    else:
-                        tls_context_xml = ""
+                    if not is_v25_or_newer:
                         ssl_cert_xml = f"<ssl-certificate>{bundle_path}</ssl-certificate>"
 
                     ssl_socket_xml = f"""
@@ -1024,6 +1016,19 @@ class ProcessManager:
     </listen-socket>"""
                 except Exception as b_err:
                     self.logger.error(f"[Icecast] Failed to generate concatenated SSL bundle: {b_err}")
+
+        # In Icecast 2.5+, <tls-context> and <prng-seed> belong inside <security> block
+        if is_v25_or_newer:
+            tls_part = ""
+            if ssl_enabled and bundle_path:
+                tls_part = f"""
+        <tls-context>
+            <tls-certificate>{bundle_path}</tls-certificate>
+        </tls-context>"""
+            security_xml = f"""
+    <security>
+        <prng-seed type="device" size="32">/dev/urandom</prng-seed>{tls_part}
+    </security>"""
 
         # HTTP Listen socket
         http_socket_xml = ""
@@ -1072,7 +1077,7 @@ class ProcessManager:
     <location>{location}</location>
     <admin>{admin_email}</admin>
     <hostname>{hostname}</hostname>
-{prng_seed_xml}
+{security_xml}
     <limits>
         <clients>{clients_limit}</clients>
         <sources>{sources_limit}</sources>
@@ -1091,7 +1096,6 @@ class ProcessManager:
     </authentication>
 {http_socket_xml}
 {ssl_socket_xml}
-{tls_context_xml}
 {mounts_block}
 
     <paths>
@@ -1415,7 +1419,10 @@ class ProcessManager:
                             is_icecast = (getattr(media_proc, 'service_type', '') == 'icecast_server')
                             if is_icecast:
                                 ice_cfg = media_proc.config.get('icecast_config', {}) if media_proc.config else {}
-                                h_port = ice_cfg.get('port', 7000)
+                                http_enabled = ice_cfg.get("http_enabled", True)
+                                ssl_enabled = ice_cfg.get("ssl_enabled", False)
+                                use_ssl = (not http_enabled) and ssl_enabled
+                                h_port = ice_cfg.get("ssl_port", 7443) if use_ssl else ice_cfg.get("port", 7000)
                                 admin_user = ice_cfg.get('admin_user', 'admin')
                                 admin_password = ice_cfg.get('admin_password', 'hackme')
                                 v_tag = getattr(media_proc, 'software_version', None) or (media_proc.config.get('software_version') if media_proc.config else None)
@@ -1430,10 +1437,10 @@ class ProcessManager:
                                         pass
                                 from core.builders.ffmpeg_builder import FFmpegCommandBuilder
                                 is_legacy = FFmpegCommandBuilder._is_legacy_icecast(v_tag or media_proc.name or "")
-                                has_status_json = (not is_legacy) and ice_cfg.get('has_status_json', False)
+                                has_status_json = not is_legacy
                                 try:
                                     from core.icecast_telemetry import fetch_icecast_telemetry
-                                    data = fetch_icecast_telemetry(h_port, admin_user, admin_password, has_status_json=has_status_json, is_legacy=is_legacy)
+                                    data = fetch_icecast_telemetry(h_port, admin_user, admin_password, has_status_json=has_status_json, is_legacy=is_legacy, use_ssl=use_ssl)
                                     if data:
                                         icestats = data.get("icestats", {})
                                         g_listeners = icestats.get("listeners", 0)
