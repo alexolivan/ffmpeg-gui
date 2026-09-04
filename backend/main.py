@@ -3787,6 +3787,13 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         ).first()
         if mtx_build:
             build_id = mtx_build.id
+    elif build_id is None and svc_type == "icecast_server":
+        ice_build = db.query(FfmpegBuild).filter(
+            FfmpegBuild.software_type == 'icecast2',
+            FfmpegBuild.status == 'ready'
+        ).first()
+        if ice_build:
+            build_id = ice_build.id
 
     input_cfg = dict(proc_in.input_config) if proc_in.input_config is not None else None
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else None
@@ -4003,6 +4010,189 @@ async def delete_process(process_id: int, db: Session = Depends(get_db)):
     db.delete(db_proc)
     db.commit()
     return {"status": "deleted", "process_id": process_id}
+
+@app.post("/processes/{process_id}/clone")
+def clone_process(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    svc_type = getattr(db_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
+
+    # 1. Resolve unique name
+    base_name = f"{db_proc.name} (Copy)"
+    new_name = base_name
+    counter = 2
+    while db.query(MediaProcess).filter(MediaProcess.name == new_name).first():
+        new_name = f"{db_proc.name} (Copy {counter})"
+        counter += 1
+
+    # 2. Resolve unique alias if original had one
+    new_alias = None
+    if db_proc.alias:
+        raw_alias = re.sub(r'[^a-zA-Z0-9_\-]', '', db_proc.alias.strip())[:7]
+        cand_alias = f"{raw_alias}_copy"[:12]
+        alias_cnt = 2
+        while db.query(MediaProcess).filter(MediaProcess.alias == cand_alias).first():
+            cand_alias = f"{raw_alias}_cp{alias_cnt}"[:12]
+            alias_cnt += 1
+        new_alias = cand_alias
+
+    # 3. Deep copy configs
+    new_config = copy.deepcopy(db_proc.config or {})
+    input_cfg = copy.deepcopy(db_proc.input_config or {})
+    output_cfg = copy.deepcopy(db_proc.output_config or {})
+    codec_cfg = copy.deepcopy(db_proc.codec_config or {})
+    filter_cfg = copy.deepcopy(db_proc.filter_config or {})
+
+    from utils.port_validator import (
+        get_next_available_mediamtx_ports,
+        get_next_available_icecast_ports,
+        validate_service_port_conflicts,
+        extract_ports_from_service,
+        get_gui_reserved_ports,
+    )
+
+    # 4. Resolve conflict-free ports according to service type
+    if svc_type == "mediamtx_hub":
+        next_ports = get_next_available_mediamtx_ports(db)
+        if "mediamtx_config" not in new_config:
+            new_config["mediamtx_config"] = {}
+        new_config["mediamtx_config"].update(next_ports)
+        # Purge any shadowed root-level ports to avoid collisions
+        for k in next_ports.keys():
+            if k in new_config:
+                new_config.pop(k, None)
+
+    elif svc_type == "icecast_server":
+        next_ports = get_next_available_icecast_ports(db)
+        if "icecast_config" not in new_config:
+            new_config["icecast_config"] = {}
+        new_config["icecast_config"]["port"] = next_ports["port"]
+        new_config["icecast_config"]["ssl_port"] = next_ports["ssl_port"]
+        # Also sync/update root if present
+        if "port" in new_config:
+            new_config["port"] = next_ports["port"]
+        if "ssl_port" in new_config:
+            new_config["ssl_port"] = next_ports["ssl_port"]
+
+    elif svc_type == "ffmpeg_stream":
+        # Handle listener ports in input / output
+        gui_reserved = get_gui_reserved_ports()
+        occupied = set((p, "tcp") for p in gui_reserved)
+        for other in db.query(MediaProcess).all():
+            for p, _, _, _, proto in extract_ports_from_service(
+                other.id, other.name, getattr(other, "service_type", "ffmpeg_stream"),
+                other.config, other.input_config, other.output_config
+            ):
+                occupied.add((p, proto))
+
+        inputs = []
+        if isinstance(input_cfg, dict):
+            for k in ["input1", "input2"]:
+                if k in input_cfg and isinstance(input_cfg[k], dict):
+                    inputs.append(input_cfg[k])
+            if not inputs and "type" in input_cfg:
+                inputs.append(input_cfg)
+        for inp in inputs:
+            if inp.get("mode") == "listener" and inp.get("port"):
+                try:
+                    p_num = int(inp["port"])
+                    proto = "udp" if str(inp.get("type", "")).lower() in ["udp", "rtp", "srt"] else "tcp"
+                    cand = p_num
+                    while (cand, proto) in occupied or (cand, "any") in occupied:
+                        cand += 1
+                    inp["port"] = str(cand) if isinstance(inp["port"], str) else cand
+                    occupied.add((cand, proto))
+                except (ValueError, TypeError):
+                    pass
+
+        outputs = []
+        if isinstance(output_cfg, list):
+            outputs.extend(output_cfg)
+        elif isinstance(output_cfg, dict):
+            outputs.append(output_cfg)
+        for out in outputs:
+            if isinstance(out, dict) and out.get("mode") == "listener" and out.get("port"):
+                try:
+                    p_num = int(out["port"])
+                    proto = "udp" if str(out.get("type", "")).lower() in ["udp", "rtp", "srt"] else "tcp"
+                    cand = p_num
+                    while (cand, proto) in occupied or (cand, "any") in occupied:
+                        cand += 1
+                    out["port"] = str(cand) if isinstance(out["port"], str) else cand
+                    occupied.add((cand, proto))
+                except (ValueError, TypeError):
+                    pass
+
+    # 5. Resolve software build ID if not set
+    build_id = db_proc.ffmpeg_build_id
+    if build_id is None:
+        if svc_type == "ffmpeg_stream":
+            default_build = db.query(FfmpegBuild).filter(
+                FfmpegBuild.is_default == True,
+                (FfmpegBuild.software_type == 'ffmpeg') | (FfmpegBuild.software_type == None)
+            ).first()
+            if default_build:
+                build_id = default_build.id
+        elif svc_type == "mediamtx_hub":
+            mtx_build = db.query(FfmpegBuild).filter(
+                FfmpegBuild.software_type == 'mediamtx',
+                FfmpegBuild.status == 'ready'
+            ).first()
+            if mtx_build:
+                build_id = mtx_build.id
+        elif svc_type == "icecast_server":
+            ice_build = db.query(FfmpegBuild).filter(
+                FfmpegBuild.software_type == 'icecast2',
+                FfmpegBuild.status == 'ready'
+            ).first()
+            if ice_build:
+                build_id = ice_build.id
+
+    # 6. Validate ports
+    validate_service_port_conflicts(
+        db=db,
+        service_id=None,
+        service_name=new_name,
+        service_type=svc_type,
+        config=new_config,
+        input_config=input_cfg,
+        output_config=output_cfg
+    )
+
+    # 7. Create cloned process
+    cloned_proc = MediaProcess(
+        name=new_name,
+        service_type=svc_type,
+        alias=new_alias,
+        type="service",
+        config=new_config,
+        input_config=input_cfg if svc_type == "ffmpeg_stream" else None,
+        output_config=output_cfg if svc_type == "ffmpeg_stream" else None,
+        codec_config=codec_cfg if svc_type == "ffmpeg_stream" else None,
+        filter_config=filter_cfg if svc_type == "ffmpeg_stream" else None,
+        ffmpeg_build_id=build_id,
+        auto_start=False,
+        status="stopped",
+        startup_order=getattr(db_proc, 'startup_order', 1) or 1,
+        startup_delay=getattr(db_proc, 'startup_delay', 0) or 0,
+        watchdog_enabled=db_proc.watchdog_enabled,
+        watchdog_retries=db_proc.watchdog_retries,
+        watchdog_min_speed=db_proc.watchdog_min_speed,
+        watchdog_min_speed_duration=db_proc.watchdog_min_speed_duration,
+        network_timeout=db_proc.network_timeout,
+        debug_mode=db_proc.debug_mode,
+        log_storage_id=db_proc.log_storage_id,
+        restart_count=0
+    )
+    db.add(cloned_proc)
+    db.commit()
+
+    from core.dependency_manager import dependency_manager
+    dependency_manager.sync_auto_dependencies('service', cloned_proc.id, cloned_proc.input_config, cloned_proc.output_config, db)
+    db.refresh(cloned_proc)
+    return _serialize_service(cloned_proc)
 
 @app.post("/processes/{process_id}/clone-as-task")
 def clone_process_as_task(process_id: int, db: Session = Depends(get_db)):

@@ -47,6 +47,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   logs: externalLogs,
   onClose,
   onEditProcess,
+  onCloneProcess,
   onStartService,
   onStopService,
   onRestartService,
@@ -367,6 +368,18 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                 <span className="hidden sm:inline">{t('common.start', 'Iniciar')}</span>
               </button>
             )}
+
+            <button
+              disabled={isPending}
+              onClick={() => {
+                onCloneProcess(currentProcess);
+                onClose();
+              }}
+              className="p-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-[var(--text-secondary)] hover:text-brand-lime transition-all cursor-pointer"
+              title={t('services.cloneService', 'Clonar Servicio')}
+            >
+              <ClipboardIcon size={15} />
+            </button>
 
             <button
               onClick={() => {
