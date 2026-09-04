@@ -225,6 +225,19 @@ class IcecastRecipe(BaseRecipe):
             env=build_env
         )
         
+        # Ensure status-json.xsl is present in installed web directory (legacy Icecast 2.3.x didn't ship it)
+        share_web = os.path.join(install_path, "share", "icecast", "web")
+        if os.path.exists(share_web):
+            status_json_file = os.path.join(share_web, "status-json.xsl")
+            if not os.path.exists(status_json_file):
+                try:
+                    from core.icecast_telemetry import FALLBACK_STATUS_JSON_XSL
+                    with open(status_json_file, "w", encoding="utf-8") as f_xsl:
+                        f_xsl.write(FALLBACK_STATUS_JSON_XSL)
+                    await log_callback("Añadida plantilla status-json.xsl compatible en share/icecast/web/.\n")
+                except Exception as e:
+                    await log_callback(f"Aviso al desplegar status-json.xsl: {e}\n")
+
         icecast_bin = os.path.join(install_path, "bin", "icecast")
         if not os.path.exists(icecast_bin):
             alt_bin = os.path.join(install_path, "bin", "icecast2")

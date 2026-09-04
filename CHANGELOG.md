@@ -24,7 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Icecast2 Multi-Version Compatibility & Log Warnings Resolution**:
-  - Eliminated repetitive XSLT 404 error log spam in legacy Icecast 2.3.x instances by verifying `status-json.xsl` stylesheet presence before polling and introducing a universal XML stats fallback (`/admin/stats.xml` with HTTP Basic Auth) that works reliably across all Icecast releases (2.0 to 2.5+).
+  - Eliminated repetitive XSLT 404 error log spam in legacy Icecast 2.3.x instances by introducing a multi-tier resolution:
+    - Bypassing `/status-json.xsl` queries entirely for instances identified as legacy (`< 2.4`) in favor of native `/admin/stats.xml` with HTTP Basic Auth.
+    - Implementing in-memory port failure caching (`_MISSING_STATUS_JSON_PORTS`) to prevent repeated polling if a server returns 404 on `/status-json.xsl`.
+    - Automatically deploying a standalone fallback `status-json.xsl` stylesheet into the instance's `webroot` on startup and during Forge build installs for Icecast versions that do not ship it.
   - Resolved Icecast 2.5+ configuration obsolescence warnings by dynamically routing TLS certificates to `<tls-context><tls-certificate>` instead of the deprecated `<paths><ssl-certificate>` tag when running Icecast >= 2.5.0, while preserving legacy tag compatibility for 2.4.x and 2.3.x.
   - Added `<prng-seed>/dev/urandom</prng-seed>` injection for Icecast 2.5+ instances to eliminate libigloo PRNG fallback warnings.
   - Enforced strict `0600` (`-rw-------`) file permissions on generated ephemeral configuration files and concatenated SSL PEM bundles to satisfy Icecast 2.5 security permission checks.

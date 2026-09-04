@@ -4462,11 +4462,23 @@ def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
     port = ice_cfg.get("port", 7000)
     admin_user = ice_cfg.get("admin_user", "admin")
     admin_password = ice_cfg.get("admin_password", "hackme")
-    has_status_json = ice_cfg.get("has_status_json", True)
+    v_tag = getattr(db_proc, 'software_version', None) or (cfg.get('software_version') if isinstance(cfg, dict) else None)
+    build_id = getattr(db_proc, 'software_build_id', None) or getattr(db_proc, 'ffmpeg_build_id', None)
+    if not v_tag and build_id:
+        try:
+            from database.models import SoftwareBuild
+            sb = db.query(SoftwareBuild).get(build_id)
+            if sb and sb.version_tag:
+                v_tag = sb.version_tag
+        except Exception:
+            pass
+    from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+    is_legacy = FFmpegCommandBuilder._is_legacy_icecast(v_tag or db_proc.name or "")
+    has_status_json = (not is_legacy) and ice_cfg.get("has_status_json", False)
     
     try:
         from core.icecast_telemetry import fetch_icecast_telemetry
-        telemetry = fetch_icecast_telemetry(port, admin_user, admin_password, has_status_json)
+        telemetry = fetch_icecast_telemetry(port, admin_user, admin_password, has_status_json=has_status_json, is_legacy=is_legacy)
         if telemetry:
             return telemetry
     except Exception:

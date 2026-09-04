@@ -3,24 +3,59 @@ import base64
 import json as pyjson
 import xml.etree.ElementTree as ET
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Set
 
 logger = logging.getLogger("ffmpeg_gui.icecast_telemetry")
+
+_MISSING_STATUS_JSON_PORTS: Set[int] = set()
+
+FALLBACK_STATUS_JSON_XSL = """<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+<xsl:output method="text" encoding="UTF-8" media-type="application/json" />
+<xsl:template match="/icestats">{
+  "icestats": {
+    "admin": "<xsl:value-of select="admin" />",
+    "location": "<xsl:value-of select="location" />",
+    "server_id": "<xsl:value-of select="server_id" />",
+    "listeners": <xsl:choose><xsl:when test="listeners"><xsl:value-of select="listeners" /></xsl:when><xsl:otherwise>0</xsl:otherwise></xsl:choose>,
+    "source": [
+<xsl:for-each select="source">
+      {
+        "listenurl": "<xsl:value-of select="listenurl" />",
+        "listeners": <xsl:choose><xsl:when test="listeners"><xsl:value-of select="listeners" /></xsl:when><xsl:otherwise>0</xsl:otherwise></xsl:choose>,
+        "listener_peak": <xsl:choose><xsl:when test="listener_peak"><xsl:value-of select="listener_peak" /></xsl:when><xsl:otherwise>0</xsl:otherwise></xsl:choose>,
+        "bitrate": <xsl:choose><xsl:when test="bitrate"><xsl:value-of select="bitrate" /></xsl:when><xsl:otherwise>0</xsl:otherwise></xsl:choose>,
+        "title": "<xsl:value-of select="title" />"
+      }<xsl:if test="position() != last()">,</xsl:if>
+</xsl:for-each>
+    ]
+  }
+}
+</xsl:template>
+</xsl:stylesheet>
+"""
+
+def mark_status_json_missing(port: int):
+    _MISSING_STATUS_JSON_PORTS.add(port)
+
+def clear_status_json_cache():
+    _MISSING_STATUS_JSON_PORTS.clear()
 
 def fetch_icecast_telemetry(
     port: int,
     admin_user: str = "admin",
     admin_password: str = "hackme",
-    has_status_json: bool = True
+    has_status_json: bool = False,
+    is_legacy: bool = False
 ) -> Optional[Dict[str, Any]]:
     """
     Fetches real-time Icecast telemetry.
-    If has_status_json is True, tries /status-json.xsl first (Icecast 2.4+).
-    If that fails, or if has_status_json is False (Icecast 2.3.x or 2.5.x without status-json.xsl),
-    falls back cleanly to /admin/stats.xml with HTTP Basic Auth, avoiding any XSLT stylesheet errors in Icecast logs.
+    If is_legacy is True or port is in _MISSING_STATUS_JSON_PORTS, never probes /status-json.xsl.
+    Only probes /status-json.xsl if has_status_json is True and not legacy.
+    If /status-json.xsl fails or returns 404, the port is cached in _MISSING_STATUS_JSON_PORTS
+    so all subsequent calls proceed directly to native /admin/stats.xml without causing XSLT errors in logs.
     """
-    # 1. Attempt /status-json.xsl if known to exist or assumed
-    if has_status_json:
+    # 1. Attempt /status-json.xsl only if explicitly enabled, not legacy, and not marked missing
+    if has_status_json and not is_legacy and port not in _MISSING_STATUS_JSON_PORTS:
         try:
             url = f"http://127.0.0.1:{port}/status-json.xsl"
             req = urllib.request.Request(url, headers={"User-Agent": "ffmpeg-gui"})
@@ -28,7 +63,7 @@ def fetch_icecast_telemetry(
                 if resp.status == 200:
                     return pyjson.loads(resp.read().decode("utf-8"))
         except Exception:
-            pass
+            _MISSING_STATUS_JSON_PORTS.add(port)
 
     # 2. Universal fallback: /admin/stats.xml (supported natively by Icecast 2.0 through 2.5+)
     try:

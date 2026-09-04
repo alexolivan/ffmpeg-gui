@@ -926,8 +926,17 @@ class ProcessManager:
                     adminroot = cand.replace("/web", "/admin")
                     break
 
-        # Check if status-json.xsl stylesheet exists in webroot
-        has_status_json = os.path.exists(os.path.join(webroot, "status-json.xsl"))
+        # Deploy fallback status-json.xsl if webroot exists and lacks it (e.g. Icecast 2.3.x builds)
+        status_json_path = os.path.join(webroot, "status-json.xsl")
+        if not os.path.exists(status_json_path) and os.path.exists(webroot) and os.access(webroot, os.W_OK):
+            try:
+                from core.icecast_telemetry import FALLBACK_STATUS_JSON_XSL
+                with open(status_json_path, "w", encoding="utf-8") as f_xsl:
+                    f_xsl.write(FALLBACK_STATUS_JSON_XSL)
+            except Exception:
+                pass
+
+        has_status_json = os.path.exists(status_json_path)
         ice_cfg["has_status_json"] = has_status_json
 
         # Check Icecast version for version-specific XML tags (2.5+ vs 2.4/2.3)
@@ -1409,10 +1418,22 @@ class ProcessManager:
                                 h_port = ice_cfg.get('port', 7000)
                                 admin_user = ice_cfg.get('admin_user', 'admin')
                                 admin_password = ice_cfg.get('admin_password', 'hackme')
-                                has_status_json = ice_cfg.get('has_status_json', True)
+                                v_tag = getattr(media_proc, 'software_version', None) or (media_proc.config.get('software_version') if media_proc.config else None)
+                                build_id = getattr(media_proc, 'software_build_id', None) or getattr(media_proc, 'ffmpeg_build_id', None)
+                                if not v_tag and build_id and session:
+                                    try:
+                                        from database.models import SoftwareBuild
+                                        sb = session.query(SoftwareBuild).get(build_id)
+                                        if sb and sb.version_tag:
+                                            v_tag = sb.version_tag
+                                    except Exception:
+                                        pass
+                                from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+                                is_legacy = FFmpegCommandBuilder._is_legacy_icecast(v_tag or media_proc.name or "")
+                                has_status_json = (not is_legacy) and ice_cfg.get('has_status_json', False)
                                 try:
                                     from core.icecast_telemetry import fetch_icecast_telemetry
-                                    data = fetch_icecast_telemetry(h_port, admin_user, admin_password, has_status_json)
+                                    data = fetch_icecast_telemetry(h_port, admin_user, admin_password, has_status_json=has_status_json, is_legacy=is_legacy)
                                     if data:
                                         icestats = data.get("icestats", {})
                                         g_listeners = icestats.get("listeners", 0)

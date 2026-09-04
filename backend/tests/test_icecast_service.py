@@ -399,7 +399,8 @@ class TestIcecastService(unittest.TestCase):
             self.assertTrue(req.headers["Authorization"].startswith("Basic "))
 
     def test_fetch_icecast_telemetry_json_primary(self):
-        from core.icecast_telemetry import fetch_icecast_telemetry
+        from core.icecast_telemetry import fetch_icecast_telemetry, clear_status_json_cache
+        clear_status_json_cache()
         sample_json = b'{"icestats": {"listeners": 10, "source": [{"listenurl": "http://127.0.0.1:7000/stream", "listeners": 10}]}}'
 
         mock_resp = MagicMock()
@@ -420,6 +421,95 @@ class TestIcecastService(unittest.TestCase):
             call_args = mock_urlopen.call_args[0]
             req = call_args[0]
             self.assertIn("/status-json.xsl", req.full_url)
+
+    def test_fetch_icecast_telemetry_legacy_bypasses_json(self):
+        from core.icecast_telemetry import fetch_icecast_telemetry, clear_status_json_cache
+        clear_status_json_cache()
+        sample_xml = b"""<icestats><listeners>5</listeners></icestats>"""
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = sample_xml
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+            res = fetch_icecast_telemetry(
+                port=7000,
+                admin_user="admin",
+                admin_password="hackme",
+                has_status_json=True,
+                is_legacy=True
+            )
+
+            self.assertIsNotNone(res)
+            self.assertEqual(res["icestats"]["listeners"], 5)
+            # Must call /admin/stats.xml directly, NEVER /status-json.xsl
+            call_args = mock_urlopen.call_args[0]
+            req = call_args[0]
+            self.assertIn("/admin/stats.xml", req.full_url)
+            self.assertNotIn("/status-json.xsl", req.full_url)
+
+    def test_fetch_icecast_telemetry_caches_missing_port(self):
+        from core.icecast_telemetry import fetch_icecast_telemetry, clear_status_json_cache
+        clear_status_json_cache()
+        sample_xml = b"""<icestats><listeners>7</listeners></icestats>"""
+
+        xml_resp = MagicMock()
+        xml_resp.status = 200
+        xml_resp.read.return_value = sample_xml
+        xml_resp.__enter__.return_value = xml_resp
+
+        # First call fails on /status-json.xsl then succeeds on /admin/stats.xml
+        def mock_urlopen_side_effect(req, *args, **kwargs):
+            if "/status-json.xsl" in req.full_url:
+                raise Exception("404 Not Found")
+            return xml_resp
+
+        with patch("urllib.request.urlopen", side_effect=mock_urlopen_side_effect) as mock_urlopen:
+            res1 = fetch_icecast_telemetry(port=7002, has_status_json=True)
+            self.assertEqual(res1["icestats"]["listeners"], 7)
+            self.assertEqual(mock_urlopen.call_count, 2)
+
+            # Second call for same port: must immediately use /admin/stats.xml without probing /status-json.xsl
+            res2 = fetch_icecast_telemetry(port=7002, has_status_json=True)
+            self.assertEqual(res2["icestats"]["listeners"], 7)
+            self.assertEqual(mock_urlopen.call_count, 3) # only 1 additional call to stats.xml!
+
+    def test_build_icecast_config_deploys_fallback_status_json_xsl(self):
+        fake_install = os.path.join(self.test_dir, "fake_icecast_install")
+        web_dir = os.path.join(fake_install, "share", "icecast", "web")
+        admin_dir = os.path.join(fake_install, "share", "icecast", "admin")
+        os.makedirs(web_dir, exist_ok=True)
+        os.makedirs(admin_dir, exist_ok=True)
+        fake_bin = os.path.join(fake_install, "bin", "icecast")
+        os.makedirs(os.path.dirname(fake_bin), exist_ok=True)
+        with open(fake_bin, "w") as f: f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(fake_bin, 0o755)
+
+        media_proc = Service(
+            id=5,
+            name="Legacy 2.3",
+            service_type="icecast_server",
+            config={
+                "software_version": "2.3.3",
+                "icecast_config": {"port": 7000}
+            }
+        )
+
+        session = MagicMock()
+        status_xsl_path = os.path.join(web_dir, "status-json.xsl")
+        self.assertFalse(os.path.exists(status_xsl_path))
+
+        cmd, xml_path = self.pm._build_icecast_config_and_cmd(media_proc, fake_bin, session)
+        try:
+            # status-json.xsl must have been deployed automatically into web_dir!
+            self.assertTrue(os.path.exists(status_xsl_path))
+            with open(status_xsl_path, "r") as f:
+                content = f.read()
+            self.assertIn("application/json", content)
+            self.assertIn("<xsl:stylesheet", content)
+        finally:
+            if os.path.exists(xml_path): os.remove(xml_path)
 
 if __name__ == "__main__":
     unittest.main()
