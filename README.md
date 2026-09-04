@@ -28,6 +28,8 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![FFmpeg Forge Builder](docs/assets/screenshot5.png)
 
+![Icecast2 Forge Recipes & Build Profiles](docs/assets/screenshot17.png)
+
 ### 📺 2. Media Services & Daemon Streams
 - **Persistent Pipelines**: Run RTMP, SRT (listener/caller), HLS, NDI, UDP, or ALSA audio streams as persistent background daemons.
 - **Boot Sequence Hierarchies**: Configure specific startup ordering and delay gaps to synchronize cross-dependent streams (e.g., waiting for an input stream to initialize before starting a transcoder).
@@ -53,9 +55,16 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ### 📻 4. Icecast2 Audio Broadcasting & Radio Hub
 - **Native Service Orchestration**: Manage dedicated Icecast2 server daemons directly alongside FFmpeg and MediaMTX pipelines.
 - **Dual HTTP & HTTPS/TLS Sockets**: Run unencrypted listener sockets (TCP 7000) and encrypted TLS streams (TCP 7443) simultaneously with automated concatenated PEM certificate bundles.
+- **Interactive Server Preview & Live Player**: Monitor stream status with an embedded live web iframe preview, HTML5 in-browser audio player for active mountpoints, listener counters, and real-time logs.
 - **Static & Dynamic Mountpoint Management**: Configure granular mountpoints with max audience limits, fallback drop protection (`fallback-mount` / `fallback-override`), and burst buffers.
-- **Audience & Telemetry Monitoring**: Real-time `/status-json.xsl` telemetry polling directly into the service cards and web admin console.
+- **Audience & Telemetry Monitoring**: Real-time `/status-json.xsl` and `/admin/stats.xml` telemetry polling directly into service cards and preview modal.
+- **Automated Native Log Rotation & Lifecycle**: Configurable `<logsize>` and `<logarchive>` native rotation coupled with system scheduled tasks (`system://log_rotate`) for automated `.gz` compression, retention purging, and orphan cleanup.
 - **FFmpeg Output Hub Integration**: 1-click Icecast destination assistant auto-negotiating container format and MIME types according to audio codecs (MP3, AAC, Opus, FLAC) with broadcast metadata tags (`-ice_name`, `-ice_genre`, `-ice_description`).
+- **Recipe Management & Conflict-Free Cloning**: Universal recipe export/import (`software_build_recipe` v2) and dedicated 1-click service cloning with collision-free port allocation.
+
+![Icecast2 Server Configuration & Mountpoints](docs/assets/screenshot16.png)
+
+![Icecast2 Server Preview, Mountpoint Telemetry & Live Player](docs/assets/screenshot15.png)
 
 ### 🎛️ 5. Professional AV Hardware & Control
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
@@ -72,37 +81,37 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Graphic EQ & Dynamics Compressor](docs/assets/screenshot7.png)
 
-### 🛡️ 5. Decoupled Watchdog Recovery
+### 🛡️ 6. Decoupled Watchdog Recovery
 - **Automatic Auto-Start**: Recovers crashed or disconnected streams automatically.
 - **Freeze Protection**: Actively monitors process FPS, bitrate, and outputs, force-restarting streams if frames freeze or connection drops.
 - **Jittered Backoff**: Uses exponential backoff delays combined with randomized jitter to break lockstep recovery loops and reduce server resource peaks during network outages.
 
-### ⏰ 6. Task Scheduler & Bilateral Cloning
+### ⏰ 7. Task Scheduler & Bilateral Cloning
 - **Automation Jobs**: Schedule recurring (cron-like) or one-shot encoding tasks (e.g., recording daily broadcasts, scheduled stream dumps).
 - **Safety Runtime Limits**: Define max duration timers to automatically clean up active tasks.
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
 
 ![Scheduled Tasks & Cron Automation](docs/assets/screenshot4.png)
 
-### 🔒 7. HTTPS & Let's Encrypt SSL Manager
+### 🔒 8. HTTPS & Let's Encrypt SSL Manager
 - **Automated SSL/TLS Certificates**: Request and renew Let's Encrypt certificates directly from the GUI panel.
 - **ACME Challenge Handler**: Integrated HTTP-01 challenge router (`/.well-known/acme-challenge/*`) for automated domain verification.
 - **Status & Monitoring**: Real-time display of certificate validity, domain bindings, and automated expiration warnings.
 
-### 💾 8. Granular Backup & Restore
+### 💾 9. Granular Backup & Restore
 - **Selective Section Toggles**: Export and import specific configuration parts (e.g., only backing up media services and scheduled tasks while leaving SMTP credentials or network port configs unchanged).
 - **Format Verification**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions and config file updates.
 
-### 🗄️ 9. Storage, Log Retention & Branding
+### 🗄️ 10. Storage, Log Retention & Branding
 - **Storage Management**: Configure local or mounted storage volumes, monitor disk space usage in real time, and trigger notifications if volume capacity exceeds limits.
-- **Automated Log Rotation**: Fine-grained settings to define retention limits for application logs, task logs, and stream outputs, automatically purging stale data to prevent disk saturation.
+- **Automated Log Rotation**: Fine-grained settings to define retention limits for application logs, task logs, and stream outputs (`FFmpeg`, `MediaMTX`, `Icecast2`), safely rotating via copytruncate and automatically purging stale data to prevent disk saturation.
 - **Branding Customization**: Customize the application name, panel headers, and console branding directly from the interface settings.
 
-### 🔔 10. State-Based SMTP Notifications
+### 🔔 11. State-Based SMTP Notifications
 - **Alert Fatigue Prevention**: Stateful notification queue that filters redundant alerts. Emails are dispatched exclusively on initial stream crashes, recovery success, and final retry exhaustion.
 - **System Health Checks**: Active warnings for pending SSL/TLS certificate expirations and disk space utilization exceeding 90%.
 
-### 📟 11. CFA635 LCD Display Driver
+### 📟 12. CFA635 LCD Display Driver
 - **Serial LCD Integration**: Direct driver control for CrystalFontz CFA635 USB/Serial displays. Renders live CPU, RAM, active stream counts, locator beacons, and handles backlight dimming timeouts.
 - **Bicolor Status LEDs**: Maps physical LEDs to profile monitors:
   - Heartbeat status indicator.
@@ -110,7 +119,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
   - Task execution monitor (reflects latest execution results).
   - High-resource alerts.
 
-### 🌐 12. Styling & Localization
+### 🌐 13. Styling & Localization
 - **Multi-Theme Engine**: 5 visual styles (Studio Dark, Cyberpunk Neon, Nordic Frost, Broadcast Light, Warm Paper) loaded instantly without page flash.
 - **Full Translations**: English, Spanish, and Catalan interfaces with 100% i18n parity.
 
