@@ -8,6 +8,7 @@ import {
   StopIcon,
   RefreshIcon,
   PencilIcon,
+  ExportIcon,
 } from '../Icons';
 
 interface IcecastPreviewModalProps {
@@ -368,6 +369,24 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                 <span className="hidden sm:inline">{t('common.start', 'Iniciar')}</span>
               </button>
             )}
+
+            <button
+              onClick={() => {
+                fetch(`${API}/processes/${currentProcess.id}/export`)
+                  .then((r) => r.json())
+                  .then((data) => {
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${currentProcess.name}_profile.json`;
+                    a.click();
+                  });
+              }}
+              className="p-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-[var(--text-secondary)] hover:text-brand-lime transition-all cursor-pointer"
+              title={t('services.exportProfile', 'Exportar Perfil')}
+            >
+              <ExportIcon size={15} />
+            </button>
 
             <button
               disabled={isPending}

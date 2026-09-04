@@ -78,6 +78,7 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
   });
 
   const [hasCertificates, setHasCertificates] = useState(false);
+  const [sslDomain, setSslDomain] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Storage & Lifecycle
@@ -118,11 +119,14 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
       .catch(() => {});
 
     // Check system certificates for SSL badge
-    fetch(`${API}/api/settings/ssl`)
+    fetch(`${API}/api/settings/ssl/status`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((sslData) => {
-        if (sslData && (sslData.has_certificate || sslData.ssl_enabled)) {
+      .then((data) => {
+        if (data && (data.valid || data.status === 'valid' || (typeof data.days_remaining === 'number' && data.days_remaining > 0))) {
           setHasCertificates(true);
+          if (data.domain) {
+            setSslDomain(data.domain);
+          }
         }
       })
       .catch(() => {});
@@ -387,6 +391,15 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
               />
             </div>
           </div>
+
+          {sslEnabled && hasCertificates && (
+            <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px] p-2 rounded-lg flex items-center gap-2">
+              <ShieldIcon size={14} className="text-emerald-400 shrink-0" />
+              <span>
+                {t('services.icecast.certDetectedValid', 'Certificado SSL del sistema detectado y activo')}{sslDomain ? ` (${sslDomain})` : ''}. {t('services.icecast.bundleAutoReady', 'El servidor generará automáticamente el bundle PEM concatenado al iniciar el servicio.')}
+              </span>
+            </div>
+          )}
 
           {sslEnabled && !hasCertificates && (
             <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] p-2 rounded-lg flex items-center gap-2">

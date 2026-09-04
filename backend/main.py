@@ -1390,11 +1390,13 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             {
                 "name": p.name,
                 "service_type": p.service_type or "ffmpeg_stream",
+                "config": p.config or {},
                 "input_config": p.input_config,
                 "output_config": p.output_config,
                 "codec_config": p.codec_config,
                 "filter_config": p.filter_config,
                 "mediamtx_config": p.mediamtx_config,
+                "icecast_config": p.icecast_config,
                 "auto_start": p.auto_start,
                 "startup_order": p.startup_order,
                 "startup_delay": p.startup_delay,
@@ -1408,7 +1410,9 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "allow_auto_start_deps": p.allow_auto_start_deps,
                 "allow_auto_stop_deps": p.allow_auto_stop_deps,
                 "software_type": p.software_type,
+                "software_version": p.software_version,
                 "ffmpeg_build_id": p.ffmpeg_build_id,
+                "software_build_id": p.software_build_id,
             }
             for p in procs
         ]
@@ -1583,15 +1587,26 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         for p_data in sections["services"]:
             existing = db.query(Service).filter(Service.name == p_data.get("name")).first()
             if not existing:
+                cfg = dict(p_data.get("config") or {})
+                if "mediamtx_config" in p_data and p_data["mediamtx_config"] and "mediamtx_config" not in cfg:
+                    cfg["mediamtx_config"] = p_data["mediamtx_config"]
+                if "icecast_config" in p_data and p_data["icecast_config"] and "icecast_config" not in cfg:
+                    cfg["icecast_config"] = p_data["icecast_config"]
+                if "kiosk_config" in p_data and p_data["kiosk_config"] and "kiosk_config" not in cfg:
+                    cfg["kiosk_config"] = p_data["kiosk_config"]
+                for k in ["software_type", "software_version", "allow_auto_start_deps", "allow_auto_stop_deps", "debug_mode", "network_timeout", "log_storage_id"]:
+                    if k in p_data and p_data[k] is not None and k not in cfg:
+                        cfg[k] = p_data[k]
+
                 proc = Service(
                     name=p_data.get("name"),
                     service_type=p_data.get("service_type", "ffmpeg_stream"),
                     status="stopped",
+                    config=cfg,
                     input_config=p_data.get("input_config") or {},
                     output_config=p_data.get("output_config") or {},
                     codec_config=p_data.get("codec_config") or {},
                     filter_config=p_data.get("filter_config") or {},
-                    mediamtx_config=p_data.get("mediamtx_config") or {},
                     auto_start=p_data.get("auto_start", False),
                     startup_order=p_data.get("startup_order", 1),
                     startup_delay=p_data.get("startup_delay", 0),
@@ -1607,6 +1622,10 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     software_type=p_data.get("software_type"),
                     ffmpeg_build_id=p_data.get("ffmpeg_build_id"),
                 )
+                if "mediamtx_config" in p_data and p_data["mediamtx_config"]:
+                    proc.mediamtx_config = p_data["mediamtx_config"]
+                if "icecast_config" in p_data and p_data["icecast_config"]:
+                    proc.icecast_config = p_data["icecast_config"]
                 db.add(proc)
                 imported_summary["services"] += 1
 

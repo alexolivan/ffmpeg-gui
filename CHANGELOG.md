@@ -16,10 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dedicated Atomic Service Cloning Endpoint for Heterogeneous Services**:
   - Implemented `@app.post("/processes/{process_id}/clone")` with automatic conflict-free port re-allocation (`get_next_available_mediamtx_ports` for MediaMTX, `get_next_available_icecast_ports` for Icecast2, and port-offset listener collision resolution for FFmpeg).
   - Integrated Clone Service button directly into `IcecastPreviewModal`.
-- **Icecast2 Preview & Legacy Protocol Support**:
+- **Icecast2 Preview, Profile Export & Legacy Protocol Support**:
   - Implemented live interactive iframe preview with periodic auto-refresh in `IcecastPreviewModal`.
+  - Added 1-click Export Profile action button in `IcecastPreviewModal`.
   - Added automatic detection and configuration of legacy Icecast2 SOURCE protocol (`-legacy_icecast 1`) and TLS for managed Icecast endpoints.
   - Added active leases telemetry badge to Icecast2 cards and modals.
+
+### Fixed
+- **System SSL Certificate Detection in Icecast Configuration**:
+  - Corrected API status endpoint resolution to `/api/settings/ssl/status` and validated certificate payload using `valid` and `days_remaining`.
+  - Added real-time active certificate confirmation badge displaying the detected domain in `IcecastConfigForm`.
+- **Universal Settings Backup & Restore for Icecast2 Services**:
+  - Fixed `/api/backup/export` and `/api/backup/import` to preserve full service `config`, `icecast_config`, `software_version`, and `software_build_id`.
+  - Updated Backup & Restore UI copy and translation keys across English, Spanish, and Catalan to explicitly enumerate Icecast servers alongside MediaMTX hubs and FFmpeg broadcast pipelines.
 
 ## [2.9.0] - 2026-09-03
 
