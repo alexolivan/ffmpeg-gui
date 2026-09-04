@@ -5,6 +5,8 @@ import logging
 import shutil
 import datetime
 import shlex
+import re
+from typing import Optional, Dict, Any, List
 
 
 class BuildManager:
@@ -42,24 +44,29 @@ class BuildManager:
 
     # ── System dependency pre-flight ──────────────────────────────
 
-    def check_dependencies(self) -> dict:
-        """Check that required system build tools are available."""
-        self.logger.info("Starting dependency check...")
+    def check_dependencies(self, software_type: Optional[str] = None) -> dict:
+        """Check that required system build tools are available for a given software engine."""
+        self.logger.info(f"Starting dependency check for software_type={software_type or 'all'}...")
         
-        # Tools validated via shutil.which
+        # Define tools per engine
         core_deps = {
-            "cmake": {"type": "required", "description": "Sistema de generación de builds (CMake)"},
-            "git": {"type": "required", "description": "Control de versiones para descargar código fuente"},
-            "make": {"type": "required", "description": "Herramienta de automatización de compilación"},
-            "gcc": {"type": "required", "description": "Compilador de código C/C++"},
-            "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo"},
-            "clang": {"type": "optional", "description": "Compilador LLVM/Clang (requerido para filtros CUDA)"},
-            "avahi-daemon": {"type": "optional", "description": "Servicio de descubrimiento mDNS/DNS-SD (requerido para runtime de NDI)"},
-            "vainfo": {"type": "optional", "description": "Herramienta de diagnóstico para aceleración de vídeo VA-API (vainfo)"},
+            "cmake": {"type": "required", "description": "Sistema de generación de builds (CMake)", "engines": ["ffmpeg"]},
+            "git": {"type": "required" if software_type == "ffmpeg" else "optional", "description": "Control de versiones para descargar código fuente", "engines": ["ffmpeg", "icecast2"]},
+            "make": {"type": "required", "description": "Herramienta de automatización de compilación", "engines": ["ffmpeg", "icecast2", "decklink_tools"]},
+            "gcc": {"type": "required", "description": "Compilador de código C/C++" if software_type != "decklink_tools" else "Compilador de código C++ (g++)", "engines": ["ffmpeg", "icecast2", "decklink_tools"]},
+            "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo", "engines": ["ffmpeg", "icecast2"]},
+            "curl": {"type": "required", "description": "Descarga de archivos fuente vía HTTP/HTTPS", "engines": ["icecast2"]},
+            "clang": {"type": "optional", "description": "Compilador LLVM/Clang (requerido para filtros CUDA)", "engines": ["ffmpeg"]},
+            "avahi-daemon": {"type": "optional", "description": "Servicio de descubrimiento mDNS/DNS-SD (requerido para runtime de NDI)", "engines": ["ffmpeg"]},
+            "vainfo": {"type": "optional", "description": "Herramienta de diagnóstico para aceleración de vídeo VA-API (vainfo)", "engines": ["ffmpeg"]},
         }
         
         results = {}
         for name, info in core_deps.items():
+            if software_type and software_type in ["ffmpeg", "icecast2", "decklink_tools"]:
+                if software_type not in info["engines"]:
+                    continue
+
             installed = shutil.which(name) is not None
             if name == "avahi-daemon" and not installed:
                 installed = os.path.exists("/usr/sbin/avahi-daemon")
@@ -69,36 +76,47 @@ class BuildManager:
                 "description": info["description"]
             }
 
-        # Check yasm/nasm assembler
-        yasm_nasm_installed = (
-            shutil.which("yasm") is not None
-            or shutil.which("nasm") is not None
-        )
-        results["yasm/nasm"] = {
-            "installed": yasm_nasm_installed,
-            "type": "required",
-            "description": "Ensamblador para optimizaciones de rendimiento x86 (yasm o nasm)"
-        }
+        # Check yasm/nasm assembler (required only for FFmpeg)
+        if not software_type or software_type == "ffmpeg":
+            yasm_nasm_installed = (
+                shutil.which("yasm") is not None
+                or shutil.which("nasm") is not None
+            )
+            results["yasm/nasm"] = {
+                "installed": yasm_nasm_installed,
+                "type": "required",
+                "description": "Ensamblador para optimizaciones de rendimiento x86 (yasm o nasm)"
+            }
 
         # Libraries checked via pkg-config
         libs = {
-            "libx264": {"pkg": "x264", "type": "required", "description": "Biblioteca para codificación H.264/AVC (libx264)"},
-            "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)"},
-            "libssl": {"pkg": "openssl", "type": "required", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)"},
-            "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)"},
-            "libmp3lame": {"pkg": "mp3lame", "type": "optional", "description": "Biblioteca LAME para codificación de audio MP3 (libmp3lame-dev)"},
-            "libvorbis": {"pkg": "vorbis", "type": "optional", "description": "Biblioteca Ogg Vorbis para codificación de audio (libvorbis-dev)"},
-            "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)"},
-            "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)"},
-            "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)"},
-            "libharfbuzz": {"pkg": "harfbuzz", "type": "optional", "description": "Motor de formateo y modelado de texto (libharfbuzz-dev, requerido por drawtext en FFmpeg 6.1+)"},
-            "libfontconfig": {"pkg": "fontconfig", "type": "optional", "description": "Gestión y selección de fuentes del sistema (libfontconfig1-dev)"},
-            "libfribidi": {"pkg": "fribidi", "type": "optional", "description": "Biblioteca para algoritmos bidireccionales de texto (libfribidi-dev)"}
+            "libx264": {"pkg": "x264", "type": "required", "description": "Biblioteca para codificación H.264/AVC (libx264)", "engines": ["ffmpeg"]},
+            "libx265": {"pkg": "x265", "type": "required", "description": "Biblioteca para codificación H.265/HEVC (libx265)", "engines": ["ffmpeg"]},
+            "libssl": {"pkg": "openssl", "type": "required", "description": "Biblioteca criptográfica OpenSSL (libssl-dev)", "engines": ["ffmpeg", "icecast2"]},
+            "libxml2": {"pkg": "libxml-2.0", "type": "required" if software_type == "icecast2" else "optional", "description": "Biblioteca XML para Icecast2 y streaming (libxml2-dev)", "engines": ["ffmpeg", "icecast2"]},
+            "libxslt": {"pkg": "libxslt", "type": "required" if software_type == "icecast2" else "optional", "description": "Motor de plantillas XSLT para consola web de Icecast2 (libxslt1-dev)", "engines": ["ffmpeg", "icecast2"]},
+            "libdrm": {"pkg": "libdrm", "type": "optional", "description": "Acceso directo al subsistema de renderizado GPU (DRI)", "engines": ["ffmpeg"]},
+            "libmp3lame": {"pkg": "mp3lame", "type": "optional", "description": "Biblioteca LAME para codificación de audio MP3 (libmp3lame-dev)", "engines": ["ffmpeg"]},
+            "libvorbis": {"pkg": "vorbis", "type": "required" if software_type == "icecast2" else "optional", "description": "Biblioteca Ogg Vorbis para codificación de audio (libvorbis-dev)", "engines": ["ffmpeg", "icecast2"]},
+            "libogg": {"pkg": "ogg", "type": "optional", "description": "Biblioteca contenedor de audio Ogg (libogg-dev)", "engines": ["icecast2"]},
+            "libcurl": {"pkg": "libcurl", "type": "optional", "description": "Biblioteca cliente HTTP/URL auth (libcurl4-openssl-dev)", "engines": ["icecast2"]},
+            "librhash": {"pkg": "librhash", "type": "required" if software_type == "icecast2" else "optional", "description": "Biblioteca para funciones hash criptográficas (librhash-dev, requerida por libigloo/Icecast 2.5)", "engines": ["icecast2"]},
+            "libigloo": {"pkg": "igloo >= 0.9.4", "type": "optional", "description": "Framework C de base para Icecast 2.5+ (libigloo-dev, auto-compilado en la receta si falta)", "engines": ["icecast2"]},
+            "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)", "engines": ["ffmpeg"]},
+            "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)", "engines": ["ffmpeg"]},
+            "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)", "engines": ["ffmpeg"]},
+            "libharfbuzz": {"pkg": "harfbuzz", "type": "optional", "description": "Motor de formateo y modelado de texto (libharfbuzz-dev, requerido por drawtext en FFmpeg 6.1+)", "engines": ["ffmpeg"]},
+            "libfontconfig": {"pkg": "fontconfig", "type": "optional", "description": "Gestión y selección de fuentes del sistema (libfontconfig1-dev)", "engines": ["ffmpeg"]},
+            "libfribidi": {"pkg": "fribidi", "type": "optional", "description": "Biblioteca para algoritmos bidireccionales de texto (libfribidi-dev)", "engines": ["ffmpeg"]}
         }
 
-        has_pkg_config = results.get("pkg-config", {}).get("installed", False)
+        has_pkg_config = results.get("pkg-config", {}).get("installed", False) or (shutil.which("pkg-config") is not None)
 
         for name, info in libs.items():
+            if software_type and software_type in ["ffmpeg", "icecast2", "decklink_tools"]:
+                if software_type not in info["engines"]:
+                    continue
+
             installed = False
             if has_pkg_config:
                 try:
@@ -108,7 +126,7 @@ class BuildManager:
                 except Exception:
                     installed = False
 
-            # Fallback header checks for packages without .pc files on Debian/Ubuntu (e.g. libmp3lame-dev)
+            # Fallback header checks for packages without .pc files on Debian/Ubuntu
             if not installed and name == "libmp3lame":
                 for h_path in ["/usr/include/lame/lame.h", "/usr/include/lame.h", "/usr/local/include/lame/lame.h"]:
                     if os.path.exists(h_path):
@@ -116,6 +134,31 @@ class BuildManager:
                         break
             elif not installed and name == "libvorbis":
                 for h_path in ["/usr/include/vorbis/codec.h", "/usr/local/include/vorbis/codec.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
+            elif not installed and name == "libogg":
+                for h_path in ["/usr/include/ogg/ogg.h", "/usr/local/include/ogg/ogg.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
+            elif not installed and name == "libcurl":
+                for h_path in ["/usr/include/curl/curl.h", "/usr/local/include/curl/curl.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
+            elif not installed and name == "libxml2":
+                for h_path in ["/usr/include/libxml2/libxml/parser.h", "/usr/local/include/libxml2/libxml/parser.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
+            elif not installed and name == "libxslt":
+                for h_path in ["/usr/include/libxslt/xslt.h", "/usr/local/include/libxslt/xslt.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
+            elif not installed and name == "librhash":
+                for h_path in ["/usr/include/rhash.h", "/usr/local/include/rhash.h"]:
                     if os.path.exists(h_path):
                         installed = True
                         break
@@ -127,18 +170,19 @@ class BuildManager:
                 "pkg_config_name": info["pkg"]
             }
 
-        # Check libnpp (Nvidia CUDA Toolkit) via npp.h headers presence
-        npp_installed = False
-        for path in ["/usr/include/npp.h", "/usr/local/cuda/include/npp.h", "/usr/include/x86_64-linux-gnu/npp.h"]:
-            if os.path.exists(path):
-                npp_installed = True
-                break
-        
-        results["nvidia-cuda-dev"] = {
-            "installed": npp_installed,
-            "type": "optional",
-            "description": "Cabeceras de desarrollo de NVIDIA CUDA / NPP (nvidia-cuda-dev)"
-        }
+        # Check libnpp (Nvidia CUDA Toolkit) via npp.h headers presence (Only for FFmpeg)
+        if not software_type or software_type == "ffmpeg":
+            npp_installed = False
+            for path in ["/usr/include/npp.h", "/usr/local/cuda/include/npp.h", "/usr/include/x86_64-linux-gnu/npp.h"]:
+                if os.path.exists(path):
+                    npp_installed = True
+                    break
+            
+            results["nvidia-cuda-dev"] = {
+                "installed": npp_installed,
+                "type": "optional",
+                "description": "Cabeceras de desarrollo de NVIDIA CUDA / NPP (nvidia-cuda-dev)"
+            }
 
         # Calculate all_required_met
         all_required_met = all(
@@ -148,10 +192,11 @@ class BuildManager:
         )
 
         payload = {
+            "software_type": software_type or "all",
             "dependencies": results,
             "all_required_met": all_required_met
         }
-        self.logger.info(f"Check results payload: {payload}")
+        self.logger.info(f"Check results payload for {software_type or 'all'}: {payload}")
         return payload
 
     # ── Tag discovery ─────────────────────────────────────────────
@@ -186,7 +231,13 @@ class BuildManager:
                 if ref.endswith("^{}"):
                     continue
                 tag_name = ref.replace("refs/tags/", "")
-                tags.append(tag_name)
+                if "icecast" in url.lower():
+                    # Strip 'icecast-' or 'v' prefix for user-friendly version presentation
+                    clean_tag = re.sub(r'^(?:icecast[-_]|v)', '', tag_name, flags=re.IGNORECASE)
+                    if clean_tag and clean_tag not in tags:
+                        tags.append(clean_tag)
+                else:
+                    tags.append(tag_name)
             return tags
         except Exception as exc:
             self.logger.error(f"Failed to fetch tags for {repo}: {exc}")
@@ -339,7 +390,12 @@ class BuildManager:
             return await recipe.validate(binary_path)
         except Exception:
             try:
-                cmd_flag = "--version" if software_type == "decklink_tools" else "-version"
+                if software_type == "decklink_tools":
+                    cmd_flag = "--version"
+                elif software_type == "icecast2":
+                    cmd_flag = "-v"
+                else:
+                    cmd_flag = "-version"
                 output = await self._get_command_output([binary_path, cmd_flag])
                 return {"valid": True, "output": output}
             except Exception as exc:
@@ -438,9 +494,11 @@ class BuildManager:
             raise Exception(f"Command failed with exit code {return_code}")
         return return_code
 
-    async def _get_command_output(self, cmd) -> str:
+    async def _get_command_output(self, cmd, env: dict | None = None) -> str:
         """Run a command and return its full stdout as a string."""
         custom_env = os.environ.copy()
+        if env:
+            custom_env.update(env)
         custom_env["GIT_TERMINAL_PROMPT"] = "0"
         custom_env["GIT_ASKPASS"] = "true"
         custom_env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"

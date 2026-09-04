@@ -306,6 +306,14 @@ class Service(Base):
         self._set_config_key('mediamtx_config', val)
 
     @property
+    def icecast_config(self):
+        return self.config.get('icecast_config', {}) if self.config else {}
+
+    @icecast_config.setter
+    def icecast_config(self, val):
+        self._set_config_key('icecast_config', val)
+
+    @property
     def software_type(self):
         return self.config.get('software_type') if self.config else None
 

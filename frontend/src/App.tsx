@@ -12,8 +12,10 @@ import { SettingsView } from './components/views/SettingsView';
 import { ForgeView } from './components/views/ForgeView';
 import { FfmpegPreviewModal } from './components/modals/FfmpegPreviewModal';
 import { MediaMtxPreviewModal } from './components/modals/MediaMtxPreviewModal';
+import { IcecastPreviewModal } from './components/modals/IcecastPreviewModal';
 import { ServiceTypePickerModal } from './components/modals/ServiceTypePickerModal';
 import { MediaMtxConfigForm } from './components/forms/MediaMtxConfigForm';
+import { IcecastConfigForm } from './components/forms/IcecastConfigForm';
 
 const API = '';
 
@@ -22,7 +24,7 @@ function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [selectedLinuxDistro, setSelectedLinuxDistro] = useState<'debian' | 'fedora' | 'arch'>('debian');
-  const [creationServiceType, setCreationServiceType] = useState<'ffmpeg_stream' | 'mediamtx_hub'>('ffmpeg_stream');
+  const [creationServiceType, setCreationServiceType] = useState<'ffmpeg_stream' | 'mediamtx_hub' | 'icecast_server'>('ffmpeg_stream');
   const [creationStep, setCreationStep] = useState<'picker' | 'form'>('picker');
 
   // Custom Hooks
@@ -325,7 +327,7 @@ function App() {
                 </button>
                 <span className="text-[var(--glass-border)]">|</span>
                 <h3 className="text-base font-bold tracking-wide uppercase">
-                  {t('services.addNewService')}: {creationServiceType === 'mediamtx_hub' ? 'MediaMTX Hub' : 'FFmpeg Stream'}
+                  {t('services.addNewService')}: {creationServiceType === 'mediamtx_hub' ? 'MediaMTX Hub' : creationServiceType === 'icecast_server' ? 'Icecast2 Server' : 'FFmpeg Stream'}
                 </h3>
               </div>
             </div>
@@ -350,6 +352,32 @@ function App() {
                     } else {
                       const errData = await res.json();
                       alert(`Error creating MediaMTX service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error: ${err.message || err}`);
+                  }
+                }}
+              />
+            ) : creationServiceType === 'icecast_server' ? (
+              <IcecastConfigForm
+                API={API}
+                onCancel={() => {
+                  setShowAddModal(false);
+                  setCreationStep('picker');
+                }}
+                onSubmit={async (payload) => {
+                  try {
+                    const res = await fetch(`${API}/processes`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                      setShowAddModal(false);
+                      setCreationStep('picker');
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error creating Icecast service: ${errData.detail || 'Unknown error'}`);
                     }
                   } catch (err: any) {
                     alert(`Network error: ${err.message || err}`);
@@ -443,6 +471,29 @@ function App() {
                   }
                 }}
               />
+            ) : editingProcess.service_type === 'icecast_server' ? (
+              <IcecastConfigForm
+                API={API}
+                initialConfig={editingProcess}
+                onCancel={() => setEditingProcess(null)}
+                onSubmit={async (payload) => {
+                  try {
+                    const res = await fetch(`${API}/processes/${editingProcess.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                      setEditingProcess(null);
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error updating Icecast service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error updating service: ${err.message || err}`);
+                  }
+                }}
+              />
             ) : (
               <ProcessConfigForm
                 initialConfig={editingProcess}
@@ -510,6 +561,20 @@ function App() {
       {selectedProcess && (
         selectedProcess.service_type === 'mediamtx_hub' ? (
           <MediaMtxPreviewModal
+            selectedProcess={selectedProcess}
+            telemetry={telemetry}
+            actionPending={actionPending}
+            logs={logs}
+            onClose={() => setSelectedProcess(null)}
+            onEditProcess={setEditingProcess}
+            onCloneProcess={handleCloneProcess}
+            onStartService={handleStartService}
+            onStopService={handleStopService}
+            onRestartService={handleRestartService}
+            API={API}
+          />
+        ) : selectedProcess.service_type === 'icecast_server' ? (
+          <IcecastPreviewModal
             selectedProcess={selectedProcess}
             telemetry={telemetry}
             actionPending={actionPending}

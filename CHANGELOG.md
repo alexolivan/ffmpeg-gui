@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] - 2026-09-04
+
+### Added
+- **Unified Log Lifecycle, Native Rotation & Automated Orphan Purging**:
+  - Implemented Icecast2 native log rotation controls `<logsize>` and `<logarchive>1</logarchive>` in `icecast.xml` dynamically bound to `logging_rotation_max_bytes`.
+  - Upgraded `TaskManager._execute_log_rotate` (and on-boot cleanup) to manage service logs across all engines (`FFmpeg`, `MediaMTX`, `Icecast2`):
+    - Live active process logs exceeding `rotation_max_bytes` are safely rotated via copytruncate to `.1.gz` without interrupting process execution.
+    - Icecast access/error logs exceeding `rotation_max_bytes` are rotated, and uncompressed `.old` archives are automatically compressed to `.gz`.
+    - Archived logs and compressed copies older than `logging_retention_days` are purged automatically.
+    - Automated orphan detection sweeps and purges any leftover `process_{id}.log*` files and `icecast_{id}/` directories whose services have been deleted from the database.
+    - Service deletion endpoint (`DELETE /processes/{id}`) now immediately and physically purges all corresponding process logs, archives, and Icecast log directories.
+- **Multi-Engine Software Build Recipe Export & Import Protocol (`software_build_recipe` v2)**:
+  - Transitioned Forge build recipe export and import from FFmpeg-centric (`ffmpeg_build_recipe` v1) to a generic, engine-agnostic schema (`software_build_recipe` v2) supporting `ffmpeg`, `icecast2`, `mediamtx`, and future software engines.
+  - Retained 100% backward compatibility for existing `ffmpeg_build_recipe` JSON files.
+  - Isolated external SDK dependency checks (NDI, DeckLink) strictly to FFmpeg builds.
+  - Added dynamic recipe export filenames scoped by software engine (`{software_type}_recipe_{name}.json`) and engine badge feedback during recipe import.
+- **Dedicated Atomic Service Cloning Endpoint for Heterogeneous Services**:
+  - Implemented `@app.post("/processes/{process_id}/clone")` with automatic conflict-free port re-allocation (`get_next_available_mediamtx_ports` for MediaMTX, `get_next_available_icecast_ports` for Icecast2, and port-offset listener collision resolution for FFmpeg).
+  - Integrated Clone Service button directly into `IcecastPreviewModal`.
+- **Icecast2 Preview, Profile Export & Legacy Protocol Support**:
+  - Implemented live interactive iframe preview with periodic auto-refresh in `IcecastPreviewModal`.
+  - Added 1-click Export Profile action button in `IcecastPreviewModal`.
+  - Added automatic detection and configuration of legacy Icecast2 SOURCE protocol (`-legacy_icecast 1`) and TLS for managed Icecast endpoints.
+  - Added active leases telemetry badge to Icecast2 cards and modals.
+
+### Fixed
+- **Icecast2 Multi-Version Compatibility & Log Warnings Resolution**:
+  - Eliminated repetitive XSLT 404 error log spam in legacy Icecast 2.3.x instances by introducing a multi-tier resolution:
+    - Bypassing `/status-json.xsl` queries entirely for instances identified as legacy (`< 2.4`) in favor of native `/admin/stats.xml` with HTTP Basic Auth.
+    - Implementing in-memory port failure caching (`_MISSING_STATUS_JSON_PORTS`) to prevent repeated polling if a server returns 404 on `/status-json.xsl`.
+    - Automatically deploying a standalone fallback `status-json.xsl` stylesheet into the instance's `webroot` on startup and during Forge build installs for Icecast versions that do not ship it.
+  - Resolved Icecast 2.5+ configuration syntax and unknown tag errors by nesting `<prng-seed type="device" size="32">/dev/urandom</prng-seed>` and `<tls-context><tls-certificate>` strictly inside `<security>`, eliminating `/icecast/prng-seed` and `/icecast/tls-context` unknown tag errors and libigloo fallback warnings.
+  - Fixed telemetry polling for modern non-legacy Icecast instances (2.4+, 2.5+) using native `/status-json.xsl` and added automatic TLS support (`use_ssl`) for HTTPS-only services.
+  - Enforced strict `0600` (`-rw-------`) file permissions on generated ephemeral configuration files and concatenated SSL PEM bundles to satisfy Icecast 2.5 security permission checks.
+- **System SSL Certificate Detection in Icecast Configuration**:
+  - Corrected API status endpoint resolution to `/api/settings/ssl/status` and validated certificate payload using `valid` and `days_remaining`.
+  - Added real-time active certificate confirmation badge displaying the detected domain in `IcecastConfigForm`.
+- **Universal Settings Backup & Restore for Icecast2 Services**:
+  - Fixed `/api/backup/export` and `/api/backup/import` to preserve full service `config`, `icecast_config`, `software_version`, and `software_build_id`.
+  - Updated Backup & Restore UI copy and translation keys across English, Spanish, and Catalan to explicitly enumerate Icecast servers alongside MediaMTX hubs and FFmpeg broadcast pipelines.
+
+## [2.9.0] - 2026-09-03
+
+### Added
+- **Native Icecast2 Server Service Integration**:
+  - Full heterogeneous service lifecycle management for Icecast2 instances (`icecast_server`) alongside FFmpeg and MediaMTX.
+  - Automated generation of isolated, well-formed `icecast.xml` configurations with runtime log isolation and webroot/adminroot discovery.
+  - Dual listen socket architecture supporting plain HTTP and HTTPS/TLS with automatic concatenated PEM bundle creation (`<ssl-certificate>`).
+  - Static and dynamic mountpoints management (CRUD) with `max-listeners`, `fallback-mount`, `fallback-override`, `burst-size`, and source password overrides.
+  - Real-time `/status-json.xsl` telemetry poller monitoring connected listeners, peak audience, and active mountpoints.
+- **Dedicated TCP 7XXX Port Allocator & Pre-Flight Collision Protection**:
+  - Allocated Icecast2 in dedicated TCP 7XXX range (base HTTP 7000, base HTTPS 7443, step offset +10) avoiding collisions with MediaMTX (8XXX), web panel, or streaming outputs.
+- **Forge Build Engine & Software Manager Enhancements**:
+  - Added Xiph GitLab repository integration (`icecast-server.git`) with tag normalization and fallback source distribution mirrors.
+  - Registered `libxml2`, `libxslt`, and `libssl-dev` in dependency auditor, with dual system binary detection (`/usr/bin/icecast2` and `icecast`).
+- **FFmpeg Icecast Output Assistant & Automated Audio Codec/MIME Resolution**:
+  - Interactive destination selector in `DestinationPanel.tsx` supporting 1-click Local Hub integration (auto-populating host, port, mount, and password from managed servers) vs Remote Server manual mode.
+  - Automated CLI argument generation mapping audio codecs to proper containers and MIME types (`libmp3lame` → `-f mp3 -content_type audio/mpeg`, `aac` → `-f adts -content_type audio/aac`, `libopus` → `-f ogg -content_type audio/ogg`, `flac` → `-f flac -content_type audio/flac`).
+  - Added broadcast stream metadata flags (`-ice_name`, `-ice_genre`, `-ice_description`, `-ice_public`).
+- **Modern UI & Full 100% i18n Key Parity**:
+  - Added `IcecastConfigForm.tsx` and compact `IcecastServiceCard.tsx` with 1-click access to web admin console (`/admin/`) and live audience telemetry.
+  - Added 51 new translation keys with 100% key parity across English, Spanish, and Catalan.
+
 ## [2.8.0] - 2026-09-03
 
 ### Added

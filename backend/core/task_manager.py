@@ -499,10 +499,16 @@ class TaskManager:
 
     async def _execute_log_rotate(self, log_info, log_error):
         import time
+        import gzip
+        import shutil
+        import re
+
         config_path = os.environ.get("CONFIG_FILE_PATH")
         retention_days = 30
+        rotation_max_bytes = 10485760  # 10 MB default
         logging_mode = "both"
         logging_file_path = None
+        compression_enabled = True
 
         if config_path and os.path.exists(config_path):
             try:
@@ -517,12 +523,26 @@ class TaskManager:
                         retention_days = logging_cfg.getint("retention_days", 30)
                     except Exception:
                         pass
+                    try:
+                        rotation_max_bytes = logging_cfg.getint("rotation_max_bytes", 10485760)
+                    except Exception:
+                        pass
+                    try:
+                        compression_enabled = logging_cfg.getboolean("compression_enabled", True)
+                    except Exception:
+                        pass
                 if "server" in config and not logging_file_path:
                     logging_file_path = config["server"].get("log_file", None)
             except Exception as cfg_err:
                 log_error(f"Error reading config for log rotation: {cfg_err}")
 
-        log_info(f"Retention days: {retention_days}")
+        # Ensure sensible bounds
+        if retention_days <= 0:
+            retention_days = 30
+        if rotation_max_bytes <= 0:
+            rotation_max_bytes = 10485760
+
+        log_info(f"Log retention policy: {retention_days} days, max file size before rotation: {rotation_max_bytes / (1024 * 1024):.1f} MB.")
 
         # 1. Clean up expired TaskExecution and ProcessLog records from SQLite database
         try:
@@ -553,14 +573,13 @@ class TaskManager:
         except Exception as db_clean_err:
             log_error(f"Failed to prune old task/process log records from DB: {db_clean_err}")
 
-        # 2. Clean up rotated log files (.gz) if file logging is configured
+        # 2. Clean up rotated application server log files (.gz) if file logging is configured
         use_file = bool(logging_file_path and logging_mode in ("file", "both"))
         if use_file and os.path.exists(os.path.dirname(os.path.abspath(logging_file_path))):
             abs_log_path = os.path.abspath(logging_file_path)
             log_dir = os.path.dirname(abs_log_path)
             log_filename = os.path.basename(abs_log_path)
             
-            import time
             now = time.time()
             deleted_count = 0
             preserved_count = 0
@@ -584,14 +603,163 @@ class TaskManager:
                         preserved_count += 1
             log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")
 
-        # Clean up orphaned temporary progress logs in /dev/shm or /tmp older than 1 day
+        # 3. Clean up, rotate, compress, and enforce retention on Services logs (FFmpeg, MediaMTX, Icecast)
+        try:
+            now_ts = time.time()
+            resolved_log_dirs = set()
+            active_service_ids = set()
+
+            default_logs_dir = os.path.abspath("data/logs")
+            if os.path.exists(default_logs_dir):
+                resolved_log_dirs.add(default_logs_dir)
+
+            with self.db_session_factory() as session:
+                from database.models import Storage, Service
+                for st in session.query(Storage).filter(Storage.type == "logs").all():
+                    if st.path and os.path.exists(st.path):
+                        resolved_log_dirs.add(os.path.abspath(st.path))
+
+                for svc in session.query(Service).all():
+                    active_service_ids.add(svc.id)
+                    if svc.config and isinstance(svc.config, dict):
+                        st_id = svc.config.get("log_storage_id")
+                        if st_id:
+                            st = session.query(Storage).get(st_id)
+                            if st and st.path and os.path.exists(st.path):
+                                resolved_log_dirs.add(os.path.abspath(st.path))
+
+            for ldir in resolved_log_dirs:
+                if not os.path.exists(ldir) or not os.access(ldir, os.W_OK):
+                    continue
+
+                for entry in os.listdir(ldir):
+                    entry_path = os.path.join(ldir, entry)
+
+                    # --- A. Process Logs: process_{id}.log* ---
+                    m_proc = re.match(r"^process_(\d+)\.log(.*)$", entry)
+                    if m_proc:
+                        srv_id = int(m_proc.group(1))
+                        suffix = m_proc.group(2)
+
+                        # Orphan cleanup
+                        if srv_id not in active_service_ids:
+                            try:
+                                if os.path.isfile(entry_path):
+                                    os.remove(entry_path)
+                                    log_info(f"Deleted orphaned process log: {entry}")
+                            except Exception as o_err:
+                                log_error(f"Failed to delete orphaned process log {entry}: {o_err}")
+                            continue
+
+                        # Active service log: archive vs main file
+                        if suffix:  # e.g. .1.gz, .old, .1
+                            mtime = os.path.getmtime(entry_path)
+                            age_days = max(0.0, (now_ts - mtime) / (24 * 3600))
+                            if age_days > retention_days:
+                                try:
+                                    os.remove(entry_path)
+                                    log_info(f"Deleted expired process log archive: {entry} (age: {age_days:.1f} days)")
+                                except Exception as d_err:
+                                    log_error(f"Failed to delete expired archive {entry}: {d_err}")
+                        else:
+                            # Active process_{id}.log
+                            try:
+                                sz = os.path.getsize(entry_path)
+                                if sz > rotation_max_bytes:
+                                    arch_path = f"{entry_path}.1.gz" if compression_enabled else f"{entry_path}.1"
+                                    if compression_enabled:
+                                        with open(entry_path, "rb") as f_in:
+                                            with gzip.open(arch_path, "wb") as f_out:
+                                                shutil.copyfileobj(f_in, f_out)
+                                    else:
+                                        shutil.copyfile(entry_path, arch_path)
+                                    # Truncate active file to 0 bytes so writing process continues cleanly
+                                    with open(entry_path, "r+b") as f_trunc:
+                                        f_trunc.truncate(0)
+                                    log_info(f"Rotated oversized process log {entry} ({sz / (1024*1024):.2f} MB -> {arch_path})")
+                            except Exception as rot_err:
+                                log_error(f"Failed to rotate oversized log {entry}: {rot_err}")
+
+                    # --- B. Icecast directories: icecast_{id} ---
+                    m_ice = re.match(r"^icecast_(\d+)$", entry)
+                    if m_ice and os.path.isdir(entry_path):
+                        ice_id = int(m_ice.group(1))
+
+                        # Orphan cleanup
+                        if ice_id not in active_service_ids:
+                            try:
+                                shutil.rmtree(entry_path)
+                                log_info(f"Deleted orphaned Icecast directory: {entry}")
+                            except Exception as o_err:
+                                log_error(f"Failed to delete orphaned Icecast directory {entry}: {o_err}")
+                            continue
+
+                        # Active Icecast directory: examine files inside
+                        try:
+                            for sub_entry in os.listdir(entry_path):
+                                sub_path = os.path.join(entry_path, sub_entry)
+                                if not os.path.isfile(sub_path):
+                                    continue
+
+                                is_archive = (
+                                    sub_entry.endswith(".old")
+                                    or sub_entry.endswith(".gz")
+                                    or re.search(r"\.\d+(\.gz)?$", sub_entry)
+                                )
+
+                                if is_archive:
+                                    mtime = os.path.getmtime(sub_path)
+                                    age_days = max(0.0, (now_ts - mtime) / (24 * 3600))
+                                    if age_days > retention_days:
+                                        try:
+                                            os.remove(sub_path)
+                                            log_info(f"Deleted expired Icecast log archive: {entry}/{sub_entry} (age: {age_days:.1f} days)")
+                                        except Exception as d_err:
+                                            log_error(f"Failed to delete expired Icecast log {sub_entry}: {d_err}")
+                                    elif compression_enabled and not sub_entry.endswith(".gz"):
+                                        # Compress uncompressed .old archive to save disk space
+                                        gz_path = f"{sub_path}.gz"
+                                        try:
+                                            with open(sub_path, "rb") as f_in:
+                                                with gzip.open(gz_path, "wb") as f_out:
+                                                    shutil.copyfileobj(f_in, f_out)
+                                            os.remove(sub_path)
+                                            log_info(f"Compressed Icecast archive: {entry}/{sub_entry} -> {sub_entry}.gz")
+                                        except Exception as comp_err:
+                                            log_error(f"Failed to compress {sub_entry}: {comp_err}")
+                                else:
+                                    # Active log file (access.log or error.log)
+                                    sz = os.path.getsize(sub_path)
+                                    if sz > rotation_max_bytes:
+                                        arch_path = f"{sub_path}.1.gz" if compression_enabled else f"{sub_path}.1"
+                                        try:
+                                            if compression_enabled:
+                                                with open(sub_path, "rb") as f_in:
+                                                    with gzip.open(arch_path, "wb") as f_out:
+                                                        shutil.copyfileobj(f_in, f_out)
+                                            else:
+                                                shutil.copyfile(sub_path, arch_path)
+                                            with open(sub_path, "r+b") as f_trunc:
+                                                f_trunc.truncate(0)
+                                            log_info(f"Rotated oversized Icecast log {entry}/{sub_entry} ({sz / (1024*1024):.2f} MB)")
+                                        except Exception as rot_err:
+                                            log_error(f"Failed to rotate Icecast log {sub_entry}: {rot_err}")
+                        except Exception as ice_scan_err:
+                            log_error(f"Failed scanning Icecast directory {entry}: {ice_scan_err}")
+
+        except Exception as svc_log_err:
+            log_error(f"Error during service log lifecycle management: {svc_log_err}")
+
+        # 4. Clean up temporary files in /dev/shm or /tmp older than 1 day
         for temp_dir in ["/dev/shm", "/tmp"]:
             if os.path.exists(temp_dir) and os.access(temp_dir, os.W_OK):
                 try:
                     now_ts = time.time()
                     for fname in os.listdir(temp_dir):
+                        fpath = os.path.join(temp_dir, fname)
+
+                        # Clean progress logs older than 1 day
                         if fname.startswith("ffmpeg_progress_") and fname.endswith(".log"):
-                            fpath = os.path.join(temp_dir, fname)
                             if os.path.isfile(fpath):
                                 f_age = (now_ts - os.path.getmtime(fpath)) / (24 * 3600)
                                 if f_age > 1:
@@ -600,6 +768,27 @@ class TaskManager:
                                         log_info(f"Cleaned up orphaned progress log: {fname}")
                                     except Exception:
                                         pass
+
+                        # Clean ephemeral Icecast xml/ssl configs older than 1 day
+                        elif fname.startswith("ffmpeg_gui_icecast_") and (fname.endswith(".xml") or fname.endswith(".pem")):
+                            if os.path.isfile(fpath):
+                                f_age = (now_ts - os.path.getmtime(fpath)) / (24 * 3600)
+                                if f_age > 1:
+                                    try:
+                                        os.remove(fpath)
+                                        log_info(f"Cleaned up ephemeral Icecast config: {fname}")
+                                    except Exception:
+                                        pass
+
+                        # Clean ephemeral Icecast logs directories in /dev/shm
+                        elif fname.startswith("ffmpeg_gui_icecast_logs_") and os.path.isdir(fpath):
+                            f_age = (now_ts - os.path.getmtime(fpath)) / (24 * 3600)
+                            if f_age > 1:
+                                try:
+                                    shutil.rmtree(fpath)
+                                    log_info(f"Cleaned up ephemeral Icecast logs directory: {fname}")
+                                except Exception:
+                                    pass
                 except Exception as t_err:
                     log_error(f"Failed to clean temporary progress files in {temp_dir}: {t_err}")
 

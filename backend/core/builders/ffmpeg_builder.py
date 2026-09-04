@@ -47,6 +47,55 @@ class FFmpegCommandBuilder:
                 if resolved:
                     overlay['path'] = resolved
 
+        # Auto-resolve Icecast properties (TLS & legacy_icecast) from local provider service
+        if output_cfg.get('type') == 'icecast':
+            prov_id = output_cfg.get('provider_service_id')
+            if prov_id and db_session_factory:
+                try:
+                    with db_session_factory() as session:
+                        from database.models import MediaProcess, SoftwareBuild
+                        prov = session.query(MediaProcess).get(prov_id)
+                        if prov:
+                            p_cfg = prov.config or {}
+                            ice_cfg = p_cfg.get('icecast_config', {})
+                            if output_cfg.get('tls') is None:
+                                output_cfg['tls'] = bool(ice_cfg.get('ssl_enabled'))
+                            if output_cfg.get('legacy_icecast') is None:
+                                build_id = p_cfg.get('software_build_id') or p_cfg.get('ffmpeg_build_id') or getattr(prov, 'ffmpeg_build_id', None)
+                                build = None
+                                if build_id:
+                                    build = session.query(SoftwareBuild).get(build_id)
+                                if not build:
+                                    build = session.query(SoftwareBuild).filter(
+                                        SoftwareBuild.software_type == 'icecast2',
+                                        SoftwareBuild.status == 'ready',
+                                        SoftwareBuild.is_default == True
+                                    ).first() or session.query(SoftwareBuild).filter(
+                                        SoftwareBuild.software_type == 'icecast2',
+                                        SoftwareBuild.status == 'ready'
+                                    ).first()
+                                if build:
+                                    v_tag = build.version_tag or build.name or ''
+                                    output_cfg['legacy_icecast'] = cls._is_legacy_icecast(v_tag)
+                                else:
+                                    name_str = f"{prov.name} {prov.alias or ''}"
+                                    output_cfg['legacy_icecast'] = cls._is_legacy_icecast(name_str)
+                except Exception:
+                    pass
+
+    @classmethod
+    def _is_legacy_icecast(cls, version_str: str) -> bool:
+        """Determines if an Icecast version or name indicates < v2.4 (which requires SOURCE method)."""
+        if not version_str:
+            return False
+        import re
+        m = re.search(r'(\d+)\.(\d+)', str(version_str))
+        if m:
+            major, minor = int(m.group(1)), int(m.group(2))
+            if major < 2 or (major == 2 and minor < 4):
+                return True
+        return 'legacy' in str(version_str).lower()
+
     @classmethod
     def _build_srt_url(cls, srt_cfg: dict, direction: str = "output", ffmpeg_bin: str = "ffmpeg", network_timeout: int = 15) -> str:
         """
@@ -554,8 +603,11 @@ class FFmpegCommandBuilder:
             cmd += ["-f", "alsa", device]
         elif output_type == 'icecast':
             host = output_cfg.get('host', 'localhost')
-            port = output_cfg.get('port', '8000')
+            port = output_cfg.get('port', '7000')
             mount = output_cfg.get('icecast_mount', '/live')
+            if not mount.startswith('/'):
+                mount = '/' + mount
+            username = output_cfg.get('icecast_username', 'source')
             password = output_cfg.get('icecast_password', 'hackme')
 
             acodec = (codec_cfg.get('acodec') or 'aac').lower()
@@ -566,9 +618,12 @@ class FFmpegCommandBuilder:
             elif acodec in ('libopus', 'opus'):
                 fmt = 'ogg'
                 c_type = 'audio/ogg'
-            elif acodec in ('libvorbis', 'vorbis', 'flac'):
+            elif acodec in ('libvorbis', 'vorbis'):
                 fmt = 'ogg'
                 c_type = 'application/ogg'
+            elif acodec in ('flac',):
+                fmt = 'flac'
+                c_type = 'audio/flac'
             elif acodec in ('aac', 'libfdk_aac'):
                 fmt = 'adts'
                 c_type = 'audio/aac'
@@ -576,8 +631,33 @@ class FFmpegCommandBuilder:
                 fmt = 'ogg'
                 c_type = 'application/ogg'
 
-            cmd += ["-f", fmt, "-content_type", c_type,
-                    f"icecast://source:{password}@{host}:{port}{mount}"]
+            # Allow manual override of format or content_type if specified
+            if output_cfg.get('format'):
+                fmt = output_cfg['format']
+            if output_cfg.get('content_type'):
+                c_type = output_cfg['content_type']
+
+            cmd += ["-f", fmt, "-content_type", c_type]
+
+            # Optional Icecast stream metadata tags
+            if output_cfg.get('ice_name'):
+                cmd += ["-ice_name", str(output_cfg['ice_name'])]
+            if output_cfg.get('ice_description'):
+                cmd += ["-ice_description", str(output_cfg['ice_description'])]
+            if output_cfg.get('ice_genre'):
+                cmd += ["-ice_genre", str(output_cfg['ice_genre'])]
+            if 'ice_public' in output_cfg:
+                cmd += ["-ice_public", "1" if output_cfg['ice_public'] else "0"]
+
+            # Legacy Icecast server support (< v2.4, uses SOURCE method instead of PUT)
+            if output_cfg.get('legacy_icecast'):
+                cmd += ["-legacy_icecast", "1"]
+
+            # TLS connection support
+            if output_cfg.get('tls'):
+                cmd += ["-tls", "1"]
+
+            cmd += [f"icecast://{username}:{password}@{host}:{port}{mount}"]
         elif output_type == 'hls':
             path = output_cfg.get('path', '')
             method = output_cfg.get('hls_method', 'local')

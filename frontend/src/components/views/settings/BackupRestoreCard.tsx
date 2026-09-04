@@ -292,7 +292,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 />
                 <div className="text-xs min-w-0">
                   <span className="font-bold text-[var(--text-primary)] block truncate">{t('nav.services', 'Media Services')}</span>
-                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionServicesDesc', 'Broadcast pipelines, MediaMTX Hubs & codecs')}</span>
+                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionServicesDesc', 'Broadcast pipelines, MediaMTX Hubs, Icecast Servers & codecs')}</span>
                 </div>
               </label>
 

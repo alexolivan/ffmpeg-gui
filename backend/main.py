@@ -1390,11 +1390,13 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             {
                 "name": p.name,
                 "service_type": p.service_type or "ffmpeg_stream",
+                "config": p.config or {},
                 "input_config": p.input_config,
                 "output_config": p.output_config,
                 "codec_config": p.codec_config,
                 "filter_config": p.filter_config,
                 "mediamtx_config": p.mediamtx_config,
+                "icecast_config": p.icecast_config,
                 "auto_start": p.auto_start,
                 "startup_order": p.startup_order,
                 "startup_delay": p.startup_delay,
@@ -1408,7 +1410,9 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "allow_auto_start_deps": p.allow_auto_start_deps,
                 "allow_auto_stop_deps": p.allow_auto_stop_deps,
                 "software_type": p.software_type,
+                "software_version": p.software_version,
                 "ffmpeg_build_id": p.ffmpeg_build_id,
+                "software_build_id": p.software_build_id,
             }
             for p in procs
         ]
@@ -1583,15 +1587,26 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         for p_data in sections["services"]:
             existing = db.query(Service).filter(Service.name == p_data.get("name")).first()
             if not existing:
+                cfg = dict(p_data.get("config") or {})
+                if "mediamtx_config" in p_data and p_data["mediamtx_config"] and "mediamtx_config" not in cfg:
+                    cfg["mediamtx_config"] = p_data["mediamtx_config"]
+                if "icecast_config" in p_data and p_data["icecast_config"] and "icecast_config" not in cfg:
+                    cfg["icecast_config"] = p_data["icecast_config"]
+                if "kiosk_config" in p_data and p_data["kiosk_config"] and "kiosk_config" not in cfg:
+                    cfg["kiosk_config"] = p_data["kiosk_config"]
+                for k in ["software_type", "software_version", "allow_auto_start_deps", "allow_auto_stop_deps", "debug_mode", "network_timeout", "log_storage_id"]:
+                    if k in p_data and p_data[k] is not None and k not in cfg:
+                        cfg[k] = p_data[k]
+
                 proc = Service(
                     name=p_data.get("name"),
                     service_type=p_data.get("service_type", "ffmpeg_stream"),
                     status="stopped",
+                    config=cfg,
                     input_config=p_data.get("input_config") or {},
                     output_config=p_data.get("output_config") or {},
                     codec_config=p_data.get("codec_config") or {},
                     filter_config=p_data.get("filter_config") or {},
-                    mediamtx_config=p_data.get("mediamtx_config") or {},
                     auto_start=p_data.get("auto_start", False),
                     startup_order=p_data.get("startup_order", 1),
                     startup_delay=p_data.get("startup_delay", 0),
@@ -1607,6 +1622,10 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     software_type=p_data.get("software_type"),
                     ffmpeg_build_id=p_data.get("ffmpeg_build_id"),
                 )
+                if "mediamtx_config" in p_data and p_data["mediamtx_config"]:
+                    proc.mediamtx_config = p_data["mediamtx_config"]
+                if "icecast_config" in p_data and p_data["icecast_config"]:
+                    proc.icecast_config = p_data["icecast_config"]
                 db.add(proc)
                 imported_summary["services"] += 1
 
@@ -3166,7 +3185,7 @@ async def get_nvenc_tags():
 async def get_software_tags(software_type: str):
     """List available tags for the specified software type."""
     if software_type == "icecast2":
-        tags = await build_manager.fetch_available_tags("https://github.com/xiph/icecast-server.git")
+        tags = await build_manager.fetch_available_tags("https://gitlab.xiph.org/xiph/icecast-server.git")
     elif software_type == "mediamtx":
         tags = await build_manager.fetch_available_tags("https://github.com/bluenviron/mediamtx.git")
     elif software_type == "kiosk_cog":
@@ -3179,7 +3198,7 @@ async def get_software_tags(software_type: str):
     # Si por algún motivo no hay tags o falla, retornar un fallback básico
     if not tags:
         if software_type == "icecast2":
-            tags = ["2.4.4", "2.4.3", "2.4.2"]
+            tags = ["2.5.0", "2.4.4", "2.4.3", "2.4.2"]
         elif software_type == "mediamtx":
             tags = ["v1.9.0", "v1.8.0", "v1.7.0"]
         elif software_type == "kiosk_cog":
@@ -3195,10 +3214,10 @@ def get_disk_info():
     return build_manager.get_partition_free_space()
 
 @app.get("/builds/check")
-def check_build_deps():
+def check_build_deps(software_type: Optional[str] = Query(None)):
     """Pre-flight check of required system build dependencies."""
-    logger.info("GET /builds/check received")
-    return build_manager.check_dependencies()
+    logger.info(f"GET /builds/check received for software_type={software_type}")
+    return build_manager.check_dependencies(software_type=software_type)
 
 
 @app.get("/sdks")
@@ -3678,6 +3697,12 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
         install_path = build.install_path or build_manager.get_install_path(build.id, builds_root=storage_path)
         if stype == "decklink_tools":
             candidate = os.path.join(install_path, "decklink-ctl")
+        elif stype == "icecast2":
+            candidate = os.path.join(install_path, "bin", "icecast")
+            if not os.path.isfile(candidate):
+                candidate = os.path.join(install_path, "bin", "icecast2")
+        elif stype == "mediamtx":
+            candidate = os.path.join(install_path, "mediamtx")
         else:
             candidate = os.path.join(install_path, "bin", "ffmpeg")
         if os.path.isfile(candidate):
@@ -3781,6 +3806,13 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         ).first()
         if mtx_build:
             build_id = mtx_build.id
+    elif build_id is None and svc_type == "icecast_server":
+        ice_build = db.query(FfmpegBuild).filter(
+            FfmpegBuild.software_type == 'icecast2',
+            FfmpegBuild.status == 'ready'
+        ).first()
+        if ice_build:
+            build_id = ice_build.id
 
     input_cfg = dict(proc_in.input_config) if proc_in.input_config is not None else None
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else None
@@ -3836,6 +3868,12 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
 def get_mediamtx_next_available_ports(exclude_service_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
     from utils.port_validator import get_next_available_mediamtx_ports
     return get_next_available_mediamtx_ports(db, exclude_service_id=exclude_service_id)
+
+@app.get("/api/services/icecast/next-available-ports")
+@app.get("/services/icecast/next-available-ports")
+def get_icecast_next_available_ports_endpoint(db: Session = Depends(get_db)):
+    from utils.port_validator import get_next_available_icecast_ports
+    return get_next_available_icecast_ports(db)
 
 @app.post("/processes/preview-cmd")
 def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
@@ -3980,17 +4018,219 @@ async def delete_process(process_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.warning(f"Error stopping process {process_id} before delete: {e}")
 
-    # Physically delete process_{process_id}.log if it exists
-    log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
-    if os.path.exists(log_file):
+    # Physically delete process_{process_id}.log and any rotated archives if they exist
+    import glob
+    for p_log in glob.glob(os.path.join(log_storage_path, f"process_{process_id}.log*")):
         try:
-            os.remove(log_file)
+            os.remove(p_log)
         except Exception as e:
-            logger.error(f"Error deleting log file {log_file} for process {process_id}: {e}")
+            logger.error(f"Error deleting log file {p_log} for process {process_id}: {e}")
+
+    # Delete icecast_{process_id} directory if it exists
+    icecast_log_dir = os.path.join(log_storage_path, f"icecast_{process_id}")
+    if os.path.exists(icecast_log_dir):
+        try:
+            import shutil
+            shutil.rmtree(icecast_log_dir)
+        except Exception as e:
+            logger.error(f"Error deleting icecast log dir {icecast_log_dir} for process {process_id}: {e}")
+
+    # Clean up any ephemeral log dir in /dev/shm or /tmp
+    for shm_candidate in ["/dev/shm", "/tmp"]:
+        eph_ice_dir = os.path.join(shm_candidate, f"ffmpeg_gui_icecast_logs_{process_id}")
+        if os.path.exists(eph_ice_dir):
+            try:
+                import shutil
+                shutil.rmtree(eph_ice_dir)
+            except Exception:
+                pass
 
     db.delete(db_proc)
     db.commit()
     return {"status": "deleted", "process_id": process_id}
+
+@app.post("/processes/{process_id}/clone")
+def clone_process(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    svc_type = getattr(db_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
+
+    # 1. Resolve unique name
+    base_name = f"{db_proc.name} (Copy)"
+    new_name = base_name
+    counter = 2
+    while db.query(MediaProcess).filter(MediaProcess.name == new_name).first():
+        new_name = f"{db_proc.name} (Copy {counter})"
+        counter += 1
+
+    # 2. Resolve unique alias if original had one
+    new_alias = None
+    if db_proc.alias:
+        raw_alias = re.sub(r'[^a-zA-Z0-9_\-]', '', db_proc.alias.strip())[:7]
+        cand_alias = f"{raw_alias}_copy"[:12]
+        alias_cnt = 2
+        while db.query(MediaProcess).filter(MediaProcess.alias == cand_alias).first():
+            cand_alias = f"{raw_alias}_cp{alias_cnt}"[:12]
+            alias_cnt += 1
+        new_alias = cand_alias
+
+    # 3. Deep copy configs
+    new_config = copy.deepcopy(db_proc.config or {})
+    input_cfg = copy.deepcopy(db_proc.input_config or {})
+    output_cfg = copy.deepcopy(db_proc.output_config or {})
+    codec_cfg = copy.deepcopy(db_proc.codec_config or {})
+    filter_cfg = copy.deepcopy(db_proc.filter_config or {})
+
+    from utils.port_validator import (
+        get_next_available_mediamtx_ports,
+        get_next_available_icecast_ports,
+        validate_service_port_conflicts,
+        extract_ports_from_service,
+        get_gui_reserved_ports,
+    )
+
+    # 4. Resolve conflict-free ports according to service type
+    if svc_type == "mediamtx_hub":
+        next_ports = get_next_available_mediamtx_ports(db)
+        if "mediamtx_config" not in new_config:
+            new_config["mediamtx_config"] = {}
+        new_config["mediamtx_config"].update(next_ports)
+        # Purge any shadowed root-level ports to avoid collisions
+        for k in next_ports.keys():
+            if k in new_config:
+                new_config.pop(k, None)
+
+    elif svc_type == "icecast_server":
+        next_ports = get_next_available_icecast_ports(db)
+        if "icecast_config" not in new_config:
+            new_config["icecast_config"] = {}
+        new_config["icecast_config"]["port"] = next_ports["port"]
+        new_config["icecast_config"]["ssl_port"] = next_ports["ssl_port"]
+        # Also sync/update root if present
+        if "port" in new_config:
+            new_config["port"] = next_ports["port"]
+        if "ssl_port" in new_config:
+            new_config["ssl_port"] = next_ports["ssl_port"]
+
+    elif svc_type == "ffmpeg_stream":
+        # Handle listener ports in input / output
+        gui_reserved = get_gui_reserved_ports()
+        occupied = set((p, "tcp") for p in gui_reserved)
+        for other in db.query(MediaProcess).all():
+            for p, _, _, _, proto in extract_ports_from_service(
+                other.id, other.name, getattr(other, "service_type", "ffmpeg_stream"),
+                other.config, other.input_config, other.output_config
+            ):
+                occupied.add((p, proto))
+
+        inputs = []
+        if isinstance(input_cfg, dict):
+            for k in ["input1", "input2"]:
+                if k in input_cfg and isinstance(input_cfg[k], dict):
+                    inputs.append(input_cfg[k])
+            if not inputs and "type" in input_cfg:
+                inputs.append(input_cfg)
+        for inp in inputs:
+            if inp.get("mode") == "listener" and inp.get("port"):
+                try:
+                    p_num = int(inp["port"])
+                    proto = "udp" if str(inp.get("type", "")).lower() in ["udp", "rtp", "srt"] else "tcp"
+                    cand = p_num
+                    while (cand, proto) in occupied or (cand, "any") in occupied:
+                        cand += 1
+                    inp["port"] = str(cand) if isinstance(inp["port"], str) else cand
+                    occupied.add((cand, proto))
+                except (ValueError, TypeError):
+                    pass
+
+        outputs = []
+        if isinstance(output_cfg, list):
+            outputs.extend(output_cfg)
+        elif isinstance(output_cfg, dict):
+            outputs.append(output_cfg)
+        for out in outputs:
+            if isinstance(out, dict) and out.get("mode") == "listener" and out.get("port"):
+                try:
+                    p_num = int(out["port"])
+                    proto = "udp" if str(out.get("type", "")).lower() in ["udp", "rtp", "srt"] else "tcp"
+                    cand = p_num
+                    while (cand, proto) in occupied or (cand, "any") in occupied:
+                        cand += 1
+                    out["port"] = str(cand) if isinstance(out["port"], str) else cand
+                    occupied.add((cand, proto))
+                except (ValueError, TypeError):
+                    pass
+
+    # 5. Resolve software build ID if not set
+    build_id = db_proc.ffmpeg_build_id
+    if build_id is None:
+        if svc_type == "ffmpeg_stream":
+            default_build = db.query(FfmpegBuild).filter(
+                FfmpegBuild.is_default == True,
+                (FfmpegBuild.software_type == 'ffmpeg') | (FfmpegBuild.software_type == None)
+            ).first()
+            if default_build:
+                build_id = default_build.id
+        elif svc_type == "mediamtx_hub":
+            mtx_build = db.query(FfmpegBuild).filter(
+                FfmpegBuild.software_type == 'mediamtx',
+                FfmpegBuild.status == 'ready'
+            ).first()
+            if mtx_build:
+                build_id = mtx_build.id
+        elif svc_type == "icecast_server":
+            ice_build = db.query(FfmpegBuild).filter(
+                FfmpegBuild.software_type == 'icecast2',
+                FfmpegBuild.status == 'ready'
+            ).first()
+            if ice_build:
+                build_id = ice_build.id
+
+    # 6. Validate ports
+    validate_service_port_conflicts(
+        db=db,
+        service_id=None,
+        service_name=new_name,
+        service_type=svc_type,
+        config=new_config,
+        input_config=input_cfg,
+        output_config=output_cfg
+    )
+
+    # 7. Create cloned process
+    cloned_proc = MediaProcess(
+        name=new_name,
+        service_type=svc_type,
+        alias=new_alias,
+        type="service",
+        config=new_config,
+        input_config=input_cfg if svc_type == "ffmpeg_stream" else None,
+        output_config=output_cfg if svc_type == "ffmpeg_stream" else None,
+        codec_config=codec_cfg if svc_type == "ffmpeg_stream" else None,
+        filter_config=filter_cfg if svc_type == "ffmpeg_stream" else None,
+        ffmpeg_build_id=build_id,
+        auto_start=False,
+        status="stopped",
+        startup_order=getattr(db_proc, 'startup_order', 1) or 1,
+        startup_delay=getattr(db_proc, 'startup_delay', 0) or 0,
+        watchdog_enabled=db_proc.watchdog_enabled,
+        watchdog_retries=db_proc.watchdog_retries,
+        watchdog_min_speed=db_proc.watchdog_min_speed,
+        watchdog_min_speed_duration=db_proc.watchdog_min_speed_duration,
+        network_timeout=db_proc.network_timeout,
+        debug_mode=db_proc.debug_mode,
+        log_storage_id=db_proc.log_storage_id,
+        restart_count=0
+    )
+    db.add(cloned_proc)
+    db.commit()
+
+    from core.dependency_manager import dependency_manager
+    dependency_manager.sync_auto_dependencies('service', cloned_proc.id, cloned_proc.input_config, cloned_proc.output_config, db)
+    db.refresh(cloned_proc)
+    return _serialize_service(cloned_proc)
 
 @app.post("/processes/{process_id}/clone-as-task")
 def clone_process_as_task(process_id: int, db: Session = Depends(get_db)):
@@ -4189,31 +4429,88 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
         if not log_storage_path:
             log_storage_path = os.path.abspath("data/logs")
 
+        lines = []
         log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
         if os.path.exists(log_file):
             try:
                 with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                    lines = f.readlines()
-                    parsed_logs = []
-                    for line in lines[-100:]:
-                        line_str = line.strip()
-                        if not line_str:
-                            continue
-                        lower = line_str.lower()
-                        level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot"]) else "INFO"
-                        parsed_logs.append({
-                            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                            "level": level,
-                            "message": line_str
-                        })
-                    return parsed_logs
+                    lines.extend(f.readlines())
             except Exception as e:
                 logger.error(f"Error reading log file {log_file} for process {process_id}: {e}")
+
+        # Also inspect icecast error.log if it's an Icecast server
+        if getattr(db_proc, 'service_type', '') == 'icecast_server':
+            ice_err = os.path.join(log_storage_path, f"icecast_{process_id}", "error.log")
+            if os.path.exists(ice_err):
+                try:
+                    with open(ice_err, "r", encoding="utf-8", errors="replace") as f:
+                        lines.extend(f.readlines())
+                except Exception:
+                    pass
+
+        if lines:
+            parsed_logs = []
+            for line in lines[-100:]:
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                lower = line_str.lower()
+                level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else "INFO"
+                parsed_logs.append({
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    "level": level,
+                    "message": line_str
+                })
+            return parsed_logs
 
     # 3. Fall back to database query
     return db.query(ProcessLog).filter(
         ProcessLog.process_id == process_id
     ).order_by(ProcessLog.id.asc()).limit(100).all()
+
+
+@app.get("/processes/{process_id}/icecast-status")
+@app.get("/api/processes/{process_id}/icecast-status")
+def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    cfg = db_proc.config or {}
+    ice_cfg = cfg.get("icecast_config") or {}
+    http_enabled = ice_cfg.get("http_enabled", True)
+    ssl_enabled = ice_cfg.get("ssl_enabled", False)
+    use_ssl = (not http_enabled) and ssl_enabled
+    port = ice_cfg.get("ssl_port", 7443) if use_ssl else ice_cfg.get("port", 7000)
+    admin_user = ice_cfg.get("admin_user", "admin")
+    admin_password = ice_cfg.get("admin_password", "hackme")
+    v_tag = getattr(db_proc, 'software_version', None) or (cfg.get('software_version') if isinstance(cfg, dict) else None)
+    build_id = getattr(db_proc, 'software_build_id', None) or getattr(db_proc, 'ffmpeg_build_id', None)
+    if not v_tag and build_id:
+        try:
+            from database.models import SoftwareBuild
+            sb = db.query(SoftwareBuild).get(build_id)
+            if sb and sb.version_tag:
+                v_tag = sb.version_tag
+        except Exception:
+            pass
+    from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+    is_legacy = FFmpegCommandBuilder._is_legacy_icecast(v_tag or db_proc.name or "")
+    has_status_json = not is_legacy
+    
+    try:
+        from core.icecast_telemetry import fetch_icecast_telemetry
+        telemetry = fetch_icecast_telemetry(port, admin_user, admin_password, has_status_json=has_status_json, is_legacy=is_legacy, use_ssl=use_ssl)
+        if telemetry:
+            return telemetry
+    except Exception:
+        pass
+    
+    cached_stats = cfg.get("icecast_stats")
+    if cached_stats:
+        return {"icestats": cached_stats}
+    return {"icestats": {"listeners": 0, "source": []}}
+
 
 @app.post("/processes/{process_id}/start")
 async def start_process(process_id: int):
@@ -4429,15 +4726,21 @@ def export_build_recipe(build_id: int, db: Session = Depends(get_db)):
     build = db.query(FfmpegBuild).get(build_id)
     if not build:
         raise HTTPException(status_code=404, detail="Build profile not found")
+    stype = build.software_type or "ffmpeg"
+    ver = build.version_tag or build.ffmpeg_version or "latest"
     return {
-        "type": "ffmpeg_build_recipe",
-        "version": 1,
+        "type": "software_build_recipe",
+        "version": 2,
+        "software_type": stype,
         "recipe": {
             "name": build.name,
-            "ffmpeg_version": build.ffmpeg_version,
-            "srt_version": build.srt_version,
-            "build_options": build.build_options,
-            "sdk_paths": build.sdk_paths,
+            "software_type": stype,
+            "version_tag": ver,
+            "version": ver,
+            "ffmpeg_version": ver,  # Backwards compatibility alias
+            "srt_version": build.srt_version if stype == "ffmpeg" else None,
+            "build_options": build.build_options or {},
+            "sdk_paths": build.sdk_paths or {},
             "auto_clean": build.auto_clean,
             "storage_id": build.storage_id,
         }
@@ -4445,47 +4748,49 @@ def export_build_recipe(build_id: int, db: Session = Depends(get_db)):
 
 @app.post("/builds/import")
 def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
-    if payload.get("type") != "ffmpeg_build_recipe":
+    valid_types = ["software_build_recipe", "ffmpeg_build_recipe", "build_recipe", "engine_build_recipe"]
+    if payload.get("type") not in valid_types:
         raise HTTPException(status_code=400, detail="Invalid file format. Not a compilation recipe.")
     
     recipe = payload.get("recipe", {})
     if not recipe:
         raise HTTPException(status_code=400, detail="Missing recipe payload.")
         
-    build_options = recipe.get("build_options", {})
+    software_type = recipe.get("software_type") or payload.get("software_type") or "ffmpeg"
+    build_options = recipe.get("build_options", {}) or {}
     sdk_paths = recipe.get("sdk_paths", {}) or {}
     
-    # 1. SDK Dependency checking
-    if build_options.get("enable_ndi"):
-        ndi_ver = sdk_paths.get("ndi")
-        if not ndi_ver:
-            raise HTTPException(status_code=400, detail="NDI enabled but no version specified in recipe")
-        installed_ndis = sdk_manager.list_installed_sdks("ndi")
-        installed_versions = [s["version"] for s in installed_ndis]
-        if ndi_ver not in installed_versions:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Missing required NDI SDK Version '{ndi_ver}'. Please install/upload it first, or edit the compilation options."
-            )
-            
-    if build_options.get("enable_decklink"):
-        dl_ver = sdk_paths.get("decklink")
-        if not dl_ver:
-            raise HTTPException(status_code=400, detail="DeckLink enabled but no version specified in recipe")
-        installed_dls = sdk_manager.list_installed_sdks("decklink")
-        installed_versions = [s["version"] for s in installed_dls]
-        if dl_ver not in installed_versions:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Missing required DeckLink SDK Version '{dl_ver}'. Please install/upload it first, or edit the compilation options."
-            )
+    # 1. SDK Dependency checking (only applicable to ffmpeg builds that use external SDKs)
+    if software_type == "ffmpeg":
+        if build_options.get("enable_ndi"):
+            ndi_ver = sdk_paths.get("ndi")
+            if not ndi_ver:
+                raise HTTPException(status_code=400, detail="NDI enabled but no version specified in recipe")
+            installed_ndis = sdk_manager.list_installed_sdks("ndi")
+            installed_versions = [s["version"] for s in installed_ndis]
+            if ndi_ver not in installed_versions:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Missing required NDI SDK Version '{ndi_ver}'. Please install/upload it first, or edit the compilation options."
+                )
+                
+        if build_options.get("enable_decklink"):
+            dl_ver = sdk_paths.get("decklink")
+            if not dl_ver:
+                raise HTTPException(status_code=400, detail="DeckLink enabled but no version specified in recipe")
+            installed_dls = sdk_manager.list_installed_sdks("decklink")
+            installed_versions = [s["version"] for s in installed_dls]
+            if dl_ver not in installed_versions:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Missing required DeckLink SDK Version '{dl_ver}'. Please install/upload it first, or edit the compilation options."
+                )
     
-    # 2. Check name duplication and rename
-    stype = recipe.get("software_type", "ffmpeg")
-    base_name = recipe.get("name", "Imported-Build")
+    # 2. Check name duplication and rename per software engine
+    base_name = recipe.get("name", f"Imported-{software_type}")
     name = base_name
     counter = 1
-    while db.query(FfmpegBuild).filter(FfmpegBuild.name == name, FfmpegBuild.software_type == stype).first():
+    while db.query(FfmpegBuild).filter(FfmpegBuild.name == name, FfmpegBuild.software_type == software_type).first():
         name = f"{base_name}-Imported-{counter}"
         counter += 1
         
@@ -4495,10 +4800,18 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
         if not storage or storage.type != "build":
             raise HTTPException(status_code=400, detail="Invalid storage selected for build")
 
+    version_tag = (
+        recipe.get("version_tag")
+        or recipe.get("version")
+        or recipe.get("ffmpeg_version")
+        or ("6.0" if software_type == "ffmpeg" else "latest")
+    )
+
     db_build = FfmpegBuild(
         name=name,
-        ffmpeg_version=recipe.get("ffmpeg_version", "6.0"),
-        srt_version=recipe.get("srt_version"),
+        software_type=software_type,
+        version_tag=version_tag,
+        srt_version=recipe.get("srt_version") if software_type == "ffmpeg" else None,
         build_options=build_options,
         sdk_paths=sdk_paths,
         auto_clean=recipe.get("auto_clean", False),
@@ -4723,16 +5036,43 @@ def list_available_dependency_providers(db: Session = Depends(get_db)):
     ).all()
     
     result = []
+    from core.builders.ffmpeg_builder import FFmpegCommandBuilder
     for p in providers:
         cfg = p.config or {}
-        mtx_cfg = cfg.get("mediamtx_config", cfg)
+        prov_cfg = dict(cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg)
+        is_legacy = False
+        software_version = None
+        if p.service_type == "icecast_server":
+            build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or getattr(p, 'ffmpeg_build_id', None)
+            build = None
+            if build_id:
+                build = db.query(SoftwareBuild).get(build_id)
+            if not build:
+                build = db.query(SoftwareBuild).filter(
+                    SoftwareBuild.software_type == 'icecast2',
+                    SoftwareBuild.status == 'ready',
+                    SoftwareBuild.is_default == True
+                ).first() or db.query(SoftwareBuild).filter(
+                    SoftwareBuild.software_type == 'icecast2',
+                    SoftwareBuild.status == 'ready'
+                ).first()
+            if build:
+                software_version = build.version_tag or build.name
+                is_legacy = FFmpegCommandBuilder._is_legacy_icecast(software_version)
+            if not is_legacy:
+                is_legacy = FFmpegCommandBuilder._is_legacy_icecast(p.name or '') or FFmpegCommandBuilder._is_legacy_icecast(p.alias or '')
+            prov_cfg["is_legacy"] = is_legacy
+            prov_cfg["software_version"] = software_version
+
         result.append({
             "id": p.id,
             "name": p.name,
             "alias": p.alias,
             "service_type": p.service_type,
             "status": p.status,
-            "config": mtx_cfg
+            "config": prov_cfg,
+            "is_legacy": is_legacy,
+            "software_version": software_version
         })
     return result
 

@@ -35,6 +35,12 @@ class TestBackupRestoreAPI(unittest.TestCase):
             status="stopped",
             mediamtx_config={"paths": {"live": {}}, "srt_port": 8890}
         )
+        ice_proc = MediaProcess(
+            name="Backup Test Icecast",
+            service_type="icecast_server",
+            status="stopped",
+            icecast_config={"port": 7000, "ssl_enabled": True, "ssl_port": 7443, "mounts": [{"mount_name": "/stream.mp3"}]}
+        )
         task = ScheduledTask(
             name="Backup Test Task",
             schedule_type="manual",
@@ -53,10 +59,21 @@ class TestBackupRestoreAPI(unittest.TestCase):
             is_managed=False,
             status="ready"
         )
+        ice_build = FfmpegBuild(
+            name="Backup Test Icecast Build",
+            software_type="icecast2",
+            source_type="installed",
+            version_tag="2.4.4",
+            system_path="/usr/bin/icecast2",
+            is_managed=False,
+            status="ready"
+        )
         self.db.add(proc)
         self.db.add(mtx_proc)
+        self.db.add(ice_proc)
         self.db.add(task)
         self.db.add(build)
+        self.db.add(ice_build)
         self.db.commit()
 
         # 1. Export
@@ -87,16 +104,25 @@ class TestBackupRestoreAPI(unittest.TestCase):
         service_names = [s["name"] for s in data["sections"]["services"]]
         self.assertIn("Backup Test Service", service_names)
         self.assertIn("Backup Test MediaMTX", service_names)
+        self.assertIn("Backup Test Icecast", service_names)
 
         mtx_export = next(s for s in data["sections"]["services"] if s["name"] == "Backup Test MediaMTX")
         self.assertEqual(mtx_export["service_type"], "mediamtx_hub")
         self.assertEqual(mtx_export["mediamtx_config"]["srt_port"], 8890)
 
+        ice_export = next(s for s in data["sections"]["services"] if s["name"] == "Backup Test Icecast")
+        self.assertEqual(ice_export["service_type"], "icecast_server")
+        self.assertEqual(ice_export["icecast_config"]["port"], 7000)
+        self.assertTrue(ice_export["icecast_config"]["ssl_enabled"])
+        self.assertEqual(ice_export["icecast_config"]["mounts"][0]["mount_name"], "/stream.mp3")
+
         # 2. Delete from DB
         self.db.query(MediaProcess).filter_by(name="Backup Test Service").delete()
         self.db.query(MediaProcess).filter_by(name="Backup Test MediaMTX").delete()
+        self.db.query(MediaProcess).filter_by(name="Backup Test Icecast").delete()
         self.db.query(ScheduledTask).filter_by(name="Backup Test Task").delete()
         self.db.query(FfmpegBuild).filter_by(name="Backup Test Build").delete()
+        self.db.query(FfmpegBuild).filter_by(name="Backup Test Icecast Build").delete()
         self.db.commit()
 
         # 3. Import
@@ -115,10 +141,22 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertEqual(restored_mtx.service_type, "mediamtx_hub")
         self.assertEqual(restored_mtx.mediamtx_config.get("srt_port"), 8890)
 
+        restored_ice = self.db.query(MediaProcess).filter_by(name="Backup Test Icecast").first()
+        self.assertIsNotNone(restored_ice)
+        self.assertEqual(restored_ice.service_type, "icecast_server")
+        self.assertEqual(restored_ice.icecast_config.get("port"), 7000)
+        self.assertTrue(restored_ice.icecast_config.get("ssl_enabled"))
+        self.assertEqual(restored_ice.icecast_config.get("mounts")[0].get("mount_name"), "/stream.mp3")
+
         restored_task = self.db.query(ScheduledTask).filter_by(name="Backup Test Task").first()
         self.assertIsNotNone(restored_task)
 
         restored_build = self.db.query(FfmpegBuild).filter_by(name="Backup Test Build").first()
         self.assertIsNotNone(restored_build)
         self.assertEqual(restored_build.software_type, "ffmpeg")
+
+        restored_ice_build = self.db.query(FfmpegBuild).filter_by(name="Backup Test Icecast Build").first()
+        self.assertIsNotNone(restored_ice_build)
+        self.assertEqual(restored_ice_build.software_type, "icecast2")
+        self.assertEqual(restored_ice_build.version_tag, "2.4.4")
 

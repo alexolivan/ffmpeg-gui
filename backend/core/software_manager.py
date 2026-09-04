@@ -87,9 +87,9 @@ class SoftwareManager:
             "mediamtx_enabled": True,
             "mediamtx_installed_enabled": False,
             "mediamtx_precompiled_enabled": True,
-            "icecast2_enabled": False,
-            "icecast2_installed_enabled": False,
-            "icecast2_forge_enabled": False,
+            "icecast2_enabled": True,
+            "icecast2_installed_enabled": True,
+            "icecast2_forge_enabled": True,
             "kiosk_cog_enabled": False,
             "kiosk_cog_installed_enabled": False,
             "kiosk_cog_forge_enabled": False,
@@ -133,7 +133,10 @@ class SoftwareManager:
         bin_name = meta.get("default_binary", software_type)
         bin_path = shutil.which(bin_name)
         if not bin_path or not os.path.isfile(bin_path):
-            return {"found": False, "path": None, "version": None}
+            if software_type == "icecast2":
+                bin_path = shutil.which("icecast") or shutil.which("icecast2")
+            if not bin_path or not os.path.isfile(bin_path):
+                return {"found": False, "path": None, "version": None}
 
         version_str = None
         cmd = [bin_path] + meta.get("version_cmd", ["--version"])

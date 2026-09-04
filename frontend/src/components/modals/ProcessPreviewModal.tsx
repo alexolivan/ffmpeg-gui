@@ -508,7 +508,7 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                       </span>
                     </div>
                     <span className="text-[9px] text-[var(--text-secondary)] bg-white/5 px-2 py-0.5 rounded">
-                      /dev/shm/ffmpeg_progress_{currentProcess.id}.log
+                      /dev/shm/ffmpeg_progress_{currentProcess.id}s.log
                     </span>
                   </div>
 

@@ -27,8 +27,14 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const { t } = useTranslation()
   const defaultSoftwareType = editBuild?.software_type || initialSoftwareType || 'ffmpeg'
   const [softwareType] = useState(defaultSoftwareType)
-  const [name, setName] = useState(editBuild?.name || (defaultSoftwareType === 'decklink_tools' ? 'DeckLink Tools (Production)' : ''))
-  const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || (defaultSoftwareType === 'decklink_tools' ? '1.0.0' : ''))
+  const [name, setName] = useState(editBuild?.name || (
+    defaultSoftwareType === 'decklink_tools' ? 'DeckLink Tools (Production)' :
+    defaultSoftwareType === 'icecast2' ? 'Icecast Server (Production)' : ''
+  ))
+  const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || (
+    defaultSoftwareType === 'decklink_tools' ? '1.0.0' :
+    defaultSoftwareType === 'icecast2' ? '2.4.4' : ''
+  ))
   const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || '')
   const [autoClean, setAutoClean] = useState(editBuild?.auto_clean || false)
   const [activeTab, setActiveTab] = useState<'general' | 'gpu' | 'sdks'>('general')
@@ -89,21 +95,19 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
           const res = await fetch(`${API_BASE}/builds/tags/ffmpeg`)
           if (res.ok) {
             const data = await res.json()
-            if (Array.isArray(data)) {
-              setSoftwareTags(data)
-              if (!ffmpegVersion && data.length > 0) {
-                setFfmpegVersion(data[0])
-              }
+            const tagList = Array.isArray(data) ? data : (Array.isArray(data?.tags) ? data.tags : [])
+            setSoftwareTags(tagList)
+            if (!ffmpegVersion && tagList.length > 0) {
+              setFfmpegVersion(tagList[0])
             }
           }
           const srtRes = await fetch(`${API_BASE}/builds/tags/srt`)
           if (srtRes.ok) {
             const data = await srtRes.json()
-            if (Array.isArray(data)) {
-              setSrtTags(data)
-              if (!srtVersion && data.length > 0) {
-                setSrtVersion(data[0])
-              }
+            const srtTagList = Array.isArray(data) ? data : (Array.isArray(data?.tags) ? data.tags : [])
+            setSrtTags(srtTagList)
+            if (!srtVersion && srtTagList.length > 0) {
+              setSrtVersion(srtTagList[0])
             }
           }
         } else if (softwareType === 'decklink_tools') {
@@ -113,11 +117,10 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
           const res = await fetch(`${API_BASE}/builds/tags/${softwareType}`)
           if (res.ok) {
             const data = await res.json()
-            if (Array.isArray(data)) {
-              setSoftwareTags(data)
-              if (!ffmpegVersion && data.length > 0) {
-                setFfmpegVersion(data[0])
-              }
+            const tagList = Array.isArray(data) ? data : (Array.isArray(data?.tags) ? data.tags : [])
+            setSoftwareTags(tagList)
+            if (!ffmpegVersion && tagList.length > 0) {
+              setFfmpegVersion(tagList[0])
             }
           }
         }
@@ -448,7 +451,20 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                       ))}
                     </select>
                   </div>
-                ) : null}
+                ) : (
+                  <div>
+                    <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
+                      {softwareType === 'ffmpeg' ? t('forge.ffmpegTag', 'FFmpeg Tag') : t('forge.versionTag', 'Version Tag')}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={softwareType === 'icecast2' ? '2.4.4' : '6.1.1'}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
+                      value={ffmpegVersion}
+                      onChange={e => setFfmpegVersion(e.target.value)}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Build Storage Selector */}

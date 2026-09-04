@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SystemCapabilities } from '../codec/codecRegistry';
 import { HlsVariantsForm, type HlsVariant } from './HlsVariantsForm';
+import { ShieldIcon } from '../Icons';
 
 export interface OutputConfig {
   type: string;
@@ -50,6 +51,14 @@ export interface OutputConfig {
   stream_action?: string;
   service_target?: string;
   mediamtx_target_type?: 'local' | 'remote';
+  icecast_mode?: 'local' | 'remote';
+  icecast_username?: string;
+  ice_name?: string;
+  ice_genre?: string;
+  ice_description?: string;
+  ice_public?: boolean;
+  legacy_icecast?: boolean;
+  tls?: boolean;
 }
 
 interface DestinationPanelProps {
@@ -1411,90 +1420,363 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         </div>
       )}
 
-      {config.type === 'icecast' && (
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label htmlFor="dest-icecast-host" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              {t('destinations.serverUrl')}<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              id="dest-icecast-host"
-              name="host"
-              placeholder="Icecast Host"
-              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                validationErrors?.host
-                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                  : 'border-white/10'
-              }`}
-              value={config.host || ''} onChange={e => update({ host: e.target.value })}
-            />
-            {validationErrors?.host && (
-              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.host}</span>
+      {config.type === 'icecast' && (() => {
+        const icecastProviders = providers.filter(p => p.service_type === 'icecast_server');
+        const isLocalHubMode = Boolean(config.icecast_mode === 'local' || (config.icecast_mode !== 'remote' && icecastProviders.length > 0 && config.provider_service_id));
+        const selectedProvider = icecastProviders.find(p => p.id === config.provider_service_id) || icecastProviders[0];
+        const iceCfg = selectedProvider?.config || {};
+        const availableMounts: any[] = Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [];
+        const mountNames = availableMounts.map((m: any) => m.mount_name).filter(Boolean);
+
+        const handleSelectProvider = (provId: number) => {
+          const prov = icecastProviders.find(p => p.id === provId);
+          if (!prov) return;
+          const pCfg = prov.config || {};
+          const pMounts: any[] = Array.isArray(pCfg.mounts) ? pCfg.mounts : [];
+          const firstMount = pMounts.length > 0 ? pMounts[0].mount_name : (config.icecast_mount || '/live.mp3');
+          const firstMountObj = pMounts.find((m: any) => m.mount_name === firstMount);
+          const pass = firstMountObj?.source_password || pCfg.source_password || 'hackme';
+          const isTls = pCfg.ssl_enabled === true;
+          const isLegacy = Boolean(prov.is_legacy ?? pCfg.is_legacy);
+
+          update({
+            provider_service_id: prov.id,
+            icecast_mode: 'local',
+            host: '127.0.0.1',
+            port: String(isTls ? (pCfg.ssl_port || 7443) : (pCfg.port || 7000)),
+            icecast_mount: firstMount,
+            icecast_password: pass,
+            tls: isTls,
+            legacy_icecast: isLegacy,
+          });
+        };
+
+        const handleSelectMount = (mountName: string) => {
+          if (mountName === '__custom__') {
+            update({
+              icecast_mount: config.icecast_mount && !mountNames.includes(config.icecast_mount) ? config.icecast_mount : '',
+            });
+            return;
+          }
+          const mountObj = availableMounts.find((m: any) => m.mount_name === mountName);
+          const pass = mountObj?.source_password || iceCfg.source_password || config.icecast_password || 'hackme';
+          update({
+            icecast_mount: mountName,
+            icecast_password: pass,
+          });
+        };
+
+        return (
+          <div className="space-y-3">
+            {/* Mode Switcher: Local Hub vs Remote Server */}
+            {icecastProviders.length > 0 && (
+              <div className="flex items-center gap-1.5 p-1 bg-white/5 border border-white/10 rounded-xl text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedProvider) handleSelectProvider(selectedProvider.id);
+                    else update({ icecast_mode: 'local' });
+                  }}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-center transition-all ${
+                    isLocalHubMode
+                      ? 'bg-brand-lime text-black font-bold shadow-sm'
+                      : 'text-text-secondary hover:text-white'
+                  }`}
+                >
+                  📻 {t('destinations.icecast.localHub', 'Servidor Icecast2 Local')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => update({ icecast_mode: 'remote', provider_service_id: undefined })}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-center transition-all ${
+                    !isLocalHubMode
+                      ? 'bg-brand-lime text-black font-bold shadow-sm'
+                      : 'text-text-secondary hover:text-white'
+                  }`}
+                >
+                  🌐 {t('destinations.icecast.remoteServer', 'Servidor Remoto / Manual')}
+                </button>
+              </div>
             )}
-          </div>
-          <div>
-            <label htmlFor="dest-icecast-port" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              {t('destinations.port')}
-            </label>
-            <input
-              type="text"
-              id="dest-icecast-port"
-              name="port"
-              placeholder="Port (default: 8000)"
-              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                validationErrors?.port
-                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                  : 'border-white/10'
-              }`}
-              value={config.port || ''} onChange={e => update({ port: e.target.value })}
-            />
-            {validationErrors?.port && (
-              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.port}</span>
+
+            {/* Local Hub Assistant Controls */}
+            {isLocalHubMode && icecastProviders.length > 0 ? (
+              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] p-3 rounded-xl space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[9px] text-text-secondary uppercase font-bold block mb-1">
+                      {t('destinations.icecast.targetServer', 'Servidor Icecast Destino')}
+                    </label>
+                    <select
+                      value={selectedProvider?.id || ''}
+                      onChange={(e) => handleSelectProvider(Number(e.target.value))}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs text-text-primary focus:outline-none focus:border-brand-lime"
+                    >
+                      {icecastProviders.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} {p.alias ? `(${p.alias})` : ''} — Port {p.config?.port || 7000}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] text-text-secondary uppercase font-bold block mb-1">
+                      {t('destinations.icecast.targetMount', 'Punto de Montaje (Mountpoint)')}
+                    </label>
+                    <div className="flex gap-2">
+                      <select
+                        value={mountNames.includes(config.icecast_mount) ? config.icecast_mount : '__custom__'}
+                        onChange={(e) => handleSelectMount(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs text-text-primary focus:outline-none focus:border-brand-lime"
+                      >
+                        {mountNames.map((m: string) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                        <option value="__custom__">✎ {t('destinations.icecast.customMount', 'Personalizado...')}</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* If custom mount selected, show text input */}
+                {(!config.icecast_mount || !mountNames.includes(config.icecast_mount)) && (
+                  <div>
+                    <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                      {t('destinations.icecast.customMountName', 'Ruta del Montaje Personalizado')}
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="/live.mp3"
+                      value={config.icecast_mount || ''}
+                      onChange={(e) => update({ icecast_mount: e.target.value })}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs font-mono focus:outline-none focus:border-brand-lime"
+                    />
+                  </div>
+                )}
+
+                {/* Auto-managed Protocol & TLS notices */}
+                {Boolean(selectedProvider?.is_legacy ?? selectedProvider?.config?.is_legacy) && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-brand-lime bg-brand-lime/10 border border-brand-lime/30 px-2.5 py-1 rounded-lg">
+                    <span>⚡</span>
+                    <span>{t('destinations.icecast.legacyAutoManaged', 'Servidor Icecast Legacy (< 2.4) detectado: el método HTTP SOURCE se gestiona automáticamente.')}</span>
+                  </div>
+                )}
+                {Boolean(selectedProvider?.config?.ssl_enabled) && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
+                    <ShieldIcon size={12} />
+                    <span>{t('destinations.icecast.tlsAutoManaged', 'Conexión cifrada TLS / SSL auto-gestionada para este servidor.')}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-[11px] text-text-secondary pt-1 border-t border-white/5">
+                  <div className="flex items-center gap-1.5 font-mono text-[10px]">
+                    <span className="text-brand-lime">Host:</span>
+                    <span>127.0.0.1:{config.port || 7000}</span>
+                    <span className="text-[var(--glass-border)]">•</span>
+                    <span className="text-brand-lime">Mount:</span>
+                    <span>{config.icecast_mount || '/'}</span>
+                  </div>
+
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${selectedProvider?.status === 'running' ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' : 'text-zinc-400 bg-zinc-500/10'}`}>
+                    {selectedProvider?.status || 'stopped'}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              /* Remote / Manual Controls */
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="dest-icecast-host" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.serverUrl')}<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="dest-icecast-host"
+                    name="host"
+                    placeholder="127.0.0.1"
+                    className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                      validationErrors?.host
+                        ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                        : 'border-white/10'
+                    }`}
+                    value={config.host || ''} onChange={e => update({ host: e.target.value })}
+                  />
+                  {validationErrors?.host && (
+                    <span className="text-[10px] text-red-400 block mt-1">{validationErrors.host}</span>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="dest-icecast-port" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.port')}
+                  </label>
+                  <input
+                    type="text"
+                    id="dest-icecast-port"
+                    name="port"
+                    placeholder="7000"
+                    className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                      validationErrors?.port
+                        ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                        : 'border-white/10'
+                    }`}
+                    value={config.port || ''} onChange={e => update({ port: e.target.value })}
+                  />
+                  {validationErrors?.port && (
+                    <span className="text-[10px] text-red-400 block mt-1">{validationErrors.port}</span>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="dest-icecast-mount" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.mountpointUrl')}<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="dest-icecast-mount"
+                    name="icecast_mount"
+                    placeholder="/live.mp3"
+                    className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                      validationErrors?.icecast_mount
+                        ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                        : 'border-white/10'
+                    }`}
+                    value={config.icecast_mount || ''} onChange={e => update({ icecast_mount: e.target.value })}
+                  />
+                  {validationErrors?.icecast_mount && (
+                    <span className="text-[10px] text-red-400 block mt-1">{validationErrors.icecast_mount}</span>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="dest-icecast-password" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.sourcePassword')}
+                  </label>
+                  <input
+                    type="password"
+                    id="dest-icecast-password"
+                    name="icecast_password"
+                    placeholder="hackme"
+                    className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
+                      validationErrors?.icecast_password
+                        ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                        : 'border-white/10'
+                    }`}
+                    value={config.icecast_password || ''} onChange={e => update({ icecast_password: e.target.value })}
+                  />
+                  {validationErrors?.icecast_password && (
+                    <span className="text-[10px] text-red-400 block mt-1">{validationErrors.icecast_password}</span>
+                  )}
+                </div>
+              </div>
             )}
-          </div>
-          <div>
-            <label htmlFor="dest-icecast-mount" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              {t('destinations.mountpointUrl')}<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              type="text"
-              id="dest-icecast-mount"
-              name="icecast_mount"
-              placeholder="Mount point (e.g. /live)"
-              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                validationErrors?.icecast_mount
-                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                  : 'border-white/10'
-              }`}
-              value={config.icecast_mount || ''} onChange={e => update({ icecast_mount: e.target.value })}
-            />
-            {validationErrors?.icecast_mount && (
-              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.icecast_mount}</span>
+
+            {/* Optional Stream Metadata (Collapsible) */}
+            <details className="bg-white/5 border border-white/10 rounded-xl p-3 text-xs group">
+              <summary className="font-bold uppercase tracking-wider text-text-secondary cursor-pointer hover:text-brand-lime flex items-center justify-between">
+                <span>📻 {t('destinations.icecast.streamMeta', 'Metadatos de la Emisión (Opcional)')}</span>
+                <span className="text-[10px] text-text-secondary group-open:rotate-180 transition-transform">▼</span>
+              </summary>
+              <div className="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-white/5">
+                <div>
+                  <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.icecast.iceName', 'Nombre de la Emisora')}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="p. ej. Radio FM Stereo"
+                    value={config.ice_name || ''}
+                    onChange={(e) => update({ ice_name: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs focus:outline-none focus:border-brand-lime"
+                  />
+                </div>
+                <div>
+                  <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.icecast.iceGenre', 'Género Musical / Categoría')}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Rock, Talk, Electronic..."
+                    value={config.ice_genre || ''}
+                    onChange={(e) => update({ ice_genre: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs focus:outline-none focus:border-brand-lime"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.icecast.iceDesc', 'Descripción del Stream')}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Emisión en directo desde el estudio principal"
+                    value={config.ice_description || ''}
+                    onChange={(e) => update({ ice_description: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs focus:outline-none focus:border-brand-lime"
+                  />
+                </div>
+              </div>
+            </details>
+
+            {/* Protocol & Compatibility Options: Legacy SOURCE method (< v2.4) & TLS - Only displayed in Remote / Manual Server mode */}
+            {!isLocalHubMode && (
+              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col pr-2">
+                    <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                      <span>⚡</span>
+                      <span>{t('destinations.icecast.legacyIcecast', 'Modo Servidor Legacy (Icecast < v2.4)')}</span>
+                    </span>
+                    <span className="text-[10px] text-[var(--text-secondary)]">
+                      {t('destinations.icecast.legacyIcecastDesc', 'Activa el método HTTP SOURCE (en lugar de HTTP PUT). Imprescindible para servidores Icecast 2.3.x o anteriores.')}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(config.legacy_icecast)}
+                      onChange={(e) => update({ legacy_icecast: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime peer-checked:after:border-black peer-checked:after:bg-black"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-[var(--glass-border)]">
+                  <div className="flex flex-col pr-2">
+                    <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                      <ShieldIcon size={12} />
+                      <span>{t('destinations.icecast.tls', 'Conexión Cifrada TLS / SSL')}</span>
+                    </span>
+                    <span className="text-[10px] text-[var(--text-secondary)]">
+                      {t('destinations.icecast.tlsDesc', 'Fuerza transmisión cifrada TLS (-tls 1) para conectar con puertos seguros HTTPS/TLS de Icecast.')}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(config.tls)}
+                      onChange={(e) => update({ tls: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:border-black peer-checked:after:bg-black"></div>
+                  </label>
+                </div>
+              </div>
             )}
+
+            {/* Auto-negotiated Codec Notice */}
+            <div className="bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-2.5 text-[11px] text-text-secondary flex items-start gap-2">
+              <span className="text-brand-lime shrink-0">ℹ️</span>
+              <span>
+                {t('destinations.icecast.autoCodecNote', 'El formato del contenedor (-f) y el MIME type (-content_type) se configuran de forma automática según el códec de audio seleccionado en el pipeline (MP3 → audio/mpeg, AAC → audio/aac, Opus → audio/ogg, FLAC → audio/flac).')}
+              </span>
+            </div>
           </div>
-          <div>
-            <label htmlFor="dest-icecast-password" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-              {t('destinations.sourcePassword')}
-            </label>
-            <input
-              type="password"
-              id="dest-icecast-password"
-              name="icecast_password"
-              placeholder="Source password"
-              className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-                validationErrors?.icecast_password
-                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                  : 'border-white/10'
-              }`}
-              value={config.icecast_password || ''} onChange={e => update({ icecast_password: e.target.value })}
-            />
-            {validationErrors?.icecast_password && (
-              <span className="text-[10px] text-red-400 block mt-1">{validationErrors.icecast_password}</span>
-            )}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {config.type === 'hls' && (() => {
         const hlsStorages = (storages || []).filter((s: any) => s.type === 'hls');
