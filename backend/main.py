@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
 from database.db import init_db, get_db, SessionLocal
-from database.models import FfmpegBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
+from database.models import FfmpegBuild, SoftwareBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
 from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
@@ -5036,6 +5036,7 @@ def list_available_dependency_providers(db: Session = Depends(get_db)):
     ).all()
     
     result = []
+    from database.models import SoftwareBuild
     from core.builders.ffmpeg_builder import FFmpegCommandBuilder
     for p in providers:
         cfg = p.config or {}
