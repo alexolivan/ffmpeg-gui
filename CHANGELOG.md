@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.10.0] - 2026-09-04
 
 ### Added
+- **Unified Log Lifecycle, Native Rotation & Automated Orphan Purging**:
+  - Implemented Icecast2 native log rotation controls `<logsize>` and `<logarchive>1</logarchive>` in `icecast.xml` dynamically bound to `logging_rotation_max_bytes`.
+  - Upgraded `TaskManager._execute_log_rotate` (and on-boot cleanup) to manage service logs across all engines (`FFmpeg`, `MediaMTX`, `Icecast2`):
+    - Live active process logs exceeding `rotation_max_bytes` are safely rotated via copytruncate to `.1.gz` without interrupting process execution.
+    - Icecast access/error logs exceeding `rotation_max_bytes` are rotated, and uncompressed `.old` archives are automatically compressed to `.gz`.
+    - Archived logs and compressed copies older than `logging_retention_days` are purged automatically.
+    - Automated orphan detection sweeps and purges any leftover `process_{id}.log*` files and `icecast_{id}/` directories whose services have been deleted from the database.
+    - Service deletion endpoint (`DELETE /processes/{id}`) now immediately and physically purges all corresponding process logs, archives, and Icecast log directories.
 - **Multi-Engine Software Build Recipe Export & Import Protocol (`software_build_recipe` v2)**:
   - Transitioned Forge build recipe export and import from FFmpeg-centric (`ffmpeg_build_recipe` v1) to a generic, engine-agnostic schema (`software_build_recipe` v2) supporting `ffmpeg`, `icecast2`, `mediamtx`, and future software engines.
   - Retained 100% backward compatibility for existing `ffmpeg_build_recipe` JSON files.

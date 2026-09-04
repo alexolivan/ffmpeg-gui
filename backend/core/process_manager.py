@@ -902,7 +902,8 @@ class ProcessManager:
         token = uuid.uuid4().hex[:8]
 
         # Log directory
-        if log_storage_path and os.path.exists(log_storage_path):
+        if log_storage_path:
+            os.makedirs(log_storage_path, exist_ok=True)
             log_dir = os.path.join(log_storage_path, f"icecast_{media_proc.id}")
         else:
             log_dir = os.path.join(shm_dir, f"ffmpeg_gui_icecast_logs_{media_proc.id}")
@@ -1073,6 +1074,21 @@ class ProcessManager:
 
         mounts_block = "\n".join(mounts_xml_parts)
 
+        # Resolve logsize from config (KiB)
+        logsize_kb = 10240
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if config_path and os.path.exists(config_path):
+            try:
+                import configparser
+                c_parser = configparser.ConfigParser()
+                c_parser.read(config_path)
+                if "logging" in c_parser:
+                    max_b = c_parser["logging"].getint("rotation_max_bytes", 10485760)
+                    if max_b > 0:
+                        logsize_kb = max(1024, int(max_b / 1024))
+            except Exception:
+                pass
+
         xml_content = f"""<icecast>
     <location>{location}</location>
     <admin>{admin_email}</admin>
@@ -1109,6 +1125,8 @@ class ProcessManager:
         <accesslog>access.log</accesslog>
         <errorlog>error.log</errorlog>
         <loglevel>3</loglevel>
+        <logsize>{logsize_kb}</logsize>
+        <logarchive>1</logarchive>
     </logging>
 </icecast>
 """

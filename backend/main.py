@@ -4018,13 +4018,32 @@ async def delete_process(process_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.warning(f"Error stopping process {process_id} before delete: {e}")
 
-    # Physically delete process_{process_id}.log if it exists
-    log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
-    if os.path.exists(log_file):
+    # Physically delete process_{process_id}.log and any rotated archives if they exist
+    import glob
+    for p_log in glob.glob(os.path.join(log_storage_path, f"process_{process_id}.log*")):
         try:
-            os.remove(log_file)
+            os.remove(p_log)
         except Exception as e:
-            logger.error(f"Error deleting log file {log_file} for process {process_id}: {e}")
+            logger.error(f"Error deleting log file {p_log} for process {process_id}: {e}")
+
+    # Delete icecast_{process_id} directory if it exists
+    icecast_log_dir = os.path.join(log_storage_path, f"icecast_{process_id}")
+    if os.path.exists(icecast_log_dir):
+        try:
+            import shutil
+            shutil.rmtree(icecast_log_dir)
+        except Exception as e:
+            logger.error(f"Error deleting icecast log dir {icecast_log_dir} for process {process_id}: {e}")
+
+    # Clean up any ephemeral log dir in /dev/shm or /tmp
+    for shm_candidate in ["/dev/shm", "/tmp"]:
+        eph_ice_dir = os.path.join(shm_candidate, f"ffmpeg_gui_icecast_logs_{process_id}")
+        if os.path.exists(eph_ice_dir):
+            try:
+                import shutil
+                shutil.rmtree(eph_ice_dir)
+            except Exception:
+                pass
 
     db.delete(db_proc)
     db.commit()
