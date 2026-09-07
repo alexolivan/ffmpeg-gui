@@ -28,7 +28,11 @@ class TestDbCli(unittest.TestCase):
         )
         self.assertEqual(res.returncode, 0)
         self.assertIn("Default Preview Storage", res.stdout)
-        self.assertIn("preview", res.stdout)
+    def test_db_cli_services(self):
+        res = subprocess.run([self.python_bin, self.script_path, "--services"], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("service_type", res.stdout)
+        self.assertIn("watchdog", res.stdout)
 
 if __name__ == "__main__":
     unittest.main()

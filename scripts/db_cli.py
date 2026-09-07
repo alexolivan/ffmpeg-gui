@@ -152,18 +152,41 @@ def show_schema(db_path: str, table_name: Optional[str] = None):
 
 def show_services(db_path: str):
     """Shows an overview of configured services and processes."""
+    import json
     con = sqlite3.connect(db_path)
     cur = con.cursor()
     # Check if services or media_processes exists
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='services'")
     table = "services" if cur.fetchone() else "media_processes"
 
-    query = f"SELECT id, name, type, service_type, status, pid, watchdog_enabled, restart_count FROM {table} ORDER BY id"
+    # In services table, schema has service_type and config JSON (type, watchdog_enabled, auto_start are inside config)
+    query = f"SELECT id, name, service_type, status, pid, restart_count, config FROM {table} ORDER BY id"
     try:
         cur.execute(query)
-        headers = [d[0] for d in cur.description]
         rows = cur.fetchall()
-        print(format_table(headers, rows))
+        headers = ["id", "name", "service_type", "status", "pid", "restarts", "watchdog", "auto_start"]
+        formatted_rows = []
+        for r in rows:
+            svc_id, name, svc_type, status, pid, restarts, raw_cfg = r
+            cfg = {}
+            if raw_cfg:
+                try:
+                    cfg = json.loads(raw_cfg) if isinstance(raw_cfg, str) else raw_cfg
+                except Exception:
+                    pass
+            watchdog = "yes" if cfg.get("watchdog_enabled") else "no"
+            auto_start = "yes" if cfg.get("auto_start") else "no"
+            formatted_rows.append((
+                svc_id,
+                name,
+                svc_type or "ffmpeg_stream",
+                status or "stopped",
+                pid if pid else "-",
+                restarts if restarts is not None else 0,
+                watchdog,
+                auto_start
+            ))
+        print(format_table(headers, formatted_rows))
         print(f"\n({len(rows)} service{'s' if len(rows) != 1 else ''})")
     except Exception as e:
         print(f"Error fetching services: {e}", file=sys.stderr)
@@ -172,27 +195,67 @@ def show_services(db_path: str):
 
 
 def show_service_logs(db_path: str, service_id: int, limit: int = 25):
-    """Fetches recent service or process logs for a given service ID."""
+    """Fetches recent service or process logs for a given service ID from DB and disk log file."""
     con = sqlite3.connect(db_path)
     cur = con.cursor()
-    # Check table existence: service_logs vs process_logs
+
+    # 1. Check database events (watchdog / crashes / circuit breaker)
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='service_logs'")
     table = "service_logs" if cur.fetchone() else "process_logs"
     col_id = "service_id" if table == "service_logs" else "process_id"
 
-    query = f"SELECT timestamp, level, message FROM {table} WHERE {col_id}=? ORDER BY id DESC LIMIT ?"
+    db_rows = []
     try:
-        cur.execute(query, (service_id, limit))
-        rows = cur.fetchall()
-        if not rows:
-            print(f"No logs found in {table} for ID {service_id}.")
-        else:
-            headers = ["Timestamp", "Level", "Message"]
-            print(format_table(headers, list(reversed(rows))))
+        cur.execute(f"SELECT timestamp, level, message FROM {table} WHERE {col_id}=? ORDER BY id DESC LIMIT ?", (service_id, limit))
+        db_rows = cur.fetchall()
     except Exception as e:
-        print(f"Error querying logs from {table}: {e}", file=sys.stderr)
-    finally:
-        con.close()
+        print(f"Notice: Error querying {table}: {e}", file=sys.stderr)
+
+    if db_rows:
+        print(f"--- DATABASE WATCHDOG / SYSTEM EVENTS ({table}) ---")
+        headers = ["Timestamp", "Level", "Message"]
+        print(format_table(headers, list(reversed(db_rows))))
+        print()
+    else:
+        print(f"(No watchdog/crash events recorded in DB table '{table}' for service ID {service_id})")
+
+    # 2. Check physical log file on disk
+    log_candidates = []
+    try:
+        cur.execute("SELECT path FROM storages WHERE type='logs'")
+        for row in cur.fetchall():
+            if row[0]:
+                log_candidates.append(os.path.join(row[0], f"process_{service_id}.log"))
+    except Exception:
+        pass
+    con.close()
+
+    log_candidates.extend([
+        f"/var/log/ffmpeg-gui/process_{service_id}.log",
+        f"/var/log/ffmpeg-gui/process_{service_id}s.log",
+        os.path.expanduser(f"~/.local/share/ffmpeg-gui/logs/process_{service_id}.log"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "logs", f"process_{service_id}.log"),
+        f"data/logs/process_{service_id}.log",
+    ])
+
+    found_log = None
+    for cand in log_candidates:
+        if cand and os.path.exists(cand):
+            found_log = cand
+            break
+
+    if found_log:
+        print(f"\n--- DISK CONSOLE LOG ({found_log}, last {limit} lines) ---")
+        try:
+            with open(found_log, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+            tail_lines = lines[-limit:] if len(lines) > limit else lines
+            print("".join(tail_lines).rstrip())
+        except Exception as read_err:
+            print(f"Error reading log file {found_log}: {read_err}", file=sys.stderr)
+    else:
+        print(f"\n(No physical log file found on disk for process_{service_id}.log)")
+
 
 
 def main():
