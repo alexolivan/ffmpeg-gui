@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ServerIcon, ClipboardIcon } from '../../Icons';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 interface MediaMtxServiceModalProps {
   service: any;
@@ -103,9 +104,12 @@ export const MediaMtxServiceModal: React.FC<MediaMtxServiceModalProps> = ({
   }, [logs, autoScroll]);
 
   const handleCopy = (key: string, url: string) => {
-    navigator.clipboard.writeText(url);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2500);
+    copyToClipboard(url).then((success) => {
+      if (success) {
+        setCopiedKey(key);
+        setTimeout(() => setCopiedKey(null), 2500);
+      }
+    });
   };
 
   if (!isOpen || !service) return null;

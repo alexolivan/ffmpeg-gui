@@ -15,6 +15,7 @@ import {
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
 import { BuildSdksModal } from '../modals/BuildSdksModal';
+import { copyToClipboard } from '../../utils/clipboard';
 
 const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string>> = {
   debian: {
@@ -260,20 +261,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   }, [showEnvModal, activeEngineTab, refreshDeps]);
 
   const fallbackCopy = (text: string) => {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-9999px";
-    textArea.style.top = "0";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    try {
-      document.execCommand('copy');
-    } catch (err) {
-      console.error(err);
-    }
-    document.body.removeChild(textArea);
+    copyToClipboard(text);
   };
 
   const filteredBuilds = builds.filter(

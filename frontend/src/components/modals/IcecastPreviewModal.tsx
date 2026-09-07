@@ -10,6 +10,7 @@ import {
   PencilIcon,
   ExportIcon,
 } from '../Icons';
+import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 
 interface IcecastPreviewModalProps {
   selectedProcess: any;
@@ -257,16 +258,35 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
     const text = activeLogs
       .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
       .join('\n');
-    navigator.clipboard.writeText(text).then(() => {
-      setCopyLogsSuccess(true);
-      setTimeout(() => setCopyLogsSuccess(false), 2000);
+    universalCopy(text).then((success) => {
+      if (success) {
+        setCopyLogsSuccess(true);
+        setTimeout(() => setCopyLogsSuccess(false), 2000);
+      }
     });
   };
 
   const handleCopyStreamUrl = (key: string, url: string) => {
-    navigator.clipboard.writeText(url).then(() => {
-      setCopiedUrlKey(key);
-      setTimeout(() => setCopiedUrlKey(null), 2000);
+    universalCopy(url).then((success) => {
+      if (success) {
+        setCopiedUrlKey(key);
+        setTimeout(() => setCopiedUrlKey(null), 2000);
+      }
+    });
+  };
+
+  const getActiveMountPublisher = (mountName: string) => {
+    return telemetry.find((proc) => {
+      if (proc.status !== 'running' || proc.service_type !== 'ffmpeg_stream') return false;
+      const outputs = Array.isArray(proc.config?.outputs)
+        ? proc.config.outputs
+        : (proc.config?.output ? [proc.config.output] : []);
+      return outputs.some((out: any) => {
+        if (out.type === 'icecast' && out.provider_service_id && Number(out.provider_service_id) === Number(currentProcess.id)) {
+          return (out.icecast_mount || '/live.mp3') === mountName;
+        }
+        return false;
+      });
     });
   };
 
@@ -613,6 +633,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                       const mountPath = m.mount_name || '';
                       const streamUrl = `${sslEnabled ? 'https' : 'http'}://${host}:${sslEnabled ? sslPort : httpPort}${mountPath}`;
                       const isSourceLive = m.isActive;
+                      const activePublisher = getActiveMountPublisher(mountPath);
 
                       return (
                         <tr key={idx} className="hover:bg-[var(--bg-card)]/40 transition-colors">
@@ -628,6 +649,11 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                                 <span className="font-mono font-bold text-cyan-400 block">
                                   {mountPath}
                                 </span>
+                                {activePublisher && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 inline-flex items-center gap-1 mt-0.5" title="Active FFmpeg stream output feeding this mountpoint">
+                                    <span>⚠️</span> {t('services.icecast.preview.ingestBy', 'Ingest: {{name}}', { name: activePublisher.alias || activePublisher.name })}
+                                  </span>
+                                )}
                                 {m.fallback_mount && (
                                   <span className="text-[10px] text-amber-300/80 block">
                                     ↳ Fallback: {m.fallback_mount}

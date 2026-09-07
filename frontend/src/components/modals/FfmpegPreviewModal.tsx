@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { hasVideo as hasVideoHelper } from '../cards/UnifiedServiceCard';
 import { EngineLogo } from '../common/EngineLogo';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface FfmpegPreviewModalProps {
   selectedProcess: any;
@@ -39,6 +40,8 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const showPreview = isRunning && isVideoProcess;
 
   const [progressData, setProgressData] = useState<any>(null);
+  const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   const showFrames = progressData?.frame !== undefined && progressData?.frame !== null && progressData?.frame !== '0' && progressData?.frame !== 0;
   const showFps = progressData?.fps !== undefined && progressData?.fps !== null && progressData?.fps !== '0.0' && progressData?.fps !== '0';
@@ -47,7 +50,7 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const showDups = progressData?.dup_frames !== undefined && progressData?.dup_frames !== null && progressData?.dup_frames !== '0' && progressData?.dup_frames !== 0;
   const showDrops = progressData?.drop_frames !== undefined && progressData?.drop_frames !== null && progressData?.drop_frames !== '0' && progressData?.drop_frames !== 0;
 
-  // Poll progress data for FFmpeg services
+  // Poll progress data for FFmpeg services (only when not in debug mode)
   useEffect(() => {
     if (!isRunning || currentProcess.debug_mode) {
       setProgressData(null);
@@ -71,12 +74,49 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
     return () => clearInterval(interval);
   }, [currentProcess.id, isRunning, currentProcess.debug_mode, API]);
 
-  // Auto-scroll logs when running
+  // Poll logs for FFmpeg process when in debug mode
   useEffect(() => {
-    if (processLogsContainerRef.current && isRunning) {
+    if (!currentProcess.debug_mode) return;
+
+    const fetchLogs = async () => {
+      try {
+        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setDaemonLogs(data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch ffmpeg debug logs', err);
+      }
+    };
+
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 2000);
+    return () => clearInterval(interval);
+  }, [currentProcess.id, currentProcess.debug_mode, API]);
+
+  const activeLogs = daemonLogs.length > 0 ? daemonLogs : externalLogs;
+
+  // Auto-scroll logs when running in debug mode
+  useEffect(() => {
+    if (processLogsContainerRef.current && (isRunning || currentProcess.debug_mode)) {
       processLogsContainerRef.current.scrollTop = processLogsContainerRef.current.scrollHeight;
     }
-  }, [externalLogs, isRunning]);
+  }, [activeLogs, isRunning, currentProcess.debug_mode]);
+
+  const handleCopyLogs = () => {
+    const text = activeLogs
+      .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+      .join('\n');
+    copyToClipboard(text).then((success) => {
+      if (success) {
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      }
+    });
+  };
 
   // Escape key listener to close modal
   useEffect(() => {
@@ -311,6 +351,79 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                     <span className="text-[9px] uppercase font-bold text-[var(--text-secondary)]">Drops</span>
                     <span className="text-[var(--text-primary)] font-mono font-black text-sm">{progressData?.drop_frames}</span>
                   </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Virtual Debug Terminal Console (Debug Mode) */}
+          {currentProcess.debug_mode && (
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 font-mono text-xs space-y-2 max-w-5xl mx-auto w-full">
+              <div className="flex justify-between items-center border-b border-[var(--glass-border)] pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-brand-orange animate-pulse" />
+                  <span className="text-brand-orange font-bold uppercase tracking-wider text-[10px]">
+                    {t('modals.debugConsole.title', 'FFmpeg Real-Time Audit Console (Debug Mode)')}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyLogs}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    {copySuccess ? '✓ ' + t('common.copied', 'Copied') : t('common.copyLogs', 'Copy Logs')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = `${API}/api/processes/${currentProcess.id}/download-log`;
+                      a.download = `ffmpeg_${currentProcess.id}_debug.log`;
+                      a.click();
+                    }}
+                    className="px-2.5 py-1 bg-brand-orange/15 hover:bg-brand-orange/25 text-brand-orange border border-brand-orange/30 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    {t('common.downloadLog', 'Download Log')}
+                  </button>
+                  <span className="text-[var(--text-secondary)] text-[10px] font-bold">{activeLogs.length} lines</span>
+                </div>
+              </div>
+
+              <div
+                ref={processLogsContainerRef}
+                className="h-72 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
+              >
+                {activeLogs.length === 0 ? (
+                  <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-20 select-none">
+                    {isRunning
+                      ? t('modals.debugConsole.waiting', 'Service active in debug mode. Waiting for FFmpeg stdout/stderr output...')
+                      : t('modals.debugConsole.stopped', 'Service is stopped. Start service in debug mode to monitor real-time command output.')}
+                  </div>
+                ) : (
+                  activeLogs.map((log, i) => {
+                    const logMsg = typeof log === 'string' ? log : log.message || '';
+                    const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+                    const isErr = logMsg.toLowerCase().includes('error') || logMsg.toLowerCase().includes('failed') || (typeof log === 'object' && log.level === 'ERROR');
+                    const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
+
+                    return (
+                      <div key={i} className="whitespace-pre-wrap flex items-start gap-2">
+                        {logTime && (
+                          <span className="text-[var(--text-secondary)] select-none shrink-0 opacity-70">
+                            [{logTime}]
+                          </span>
+                        )}
+                        <span
+                          className={`${
+                            isErr ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {logMsg}
+                        </span>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>

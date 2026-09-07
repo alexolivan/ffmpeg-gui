@@ -29,7 +29,16 @@
     "waiting": "Esperant senyal d'entrada...",
     "clonedSuccess": "Clonat amb èxit!",
     "refresh": "Actualitzar",
-    "updated": "Actualitzat!"
+    "updated": "Actualitzat!",
+    "copyLogs": "Copiar registres",
+    "downloadLog": "Descarregar registre",
+    "offline": "Desconnectat",
+    "uptime": "Temps actiu",
+    "editConfig": "Editar configuració",
+    "copied": "Copiat!",
+    "start": "Iniciar",
+    "stop": "Aturar",
+    "restart": "Reiniciar"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -170,7 +179,10 @@
         "pullUrl": "Consum (Pull):",
         "url": "URL:",
         "copy": "Copiar",
-        "copied": "✓ Copiat"
+        "copied": "✓ Copiat",
+        "ingestConflictTitle": "Conflicte d ingesta detectat",
+        "ingestConflictServiceDesc": "El path està rebent publicació activa del servei: {{name}} (PID {{pid}}). Publicar en aquest path pot provocar interrupcions.",
+        "ingestConflictExternalDesc": "El path està rebent actualment una transmissió externa en directe. Publicar en aquest path pot provocar interrupcions."
       },
       "previewModal": {
         "subtitle": "Monitor de Procés Dimoni i Registre d'Auditoria en Temps Real",
@@ -262,9 +274,14 @@
         "listenLive": "Reproductor en Viu",
         "copyUrl": "Copiar URL del Flux",
         "copied": "Copiat!",
-        "logsTitle": "Registres del Servidor (Stdout / Error Log)"
+        "logsTitle": "Registres del Servidor (Stdout / Error Log)",
+        "ingestBy": "Ingesta per"
       }
-    }
+    },
+    "startService": "Iniciar servei",
+    "stopService": "Aturar servei",
+    "restartService": "Reiniciar servei",
+    "exportProfile": "Exportar perfil"
   },
   "settings": {
     "title": "Configuració",
@@ -703,7 +720,9 @@
     "nextRunTodayAt": "Avui a les {{time}}h",
     "sniHostname": "Hostname SNI",
     "sslCertificate": "Certificat SSL",
-    "setupRequired": "CONFIGURACIÓ REQUERIDA"
+    "setupRequired": "CONFIGURACIÓ REQUERIDA",
+    "cpuUsage": "Ús de CPU",
+    "ramUsage": "Ús de RAM"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -955,7 +974,31 @@
     "srtLocalHub": "Hub Local (Aquest Node)",
     "srtRemoteHub": "Servidor MediaMTX Remot (Host Extern)",
     "srtRemoteHost": "Host / IP Remota",
-    "srtRemotePort": "Port SRT"
+    "srtRemotePort": "Port SRT",
+    "localManagedHub": "Local administrat",
+    "remoteExternalHub": "Remot / Extern",
+    "targetHubLocation": "Instància MediaMTX d origen",
+    "targetServerLocation": "Instància Icecast d origen",
+    "selectHubService": "Servei MediaMTX",
+    "selectIcecastService": "Servei Icecast",
+    "streamPath": "Ruta del flux (Path)",
+    "icecastMountPoint": "Punt de muntatge (Mountpoint)",
+    "customPathOption": "+ Slug de path personalitzat...",
+    "customMountOption": "+ Punt de muntatge personalitzat...",
+    "customPathSlug": "Slug de path personalitzat",
+    "customMountSlug": "Punt de muntatge personalitzat",
+    "generatedRtmpUrl": "URL RTMP d origen generada",
+    "generatedHlsUrl": "URL HLS d origen generada",
+    "generatedStreamUrl": "URL de pull d àudio generada",
+    "httpAudioManual": "URL HTTP / Icecast directa manual",
+    "httpAudioIcecastServer": "Integració amb Servidor Icecast",
+    "rtmpManualDirect": "RTMP directe manual",
+    "rtmpMediaMtxHub": "Integració amb Hub MediaMTX",
+    "hlsManualDirect": "URL HLS directa manual",
+    "hlsMediaMtxHub": "Integració amb Hub MediaMTX",
+    "enableRtmps": "Pull RTMPS xifrat (TLS)",
+    "enableHttpsIcecast": "Pull HTTPS segur (TLS)",
+    "enableHttpsHls": "Pull HLS HTTPS xifrat (TLS)"
   },
   "destinations": {
     "destination": "Destinació",
@@ -1076,7 +1119,29 @@
       "tls": "Connexió Xifrada TLS / SSL",
       "tlsDesc": "Força transmissió xifrada TLS (-tls 1) per connectar amb ports segurs HTTPS/TLS d'Icecast.",
       "tlsAutoManaged": "Connexió xifrada TLS / SSL auto-gestionada per a aquest servidor."
-    }
+    },
+    "rtmpManualDirect": "RTMP / RTMPS directe manual",
+    "rtmpMediaMtxHub": "Integració amb Hub MediaMTX",
+    "rtmpProviderHub": "Hub MediaMTX",
+    "rtmpPathId": "Slug de ruta",
+    "targetHubLocation": "Instància de destí MediaMTX",
+    "selectHubService": "Servei MediaMTX",
+    "streamPath": "Path de publicació",
+    "enableRtmps": "Push RTMPS xifrat (TLS)",
+    "customPathOption": "+ Slug de path personalitzat...",
+    "customPathSlug": "Slug de path personalitzat",
+    "customPathPrompt": "Slug de path personalitzat",
+    "generatedRtmpUrl": "URL RTMP de destí generada",
+    "whipManualDirect": "Punt final WHIP directe manual",
+    "whipMediaMtxHub": "MediaMTX Hub WebRTC/WHIP",
+    "enableHttpsWhip": "Ingesta WHIP HTTPS xifrada (TLS)",
+    "generatedWhipUrl": "URL d ingesta WHIP generada",
+    "packetSize": "Mida del paquet (pkt_size)",
+    "standardDvb": "DVB MPEG-TS estàndard (1316 B = 7 x 188)",
+    "lanJumbo": "Alt bitrate / Jumbo Frame (7520 B = 40 x 188)",
+    "singlePacket": "Paquet TS individual per datagrama UDP (188 B)",
+    "dvbMetadata": "Taules DVB i metadades PSI",
+    "cbrMuxrate": "Bitrate constant (CBR Muxrate)"
   },
   "filters": {
     "filtersNotAvailable": "Els filtres només estan disponibles quan els fluxos de vídeo o àudio estan habilitats.",
@@ -1286,5 +1351,12 @@
     "manageSdks": "Gestionar SDKs",
     "versionMismatchNotice": "⚠️ Advertència: El fitxer carregat conté el SDK v{{uploaded}}. La versió requerida v{{expected}} continua absent.",
     "manageDecklinkSdk": "Gestionar SDK DeckLink"
+  },
+  "modals": {
+    "debugConsole": {
+      "title": "CONSOLA D AUDITORIA I DEPURACIÓ EN TEMPS REAL",
+      "waiting": "Esperant sortida del procés...",
+      "stopped": "El procés està aturat. Els registres apareixeran aquí en executar-se en mode depuració."
+    }
   }
 }
