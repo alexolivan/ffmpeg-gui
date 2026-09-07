@@ -298,6 +298,14 @@ class Service(Base):
         self._set_config_key('allow_auto_stop_deps', bool(val))
 
     @property
+    def watchdog_circuit_breaker(self):
+        return self.config.get('watchdog_circuit_breaker', True) if self.config else True
+
+    @watchdog_circuit_breaker.setter
+    def watchdog_circuit_breaker(self, val):
+        self._set_config_key('watchdog_circuit_breaker', bool(val))
+
+    @property
     def mediamtx_config(self):
         return self.config.get('mediamtx_config', {}) if self.config else {}
 

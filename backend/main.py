@@ -213,6 +213,7 @@ class ProcessCreate(BaseModel):
     startup_delay: Optional[int] = 0
     watchdog_enabled: Optional[bool] = False
     watchdog_retries: Optional[int] = 5
+    watchdog_circuit_breaker: Optional[bool] = True
     watchdog_min_speed: Optional[float] = None
     watchdog_min_speed_duration: Optional[int] = 30
     alias: Optional[str] = None
@@ -248,6 +249,7 @@ class ProcessUpdate(BaseModel):
     startup_delay: Optional[int] = None
     watchdog_enabled: Optional[bool] = None
     watchdog_retries: Optional[int] = None
+    watchdog_circuit_breaker: Optional[bool] = None
     watchdog_min_speed: Optional[float] = None
     watchdog_min_speed_duration: Optional[int] = None
     alias: Optional[str] = None
@@ -1402,6 +1404,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "startup_delay": p.startup_delay,
                 "watchdog_enabled": p.watchdog_enabled,
                 "watchdog_retries": p.watchdog_retries,
+                "watchdog_circuit_breaker": getattr(p, "watchdog_circuit_breaker", True),
                 "watchdog_min_speed": p.watchdog_min_speed,
                 "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
                 "alias": p.alias,
@@ -2542,6 +2545,7 @@ async def telemetry_broadcast_loop():
                         "startup_delay": getattr(p, 'startup_delay', 0) or 0,
                         "watchdog_enabled": p.watchdog_enabled,
                         "watchdog_retries": p.watchdog_retries,
+                        "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
                         "watchdog_min_speed": p.watchdog_min_speed,
                         "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
                         "pending_changes": p.pending_changes,
@@ -2556,6 +2560,7 @@ async def telemetry_broadcast_loop():
                         "network_timeout": p.network_timeout,
                         "debug_mode": p.debug_mode,
                         "log_storage_id": p.log_storage_id,
+                        "log_file_path": process_manager.get_process_log_path(p.id),
                     } for p in processes
                 ]
 
@@ -3769,6 +3774,7 @@ def list_processes(db: Session = Depends(get_db)):
             "startup_delay": getattr(p, 'startup_delay', 0) or 0,
             "watchdog_enabled": p.watchdog_enabled,
             "watchdog_retries": p.watchdog_retries,
+            "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
             "watchdog_min_speed": p.watchdog_min_speed,
             "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
             "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
@@ -3783,6 +3789,7 @@ def list_processes(db: Session = Depends(get_db)):
             "network_timeout": p.network_timeout,
             "debug_mode": p.debug_mode,
             "log_storage_id": p.log_storage_id,
+            "log_file_path": process_manager.get_process_log_path(p.id),
         } for p in processes
     ]
 
@@ -3848,6 +3855,7 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         startup_delay=proc_in.startup_delay if proc_in.startup_delay is not None else 0,
         watchdog_enabled=proc_in.watchdog_enabled,
         watchdog_retries=proc_in.watchdog_retries,
+        watchdog_circuit_breaker=proc_in.watchdog_circuit_breaker if proc_in.watchdog_circuit_breaker is not None else True,
         watchdog_min_speed=proc_in.watchdog_min_speed,
         watchdog_min_speed_duration=proc_in.watchdog_min_speed_duration if proc_in.watchdog_min_speed_duration is not None else 30,
         alias=proc_in.alias,
@@ -3965,6 +3973,7 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.startup_delay is not None: db_proc.startup_delay = proc_in.startup_delay
     if proc_in.watchdog_enabled is not None: db_proc.watchdog_enabled = proc_in.watchdog_enabled
     if proc_in.watchdog_retries is not None: db_proc.watchdog_retries = proc_in.watchdog_retries
+    if proc_in.watchdog_circuit_breaker is not None: db_proc.watchdog_circuit_breaker = proc_in.watchdog_circuit_breaker
     if proc_in.watchdog_min_speed is not None: db_proc.watchdog_min_speed = proc_in.watchdog_min_speed
     if proc_in.watchdog_min_speed_duration is not None: db_proc.watchdog_min_speed_duration = proc_in.watchdog_min_speed_duration
     if proc_in.alias is not None: db_proc.alias = proc_in.alias
@@ -4217,6 +4226,7 @@ def clone_process(process_id: int, db: Session = Depends(get_db)):
         startup_delay=getattr(db_proc, 'startup_delay', 0) or 0,
         watchdog_enabled=db_proc.watchdog_enabled,
         watchdog_retries=db_proc.watchdog_retries,
+        watchdog_circuit_breaker=getattr(db_proc, 'watchdog_circuit_breaker', True),
         watchdog_min_speed=db_proc.watchdog_min_speed,
         watchdog_min_speed_duration=db_proc.watchdog_min_speed_duration,
         network_timeout=db_proc.network_timeout,
@@ -4405,6 +4415,7 @@ def get_process_progress(process_id: int):
 
 
 @app.get("/processes/{process_id}/logs")
+@app.get("/api/processes/{process_id}/logs")
 def get_process_logs(process_id: int, db: Session = Depends(get_db)):
     # 1. If process is actively running and has an in-memory buffer, return it
     if process_id in process_manager.log_buffers and len(process_manager.log_buffers[process_id]) > 0:
@@ -4413,24 +4424,8 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
     # 2. Read log file from disk (process_{process_id}.log) if process has completed / stopped
     db_proc = db.query(MediaProcess).get(process_id)
     if db_proc:
-        log_storage_path = None
-        if db_proc.log_storage_id:
-            storage = db.query(Storage).get(db_proc.log_storage_id)
-            if storage:
-                log_storage_path = storage.path
-
-        if not log_storage_path:
-            default_storage = db.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
-            if not default_storage:
-                default_storage = db.query(Storage).filter(Storage.type == "logs").first()
-            if default_storage:
-                log_storage_path = default_storage.path
-
-        if not log_storage_path:
-            log_storage_path = os.path.abspath("data/logs")
-
-        lines = []
-        log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
+        log_file = process_manager.get_process_log_path(process_id, db_proc.log_storage_id, session=db)
+        log_storage_path = os.path.dirname(log_file)
         if os.path.exists(log_file):
             try:
                 with open(log_file, "r", encoding="utf-8", errors="replace") as f:
@@ -4671,6 +4666,7 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "startup_delay": getattr(proc, 'startup_delay', 0) or 0,
             "watchdog_enabled": proc.watchdog_enabled,
             "watchdog_retries": proc.watchdog_retries,
+            "watchdog_circuit_breaker": getattr(proc, 'watchdog_circuit_breaker', True),
             "watchdog_min_speed": proc.watchdog_min_speed,
             "watchdog_min_speed_duration": proc.watchdog_min_speed_duration,
             "network_timeout": getattr(proc, 'network_timeout', 15),
@@ -4707,6 +4703,7 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         startup_delay=profile.get('startup_delay', 0),
         watchdog_enabled=profile.get('watchdog_enabled', False),
         watchdog_retries=profile.get('watchdog_retries', 5),
+        watchdog_circuit_breaker=profile.get('watchdog_circuit_breaker', True),
         watchdog_min_speed=profile.get('watchdog_min_speed'),
         watchdog_min_speed_duration=profile.get('watchdog_min_speed_duration', 30),
         network_timeout=profile.get('network_timeout', 15),
@@ -5412,6 +5409,7 @@ def _serialize_service(p) -> dict:
         "startup_delay": getattr(p, 'startup_delay', 0) or 0,
         "watchdog_enabled": p.watchdog_enabled,
         "watchdog_retries": p.watchdog_retries,
+        "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
         "watchdog_min_speed": p.watchdog_min_speed,
         "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
         "pending_changes": p.pending_changes,
@@ -5421,6 +5419,7 @@ def _serialize_service(p) -> dict:
         "network_timeout": p.network_timeout,
         "debug_mode": p.debug_mode,
         "log_storage_id": p.log_storage_id,
+        "log_file_path": process_manager.get_process_log_path(p.id),
     }
 
 @app.post("/tasks/{task_id}/clone-as-service")
