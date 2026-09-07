@@ -270,21 +270,39 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         errors.url = 'Stream URL is required';
       }
     } else if (out.type === 'hls') {
+      const isLocal = !out.hls_method || out.hls_method === 'local';
+      const hasStorage = Boolean(out.storage_id);
       const hPath = (out.path || '').trim();
       const hName = (out.hls_stream_name || '').trim();
-      if (!hPath) {
-        errors.path = 'HLS directory path or ingest URL is required';
+
+      if (isLocal && hasStorage) {
+        if (!(out.relative_path || '').trim()) {
+          errors.relative_path = 'Relative output subfolder is required';
+        }
+      } else {
+        if (!hPath) {
+          errors.path = isLocal ? 'HLS directory path is required' : 'HLS ingest URL is required';
+        }
       }
+
       if (!hName) {
         errors.hls_stream_name = 'Stream Name is required';
       }
 
-      if (hPath && hName && out.hls_method === 'local') {
-        const cleanHlsPath = hPath.replace(/\/+$/, '');
-        const finalHlsPlaylist = cleanHlsPath ? `${cleanHlsPath}/${hName}.m3u8` : `${hName}.m3u8`;
-        const collision = checkFilePathCollision(finalHlsPlaylist);
-        if (collision) {
-          warnings.path = `HLS playlist path collision: already in use by active configuration "${collision.name}"`;
+      if (hName && isLocal) {
+        let finalHlsPlaylist = '';
+        if (hasStorage) {
+          const rel = (out.relative_path || '').trim().replace(/\/+$/, '');
+          finalHlsPlaylist = rel ? `${rel}/${hName}.m3u8` : `${hName}.m3u8`;
+        } else if (hPath) {
+          const cleanHlsPath = hPath.replace(/\/+$/, '');
+          finalHlsPlaylist = cleanHlsPath ? `${cleanHlsPath}/${hName}.m3u8` : `${hName}.m3u8`;
+        }
+        if (finalHlsPlaylist) {
+          const collision = checkFilePathCollision(finalHlsPlaylist);
+          if (collision) {
+            warnings.path = `HLS playlist path collision: already in use by active configuration "${collision.name}"`;
+          }
         }
       }
     } else if (out.type === 'icecast') {
@@ -295,13 +313,20 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         errors.icecast_mount = 'Icecast mountpoint is required';
       }
     } else if (out.type === 'file') {
+      const hasStorage = Boolean(out.storage_id);
       const fPath = (out.path || '').trim();
-      if (!fPath) {
-        errors.path = 'Output file path is required';
+      if (hasStorage) {
+        if (!(out.relative_path || '').trim()) {
+          errors.relative_path = 'Relative file path is required';
+        }
       } else {
-        const collision = checkFilePathCollision(fPath);
-        if (collision) {
-          warnings.path = `Output file path collision: already in use by active configuration "${collision.name}"`;
+        if (!fPath) {
+          errors.path = 'Output file path is required';
+        } else {
+          const collision = checkFilePathCollision(fPath);
+          if (collision) {
+            warnings.path = `Output file path collision: already in use by active configuration "${collision.name}"`;
+          }
         }
       }
     } else if (out.type === 'ndi') {
