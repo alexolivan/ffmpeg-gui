@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.13.0] - 2026-09-07
+
+### Added
+- **HLS Storage Route Paths (`/route_path -> HLS Storage`)**:
+  - Implemented custom HTTP route mappings for storages of type `hls`, allowing FFmpeg-GUI's HTTP engine to directly serve live and VOD HLS manifests and chunks.
+  - In-memory route dispatch cache with thread-safe atomic updates and O(1) prefix matching.
+  - Configured CORS headers (`Access-Control-Allow-Origin: *`, `GET, HEAD, OPTIONS`), dedicated MIME types (`application/vnd.apple.mpegurl`, `video/MP2T`, `video/iso.segment`), and differential caching (`no-cache` for playlists, `max-age=60` for segments).
+  - Built-in path traversal protection blocking directory escape attempts (`HTTP 403 Forbidden`) and explicit `HTTP 404 Not Found` for missing segments to prevent player corruption.
+- **Storage Management Route Path UI**:
+  - Added Route Path input to Add Storage Drive and Inline Edit forms in `SettingsView.tsx` for HLS storages.
+  - Added route badge (`🌐 /route_path`) and clickable direct endpoint preview link for quick playback testing.
+  - Added comprehensive localization strings across `en.json`, `es.json`, and `ca.json` with 100% key parity.
+- **Decoupled HTTP Access Logging**:
+  - Decoupled HTTP access logs (`access.log`) from internal system server logs (`ffmpeg-gui.log`) via `ACCESS_LOG_PATH` in `run_server.py`.
+  - Added high-frequency noise suppression (`ACCESS_LOG_IGNORE_MEDIA=true`) filtering media asset polling (`/assets/*`, `/favicon.*`, `/previews/*`, `.ts`, `.m4s`, `.m3u8`, icons) for successful HTTP requests (< 400).
+  - Added system settings fields `access_log_path`, `access_log_enabled`, and `access_log_ignore_media`.
+- **Scheduled Access Log Rotation**:
+  - Extended `TaskManager._execute_log_rotate` with size-based copytruncate rotation (`> rotation_max_bytes`) and expired backup purging (`> retention_days`) for `access.log`.
+
+### Fixed
+- **Process Logs Disk Read Hotfix**:
+  - Fixed `NameError: name 'lines' is not defined` in `get_process_logs` (`backend/main.py`) when reading disk logs for stopped or failed processes.
+
 ## [2.12.0] - 2026-09-07
 
 ### Added

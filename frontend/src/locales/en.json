@@ -445,7 +445,10 @@
       "editStorage": "Edit Storage",
       "cannotDeleteDefault": "Cannot delete default storage",
       "deleteStorage": "Delete Storage",
-      "utilization": "Space Utilization"
+      "utilization": "Space Utilization",
+      "routePath": "HTTP Route Path (Optional)",
+      "routePathHelp": "Allows serving HLS manifests and segments via HTTP (/route_path/index.m3u8).",
+      "httpEndpoint": "Endpoint"
     },
     "security": {
       "title": "Authentication & Password Management",

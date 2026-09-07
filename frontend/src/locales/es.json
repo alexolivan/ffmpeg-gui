@@ -445,7 +445,10 @@
       "editStorage": "Editar Almacenamiento",
       "cannotDeleteDefault": "No se puede eliminar el almacenamiento por defecto",
       "deleteStorage": "Eliminar Almacenamiento",
-      "utilization": "Uso de Espacio"
+      "utilization": "Uso de Espacio",
+      "routePath": "Ruta HTTP del Stream (Opcional)",
+      "routePathHelp": "Permite servir manifiestos y segmentos HLS por HTTP (/ruta_stream/index.m3u8).",
+      "httpEndpoint": "Punto de Acceso"
     },
     "security": {
       "title": "Seguridad y Acceso",

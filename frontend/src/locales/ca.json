@@ -445,7 +445,10 @@
       "editStorage": "Editar Emmagatzematge",
       "cannotDeleteDefault": "No es pot eliminar l'emmagatzematge per defecte",
       "deleteStorage": "Eliminar Emmagatzematge",
-      "utilization": "Ús d'Espai"
+      "utilization": "Ús d'Espai",
+      "routePath": "Ruta HTTP del Stream (Opcional)",
+      "routePathHelp": "Permet servir manifests i segments HLS per HTTP (/ruta_stream/index.m3u8).",
+      "httpEndpoint": "Punt d'Accés"
     },
     "security": {
       "title": "Seguretat i Accés",

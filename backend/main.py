@@ -12,7 +12,7 @@ import platform
 import configparser
 import threading
 from PIL import Image
-from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
@@ -506,10 +506,12 @@ class StorageCreate(BaseModel):
     name: str
     path: str
     type: str  # 'build', 'media', 'hls', 'logs', 'sdk', 'preview'
+    route_path: Optional[str] = None
 
 class StorageUpdate(BaseModel):
     name: str
     path: str
+    route_path: Optional[str] = None
 
 class StorageTest(BaseModel):
     path: str
@@ -2899,6 +2901,11 @@ async def startup_event():
                 sanitize_database_processes(db)
             except Exception as e:
                 logger.error(f"Failed to sanitize database processes on startup: {e}")
+
+            try:
+                refresh_hls_routes_cache(db)
+            except Exception as e:
+                logger.error(f"Failed to refresh HLS routes cache on startup: {e}")
 
             stale_builds = db.query(FfmpegBuild).filter(FfmpegBuild.status == "building").all()
             for build in stale_builds:
@@ -5758,6 +5765,78 @@ def get_disk_stats(path: str) -> dict:
             "percent": 0.0
         }
 
+RESERVED_ROUTE_PREFIXES = {
+    "api", "ws", "settings", "login", "builds", "processes", "tasks", 
+    "sdks", "uploads", "system", "decklink", "magewell", "assets", 
+    "previews", "docs", "redoc", "openapi.json"
+}
+
+_hls_routes_cache: Dict[str, str] = {}
+_hls_routes_lock = threading.Lock()
+
+def refresh_hls_routes_cache(db: Optional[Session] = None):
+    """Refreshes in-memory cache of HLS route paths mapping to absolute directory paths."""
+    global _hls_routes_cache
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+    try:
+        storages = db.query(Storage).filter(Storage.type == "hls", Storage.route_path.isnot(None)).all()
+        new_cache = {}
+        for s in storages:
+            if s.route_path and s.route_path.strip():
+                norm_rp = "/" + s.route_path.strip().strip("/")
+                new_cache[norm_rp] = os.path.abspath(s.path)
+        with _hls_routes_lock:
+            _hls_routes_cache = new_cache
+        logger.debug(f"HLS routes cache refreshed: {list(_hls_routes_cache.keys())}")
+    except Exception as e:
+        logger.error(f"Error refreshing HLS routes cache: {e}")
+    finally:
+        if close_db:
+            db.close()
+
+def validate_and_normalize_route_path(
+    route_path: Optional[str],
+    storage_id: Optional[int] = None,
+    db: Optional[Session] = None
+) -> Optional[str]:
+    """Validates and normalizes an HLS route path (/live -> /live)."""
+    if not route_path or not route_path.strip():
+        return None
+
+    rp = route_path.strip()
+    if not rp.startswith("/"):
+        rp = "/" + rp
+    rp = rp.rstrip("/")
+
+    if not rp or rp == "/":
+        raise HTTPException(status_code=400, detail="Route path cannot be root ('/').")
+
+    if not re.match(r"^[a-zA-Z0-9_\-/]+$", rp):
+        raise HTTPException(status_code=400, detail="Route path can only contain alphanumeric characters, slashes, dashes, and underscores.")
+
+    first_segment = rp.lstrip("/").split("/")[0].lower()
+    if first_segment in RESERVED_ROUTE_PREFIXES:
+        raise HTTPException(status_code=400, detail=f"Route path prefix '/{first_segment}' is reserved for system routes.")
+
+    if db:
+        query = db.query(Storage).filter(Storage.route_path == rp)
+        if storage_id is not None:
+            query = query.filter(Storage.id != storage_id)
+        existing = query.first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Route path '{rp}' is already assigned to storage '{existing.name}'.")
+
+    return rp
+
+# Initialize HLS routes cache on module load
+try:
+    refresh_hls_routes_cache()
+except Exception:
+    pass
+
 @app.get("/settings/storages")
 @app.get("/api/settings/storages")
 def get_storages(db: Session = Depends(get_db)):
@@ -5771,6 +5850,7 @@ def get_storages(db: Session = Depends(get_db)):
             "path": s.path,
             "type": s.type,
             "is_default": s.is_default,
+            "route_path": s.route_path,
             "created_at": s.created_at.isoformat() if s.created_at else None,
             "total": stats["total"],
             "used": stats["used"],
@@ -5801,16 +5881,24 @@ def create_storage(storage_in: StorageCreate, db: Session = Depends(get_db)):
     existing = db.query(Storage).filter(Storage.type == storage_in.type, Storage.path == abs_path).first()
     if existing:
         raise HTTPException(status_code=400, detail="A storage with the same type and path already exists.")
-        
+
+    norm_route_path = None
+    if storage_in.route_path:
+        if storage_in.type != "hls":
+            raise HTTPException(status_code=400, detail="Route path is only supported for storages of type 'hls'.")
+        norm_route_path = validate_and_normalize_route_path(storage_in.route_path, db=db)
+
     db_storage = Storage(
         name=storage_in.name,
         path=abs_path,
         type=storage_in.type,
-        is_default=False
+        is_default=False,
+        route_path=norm_route_path
     )
     db.add(db_storage)
     db.commit()
     db.refresh(db_storage)
+    refresh_hls_routes_cache(db)
     return db_storage
 
 @app.put("/settings/storages/{id}")
@@ -5843,10 +5931,16 @@ def update_storage(id: int, storage_in: StorageUpdate, db: Session = Depends(get
             raise HTTPException(status_code=400, detail="A storage with the same type and path already exists.")
             
         db_storage.path = new_abs_path
+
+    if storage_in.route_path is not None:
+        if db_storage.type != "hls" and storage_in.route_path.strip():
+            raise HTTPException(status_code=400, detail="Route path is only supported for storages of type 'hls'.")
+        db_storage.route_path = validate_and_normalize_route_path(storage_in.route_path, storage_id=id, db=db)
         
     db_storage.name = storage_in.name
     db.commit()
     db.refresh(db_storage)
+    refresh_hls_routes_cache(db)
     return db_storage
 
 @app.delete("/settings/storages/{id}")
@@ -5865,6 +5959,7 @@ def delete_storage(id: int, db: Session = Depends(get_db)):
         
     db.delete(db_storage)
     db.commit()
+    refresh_hls_routes_cache(db)
     return {"status": "deleted", "id": id}
 
 @app.post("/settings/storages/test")
@@ -6446,11 +6541,95 @@ if os.path.exists(assets_dir):
         logger.warning(f"Could not mount static assets: {e}")
 
 @app.get("/{catchall:path}")
-def serve_spa(catchall: str):
+@app.head("/{catchall:path}")
+@app.options("/{catchall:path}")
+def serve_spa(catchall: str, request: Request):
+    req_path = "/" + catchall.lstrip("/")
+
+    # Check HLS routes cache
+    with _hls_routes_lock:
+        active_hls_routes = list(_hls_routes_cache.items())
+
+    # Sort descending by route prefix length for most specific prefix match
+    active_hls_routes.sort(key=lambda item: len(item[0]), reverse=True)
+
+    for route_prefix, storage_dir in active_hls_routes:
+        if req_path == route_prefix or req_path.startswith(route_prefix + "/"):
+            # Handle CORS preflight for HLS
+            if request.method == "OPTIONS":
+                return Response(
+                    status_code=204,
+                    headers={
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                        "Access-Control-Allow-Headers": "*",
+                        "Access-Control-Max-Age": "86400"
+                    }
+                )
+
+            rel_file = req_path[len(route_prefix):].lstrip("/")
+            if not rel_file:
+                rel_file = "index.m3u8"
+
+            target_file = os.path.normpath(os.path.join(storage_dir, rel_file))
+
+            # Security: Prevent path traversal attacks outside storage directory
+            try:
+                if os.path.commonpath([target_file, storage_dir]) != storage_dir:
+                    raise HTTPException(status_code=403, detail="Forbidden")
+            except ValueError:
+                raise HTTPException(status_code=403, detail="Forbidden")
+
+            if not os.path.isfile(target_file):
+                raise HTTPException(status_code=404, detail="HLS media not found")
+
+            ext = os.path.splitext(target_file)[1].lower()
+            if ext in [".m3u8"]:
+                media_type = "application/vnd.apple.mpegurl"
+                cache_control = "no-cache, no-store, must-revalidate"
+            elif ext in [".ts"]:
+                media_type = "video/MP2T"
+                cache_control = "public, max-age=60"
+            elif ext in [".m4s"]:
+                media_type = "video/iso.segment"
+                cache_control = "public, max-age=60"
+            elif ext in [".mp4"]:
+                media_type = "video/mp4"
+                cache_control = "public, max-age=60"
+            elif ext in [".key"]:
+                media_type = "application/octet-stream"
+                cache_control = "no-cache, no-store, must-revalidate"
+            else:
+                media_type = "application/octet-stream"
+                cache_control = "public, max-age=60"
+
+            hls_headers = {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Expose-Headers": "Content-Length, Content-Range",
+                "Cache-Control": cache_control
+            }
+
+            if request.method == "HEAD":
+                stat_res = os.stat(target_file)
+                hls_headers["Content-Length"] = str(stat_res.st_size)
+                return Response(status_code=200, media_type=media_type, headers=hls_headers)
+
+            return FileResponse(
+                target_file,
+                media_type=media_type,
+                headers=hls_headers
+            )
+
+    # Standard SPA / API handling
     api_prefixes = ["api", "ws", "settings", "login", "builds", "processes", "tasks", "sdks", "uploads", "system", "decklink", "magewell"]
     first_part = catchall.split("/")[0] if catchall else ""
     if first_part in api_prefixes:
         raise HTTPException(status_code=404, detail="Not Found")
+
+    if request.method != "GET":
+        raise HTTPException(status_code=405, detail="Method Not Allowed")
 
     index_path = os.path.join(FRONTEND_DIST_DIR, "index.html")
     if os.path.exists(index_path):
