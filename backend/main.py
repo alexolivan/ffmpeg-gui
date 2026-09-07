@@ -4426,6 +4426,7 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
     if db_proc:
         log_file = process_manager.get_process_log_path(process_id, db_proc.log_storage_id, session=db)
         log_storage_path = os.path.dirname(log_file)
+        lines = []
         if os.path.exists(log_file):
             try:
                 with open(log_file, "r", encoding="utf-8", errors="replace") as f:
