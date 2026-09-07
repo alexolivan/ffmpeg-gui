@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.0] - 2026-09-07
+
+### Added
+- **Watchdog Crash-Loop Circuit Breaker**:
+  - Implemented encapsulated fatal error analyzer (`backend/core/circuit_breaker.py`) identifying non-transient binary or syntax faults (e.g., missing protocols like WHIP, unrecognized filters, codec failures, protocol errors).
+  - Integrated circuit breaker into `ProcessManager._watchdog`: intercepts rapid failure loops (< 3s runtime), stops cascading infinite restarts, marks service status as error, and logs explanatory diagnostics to service history.
+  - Added user toggle `watchdog_circuit_breaker` (default: enabled) in `LifecycleFormSection.tsx` and process models, allowing operators to maintain infinite restart loops if desired.
+- **Persistent Crash-Loop Alert & Instant Abort**:
+  - Added visual crash-loop warning banner in `FfmpegPreviewModal.tsx` displaying restart attempt counts and offering an instant, non-flickering `[ ⏹ Detener servicio y cancelar reintentos ]` button.
+- **Diagnostic Execution Log Tail for Decoupled Production Services**:
+  - Extended log viewer in `FfmpegPreviewModal.tsx` to support production services (`debug_mode: false`), allowing operators to passively tail the real disk log (`data/logs/process_{id}.log`) without coupling stdout/stderr to python websockets.
+  - Provides disk path indicator, line count selector, auto-scroll, log copy, and download capabilities for all services.
+- **Pre-Flight Binary Feature Compatibility Checks**:
+  - Added pre-flight validation in `ProcessConfigForm.tsx` inspecting selected FFmpeg build capabilities against configured features.
+  - Warns operators in real-time when selecting builds lacking WHIP (< 8.0), NDI (`libndi_newtek`), or DeckLink (`decklink`) before launching the service.
+
+### Changed
+- **Disambiguated Ephemeral Telemetry Snapshot from Process Logs**:
+  - Replaced misleading `/dev/shm/ffmpeg_progress_{id}s.log` file indicator in `FfmpegPreviewModal` with an explicit `⚡ Buffer RAM` badge and direct toggle to the real execution log file.
+
 ## [2.11.0] - 2026-09-07
 
 ### Added
