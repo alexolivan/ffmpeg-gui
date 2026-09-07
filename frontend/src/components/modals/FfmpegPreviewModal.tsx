@@ -38,15 +38,24 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const isVideoProcess = hasVideoHelper(currentProcess);
   const isRunning = currentProcess.status === 'running';
   const showPreview = isRunning && isVideoProcess;
+  const isCrashLoop = currentProcess.status === 'restarting' || (typeof currentProcess.restart_count === 'number' && currentProcess.restart_count > 0 && (currentProcess.status === 'error' || currentProcess.status === 'restarting'));
 
   const [progressData, setProgressData] = useState<any>(null);
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [showDiagnosticLogs, setShowDiagnosticLogs] = useState<boolean>(false);
+
+  // Automatically expand diagnostic logs if the process is in an error or restarting state
+  useEffect(() => {
+    if (currentProcess.status === 'error' || currentProcess.status === 'restarting') {
+      setShowDiagnosticLogs(true);
+    }
+  }, [currentProcess.status]);
 
   const showFrames = progressData?.frame !== undefined && progressData?.frame !== null && progressData?.frame !== '0' && progressData?.frame !== 0;
-  const showFps = progressData?.fps !== undefined && progressData?.fps !== null && progressData?.fps !== '0.0' && progressData?.fps !== '0';
-  const showBitrate = progressData?.bitrate !== undefined && progressData?.bitrate !== null && progressData?.bitrate !== 'N/A' && progressData?.bitrate !== '0.0kbits/s' && progressData?.bitrate !== '0 kb/s';
-  const showSpeed = progressData?.speed !== undefined && progressData?.speed !== null && progressData?.speed !== 'N/A' && progressData?.speed !== '0x' && progressData?.speed !== '0.00x';
+  const showFps = progressData?.fps !== undefined && progressData?.fps !== null && progressData?.fps !== '0.0' && progressData?.fps !== 0;
+  const showBitrate = progressData?.bitrate && progressData?.bitrate !== 'N/A' && progressData?.bitrate !== '0.0kbits/s' && progressData?.bitrate !== '0 kb/s';
+  const showSpeed = progressData?.speed && progressData?.speed !== 'N/A' && progressData?.speed !== '0x';
   const showDups = progressData?.dup_frames !== undefined && progressData?.dup_frames !== null && progressData?.dup_frames !== '0' && progressData?.dup_frames !== 0;
   const showDrops = progressData?.drop_frames !== undefined && progressData?.drop_frames !== null && progressData?.drop_frames !== '0' && progressData?.drop_frames !== 0;
 
@@ -74,9 +83,9 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
     return () => clearInterval(interval);
   }, [currentProcess.id, isRunning, currentProcess.debug_mode, API]);
 
-  // Poll logs for FFmpeg process when in debug mode
+  // Poll logs for FFmpeg process when in debug mode OR when diagnostic log view is enabled
   useEffect(() => {
-    if (!currentProcess.debug_mode) return;
+    if (!currentProcess.debug_mode && !showDiagnosticLogs) return;
 
     const fetchLogs = async () => {
       try {
@@ -88,23 +97,23 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
           }
         }
       } catch (err) {
-        console.error('Failed to fetch ffmpeg debug logs', err);
+        console.error('Failed to fetch ffmpeg logs', err);
       }
     };
 
     fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
+    const interval = setInterval(fetchLogs, 2500);
     return () => clearInterval(interval);
-  }, [currentProcess.id, currentProcess.debug_mode, API]);
+  }, [currentProcess.id, currentProcess.debug_mode, showDiagnosticLogs, API]);
 
   const activeLogs = daemonLogs.length > 0 ? daemonLogs : externalLogs;
 
-  // Auto-scroll logs when running in debug mode
+  // Auto-scroll logs when container is available and active
   useEffect(() => {
-    if (processLogsContainerRef.current && (isRunning || currentProcess.debug_mode)) {
+    if (processLogsContainerRef.current && (isRunning || currentProcess.debug_mode || showDiagnosticLogs)) {
       processLogsContainerRef.current.scrollTop = processLogsContainerRef.current.scrollHeight;
     }
-  }, [activeLogs, isRunning, currentProcess.debug_mode]);
+  }, [activeLogs, isRunning, currentProcess.debug_mode, showDiagnosticLogs]);
 
   const handleCopyLogs = () => {
     const text = activeLogs
@@ -174,6 +183,33 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 <span className="font-bold block uppercase tracking-wider mb-0.5">Configuration Pending Reboot</span>
                 This service has modified configurations that are not yet active in the running instance. Restart the service to apply these changes.
               </div>
+            </div>
+          )}
+
+          {/* Crash Loop Alert Banner */}
+          {isCrashLoop && (
+            <div className="bg-red-500/15 border border-red-500/30 text-red-300 p-4 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-in fade-in duration-200">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl animate-bounce">⚠️</span>
+                <div>
+                  <div className="font-bold uppercase tracking-wider text-xs text-red-200">
+                    {t('modals.crashLoop.detected', 'Bucle de reinicios detectado')} (
+                    {t('modals.crashLoop.attempt', 'Intento #{{count}}', { count: currentProcess.restart_count || 1 })})
+                  </div>
+                  <div className="text-[11px] text-red-300/80 mt-0.5">
+                    {t('modals.crashLoop.desc', 'El proceso termina inmediatamente tras arrancar. El watchdog continúa reintentando según la configuración.')}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onStopService(currentProcess.id, currentProcess.name)}
+                disabled={actionPending[currentProcess.id] === 'stopping'}
+                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1.5 shadow-lg shadow-red-950/50"
+              >
+                <span>⏹</span>
+                <span>{t('modals.crashLoop.stopAndCancel', 'Detener servicio y cancelar reintentos')}</span>
+              </button>
             </div>
           )}
 
@@ -303,16 +339,32 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
           {/* Telemetry Snapshot Panel (Normal Mode) */}
           {!currentProcess.debug_mode && (
             <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-xl p-4 max-w-5xl mx-auto w-full space-y-3">
-              <div className="flex justify-between items-center pb-2 border-b border-[var(--glass-border)]">
+              <div className="flex justify-between items-center pb-2 border-b border-[var(--glass-border)] flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-brand-lime animate-pulse" />
                   <span className="text-[var(--text-primary)] font-bold uppercase tracking-wider text-[10px]">
-                    Telemetría de Progreso (Snapshot)
+                    {t('modals.telemetry.title', 'Telemetría de Progreso (Snapshot)')}
+                  </span>
+                  <span className="text-[9px] text-[var(--text-secondary)] bg-white/5 px-2 py-0.5 rounded font-mono">
+                    ⚡ {t('modals.telemetry.ramBuffer', 'Buffer RAM')}
                   </span>
                 </div>
-                <span className="text-[9px] text-[var(--text-secondary)] bg-white/5 px-2 py-0.5 rounded">
-                  /dev/shm/ffmpeg_progress_{currentProcess.id}s.log
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowDiagnosticLogs((prev) => !prev)}
+                  className={`px-2.5 py-1 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer border flex items-center gap-1.5 ${
+                    showDiagnosticLogs
+                      ? 'bg-brand-lime/15 text-brand-lime border-brand-lime/30'
+                      : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border-[var(--glass-border)]'
+                  }`}
+                >
+                  <span>📋</span>
+                  <span>
+                    {showDiagnosticLogs
+                      ? t('modals.diagnosticLogs.hide', 'Ocultar Logs')
+                      : t('modals.diagnosticLogs.show', 'Ver Registro de Ejecución (Logs)')}
+                  </span>
+                </button>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -356,14 +408,19 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
             </div>
           )}
 
-          {/* Virtual Debug Terminal Console (Debug Mode) */}
-          {currentProcess.debug_mode && (
-            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 font-mono text-xs space-y-2 max-w-5xl mx-auto w-full">
-              <div className="flex justify-between items-center border-b border-[var(--glass-border)] pb-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-brand-orange animate-pulse" />
-                  <span className="text-brand-orange font-bold uppercase tracking-wider text-[10px]">
-                    {t('modals.debugConsole.title', 'FFmpeg Real-Time Audit Console (Debug Mode)')}
+          {/* Diagnostic Execution Log Panel (Production or Debug Mode) */}
+          {(currentProcess.debug_mode || showDiagnosticLogs) && (
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 font-mono text-xs space-y-2 max-w-5xl mx-auto w-full animate-in fade-in duration-200">
+              <div className="flex justify-between items-center border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`w-2 h-2 rounded-full ${currentProcess.debug_mode ? 'bg-brand-orange' : 'bg-brand-lime'} animate-pulse`} />
+                  <span className={`${currentProcess.debug_mode ? 'text-brand-orange' : 'text-brand-lime'} font-bold uppercase tracking-wider text-[10px]`}>
+                    {currentProcess.debug_mode
+                      ? t('modals.debugConsole.title', 'FFmpeg Real-Time Audit Console (Debug Mode)')
+                      : t('modals.diagnosticLogs.title', 'Registro de Ejecución y Diagnóstico')}
+                  </span>
+                  <span className="text-[9px] text-[var(--text-secondary)] bg-white/5 px-2 py-0.5 rounded font-mono select-all">
+                    📁 {currentProcess.log_file_path || `data/logs/process_${currentProcess.id}.log`}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -379,14 +436,18 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                     onClick={() => {
                       const a = document.createElement('a');
                       a.href = `${API}/api/processes/${currentProcess.id}/download-log`;
-                      a.download = `ffmpeg_${currentProcess.id}_debug.log`;
+                      a.download = `process_${currentProcess.id}.log`;
                       a.click();
                     }}
-                    className="px-2.5 py-1 bg-brand-orange/15 hover:bg-brand-orange/25 text-brand-orange border border-brand-orange/30 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer"
+                    className={`px-2.5 py-1 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer border ${
+                      currentProcess.debug_mode
+                        ? 'bg-brand-orange/15 hover:bg-brand-orange/25 text-brand-orange border-brand-orange/30'
+                        : 'bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border-brand-lime/30'
+                    }`}
                   >
                     {t('common.downloadLog', 'Download Log')}
                   </button>
-                  <span className="text-[var(--text-secondary)] text-[10px] font-bold">{activeLogs.length} lines</span>
+                  <span className="text-[var(--text-secondary)] text-[10px] font-bold">{activeLogs.length} {t('common.lines', 'lines')}</span>
                 </div>
               </div>
 
@@ -397,8 +458,8 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 {activeLogs.length === 0 ? (
                   <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-20 select-none">
                     {isRunning
-                      ? t('modals.debugConsole.waiting', 'Service active in debug mode. Waiting for FFmpeg stdout/stderr output...')
-                      : t('modals.debugConsole.stopped', 'Service is stopped. Start service in debug mode to monitor real-time command output.')}
+                      ? t('modals.diagnosticLogs.waiting', 'Servicio activo. Esperando salida de FFmpeg...')
+                      : t('modals.diagnosticLogs.empty', 'No hay registros disponibles para este proceso.')}
                   </div>
                 ) : (
                   activeLogs.map((log, i) => {
