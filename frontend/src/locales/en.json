@@ -29,7 +29,16 @@
     "waiting": "Waiting for input signal...",
     "clonedSuccess": "Cloned successfully!",
     "refresh": "Refresh",
-    "updated": "Updated!"
+    "updated": "Updated!",
+    "copyLogs": "Copy Logs",
+    "downloadLog": "Download Log",
+    "offline": "Offline",
+    "uptime": "Uptime",
+    "editConfig": "Edit Config",
+    "copied": "Copied!",
+    "start": "Start",
+    "stop": "Stop",
+    "restart": "Restart"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -170,7 +179,10 @@
         "pullUrl": "Pull (Playback):",
         "url": "URL:",
         "copy": "Copy",
-        "copied": "✓ Copied"
+        "copied": "✓ Copied",
+        "ingestConflictTitle": "Ingest Conflict Detected",
+        "ingestConflictServiceDesc": "Path is actively being published to by service: {{name}} (PID {{pid}}). Publishing to this path may cause stream disruption.",
+        "ingestConflictExternalDesc": "Path is currently receiving an external live stream. Publishing to this path may cause stream disruption."
       },
       "previewModal": {
         "subtitle": "Daemon Process Monitor & Real-Time Audit Logs",
@@ -262,9 +274,14 @@
         "listenLive": "Live Audio Player",
         "copyUrl": "Copy Stream URL",
         "copied": "Copied!",
-        "logsTitle": "Server Logs (Stdout / Error Log)"
+        "logsTitle": "Server Logs (Stdout / Error Log)",
+        "ingestBy": "Ingest by"
       }
-    }
+    },
+    "startService": "Start Service",
+    "stopService": "Stop Service",
+    "restartService": "Restart Service",
+    "exportProfile": "Export Profile"
   },
   "settings": {
     "title": "Settings",
@@ -703,7 +720,9 @@
     "nextRunTodayAt": "Today at {{time}}",
     "sniHostname": "SNI Hostname",
     "sslCertificate": "SSL Certificate",
-    "setupRequired": "SETUP REQUIRED"
+    "setupRequired": "SETUP REQUIRED",
+    "cpuUsage": "CPU Usage",
+    "ramUsage": "RAM Usage"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -955,7 +974,31 @@
     "srtLocalHub": "Local Hub (This Node)",
     "srtRemoteHub": "Remote MediaMTX Server (External Host)",
     "srtRemoteHost": "Remote Host / IP",
-    "srtRemotePort": "SRT Port"
+    "srtRemotePort": "SRT Port",
+    "localManagedHub": "Local Managed",
+    "remoteExternalHub": "Remote / External",
+    "targetHubLocation": "Target MediaMTX Instance",
+    "targetServerLocation": "Target Icecast Instance",
+    "selectHubService": "MediaMTX Service",
+    "selectIcecastService": "Icecast Service",
+    "streamPath": "Stream Path",
+    "icecastMountPoint": "Mountpoint",
+    "customPathOption": "+ Custom Path Slug...",
+    "customMountOption": "+ Custom Mountpoint...",
+    "customPathSlug": "Custom Path Slug",
+    "customMountSlug": "Custom Mountpoint",
+    "generatedRtmpUrl": "Generated Source RTMP URL",
+    "generatedHlsUrl": "Generated Source HLS URL",
+    "generatedStreamUrl": "Generated Pull Audio URL",
+    "httpAudioManual": "Manual Direct HTTP / Icecast URL",
+    "httpAudioIcecastServer": "Icecast Server Integration",
+    "rtmpManualDirect": "Manual Direct RTMP",
+    "rtmpMediaMtxHub": "MediaMTX Hub Integration",
+    "hlsManualDirect": "Manual Direct HLS URL",
+    "hlsMediaMtxHub": "MediaMTX Hub Integration",
+    "enableRtmps": "Encrypted RTMPS Pull (TLS)",
+    "enableHttpsIcecast": "Secure HTTPS Pull (TLS)",
+    "enableHttpsHls": "Encrypted HTTPS HLS Pull (TLS)"
   },
   "destinations": {
     "destination": "Destination",
@@ -1076,7 +1119,29 @@
       "tls": "Encrypted TLS / SSL Connection",
       "tlsDesc": "Enforces TLS encryption (-tls 1) when connecting to secure HTTPS/TLS Icecast ports.",
       "tlsAutoManaged": "Encrypted TLS / SSL connection automatically configured for this server."
-    }
+    },
+    "rtmpManualDirect": "Manual Direct RTMP / RTMPS",
+    "rtmpMediaMtxHub": "MediaMTX Hub Integration",
+    "rtmpProviderHub": "MediaMTX Hub",
+    "rtmpPathId": "Path Slug",
+    "targetHubLocation": "Target MediaMTX Instance",
+    "selectHubService": "MediaMTX Service",
+    "streamPath": "Publish Path",
+    "enableRtmps": "Encrypted RTMPS Push (TLS)",
+    "customPathOption": "+ Custom Path Slug...",
+    "customPathSlug": "Custom Path Slug",
+    "customPathPrompt": "Custom Path Slug",
+    "generatedRtmpUrl": "Generated Target RTMP URL",
+    "whipManualDirect": "Manual Direct WHIP Endpoint",
+    "whipMediaMtxHub": "MediaMTX Hub WebRTC/WHIP",
+    "enableHttpsWhip": "Encrypted HTTPS WHIP Ingest (TLS)",
+    "generatedWhipUrl": "Generated Target WHIP Ingestion URL",
+    "packetSize": "Packet Size (pkt_size)",
+    "standardDvb": "Standard DVB MPEG-TS (1316 B = 7 x 188)",
+    "lanJumbo": "High Bitrate / Jumbo Frame (7520 B = 40 x 188)",
+    "singlePacket": "Single TS Packet per UDP datagram (188 B)",
+    "dvbMetadata": "DVB Tables & PSI Metadata",
+    "cbrMuxrate": "Constant Bitrate (CBR Muxrate)"
   },
   "filters": {
     "filtersNotAvailable": "Filters are only available when video or audio streams are enabled.",
@@ -1286,5 +1351,12 @@
     "manageSdks": "Manage SDKs",
     "versionMismatchNotice": "⚠️ Notice: The uploaded archive contains SDK v{{uploaded}}. The required version v{{expected}} is still missing.",
     "manageDecklinkSdk": "Manage DeckLink SDK"
+  },
+  "modals": {
+    "debugConsole": {
+      "title": "REAL-TIME DEBUG AUDIT CONSOLE",
+      "waiting": "Waiting for process output...",
+      "stopped": "Process is currently stopped. Logs will appear here when running in debug mode."
+    }
   }
 }

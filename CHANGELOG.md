@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.11.0] - 2026-09-07
+
+### Added
+- **Multi-Protocol Form Integration Parity (RTMP, WebRTC/WHIP, HLS, Icecast HTTP Audio)**:
+  - Elevated RTMP and WebRTC/WHIP destination forms and `http_audio`, `rtmp`, and `hls` input forms to full integration parity with SRT:
+    - Mode Switcher toggling between Manual Direct endpoints and managed Local/Remote Hub integration.
+    - Local Instance Picker for multi-instance deployments (selecting specific MediaMTX or Icecast2 services).
+    - Stream Path and Mountpoint dropdowns populated from service configuration or custom slugs.
+    - Automatic credential injection (`publish_user`/`publish_pass` for outputs, `read_user`/`read_pass` for inputs) with path-specific overrides and global fallbacks.
+    - TLS/SSL toggles (RTMPS for RTMP, HTTPS for WHIP/HLS/Icecast) with automatic port adjustments and auto-computed URI previews.
+    - Deterministic self-healing reconciliation effect ensuring ports and hosts stay synchronized with provider configurations on initial mount.
+- **Universal LAN Clipboard Utility**:
+  - Implemented `copyToClipboard` in `frontend/src/utils/clipboard.ts` with transparent fallback to `document.execCommand('copy')` via an ephemeral hidden textarea for non-secure HTTP LAN environments (`http://<ip>:<port>`).
+  - Replaced native `navigator.clipboard` calls across all modals and views (`MediaMtxPreviewModal`, `IcecastPreviewModal`, `FfmpegPreviewModal`, `ProcessPreviewModal`, `PreviewCmdModal`, `ForgeView`, `MediaMtxServiceModal`).
+- **Live Ingest Conflict Protection**:
+  - Added real-time ingest conflict warnings in `MediaMtxPreviewModal` and `IcecastPreviewModal` detecting when a path or mountpoint is actively being published to by another FFmpeg service or external publisher.
+- **FFmpeg Real-Time Debug Virtual Audit Console**:
+  - Restored real-time virtual audit console in `FfmpegPreviewModal` for services running with `debug_mode: true`.
+  - Features real-time log polling (`/processes/{id}/logs`), auto-scrolling terminal window with syntax/level coloring, 1-click log clipboard copy with fallback, and direct raw log download.
+
+### Fixed
+- **Icecast Exclusion for Video Protocols**:
+  - Eliminated erroneous auxiliary Icecast presets when configuring video destinations (RTMP, WebRTC, SRT).
+- **Destination Form Port Synchronization**:
+  - Fixed destination form initial port state retaining stale defaults by binding reactive provider reconciliation on initial mount.
+
 ## [2.10.0] - 2026-09-04
 
 ### Added
