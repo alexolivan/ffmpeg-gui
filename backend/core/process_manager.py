@@ -4,6 +4,7 @@ import psutil
 import logging
 import os
 import shlex
+import shutil
 from datetime import datetime
 from typing import Dict, Optional, Any, List, Tuple
 import json
@@ -283,16 +284,33 @@ class ProcessManager:
                 
             spawn_lock = self._get_spawn_lock()
             async with spawn_lock:
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                    stdin=asyncio.subprocess.PIPE,
-                    env=sub_env
-                )
-                self.processes[process_id] = proc
-                # Start log reader IMMEDIATELY to capture early startup errors or exit messages
-                asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
+                if svc_type in ("mediamtx_hub", "icecast_server"):
+                    # Decouple stdout to file descriptor so the daemon survives parent reloads without SIGPIPE
+                    log_file_handle = open(log_path, "ab", buffering=0)
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=log_file_handle,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.DEVNULL,
+                        env=sub_env
+                    )
+                    try:
+                        log_file_handle.close()
+                    except Exception:
+                        pass
+                    self.processes[process_id] = proc
+                    asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                else:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.PIPE,
+                        env=sub_env
+                    )
+                    self.processes[process_id] = proc
+                    # Start log reader IMMEDIATELY to capture early startup errors or exit messages
+                    asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
                 
                 # Short hardware initialization grace gap to allow CUDA / DeckLink / NVENC drivers to bind
                 await asyncio.sleep(1.0)
@@ -1228,19 +1246,54 @@ class ProcessManager:
             })
         
         # Update real-time stats if it's a status line
-        match = status_re.search(msg)
-        if match:
-            fps, bitrate, speed = match.groups()
-            with self.db_session_factory() as session:
-                from database.models import Service
-                media_proc = session.query(Service).get(process_id)
-                if media_proc:
-                    media_proc.fps = fps if fps is not None else "N/A"
-                    media_proc.bitrate = bitrate
-                    media_proc.speed = speed
-                    session.commit()
+        if status_re:
+            match = status_re.search(msg)
+            if match:
+                fps, bitrate, speed = match.groups()
+                with self.db_session_factory() as session:
+                    from database.models import Service
+                    media_proc = session.query(Service).get(process_id)
+                    if media_proc:
+                        media_proc.fps = fps if fps is not None else "N/A"
+                        media_proc.bitrate = bitrate
+                        media_proc.speed = speed
+                        session.commit()
         
         self.logger.debug(f"[{process_id}] {msg}")
+
+    async def _file_log_tailer(self, process_id: int, log_path: str, proc: Optional[asyncio.subprocess.Process] = None, pid: Optional[int] = None):
+        """Tails the physical log file on disk for daemon services to feed the in-memory log buffer."""
+        effective_pid = pid or (proc.pid if proc else None)
+        try:
+            await asyncio.sleep(0.2)
+            if not os.path.exists(log_path):
+                return
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                f.seek(0, os.SEEK_END)
+                while True:
+                    if proc is not None:
+                        if proc.returncode is not None:
+                            break
+                    elif effective_pid is not None:
+                        if not psutil.pid_exists(effective_pid):
+                            break
+                    else:
+                        break
+
+                    if process_id not in self.processes and process_id not in self.reattached_pids:
+                        break
+
+                    line = f.readline()
+                    if line:
+                        msg = line.strip()
+                        if msg:
+                            self._handle_log_msg(process_id, msg, status_re=None)
+                    else:
+                        await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.debug(f"File log tailer stopped for process {process_id}: {e}")
 
     async def _probe_url(self, url: str, ffprobe_bin: str) -> bool:
         cmd = [ffprobe_bin, "-t", "2", "-v", "quiet", url]
@@ -1884,10 +1937,15 @@ class ProcessManager:
             if not media_proc:
                 self.logger.error(f"Cannot reattach service {process_id}: not found in DB")
                 return
+            svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
+            log_path = self.get_process_log_path(process_id, media_proc.log_storage_id, session=session)
 
         self.processes[process_id] = None
         self.reattached_pids[process_id] = pid
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
+        if svc_type in ("mediamtx_hub", "icecast_server"):
+            self.log_buffers[process_id] = collections.deque(maxlen=100)
+            asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
 
     async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
         """Gracefully restarts any active/running services configured with TLS/SSL encryption."""
