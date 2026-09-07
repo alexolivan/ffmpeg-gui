@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { hasVideo as hasVideoHelper } from '../cards/UnifiedServiceCard';
 import { EngineLogo } from '../common/EngineLogo';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface ProcessPreviewModalProps {
   selectedProcess: any;
@@ -140,9 +141,11 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
 
   const handleCopyLogs = () => {
     const text = activeLogs.map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`)).join('\n');
-    navigator.clipboard.writeText(text).then(() => {
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
+    copyToClipboard(text).then((success) => {
+      if (success) {
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      }
     });
   };
 

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
 import { ClipboardIcon, CheckIcon, ShieldIcon } from '../Icons';
+import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 
 interface MediaMtxPreviewModalProps {
   selectedProcess: any;
@@ -142,6 +143,25 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
     };
   }, [configuredPaths, activePathSlug, mtxCfg]);
 
+  // Ingest stream collision detection: inspect telemetry for any active FFmpeg processes routing to this MediaMTX path
+  const activePublishingProcess = useMemo(() => {
+    return telemetry.find((proc) => {
+      if (proc.status !== 'running' || proc.service_type !== 'ffmpeg_stream') return false;
+      const outputs = Array.isArray(proc.config?.outputs)
+        ? proc.config.outputs
+        : (proc.config?.output ? [proc.config.output] : []);
+      return outputs.some((out: any) => {
+        if (out.provider_service_id && Number(out.provider_service_id) === Number(currentProcess.id)) {
+          const outPath = out.path_id || (out.url && out.url.split('/').pop()?.replace('/whip', ''));
+          return outPath === activePathSlug;
+        }
+        return false;
+      });
+    });
+  }, [telemetry, currentProcess.id, activePathSlug]);
+
+  const isIngestActive = Boolean(activePublishingProcess || liveApiPaths.includes(activePathSlug));
+
   // Host resolver
   const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
@@ -219,18 +239,22 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
     const text = activeLogs
       .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
       .join('\n');
-    navigator.clipboard.writeText(text).then(() => {
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
+    universalCopy(text).then((success) => {
+      if (success) {
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      }
     });
   };
 
   const copyToClipboard = (key: string, text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedKey(key);
-      setTimeout(() => {
-        setCopiedKey((curr) => (curr === key ? null : curr));
-      }, 2000);
+    universalCopy(text).then((success) => {
+      if (success) {
+        setCopiedKey(key);
+        setTimeout(() => {
+          setCopiedKey((curr) => (curr === key ? null : curr));
+        }, 2000);
+      }
     });
   };
 
@@ -593,6 +617,24 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
                 )}
               </div>
             </div>
+
+            {/* Ingest Conflict Alert Banner */}
+            {isIngestActive && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2.5 animate-in fade-in duration-300">
+                <span className="text-base leading-none">⚠️</span>
+                <div className="text-xs space-y-0.5">
+                  <div className="font-bold text-amber-400">
+                    {t('services.mediamtx.connectionMatrix.ingestConflictTitle', 'Ingest Active on Path /{{path}}', { path: activePathSlug })}
+                  </div>
+                  <div className="text-[11px] text-[var(--text-secondary)]">
+                    {activePublishingProcess
+                      ? t('services.mediamtx.connectionMatrix.ingestConflictServiceDesc', 'Service "{{name}}" is currently publishing to this path. Publishing from another encoder may cause stream conflicts.', { name: activePublishingProcess.alias || activePublishingProcess.name })
+                      : t('services.mediamtx.connectionMatrix.ingestConflictExternalDesc', 'An active stream publisher is currently transmitting to this path. Publishing here may cause stream collisions.')
+                    }
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Matrix Protocol Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
