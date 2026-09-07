@@ -2860,28 +2860,83 @@ def sanitize_process_config_data(input_config: dict, filter_config: dict) -> boo
 
     return is_dirty
 
+def sanitize_output_config_data(output_config: dict) -> bool:
+    """
+    Sanitize output_config to ensure auxiliary provider fields (MediaMTX / Icecast)
+    are strictly stripped when the output type is non-auxiliary (e.g. HLS, File, UDP, ALSA)
+    or configured in manual direct mode.
+    Mutates dict in-place. Returns True if any changes were made.
+    """
+    if not output_config or not isinstance(output_config, dict):
+        return False
+
+    is_dirty = False
+    out_type = output_config.get("type")
+
+    # Only srt, rtmp, whip, icecast can possibly connect to auxiliary providers
+    if out_type not in ('srt', 'rtmp', 'whip', 'icecast'):
+        for key in ('provider_service_id', 'mediamtx_mode', 'service_target', 'mediamtx_target_type', 'path_id', 'stream_action'):
+            if key in output_config:
+                output_config.pop(key, None)
+                is_dirty = True
+    elif out_type in ('srt', 'rtmp', 'whip'):
+        if output_config.get('mediamtx_mode') is False or output_config.get('service_target') == 'manual':
+            for key in ('provider_service_id', 'mediamtx_mode', 'service_target', 'mediamtx_target_type', 'path_id', 'stream_action'):
+                if key in output_config:
+                    output_config.pop(key, None)
+                    is_dirty = True
+    elif out_type == 'icecast':
+        if output_config.get('icecast_mode') == 'remote':
+            if 'provider_service_id' in output_config:
+                output_config.pop('provider_service_id', None)
+                is_dirty = True
+
+    return is_dirty
+
 def sanitize_database_processes(db: Session):
-    """Scan all processes in the database and fix invalid GPU/VRAM configs."""
+    """Scan all processes and tasks in the database and fix invalid GPU/VRAM or stale provider configs."""
     from sqlalchemy.orm.attributes import flag_modified
+    from database.models import ScheduledTask
     import copy
     processes = db.query(MediaProcess).all()
     updated_count = 0
     for p in processes:
         input_cfg = copy.deepcopy(p.input_config) if p.input_config else {}
         filter_cfg = copy.deepcopy(p.filter_config) if p.filter_config else {}
-        if sanitize_process_config_data(input_cfg, filter_cfg):
-            p.input_config = input_cfg
-            p.filter_config = filter_cfg
+        output_cfg = copy.deepcopy(p.output_config) if p.output_config else {}
+        in_dirty = sanitize_process_config_data(input_cfg, filter_cfg)
+        out_dirty = sanitize_output_config_data(output_cfg)
+        if in_dirty or out_dirty:
+            if in_dirty:
+                p.input_config = input_cfg
+                p.filter_config = filter_cfg
+                try:
+                    flag_modified(p, "input_config")
+                    flag_modified(p, "filter_config")
+                except Exception:
+                    pass
+            if out_dirty:
+                p.output_config = output_cfg
+                try:
+                    flag_modified(p, "output_config")
+                except Exception:
+                    pass
+            updated_count += 1
+
+    tasks = db.query(ScheduledTask).all()
+    for t in tasks:
+        output_cfg = copy.deepcopy(t.output_config) if t.output_config else {}
+        if sanitize_output_config_data(output_cfg):
+            t.output_config = output_cfg
             try:
-                flag_modified(p, "input_config")
-                flag_modified(p, "filter_config")
+                flag_modified(t, "output_config")
             except Exception:
                 pass
             updated_count += 1
-            
+
     if updated_count > 0:
         db.commit()
-        logger.info(f"Sanitized {updated_count} process configurations in database with inconsistent GPU settings.")
+        logger.info(f"Sanitized {updated_count} process/task configurations in database (GPU / Stale provider metadata).")
 
 @app.on_event("startup")
 async def startup_event():
@@ -3891,9 +3946,11 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         output_config=output_cfg
     )
 
-    if svc_type == "ffmpeg_stream" and input_cfg is not None:
-        # Sanitize configs on creation
-        sanitize_process_config_data(input_cfg, filter_cfg or {})
+    if svc_type == "ffmpeg_stream":
+        if input_cfg is not None:
+            sanitize_process_config_data(input_cfg, filter_cfg or {})
+        if output_cfg is not None:
+            sanitize_output_config_data(output_cfg)
 
     db_proc = MediaProcess(
         name=proc_in.name,
@@ -4004,11 +4061,13 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
             except Exception:
                 pass
 
-        output_cfg = proc_in.output_config if proc_in.output_config is not None else db_proc.output_config
+        output_cfg = copy.deepcopy(proc_in.output_config) if proc_in.output_config is not None else copy.deepcopy(db_proc.output_config)
+        if output_cfg:
+            sanitize_output_config_data(output_cfg)
         check_media_process_port_conflicts(input_cfg, output_cfg)
 
         if proc_in.output_config is not None:
-            db_proc.output_config = proc_in.output_config
+            db_proc.output_config = output_cfg
             try:
                 flag_modified(db_proc, "output_config")
             except Exception:
@@ -5355,11 +5414,15 @@ def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="schedule_datetime is required for one_shot tasks")
         next_run = payload.schedule_datetime
 
+    output_cfg = dict(payload.output_config) if payload.output_config else {}
+    if output_cfg:
+        sanitize_output_config_data(output_cfg)
+
     db_task = ScheduledTask(
         name=payload.name,
         is_active=payload.is_active,
         input_config=payload.input_config,
-        output_config=payload.output_config,
+        output_config=output_cfg,
         codec_config=payload.codec_config,
         filter_config=payload.filter_config,
         ffmpeg_build_id=payload.ffmpeg_build_id,
@@ -5647,6 +5710,8 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depend
         raise HTTPException(status_code=400, detail="Cannot edit system-defined tasks.")
     
     update_data = payload.dict(exclude_unset=True)
+    if 'output_config' in update_data and update_data['output_config']:
+        sanitize_output_config_data(update_data['output_config'])
     
     sched_changed = ('schedule_type' in update_data or 
                      'schedule_cron' in update_data or 

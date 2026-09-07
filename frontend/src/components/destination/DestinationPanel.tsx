@@ -349,6 +349,15 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           }
         }
       }
+    } else if (config.type && !['srt', 'rtmp', 'whip', 'icecast'].includes(config.type) && (config.provider_service_id || config.mediamtx_mode || config.service_target)) {
+      update({
+        provider_service_id: undefined,
+        mediamtx_mode: false,
+        service_target: undefined,
+        mediamtx_target_type: undefined,
+        path_id: undefined,
+        stream_action: undefined,
+      });
     }
   }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls]);
 
@@ -364,24 +373,24 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   const handleFormatChange = (code: string) => {
     if (!code) {
       update({
-        format_code: '',
-        video_size: '',
-        framerate: '',
-      });
-      return;
-    }
-    const fmt = formats.find(f => f.code === code);
-    if (fmt) {
-      const parsed = parseFormatDescription(fmt.description);
-      update({
-        format_code: code,
-        video_size: parsed.video_size || '',
-        framerate: parsed.framerate || '',
+        format_code: undefined,
+        video_size: undefined,
+        framerate: undefined,
       });
     } else {
-      update({
-        format_code: code,
-      });
+      const fmt = formats.find(f => f.code === code);
+      if (fmt) {
+        const parsed = parseFormatDescription(fmt.description);
+        update({
+          format_code: code,
+          video_size: parsed.video_size || '',
+          framerate: parsed.framerate || '',
+        });
+      } else {
+        update({
+          format_code: code,
+        });
+      }
     }
   };
 
@@ -406,6 +415,12 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           storage_id: (storages || []).find((s: any) => s.type === 'hls')?.id || null,
           hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
           hls_abr_enabled: false, hls_stream_name: 'stream', variants: [],
+          provider_service_id: undefined,
+          mediamtx_mode: false,
+          service_target: undefined,
+          mediamtx_target_type: undefined,
+          path_id: undefined,
+          stream_action: undefined,
         })}
       >
         {availableTypes.map(tItem => (
@@ -572,7 +587,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'srt' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
-        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
         const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         const mtxCfg = selectedProvider?.config || {};
@@ -673,7 +690,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 }`}
                 onClick={() => update({
                   mediamtx_mode: false,
-                  service_target: undefined,
+                  service_target: 'manual',
                   stream_action: undefined,
                   path_id: undefined,
                   provider_service_id: undefined,
@@ -1123,7 +1140,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'rtmp' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
-        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
         const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         const mtxCfg = selectedProvider?.config || {};
@@ -1213,7 +1232,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 }`}
                 onClick={() => update({
                   mediamtx_mode: false,
-                  service_target: undefined,
+                  service_target: 'manual',
                   path_id: undefined,
                   provider_service_id: undefined,
                   mediamtx_target_type: undefined,
@@ -2418,7 +2437,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'whip' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
-        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
         const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         const mtxCfg = selectedProvider?.config || {};
@@ -2508,7 +2529,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 }`}
                 onClick={() => update({
                   mediamtx_mode: false,
-                  service_target: undefined,
+                  service_target: 'manual',
                   path_id: undefined,
                   provider_service_id: undefined,
                   mediamtx_target_type: undefined,
