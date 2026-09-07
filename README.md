@@ -102,9 +102,9 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Selective Section Toggles**: Export and import specific configuration parts (e.g., only backing up media services and scheduled tasks while leaving SMTP credentials or network port configs unchanged).
 - **Format Verification**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions and config file updates.
 
-### 🗄️ 10. Storage, Log Retention & Branding
-- **Storage Management**: Configure local or mounted storage volumes, monitor disk space usage in real time, and trigger notifications if volume capacity exceeds limits.
-- **Automated Log Rotation**: Fine-grained settings to define retention limits for application logs, task logs, and stream outputs (`FFmpeg`, `MediaMTX`, `Icecast2`), safely rotating via copytruncate and automatically purging stale data to prevent disk saturation.
+### 🗄️ 10. Storage, HTTP HLS Routes, Log Retention & Branding
+- **Storage Management & HTTP HLS Delivery**: Configure local or mounted storage volumes, monitor disk space usage in real time, and map custom HTTP route paths (`/route_path -> HLS Storage`) with CORS and video caching headers to serve live and archived HLS manifests (`.m3u8`) and segments (`.ts`) directly through the web engine.
+- **Decoupled Logging & Automated Rotation**: Decouples application server logs (`ffmpeg-gui.log`) from HTTP access logs (`access.log`), with noise suppression for media chunks and copytruncate rotation with configurable retention periods.
 - **Branding Customization**: Customize the application name, panel headers, and console branding directly from the interface settings.
 
 ### 🔔 11. State-Based SMTP Notifications
