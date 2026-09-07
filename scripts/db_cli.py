@@ -222,7 +222,22 @@ def show_service_logs(db_path: str, service_id: int, limit: int = 25):
     # 2. Check physical log file on disk
     log_candidates = []
     try:
-        cur.execute("SELECT path FROM storages WHERE type='logs'")
+        cur.execute("SELECT config FROM services WHERE id=?", (service_id,))
+        s_row = cur.fetchone()
+        if s_row and s_row[0]:
+            import json
+            cfg = json.loads(s_row[0]) if isinstance(s_row[0], str) else s_row[0]
+            log_storage_id = cfg.get("log_storage_id")
+            if log_storage_id:
+                cur.execute("SELECT path FROM storages WHERE id=?", (log_storage_id,))
+                st = cur.fetchone()
+                if st and st[0]:
+                    log_candidates.append(os.path.join(st[0], f"process_{service_id}.log"))
+    except Exception:
+        pass
+
+    try:
+        cur.execute("SELECT path FROM storages WHERE type='logs' ORDER BY is_default DESC")
         for row in cur.fetchall():
             if row[0]:
                 log_candidates.append(os.path.join(row[0], f"process_{service_id}.log"))
@@ -238,11 +253,15 @@ def show_service_logs(db_path: str, service_id: int, limit: int = 25):
         f"data/logs/process_{service_id}.log",
     ])
 
-    found_log = None
-    for cand in log_candidates:
-        if cand and os.path.exists(cand):
-            found_log = cand
-            break
+    existing_logs = [cand for cand in set(log_candidates) if cand and os.path.exists(cand)]
+    if existing_logs:
+        # Sort by mtime descending (most recently updated first)
+        existing_logs.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        found_log = existing_logs[0]
+        if len(existing_logs) > 1:
+            print(f"(Note: Found {len(existing_logs)} candidate log files on disk. Showing most recently modified: {found_log})")
+    else:
+        found_log = None
 
     if found_log:
         print(f"\n--- DISK CONSOLE LOG ({found_log}, last {limit} lines) ---")
