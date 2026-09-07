@@ -10,6 +10,8 @@ export interface HlsVariant {
 interface HlsVariantsFormProps {
   variants: HlsVariant[];
   onChange: (variants: HlsVariant[]) => void;
+  vcodec?: string;
+  videoParams?: Record<string, any>;
 }
 
 const PRESETS = [
@@ -19,11 +21,16 @@ const PRESETS = [
   { label: '360p Low', resolution: '640:360', video_bitrate: '800k', audio_bitrate: '96k' }
 ];
 
-export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onChange }) => {
+export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onChange, vcodec, videoParams }) => {
   const { t } = useTranslation();
   const [resolution, setResolution] = useState('');
   const [videoBitrate, setVideoBitrate] = useState('');
   const [audioBitrate, setAudioBitrate] = useState('');
+
+  const isVaapi = Boolean(vcodec && vcodec.includes('vaapi'));
+  const isNvenc = Boolean(vcodec && vcodec.includes('nvenc'));
+  const rcMode = videoParams?.rc_mode || (isVaapi ? 'CQP' : '');
+  const isVaapiCqp = isVaapi && (rcMode === 'CQP' || !rcMode);
 
   const [resError, setResError] = useState(false);
   const [videoError, setVideoError] = useState(false);
@@ -63,17 +70,15 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
 
     const trimmedRes = resolution.trim();
 
-    const isResInvalid = !/^\d+:\d+$/.test(trimmedRes);
-    const isVideoInvalid = !/^\d+[kM]$/.test(processedVideoBitrate);
-    const isAudioInvalid = !/^\d+[kM]$/.test(processedAudioBitrate);
+    const isResValid = /^\d+:\d+$/.test(trimmedRes);
+    const isVideoValid = Boolean(processedVideoBitrate);
+    const isAudioValid = Boolean(processedAudioBitrate);
 
-    setResError(isResInvalid);
-    setVideoError(isVideoInvalid);
-    setAudioError(isAudioInvalid);
+    setResError(!isResValid);
+    setVideoError(!isVideoValid);
+    setAudioError(!isAudioValid);
 
-    if (isResInvalid || isVideoInvalid || isAudioInvalid) {
-      return;
-    }
+    if (!isResValid || !isVideoValid || !isAudioValid) return;
 
     addVariant({
       resolution: trimmedRes,
@@ -95,6 +100,40 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
           {variants.length} variant{variants.length !== 1 ? 's' : ''}
         </span>
       </div>
+
+      {isVaapiCqp && (
+        <div className="bg-brand-lime/10 border border-brand-lime/30 rounded-xl p-3 text-xs leading-relaxed flex items-start gap-2.5">
+          <span className="text-brand-lime text-base shrink-0">⚡</span>
+          <div>
+            <div className="font-semibold text-brand-lime">
+              {t('destinations.vaapiCqpTitle', 'VAAPI Hardware Encoding (CQP Mode)')}
+            </div>
+            <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+              {t(
+                'destinations.vaapiCqpNote',
+                'Your GPU VAAPI driver operates in Constant QP (CQP) mode. FFmpeg will automatically scale quantization (QP) across variants (e.g. QP 20 for 1080p, 24 for 720p, 28 for 480p) to match each resolution without exceeding hardware encoder limits.'
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isNvenc && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-xs leading-relaxed flex items-start gap-2.5">
+          <span className="text-emerald-400 text-base shrink-0">🚀</span>
+          <div>
+            <div className="font-semibold text-emerald-400">
+              {t('destinations.nvencAbrTitle', 'NVIDIA NVENC Hardware Encoding')}
+            </div>
+            <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+              {t(
+                'destinations.nvencAbrNote',
+                'Hardware accelerated multi-rendition encoding active via NVIDIA NVENC.'
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {variants.length > 0 ? (
         <div className="overflow-hidden border border-[var(--glass-border)] rounded-lg bg-[var(--bg-card)]">

@@ -1536,6 +1536,12 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                 validationErrors={validationErrors}
                 validationWarnings={localValidationWarnings}
                 storages={storages}
+                codecConfig={{
+                  vcodec: config.video_codec_id,
+                  video_params: config.video_codec_params,
+                  acodec: config.audio_codec_id,
+                  audio_params: config.audio_codec_params,
+                }}
               />
             </div>
           </div>

@@ -383,8 +383,9 @@ class FFmpegCommandBuilder:
             else:
                 cmd += ["-profile:v", profile]
                 
-        elif vcodec in ('h264_vaapi', 'hevc_vaapi'):
-            cmd += ["-vaapi_device", "/dev/dri/renderD128"]
+        elif vcodec in ('h264_vaapi', 'hevc_vaapi', 'vp8_vaapi', 'vp9_vaapi'):
+            if "-vaapi_device" not in cmd:
+                cmd += ["-vaapi_device", "/dev/dri/renderD128"]
             rc_mode_vaapi = params.get('rc_mode', 'CBR')
             cmd += ["-rc_mode", rc_mode_vaapi]
             if rc_mode_vaapi != 'CQP' and params.get('bitrate'):
@@ -447,10 +448,10 @@ class FFmpegCommandBuilder:
 
     @classmethod
     def _append_video_codec_params_indexed(cls, cmd: list, vcodec: str, params: dict, idx: int, bitrate: str):
-        cmd += [f"-b:v:{idx}", bitrate]
         rc_mode = params.get('rc_mode', '')
         
         if vcodec in ('libx264', 'libx265'):
+            cmd += [f"-b:v:{idx}", bitrate]
             if params.get('preset'):
                 cmd += [f"-preset:v:{idx}", params['preset']]
             tune = params.get('tune', 'none')
@@ -474,6 +475,51 @@ class FFmpegCommandBuilder:
                     cmd += [f"-maxrate:v:{idx}", params['maxrate']]
                 if params.get('bufsize'):
                     cmd += [f"-bufsize:v:{idx}", params['bufsize']]
+
+        elif vcodec in ('h264_vaapi', 'hevc_vaapi', 'vp8_vaapi', 'vp9_vaapi'):
+            rc_mode_vaapi = params.get('rc_mode', 'CQP')
+            cmd += [f"-rc_mode:v:{idx}", rc_mode_vaapi]
+            if rc_mode_vaapi == 'CQP':
+                base_qp = int(params.get('qp', 20))
+                qp_val = min(51, base_qp + (idx * 4))
+                cmd += [f"-qp:v:{idx}", str(qp_val)]
+            else:
+                cmd += [f"-b:v:{idx}", bitrate]
+            if params.get('profile'):
+                cmd += [f"-profile:v:{idx}", params['profile']]
+            if params.get('g'):
+                cmd += [f"-g:v:{idx}", str(params['g'])]
+
+        elif vcodec in ('h264_nvenc', 'hevc_nvenc'):
+            rc = params.get('rc', 'cbr')
+            cmd += [f"-rc:v:{idx}", rc]
+            if rc == 'constqp':
+                base_cq = int(params.get('cq', params.get('qp', 20)))
+                cq_val = min(51, base_cq + (idx * 4))
+                cmd += [f"-cq:v:{idx}", str(cq_val)]
+            else:
+                cmd += [f"-b:v:{idx}", bitrate]
+                if rc == 'vbr' and params.get('cq') is not None:
+                    cmd += [f"-cq:v:{idx}", str(params['cq'])]
+            if params.get('preset'):
+                cmd += [f"-preset:v:{idx}", params['preset']]
+            if params.get('profile'):
+                cmd += [f"-profile:v:{idx}", params['profile']]
+            if params.get('g'):
+                cmd += [f"-g:v:{idx}", str(params['g'])]
+            if params.get('bf') is not None:
+                cmd += [f"-bf:v:{idx}", str(params['bf'])]
+
+        elif vcodec in ('h264_qsv', 'hevc_qsv'):
+            cmd += [f"-b:v:{idx}", bitrate]
+            if params.get('preset'):
+                cmd += [f"-preset:v:{idx}", params['preset']]
+            if params.get('global_quality') is not None:
+                cmd += [f"-global_quality:v:{idx}", str(params['global_quality'])]
+            if params.get('g'):
+                cmd += [f"-g:v:{idx}", str(params['g'])]
+        else:
+            cmd += [f"-b:v:{idx}", bitrate]
 
     @classmethod
     def _append_audio_codec_params_indexed(cls, cmd: list, acodec: str, params: dict, idx: int, bitrate: str):
@@ -748,6 +794,13 @@ class FFmpegCommandBuilder:
         if threads and int(threads) > 0:
             cmd += ["-threads", str(int(threads))]
 
+        # Ensure VAAPI device context is initialized globally before inputs for hwupload and VAAPI encoders
+        vcodec = codec_cfg.get('vcodec', '')
+        if vcodec in ('h264_vaapi', 'hevc_vaapi', 'vp8_vaapi', 'vp9_vaapi') or advanced.get('hwaccel') == 'vaapi':
+            vaapi_dev = advanced.get('vaapi_device') or "/dev/dri/renderD128"
+            if "-vaapi_device" not in cmd:
+                cmd += ["-vaapi_device", vaapi_dev]
+
         _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
         is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
@@ -856,10 +909,12 @@ class FFmpegCommandBuilder:
                         vf_list.append("format=nv12")
                         remains_vram = False
                         
-                    if not remains_vram and vcodec in ('h264_vaapi', 'hevc_vaapi', 'h264_qsv', 'hevc_qsv', 'h264_nvenc', 'hevc_nvenc'):
+                    if not remains_vram and vcodec in ('h264_vaapi', 'hevc_vaapi', 'vp8_vaapi', 'vp9_vaapi', 'h264_qsv', 'hevc_qsv'):
                         vf_list.append("format=nv12")
                         vf_list.append("hwupload")
                         remains_vram = True
+                    elif not remains_vram and vcodec in ('h264_nvenc', 'hevc_nvenc'):
+                        vf_list.append("format=nv12")
                         
                     cmd += [f"-filter:v:{idx}", ",".join(vf_list)]
                     cmd += [f"-c:v:{idx}", vcodec]
@@ -1046,11 +1101,13 @@ class FFmpegCommandBuilder:
                 elif output_type == 'ndi':
                     vf_list.append("format=uyvy422")
                     
-                is_hw_encoder = vcodec in ('h264_vaapi', 'hevc_vaapi', 'h264_qsv', 'hevc_qsv')
+                is_hw_encoder = vcodec in ('h264_vaapi', 'hevc_vaapi', 'vp8_vaapi', 'vp9_vaapi', 'h264_qsv', 'hevc_qsv')
                 if not remains_vram and is_hw_encoder:
                     vf_list.append("format=nv12")
                     vf_list.append("hwupload")
                     remains_vram = True
+                elif not remains_vram and vcodec in ('h264_nvenc', 'hevc_nvenc'):
+                    vf_list.append("format=nv12")
                     
                 final_vf = ",".join(vf_list) if vf_list else ""
                 if final_vf:

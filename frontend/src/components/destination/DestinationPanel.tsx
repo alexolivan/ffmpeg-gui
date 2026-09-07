@@ -70,6 +70,7 @@ interface DestinationPanelProps {
   validationErrors?: Record<string, string>;
   validationWarnings?: Record<string, string>;
   storages?: any[];
+  codecConfig?: any;
 }
 
 const OUTPUT_TYPES = [
@@ -112,6 +113,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   validationErrors,
   validationWarnings,
   storages = [],
+  codecConfig,
 }) => {
   const { t } = useTranslation();
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
@@ -2406,6 +2408,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               <HlsVariantsForm
                 variants={config.variants || []}
                 onChange={variants => update({ variants })}
+                vcodec={codecConfig?.vcodec}
+                videoParams={codecConfig?.video_params}
               />
             )}
           </div>
