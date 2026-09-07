@@ -1969,19 +1969,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           <div className="text-xs font-mono text-text-secondary truncate block" title={s.path}>
                                             {s.path}
                                           </div>
-                                          {s.route_path && (
-                                            <div className="text-[11px] font-mono text-cyan-400/90 truncate flex items-center gap-1.5 pt-0.5">
-                                              <span className="text-[9px] uppercase tracking-wider text-text-secondary">{t('settings.storage.httpEndpoint', 'Endpoint')}:</span>
-                                              <a
-                                                href={`${window.location.protocol}//${window.location.host}${s.route_path}/index.m3u8`}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="underline hover:text-cyan-300"
-                                              >
-                                                {`${window.location.protocol}//${window.location.host}${s.route_path}/index.m3u8`}
-                                              </a>
-                                            </div>
-                                          )}
                                         </div>
 
                                         <div className="flex gap-2 shrink-0">

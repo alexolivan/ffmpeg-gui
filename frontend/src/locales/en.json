@@ -447,8 +447,7 @@
       "deleteStorage": "Delete Storage",
       "utilization": "Space Utilization",
       "routePath": "HTTP Route Path (Optional)",
-      "routePathHelp": "Allows serving HLS manifests and segments via HTTP (/route_path/index.m3u8).",
-      "httpEndpoint": "Endpoint"
+      "routePathHelp": "Allows serving HLS manifests and segments via HTTP (/route_path/stream_name.m3u8)."
     },
     "security": {
       "title": "Authentication & Password Management",
