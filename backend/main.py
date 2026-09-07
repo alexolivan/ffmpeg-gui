@@ -90,6 +90,22 @@ class NginxAccessLogMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
+            path = scope.get("path", "-")
+            status = status_code[0]
+
+            # Suppress high-frequency static noise and media chunks from access log for successful requests
+            ignore_media = os.getenv("ACCESS_LOG_IGNORE_MEDIA", "true").lower() == "true"
+            if ignore_media and status < 400:
+                clean_path = path.split("?")[0].lower()
+                if clean_path.startswith("/assets/") or clean_path in ("/favicon.ico", "/favicon.svg"):
+                    return
+                if "/software/" in clean_path and clean_path.endswith("/icon"):
+                    return
+                if clean_path.startswith("/previews/") or clean_path.endswith(".jpg"):
+                    return
+                if clean_path.endswith((".ts", ".m4s", ".m3u8", ".aac", ".mp3")):
+                    return
+
             client = scope.get("client")
             client_host = client[0] if client else "-"
             remote_user = "-"
@@ -98,13 +114,14 @@ class NginxAccessLogMiddleware:
             time_local = now.strftime("%d/%b/%Y:%H:%M:%S +0000")
             
             method = scope.get("method", "-")
-            path = scope.get("path", "-")
             query_string = scope.get("query_string", b"").decode("utf-8")
             if query_string:
-                path = f"{path}?{query_string}"
+                full_path = f"{path}?{query_string}"
+            else:
+                full_path = path
                 
             http_version = scope.get("http_version", "1.1")
-            request_line = f"{method} {path} HTTP/{http_version}"
+            request_line = f"{method} {full_path} HTTP/{http_version}"
             
             headers = scope.get("headers", [])
             referer = "-"
@@ -119,7 +136,7 @@ class NginxAccessLogMiddleware:
             if access_log_path:
                 try:
                     nginx_line = f'{client_host} - {remote_user} [{time_local}] "{request_line}" {status_code[0]} {content_length[0]} "{referer}" "{user_agent}"'
-                    with open(access_log_path, "a") as f:
+                    with open(access_log_path, "a", encoding="utf-8") as f:
                         f.write(nginx_line + "\n")
                 except Exception:
                     pass
@@ -401,6 +418,9 @@ class SettingsResponse(BaseModel):
     logging_compression_enabled: Optional[bool] = None
     logging_retention_days: Optional[int] = None
     logging_timestamp_tz: Optional[str] = "utc"
+    access_log_path: Optional[str] = None
+    access_log_enabled: Optional[bool] = True
+    access_log_ignore_media: Optional[bool] = True
     language: str = "en"
     theme: str = "studio-dark"
     bind_address: Optional[str] = "0.0.0.0"
@@ -449,6 +469,9 @@ class SettingsUpdate(BaseModel):
     logging_compression_enabled: Optional[bool] = None
     logging_retention_days: Optional[int] = None
     logging_timestamp_tz: Optional[str] = None
+    access_log_path: Optional[str] = None
+    access_log_enabled: Optional[bool] = None
+    access_log_ignore_media: Optional[bool] = None
     notifications: Optional[NotificationSettingsUpdate] = None
     watchdog: Optional[WatchdogSettingsUpdate] = None
 
@@ -526,6 +549,9 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     logging_compression_enabled = False
     logging_retention_days = 30
     logging_timestamp_tz = "utc"
+    access_log_path = None
+    access_log_enabled = True
+    access_log_ignore_media = True
 
     # Default network & SSL values
     bind_address = "0.0.0.0"
@@ -664,6 +690,15 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 except ValueError:
                     pass
                 logging_timestamp_tz = logging_cfg.get("timestamp_tz", logging_timestamp_tz)
+                access_log_path = logging_cfg.get("access_log_path", None)
+                try:
+                    access_log_enabled = logging_cfg.getboolean("access_log_enabled", access_log_enabled)
+                except ValueError:
+                    pass
+                try:
+                    access_log_ignore_media = logging_cfg.getboolean("access_log_ignore_media", access_log_ignore_media)
+                except ValueError:
+                    pass
             if "watchdog" in config:
                 wd_cfg = config["watchdog"]
                 try: watchdog_data["startup_grace_delay"] = wd_cfg.getint("startup_grace_delay", fallback=10)
@@ -782,6 +817,9 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["logging_compression_enabled"] = logging_compression_enabled
     res["logging_retention_days"] = logging_retention_days
     res["logging_timestamp_tz"] = logging_timestamp_tz
+    res["access_log_path"] = access_log_path
+    res["access_log_enabled"] = access_log_enabled
+    res["access_log_ignore_media"] = access_log_ignore_media
     res["language"] = language
     res["theme"] = theme
     res["bind_address"] = bind_address
@@ -1009,6 +1047,9 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
         "logging_rotation_backup_count",
         "logging_compression_enabled",
         "logging_retention_days",
+        "access_log_path",
+        "access_log_enabled",
+        "access_log_ignore_media",
     ]
     
     has_logging_updates = any(getattr(settings_in, field) is not None for field in logging_fields)
@@ -1075,6 +1116,12 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config["logging"]["retention_days"] = str(settings_in.logging_retention_days)
         if settings_in.logging_timestamp_tz is not None:
             config["logging"]["timestamp_tz"] = settings_in.logging_timestamp_tz
+        if settings_in.access_log_path is not None:
+            config["logging"]["access_log_path"] = str(settings_in.access_log_path)
+        if settings_in.access_log_enabled is not None:
+            config["logging"]["access_log_enabled"] = str(settings_in.access_log_enabled).lower()
+        if settings_in.access_log_ignore_media is not None:
+            config["logging"]["access_log_ignore_media"] = str(settings_in.access_log_ignore_media).lower()
             
         with open(config_path, "w") as f:
             config.write(f)
