@@ -88,6 +88,7 @@ interface ProcessConfig {
   startup_delay: number;
   watchdog_enabled: boolean;
   watchdog_retries: number;
+  watchdog_circuit_breaker?: boolean;
   watchdog_min_speed: number | null;
   watchdog_min_speed_duration: number;
   allow_auto_start_deps?: boolean;
@@ -431,6 +432,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         startup_delay: initialConfig.startup_delay ?? 0,
         watchdog_enabled: !!initialConfig.watchdog_enabled,
         watchdog_retries: initialConfig.watchdog_retries ?? 5,
+        watchdog_circuit_breaker: initialConfig.watchdog_circuit_breaker !== undefined ? !!initialConfig.watchdog_circuit_breaker : true,
         watchdog_min_speed: initialConfig.watchdog_min_speed !== undefined ? initialConfig.watchdog_min_speed : null,
         watchdog_min_speed_duration: initialConfig.watchdog_min_speed_duration ?? 30,
         schedule_type: initialConfig.schedule_type || 'manual',
@@ -483,6 +485,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       startup_delay: 0,
       watchdog_enabled: false,
       watchdog_retries: 5,
+      watchdog_circuit_breaker: true,
       watchdog_min_speed: null,
       watchdog_min_speed_duration: 30,
       schedule_type: 'manual',
@@ -574,10 +577,44 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   );
 
   const isNDIOutput = config.output.type === 'ndi';
-  const hasNDICodecIncompatibility = isNDIOutput && (
+const hasNDICodecIncompatibility = isNDIOutput && (
     (config.has_video && config.video_codec_id !== 'wrapped_avframe') ||
     (config.has_audio && config.audio_codec_id !== 'pcm_s16le')
   );
+
+  const selectedBuild = availableBuilds.find(b => b.id === config.ffmpeg_build_id);
+
+  // Pre-flight check: WHIP compatibility (requires FFmpeg >= 8.0)
+  const isWHIPOutput = config.output.type === 'whip';
+  const hasWhipIncompatibleBuild = isWHIPOutput && selectedBuild && (() => {
+    const v = selectedBuild.ffmpeg_version || selectedBuild.version_tag || '';
+    const match = v.match(/(?:^|[^\d])(\d+)(?:\.(\d+))?/);
+    if (match) {
+      const major = parseInt(match[1], 10);
+      if (major < 8) return true;
+    }
+    return false;
+  })();
+
+  // Pre-flight check: NDI compatibility (--enable-libndi_newtek)
+  const isNDIUsed = config.input1.type === 'ndi' || config.output.type === 'ndi';
+  const hasNDIIncompatibleBuild = isNDIUsed && selectedBuild && (() => {
+    const opts = selectedBuild.build_options || {};
+    const verOut = (selectedBuild.version_output || selectedBuild.build_log_summary || '').toLowerCase();
+    if (opts.libndi_newtek === false) return true;
+    if (verOut && !verOut.includes('libndi_newtek')) return true;
+    return false;
+  })();
+
+  // Pre-flight check: DeckLink compatibility (--enable-decklink)
+  const isDeckLinkUsed = config.input1.type === 'decklink' || config.output.type === 'decklink';
+  const hasDeckLinkIncompatibleBuild = isDeckLinkUsed && selectedBuild && (() => {
+    const opts = selectedBuild.build_options || {};
+    const verOut = (selectedBuild.version_output || selectedBuild.build_log_summary || '').toLowerCase();
+    if (opts.decklink === false) return true;
+    if (verOut && !verOut.includes('decklink')) return true;
+    return false;
+  })();
 
   const handleBuildChange = (buildId: number | null) => {
     setConfig(prev => ({ ...prev, ffmpeg_build_id: buildId }));
@@ -590,9 +627,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   };
 
   const createPayload = () => {
+    const isTask = config.schedule_type && config.schedule_type !== 'manual';
     return {
       name: config.name,
       alias: config.alias ? config.alias.trim() : null,
+      service_type: 'ffmpeg_stream',
       ffmpeg_build_id: config.ffmpeg_build_id,
       network_timeout: Number(config.network_timeout) || 15,
       debug_mode: config.debug_mode,
@@ -649,6 +688,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         startup_delay: config.startup_delay,
         watchdog_enabled: config.watchdog_enabled,
         watchdog_retries: config.watchdog_retries,
+        watchdog_circuit_breaker: config.watchdog_circuit_breaker ?? true,
         watchdog_min_speed: config.watchdog_min_speed,
         watchdog_min_speed_duration: config.watchdog_min_speed_duration,
         allow_auto_start_deps: config.allow_auto_start_deps ?? true,
@@ -1166,6 +1206,55 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         ))}
       </div>
 
+      {/* ── Pre-flight Binary Incompatibility Warnings ── */}
+      {hasWhipIncompatibleBuild && (
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300 mb-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-start gap-2.5">
+            <span className="text-sm mt-0.5 text-amber-400">
+              <ShieldIcon size={14} />
+            </span>
+            <div>
+              <strong>{t('forge.preflight.whipTitle', 'Incompatibilidad de binario detectada:')}</strong>{' '}
+              {t('forge.preflight.whipIncompat', 'El protocolo de salida WHIP requiere FFmpeg >= 8.0. La compilación seleccionada ({{version}}) carece de soporte nativo para WHIP.', {
+                version: selectedBuild?.ffmpeg_version || selectedBuild?.name || 'desconocida',
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasNDIIncompatibleBuild && (
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300 mb-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-start gap-2.5">
+            <span className="text-sm mt-0.5 text-amber-400">
+              <ShieldIcon size={14} />
+            </span>
+            <div>
+              <strong>{t('forge.preflight.ndiTitle', 'Incompatibilidad de binario detectada:')}</strong>{' '}
+              {t('forge.preflight.ndiIncompat', 'Has configurado entrada/salida NDI, pero la compilación seleccionada ("{{buildName}}") no incluye la librería libndi_newtek (--enable-libndi_newtek).', {
+                buildName: selectedBuild?.name || 'FFmpeg',
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasDeckLinkIncompatibleBuild && (
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300 mb-3 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-start gap-2.5">
+            <span className="text-sm mt-0.5 text-amber-400">
+              <ShieldIcon size={14} />
+            </span>
+            <div>
+              <strong>{t('forge.preflight.decklinkTitle', 'Incompatibilidad de binario detectada:')}</strong>{' '}
+              {t('forge.preflight.decklinkIncompat', 'Has configurado entrada/salida DeckLink, pero la compilación seleccionada ("{{buildName}}") no incluye el módulo de hardware DeckLink (--enable-decklink).', {
+                buildName: selectedBuild?.name || 'FFmpeg',
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {hasDeckLinkCodecIncompatibility && (
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300 mb-3 animate-in fade-in slide-in-from-top-1 duration-200">
           <div className="flex items-start gap-2.5">
@@ -1473,6 +1562,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
                   startup_delay={config.startup_delay}
                   watchdog_enabled={config.watchdog_enabled}
                   watchdog_retries={config.watchdog_retries}
+                  watchdog_circuit_breaker={config.watchdog_circuit_breaker ?? true}
                   watchdog_min_speed={config.watchdog_min_speed}
                   watchdog_min_speed_duration={config.watchdog_min_speed_duration}
                   debug_mode={config.debug_mode}
