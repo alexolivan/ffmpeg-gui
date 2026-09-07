@@ -38,7 +38,8 @@
     "copied": "Copiat!",
     "start": "Iniciar",
     "stop": "Aturar",
-    "restart": "Reiniciar"
+    "restart": "Reiniciar",
+    "lines": "línies"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -864,7 +865,15 @@
     "updateAvailable": "Actualització disponible",
     "outdatedBuildTooltip": "Codi font actualitzat a v{{version}}. Recompila per actualitzar.",
     "updateAndRecompile": "ACTUALITZAR I RECOMPILAR",
-    "internalToolSource": "Motor Intern (Codi Font)"
+    "internalToolSource": "Motor Intern (Codi Font)",
+    "preflight": {
+      "whipTitle": "Incompatibilitat de binari detectada:",
+      "whipIncompat": "El protocol de sortida WHIP requereix FFmpeg >= 8.0. La compilació seleccionada ({{version}}) no té suport natiu per a WHIP.",
+      "ndiTitle": "Incompatibilitat de binari detectada:",
+      "ndiIncompat": "Has configurat entrada/sortida NDI, però la compilació seleccionada (\"{{buildName}}\") no inclou la llibreria libndi_newtek (--enable-libndi_newtek).",
+      "decklinkTitle": "Incompatibilitat de binari detectada:",
+      "decklinkIncompat": "Has configurat entrada/sortida DeckLink, però la compilació seleccionada (\"{{buildName}}\") no inclou el mòdul de maquinari DeckLink (--enable-decklink)."
+    }
   },
   "sources": {
     "mediaStorage": "Emmagatzematge de Mitjans",
@@ -1262,7 +1271,9 @@
     "debugMode": "Mode Debug (Consola en Directe)",
     "debugModeDesc": "Habilita lectura interactiva de registres. Sensible a reinicis del panell.",
     "logStorage": "Emmagatzematge de Registres",
-    "defaultLogStorage": "Predeterminat (Usar emmagatzematge de registres per defecte)"
+    "defaultLogStorage": "Predeterminat (Usar emmagatzematge de registres per defecte)",
+    "circuitBreaker": "Circuit Breaker davant d'errors fatals",
+    "circuitBreakerDesc": "Cancel·la automàticament els reintents davant d'errors estructurals irrecuperables (protocols, formats o còdecs no suportats pel binari)."
   },
   "form": {
     "sections": {
@@ -1357,6 +1368,23 @@
       "title": "CONSOLA D AUDITORIA I DEPURACIÓ EN TEMPS REAL",
       "waiting": "Esperant sortida del procés...",
       "stopped": "El procés està aturat. Els registres apareixeran aquí en executar-se en mode depuració."
+    },
+    "crashLoop": {
+      "detected": "Bucle de reinicis detectat",
+      "attempt": "Intent #{{count}}",
+      "desc": "El procés finalitza immediatament després d'arrencar. El watchdog continua reintentant segons la configuració.",
+      "stopAndCancel": "Aturar servei i cancel·lar reintents"
+    },
+    "telemetry": {
+      "title": "Telemetria de Progrés (Snapshot)",
+      "ramBuffer": "Buffer RAM"
+    },
+    "diagnosticLogs": {
+      "title": "Registre d'Execució i Diagnòstic",
+      "show": "Veure Registre d'Execució (Logs)",
+      "hide": "Amagar Logs",
+      "waiting": "Servei actiu. Esperant sortida de FFmpeg...",
+      "empty": "No hi ha registres disponibles per a aquest procés."
     }
   }
 }

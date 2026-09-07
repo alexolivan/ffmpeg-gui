@@ -38,7 +38,8 @@
     "copied": "¡Copiado!",
     "start": "Iniciar",
     "stop": "Detener",
-    "restart": "Reiniciar"
+    "restart": "Reiniciar",
+    "lines": "líneas"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -864,7 +865,15 @@
     "updateAvailable": "Actualización disponible",
     "outdatedBuildTooltip": "Código fuente actualizado a v{{version}}. Recompila para actualizar.",
     "updateAndRecompile": "ACTUALIZAR Y RECOMPILAR",
-    "internalToolSource": "Motor Interno (Código Fuente)"
+    "internalToolSource": "Motor Interno (Código Fuente)",
+    "preflight": {
+      "whipTitle": "Incompatibilidad de binario detectada:",
+      "whipIncompat": "El protocolo de salida WHIP requiere FFmpeg >= 8.0. La compilación seleccionada ({{version}}) carece de soporte nativo para WHIP.",
+      "ndiTitle": "Incompatibilidad de binario detectada:",
+      "ndiIncompat": "Has configurado entrada/salida NDI, pero la compilación seleccionada (\"{{buildName}}\") no incluye la librería libndi_newtek (--enable-libndi_newtek).",
+      "decklinkTitle": "Incompatibilidad de binario detectada:",
+      "decklinkIncompat": "Has configurado entrada/salida DeckLink, pero la compilación seleccionada (\"{{buildName}}\") no incluye el módulo de hardware DeckLink (--enable-decklink)."
+    }
   },
   "sources": {
     "mediaStorage": "Almacenamiento de Medios",
@@ -1262,7 +1271,9 @@
     "debugMode": "Modo Debug (Consola en Vivo)",
     "debugModeDesc": "Habilita lectura interactiva de logs. Sensible a reinicios del panel.",
     "logStorage": "Almacenamiento de Logs",
-    "defaultLogStorage": "Predeterminado (Usar almacenamiento de logs por defecto)"
+    "defaultLogStorage": "Predeterminado (Usar almacenamiento de logs por defecto)",
+    "circuitBreaker": "Circuit Breaker ante errores fatales",
+    "circuitBreakerDesc": "Cancela automáticamente los reintentos ante errores estructurales irrecuperables (protocolos, formatos o códecs no soportados por el binario)."
   },
   "form": {
     "sections": {
@@ -1357,6 +1368,23 @@
       "title": "CONSOLA DE AUDITORÍA Y DEPURACIÓN EN TIEMPO REAL",
       "waiting": "Esperando salida del proceso...",
       "stopped": "El proceso está detenido. Los logs aparecerán aquí al ejecutarse en modo depuración."
+    },
+    "crashLoop": {
+      "detected": "Bucle de reinicios detectado",
+      "attempt": "Intento #{{count}}",
+      "desc": "El proceso termina inmediatamente tras arrancar. El watchdog continúa reintentando según la configuración.",
+      "stopAndCancel": "Detener servicio y cancelar reintentos"
+    },
+    "telemetry": {
+      "title": "Telemetría de Progreso (Snapshot)",
+      "ramBuffer": "Buffer RAM"
+    },
+    "diagnosticLogs": {
+      "title": "Registro de Ejecución y Diagnóstico",
+      "show": "Ver Registro de Ejecución (Logs)",
+      "hide": "Ocultar Logs",
+      "waiting": "Servicio activo. Esperando salida de FFmpeg...",
+      "empty": "No hay registros disponibles para este proceso."
     }
   }
 }

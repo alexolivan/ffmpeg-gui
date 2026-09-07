@@ -38,7 +38,8 @@
     "copied": "Copied!",
     "start": "Start",
     "stop": "Stop",
-    "restart": "Restart"
+    "restart": "Restart",
+    "lines": "lines"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -864,7 +865,15 @@
     "updateAvailable": "Update Available",
     "outdatedBuildTooltip": "Source code updated to v{{version}}. Recompile to update.",
     "updateAndRecompile": "UPDATE & RECOMPILE",
-    "internalToolSource": "Internal Source Engine"
+    "internalToolSource": "Internal Source Engine",
+    "preflight": {
+      "whipTitle": "Binary Incompatibility Detected:",
+      "whipIncompat": "The WHIP output protocol requires FFmpeg >= 8.0. The selected build ({{version}}) lacks native WHIP support.",
+      "ndiTitle": "Binary Incompatibility Detected:",
+      "ndiIncompat": "NDI input/output configured, but the selected build (\"{{buildName}}\") does not include the libndi_newtek module (--enable-libndi_newtek).",
+      "decklinkTitle": "Binary Incompatibility Detected:",
+      "decklinkIncompat": "DeckLink input/output configured, but the selected build (\"{{buildName}}\") does not include the DeckLink hardware module (--enable-decklink)."
+    }
   },
   "sources": {
     "mediaStorage": "Media Storage",
@@ -1262,7 +1271,9 @@
     "debugMode": "Debug Mode (Live Console)",
     "debugModeDesc": "Enables interactive log reading. Sensitive to panel restarts.",
     "logStorage": "Log Storage",
-    "defaultLogStorage": "Default (Use Default Log Storage)"
+    "defaultLogStorage": "Default (Use Default Log Storage)",
+    "circuitBreaker": "Crash-Loop Circuit Breaker",
+    "circuitBreakerDesc": "Abort retries automatically on fatal unrecoverable errors (missing binary protocol, format or codec)."
   },
   "form": {
     "sections": {
@@ -1357,6 +1368,23 @@
       "title": "REAL-TIME DEBUG AUDIT CONSOLE",
       "waiting": "Waiting for process output...",
       "stopped": "Process is currently stopped. Logs will appear here when running in debug mode."
+    },
+    "crashLoop": {
+      "detected": "Crash-Loop Detected",
+      "attempt": "Attempt #{{count}}",
+      "desc": "The process exits immediately upon launch. The watchdog will continue retrying according to service policy.",
+      "stopAndCancel": "Stop service and cancel retries"
+    },
+    "telemetry": {
+      "title": "Progress Telemetry (Snapshot)",
+      "ramBuffer": "RAM Buffer"
+    },
+    "diagnosticLogs": {
+      "title": "Execution & Diagnostic Log",
+      "show": "View Execution Logs",
+      "hide": "Hide Logs",
+      "waiting": "Service active. Waiting for FFmpeg output...",
+      "empty": "No log entries available for this process."
     }
   }
 }
