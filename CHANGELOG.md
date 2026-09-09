@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.0] - 2026-09-09
+
+### Added
+- **Multi-Peer Auxiliary Service Federation & Sharing**:
+  - Decentralized, sovereign peer-to-peer auxiliary service federation allowing `ffmpeg-gui` instances to discover, share, and lease MediaMTX hubs and Icecast2 audio servers across nodes.
+  - Zero-friction encrypted communication using application-layer AES-256-GCM symmetric pre-shared keys generated inside portable Join Tokens (`FGPEER-...`).
+  - Strict timestamp-based anti-replay verification (±60s window) and single-use salt tokens for all inter-peer RPC requests (`DISCOVER_SERVICES`, `ACQUIRE_LEASE`, `HEARTBEAT`, `RELEASE_LEASE`).
+  - Remote service leasing integration in `ProcessManager`: acquiring remote leases on service start and cleanly releasing them on service stop.
+  - Local owner architecture with granular per-service sharing toggles (`is_shared_with_peers` and `allow_peer_lease`) on MediaMTX and Icecast configuration forms.
+  - Database models `PeerInboundKey` and `PeerRemoteNode` with automatic SQLite PRAGMA migrations to schema version `2.3.0`.
+  - Background periodic peer synchronization loop (every 30s) running in a decoupled thread without blocking FastAPI's event loop.
+  - Interactive Join Token generator with local IPv4 candidate endpoint introspection and one-click clipboard copying in Settings.
+  - Remote peer management card in Settings supporting token connection, latency tracking, service catalog summary, and manual sync.
+  - Form integration with grouped `<optgroup>` selectors in `DestinationPanel` and `InputSourcePanel` for both RTMP and SRT, facilitating direct selection of federated remote peer hubs.
+  - Real-time `PeerStatusCard` on the Dashboard displaying peer link quality, latency in milliseconds, shared service count, and on-demand refresh trigger.
+
+### Changed
+- **Settings View Architectural Reorganization**:
+  - Split the monolithic settings view into distinct `Network` and `Security` tabs.
+  - `Network` tab now groups Listen Ports & Interfaces, Email Notifications & Alerting, and Remote Peers.
+  - `Security` tab now groups Access Password, SSL/TLS Certificates, and Inbound Pairing Keys.
+
 ## [2.15.0] - 2026-09-09
 
 ### Consolidated Milestone Release
