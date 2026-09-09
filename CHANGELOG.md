@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.0] - 2026-09-09
+
+### Added
+- **Decoupled Preview for HLS Services & Performance Control**:
+  - Automatically omitted secondary MJPEG thumbnail generation (`-map 0:v -c:v mjpeg ...`) for all HLS services by default, eliminating periodic CPU spikes and preventing realtime hardware buffer overruns (`ALSA buffer xrun`).
+  - Added user toggle `enable_preview` (Auto / ON / OFF) in `AdvancedFlagsFormSection.tsx` and backend command builder, allowing operators to disable secondary video previews on CPU-constrained machines.
+  - Propagated `-thread_queue_size` to secondary inputs (`input2`, e.g. ALSA audio capture) to ensure high-capacity input buffering during multi-stream encoding.
+  - Implemented dedicated backend endpoint `@app.get("/processes/{process_id}/hls/{filename:path}")` serving local HLS manifests (`.m3u8`) and segments (`.ts`, `.m4s`) with CORS and video caching headers.
+  - Integrated native `HlsPlayer` component in `FfmpegPreviewModal.tsx` using `hls.js`, enabling smooth 25/30fps live video and audio preview for local HLS services with zero extra transcoding overhead in FFmpeg.
+  - Added specialized modal status banners for remote HLS uploads (`PUT`/`POST`) and disabled video monitor states with live telemetry.
+
 ## [2.13.1] - 2026-09-07
 
 ### Fixed

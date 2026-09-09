@@ -34,7 +34,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Persistent Pipelines**: Run RTMP, SRT (listener/caller), HLS, NDI, UDP, or ALSA audio streams as persistent background daemons.
 - **Boot Sequence Hierarchies**: Configure specific startup ordering and delay gaps to synchronize cross-dependent streams (e.g., waiting for an input stream to initialize before starting a transcoder).
 - **GPU/CPU Pipeline Diagramming**: An interactive resource pipeline diagram in the GUI that visually tracks GPU decoding, filtering, encoding, and CPU multiplexing flow.
-- **Live Frame Previews**: Periodically captures frame snapshots from active streams to monitor quality directly from the dashboard.
+- **Live Stream Previews**: Embedded native HLS live video & audio player for HLS broadcast services, plus configurable periodic frame snapshots (MJPEG) with performance toggles for other streaming outputs.
 
 ![Hybrid GPU/CPU Transcode Pipeline](docs/assets/screenshot6.png)
 
