@@ -849,6 +849,8 @@ class FFmpegCommandBuilder:
             
             cls._append_input(cmd, input_cfg['input1'], ffmpeg_bin)
             if use_secondary and 'input2' in input_cfg:
+                if tqs and int(tqs) > 0:
+                    cmd += ["-thread_queue_size", str(int(tqs))]
                 cls._append_input(cmd, input_cfg['input2'], ffmpeg_bin)
         else:
             has_video = True
@@ -1148,7 +1150,15 @@ class FFmpegCommandBuilder:
         is_service = getattr(media_proc, 'type', 'service') == 'service'
         
         has_video_stream = has_video and codec_cfg.get('vcodec') != 'none'
-        if is_service and has_video_stream:
+
+        output_type = output_cfg.get('type')
+        enable_preview = advanced.get('enable_preview')
+        if enable_preview is None:
+            enable_preview = output_cfg.get('enable_preview')
+        if enable_preview is None:
+            enable_preview = (output_type != 'hls')
+
+        if is_service and has_video_stream and enable_preview:
             from database.db import PREVIEWS_DIR
             previews_dir = PREVIEWS_DIR
             os.makedirs(previews_dir, exist_ok=True)
