@@ -230,6 +230,14 @@ def init_db():
             if "route_path" not in storage_columns:
                 conn.execute(text("ALTER TABLE storages ADD COLUMN route_path TEXT"))
 
+            # Services table migrations (peer federation)
+            res_services = conn.execute(text("PRAGMA table_info(services)"))
+            services_columns = [row[1] for row in res_services.fetchall()]
+            if "is_shared_with_peers" not in services_columns:
+                conn.execute(text("ALTER TABLE services ADD COLUMN is_shared_with_peers BOOLEAN DEFAULT 0"))
+            if "allow_peer_lease" not in services_columns:
+                conn.execute(text("ALTER TABLE services ADD COLUMN allow_peer_lease BOOLEAN DEFAULT 0"))
+
             # Verify/insert schema version
             result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_info'"))
             if result.fetchone():

@@ -139,6 +139,8 @@ class Service(Base):
     speed = Column(String, nullable=True)    # e.g. "1.02x"
 
     alias = Column(String, nullable=True)
+    is_shared_with_peers = Column(Boolean, default=False)
+    allow_peer_lease = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     def _set_config_key(self, key, val):
@@ -541,3 +543,31 @@ class InstalledSdk(Base):
     storage = relationship("Storage")
 
 
+class PeerInboundKey(Base):
+    __tablename__ = 'peer_inbound_keys'
+
+    id = Column(Integer, primary_key=True)
+    alias = Column(String, nullable=False)
+    token_id = Column(String, unique=True, index=True, nullable=False)
+    secret_key = Column(String, nullable=False)
+    allowed_services = Column(JSON, nullable=True)  # None = all shared services, or list of IDs
+    status = Column(String, default='active')  # 'active', 'suspended', 'revoked'
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    last_used_at = Column(DateTime, nullable=True)
+
+
+class PeerRemoteNode(Base):
+    __tablename__ = 'peer_remote_nodes'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    base_url = Column(String, nullable=False)
+    token_id = Column(String, nullable=False)
+    secret_key = Column(String, nullable=False)
+    status = Column(String, default='offline')  # 'online', 'offline', 'error'
+    latency_ms = Column(Integer, nullable=True)
+    catalog_version = Column(Integer, default=0)
+    cached_services_json = Column(JSON, default=list)
+    last_seen = Column(DateTime, nullable=True)
+    last_error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
