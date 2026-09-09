@@ -149,5 +149,48 @@ class TestPeerManager(unittest.TestCase):
         self.assertEqual(res_rel["status"], "LEASE_RELEASED")
         self.assertEqual(self.peer_mgr.get_active_remote_lease_count(svc_id), 0)
 
+    @patch("requests.post")
+    def test_outbound_remote_lease_rpcs(self, mock_post):
+        # Create a remote node record
+        node = PeerRemoteNode(
+            name="Remote Peer Node",
+            base_url="http://192.168.1.100:8000",
+            token_id=self.token_id,
+            secret_key=self.secret_key,
+            status="online"
+        )
+        self.session.add(node)
+        self.session.commit()
+        self.session.refresh(node)
+
+        # Mock successful acquire response
+        acquire_resp_payload = {"success": True, "status": "LEASE_ACQUIRED"}
+        enc_acquire_resp = PeerCrypto.encrypt_payload(acquire_resp_payload, self.secret_key)
+        
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = enc_acquire_resp
+        mock_post.return_value = mock_resp
+
+        # 1. Acquire remote lease
+        ok, err = self.peer_mgr.acquire_remote_lease(self.session, node.id, 42)
+        self.assertTrue(ok)
+        self.assertIsNone(err)
+        mock_post.assert_called()
+
+        # Mock heartbeat response
+        hb_resp_payload = {"success": True, "status": "HEARTBEAT_ACK"}
+        mock_resp.json.return_value = PeerCrypto.encrypt_payload(hb_resp_payload, self.secret_key)
+        ok_hb, err_hb = self.peer_mgr.send_remote_heartbeat(self.session, node.id, 42)
+        self.assertTrue(ok_hb)
+        self.assertIsNone(err_hb)
+
+        # Mock release response
+        rel_resp_payload = {"success": True, "status": "LEASE_RELEASED"}
+        mock_resp.json.return_value = PeerCrypto.encrypt_payload(rel_resp_payload, self.secret_key)
+        ok_rel, err_rel = self.peer_mgr.release_remote_lease(self.session, node.id, 42)
+        self.assertTrue(ok_rel)
+        self.assertIsNone(err_rel)
+
 if __name__ == "__main__":
     unittest.main()

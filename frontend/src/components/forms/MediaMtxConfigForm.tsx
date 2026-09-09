@@ -84,6 +84,10 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
   const initReadUser = sec.read_user ?? sec.readUser ?? mtxCfg.read_user ?? '';
   const initReadPass = sec.read_pass ?? sec.readPass ?? mtxCfg.read_pass ?? '';
 
+  // Peer Federation & Sharing
+  const [isSharedWithPeers, setIsSharedWithPeers] = useState<boolean>(Boolean(initialConfig?.is_shared_with_peers));
+  const [allowPeerLease, setAllowPeerLease] = useState<boolean>(Boolean(initialConfig?.allow_peer_lease));
+
   const [publishAuthEnabled, setPublishAuthEnabled] = useState<boolean>(
     Boolean(initPubUser || initPubPass)
   );
@@ -467,6 +471,8 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
       startup_delay: Number(startupDelay) || 0,
       watchdog_enabled: watchdogEnabled,
       log_storage_id: logStorageId ? Number(logStorageId) : null,
+      is_shared_with_peers: isSharedWithPeers,
+      allow_peer_lease: allowPeerLease,
       config: {
         mediamtx_config: {
           rtmp_enabled: rtmpEnabled,
@@ -1559,6 +1565,52 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
               />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Section 8: Peer Federation & Remote Sharing */}
+      <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 space-y-3">
+        <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-2">
+          <span className="w-2 h-2 rounded-full bg-cyan-400" />
+          <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+            {t('services.federation.title', '8. Peer Federation & Remote Sharing')}
+          </h4>
+        </div>
+
+        <div className="space-y-3 text-xs">
+          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isSharedWithPeers}
+              onChange={(e) => setIsSharedWithPeers(e.target.checked)}
+              className="mt-0.5 rounded text-cyan-400"
+            />
+            <div>
+              <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
+                {t('services.federation.shareWithPeers', 'Compartir con Peers Remotos')}
+              </span>
+              <span className="text-[11px] text-[var(--text-secondary)]">
+                {t('services.federation.shareWithPeersHelp', 'Expone este servicio en el catálogo federado para que peers autorizados puedan descubrirlo y emitir hacia él.')}
+              </span>
+            </div>
+          </label>
+
+          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allowPeerLease}
+              onChange={(e) => setAllowPeerLease(e.target.checked)}
+              className="mt-0.5 rounded text-cyan-400"
+            />
+            <div>
+              <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
+                {t('services.federation.allowPeerLease', 'Permitir Arrendamiento Remoto (Auto-arranque y Keep-alive)')}
+              </span>
+              <span className="text-[11px] text-[var(--text-secondary)]">
+                {t('services.federation.allowPeerLeaseHelp', 'Permite que procesos en peers remotos arranquen y mantengan activo este servicio automáticamente al emitir.')}
+              </span>
+            </div>
+          </label>
         </div>
       </div>
 

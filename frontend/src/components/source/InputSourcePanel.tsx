@@ -41,6 +41,8 @@ export interface InputSourceConfig {
   stream_action?: string;
   service_target?: string;
   mediamtx_target_type?: 'local' | 'remote';
+  peer_node_id?: number | null;
+  peer_service_id?: number | null;
   icecast_mode?: boolean;
   icecast_mount?: string;
   icecast_target_type?: 'local' | 'remote';
@@ -374,6 +376,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   }, [config.type]);
 
   const [providers, setProviders] = React.useState<any[]>([]);
+  const [remotePeers, setRemotePeers] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     let active = true;
@@ -385,6 +388,16 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       .catch(() => {
         if (active) setProviders([]);
       });
+
+    fetch('/api/peers/remote-nodes')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (active) setRemotePeers(data || []);
+      })
+      .catch(() => {
+        if (active) setRemotePeers([]);
+      });
+
     return () => { active = false; };
   }, []);
 
@@ -902,6 +915,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
           update({
             provider_service_id: prov.id,
+            peer_node_id: undefined,
+            peer_service_id: undefined,
             service_target: 'mediamtx',
             mediamtx_target_type: 'local',
             host: '127.0.0.1',
@@ -913,6 +928,58 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             auth_pass: rPass,
             mediamtx_mode: true,
             tls: useTls,
+            path: genUrl,
+          });
+        };
+
+        const handleSelectRemotePeer = (peerId: number, svcId: number) => {
+          const peer = remotePeers.find(p => p.id === peerId);
+          if (!peer) return;
+          const svc = (peer.cached_services || []).find((s: any) => s.id === svcId);
+          if (!svc) return;
+
+          let host = '127.0.0.1';
+          try {
+            const u = new URL(peer.base_url);
+            host = u.hostname;
+          } catch {
+            host = peer.base_url.replace(/https?:\/\//, '').split(':')[0];
+          }
+
+          const protos = svc.protocols || {};
+          const rtmpPort = protos.rtmp?.port || 1935;
+          const paths = protos.paths || {};
+          const pKeys = Object.keys(paths);
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = paths[firstPath] || {};
+
+          let rUser = '';
+          let rPass = '';
+          if (pathConf.mode === 'custom') {
+            rUser = pathConf.read_user || '';
+            rPass = pathConf.read_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            rUser = pathConf.read_user || protos.security?.read_user || '';
+            rPass = pathConf.read_pass || protos.security?.read_pass || '';
+          }
+
+          const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+          const genUrl = `rtmp://${authPrefix}${host}:${rtmpPort}/${firstPath}`;
+
+          update({
+            peer_node_id: peer.id,
+            peer_service_id: svc.id,
+            provider_service_id: undefined,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'remote',
+            host: host,
+            port: String(rtmpPort),
+            path_id: firstPath,
+            read_user: rUser,
+            read_pass: rPass,
+            auth_user: rUser,
+            auth_pass: rPass,
+            mediamtx_mode: true,
             path: genUrl,
           });
         };
@@ -1047,14 +1114,37 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         </label>
                         <select
                           className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
-                          value={selectedProvider.id}
-                          onChange={e => handleSelectProvider(Number(e.target.value))}
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val.startsWith('peer:')) {
+                              const [, pId, sId] = val.split(':');
+                              handleSelectRemotePeer(parseInt(pId), parseInt(sId));
+                            } else {
+                              handleSelectProvider(Number(val));
+                            }
+                          }}
                         >
-                          {mediamtxProviders.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} (Port :{p.config?.rtmp_port || 1935})
-                            </option>
-                          ))}
+                          <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
+                            {mediamtxProviders.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} (Port :{p.config?.rtmp_port || 1935})
+                              </option>
+                            ))}
+                          </optgroup>
+                          {remotePeers.length > 0 && (
+                            <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
+                              {remotePeers.map(peer =>
+                                (peer.cached_services || [])
+                                  .filter((s: any) => s.service_type === 'mediamtx_hub')
+                                  .map((s: any) => (
+                                    <option key={`peer:${peer.id}:${s.id}`} value={`peer:${peer.id}:${s.id}`}>
+                                      {s.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
+                                    </option>
+                                  ))
+                              )}
+                            </optgroup>
+                          )}
                         </select>
                       </div>
                       <div>
@@ -1578,10 +1668,62 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
           update({
             provider_service_id: prov.id,
+            peer_node_id: undefined,
+            peer_service_id: undefined,
             service_target: 'mediamtx',
             mediamtx_target_type: 'local',
             host: '127.0.0.1',
             port: String(pCfg.srt_port || 8890),
+            path_id: firstPath,
+            read_user: rUser,
+            read_pass: rPass,
+            auth_user: rUser,
+            auth_pass: rPass,
+            mode: 'caller',
+            stream_action: 'request',
+            mediamtx_mode: true,
+          });
+        };
+
+        const handleSelectRemotePeer = (peerId: number, svcId: number) => {
+          const peer = remotePeers.find(p => p.id === peerId);
+          if (!peer) return;
+          const svc = (peer.cached_services || []).find((s: any) => s.id === svcId);
+          if (!svc) return;
+
+          let host = '127.0.0.1';
+          try {
+            const u = new URL(peer.base_url);
+            host = u.hostname;
+          } catch {
+            host = peer.base_url.replace(/https?:\/\//, '').split(':')[0];
+          }
+
+          const protos = svc.protocols || {};
+          const srtPort = protos.srt?.port || 8890;
+          const paths = protos.paths || {};
+          const pKeys = Object.keys(paths);
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = paths[firstPath] || {};
+
+          let rUser = '';
+          let rPass = '';
+          if (pathConf.mode === 'custom') {
+            rUser = pathConf.read_user || '';
+            rPass = pathConf.read_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            rUser = pathConf.read_user || protos.security?.read_user || '';
+            rPass = pathConf.read_pass || protos.security?.read_pass || '';
+          }
+
+          update({
+            peer_node_id: peer.id,
+            peer_service_id: svc.id,
+            provider_service_id: undefined,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'remote',
+            host: host,
+            port: String(srtPort),
             path_id: firstPath,
             read_user: rUser,
             read_pass: rPass,
@@ -1753,14 +1895,37 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <select
                         id={`${idPrefix}-srt-hub`}
                         className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                        value={config.provider_service_id || selectedProvider?.id || ''}
-                        onChange={e => handleSelectProvider(parseInt(e.target.value))}
+                        value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (val.startsWith('peer:')) {
+                            const [, pId, sId] = val.split(':');
+                            handleSelectRemotePeer(parseInt(pId), parseInt(sId));
+                          } else {
+                            handleSelectProvider(parseInt(val));
+                          }
+                        }}
                       >
-                        {mediamtxProviders.map(p => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} {p.alias ? `(${p.alias})` : ''} — {p.status}
-                          </option>
-                        ))}
+                        <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
+                          {mediamtxProviders.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} {p.alias ? `(${p.alias})` : ''} — {p.status}
+                            </option>
+                          ))}
+                        </optgroup>
+                        {remotePeers.length > 0 && (
+                          <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
+                            {remotePeers.map(peer =>
+                              (peer.cached_services || [])
+                                .filter((s: any) => s.service_type === 'mediamtx_hub')
+                                .map((s: any) => (
+                                  <option key={`peer:${peer.id}:${s.id}`} value={`peer:${peer.id}:${s.id}`}>
+                                    {s.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
+                                  </option>
+                                ))
+                            )}
+                          </optgroup>
+                        )}
                       </select>
                     </div>
 

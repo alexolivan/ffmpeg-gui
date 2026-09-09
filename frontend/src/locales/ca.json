@@ -57,6 +57,13 @@
   "services": {
     "title": "Serveis",
     "subtitle": "Instàncies de node per a emissió i processament continu",
+    "federation": {
+      "title": "Federació i Compartició amb Peers",
+      "shareWithPeers": "Compartir amb Peers Remots",
+      "shareWithPeersHelp": "Exposa aquest servei en el catàleg federat perquè peers autoritzats puguin descobrir-lo i emetre cap a ell.",
+      "allowPeerLease": "Permetre Arrendament Remot (Auto-arrencada i Keep-alive)",
+      "allowPeerLeaseHelp": "Permet que processos en peers remots arrenquin i mantinguin actiu aquest servei automàticament en emetre."
+    },
     "addNewService": "AFEGIR NOU SERVEI",
     "editService": "EDITAR SERVEI",
     "importProfile": "Importar Perfil",
@@ -939,6 +946,8 @@
     }
   },
   "sources": {
+    "localServices": "Serveis Locals (Aquest Node)",
+    "remotePeers": "Peers Remots Federats",
     "mediaStorage": "Emmagatzematge de Mitjans",
     "selectStorage": "-- Seleccionar Emmagatzematge --",
     "networkSettingsTitle": "Ajustos de Xarxa d'Entrada",
@@ -1074,6 +1083,8 @@
   },
   "destinations": {
     "destination": "Destinació",
+    "localServices": "Serveis Locals (Aquest Node)",
+    "remotePeers": "Peers Remots Federats",
     "types": {
       "udp": "UDP Multicast (MPEG-TS)",
       "srt": "Stream SRT",

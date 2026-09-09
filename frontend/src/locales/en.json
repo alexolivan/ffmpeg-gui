@@ -57,6 +57,13 @@
   "services": {
     "title": "Services",
     "subtitle": "Continuous media streaming and processing node instances",
+    "federation": {
+      "title": "Peer Federation & Remote Sharing",
+      "shareWithPeers": "Share with Remote Peers",
+      "shareWithPeersHelp": "Exposes this service in the federated catalog for authorized remote peers to discover and stream to.",
+      "allowPeerLease": "Allow Remote Lease (Auto-start & Keep-alive)",
+      "allowPeerLeaseHelp": "Allows processes on remote peers to automatically start and keep this service alive while streaming."
+    },
     "addNewService": "ADD NEW SERVICE",
     "editService": "EDIT SERVICE",
     "importProfile": "Import Profile",
@@ -939,6 +946,8 @@
     }
   },
   "sources": {
+    "localServices": "Local Hubs (This Node)",
+    "remotePeers": "Federated Remote Peers",
     "mediaStorage": "Media Storage",
     "selectStorage": "-- Select Media Storage --",
     "networkSettingsTitle": "Input Network Settings",
@@ -1074,6 +1083,8 @@
   },
   "destinations": {
     "destination": "Destination",
+    "localServices": "Local Hubs (This Node)",
+    "remotePeers": "Federated Remote Peers",
     "types": {
       "udp": "UDP Multicast (MPEG-TS)",
       "srt": "SRT Stream",

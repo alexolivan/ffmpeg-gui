@@ -276,4 +276,52 @@ class PeerManager:
             except Exception as e:
                 logger.error(f"Error syncing peer node {node.name} (ID: {node.id}): {e}")
 
+    def _send_rpc_to_node(self, db_session, node_id: int, payload: Dict[str, Any]) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+        node = db_session.get(PeerRemoteNode, node_id) if hasattr(db_session, "get") else db_session.query(PeerRemoteNode).get(node_id)
+        if not node:
+            return False, None, "Peer node not found"
+        try:
+            enc_pkg = PeerCrypto.encrypt_payload(payload, node.secret_key)
+            endpoint = f"{node.base_url.rstrip('/')}/api/peer-federation/v1/rpc"
+            headers = {
+                "X-Peer-Key-ID": node.token_id,
+                "Content-Type": "application/json"
+            }
+            resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5)
+            if resp.status_code != 200:
+                return False, None, f"HTTP {resp.status_code}: {resp.text[:100]}"
+            dec_res = PeerCrypto.decrypt_payload(resp.json(), node.secret_key)
+            return True, dec_res, None
+        except Exception as e:
+            return False, None, str(e)
+
+    def acquire_remote_lease(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:
+        success, res, err = self._send_rpc_to_node(db_session, node_id, {
+            "action": "ACQUIRE_LEASE",
+            "service_id": service_id
+        })
+        if not success:
+            return False, err
+        if not res or not res.get("success", True):
+            return False, res.get("error", "Failed to acquire remote lease") if res else "Unknown error"
+        return True, None
+
+    def send_remote_heartbeat(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:
+        success, res, err = self._send_rpc_to_node(db_session, node_id, {
+            "action": "HEARTBEAT",
+            "service_id": service_id
+        })
+        if not success:
+            return False, err
+        return True, None
+
+    def release_remote_lease(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:
+        success, res, err = self._send_rpc_to_node(db_session, node_id, {
+            "action": "RELEASE_LEASE",
+            "service_id": service_id
+        })
+        if not success:
+            return False, err
+        return True, None
+
 peer_manager = PeerManager()

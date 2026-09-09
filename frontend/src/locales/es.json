@@ -56,7 +56,14 @@
   },
   "services": {
     "title": "Servicios",
-    "subtitle": "Instancias de nodo para emisión y procesamiento continuo",
+    "subtitle": "Instancias de procesos de emisión continua y streaming del nodo",
+    "federation": {
+      "title": "Federación y Compartición con Peers",
+      "shareWithPeers": "Compartir con Peers Remotos",
+      "shareWithPeersHelp": "Expone este servicio en el catálogo federado para que peers autorizados puedan descubrirlo y emitir hacia él.",
+      "allowPeerLease": "Permitir Arrendamiento Remoto (Auto-arranque y Keep-alive)",
+      "allowPeerLeaseHelp": "Permite que procesos en peers remotos arranquen y mantengan activo este servicio automáticamente al emitir."
+    },
     "addNewService": "AÑADIR NUEVO SERVICIO",
     "editService": "EDITAR SERVICIO",
     "importProfile": "Importar Perfil",
@@ -939,6 +946,8 @@
     }
   },
   "sources": {
+    "localServices": "Servicios Locales (Este Nodo)",
+    "remotePeers": "Peers Remotos Federados",
     "mediaStorage": "Almacenamiento de Medios",
     "selectStorage": "-- Seleccionar Almacenamiento --",
     "networkSettingsTitle": "Ajustes de Red de Entrada",
@@ -1074,6 +1083,8 @@
   },
   "destinations": {
     "destination": "Destino",
+    "localServices": "Servicios Locales (Este Nodo)",
+    "remotePeers": "Peers Remotos Federados",
     "types": {
       "udp": "UDP Multicast (MPEG-TS)",
       "srt": "Stream SRT",
