@@ -79,5 +79,51 @@ class TestProcessHlsEndpoint(unittest.TestCase):
         res_404 = self.client.get(f"/processes/{proc_id}/hls/nonexistent.m3u8")
         self.assertEqual(res_404.status_code, 404)
 
+    def test_public_hls_path_resolution(self):
+        from database.models import Storage
+        db = self.TestingSessionLocal()
+        
+        # 1. Storage with route_path
+        storage_routed = Storage(name="HLS Routed", path=self.temp_dir, type="hls", route_path="/live_channel")
+        # 2. Storage without route_path
+        storage_unrouted = Storage(name="HLS Unrouted", path=self.temp_dir, type="hls", route_path=None)
+        db.add_all([storage_routed, storage_unrouted])
+        db.commit()
+        db.refresh(storage_routed)
+        db.refresh(storage_unrouted)
+
+        proc_with_route = MediaProcess(
+            name="Service Routed",
+            type="service",
+            output_config={"type": "hls", "storage_id": storage_routed.id, "relative_path": "sub", "hls_stream_name": "ch1"},
+            config={"output_config": {"type": "hls", "storage_id": storage_routed.id, "relative_path": "sub", "hls_stream_name": "ch1"}}
+        )
+        proc_without_route = MediaProcess(
+            name="Service Unrouted",
+            type="service",
+            output_config={"type": "hls", "storage_id": storage_unrouted.id, "relative_path": "sub", "hls_stream_name": "ch2"},
+            config={"output_config": {"type": "hls", "storage_id": storage_unrouted.id, "relative_path": "sub", "hls_stream_name": "ch2"}}
+        )
+        db.add_all([proc_with_route, proc_without_route])
+        db.commit()
+        db.refresh(proc_with_route)
+        db.refresh(proc_without_route)
+        id_routed = proc_with_route.id
+        id_unrouted = proc_without_route.id
+        db.close()
+
+        res = self.client.get("/processes")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        
+        item_routed = next((p for p in data if p["id"] == id_routed), None)
+        item_unrouted = next((p for p in data if p["id"] == id_unrouted), None)
+
+        self.assertIsNotNone(item_routed)
+        self.assertEqual(item_routed.get("public_hls_path"), "/live_channel/sub/ch1.m3u8")
+
+        self.assertIsNotNone(item_unrouted)
+        self.assertIsNone(item_unrouted.get("public_hls_path"))
+
 if __name__ == "__main__":
     unittest.main()

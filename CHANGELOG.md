@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.1] - 2026-09-09
+
+### Fixed
+- **Restricted HLS URL Display Strictly to Configured Storage Route Paths**:
+  - Conditioned the copyable HLS URL badge in `FfmpegPreviewModal.tsx` strictly to instances where the service's target storage has an explicitly configured public `route_path` in Settings.
+  - Automatically hid the HLS URL badge when no public `route_path` is configured, keeping internal preview endpoints discreet and unexposed.
+  - Formatted the copyable public HLS URL with full absolute protocol, host, and port for external player compatibility (VLC, ffplay, OBS).
+  - Added `public_hls_path` resolution in `list_processes` and `list_services` in `backend/main.py`.
+
 ## [2.14.0] - 2026-09-09
 
 ### Added

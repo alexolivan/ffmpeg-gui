@@ -59,7 +59,15 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   } else if (outputConfig.path && outputConfig.path.endsWith('.m3u8')) {
     hlsPlaylistName = outputConfig.path.split('/').pop() || 'stream.m3u8';
   }
-  const hlsStreamUrl = `${API}/processes/${currentProcess.id}/hls/${hlsPlaylistName}`;
+  const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
+  const port = typeof window !== 'undefined' && window.location.port ? `:${window.location.port}` : '';
+  const protocol = typeof window !== 'undefined' && window.location.protocol ? window.location.protocol : 'http:';
+
+  const publicHlsPath = currentProcess.public_hls_path || null;
+  const publicHlsUrl = publicHlsPath ? `${protocol}//${host}${port}${publicHlsPath}` : null;
+
+  const internalHlsUrl = `${API}/processes/${currentProcess.id}/hls/${hlsPlaylistName}`;
+  const activePlayerHlsSrc = publicHlsPath || internalHlsUrl;
 
   const isCrashLoop = currentProcess.status === 'restarting' || (typeof currentProcess.restart_count === 'number' && currentProcess.restart_count > 0 && (currentProcess.status === 'error' || currentProcess.status === 'restarting'));
 
@@ -296,29 +304,31 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
               <div className="flex flex-col justify-center">
                 {isHlsLocal ? (
                   <div className="space-y-2">
-                    <HlsPlayer src={hlsStreamUrl} />
-                    <div className="flex items-center justify-between gap-2 p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
-                      <div className="flex items-center gap-1.5 overflow-hidden">
-                        <span className="text-[10px] uppercase font-mono font-bold text-brand-lime shrink-0">HLS URL:</span>
-                        <span className="text-[11px] font-mono text-[var(--text-secondary)] truncate" title={hlsStreamUrl}>
-                          {hlsStreamUrl}
-                        </span>
+                    <HlsPlayer src={activePlayerHlsSrc} />
+                    {publicHlsUrl && (
+                      <div className="flex items-center justify-between gap-2 p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
+                        <div className="flex items-center gap-1.5 overflow-hidden">
+                          <span className="text-[10px] uppercase font-mono font-bold text-brand-lime shrink-0">HLS URL:</span>
+                          <span className="text-[11px] font-mono text-[var(--text-secondary)] truncate" title={publicHlsUrl}>
+                            {publicHlsUrl}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            copyToClipboard(publicHlsUrl).then((ok) => {
+                              if (ok) {
+                                setCopyHlsSuccess(true);
+                                setTimeout(() => setCopyHlsSuccess(false), 2000);
+                              }
+                            });
+                          }}
+                          className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] text-[10px] font-bold uppercase rounded-lg border border-[var(--glass-border)] transition-colors shrink-0 cursor-pointer"
+                        >
+                          {copyHlsSuccess ? t('common.copied', '¡Copiado!') : t('common.copy', 'Copiar')}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          copyToClipboard(hlsStreamUrl).then((ok) => {
-                            if (ok) {
-                              setCopyHlsSuccess(true);
-                              setTimeout(() => setCopyHlsSuccess(false), 2000);
-                            }
-                          });
-                        }}
-                        className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] text-[10px] font-bold uppercase rounded-lg border border-[var(--glass-border)] transition-colors shrink-0 cursor-pointer"
-                      >
-                        {copyHlsSuccess ? t('common.copied', '¡Copiado!') : t('common.copy', 'Copiar')}
-                      </button>
-                    </div>
+                    )}
                   </div>
                 ) : isHlsRemote && !previewEnabled ? (
                   <div className="aspect-video bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)] flex flex-col items-center justify-center p-6 text-center shadow-xl">
