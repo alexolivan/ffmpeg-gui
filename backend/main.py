@@ -3840,11 +3840,32 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
 # PROCESSES
 # ══════════════════════════════════════════════════════════════════
 
+def resolve_service_public_hls_path(p, hls_storages_map: dict) -> Optional[str]:
+    cfg = p.config if isinstance(p.config, dict) else {}
+    out_cfg = cfg.get('output_config') or p.output_config or {}
+    if out_cfg.get('type') == 'hls' and out_cfg.get('hls_method', 'local') == 'local':
+        s_id = out_cfg.get('storage_id')
+        storage = hls_storages_map.get(s_id)
+        if storage and storage.route_path and storage.route_path.strip():
+            norm_route = "/" + storage.route_path.strip().strip("/")
+            rel_path = (out_cfg.get('relative_path') or '').strip().strip('/')
+            stream_name = (out_cfg.get('hls_stream_name') or 'stream').replace('.m3u8', '')
+            parts = [norm_route]
+            if rel_path:
+                parts.append(rel_path)
+            parts.append(f"{stream_name}.m3u8")
+            return "/" + "/".join(part.strip("/") for part in parts if part.strip())
+    return None
+
 @app.get("/processes")
 def list_processes(db: Session = Depends(get_db)):
     from database.models import ServiceDependency
     processes = db.query(MediaProcess).all()
     from core.dependency_manager import dependency_manager
+
+    hls_storages = {
+        s.id: s for s in db.query(Storage).filter(Storage.type == 'hls', Storage.route_path.isnot(None)).all()
+    }
     
     all_deps = db.query(ServiceDependency).all()
     deps_by_consumer = {}
@@ -3899,6 +3920,7 @@ def list_processes(db: Session = Depends(get_db)):
             "debug_mode": p.debug_mode,
             "log_storage_id": p.log_storage_id,
             "log_file_path": process_manager.get_process_log_path(p.id),
+            "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
         } for p in processes
     ]
 
@@ -5040,6 +5062,9 @@ def get_process_hls(process_id: int, filename: str, db: Session = Depends(get_db
 @app.get("/api/services")
 def list_services(db: Session = Depends(get_db)):
     services = db.query(MediaProcess).all()
+    hls_storages = {
+        s.id: s for s in db.query(Storage).filter(Storage.type == 'hls', Storage.route_path.isnot(None)).all()
+    }
     return [
         {
             "id": s.id,
@@ -5058,6 +5083,7 @@ def list_services(db: Session = Depends(get_db)):
             "last_stop": s.last_stop.isoformat() + "Z" if s.last_stop else None,
             "restart_count": s.restart_count,
             "pending_changes": s.pending_changes,
+            "public_hls_path": resolve_service_public_hls_path(s, hls_storages),
         } for s in services
     ]
 
