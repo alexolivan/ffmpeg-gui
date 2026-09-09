@@ -4955,6 +4955,81 @@ async def get_preview(process_id: int, db: Session = Depends(get_db)):
     )
 
 
+@app.options("/processes/{process_id}/hls/{filename:path}")
+def options_process_hls(process_id: int, filename: str):
+    return Response(
+        status_code=204,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400"
+        }
+    )
+
+
+@app.get("/processes/{process_id}/hls/{filename:path}")
+def get_process_hls(process_id: int, filename: str, db: Session = Depends(get_db)):
+    media_proc = db.query(MediaProcess).get(process_id)
+    if not media_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    cfg = media_proc.config if isinstance(media_proc.config, dict) else {}
+    output_cfg = cfg.get('output_config') or media_proc.output_config or {}
+    if output_cfg.get('type') != 'hls':
+        raise HTTPException(status_code=400, detail="Service output is not HLS")
+
+    if output_cfg.get('hls_method') in ('PUT', 'POST'):
+        raise HTTPException(status_code=400, detail="HLS stream is pushed to a remote destination")
+
+    path = output_cfg.get('path', '')
+    if not path:
+        raise HTTPException(status_code=404, detail="HLS path not configured")
+
+    if path.endswith('.m3u8'):
+        base_dir = os.path.dirname(path)
+    else:
+        base_dir = path
+
+    abs_base = os.path.abspath(base_dir)
+    rel_file = filename.lstrip("/")
+    target_file = os.path.normpath(os.path.join(abs_base, rel_file))
+
+    try:
+        if os.path.commonpath([target_file, abs_base]) != abs_base:
+            raise HTTPException(status_code=403, detail="Forbidden")
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if not os.path.isfile(target_file):
+        raise HTTPException(status_code=404, detail="HLS file not found")
+
+    ext = os.path.splitext(target_file)[1].lower()
+    if ext == ".m3u8":
+        media_type = "application/vnd.apple.mpegurl"
+        cache_control = "no-cache, no-store, must-revalidate"
+    elif ext == ".ts":
+        media_type = "video/MP2T"
+        cache_control = "public, max-age=60"
+    elif ext == ".m4s":
+        media_type = "video/iso.segment"
+        cache_control = "public, max-age=60"
+    else:
+        media_type = "application/octet-stream"
+        cache_control = "public, max-age=60"
+
+    return FileResponse(
+        target_file,
+        media_type=media_type,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Cache-Control": cache_control
+        }
+    )
+
+
 
 
 
