@@ -1269,7 +1269,11 @@
     "anchorCenterRight": "Centre Dreta",
     "anchorBottomLeft": "Inferior Esquerra",
     "anchorBottomCenter": "Inferior Centre",
-    "anchorBottomRight": "Inferior Dreta"
+    "anchorBottomRight": "Inferior Dreta",
+    "advanced": {
+      "enablePreview": "Monitor de Previsualització",
+      "enablePreviewDesc": "Genera miniatures periòdiques en memòria/disc per a la GUI. Desactiva-ho en CPUs ajustades o fluxos en viu exigents per evitar caigudes de velocitat (xruns a ALSA)."
+    }
   },
   "codecs": {
     "videoCodecOutput": "Còdec de Vídeo (Eixida)",
@@ -1405,6 +1409,18 @@
       "hide": "Amagar Logs",
       "waiting": "Servei actiu. Esperant sortida de FFmpeg...",
       "empty": "No hi ha registres disponibles per a aquest procés."
+    },
+    "preview": {
+      "hlsLiveTitle": "Previsualització en Viu (HLS)",
+      "mjpegLiveTitle": "Previsualització en Viu (MJPEG)",
+      "statusAndConfig": "Estat i Configuració del Servei",
+      "bufferingHls": "Connectant amb el flux HLS...",
+      "hlsNotSupported": "El vostre navegador no suporta MediaSource Extensions ni HLS.",
+      "hlsRemoteTitle": "Emissió HLS HTTP Activa (PUT/POST)",
+      "hlsRemoteDesc": "El flux es transfereix directament a una destinació HTTP remota. El monitor de vídeo local està desactivat per maximitzar el rendiment.",
+      "disabledTitle": "Monitor de Vídeo Desactivat",
+      "disabledDesc": "El monitor secundari es troba desactivat per maximitzar el rendiment de la CPU i evitar caigudes en la captura en temps real.",
+      "enableInSettings": "Podeu reactivar-lo a Configuració del Servei → Filtres → Ajustos Avançats."
     }
   }
 }

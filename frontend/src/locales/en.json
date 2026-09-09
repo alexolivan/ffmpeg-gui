@@ -1269,7 +1269,11 @@
     "anchorCenterRight": "Center Right",
     "anchorBottomLeft": "Bottom Left",
     "anchorBottomCenter": "Bottom Center",
-    "anchorBottomRight": "Bottom Right"
+    "anchorBottomRight": "Bottom Right",
+    "advanced": {
+      "enablePreview": "Video Preview Monitor",
+      "enablePreviewDesc": "Generates periodic frame thumbnails in memory/disk for the GUI. Disable on CPU-constrained systems or demanding real-time streams to prevent xruns."
+    }
   },
   "codecs": {
     "videoCodecOutput": "Video Codec (Output)",
@@ -1405,6 +1409,18 @@
       "hide": "Hide Logs",
       "waiting": "Service active. Waiting for FFmpeg output...",
       "empty": "No log entries available for this process."
+    },
+    "preview": {
+      "hlsLiveTitle": "Live Stream Preview (HLS)",
+      "mjpegLiveTitle": "Live Stream Preview (MJPEG)",
+      "statusAndConfig": "Service Status & Configuration",
+      "bufferingHls": "Connecting to HLS stream...",
+      "hlsNotSupported": "Your browser does not support MediaSource Extensions or HLS.",
+      "hlsRemoteTitle": "Remote HTTP HLS Broadcast (PUT/POST)",
+      "hlsRemoteDesc": "Stream is pushed directly to a remote HTTP target. Local video monitor is disabled to maximize performance.",
+      "disabledTitle": "Video Monitor Disabled",
+      "disabledDesc": "The secondary monitor is disabled to maximize CPU performance and prevent real-time capture dropouts.",
+      "enableInSettings": "You can enable it in Service Settings → Filters → Advanced Flags."
     }
   }
 }
