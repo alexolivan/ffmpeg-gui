@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BuildProfile } from '../../components/BuildProfileCard';
 import { isActiveService } from './ServicesView';
+import { PeerStatusCard } from '../cards/PeerStatusCard';
 
 interface DashboardViewProps {
   telemetry: any[];
@@ -60,13 +61,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const { t } = useTranslation();
   const [locatorActive, setLocatorActive] = useState(false);
   const [sslStatus, setSslStatus] = useState<any>(null);
+  const [initialPeers, setInitialPeers] = useState<any[]>([]);
+
+  const fetchPeers = () => {
+    fetch('/api/peers/remote-nodes')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setInitialPeers(data.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            base_url: p.base_url,
+            status: p.status,
+            latency_ms: p.latency_ms,
+            cached_services_count: Array.isArray(p.cached_services) ? p.cached_services.length : 0,
+            last_seen: p.last_seen,
+            last_error: p.last_error
+          })));
+        }
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     fetch('/api/settings/ssl/status')
       .then(res => res.json())
       .then(data => setSslStatus(data))
       .catch(err => console.error(err));
+    fetchPeers();
   }, []);
+
+  const peers = (systemTelemetry?.peers && systemTelemetry.peers.length > 0)
+    ? systemTelemetry.peers
+    : initialPeers;
 
   useEffect(() => {
     let interval: any;
@@ -442,6 +469,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Peer Federation Status */}
+          {peers && peers.length > 0 && (
+            <PeerStatusCard peers={peers} onRefreshAll={fetchPeers} />
+          )}
 
           {/* Upcoming Scheduled Tasks */}
           <div className="glass-card p-4 border-purple-500/10 bg-purple-500/2 space-y-3">

@@ -778,6 +778,12 @@
     "start": "Iniciar",
     "stop": "Aturar",
     "restart": "Reiniciar",
+    "peerStatus": {
+      "title": "ESTAT DE PEERS",
+      "online": "connectats",
+      "servicesShared": "serveis compartits",
+      "syncTooltip": "Refrescar connexió i catàleg"
+    },
     "upcomingTasksTitle": "Pròximes Execucions",
     "scheduledCount": "programades",
     "noUpcomingTasks": "No hi ha tasques programades pròximament.",

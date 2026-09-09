@@ -778,6 +778,12 @@
     "start": "Start",
     "stop": "Stop",
     "restart": "Restart",
+    "peerStatus": {
+      "title": "PEER STATUS",
+      "online": "online",
+      "servicesShared": "services shared",
+      "syncTooltip": "Refresh connection & catalog"
+    },
     "upcomingTasksTitle": "Upcoming Tasks",
     "scheduledCount": "scheduled",
     "noUpcomingTasks": "No upcoming tasks scheduled in the near future.",
