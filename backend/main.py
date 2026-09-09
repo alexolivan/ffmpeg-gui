@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, Query, Body
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, Query, Body, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -7,6 +7,7 @@ import json
 import copy
 import shutil
 import uuid
+import socket
 import shlex
 import platform
 import configparser
@@ -17,7 +18,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
 from database.db import init_db, get_db, SessionLocal
-from database.models import FfmpegBuild, SoftwareBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
+from database.models import FfmpegBuild, SoftwareBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage, PeerInboundKey, PeerRemoteNode, SystemSettings
+from core.peer_manager import peer_manager
+from core.peer_crypto import PeerCrypto
 from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
@@ -294,6 +297,8 @@ class ServiceCreate(BaseModel):
     config: dict
     is_active: Optional[bool] = True
     alias: Optional[str] = None
+    is_shared_with_peers: Optional[bool] = False
+    allow_peer_lease: Optional[bool] = False
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -315,6 +320,8 @@ class ServiceUpdate(BaseModel):
     config: Optional[dict] = None
     is_active: Optional[bool] = None
     alias: Optional[str] = None
+    is_shared_with_peers: Optional[bool] = None
+    allow_peer_lease: Optional[bool] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -518,6 +525,36 @@ class StorageTest(BaseModel):
 
 class SdkMigrateRequest(BaseModel):
     target_storage_id: int
+
+class PeerInboundKeyCreate(BaseModel):
+    alias: str
+    endpoint: str
+    allowed_services: Optional[List[Any]] = None
+
+class PeerInboundKeyUpdate(BaseModel):
+    alias: Optional[str] = None
+    status: Optional[str] = None
+    allowed_services: Optional[List[Any]] = None
+
+class PeerRemoteNodeCreate(BaseModel):
+    join_token: str
+    name: Optional[str] = None
+
+def verify_token(request: Request = None, db: Session = Depends(get_db)) -> str:
+    import secrets
+    settings = db.query(SystemSettings).first()
+    if not settings or not settings.gui_password:
+        return "admin"
+    if request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header:
+            token = auth_header.replace("Bearer ", "").strip()
+            if secrets.compare_digest(token, settings.gui_password):
+                return "admin"
+        query_token = request.query_params.get("token")
+        if query_token and secrets.compare_digest(query_token, settings.gui_password):
+            return "admin"
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 # ── System Settings & Auth ────────────────────────────────────────
@@ -2607,10 +2644,11 @@ async def telemetry_broadcast_loop():
             exec_data = []
             task_stats = {}
             storages_data = []
+            peers_data = []
             
             with SessionLocal() as db:
                 from core.dependency_manager import dependency_manager
-                from database.models import ServiceDependency
+                from database.models import ServiceDependency, PeerRemoteNode
                 all_deps = db.query(ServiceDependency).all()
                 deps_by_proc = {}
                 for d in all_deps:
@@ -2667,8 +2705,24 @@ async def telemetry_broadcast_loop():
                         "debug_mode": p.debug_mode,
                         "log_storage_id": p.log_storage_id,
                         "log_file_path": process_manager.get_process_log_path(p.id),
+                        "is_shared_with_peers": bool(p.is_shared_with_peers),
+                        "allow_peer_lease": bool(p.allow_peer_lease),
                         "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
                     } for p in processes
+                ]
+
+                peer_nodes = db.query(PeerRemoteNode).all()
+                peers_data = [
+                    {
+                        "id": p.id,
+                        "name": p.name,
+                        "base_url": p.base_url,
+                        "status": p.status,
+                        "latency_ms": p.latency_ms,
+                        "cached_services_count": len(p.cached_services_json) if p.cached_services_json else 0,
+                        "last_seen": p.last_seen.isoformat() + "Z" if p.last_seen else None,
+                        "last_error": p.last_error
+                    } for p in peer_nodes
                 ]
 
                 active_executions = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "pending"])).all()
@@ -2788,11 +2842,25 @@ async def telemetry_broadcast_loop():
                 "upcoming_tasks": upcoming_data,
                 "system": system_data,
                 "task_stats": task_stats,
-                "storages": storages_data
+                "storages": storages_data,
+                "peers": peers_data
             })
         except Exception as e:
             logger.exception(f"Error in telemetry broadcast loop: {e}")
         await asyncio.sleep(1)
+
+def _run_peer_sync_cycle():
+    with SessionLocal() as db:
+        peer_manager.sync_all_remote_nodes(db)
+        peer_manager.purge_expired_leases(db)
+
+async def peer_federation_sync_loop():
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await asyncio.to_thread(_run_peer_sync_cycle)
+        except Exception as e:
+            logger.error(f"Error in peer federation sync loop: {e}")
 
 async def auto_start_services():
     config_path = os.environ.get("CONFIG_FILE_PATH")
@@ -3115,6 +3183,7 @@ async def startup_event():
 
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
+    asyncio.create_task(peer_federation_sync_loop())
     asyncio.create_task(task_manager.execute_on_boot_cleanup())
     await scheduler.start()
 
@@ -5120,6 +5189,8 @@ def list_services(db: Session = Depends(get_db)):
             "last_stop": s.last_stop.isoformat() + "Z" if s.last_stop else None,
             "restart_count": s.restart_count,
             "pending_changes": s.pending_changes,
+            "is_shared_with_peers": bool(s.is_shared_with_peers),
+            "allow_peer_lease": bool(s.allow_peer_lease),
             "public_hls_path": resolve_service_public_hls_path(s, hls_storages),
         } for s in services
     ]
@@ -5131,7 +5202,9 @@ def create_service(svc_in: ServiceCreate, db: Session = Depends(get_db)):
         service_type=svc_in.service_type,
         config=svc_in.config,
         is_active=svc_in.is_active,
-        alias=svc_in.alias
+        alias=svc_in.alias,
+        is_shared_with_peers=bool(svc_in.is_shared_with_peers) if svc_in.is_shared_with_peers is not None else False,
+        allow_peer_lease=bool(svc_in.allow_peer_lease) if svc_in.allow_peer_lease is not None else False
     )
     db.add(svc)
     db.commit()
@@ -5162,6 +5235,10 @@ def update_service(service_id: int, svc_in: ServiceUpdate, db: Session = Depends
         svc.is_active = svc_in.is_active
     if svc_in.alias is not None:
         svc.alias = svc_in.alias
+    if svc_in.is_shared_with_peers is not None:
+        svc.is_shared_with_peers = svc_in.is_shared_with_peers
+    if svc_in.allow_peer_lease is not None:
+        svc.allow_peer_lease = svc_in.allow_peer_lease
     db.commit()
     db.refresh(svc)
     return svc
@@ -6720,6 +6797,250 @@ def delete_software_icon(software_type: str, db: Session = Depends(get_db)):
     base_dir = storage.path if storage else os.path.abspath("data")
     deleted = software_manager.delete_engine_icon(software_type, base_dir)
     return {"success": True, "deleted": deleted}
+
+
+# ══════════════════════════════════════════════════════════════════
+# PEER FEDERATION & AUXILIARY SERVICES (v2.0)
+# ══════════════════════════════════════════════════════════════════
+
+def serialize_peer_inbound_key(k: PeerInboundKey) -> dict:
+    return {
+        "id": k.id,
+        "alias": k.alias,
+        "token_id": k.token_id,
+        "allowed_services": k.allowed_services,
+        "status": k.status,
+        "created_at": k.created_at.isoformat() + "Z" if k.created_at else None,
+        "last_used_at": k.last_used_at.isoformat() + "Z" if k.last_used_at else None,
+    }
+
+def serialize_peer_remote_node(node: PeerRemoteNode) -> dict:
+    return {
+        "id": node.id,
+        "name": node.name,
+        "base_url": node.base_url,
+        "token_id": node.token_id,
+        "status": node.status,
+        "latency_ms": node.latency_ms,
+        "catalog_version": node.catalog_version,
+        "cached_services_json": node.cached_services_json or [],
+        "last_seen": node.last_seen.isoformat() + "Z" if node.last_seen else None,
+        "last_error": node.last_error,
+        "created_at": node.created_at.isoformat() + "Z" if node.created_at else None,
+    }
+
+@app.post("/api/peer-federation/v1/rpc")
+async def peer_federation_rpc(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_peer_key_id: Optional[str] = Header(None, alias="X-Peer-Key-ID")
+):
+    if not x_peer_key_id:
+        raise HTTPException(status_code=400, detail="Missing X-Peer-Key-ID header")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+
+    status_code, res = peer_manager.handle_inbound_rpc(
+        token_id=x_peer_key_id,
+        encrypted_pkg=body,
+        db_session=db,
+        process_manager=process_manager
+    )
+    if status_code != 200:
+        raise HTTPException(status_code=status_code, detail=res.get("detail", "Peer RPC error"))
+    return res
+
+@app.get("/api/peers/candidate-endpoints")
+def get_peer_candidate_endpoints(
+    request: Request,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    settings = db.query(SystemSettings).first()
+    node_name = settings.node_name if settings and settings.node_name else socket.gethostname()
+
+    scheme = "http"
+    if request.headers.get("x-forwarded-proto"):
+        scheme = request.headers.get("x-forwarded-proto")
+    elif request.url.scheme:
+        scheme = request.url.scheme
+
+    port = None
+    if request.url.port:
+        port = request.url.port
+    elif os.environ.get("ACTIVE_PORT"):
+        try:
+            port = int(os.environ.get("ACTIVE_PORT"))
+        except ValueError:
+            pass
+    if not port:
+        port = 443 if scheme == "https" else 8000
+
+    candidates = []
+    try:
+        addrs = psutil.net_if_addrs()
+        for iface_name, iface_addrs in addrs.items():
+            for addr in iface_addrs:
+                if getattr(addr, "family", None) == socket.AF_INET:
+                    ip = addr.address
+                    if ip.startswith("127."):
+                        continue
+                    candidates.append({
+                        "interface": iface_name,
+                        "ip": ip,
+                        "url": f"{scheme}://{ip}:{port}"
+                    })
+    except Exception as e:
+        logger.warning(f"Failed to query network interfaces: {e}")
+
+    if not candidates:
+        candidates.append({
+            "interface": "lo",
+            "ip": "127.0.0.1",
+            "url": f"{scheme}://127.0.0.1:{port}"
+        })
+
+    return {
+        "node_name": node_name,
+        "port": port,
+        "scheme": scheme,
+        "candidates": candidates
+    }
+
+# ── Inbound Keys ──────────────────────────────────────────────────
+
+@app.get("/api/peers/inbound-keys")
+def list_peer_inbound_keys(db: Session = Depends(get_db)):
+    keys = db.query(PeerInboundKey).all()
+    return [serialize_peer_inbound_key(k) for k in keys]
+
+@app.post("/api/peers/inbound-keys")
+def create_peer_inbound_key(req: PeerInboundKeyCreate, db: Session = Depends(get_db)):
+    if not req.alias or not req.alias.strip():
+        raise HTTPException(status_code=400, detail="Alias cannot be empty")
+    if not req.endpoint or not req.endpoint.strip():
+        raise HTTPException(status_code=400, detail="Endpoint cannot be empty")
+
+    settings = db.query(SystemSettings).first()
+    node_name = settings.node_name if settings and settings.node_name else socket.gethostname()
+
+    token_id, secret_key = PeerCrypto.generate_keypair()
+    join_token = PeerCrypto.create_join_token(
+        node_name=node_name,
+        endpoint=req.endpoint.strip(),
+        token_id=token_id,
+        secret_key_b64=secret_key,
+        allowed_services=req.allowed_services
+    )
+
+    inbound_key = PeerInboundKey(
+        alias=req.alias.strip(),
+        token_id=token_id,
+        secret_key=secret_key,
+        allowed_services=req.allowed_services,
+        status="active"
+    )
+    db.add(inbound_key)
+    db.commit()
+    db.refresh(inbound_key)
+
+    return {
+        "id": inbound_key.id,
+        "alias": inbound_key.alias,
+        "token_id": inbound_key.token_id,
+        "join_token": join_token,
+        "status": inbound_key.status,
+        "created_at": inbound_key.created_at.isoformat() + "Z" if inbound_key.created_at else None
+    }
+
+@app.put("/api/peers/inbound-keys/{key_id}")
+def update_peer_inbound_key(key_id: int, req: PeerInboundKeyUpdate, db: Session = Depends(get_db)):
+    key = db.query(PeerInboundKey).get(key_id)
+    if not key:
+        raise HTTPException(status_code=404, detail="Inbound key not found")
+    if req.alias is not None:
+        if not req.alias.strip():
+            raise HTTPException(status_code=400, detail="Alias cannot be empty")
+        key.alias = req.alias.strip()
+    if req.status is not None:
+        if req.status not in ["active", "suspended", "revoked"]:
+            raise HTTPException(status_code=400, detail="Invalid status")
+        key.status = req.status
+    if req.allowed_services is not None:
+        key.allowed_services = req.allowed_services
+    db.commit()
+    db.refresh(key)
+    return serialize_peer_inbound_key(key)
+
+@app.delete("/api/peers/inbound-keys/{key_id}")
+def delete_peer_inbound_key(key_id: int, db: Session = Depends(get_db)):
+    key = db.query(PeerInboundKey).get(key_id)
+    if not key:
+        raise HTTPException(status_code=404, detail="Inbound key not found")
+    db.delete(key)
+    db.commit()
+    return {"detail": "Inbound key deleted"}
+
+# ── Remote Peer Nodes ─────────────────────────────────────────────
+
+@app.get("/api/peers/remote-nodes")
+def list_peer_remote_nodes(db: Session = Depends(get_db)):
+    nodes = db.query(PeerRemoteNode).all()
+    return [serialize_peer_remote_node(n) for n in nodes]
+
+@app.post("/api/peers/remote-nodes")
+def create_peer_remote_node(req: PeerRemoteNodeCreate, db: Session = Depends(get_db)):
+    try:
+        token_data = PeerCrypto.parse_join_token(req.join_token)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid join token: {str(e)}")
+
+    existing = db.query(PeerRemoteNode).filter(PeerRemoteNode.token_id == token_data["token_id"]).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Remote peer node with token ID {token_data['token_id']} already exists")
+
+    node_name = req.name.strip() if req.name and req.name.strip() else token_data["name"]
+    node = PeerRemoteNode(
+        name=node_name,
+        base_url=token_data["endpoint"],
+        token_id=token_data["token_id"],
+        secret_key=token_data["secret_key"],
+        status="offline"
+    )
+    db.add(node)
+    db.commit()
+    db.refresh(node)
+
+    try:
+        peer_manager.sync_remote_node(node.id, db)
+        db.refresh(node)
+    except Exception as e:
+        logger.warning(f"Initial sync failed for peer node {node.id}: {e}")
+
+    return serialize_peer_remote_node(node)
+
+@app.post("/api/peers/remote-nodes/{node_id}/sync")
+def sync_peer_remote_node_endpoint(node_id: int, db: Session = Depends(get_db)):
+    node = db.query(PeerRemoteNode).get(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Remote node not found")
+    peer_manager.sync_remote_node(node.id, db)
+    db.refresh(node)
+    return serialize_peer_remote_node(node)
+
+@app.delete("/api/peers/remote-nodes/{node_id}")
+def delete_peer_remote_node(node_id: int, db: Session = Depends(get_db)):
+    node = db.query(PeerRemoteNode).get(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Remote node not found")
+    db.delete(node)
+    db.commit()
+    return {"detail": "Remote node deleted"}
 
 
 # Mounting static files and SPA fallback

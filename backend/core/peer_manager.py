@@ -100,15 +100,30 @@ class PeerManager:
 
     def handle_inbound_rpc(
         self,
-        token_id: str,
-        encrypted_pkg: Dict[str, str],
-        db_session,
-        process_manager=None
+        token_id=None,
+        encrypted_pkg=None,
+        db_session=None,
+        process_manager=None,
+        **kwargs
     ) -> Tuple[int, Dict[str, Any]]:
         """
         Handles incoming RPC request from a peer client.
+        Supports both (token_id, encrypted_pkg, db_session) and (db_session, token_id, encrypted_pkg),
+        as well as keyword arguments.
         Returns: (http_status_code, response_dict)
         """
+        if db_session is None and "db" in kwargs:
+            db_session = kwargs.pop("db")
+        if encrypted_pkg is None and "encrypted_body" in kwargs:
+            encrypted_pkg = kwargs.pop("encrypted_body")
+
+        if hasattr(token_id, "query"):
+            actual_db = token_id
+            actual_token = encrypted_pkg
+            actual_pkg = db_session
+            db_session = actual_db
+            token_id = actual_token
+            encrypted_pkg = actual_pkg
         inbound_key = db_session.query(PeerInboundKey).filter(PeerInboundKey.token_id == token_id).first()
         if not inbound_key:
             return 401, {"detail": "Invalid or unknown Peer Token ID"}
@@ -190,12 +205,25 @@ class PeerManager:
         encrypted_res = PeerCrypto.encrypt_payload(res_payload, inbound_key.secret_key)
         return 200, encrypted_res
 
-    def sync_remote_node(self, node_id: int, db_session) -> Tuple[bool, Optional[str]]:
+    def sync_remote_node(self, arg1, arg2) -> Tuple[bool, Optional[str]]:
         """
         Synchronizes a registered remote peer node by issuing a DISCOVER_SERVICES RPC.
+        Supports both (node_id_or_node, db_session) and (db_session, node_id_or_node).
         Returns: (success: bool, error_message: Optional[str])
         """
-        node = db_session.query(PeerRemoteNode).get(node_id)
+        if hasattr(arg1, "query"):
+            db_session = arg1
+            node_target = arg2
+        else:
+            node_target = arg1
+            db_session = arg2
+
+        if isinstance(node_target, int):
+            node = db_session.query(PeerRemoteNode).get(node_target)
+        elif hasattr(node_target, "id"):
+            node = node_target
+        else:
+            node = db_session.query(PeerRemoteNode).get(int(node_target))
         if not node:
             return False, "Node not found"
 
