@@ -63,7 +63,7 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const port = typeof window !== 'undefined' && window.location.port ? `:${window.location.port}` : '';
   const protocol = typeof window !== 'undefined' && window.location.protocol ? window.location.protocol : 'http:';
 
-  const publicHlsPath = currentProcess.public_hls_path || null;
+  const publicHlsPath = currentProcess?.public_hls_path || selectedProcess?.public_hls_path || null;
   const publicHlsUrl = publicHlsPath ? `${protocol}//${host}${port}${publicHlsPath}` : null;
 
   const internalHlsUrl = `${API}/processes/${currentProcess.id}/hls/${hlsPlaylistName}`;

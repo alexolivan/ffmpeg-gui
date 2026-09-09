@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.14.2] - 2026-09-09
+
+### Fixed
+- **HLS Public URL Display in Telemetry Broadcast & Storage Route Resolution**:
+  - Added `public_hls_path` resolution in `telemetry_broadcast_loop` over WebSocket (`/ws/telemetry`), preventing live telemetry updates from wiping out the computed public HLS URL in `currentProcess`.
+  - Added fallback to `selectedProcess?.public_hls_path` in `FfmpegPreviewModal.tsx` for immediate URL badge display.
+  - Strengthened `resolve_service_public_hls_path` in `backend/main.py`:
+    - Robust type coercion for `storage_id` (supporting integer, string, and type coercion).
+    - Fallback storage detection by matching output file path prefix against configured storage paths.
+    - Automatic relative path derivation if `relative_path` is not explicitly set in config.
+    - Automatic stream name extraction from playlist filenames.
+
 ## [2.14.1] - 2026-09-09
 
 ### Fixed

@@ -2532,6 +2532,61 @@ manager = ConnectionManager()
 build_ws_connections: dict[int, list[WebSocket]] = {}
 
 
+def get_routed_hls_storages(db: Session) -> dict:
+    storages = db.query(Storage).filter(Storage.route_path.isnot(None)).all()
+    mapped = {}
+    for s in storages:
+        if s.route_path and s.route_path.strip():
+            mapped[s.id] = s
+            mapped[str(s.id)] = s
+    return mapped
+
+def resolve_service_public_hls_path(p, hls_storages_map: dict) -> Optional[str]:
+    if isinstance(p, dict):
+        cfg = p.get('config') or {}
+        out_cfg = cfg.get('output_config') or p.get('output_config') or {}
+    else:
+        cfg = p.config if isinstance(p.config, dict) else {}
+        out_cfg = cfg.get('output_config') or getattr(p, 'output_config', None) or {}
+    if not isinstance(out_cfg, dict):
+        return None
+    if out_cfg.get('type') == 'hls' and out_cfg.get('hls_method', 'local') == 'local':
+        s_id = out_cfg.get('storage_id')
+        storage = hls_storages_map.get(s_id)
+        if not storage and s_id is not None:
+            try:
+                storage = hls_storages_map.get(int(s_id)) or hls_storages_map.get(str(s_id))
+            except (ValueError, TypeError):
+                pass
+
+        out_path = out_cfg.get('path')
+        if not storage and out_path:
+            for s in hls_storages_map.values():
+                if s and s.path and out_path.startswith(s.path):
+                    storage = s
+                    break
+
+        if storage and storage.route_path and storage.route_path.strip():
+            norm_route = "/" + storage.route_path.strip().strip("/")
+            rel_path = (out_cfg.get('relative_path') or '').strip().strip('/')
+
+            if not rel_path and out_path and storage.path and out_path.startswith(storage.path):
+                rel_from_storage = os.path.relpath(out_path, storage.path)
+                rel_dir = os.path.dirname(rel_from_storage).strip().strip('/')
+                rel_path = rel_dir if rel_dir and rel_dir != '.' else ''
+
+            stream_name = out_cfg.get('hls_stream_name')
+            if not stream_name and out_path and out_path.endswith('.m3u8'):
+                stream_name = os.path.basename(out_path).replace('.m3u8', '')
+            stream_name = (stream_name or 'stream').replace('.m3u8', '')
+
+            parts = [norm_route]
+            if rel_path:
+                parts.append(rel_path)
+            parts.append(f"{stream_name}.m3u8")
+            return "/" + "/".join(part.strip("/") for part in parts if part.strip())
+    return None
+
 # ── Telemetry WebSocket ──────────────────────────────────────────
 
 @app.websocket("/ws/telemetry")
@@ -2567,6 +2622,8 @@ async def telemetry_broadcast_loop():
                             "provider_name": d.provider_service.name if d.provider_service else f"Service #{d.provider_service_id}",
                             "is_auto_managed": d.is_auto_managed
                         })
+
+                hls_storages = get_routed_hls_storages(db)
 
                 processes = db.query(MediaProcess).all()
                 processes_data = [
@@ -2610,6 +2667,7 @@ async def telemetry_broadcast_loop():
                         "debug_mode": p.debug_mode,
                         "log_storage_id": p.log_storage_id,
                         "log_file_path": process_manager.get_process_log_path(p.id),
+                        "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
                     } for p in processes
                 ]
 
@@ -3840,32 +3898,13 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
 # PROCESSES
 # ══════════════════════════════════════════════════════════════════
 
-def resolve_service_public_hls_path(p, hls_storages_map: dict) -> Optional[str]:
-    cfg = p.config if isinstance(p.config, dict) else {}
-    out_cfg = cfg.get('output_config') or p.output_config or {}
-    if out_cfg.get('type') == 'hls' and out_cfg.get('hls_method', 'local') == 'local':
-        s_id = out_cfg.get('storage_id')
-        storage = hls_storages_map.get(s_id)
-        if storage and storage.route_path and storage.route_path.strip():
-            norm_route = "/" + storage.route_path.strip().strip("/")
-            rel_path = (out_cfg.get('relative_path') or '').strip().strip('/')
-            stream_name = (out_cfg.get('hls_stream_name') or 'stream').replace('.m3u8', '')
-            parts = [norm_route]
-            if rel_path:
-                parts.append(rel_path)
-            parts.append(f"{stream_name}.m3u8")
-            return "/" + "/".join(part.strip("/") for part in parts if part.strip())
-    return None
-
 @app.get("/processes")
 def list_processes(db: Session = Depends(get_db)):
     from database.models import ServiceDependency
     processes = db.query(MediaProcess).all()
     from core.dependency_manager import dependency_manager
 
-    hls_storages = {
-        s.id: s for s in db.query(Storage).filter(Storage.type == 'hls', Storage.route_path.isnot(None)).all()
-    }
+    hls_storages = get_routed_hls_storages(db)
     
     all_deps = db.query(ServiceDependency).all()
     deps_by_consumer = {}
@@ -5062,9 +5101,7 @@ def get_process_hls(process_id: int, filename: str, db: Session = Depends(get_db
 @app.get("/api/services")
 def list_services(db: Session = Depends(get_db)):
     services = db.query(MediaProcess).all()
-    hls_storages = {
-        s.id: s for s in db.query(Storage).filter(Storage.type == 'hls', Storage.route_path.isnot(None)).all()
-    }
+    hls_storages = get_routed_hls_storages(db)
     return [
         {
             "id": s.id,
