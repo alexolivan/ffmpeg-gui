@@ -48,6 +48,7 @@ interface ProcessConfig {
       hwaccel_output_format: string;
       probesize: string;
       thread_queue_size: number;
+      enable_preview?: boolean | null;
     };
     highpass?: string;
     lowpass?: string;
@@ -386,6 +387,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             hwaccel_output_format: filterCfg.advanced?.hwaccel_output_format ?? '',
             probesize: filterCfg.advanced?.probesize ?? '',
             thread_queue_size: filterCfg.advanced?.thread_queue_size ?? 0,
+            enable_preview: filterCfg.advanced?.enable_preview ?? null,
           },
           highpass: filterCfg.highpass || '',
           lowpass: filterCfg.lowpass || '',
@@ -494,6 +496,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         advanced: {
           realtime: null, stream_loop: null, threads: 0,
           hwaccel: 'none', hwaccel_output_format: '', probesize: '', thread_queue_size: 0,
+          enable_preview: null,
         },
         highpass: '',
         lowpass: '',
@@ -1607,11 +1610,13 @@ const hasNDICodecIncompatibility = isNDIOutput && (
 
               <AdvancedFlagsFormSection
                 inputType={config.input1.type}
+                outputType={config.output.type}
                 realtime={config.filters.advanced.realtime}
                 stream_loop={config.filters.advanced.stream_loop}
                 threads={config.filters.advanced.threads}
                 probesize={config.filters.advanced.probesize}
                 thread_queue_size={config.filters.advanced.thread_queue_size}
+                enable_preview={config.filters.advanced.enable_preview}
                 onChange={handleAdvancedFlagsChange}
               />
             </div>

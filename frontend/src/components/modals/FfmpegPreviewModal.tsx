@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { hasVideo as hasVideoHelper } from '../cards/UnifiedServiceCard';
 import { EngineLogo } from '../common/EngineLogo';
+import { HlsPlayer } from '../common/HlsPlayer';
 import { copyToClipboard } from '../../utils/clipboard';
 
 interface FfmpegPreviewModalProps {
@@ -37,12 +38,35 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
   const isVideoProcess = hasVideoHelper(currentProcess);
   const isRunning = currentProcess.status === 'running';
+
+  const outputConfig = currentProcess.config?.output_config || currentProcess.output_config || {};
+  const isHls = outputConfig.type === 'hls';
+  const isHlsRemote = isHls && (outputConfig.hls_method === 'PUT' || outputConfig.hls_method === 'POST');
+  const isHlsLocal = isHls && !isHlsRemote;
+
+  const advancedCfg = currentProcess.config?.filter_config?.advanced || currentProcess.filter_config?.advanced || {};
+  const explicitPreview = advancedCfg.enable_preview !== undefined && advancedCfg.enable_preview !== null
+    ? advancedCfg.enable_preview
+    : (outputConfig.enable_preview !== undefined && outputConfig.enable_preview !== null ? outputConfig.enable_preview : null);
+
+  const previewEnabled = explicitPreview !== null ? !!explicitPreview : (!isHls);
   const showPreview = isRunning && isVideoProcess;
+
+  let hlsPlaylistName = 'stream.m3u8';
+  if (outputConfig.hls_stream_name) {
+    const clean = outputConfig.hls_stream_name.replace(/\.m3u8$/, '');
+    hlsPlaylistName = `${clean}.m3u8`;
+  } else if (outputConfig.path && outputConfig.path.endsWith('.m3u8')) {
+    hlsPlaylistName = outputConfig.path.split('/').pop() || 'stream.m3u8';
+  }
+  const hlsStreamUrl = `${API}/processes/${currentProcess.id}/hls/${hlsPlaylistName}`;
+
   const isCrashLoop = currentProcess.status === 'restarting' || (typeof currentProcess.restart_count === 'number' && currentProcess.restart_count > 0 && (currentProcess.status === 'error' || currentProcess.status === 'restarting'));
 
   const [progressData, setProgressData] = useState<any>(null);
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [copyHlsSuccess, setCopyHlsSuccess] = useState(false);
   const [showDiagnosticLogs, setShowDiagnosticLogs] = useState<boolean>(false);
 
   // Automatically expand diagnostic logs if the process is in an error or restarting state
@@ -161,7 +185,11 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 </span>
               </div>
               <p className="text-[var(--text-secondary)] text-xs uppercase tracking-wider mt-0.5">
-                {showPreview ? 'Live Stream Preview (MJPEG)' : 'Service Status & Configuration'}
+                {isHlsLocal
+                  ? t('modals.preview.hlsLiveTitle', 'Live Stream Preview (HLS)')
+                  : (previewEnabled
+                    ? t('modals.preview.mjpegLiveTitle', 'Live Stream Preview (MJPEG)')
+                    : t('modals.preview.statusAndConfig', 'Service Status & Configuration'))}
               </p>
             </div>
           </div>
@@ -264,18 +292,72 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 </div>
               </div>
 
-              {/* Col 2: Live Preview */}
+              {/* Col 2: Live Preview or Informative Card */}
               <div className="flex flex-col justify-center">
-                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
-                  <img
-                    src={`${API}/processes/${currentProcess.id}/preview`}
-                    alt="Live Preview"
-                    className="max-h-full max-w-full object-contain"
-                  />
-                  <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-brand-lime text-black text-[8px] font-black rounded tracking-wider uppercase animate-pulse">
-                    LIVE
+                {isHlsLocal ? (
+                  <div className="space-y-2">
+                    <HlsPlayer src={hlsStreamUrl} />
+                    <div className="flex items-center justify-between gap-2 p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
+                      <div className="flex items-center gap-1.5 overflow-hidden">
+                        <span className="text-[10px] uppercase font-mono font-bold text-brand-lime shrink-0">HLS URL:</span>
+                        <span className="text-[11px] font-mono text-[var(--text-secondary)] truncate" title={hlsStreamUrl}>
+                          {hlsStreamUrl}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          copyToClipboard(hlsStreamUrl).then((ok) => {
+                            if (ok) {
+                              setCopyHlsSuccess(true);
+                              setTimeout(() => setCopyHlsSuccess(false), 2000);
+                            }
+                          });
+                        }}
+                        className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] text-[10px] font-bold uppercase rounded-lg border border-[var(--glass-border)] transition-colors shrink-0 cursor-pointer"
+                      >
+                        {copyHlsSuccess ? t('common.copied', '¡Copiado!') : t('common.copy', 'Copiar')}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : isHlsRemote && !previewEnabled ? (
+                  <div className="aspect-video bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)] flex flex-col items-center justify-center p-6 text-center shadow-xl">
+                    <span className="text-3xl mb-2">🌐</span>
+                    <h4 className="text-xs uppercase font-bold text-brand-orange tracking-wider">
+                      {t('modals.preview.hlsRemoteTitle', 'Emisión HLS HTTP Activa (PUT/POST)')}
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-1 max-w-sm">
+                      {t('modals.preview.hlsRemoteDesc', 'El flujo se transfiere directamente a un destino HTTP remoto. El monitor de vídeo local está desactivado para maximizar el rendimiento.')}
+                    </p>
+                    <div className="mt-3 px-3 py-1.5 bg-black/40 rounded-lg border border-white/5 font-mono text-[10px] text-zinc-300 max-w-full truncate">
+                      {outputConfig.path || 'HTTP Ingest URL'}
+                    </div>
+                  </div>
+                ) : previewEnabled ? (
+                  <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
+                    <img
+                      src={`${API}/processes/${currentProcess.id}/preview`}
+                      alt="Live Preview"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                    <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-brand-lime text-black text-[8px] font-black rounded tracking-wider uppercase animate-pulse">
+                      LIVE
+                    </div>
+                  </div>
+                ) : (
+                  <div className="aspect-video bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)] flex flex-col items-center justify-center p-6 text-center shadow-xl">
+                    <span className="text-3xl mb-2">⚡</span>
+                    <h4 className="text-xs uppercase font-bold text-brand-lime tracking-wider">
+                      {t('modals.preview.disabledTitle', 'Monitor de Vídeo Desactivado')}
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-1 max-w-sm">
+                      {t('modals.preview.disabledDesc', 'El monitor secundario se encuentra desactivado para maximizar el rendimiento de la CPU y evitar caídas en la captura en tiempo real.')}
+                    </p>
+                    <span className="text-[10px] text-zinc-400 mt-2 font-mono">
+                      {t('modals.preview.enableInSettings', 'Puedes reactivarlo en Configuración del Servicio → Filtros → Ajustes Avanzados.')}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           ) : (

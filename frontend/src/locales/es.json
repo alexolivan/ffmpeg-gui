@@ -1269,7 +1269,11 @@
     "anchorCenterRight": "Centro Derecha",
     "anchorBottomLeft": "Inferior Izquierda",
     "anchorBottomCenter": "Inferior Centro",
-    "anchorBottomRight": "Inferior Derecha"
+    "anchorBottomRight": "Inferior Derecha",
+    "advanced": {
+      "enablePreview": "Monitor de Previsualización",
+      "enablePreviewDesc": "Genera miniaturas periódicas en memoria/disco para la GUI. Desactívalo en CPUs ajustadas o flujos en vivo exigentes para evitar caídas de velocidad (xruns en ALSA)."
+    }
   },
   "codecs": {
     "videoCodecOutput": "Códec de Vídeo (Salida)",
@@ -1405,6 +1409,18 @@
       "hide": "Ocultar Logs",
       "waiting": "Servicio activo. Esperando salida de FFmpeg...",
       "empty": "No hay registros disponibles para este proceso."
+    },
+    "preview": {
+      "hlsLiveTitle": "Previsualización en Vivo (HLS)",
+      "mjpegLiveTitle": "Previsualización en Vivo (MJPEG)",
+      "statusAndConfig": "Estado y Configuración del Servicio",
+      "bufferingHls": "Conectando con el flujo HLS...",
+      "hlsNotSupported": "Tu navegador no soporta MediaSource Extensions ni HLS.",
+      "hlsRemoteTitle": "Emisión HLS HTTP Activa (PUT/POST)",
+      "hlsRemoteDesc": "El flujo se transfiere directamente a un destino HTTP remoto. El monitor de vídeo local está desactivado para maximizar el rendimiento.",
+      "disabledTitle": "Monitor de Vídeo Desactivado",
+      "disabledDesc": "El monitor secundario se encuentra desactivado para maximizar el rendimiento de la CPU y evitar caídas en la captura en tiempo real.",
+      "enableInSettings": "Puedes reactivarlo en Configuración del Servicio → Filtros → Ajustes Avanzados."
     }
   }
 }
