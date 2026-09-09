@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.0] - 2026-09-09
+
+### Consolidated Milestone Release
+Consolidates all major features, performance decoupling, architectural resilience, and stability fixes from `v2.11.0` through `v2.14.2`:
+- Native HLS decoupling & HlsPlayer integration (zero-overhead live 25/30fps preview without MJPEG transcode spikes).
+- HLS Storage route paths with public web delivery and absolute URL generation.
+- Watchdog Crash-Loop Circuit Breaker with non-transient error detection and pre-flight binary compatibility checks.
+- Multi-protocol form parity (RTMP, WebRTC/WHIP, HLS, Icecast HTTP Audio) with reactive port & credentials sync.
+- Decoupled disk logging for production services, access log rotation, and universal LAN clipboard utility.
+- Autonomous dependency manager isolation preventing auxiliary leases on standalone destinations.
+
 ## [2.14.2] - 2026-09-09
 
 ### Fixed
