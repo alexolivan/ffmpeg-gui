@@ -224,6 +224,12 @@ def init_db():
             if "auto_reload_ssl_services" not in settings_columns:
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN auto_reload_ssl_services BOOLEAN DEFAULT 1"))
 
+            # Storages table migrations
+            res_storage = conn.execute(text("PRAGMA table_info(storages)"))
+            storage_columns = [row[1] for row in res_storage.fetchall()]
+            if "route_path" not in storage_columns:
+                conn.execute(text("ALTER TABLE storages ADD COLUMN route_path TEXT"))
+
             # Verify/insert schema version
             result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_info'"))
             if result.fetchone():

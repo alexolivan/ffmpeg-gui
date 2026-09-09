@@ -531,6 +531,9 @@ class TaskManager:
                         compression_enabled = logging_cfg.getboolean("compression_enabled", True)
                     except Exception:
                         pass
+                    access_log_path = logging_cfg.get("access_log_path", None)
+                else:
+                    access_log_path = None
                 if "server" in config and not logging_file_path:
                     logging_file_path = config["server"].get("log_file", None)
             except Exception as cfg_err:
@@ -573,7 +576,7 @@ class TaskManager:
         except Exception as db_clean_err:
             log_error(f"Failed to prune old task/process log records from DB: {db_clean_err}")
 
-        # 2. Clean up rotated application server log files (.gz) if file logging is configured
+        # 2. Clean up and rotate application server log and HTTP access log files
         use_file = bool(logging_file_path and logging_mode in ("file", "both"))
         if use_file and os.path.exists(os.path.dirname(os.path.abspath(logging_file_path))):
             abs_log_path = os.path.abspath(logging_file_path)
@@ -584,6 +587,7 @@ class TaskManager:
             deleted_count = 0
             preserved_count = 0
             
+            # 2a. Purge expired server log archives (.gz)
             for name in os.listdir(log_dir):
                 if name.startswith(log_filename) and name.endswith(".gz"):
                     file_path = os.path.join(log_dir, name)
@@ -601,6 +605,46 @@ class TaskManager:
                     else:
                         log_info(f"Preserved rotated log file: {name} (age: {age_days:.1f} days)")
                         preserved_count += 1
+
+            # 2b. Rotate and purge HTTP access log files
+            resolved_access_log = access_log_path or os.environ.get("ACCESS_LOG_PATH") or os.path.join(log_dir, "access.log")
+            if resolved_access_log and os.path.exists(resolved_access_log) and os.path.isfile(resolved_access_log):
+                # Rotate oversized active access.log via copytruncate
+                try:
+                    access_sz = os.path.getsize(resolved_access_log)
+                    if access_sz > rotation_max_bytes:
+                        arch_access = f"{resolved_access_log}.1.gz" if compression_enabled else f"{resolved_access_log}.1"
+                        if compression_enabled:
+                            with open(resolved_access_log, "rb") as f_in:
+                                with gzip.open(arch_access, "wb") as f_out:
+                                    shutil.copyfileobj(f_in, f_out)
+                        else:
+                            shutil.copyfile(resolved_access_log, arch_access)
+                        with open(resolved_access_log, "r+b") as f_trunc:
+                            f_trunc.truncate(0)
+                        log_info(f"Rotated oversized HTTP access log {os.path.basename(resolved_access_log)} ({access_sz / (1024*1024):.2f} MB -> {arch_access})")
+                except Exception as acc_rot_err:
+                    log_error(f"Failed to rotate oversized access log: {acc_rot_err}")
+
+                # Purge expired access.log archives (.gz)
+                access_base = os.path.basename(resolved_access_log)
+                access_dir = os.path.dirname(os.path.abspath(resolved_access_log))
+                if os.path.exists(access_dir):
+                    for name in os.listdir(access_dir):
+                        if name.startswith(access_base) and name.endswith(".gz"):
+                            file_path = os.path.join(access_dir, name)
+                            if not os.path.isfile(file_path):
+                                continue
+                            mtime = os.path.getmtime(file_path)
+                            age_days = (now - mtime) / (24 * 3600)
+                            if age_days > retention_days:
+                                try:
+                                    os.remove(file_path)
+                                    log_info(f"Deleted expired rotated access log: {name} (age: {age_days:.1f} days)")
+                                    deleted_count += 1
+                                except Exception as e:
+                                    log_error(f"Failed to delete {name}: {e}")
+
             log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")
 
         # 3. Clean up, rotate, compress, and enforce retention on Services logs (FFmpeg, MediaMTX, Icecast)

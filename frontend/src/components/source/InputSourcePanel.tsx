@@ -41,6 +41,10 @@ export interface InputSourceConfig {
   stream_action?: string;
   service_target?: string;
   mediamtx_target_type?: 'local' | 'remote';
+  icecast_mode?: boolean;
+  icecast_mount?: string;
+  icecast_target_type?: 'local' | 'remote';
+  tls?: boolean;
 }
 
 interface InputSourcePanelProps {
@@ -384,6 +388,77 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
     return () => { active = false; };
   }, []);
 
+  // Deterministic self-healing port & provider reconciliation
+  React.useEffect(() => {
+    if (!providers || providers.length === 0) return;
+    const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+    const icecastProviders = providers.filter(p => p.service_type === 'icecast_server');
+
+    if (config.type === 'srt' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
+      if (config.mediamtx_target_type !== 'remote' && mediamtxProviders.length > 0) {
+        const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        if (prov) {
+          const pCfg = prov.config || {};
+          const expectedPort = String(pCfg.srt_port || 8890);
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: config.host || '127.0.0.1',
+            });
+          }
+        }
+      }
+    } else if (config.type === 'rtmp' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
+      if (config.mediamtx_target_type !== 'remote' && mediamtxProviders.length > 0) {
+        const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        if (prov) {
+          const pCfg = prov.config || {};
+          const isTls = Boolean(config.tls && pCfg.ssl_enabled && pCfg.rtmps_enabled);
+          const expectedPort = String(isTls ? (pCfg.rtmps_port || 1936) : (pCfg.rtmp_port || 1935));
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: config.host || '127.0.0.1',
+            });
+          }
+        }
+      }
+    } else if (config.type === 'hls' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
+      if (config.mediamtx_target_type !== 'remote' && mediamtxProviders.length > 0) {
+        const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        if (prov) {
+          const pCfg = prov.config || {};
+          const expectedPort = String(pCfg.hls_port || 8888);
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: config.host || '127.0.0.1',
+            });
+          }
+        }
+      }
+    } else if (config.type === 'http_audio' && (config.icecast_mode || config.service_target === 'icecast')) {
+      if (config.icecast_target_type !== 'remote' && icecastProviders.length > 0) {
+        const prov = icecastProviders.find(p => p.id === config.provider_service_id) || icecastProviders[0];
+        if (prov) {
+          const pCfg = prov.config || {};
+          const isTls = Boolean(config.tls || pCfg.is_ssl);
+          const expectedPort = String(isTls ? (pCfg.ssl_port || 7443) : (pCfg.port || 7000));
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: config.host || '127.0.0.1',
+            });
+          }
+        }
+      }
+    }
+  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls]);
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 mb-0.5">
@@ -422,14 +497,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       </select>
 
       {/* ── Type-specific fields ── */}
-      {config.type === 'file' ? (
+      {config.type === 'file' && (
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label htmlFor={`${idPrefix}-storage`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.mediaStorage')}</label>
+            <label htmlFor={`${idPrefix}-storage`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">{t('sources.mediaStorage')}</label>
             <select
               id={`${idPrefix}-storage`}
               name="storage_id"
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime"
+              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
               value={config.storage_id || ''}
               onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
             >
@@ -440,29 +515,1037 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             </select>
           </div>
           <div>
-            <label htmlFor={`${idPrefix}-relative-path`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.relativePath')}</label>
+            <label htmlFor={`${idPrefix}-relative-path`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">{t('sources.relativePath')}</label>
             <input
               type="text"
               id={`${idPrefix}-relative-path`}
               name="relative_path"
               placeholder="e.g. movies/clip.mp4"
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime"
+              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
               value={config.relative_path || ''}
               onChange={e => update({ relative_path: e.target.value })}
             />
           </div>
         </div>
-      ) : (config.type === 'http_audio' || config.type === 'rtmp' || config.type === 'hls') ? (
-        <input
-          type="text"
-          id={`${idPrefix}-path`}
-          name="path"
-          placeholder={t('sources.streamUrl') + " (e.g. rtmp://... or http://...)"}
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime"
-          value={config.path || ''}
-          onChange={e => update({ path: e.target.value })}
-        />
-      ) : null}
+      )}
+
+      {/* ── HTTP Audio (Icecast / Shoutcast) Input Assistant ── */}
+      {config.type === 'http_audio' && (() => {
+        const icecastProviders = providers.filter(p => p.service_type === 'icecast_server');
+        const isIcecastMode = Boolean(config.icecast_mode || config.service_target === 'icecast' || config.provider_service_id);
+        const isRemote = config.icecast_target_type === 'remote' || (!config.provider_service_id && icecastProviders.length === 0);
+        const selectedProvider = icecastProviders.find(p => p.id === config.provider_service_id) || icecastProviders[0];
+        const iceCfg = selectedProvider?.config || {};
+        const availableMounts: any[] = Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [];
+        const mountNames = availableMounts.map((m: any) => m.mount_name).filter(Boolean);
+
+        const handleSelectProvider = (provId: number, isTls?: boolean) => {
+          const prov = icecastProviders.find(p => p.id === provId);
+          if (!prov) return;
+          const pCfg = prov.config || {};
+          const pMounts: any[] = Array.isArray(pCfg.mounts) ? pCfg.mounts : [];
+          const firstMount = pMounts.length > 0 ? pMounts[0].mount_name : (config.icecast_mount || '/live.mp3');
+
+          const useTls = isTls !== undefined ? isTls : Boolean(pCfg.ssl_enabled || pCfg.is_ssl);
+          const port = useTls ? (pCfg.ssl_port || 7443) : (pCfg.port || 7000);
+          const scheme = useTls ? 'https' : 'http';
+          const rUser = config.read_user || config.auth_user || '';
+          const rPass = config.read_pass || config.auth_pass || '';
+          const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}127.0.0.1:${port}${firstMount.startsWith('/') ? firstMount : `/${firstMount}`}`;
+
+          update({
+            provider_service_id: prov.id,
+            service_target: 'icecast',
+            icecast_target_type: 'local',
+            host: '127.0.0.1',
+            port: String(port),
+            icecast_mount: firstMount,
+            icecast_mode: true,
+            tls: useTls,
+            path: genUrl,
+          });
+        };
+
+        const handleSelectMount = (val: string) => {
+          const mountName = val === '__custom__' ? (config.icecast_mount && !mountNames.includes(config.icecast_mount) ? config.icecast_mount : '') : val;
+          const scheme = config.tls ? 'https' : 'http';
+          const rUser = config.read_user || config.auth_user || '';
+          const rPass = config.read_pass || config.auth_pass || '';
+          const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+          const port = config.port || (config.tls ? '7443' : '7000');
+          const cleanMount = mountName ? (mountName.startsWith('/') ? mountName : `/${mountName}`) : '/live.mp3';
+          const genUrl = `${scheme}://${authPrefix}${config.host || '127.0.0.1'}:${port}${cleanMount}`;
+
+          update({
+            icecast_mount: mountName,
+            path: genUrl,
+          });
+        };
+
+        return (
+          <div className="space-y-3">
+            {/* Mode Switcher */}
+            <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
+                  !isIcecastMode
+                    ? 'bg-amber-500/25 text-[var(--text-primary)] border border-amber-500/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => update({
+                  icecast_mode: false,
+                  service_target: undefined,
+                  icecast_mount: undefined,
+                  provider_service_id: undefined,
+                  icecast_target_type: undefined,
+                })}
+              >
+                {t('sources.httpAudioManual', 'Manual Direct HTTP / Icecast URL')}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
+                  isIcecastMode
+                    ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  if (icecastProviders.length > 0) {
+                    const defaultProv = icecastProviders.find(p => p.id === config.provider_service_id) || icecastProviders[0];
+                    handleSelectProvider(defaultProv.id);
+                  } else {
+                    update({
+                      icecast_mode: true,
+                      icecast_target_type: 'remote',
+                      service_target: 'icecast',
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8000',
+                      icecast_mount: config.icecast_mount || '/live.mp3',
+                      path: `http://${config.host || '127.0.0.1'}:${config.port || '8000'}${config.icecast_mount || '/live.mp3'}`,
+                    });
+                  }
+                }}
+              >
+                <span>📻</span>
+                {t('sources.httpAudioIcecastServer', 'Icecast Server Integration')}
+              </button>
+            </div>
+
+            {isIcecastMode ? (
+              <div className="p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl space-y-3">
+                {/* Local vs Remote Submode */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
+                    {t('sources.targetServerLocation', 'Target Icecast Instance')}
+                  </span>
+                  <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                    <button
+                      type="button"
+                      disabled={icecastProviders.length === 0}
+                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
+                        !isRemote
+                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40'
+                      }`}
+                      onClick={() => {
+                        if (icecastProviders.length > 0) {
+                          handleSelectProvider(icecastProviders[0].id);
+                        }
+                      }}
+                    >
+                      {t('sources.localManagedHub', 'Local Managed')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
+                        isRemote
+                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                      onClick={() => update({
+                        icecast_target_type: 'remote',
+                        provider_service_id: undefined,
+                        host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                        port: config.port || '8000',
+                      })}
+                    >
+                      {t('sources.remoteExternalHub', 'Remote / External')}
+                    </button>
+                  </div>
+                </div>
+
+                {!isRemote && selectedProvider ? (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.selectIcecastService', 'Icecast Service')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={selectedProvider.id}
+                          onChange={e => handleSelectProvider(Number(e.target.value))}
+                        >
+                          {icecastProviders.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} (Port :{p.config?.port || 7000})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.icecastMountPoint', 'Mountpoint')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={mountNames.includes(config.icecast_mount || '') ? config.icecast_mount : '__custom__'}
+                          onChange={e => handleSelectMount(e.target.value)}
+                        >
+                          {mountNames.map(mName => (
+                            <option key={mName} value={mName}>{mName}</option>
+                          ))}
+                          <option value="__custom__">{t('sources.customMountOption', '+ Custom Mountpoint...')}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* TLS / HTTPS toggle if supported by server */}
+                    {(iceCfg.ssl_enabled || iceCfg.is_ssl) && (
+                      <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
+                        <div className="text-xs">
+                          <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                            🔒 {t('sources.enableHttpsIcecast', 'Secure HTTPS Pull (TLS)')}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-secondary)] block">
+                            Port :{iceCfg.ssl_port || 7443}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(config.tls)}
+                          onChange={e => handleSelectProvider(selectedProvider.id, e.target.checked)}
+                          className="accent-brand-lime cursor-pointer w-4 h-4"
+                        />
+                      </div>
+                    )}
+
+                    {(!config.icecast_mount || !mountNames.includes(config.icecast_mount)) && (
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.customMountSlug', 'Custom Mountpoint')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. /live.mp3, /stream.ogg"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.icecast_mount || ''}
+                          onChange={e => {
+                            const newMount = e.target.value;
+                            const scheme = config.tls ? 'https' : 'http';
+                            const rUser = config.read_user || config.auth_user || '';
+                            const rPass = config.read_pass || config.auth_pass || '';
+                            const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+                            const cleanMount = newMount ? (newMount.startsWith('/') ? newMount : `/${newMount}`) : '/live.mp3';
+                            update({
+                              icecast_mount: newMount,
+                              path: `${scheme}://${authPrefix}127.0.0.1:${config.port || (config.tls ? 7443 : 7000)}${cleanMount}`,
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Generated URL & Auto-computed field */}
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('sources.generatedStreamUrl', 'Generated Pull Audio URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all cursor-pointer"
+                        value={config.path || ''}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Remote Server Mode */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.remoteHostIp', 'Remote Host / IP')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. icecast.radio.lan"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.host || ''}
+                          onChange={e => {
+                            const h = e.target.value;
+                            const port = config.port || '8000';
+                            const mount = config.icecast_mount || '/live.mp3';
+                            const cleanMount = mount.startsWith('/') ? mount : `/${mount}`;
+                            update({ host: h, path: `http://${h}:${port}${cleanMount}` });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.port', 'Port')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="8000"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.port || '8000'}
+                          onChange={e => {
+                            const p = e.target.value;
+                            const mount = config.icecast_mount || '/live.mp3';
+                            const cleanMount = mount.startsWith('/') ? mount : `/${mount}`;
+                            update({ port: p, path: `http://${config.host || '127.0.0.1'}:${p}${cleanMount}` });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('sources.icecastMountPoint', 'Mountpoint')}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. /live.mp3"
+                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                        value={config.icecast_mount || ''}
+                        onChange={e => {
+                          const m = e.target.value;
+                          const cleanMount = m ? (m.startsWith('/') ? m : `/${m}`) : '/live.mp3';
+                          update({
+                            icecast_mount: m,
+                            path: `http://${config.host || '127.0.0.1'}:${config.port || '8000'}${cleanMount}`,
+                          });
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('sources.generatedStreamUrl', 'Generated Pull Audio URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all"
+                        value={config.path || ''}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Manual Mode */
+              <div className="space-y-1.5">
+                <label htmlFor={`${idPrefix}-http-audio-url`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                  {t('sources.streamUrl', 'Stream URL')}<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  id={`${idPrefix}-http-audio-url`}
+                  name="path"
+                  placeholder="e.g. http://icecast.radio.org:8000/live.mp3"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                  value={config.path || ''}
+                  onChange={e => update({ path: e.target.value })}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── RTMP Input Assistant ── */}
+      {config.type === 'rtmp' && (() => {
+        const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
+        const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        const mtxCfg = selectedProvider?.config || {};
+        const rawPaths = mtxCfg.paths || {};
+        const configuredPaths = Object.keys(rawPaths);
+
+        const handleSelectProvider = (provId: number, isTls?: boolean) => {
+          const prov = mediamtxProviders.find(p => p.id === provId);
+          if (!prov) return;
+          const pCfg = prov.config || {};
+          const paths = pCfg.paths || {};
+          const pKeys = Object.keys(paths);
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = paths[firstPath] || {};
+
+          let rUser = '';
+          let rPass = '';
+          if (pathConf.mode === 'custom') {
+            rUser = pathConf.read_user || '';
+            rPass = pathConf.read_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            rUser = pathConf.read_user || pCfg.security?.read_user || pCfg.read_user || '';
+            rPass = pathConf.read_pass || pCfg.security?.read_pass || pCfg.read_pass || '';
+          }
+
+          const useTls = isTls !== undefined ? isTls : Boolean(pCfg.ssl_enabled && pCfg.rtmps_enabled && config.tls);
+          const port = useTls ? (pCfg.rtmps_port || 1936) : (pCfg.rtmp_port || 1935);
+          const scheme = useTls ? 'rtmps' : 'rtmp';
+          const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}127.0.0.1:${port}/${firstPath}`;
+
+          update({
+            provider_service_id: prov.id,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'local',
+            host: '127.0.0.1',
+            port: String(port),
+            path_id: firstPath,
+            read_user: rUser,
+            read_pass: rPass,
+            auth_user: rUser,
+            auth_pass: rPass,
+            mediamtx_mode: true,
+            tls: useTls,
+            path: genUrl,
+          });
+        };
+
+        const handleSelectPath = (val: string) => {
+          const pathId = val === '__custom__' ? (config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '') : val;
+          const pathConf = rawPaths[pathId] || {};
+          let rUser = '';
+          let rPass = '';
+          if (pathConf.mode === 'custom') {
+            rUser = pathConf.read_user || '';
+            rPass = pathConf.read_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            rUser = pathConf.read_user || mtxCfg.security?.read_user || mtxCfg.read_user || '';
+            rPass = pathConf.read_pass || mtxCfg.security?.read_pass || mtxCfg.read_pass || '';
+          }
+
+          const scheme = config.tls ? 'rtmps' : 'rtmp';
+          const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+          const port = config.port || (config.tls ? '1936' : '1935');
+          const genUrl = `${scheme}://${authPrefix}${config.host || '127.0.0.1'}:${port}/${pathId || 'stream1'}`;
+
+          update({
+            path_id: pathId,
+            read_user: rUser,
+            read_pass: rPass,
+            auth_user: rUser,
+            auth_pass: rPass,
+            path: genUrl,
+          });
+        };
+
+        return (
+          <div className="space-y-3">
+            {/* Mode Switcher */}
+            <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
+                  !isMediaMtxMode
+                    ? 'bg-amber-500/25 text-[var(--text-primary)] border border-amber-500/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => update({
+                  mediamtx_mode: false,
+                  service_target: undefined,
+                  path_id: undefined,
+                  provider_service_id: undefined,
+                  mediamtx_target_type: undefined,
+                })}
+              >
+                {t('sources.rtmpManualDirect', 'Manual Direct RTMP')}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
+                  isMediaMtxMode
+                    ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  if (mediamtxProviders.length > 0) {
+                    const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                    handleSelectProvider(defaultProv.id);
+                  } else {
+                    update({
+                      mediamtx_mode: true,
+                      mediamtx_target_type: 'remote',
+                      service_target: 'mediamtx',
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '1935',
+                      path_id: config.path_id || 'stream1',
+                      path: `rtmp://${config.host || '127.0.0.1'}:${config.port || '1935'}/${config.path_id || 'stream1'}`,
+                    });
+                  }
+                }}
+              >
+                <span>⚡</span>
+                {t('sources.rtmpMediaMtxHub', 'MediaMTX Hub Integration')}
+              </button>
+            </div>
+
+            {isMediaMtxMode ? (
+              <div className="p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl space-y-3">
+                {/* Local vs Remote Submode */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
+                    {t('sources.targetHubLocation', 'Target MediaMTX Instance')}
+                  </span>
+                  <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                    <button
+                      type="button"
+                      disabled={mediamtxProviders.length === 0}
+                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
+                        !isRemote
+                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40'
+                      }`}
+                      onClick={() => {
+                        if (mediamtxProviders.length > 0) {
+                          handleSelectProvider(mediamtxProviders[0].id);
+                        }
+                      }}
+                    >
+                      {t('sources.localManagedHub', 'Local Managed')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
+                        isRemote
+                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                      onClick={() => update({
+                        mediamtx_target_type: 'remote',
+                        provider_service_id: undefined,
+                        host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                        port: config.port || '1935',
+                      })}
+                    >
+                      {t('sources.remoteExternalHub', 'Remote / External')}
+                    </button>
+                  </div>
+                </div>
+
+                {!isRemote && selectedProvider ? (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.selectHubService', 'MediaMTX Service')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={selectedProvider.id}
+                          onChange={e => handleSelectProvider(Number(e.target.value))}
+                        >
+                          {mediamtxProviders.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} (Port :{p.config?.rtmp_port || 1935})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.streamPath', 'Stream Path')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
+                          onChange={e => handleSelectPath(e.target.value)}
+                        >
+                          {configuredPaths.map(pName => (
+                            <option key={pName} value={pName}>
+                              /{pName} {rawPaths[pName]?.mode === 'open' ? '(LAN Open)' : ''}
+                            </option>
+                          ))}
+                          <option value="__custom__">{t('sources.customPathOption', '+ Custom Path Slug...')}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* TLS / RTMPS toggle if supported by hub */}
+                    {mtxCfg.ssl_enabled && mtxCfg.rtmps_enabled && (
+                      <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
+                        <div className="text-xs">
+                          <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                            🔒 {t('sources.enableRtmps', 'Encrypted RTMPS Pull (TLS)')}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-secondary)] block">
+                            Port :{mtxCfg.rtmps_port || 1936}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(config.tls)}
+                          onChange={e => handleSelectProvider(selectedProvider.id, e.target.checked)}
+                          className="accent-brand-lime cursor-pointer w-4 h-4"
+                        />
+                      </div>
+                    )}
+
+                    {(!config.path_id || !configuredPaths.includes(config.path_id)) && (
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.customPathSlug', 'Custom Path Slug')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. live1, channel_master"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.path_id || ''}
+                          onChange={e => {
+                            const newPath = e.target.value.replace(/[^a-zA-Z0-9_\-\/]/g, '');
+                            const scheme = config.tls ? 'rtmps' : 'rtmp';
+                            const rUser = config.read_user || config.auth_user || '';
+                            const rPass = config.read_pass || config.auth_pass || '';
+                            const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+                            update({
+                              path_id: newPath,
+                              path: `${scheme}://${authPrefix}127.0.0.1:${config.port || (config.tls ? 1936 : 1935)}/${newPath}`,
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Generated URL & Auto-computed field */}
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('sources.generatedRtmpUrl', 'Generated Source RTMP URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all cursor-pointer"
+                        value={config.path || ''}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Remote Hub Mode */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.remoteHostIp', 'Remote Host / IP')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. mediamtx.mycorp.lan"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.host || ''}
+                          onChange={e => {
+                            const h = e.target.value;
+                            const port = config.port || '1935';
+                            const path = config.path_id || 'stream1';
+                            update({ host: h, path: `rtmp://${h}:${port}/${path}` });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.port', 'Port')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="1935"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.port || '1935'}
+                          onChange={e => {
+                            const p = e.target.value;
+                            update({ port: p, path: `rtmp://${config.host || '127.0.0.1'}:${p}/${config.path_id || 'stream1'}` });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('sources.generatedRtmpUrl', 'Generated Source RTMP URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all"
+                        value={config.path || ''}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Manual Standalone RTMP Mode */
+              <div className="space-y-1.5">
+                <label htmlFor={`${idPrefix}-rtmp-path`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                  {t('sources.streamUrl', 'Stream URL')}<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  id={`${idPrefix}-rtmp-path`}
+                  name="path"
+                  placeholder="RTMP URL (rtmp://server/live/stream)"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                  value={config.path || ''}
+                  onChange={e => update({ path: e.target.value })}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── HLS Input Assistant ── */}
+      {config.type === 'hls' && (() => {
+        const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
+        const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        const mtxCfg = selectedProvider?.config || {};
+        const rawPaths = mtxCfg.paths || {};
+        const configuredPaths = Object.keys(rawPaths);
+
+        const handleSelectProvider = (provId: number, isTls?: boolean) => {
+          const prov = mediamtxProviders.find(p => p.id === provId);
+          if (!prov) return;
+          const pCfg = prov.config || {};
+          const paths = pCfg.paths || {};
+          const pKeys = Object.keys(paths);
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = paths[firstPath] || {};
+
+          let rUser = '';
+          let rPass = '';
+          if (pathConf.mode === 'custom') {
+            rUser = pathConf.read_user || '';
+            rPass = pathConf.read_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            rUser = pathConf.read_user || pCfg.security?.read_user || pCfg.read_user || '';
+            rPass = pathConf.read_pass || pCfg.security?.read_pass || pCfg.read_pass || '';
+          }
+
+          const useTls = isTls !== undefined ? isTls : Boolean(pCfg.ssl_enabled && (pCfg.hls_encryption || pCfg.hlsEncryption));
+          const port = pCfg.hls_port || 8888;
+          const scheme = useTls ? 'https' : 'http';
+          const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}127.0.0.1:${port}/${firstPath}/index.m3u8`;
+
+          update({
+            provider_service_id: prov.id,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'local',
+            host: '127.0.0.1',
+            port: String(port),
+            path_id: firstPath,
+            read_user: rUser,
+            read_pass: rPass,
+            auth_user: rUser,
+            auth_pass: rPass,
+            mediamtx_mode: true,
+            tls: useTls,
+            path: genUrl,
+          });
+        };
+
+        const handleSelectPath = (val: string) => {
+          const pathId = val === '__custom__' ? (config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '') : val;
+          const pathConf = rawPaths[pathId] || {};
+          let rUser = '';
+          let rPass = '';
+          if (pathConf.mode === 'custom') {
+            rUser = pathConf.read_user || '';
+            rPass = pathConf.read_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            rUser = pathConf.read_user || mtxCfg.security?.read_user || mtxCfg.read_user || '';
+            rPass = pathConf.read_pass || mtxCfg.security?.read_pass || mtxCfg.read_pass || '';
+          }
+
+          const scheme = config.tls ? 'https' : 'http';
+          const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+          const port = config.port || '8888';
+          const genUrl = `${scheme}://${authPrefix}${config.host || '127.0.0.1'}:${port}/${pathId || 'stream1'}/index.m3u8`;
+
+          update({
+            path_id: pathId,
+            read_user: rUser,
+            read_pass: rPass,
+            auth_user: rUser,
+            auth_pass: rPass,
+            path: genUrl,
+          });
+        };
+
+        return (
+          <div className="space-y-3">
+            {/* Mode Switcher */}
+            <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
+                  !isMediaMtxMode
+                    ? 'bg-amber-500/25 text-[var(--text-primary)] border border-amber-500/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => update({
+                  mediamtx_mode: false,
+                  service_target: undefined,
+                  path_id: undefined,
+                  provider_service_id: undefined,
+                  mediamtx_target_type: undefined,
+                })}
+              >
+                {t('sources.hlsManualDirect', 'Manual Direct HLS URL')}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
+                  isMediaMtxMode
+                    ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  if (mediamtxProviders.length > 0) {
+                    const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                    handleSelectProvider(defaultProv.id);
+                  } else {
+                    update({
+                      mediamtx_mode: true,
+                      mediamtx_target_type: 'remote',
+                      service_target: 'mediamtx',
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8888',
+                      path_id: config.path_id || 'stream1',
+                      path: `http://${config.host || '127.0.0.1'}:${config.port || '8888'}/${config.path_id || 'stream1'}/index.m3u8`,
+                    });
+                  }
+                }}
+              >
+                <span>⚡</span>
+                {t('sources.hlsMediaMtxHub', 'MediaMTX Hub Integration')}
+              </button>
+            </div>
+
+            {isMediaMtxMode ? (
+              <div className="p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl space-y-3">
+                {/* Local vs Remote Submode */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
+                    {t('sources.targetHubLocation', 'Target MediaMTX Instance')}
+                  </span>
+                  <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                    <button
+                      type="button"
+                      disabled={mediamtxProviders.length === 0}
+                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
+                        !isRemote
+                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40'
+                      }`}
+                      onClick={() => {
+                        if (mediamtxProviders.length > 0) {
+                          handleSelectProvider(mediamtxProviders[0].id);
+                        }
+                      }}
+                    >
+                      {t('sources.localManagedHub', 'Local Managed')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
+                        isRemote
+                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                      onClick={() => update({
+                        mediamtx_target_type: 'remote',
+                        provider_service_id: undefined,
+                        host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                        port: config.port || '8888',
+                      })}
+                    >
+                      {t('sources.remoteExternalHub', 'Remote / External')}
+                    </button>
+                  </div>
+                </div>
+
+                {!isRemote && selectedProvider ? (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.selectHubService', 'MediaMTX Service')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={selectedProvider.id}
+                          onChange={e => handleSelectProvider(Number(e.target.value))}
+                        >
+                          {mediamtxProviders.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} (Port :{p.config?.hls_port || 8888})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.streamPath', 'Stream Path')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
+                          onChange={e => handleSelectPath(e.target.value)}
+                        >
+                          {configuredPaths.map(pName => (
+                            <option key={pName} value={pName}>
+                              /{pName} {rawPaths[pName]?.mode === 'open' ? '(LAN Open)' : ''}
+                            </option>
+                          ))}
+                          <option value="__custom__">{t('sources.customPathOption', '+ Custom Path Slug...')}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* TLS / HTTPS toggle if supported by hub */}
+                    {mtxCfg.ssl_enabled && (
+                      <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
+                        <div className="text-xs">
+                          <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                            🔒 {t('sources.enableHttpsHls', 'Encrypted HTTPS HLS Pull (TLS)')}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-secondary)] block">
+                            Port :{mtxCfg.hls_port || 8888}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(config.tls)}
+                          onChange={e => handleSelectProvider(selectedProvider.id, e.target.checked)}
+                          className="accent-brand-lime cursor-pointer w-4 h-4"
+                        />
+                      </div>
+                    )}
+
+                    {(!config.path_id || !configuredPaths.includes(config.path_id)) && (
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.customPathSlug', 'Custom Path Slug')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. live1, channel_master"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.path_id || ''}
+                          onChange={e => {
+                            const newPath = e.target.value.replace(/[^a-zA-Z0-9_\-\/]/g, '');
+                            const scheme = config.tls ? 'https' : 'http';
+                            const rUser = config.read_user || config.auth_user || '';
+                            const rPass = config.read_pass || config.auth_pass || '';
+                            const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+                            update({
+                              path_id: newPath,
+                              path: `${scheme}://${authPrefix}127.0.0.1:${config.port || '8888'}/${newPath}/index.m3u8`,
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Generated URL & Auto-computed field */}
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('sources.generatedHlsUrl', 'Generated Source HLS URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all cursor-pointer"
+                        value={config.path || ''}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Remote Hub Mode */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.remoteHostIp', 'Remote Host / IP')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. mediamtx.mycorp.lan"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.host || ''}
+                          onChange={e => {
+                            const h = e.target.value;
+                            const port = config.port || '8888';
+                            const path = config.path_id || 'stream1';
+                            update({ host: h, path: `http://${h}:${port}/${path}/index.m3u8` });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.port', 'Port')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="8888"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.port || '8888'}
+                          onChange={e => {
+                            const p = e.target.value;
+                            update({ port: p, path: `http://${config.host || '127.0.0.1'}:${p}/${config.path_id || 'stream1'}/index.m3u8` });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('sources.generatedHlsUrl', 'Generated Source HLS URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all"
+                        value={config.path || ''}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Manual Standalone HLS Mode */
+              <div className="space-y-1.5">
+                <label htmlFor={`${idPrefix}-hls-path`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                  {t('sources.streamUrl', 'Stream URL')}<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  id={`${idPrefix}-hls-path`}
+                  name="path"
+                  placeholder="HLS URL (http://server/live/index.m3u8)"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                  value={config.path || ''}
+                  onChange={e => update({ path: e.target.value })}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {config.type === 'srt' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');

@@ -247,29 +247,57 @@ class DependencyManager:
         """
         detected_provider_ids = set()
 
-        def extract_provider_id(conf: dict) -> Optional[int]:
+        def extract_provider_id(conf: dict, is_output: bool = False) -> Optional[int]:
             if not conf or not isinstance(conf, dict):
                 return None
             val = conf.get("provider_service_id")
-            if val is not None:
-                try:
-                    return int(val)
-                except (ValueError, TypeError):
-                    pass
-            return None
+            if val is None:
+                return None
+            cfg_type = conf.get("type")
+            if is_output:
+                # Non-auxiliary output destinations (hls, file, udp, rtp, decklink, ndi, alsa) NEVER depend on auxiliary services
+                if cfg_type in ('srt', 'rtmp', 'whip'):
+                    if conf.get('mediamtx_mode') is False or conf.get('service_target') == 'manual':
+                        return None
+                elif cfg_type == 'icecast':
+                    if conf.get('icecast_mode') == 'remote':
+                        return None
+                else:
+                    return None
+            else:
+                if cfg_type in ('srt', 'rtmp', 'rtsp', 'hls'):
+                    if conf.get('mediamtx_mode') is False or conf.get('service_target') == 'manual':
+                        return None
+                elif cfg_type == 'icecast':
+                    if conf.get('icecast_mode') == 'remote':
+                        return None
+                else:
+                    return None
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return None
 
         # Check output config
-        out_pid = extract_provider_id(output_config)
+        out_pid = extract_provider_id(output_config, is_output=True)
         if out_pid:
             detected_provider_ids.add(out_pid)
+        elif output_config and isinstance(output_config, dict) and output_config.get("provider_service_id") is not None:
+            # Stale provider fields in non-auxiliary output
+            output_config.pop("provider_service_id", None)
+            output_config.pop("mediamtx_mode", None)
+            output_config.pop("service_target", None)
+            output_config.pop("mediamtx_target_type", None)
+            output_config.pop("path_id", None)
+            output_config.pop("stream_action", None)
 
         # Check input configs
-        inp_pid = extract_provider_id(input_config)
+        inp_pid = extract_provider_id(input_config, is_output=False)
         if inp_pid:
             detected_provider_ids.add(inp_pid)
         if input_config and isinstance(input_config, dict):
             for k in ["input1", "input2"]:
-                k_pid = extract_provider_id(input_config.get(k))
+                k_pid = extract_provider_id(input_config.get(k), is_output=False)
                 if k_pid:
                     detected_provider_ids.add(k_pid)
 

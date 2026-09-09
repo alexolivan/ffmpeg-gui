@@ -12,7 +12,7 @@ import platform
 import configparser
 import threading
 from PIL import Image
-from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
@@ -90,6 +90,22 @@ class NginxAccessLogMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
+            path = scope.get("path", "-")
+            status = status_code[0]
+
+            # Suppress high-frequency static noise and media chunks from access log for successful requests
+            ignore_media = os.getenv("ACCESS_LOG_IGNORE_MEDIA", "true").lower() == "true"
+            if ignore_media and status < 400:
+                clean_path = path.split("?")[0].lower()
+                if clean_path.startswith("/assets/") or clean_path in ("/favicon.ico", "/favicon.svg"):
+                    return
+                if "/software/" in clean_path and clean_path.endswith("/icon"):
+                    return
+                if clean_path.startswith("/previews/") or clean_path.endswith(".jpg"):
+                    return
+                if clean_path.endswith((".ts", ".m4s", ".m3u8", ".aac", ".mp3")):
+                    return
+
             client = scope.get("client")
             client_host = client[0] if client else "-"
             remote_user = "-"
@@ -98,13 +114,14 @@ class NginxAccessLogMiddleware:
             time_local = now.strftime("%d/%b/%Y:%H:%M:%S +0000")
             
             method = scope.get("method", "-")
-            path = scope.get("path", "-")
             query_string = scope.get("query_string", b"").decode("utf-8")
             if query_string:
-                path = f"{path}?{query_string}"
+                full_path = f"{path}?{query_string}"
+            else:
+                full_path = path
                 
             http_version = scope.get("http_version", "1.1")
-            request_line = f"{method} {path} HTTP/{http_version}"
+            request_line = f"{method} {full_path} HTTP/{http_version}"
             
             headers = scope.get("headers", [])
             referer = "-"
@@ -119,7 +136,7 @@ class NginxAccessLogMiddleware:
             if access_log_path:
                 try:
                     nginx_line = f'{client_host} - {remote_user} [{time_local}] "{request_line}" {status_code[0]} {content_length[0]} "{referer}" "{user_agent}"'
-                    with open(access_log_path, "a") as f:
+                    with open(access_log_path, "a", encoding="utf-8") as f:
                         f.write(nginx_line + "\n")
                 except Exception:
                     pass
@@ -213,6 +230,7 @@ class ProcessCreate(BaseModel):
     startup_delay: Optional[int] = 0
     watchdog_enabled: Optional[bool] = False
     watchdog_retries: Optional[int] = 5
+    watchdog_circuit_breaker: Optional[bool] = True
     watchdog_min_speed: Optional[float] = None
     watchdog_min_speed_duration: Optional[int] = 30
     alias: Optional[str] = None
@@ -248,6 +266,7 @@ class ProcessUpdate(BaseModel):
     startup_delay: Optional[int] = None
     watchdog_enabled: Optional[bool] = None
     watchdog_retries: Optional[int] = None
+    watchdog_circuit_breaker: Optional[bool] = None
     watchdog_min_speed: Optional[float] = None
     watchdog_min_speed_duration: Optional[int] = None
     alias: Optional[str] = None
@@ -399,6 +418,9 @@ class SettingsResponse(BaseModel):
     logging_compression_enabled: Optional[bool] = None
     logging_retention_days: Optional[int] = None
     logging_timestamp_tz: Optional[str] = "utc"
+    access_log_path: Optional[str] = None
+    access_log_enabled: Optional[bool] = True
+    access_log_ignore_media: Optional[bool] = True
     language: str = "en"
     theme: str = "studio-dark"
     bind_address: Optional[str] = "0.0.0.0"
@@ -447,6 +469,9 @@ class SettingsUpdate(BaseModel):
     logging_compression_enabled: Optional[bool] = None
     logging_retention_days: Optional[int] = None
     logging_timestamp_tz: Optional[str] = None
+    access_log_path: Optional[str] = None
+    access_log_enabled: Optional[bool] = None
+    access_log_ignore_media: Optional[bool] = None
     notifications: Optional[NotificationSettingsUpdate] = None
     watchdog: Optional[WatchdogSettingsUpdate] = None
 
@@ -481,10 +506,12 @@ class StorageCreate(BaseModel):
     name: str
     path: str
     type: str  # 'build', 'media', 'hls', 'logs', 'sdk', 'preview'
+    route_path: Optional[str] = None
 
 class StorageUpdate(BaseModel):
     name: str
     path: str
+    route_path: Optional[str] = None
 
 class StorageTest(BaseModel):
     path: str
@@ -524,6 +551,9 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     logging_compression_enabled = False
     logging_retention_days = 30
     logging_timestamp_tz = "utc"
+    access_log_path = None
+    access_log_enabled = True
+    access_log_ignore_media = True
 
     # Default network & SSL values
     bind_address = "0.0.0.0"
@@ -662,6 +692,15 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 except ValueError:
                     pass
                 logging_timestamp_tz = logging_cfg.get("timestamp_tz", logging_timestamp_tz)
+                access_log_path = logging_cfg.get("access_log_path", None)
+                try:
+                    access_log_enabled = logging_cfg.getboolean("access_log_enabled", access_log_enabled)
+                except ValueError:
+                    pass
+                try:
+                    access_log_ignore_media = logging_cfg.getboolean("access_log_ignore_media", access_log_ignore_media)
+                except ValueError:
+                    pass
             if "watchdog" in config:
                 wd_cfg = config["watchdog"]
                 try: watchdog_data["startup_grace_delay"] = wd_cfg.getint("startup_grace_delay", fallback=10)
@@ -780,6 +819,9 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["logging_compression_enabled"] = logging_compression_enabled
     res["logging_retention_days"] = logging_retention_days
     res["logging_timestamp_tz"] = logging_timestamp_tz
+    res["access_log_path"] = access_log_path
+    res["access_log_enabled"] = access_log_enabled
+    res["access_log_ignore_media"] = access_log_ignore_media
     res["language"] = language
     res["theme"] = theme
     res["bind_address"] = bind_address
@@ -1007,6 +1049,9 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
         "logging_rotation_backup_count",
         "logging_compression_enabled",
         "logging_retention_days",
+        "access_log_path",
+        "access_log_enabled",
+        "access_log_ignore_media",
     ]
     
     has_logging_updates = any(getattr(settings_in, field) is not None for field in logging_fields)
@@ -1073,6 +1118,12 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config["logging"]["retention_days"] = str(settings_in.logging_retention_days)
         if settings_in.logging_timestamp_tz is not None:
             config["logging"]["timestamp_tz"] = settings_in.logging_timestamp_tz
+        if settings_in.access_log_path is not None:
+            config["logging"]["access_log_path"] = str(settings_in.access_log_path)
+        if settings_in.access_log_enabled is not None:
+            config["logging"]["access_log_enabled"] = str(settings_in.access_log_enabled).lower()
+        if settings_in.access_log_ignore_media is not None:
+            config["logging"]["access_log_ignore_media"] = str(settings_in.access_log_ignore_media).lower()
             
         with open(config_path, "w") as f:
             config.write(f)
@@ -1402,6 +1453,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "startup_delay": p.startup_delay,
                 "watchdog_enabled": p.watchdog_enabled,
                 "watchdog_retries": p.watchdog_retries,
+                "watchdog_circuit_breaker": getattr(p, "watchdog_circuit_breaker", True),
                 "watchdog_min_speed": p.watchdog_min_speed,
                 "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
                 "alias": p.alias,
@@ -2480,6 +2532,61 @@ manager = ConnectionManager()
 build_ws_connections: dict[int, list[WebSocket]] = {}
 
 
+def get_routed_hls_storages(db: Session) -> dict:
+    storages = db.query(Storage).filter(Storage.route_path.isnot(None)).all()
+    mapped = {}
+    for s in storages:
+        if s.route_path and s.route_path.strip():
+            mapped[s.id] = s
+            mapped[str(s.id)] = s
+    return mapped
+
+def resolve_service_public_hls_path(p, hls_storages_map: dict) -> Optional[str]:
+    if isinstance(p, dict):
+        cfg = p.get('config') or {}
+        out_cfg = cfg.get('output_config') or p.get('output_config') or {}
+    else:
+        cfg = p.config if isinstance(p.config, dict) else {}
+        out_cfg = cfg.get('output_config') or getattr(p, 'output_config', None) or {}
+    if not isinstance(out_cfg, dict):
+        return None
+    if out_cfg.get('type') == 'hls' and out_cfg.get('hls_method', 'local') == 'local':
+        s_id = out_cfg.get('storage_id')
+        storage = hls_storages_map.get(s_id)
+        if not storage and s_id is not None:
+            try:
+                storage = hls_storages_map.get(int(s_id)) or hls_storages_map.get(str(s_id))
+            except (ValueError, TypeError):
+                pass
+
+        out_path = out_cfg.get('path')
+        if not storage and out_path:
+            for s in hls_storages_map.values():
+                if s and s.path and out_path.startswith(s.path):
+                    storage = s
+                    break
+
+        if storage and storage.route_path and storage.route_path.strip():
+            norm_route = "/" + storage.route_path.strip().strip("/")
+            rel_path = (out_cfg.get('relative_path') or '').strip().strip('/')
+
+            if not rel_path and out_path and storage.path and out_path.startswith(storage.path):
+                rel_from_storage = os.path.relpath(out_path, storage.path)
+                rel_dir = os.path.dirname(rel_from_storage).strip().strip('/')
+                rel_path = rel_dir if rel_dir and rel_dir != '.' else ''
+
+            stream_name = out_cfg.get('hls_stream_name')
+            if not stream_name and out_path and out_path.endswith('.m3u8'):
+                stream_name = os.path.basename(out_path).replace('.m3u8', '')
+            stream_name = (stream_name or 'stream').replace('.m3u8', '')
+
+            parts = [norm_route]
+            if rel_path:
+                parts.append(rel_path)
+            parts.append(f"{stream_name}.m3u8")
+            return "/" + "/".join(part.strip("/") for part in parts if part.strip())
+    return None
+
 # ── Telemetry WebSocket ──────────────────────────────────────────
 
 @app.websocket("/ws/telemetry")
@@ -2516,6 +2623,8 @@ async def telemetry_broadcast_loop():
                             "is_auto_managed": d.is_auto_managed
                         })
 
+                hls_storages = get_routed_hls_storages(db)
+
                 processes = db.query(MediaProcess).all()
                 processes_data = [
                     {
@@ -2542,6 +2651,7 @@ async def telemetry_broadcast_loop():
                         "startup_delay": getattr(p, 'startup_delay', 0) or 0,
                         "watchdog_enabled": p.watchdog_enabled,
                         "watchdog_retries": p.watchdog_retries,
+                        "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
                         "watchdog_min_speed": p.watchdog_min_speed,
                         "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
                         "pending_changes": p.pending_changes,
@@ -2556,6 +2666,8 @@ async def telemetry_broadcast_loop():
                         "network_timeout": p.network_timeout,
                         "debug_mode": p.debug_mode,
                         "log_storage_id": p.log_storage_id,
+                        "log_file_path": process_manager.get_process_log_path(p.id),
+                        "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
                     } for p in processes
                 ]
 
@@ -2806,28 +2918,83 @@ def sanitize_process_config_data(input_config: dict, filter_config: dict) -> boo
 
     return is_dirty
 
+def sanitize_output_config_data(output_config: dict) -> bool:
+    """
+    Sanitize output_config to ensure auxiliary provider fields (MediaMTX / Icecast)
+    are strictly stripped when the output type is non-auxiliary (e.g. HLS, File, UDP, ALSA)
+    or configured in manual direct mode.
+    Mutates dict in-place. Returns True if any changes were made.
+    """
+    if not output_config or not isinstance(output_config, dict):
+        return False
+
+    is_dirty = False
+    out_type = output_config.get("type")
+
+    # Only srt, rtmp, whip, icecast can possibly connect to auxiliary providers
+    if out_type not in ('srt', 'rtmp', 'whip', 'icecast'):
+        for key in ('provider_service_id', 'mediamtx_mode', 'service_target', 'mediamtx_target_type', 'path_id', 'stream_action'):
+            if key in output_config:
+                output_config.pop(key, None)
+                is_dirty = True
+    elif out_type in ('srt', 'rtmp', 'whip'):
+        if output_config.get('mediamtx_mode') is False or output_config.get('service_target') == 'manual':
+            for key in ('provider_service_id', 'mediamtx_mode', 'service_target', 'mediamtx_target_type', 'path_id', 'stream_action'):
+                if key in output_config:
+                    output_config.pop(key, None)
+                    is_dirty = True
+    elif out_type == 'icecast':
+        if output_config.get('icecast_mode') == 'remote':
+            if 'provider_service_id' in output_config:
+                output_config.pop('provider_service_id', None)
+                is_dirty = True
+
+    return is_dirty
+
 def sanitize_database_processes(db: Session):
-    """Scan all processes in the database and fix invalid GPU/VRAM configs."""
+    """Scan all processes and tasks in the database and fix invalid GPU/VRAM or stale provider configs."""
     from sqlalchemy.orm.attributes import flag_modified
+    from database.models import ScheduledTask
     import copy
     processes = db.query(MediaProcess).all()
     updated_count = 0
     for p in processes:
         input_cfg = copy.deepcopy(p.input_config) if p.input_config else {}
         filter_cfg = copy.deepcopy(p.filter_config) if p.filter_config else {}
-        if sanitize_process_config_data(input_cfg, filter_cfg):
-            p.input_config = input_cfg
-            p.filter_config = filter_cfg
+        output_cfg = copy.deepcopy(p.output_config) if p.output_config else {}
+        in_dirty = sanitize_process_config_data(input_cfg, filter_cfg)
+        out_dirty = sanitize_output_config_data(output_cfg)
+        if in_dirty or out_dirty:
+            if in_dirty:
+                p.input_config = input_cfg
+                p.filter_config = filter_cfg
+                try:
+                    flag_modified(p, "input_config")
+                    flag_modified(p, "filter_config")
+                except Exception:
+                    pass
+            if out_dirty:
+                p.output_config = output_cfg
+                try:
+                    flag_modified(p, "output_config")
+                except Exception:
+                    pass
+            updated_count += 1
+
+    tasks = db.query(ScheduledTask).all()
+    for t in tasks:
+        output_cfg = copy.deepcopy(t.output_config) if t.output_config else {}
+        if sanitize_output_config_data(output_cfg):
+            t.output_config = output_cfg
             try:
-                flag_modified(p, "input_config")
-                flag_modified(p, "filter_config")
+                flag_modified(t, "output_config")
             except Exception:
                 pass
             updated_count += 1
-            
+
     if updated_count > 0:
         db.commit()
-        logger.info(f"Sanitized {updated_count} process configurations in database with inconsistent GPU settings.")
+        logger.info(f"Sanitized {updated_count} process/task configurations in database (GPU / Stale provider metadata).")
 
 @app.on_event("startup")
 async def startup_event():
@@ -2847,6 +3014,11 @@ async def startup_event():
                 sanitize_database_processes(db)
             except Exception as e:
                 logger.error(f"Failed to sanitize database processes on startup: {e}")
+
+            try:
+                refresh_hls_routes_cache(db)
+            except Exception as e:
+                logger.error(f"Failed to refresh HLS routes cache on startup: {e}")
 
             stale_builds = db.query(FfmpegBuild).filter(FfmpegBuild.status == "building").all()
             for build in stale_builds:
@@ -3731,6 +3903,8 @@ def list_processes(db: Session = Depends(get_db)):
     from database.models import ServiceDependency
     processes = db.query(MediaProcess).all()
     from core.dependency_manager import dependency_manager
+
+    hls_storages = get_routed_hls_storages(db)
     
     all_deps = db.query(ServiceDependency).all()
     deps_by_consumer = {}
@@ -3769,6 +3943,7 @@ def list_processes(db: Session = Depends(get_db)):
             "startup_delay": getattr(p, 'startup_delay', 0) or 0,
             "watchdog_enabled": p.watchdog_enabled,
             "watchdog_retries": p.watchdog_retries,
+            "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
             "watchdog_min_speed": p.watchdog_min_speed,
             "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
             "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
@@ -3783,6 +3958,8 @@ def list_processes(db: Session = Depends(get_db)):
             "network_timeout": p.network_timeout,
             "debug_mode": p.debug_mode,
             "log_storage_id": p.log_storage_id,
+            "log_file_path": process_manager.get_process_log_path(p.id),
+            "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
         } for p in processes
     ]
 
@@ -3830,9 +4007,11 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         output_config=output_cfg
     )
 
-    if svc_type == "ffmpeg_stream" and input_cfg is not None:
-        # Sanitize configs on creation
-        sanitize_process_config_data(input_cfg, filter_cfg or {})
+    if svc_type == "ffmpeg_stream":
+        if input_cfg is not None:
+            sanitize_process_config_data(input_cfg, filter_cfg or {})
+        if output_cfg is not None:
+            sanitize_output_config_data(output_cfg)
 
     db_proc = MediaProcess(
         name=proc_in.name,
@@ -3848,6 +4027,7 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         startup_delay=proc_in.startup_delay if proc_in.startup_delay is not None else 0,
         watchdog_enabled=proc_in.watchdog_enabled,
         watchdog_retries=proc_in.watchdog_retries,
+        watchdog_circuit_breaker=proc_in.watchdog_circuit_breaker if proc_in.watchdog_circuit_breaker is not None else True,
         watchdog_min_speed=proc_in.watchdog_min_speed,
         watchdog_min_speed_duration=proc_in.watchdog_min_speed_duration if proc_in.watchdog_min_speed_duration is not None else 30,
         alias=proc_in.alias,
@@ -3942,11 +4122,13 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
             except Exception:
                 pass
 
-        output_cfg = proc_in.output_config if proc_in.output_config is not None else db_proc.output_config
+        output_cfg = copy.deepcopy(proc_in.output_config) if proc_in.output_config is not None else copy.deepcopy(db_proc.output_config)
+        if output_cfg:
+            sanitize_output_config_data(output_cfg)
         check_media_process_port_conflicts(input_cfg, output_cfg)
 
         if proc_in.output_config is not None:
-            db_proc.output_config = proc_in.output_config
+            db_proc.output_config = output_cfg
             try:
                 flag_modified(db_proc, "output_config")
             except Exception:
@@ -3965,6 +4147,7 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.startup_delay is not None: db_proc.startup_delay = proc_in.startup_delay
     if proc_in.watchdog_enabled is not None: db_proc.watchdog_enabled = proc_in.watchdog_enabled
     if proc_in.watchdog_retries is not None: db_proc.watchdog_retries = proc_in.watchdog_retries
+    if proc_in.watchdog_circuit_breaker is not None: db_proc.watchdog_circuit_breaker = proc_in.watchdog_circuit_breaker
     if proc_in.watchdog_min_speed is not None: db_proc.watchdog_min_speed = proc_in.watchdog_min_speed
     if proc_in.watchdog_min_speed_duration is not None: db_proc.watchdog_min_speed_duration = proc_in.watchdog_min_speed_duration
     if proc_in.alias is not None: db_proc.alias = proc_in.alias
@@ -4217,6 +4400,7 @@ def clone_process(process_id: int, db: Session = Depends(get_db)):
         startup_delay=getattr(db_proc, 'startup_delay', 0) or 0,
         watchdog_enabled=db_proc.watchdog_enabled,
         watchdog_retries=db_proc.watchdog_retries,
+        watchdog_circuit_breaker=getattr(db_proc, 'watchdog_circuit_breaker', True),
         watchdog_min_speed=db_proc.watchdog_min_speed,
         watchdog_min_speed_duration=db_proc.watchdog_min_speed_duration,
         network_timeout=db_proc.network_timeout,
@@ -4405,6 +4589,7 @@ def get_process_progress(process_id: int):
 
 
 @app.get("/processes/{process_id}/logs")
+@app.get("/api/processes/{process_id}/logs")
 def get_process_logs(process_id: int, db: Session = Depends(get_db)):
     # 1. If process is actively running and has an in-memory buffer, return it
     if process_id in process_manager.log_buffers and len(process_manager.log_buffers[process_id]) > 0:
@@ -4413,24 +4598,9 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
     # 2. Read log file from disk (process_{process_id}.log) if process has completed / stopped
     db_proc = db.query(MediaProcess).get(process_id)
     if db_proc:
-        log_storage_path = None
-        if db_proc.log_storage_id:
-            storage = db.query(Storage).get(db_proc.log_storage_id)
-            if storage:
-                log_storage_path = storage.path
-
-        if not log_storage_path:
-            default_storage = db.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
-            if not default_storage:
-                default_storage = db.query(Storage).filter(Storage.type == "logs").first()
-            if default_storage:
-                log_storage_path = default_storage.path
-
-        if not log_storage_path:
-            log_storage_path = os.path.abspath("data/logs")
-
+        log_file = process_manager.get_process_log_path(process_id, db_proc.log_storage_id, session=db)
+        log_storage_path = os.path.dirname(log_file)
         lines = []
-        log_file = os.path.join(log_storage_path, f"process_{process_id}.log")
         if os.path.exists(log_file):
             try:
                 with open(log_file, "r", encoding="utf-8", errors="replace") as f:
@@ -4671,6 +4841,7 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "startup_delay": getattr(proc, 'startup_delay', 0) or 0,
             "watchdog_enabled": proc.watchdog_enabled,
             "watchdog_retries": proc.watchdog_retries,
+            "watchdog_circuit_breaker": getattr(proc, 'watchdog_circuit_breaker', True),
             "watchdog_min_speed": proc.watchdog_min_speed,
             "watchdog_min_speed_duration": proc.watchdog_min_speed_duration,
             "network_timeout": getattr(proc, 'network_timeout', 15),
@@ -4707,6 +4878,7 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         startup_delay=profile.get('startup_delay', 0),
         watchdog_enabled=profile.get('watchdog_enabled', False),
         watchdog_retries=profile.get('watchdog_retries', 5),
+        watchdog_circuit_breaker=profile.get('watchdog_circuit_breaker', True),
         watchdog_min_speed=profile.get('watchdog_min_speed'),
         watchdog_min_speed_duration=profile.get('watchdog_min_speed_duration', 30),
         network_timeout=profile.get('network_timeout', 15),
@@ -4844,6 +5016,81 @@ async def get_preview(process_id: int, db: Session = Depends(get_db)):
     )
 
 
+@app.options("/processes/{process_id}/hls/{filename:path}")
+def options_process_hls(process_id: int, filename: str):
+    return Response(
+        status_code=204,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400"
+        }
+    )
+
+
+@app.get("/processes/{process_id}/hls/{filename:path}")
+def get_process_hls(process_id: int, filename: str, db: Session = Depends(get_db)):
+    media_proc = db.query(MediaProcess).get(process_id)
+    if not media_proc:
+        raise HTTPException(status_code=404, detail="Process not found")
+
+    cfg = media_proc.config if isinstance(media_proc.config, dict) else {}
+    output_cfg = cfg.get('output_config') or media_proc.output_config or {}
+    if output_cfg.get('type') != 'hls':
+        raise HTTPException(status_code=400, detail="Service output is not HLS")
+
+    if output_cfg.get('hls_method') in ('PUT', 'POST'):
+        raise HTTPException(status_code=400, detail="HLS stream is pushed to a remote destination")
+
+    path = output_cfg.get('path', '')
+    if not path:
+        raise HTTPException(status_code=404, detail="HLS path not configured")
+
+    if path.endswith('.m3u8'):
+        base_dir = os.path.dirname(path)
+    else:
+        base_dir = path
+
+    abs_base = os.path.abspath(base_dir)
+    rel_file = filename.lstrip("/")
+    target_file = os.path.normpath(os.path.join(abs_base, rel_file))
+
+    try:
+        if os.path.commonpath([target_file, abs_base]) != abs_base:
+            raise HTTPException(status_code=403, detail="Forbidden")
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    if not os.path.isfile(target_file):
+        raise HTTPException(status_code=404, detail="HLS file not found")
+
+    ext = os.path.splitext(target_file)[1].lower()
+    if ext == ".m3u8":
+        media_type = "application/vnd.apple.mpegurl"
+        cache_control = "no-cache, no-store, must-revalidate"
+    elif ext == ".ts":
+        media_type = "video/MP2T"
+        cache_control = "public, max-age=60"
+    elif ext == ".m4s":
+        media_type = "video/iso.segment"
+        cache_control = "public, max-age=60"
+    else:
+        media_type = "application/octet-stream"
+        cache_control = "public, max-age=60"
+
+    return FileResponse(
+        target_file,
+        media_type=media_type,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Cache-Control": cache_control
+        }
+    )
+
+
 
 
 
@@ -4854,6 +5101,7 @@ async def get_preview(process_id: int, db: Session = Depends(get_db)):
 @app.get("/api/services")
 def list_services(db: Session = Depends(get_db)):
     services = db.query(MediaProcess).all()
+    hls_storages = get_routed_hls_storages(db)
     return [
         {
             "id": s.id,
@@ -4872,6 +5120,7 @@ def list_services(db: Session = Depends(get_db)):
             "last_stop": s.last_stop.isoformat() + "Z" if s.last_stop else None,
             "restart_count": s.restart_count,
             "pending_changes": s.pending_changes,
+            "public_hls_path": resolve_service_public_hls_path(s, hls_storages),
         } for s in services
     ]
 
@@ -5303,11 +5552,15 @@ def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="schedule_datetime is required for one_shot tasks")
         next_run = payload.schedule_datetime
 
+    output_cfg = dict(payload.output_config) if payload.output_config else {}
+    if output_cfg:
+        sanitize_output_config_data(output_cfg)
+
     db_task = ScheduledTask(
         name=payload.name,
         is_active=payload.is_active,
         input_config=payload.input_config,
-        output_config=payload.output_config,
+        output_config=output_cfg,
         codec_config=payload.codec_config,
         filter_config=payload.filter_config,
         ffmpeg_build_id=payload.ffmpeg_build_id,
@@ -5412,6 +5665,7 @@ def _serialize_service(p) -> dict:
         "startup_delay": getattr(p, 'startup_delay', 0) or 0,
         "watchdog_enabled": p.watchdog_enabled,
         "watchdog_retries": p.watchdog_retries,
+        "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
         "watchdog_min_speed": p.watchdog_min_speed,
         "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
         "pending_changes": p.pending_changes,
@@ -5421,6 +5675,7 @@ def _serialize_service(p) -> dict:
         "network_timeout": p.network_timeout,
         "debug_mode": p.debug_mode,
         "log_storage_id": p.log_storage_id,
+        "log_file_path": process_manager.get_process_log_path(p.id),
     }
 
 @app.post("/tasks/{task_id}/clone-as-service")
@@ -5593,6 +5848,8 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depend
         raise HTTPException(status_code=400, detail="Cannot edit system-defined tasks.")
     
     update_data = payload.dict(exclude_unset=True)
+    if 'output_config' in update_data and update_data['output_config']:
+        sanitize_output_config_data(update_data['output_config'])
     
     sched_changed = ('schedule_type' in update_data or 
                      'schedule_cron' in update_data or 
@@ -5711,6 +5968,78 @@ def get_disk_stats(path: str) -> dict:
             "percent": 0.0
         }
 
+RESERVED_ROUTE_PREFIXES = {
+    "api", "ws", "settings", "login", "builds", "processes", "tasks", 
+    "sdks", "uploads", "system", "decklink", "magewell", "assets", 
+    "previews", "docs", "redoc", "openapi.json"
+}
+
+_hls_routes_cache: Dict[str, str] = {}
+_hls_routes_lock = threading.Lock()
+
+def refresh_hls_routes_cache(db: Optional[Session] = None):
+    """Refreshes in-memory cache of HLS route paths mapping to absolute directory paths."""
+    global _hls_routes_cache
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
+    try:
+        storages = db.query(Storage).filter(Storage.type == "hls", Storage.route_path.isnot(None)).all()
+        new_cache = {}
+        for s in storages:
+            if s.route_path and s.route_path.strip():
+                norm_rp = "/" + s.route_path.strip().strip("/")
+                new_cache[norm_rp] = os.path.abspath(s.path)
+        with _hls_routes_lock:
+            _hls_routes_cache = new_cache
+        logger.debug(f"HLS routes cache refreshed: {list(_hls_routes_cache.keys())}")
+    except Exception as e:
+        logger.error(f"Error refreshing HLS routes cache: {e}")
+    finally:
+        if close_db:
+            db.close()
+
+def validate_and_normalize_route_path(
+    route_path: Optional[str],
+    storage_id: Optional[int] = None,
+    db: Optional[Session] = None
+) -> Optional[str]:
+    """Validates and normalizes an HLS route path (/live -> /live)."""
+    if not route_path or not route_path.strip():
+        return None
+
+    rp = route_path.strip()
+    if not rp.startswith("/"):
+        rp = "/" + rp
+    rp = rp.rstrip("/")
+
+    if not rp or rp == "/":
+        raise HTTPException(status_code=400, detail="Route path cannot be root ('/').")
+
+    if not re.match(r"^[a-zA-Z0-9_\-/]+$", rp):
+        raise HTTPException(status_code=400, detail="Route path can only contain alphanumeric characters, slashes, dashes, and underscores.")
+
+    first_segment = rp.lstrip("/").split("/")[0].lower()
+    if first_segment in RESERVED_ROUTE_PREFIXES:
+        raise HTTPException(status_code=400, detail=f"Route path prefix '/{first_segment}' is reserved for system routes.")
+
+    if db:
+        query = db.query(Storage).filter(Storage.route_path == rp)
+        if storage_id is not None:
+            query = query.filter(Storage.id != storage_id)
+        existing = query.first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Route path '{rp}' is already assigned to storage '{existing.name}'.")
+
+    return rp
+
+# Initialize HLS routes cache on module load
+try:
+    refresh_hls_routes_cache()
+except Exception:
+    pass
+
 @app.get("/settings/storages")
 @app.get("/api/settings/storages")
 def get_storages(db: Session = Depends(get_db)):
@@ -5724,6 +6053,7 @@ def get_storages(db: Session = Depends(get_db)):
             "path": s.path,
             "type": s.type,
             "is_default": s.is_default,
+            "route_path": s.route_path,
             "created_at": s.created_at.isoformat() if s.created_at else None,
             "total": stats["total"],
             "used": stats["used"],
@@ -5754,16 +6084,24 @@ def create_storage(storage_in: StorageCreate, db: Session = Depends(get_db)):
     existing = db.query(Storage).filter(Storage.type == storage_in.type, Storage.path == abs_path).first()
     if existing:
         raise HTTPException(status_code=400, detail="A storage with the same type and path already exists.")
-        
+
+    norm_route_path = None
+    if storage_in.route_path:
+        if storage_in.type != "hls":
+            raise HTTPException(status_code=400, detail="Route path is only supported for storages of type 'hls'.")
+        norm_route_path = validate_and_normalize_route_path(storage_in.route_path, db=db)
+
     db_storage = Storage(
         name=storage_in.name,
         path=abs_path,
         type=storage_in.type,
-        is_default=False
+        is_default=False,
+        route_path=norm_route_path
     )
     db.add(db_storage)
     db.commit()
     db.refresh(db_storage)
+    refresh_hls_routes_cache(db)
     return db_storage
 
 @app.put("/settings/storages/{id}")
@@ -5796,10 +6134,16 @@ def update_storage(id: int, storage_in: StorageUpdate, db: Session = Depends(get
             raise HTTPException(status_code=400, detail="A storage with the same type and path already exists.")
             
         db_storage.path = new_abs_path
+
+    if storage_in.route_path is not None:
+        if db_storage.type != "hls" and storage_in.route_path.strip():
+            raise HTTPException(status_code=400, detail="Route path is only supported for storages of type 'hls'.")
+        db_storage.route_path = validate_and_normalize_route_path(storage_in.route_path, storage_id=id, db=db)
         
     db_storage.name = storage_in.name
     db.commit()
     db.refresh(db_storage)
+    refresh_hls_routes_cache(db)
     return db_storage
 
 @app.delete("/settings/storages/{id}")
@@ -5818,6 +6162,7 @@ def delete_storage(id: int, db: Session = Depends(get_db)):
         
     db.delete(db_storage)
     db.commit()
+    refresh_hls_routes_cache(db)
     return {"status": "deleted", "id": id}
 
 @app.post("/settings/storages/test")
@@ -6399,11 +6744,95 @@ if os.path.exists(assets_dir):
         logger.warning(f"Could not mount static assets: {e}")
 
 @app.get("/{catchall:path}")
-def serve_spa(catchall: str):
+@app.head("/{catchall:path}")
+@app.options("/{catchall:path}")
+def serve_spa(catchall: str, request: Request):
+    req_path = "/" + catchall.lstrip("/")
+
+    # Check HLS routes cache
+    with _hls_routes_lock:
+        active_hls_routes = list(_hls_routes_cache.items())
+
+    # Sort descending by route prefix length for most specific prefix match
+    active_hls_routes.sort(key=lambda item: len(item[0]), reverse=True)
+
+    for route_prefix, storage_dir in active_hls_routes:
+        if req_path == route_prefix or req_path.startswith(route_prefix + "/"):
+            # Handle CORS preflight for HLS
+            if request.method == "OPTIONS":
+                return Response(
+                    status_code=204,
+                    headers={
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                        "Access-Control-Allow-Headers": "*",
+                        "Access-Control-Max-Age": "86400"
+                    }
+                )
+
+            rel_file = req_path[len(route_prefix):].lstrip("/")
+            if not rel_file:
+                rel_file = "index.m3u8"
+
+            target_file = os.path.normpath(os.path.join(storage_dir, rel_file))
+
+            # Security: Prevent path traversal attacks outside storage directory
+            try:
+                if os.path.commonpath([target_file, storage_dir]) != storage_dir:
+                    raise HTTPException(status_code=403, detail="Forbidden")
+            except ValueError:
+                raise HTTPException(status_code=403, detail="Forbidden")
+
+            if not os.path.isfile(target_file):
+                raise HTTPException(status_code=404, detail="HLS media not found")
+
+            ext = os.path.splitext(target_file)[1].lower()
+            if ext in [".m3u8"]:
+                media_type = "application/vnd.apple.mpegurl"
+                cache_control = "no-cache, no-store, must-revalidate"
+            elif ext in [".ts"]:
+                media_type = "video/MP2T"
+                cache_control = "public, max-age=60"
+            elif ext in [".m4s"]:
+                media_type = "video/iso.segment"
+                cache_control = "public, max-age=60"
+            elif ext in [".mp4"]:
+                media_type = "video/mp4"
+                cache_control = "public, max-age=60"
+            elif ext in [".key"]:
+                media_type = "application/octet-stream"
+                cache_control = "no-cache, no-store, must-revalidate"
+            else:
+                media_type = "application/octet-stream"
+                cache_control = "public, max-age=60"
+
+            hls_headers = {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Expose-Headers": "Content-Length, Content-Range",
+                "Cache-Control": cache_control
+            }
+
+            if request.method == "HEAD":
+                stat_res = os.stat(target_file)
+                hls_headers["Content-Length"] = str(stat_res.st_size)
+                return Response(status_code=200, media_type=media_type, headers=hls_headers)
+
+            return FileResponse(
+                target_file,
+                media_type=media_type,
+                headers=hls_headers
+            )
+
+    # Standard SPA / API handling
     api_prefixes = ["api", "ws", "settings", "login", "builds", "processes", "tasks", "sdks", "uploads", "system", "decklink", "magewell"]
     first_part = catchall.split("/")[0] if catchall else ""
     if first_part in api_prefixes:
         raise HTTPException(status_code=404, detail="Not Found")
+
+    if request.method != "GET":
+        raise HTTPException(status_code=405, detail="Method Not Allowed")
 
     index_path = os.path.join(FRONTEND_DIST_DIR, "index.html")
     if os.path.exists(index_path):

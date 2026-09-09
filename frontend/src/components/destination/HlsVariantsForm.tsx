@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface HlsVariant {
   resolution: string;
@@ -9,6 +10,8 @@ export interface HlsVariant {
 interface HlsVariantsFormProps {
   variants: HlsVariant[];
   onChange: (variants: HlsVariant[]) => void;
+  vcodec?: string;
+  videoParams?: Record<string, any>;
 }
 
 const PRESETS = [
@@ -18,10 +21,16 @@ const PRESETS = [
   { label: '360p Low', resolution: '640:360', video_bitrate: '800k', audio_bitrate: '96k' }
 ];
 
-export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onChange }) => {
+export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onChange, vcodec, videoParams }) => {
+  const { t } = useTranslation();
   const [resolution, setResolution] = useState('');
   const [videoBitrate, setVideoBitrate] = useState('');
   const [audioBitrate, setAudioBitrate] = useState('');
+
+  const isVaapi = Boolean(vcodec && vcodec.includes('vaapi'));
+  const isNvenc = Boolean(vcodec && vcodec.includes('nvenc'));
+  const rcMode = videoParams?.rc_mode || (isVaapi ? 'CQP' : '');
+  const isVaapiCqp = isVaapi && (rcMode === 'CQP' || !rcMode);
 
   const [resError, setResError] = useState(false);
   const [videoError, setVideoError] = useState(false);
@@ -61,17 +70,15 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
 
     const trimmedRes = resolution.trim();
 
-    const isResInvalid = !/^\d+:\d+$/.test(trimmedRes);
-    const isVideoInvalid = !/^\d+[kM]$/.test(processedVideoBitrate);
-    const isAudioInvalid = !/^\d+[kM]$/.test(processedAudioBitrate);
+    const isResValid = /^\d+:\d+$/.test(trimmedRes);
+    const isVideoValid = Boolean(processedVideoBitrate);
+    const isAudioValid = Boolean(processedAudioBitrate);
 
-    setResError(isResInvalid);
-    setVideoError(isVideoInvalid);
-    setAudioError(isAudioInvalid);
+    setResError(!isResValid);
+    setVideoError(!isVideoValid);
+    setAudioError(!isAudioValid);
 
-    if (isResInvalid || isVideoInvalid || isAudioInvalid) {
-      return;
-    }
+    if (!isResValid || !isVideoValid || !isAudioValid) return;
 
     addVariant({
       resolution: trimmedRes,
@@ -84,38 +91,74 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
   };
 
   return (
-    <div className="space-y-2.5 p-2 bg-white/5 border border-white/10 rounded-lg mt-2">
+    <div className="space-y-3 p-3 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl mt-2">
       <div className="flex items-center justify-between">
-        <h5 className="text-xs font-bold text-white/90">HLS Adaptive Bitrate (ABR) Variants</h5>
-        <span className="text-[9px] bg-purple-500/20 text-purple-300 font-mono px-1.5 py-0.5 rounded-full border border-purple-500/30">
+        <h5 className="text-xs font-bold text-[var(--text-primary)]">
+          {t('destinations.hlsAbrVariants', 'HLS Adaptive Bitrate (ABR) Variants')}
+        </h5>
+        <span className="text-[10px] bg-brand-lime/15 text-brand-lime font-mono px-2 py-0.5 rounded-full border border-brand-lime/30">
           {variants.length} variant{variants.length !== 1 ? 's' : ''}
         </span>
       </div>
 
+      {isVaapiCqp && (
+        <div className="bg-brand-lime/10 border border-brand-lime/30 rounded-xl p-3 text-xs leading-relaxed flex items-start gap-2.5">
+          <span className="text-brand-lime text-base shrink-0">⚡</span>
+          <div>
+            <div className="font-semibold text-brand-lime">
+              {t('destinations.vaapiCqpTitle', 'VAAPI Hardware Encoding (CQP Mode)')}
+            </div>
+            <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+              {t(
+                'destinations.vaapiCqpNote',
+                'Your GPU VAAPI driver operates in Constant QP (CQP) mode. FFmpeg will automatically scale quantization (QP) across variants (e.g. QP 20 for 1080p, 24 for 720p, 28 for 480p) to match each resolution without exceeding hardware encoder limits.'
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isNvenc && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-xs leading-relaxed flex items-start gap-2.5">
+          <span className="text-emerald-400 text-base shrink-0">🚀</span>
+          <div>
+            <div className="font-semibold text-emerald-400">
+              {t('destinations.nvencAbrTitle', 'NVIDIA NVENC Hardware Encoding')}
+            </div>
+            <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+              {t(
+                'destinations.nvencAbrNote',
+                'Hardware accelerated multi-rendition encoding active via NVIDIA NVENC.'
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {variants.length > 0 ? (
-        <div className="overflow-hidden border border-white/5 rounded-lg">
-          <table className="w-full text-left border-collapse text-[11px]">
+        <div className="overflow-hidden border border-[var(--glass-border)] rounded-lg bg-[var(--bg-card)]">
+          <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-white/5 border-b border-white/10 text-white/60 font-medium">
-                <th className="p-1.5">Resolution</th>
-                <th className="p-1.5">Video Bitrate</th>
-                <th className="p-1.5">Audio Bitrate</th>
-                <th className="p-1.5 text-right">Actions</th>
+              <tr className="bg-[var(--input-bg)] border-b border-[var(--glass-border)] text-[var(--text-secondary)] font-semibold">
+                <th className="p-2">{t('destinations.hlsResolution', 'Resolution')}</th>
+                <th className="p-2">{t('destinations.hlsVideoBitrate', 'Video Bitrate')}</th>
+                <th className="p-2">{t('destinations.hlsAudioBitrate', 'Audio Bitrate')}</th>
+                <th className="p-2 text-right">{t('destinations.hlsActions', 'Actions')}</th>
               </tr>
             </thead>
             <tbody>
               {variants.map((v, idx) => (
-                <tr key={idx} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
-                  <td className="p-1.5 font-mono text-purple-300">{v.resolution}</td>
-                  <td className="p-1.5 font-mono">{v.video_bitrate}</td>
-                  <td className="p-1.5 font-mono">{v.audio_bitrate}</td>
-                  <td className="p-1.5 text-right">
+                <tr key={idx} className="border-b border-[var(--glass-border)]/50 last:border-0 hover:bg-[var(--input-bg)]/50 transition-colors text-[var(--text-primary)]">
+                  <td className="p-2 font-mono font-semibold text-brand-lime">{v.resolution}</td>
+                  <td className="p-2 font-mono">{v.video_bitrate}</td>
+                  <td className="p-2 font-mono">{v.audio_bitrate}</td>
+                  <td className="p-2 text-right">
                     <button
                       type="button"
                       onClick={() => removeVariant(idx)}
-                      className="text-red-400 hover:text-red-300 font-medium transition-colors px-1.5 py-0.5 rounded hover:bg-red-500/10"
+                      className="text-red-500 hover:text-red-400 font-semibold transition-colors px-2 py-1 rounded hover:bg-red-500/10"
                     >
-                      Remove
+                      {t('destinations.hlsRemoveVariant', 'Remove')}
                     </button>
                   </td>
                 </tr>
@@ -124,14 +167,16 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
           </table>
         </div>
       ) : (
-        <div className="text-center py-3 text-white/40 text-[10px] border border-dashed border-white/10 rounded-lg">
-          No variants defined. Single-stream output will be used.
+        <div className="text-center py-4 text-[var(--text-secondary)] text-xs border border-dashed border-[var(--glass-border)] rounded-lg bg-[var(--bg-card)]">
+          {t('destinations.hlsNoVariantsDefined', 'No variants defined. Single-stream output will be used.')}
         </div>
       )}
 
       {/* Preset quick-add */}
       <div className="space-y-1.5">
-        <label className="text-[9px] text-text-secondary uppercase font-bold block">Quick Add Presets</label>
+        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block">
+          {t('destinations.hlsQuickAddPresets', 'Quick Add Presets')}
+        </label>
         <div className="flex flex-wrap gap-1.5">
           {PRESETS.map((p, idx) => {
             const exists = variants.some(v => v.resolution === p.resolution);
@@ -141,10 +186,10 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
                 type="button"
                 disabled={exists}
                 onClick={() => handleApplyPreset(p)}
-                className={`text-[10px] px-2 py-0.5 rounded-lg border transition-all ${
+                className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-all ${
                   exists
-                    ? 'border-white/5 bg-white/5 text-white/30 cursor-not-allowed'
-                    : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:border-purple-400/50'
+                    ? 'border-[var(--glass-border)]/40 bg-[var(--input-bg)]/30 text-[var(--text-secondary)]/40 cursor-not-allowed'
+                    : 'border-[var(--glass-border)] bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--input-bg)] hover:border-brand-lime/50'
                 }`}
               >
                 + {p.label}
@@ -155,14 +200,16 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
       </div>
 
       {/* Custom Add Form */}
-      <form onSubmit={handleAddCustom} className="space-y-1.5 pt-1.5 border-t border-white/5">
-        <label className="text-[9px] text-text-secondary uppercase font-bold block">Custom Variant</label>
-        <div className="grid grid-cols-3 gap-1.5">
+      <form onSubmit={handleAddCustom} className="space-y-2 pt-2 border-t border-[var(--glass-border)]">
+        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block">
+          {t('destinations.hlsCustomVariant', 'Custom Variant')}
+        </label>
+        <div className="grid grid-cols-3 gap-2">
           <input
             type="text"
             placeholder="e.g. 1920:1080"
-            className={`bg-white/5 border rounded-lg p-1.5 text-xs outline-none text-white focus:border-purple-400/50 transition-colors ${
-              resError ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
+            className={`bg-[var(--bg-card)] border rounded-lg p-2 text-xs outline-none text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:border-brand-lime transition-colors font-mono ${
+              resError ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-[var(--glass-border)]'
             }`}
             value={resolution}
             onChange={e => {
@@ -173,9 +220,9 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
           />
           <input
             type="text"
-            placeholder="Video (e.g. 4500k)"
-            className={`bg-white/5 border rounded-lg p-1.5 text-xs outline-none text-white focus:border-purple-400/50 transition-colors ${
-              videoError ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
+            placeholder={t('destinations.hlsVideoBitratePlaceholder', 'Video (e.g. 4500k)')}
+            className={`bg-[var(--bg-card)] border rounded-lg p-2 text-xs outline-none text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:border-brand-lime transition-colors font-mono ${
+              videoError ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-[var(--glass-border)]'
             }`}
             value={videoBitrate}
             onChange={e => {
@@ -186,9 +233,9 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
           />
           <input
             type="text"
-            placeholder="Audio (e.g. 128k)"
-            className={`bg-white/5 border rounded-lg p-1.5 text-xs outline-none text-white focus:border-purple-400/50 transition-colors ${
-              audioError ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
+            placeholder={t('destinations.hlsAudioBitratePlaceholder', 'Audio (e.g. 128k)')}
+            className={`bg-[var(--bg-card)] border rounded-lg p-2 text-xs outline-none text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:border-brand-lime transition-colors font-mono ${
+              audioError ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-[var(--glass-border)]'
             }`}
             value={audioBitrate}
             onChange={e => {
@@ -200,9 +247,10 @@ export const HlsVariantsForm: React.FC<HlsVariantsFormProps> = ({ variants, onCh
         </div>
         <button
           type="submit"
-          className="w-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 font-bold border border-purple-500/30 rounded-lg py-1.5 text-xs transition-colors"
+          className="w-full bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime font-bold border border-brand-lime/30 rounded-lg py-2 text-xs transition-colors flex items-center justify-center gap-1.5"
         >
-          Add Custom Variant
+          <span>+</span>
+          <span>{t('destinations.hlsAddCustomVariant', 'Add Custom Variant')}</span>
         </button>
       </form>
     </div>

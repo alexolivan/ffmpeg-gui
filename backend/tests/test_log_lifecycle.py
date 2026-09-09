@@ -261,6 +261,53 @@ class TestLogLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(os.path.exists(p_arch), "process_{id}.log.1.gz must be removed upon process deletion")
         self.assertFalse(os.path.exists(ice_dir), "icecast_{id} directory must be removed upon process deletion")
 
+    async def test_execute_log_rotate_rotates_and_purges_access_log(self):
+        """Verifies that access.log is rotated via copytruncate when oversized and expired archives are purged."""
+        config_path = os.path.join(self.temp_dir.name, "test_access.conf")
+        config = configparser.ConfigParser()
+        config["logging"] = {
+            "mode": "file",
+            "file_path": os.path.join(self.log_dir, "ffmpeg-gui.log"),
+            "access_log_path": os.path.join(self.log_dir, "access.log"),
+            "retention_days": "2",
+            "rotation_max_bytes": "500",
+            "compression_enabled": "true"
+        }
+        with open(config_path, "w") as f:
+            config.write(f)
+        os.environ["CONFIG_FILE_PATH"] = config_path
+
+        # 1. Active oversized access.log
+        access_log = os.path.join(self.log_dir, "access.log")
+        access_data = b"ACCESS_ENTRY\n" * 50  # ~650 bytes > 500 max_bytes
+        with open(access_log, "wb") as f:
+            f.write(access_data)
+
+        # 2. Recent archive 1 day ago (preserve)
+        recent_arch = os.path.join(self.log_dir, "access.log.1.gz")
+        with open(recent_arch, "w") as f:
+            f.write("recent access archive")
+        one_day_ago = time.time() - (24 * 3600 * 1)
+        os.utime(recent_arch, (one_day_ago, one_day_ago))
+
+        # 3. Expired archive 5 days ago (delete)
+        expired_arch = os.path.join(self.log_dir, "access.log.2.gz")
+        with open(expired_arch, "w") as f:
+            f.write("old access archive")
+        five_days_ago = time.time() - (24 * 3600 * 5)
+        os.utime(expired_arch, (five_days_ago, five_days_ago))
+
+        logs = []
+        await self.manager._execute_log_rotate(lambda m: logs.append(m), lambda m: logs.append(m))
+
+        # Active log must have been truncated to 0 bytes
+        self.assertTrue(os.path.exists(access_log))
+        self.assertEqual(os.path.getsize(access_log), 0)
+
+        # Recent archive must exist, expired must be deleted
+        self.assertTrue(os.path.exists(recent_arch), "Recent access.log archive must be preserved")
+        self.assertFalse(os.path.exists(expired_arch), "Expired access.log archive must be deleted")
+
 if __name__ == "__main__":
     unittest.main()
 

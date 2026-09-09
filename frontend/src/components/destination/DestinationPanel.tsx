@@ -70,6 +70,7 @@ interface DestinationPanelProps {
   validationErrors?: Record<string, string>;
   validationWarnings?: Record<string, string>;
   storages?: any[];
+  codecConfig?: any;
 }
 
 const OUTPUT_TYPES = [
@@ -112,6 +113,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   validationErrors,
   validationWarnings,
   storages = [],
+  codecConfig,
 }) => {
   const { t } = useTranslation();
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
@@ -278,6 +280,87 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     return () => { active = false; };
   }, []);
 
+  // Deterministic port and provider synchronization on mount or provider resolution
+  React.useEffect(() => {
+    if (providers.length === 0) return;
+    const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+    const icecastProviders = providers.filter(p => p.service_type === 'icecast_server');
+
+    if (config.type === 'srt' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
+      if (config.mediamtx_target_type !== 'remote' && mediamtxProviders.length > 0) {
+        const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        if (prov) {
+          const expectedPort = String(prov.config?.srt_port || 8890);
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: config.host || '127.0.0.1',
+            });
+          }
+        }
+      }
+    } else if (config.type === 'icecast' && config.icecast_mode === 'local') {
+      if (icecastProviders.length > 0) {
+        const prov = icecastProviders.find(p => p.id === config.provider_service_id) || icecastProviders[0];
+        if (prov) {
+          const pCfg = prov.config || {};
+          const isTls = pCfg.ssl_enabled === true;
+          const expectedPort = String(isTls ? (pCfg.ssl_port || 7443) : (pCfg.port || 7000));
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: '127.0.0.1',
+              tls: isTls,
+              legacy_icecast: Boolean(prov.is_legacy ?? pCfg.is_legacy),
+            });
+          }
+        }
+      }
+    } else if (config.type === 'rtmp' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
+      if (config.mediamtx_target_type !== 'remote' && mediamtxProviders.length > 0) {
+        const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        if (prov) {
+          const pCfg = prov.config || {};
+          const isTls = Boolean(config.tls && pCfg.ssl_enabled && pCfg.rtmps_enabled);
+          const expectedPort = String(isTls ? (pCfg.rtmps_port || 1936) : (pCfg.rtmp_port || 1935));
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: config.host || '127.0.0.1',
+            });
+          }
+        }
+      }
+    } else if (config.type === 'whip' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
+      if (config.mediamtx_target_type !== 'remote' && mediamtxProviders.length > 0) {
+        const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        if (prov) {
+          const pCfg = prov.config || {};
+          const expectedPort = String(pCfg.webrtc_port || 8889);
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: config.host || '127.0.0.1',
+            });
+          }
+        }
+      }
+    } else if (config.type && !['srt', 'rtmp', 'whip', 'icecast'].includes(config.type) && (config.provider_service_id || config.mediamtx_mode || config.service_target)) {
+      update({
+        provider_service_id: undefined,
+        mediamtx_mode: false,
+        service_target: undefined,
+        mediamtx_target_type: undefined,
+        path_id: undefined,
+        stream_action: undefined,
+      });
+    }
+  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls]);
+
   const parseFormatDescription = (desc: string) => {
     const resMatch = desc.match(/(\d+)x(\d+)/);
     const fpsMatch = desc.match(/at ([\d/]+) fps/);
@@ -290,24 +373,24 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   const handleFormatChange = (code: string) => {
     if (!code) {
       update({
-        format_code: '',
-        video_size: '',
-        framerate: '',
-      });
-      return;
-    }
-    const fmt = formats.find(f => f.code === code);
-    if (fmt) {
-      const parsed = parseFormatDescription(fmt.description);
-      update({
-        format_code: code,
-        video_size: parsed.video_size || '',
-        framerate: parsed.framerate || '',
+        format_code: undefined,
+        video_size: undefined,
+        framerate: undefined,
       });
     } else {
-      update({
-        format_code: code,
-      });
+      const fmt = formats.find(f => f.code === code);
+      if (fmt) {
+        const parsed = parseFormatDescription(fmt.description);
+        update({
+          format_code: code,
+          video_size: parsed.video_size || '',
+          framerate: parsed.framerate || '',
+        });
+      } else {
+        update({
+          format_code: code,
+        });
+      }
     }
   };
 
@@ -332,59 +415,18 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           storage_id: (storages || []).find((s: any) => s.type === 'hls')?.id || null,
           hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
           hls_abr_enabled: false, hls_stream_name: 'stream', variants: [],
+          provider_service_id: undefined,
+          mediamtx_mode: false,
+          service_target: undefined,
+          mediamtx_target_type: undefined,
+          path_id: undefined,
+          stream_action: undefined,
         })}
       >
         {availableTypes.map(tItem => (
           <option key={tItem.value} value={tItem.value}>{t(tItem.labelKey, tItem.label)}</option>
         ))}
       </select>
-
-      {/* Auxiliary Hub Quick-Preset Bar (for RTMP and WHIP) */}
-      {providers.length > 0 && ['rtmp', 'whip'].includes(config.type) && (
-        <div className="bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-xs">⚡</span>
-            <span className="text-[10px] font-semibold text-brand-lime truncate">
-              {t('destinations.hubPresetTitle', 'Route to Auxiliary Hub')}:
-            </span>
-          </div>
-          <select
-            className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-[10px] font-mono text-[var(--text-primary)] focus:border-brand-lime focus:outline-none"
-            value={config.provider_service_id || ''}
-            onChange={e => {
-              const selectedId = parseInt(e.target.value);
-              if (!selectedId) {
-                update({ provider_service_id: undefined });
-                return;
-              }
-              const provider = providers.find(p => p.id === selectedId);
-              if (!provider) return;
-
-              const cfg = provider.config || {};
-              if (config.type === 'rtmp') {
-                const port = cfg.rtmp_port || 1935;
-                update({ 
-                  provider_service_id: selectedId,
-                  url: `rtmp://127.0.0.1:${port}/live/stream1` 
-                });
-              } else if (config.type === 'whip') {
-                const port = cfg.webrtc_port || 8889;
-                update({ 
-                  provider_service_id: selectedId,
-                  url: `http://127.0.0.1:${port}/live_stream/whip` 
-                });
-              }
-            }}
-          >
-            <option value="">{t('destinations.selectHubPreset', '-- Direct / Standalone (No Managed Provider) --')}</option>
-            {providers.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.service_type === 'mediamtx_hub' ? 'MediaMTX' : 'Icecast'})
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       {/* ── Type-specific fields ── */}
 
@@ -545,7 +587,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'srt' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
-        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
         const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         const mtxCfg = selectedProvider?.config || {};
@@ -646,7 +690,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 }`}
                 onClick={() => update({
                   mediamtx_mode: false,
-                  service_target: undefined,
+                  service_target: 'manual',
                   stream_action: undefined,
                   path_id: undefined,
                   provider_service_id: undefined,
@@ -1094,28 +1138,359 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         );
       })()}
 
-      {config.type === 'rtmp' && (
-        <div className="space-y-1.5">
-          <label htmlFor="dest-rtmp-url" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-            {t('destinations.streamUrl')}<span className="text-red-500 ml-0.5">*</span>
-          </label>
-          <input
-            type="text"
-            id="dest-rtmp-url"
-            name="url"
-            placeholder="RTMP URL (rtmp://server/live/key)"
-            className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 ${
-              validationErrors?.url
-                ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                : 'border-white/10'
-            }`}
-            value={config.url || ''} onChange={e => update({ url: e.target.value })}
-          />
-          {validationErrors?.url && (
-            <span className="text-[10px] text-red-400 block mt-1">{validationErrors.url}</span>
-          )}
-        </div>
-      )}
+      {config.type === 'rtmp' && (() => {
+        const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
+        const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        const mtxCfg = selectedProvider?.config || {};
+        const rawPaths = mtxCfg.paths || {};
+        const configuredPaths = Object.keys(rawPaths);
+
+        const handleSelectProvider = (provId: number, isTls?: boolean) => {
+          const prov = mediamtxProviders.find(p => p.id === provId);
+          if (!prov) return;
+          const pCfg = prov.config || {};
+          const paths = pCfg.paths || {};
+          const pKeys = Object.keys(paths);
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = paths[firstPath] || {};
+
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || pCfg.security?.publish_user || pCfg.publish_user || '';
+            pubPass = pathConf.publish_pass || pCfg.security?.publish_pass || pCfg.publish_pass || '';
+          }
+
+          const useTls = isTls !== undefined ? isTls : Boolean(pCfg.ssl_enabled && pCfg.rtmps_enabled && config.tls);
+          const port = useTls ? (pCfg.rtmps_port || 1936) : (pCfg.rtmp_port || 1935);
+          const scheme = useTls ? 'rtmps' : 'rtmp';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}127.0.0.1:${port}/${firstPath}`;
+
+          update({
+            provider_service_id: prov.id,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'local',
+            host: '127.0.0.1',
+            port: String(port),
+            path_id: firstPath,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            mediamtx_mode: true,
+            tls: useTls,
+            url: genUrl,
+          });
+        };
+
+        const handleSelectPath = (val: string) => {
+          const pathId = val === '__custom__' ? (config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '') : val;
+          const pathConf = rawPaths[pathId] || {};
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || mtxCfg.security?.publish_user || mtxCfg.publish_user || '';
+            pubPass = pathConf.publish_pass || mtxCfg.security?.publish_pass || mtxCfg.publish_pass || '';
+          }
+
+          const scheme = config.tls ? 'rtmps' : 'rtmp';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const port = config.port || (config.tls ? '1936' : '1935');
+          const genUrl = `${scheme}://${authPrefix}${config.host || '127.0.0.1'}:${port}/${pathId || 'stream1'}`;
+
+          update({
+            path_id: pathId,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            url: genUrl,
+          });
+        };
+
+        return (
+          <div className="space-y-3">
+            {/* Connection Mode Switch */}
+            <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
+                  !isMediaMtxMode
+                    ? 'bg-amber-500/25 text-[var(--text-primary)] border border-amber-500/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => update({
+                  mediamtx_mode: false,
+                  service_target: 'manual',
+                  path_id: undefined,
+                  provider_service_id: undefined,
+                  mediamtx_target_type: undefined,
+                })}
+              >
+                {t('destinations.rtmpManualDirect', 'Manual Direct RTMP / RTMPS')}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
+                  isMediaMtxMode
+                    ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  if (mediamtxProviders.length > 0) {
+                    const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                    handleSelectProvider(defaultProv.id);
+                  } else {
+                    update({
+                      mediamtx_mode: true,
+                      mediamtx_target_type: 'remote',
+                      service_target: 'mediamtx',
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '1935',
+                      path_id: config.path_id || 'stream1',
+                      url: `rtmp://${config.host || '127.0.0.1'}:${config.port || '1935'}/${config.path_id || 'stream1'}`,
+                    });
+                  }
+                }}
+              >
+                <span>⚡</span>
+                {t('destinations.rtmpMediaMtxHub', 'MediaMTX Hub Integration')}
+              </button>
+            </div>
+
+            {isMediaMtxMode ? (
+              <div className="space-y-2.5 bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-brand-lime tracking-wider flex items-center gap-1">
+                    <span>⚡</span> {t('destinations.rtmpMediaMtxHub', 'MediaMTX Hub Integration')}
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime font-mono">
+                    {config.tls ? 'rtmps://' : 'rtmp://'}{config.host || '127.0.0.1'}:{config.port || (config.tls ? '1936' : '1935')}
+                  </span>
+                </div>
+
+                {/* Sub-selector: Local Hub vs Remote Server */}
+                <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                  <button
+                    type="button"
+                    disabled={mediamtxProviders.length === 0}
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      !isRemote && mediamtxProviders.length > 0
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => {
+                      const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                      if (defaultProv) handleSelectProvider(defaultProv.id);
+                    }}
+                  >
+                    <span>🏠</span> {t('destinations.srtLocalHub', 'Local Hub (This Node)')} {mediamtxProviders.length === 0 ? `(${t('common.none', 'None')})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      isRemote
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => update({
+                      mediamtx_target_type: 'remote',
+                      provider_service_id: undefined,
+                      service_target: 'mediamtx',
+                      mediamtx_mode: true,
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '1935',
+                      path_id: config.path_id || 'stream1',
+                    })}
+                  >
+                    <span>🌐</span> {t('destinations.srtRemoteHub', 'Remote MediaMTX Server')}
+                  </button>
+                </div>
+
+                {!isRemote && selectedProvider ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.rtmpProviderHub', 'MediaMTX Provider Instance')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={selectedProvider.id}
+                          onChange={e => handleSelectProvider(Number(e.target.value))}
+                        >
+                          {mediamtxProviders.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} {p.alias ? `(${p.alias})` : ''} — Port {p.config?.rtmp_port || 1935}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.rtmpPathId', 'Target Stream Path')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
+                          onChange={e => handleSelectPath(e.target.value)}
+                        >
+                          {configuredPaths.map(pName => (
+                            <option key={pName} value={pName}>/{pName}</option>
+                          ))}
+                          <option value="__custom__">✎ {t('destinations.customPathPrompt', 'Custom Path...')}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* TLS / RTMPS toggle if supported by hub */}
+                    {mtxCfg.ssl_enabled && mtxCfg.rtmps_enabled && (
+                      <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
+                        <div className="text-xs">
+                          <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                            🔒 {t('destinations.enableRtmps', 'Encrypted RTMPS Push (TLS)')}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-secondary)] block">
+                            Port :{mtxCfg.rtmps_port || 1936}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(config.tls)}
+                          onChange={e => handleSelectProvider(selectedProvider.id, e.target.checked)}
+                          className="accent-brand-lime cursor-pointer w-4 h-4"
+                        />
+                      </div>
+                    )}
+
+                    {(!config.path_id || !configuredPaths.includes(config.path_id)) && (
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.customPathSlug', 'Custom Path Slug')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. live1, channel_master"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.path_id || ''}
+                          onChange={e => {
+                            const newPath = e.target.value.replace(/[^a-zA-Z0-9_\-\/]/g, '');
+                            const scheme = config.tls ? 'rtmps' : 'rtmp';
+                            const pubUser = config.publish_user || config.auth_user || '';
+                            const pubPass = config.publish_pass || config.auth_pass || '';
+                            const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+                            update({
+                              path_id: newPath,
+                              url: `${scheme}://${authPrefix}127.0.0.1:${config.port || (config.tls ? 1936 : 1935)}/${newPath}`,
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Generated URL & Auto-computed field */}
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.generatedRtmpUrl', 'Generated Target RTMP URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all cursor-pointer"
+                        value={config.url || ''}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Remote Hub Mode */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.remoteHostIp', 'Remote Host / IP')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. mediamtx.mycorp.lan"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.host || ''}
+                          onChange={e => {
+                            const h = e.target.value;
+                            const port = config.port || '1935';
+                            const path = config.path_id || 'stream1';
+                            update({ host: h, url: `rtmp://${h}:${port}/${path}` });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.port', 'Port')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="1935"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.port || '1935'}
+                          onChange={e => {
+                            const p = e.target.value;
+                            update({ port: p, url: `rtmp://${config.host || '127.0.0.1'}:${p}/${config.path_id || 'stream1'}` });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.generatedRtmpUrl', 'Generated Target RTMP URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all"
+                        value={config.url || ''}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Manual Standalone RTMP Mode */
+              <div className="space-y-1.5">
+                <label htmlFor="dest-rtmp-url" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                  {t('destinations.streamUrl')}<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="dest-rtmp-url"
+                  name="url"
+                  placeholder="RTMP URL (rtmp://server/live/key)"
+                  className={`w-full bg-[var(--input-bg)] border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+                    validationErrors?.url
+                      ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                      : 'border-[var(--glass-border)] focus:border-purple-400'
+                  }`}
+                  value={config.url || ''}
+                  onChange={e => update({ url: e.target.value })}
+                />
+                {validationErrors?.url && (
+                  <span className="text-[10px] text-red-400 block mt-1">{validationErrors.url}</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {config.type === 'ndi' && (
         <div className="space-y-2">
@@ -1352,19 +1727,25 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         <div className="space-y-2">
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label htmlFor="dest-file-storage" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              <label htmlFor="dest-file-storage" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                 {t('destinations.mediaStorage')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <select
                 id="dest-file-storage"
                 name="storage_id"
-                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none focus:border-purple-400 ${
+                className={`w-full bg-[var(--input-bg)] border rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] ${
                   validationErrors?.storage_id || validationErrors?.path
                     ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-white/10'
+                    : 'border-[var(--glass-border)]'
                 }`}
                 value={config.storage_id || ''}
-                onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
+                onChange={e => {
+                  const sid = e.target.value ? Number(e.target.value) : null;
+                  const st = storages.find((s: any) => s.id === sid);
+                  const rel = config.relative_path || '';
+                  const full = st?.path ? (rel ? `${st.path.replace(/\/+$/, '')}/${rel.replace(/^\/+/, '')}` : st.path) : '';
+                  update({ storage_id: sid, path: full });
+                }}
               >
                 <option value="">{t('sources.selectStorage')}</option>
                 {storages.filter((s: any) => s.type === 'media').map((s: any) => (
@@ -1373,7 +1754,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               </select>
             </div>
             <div>
-              <label htmlFor="dest-file-relative-path" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              <label htmlFor="dest-file-relative-path" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                 {t('destinations.relativePathFilename')}<span className="text-red-500 ml-0.5">*</span>
               </label>
               <input
@@ -1381,25 +1762,30 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 id="dest-file-relative-path"
                 name="relative_path"
                 placeholder="e.g. movies/clip.mp4"
-                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none placeholder-white/20 focus:border-purple-400 ${
+                className={`w-full bg-[var(--input-bg)] border rounded-lg p-1.5 text-xs outline-none placeholder-[var(--text-secondary)]/40 focus:border-brand-lime text-[var(--text-primary)] ${
                   validationErrors?.relative_path || validationErrors?.path
                     ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
                     : validationWarnings?.path
                       ? 'border-amber-500/50 focus:border-amber-500 bg-amber-500/5'
-                      : 'border-white/10'
+                      : 'border-[var(--glass-border)]'
                 }`}
                 value={config.relative_path || ''}
-                onChange={e => update({ relative_path: e.target.value })}
+                onChange={e => {
+                  const rel = e.target.value;
+                  const st = storages.find((s: any) => s.id === config.storage_id);
+                  const full = st?.path ? (rel ? `${st.path.replace(/\/+$/, '')}/${rel.replace(/^\/+/, '')}` : st.path) : '';
+                  update({ relative_path: rel, path: full });
+                }}
               />
             </div>
             <div>
-              <label htmlFor="dest-file-container" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+              <label htmlFor="dest-file-container" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                 {t('destinations.container')}
               </label>
               <select
                 id="dest-file-container"
                 name="container"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-purple-400"
+                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)]"
                 value={config.container || 'mp4'}
                 onChange={e => update({ container: e.target.value })}
               >
@@ -1783,6 +2169,19 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         const hasHlsStorages = hlsStorages.length > 0;
         const currentMethod = config.hls_method || (hasHlsStorages ? 'local' : 'PUT');
 
+        const handleHlsStorageChange = (sid: number | null) => {
+          const st = hlsStorages.find((s: any) => s.id === sid);
+          const rel = config.relative_path || '';
+          const full = st?.path ? (rel ? `${st.path.replace(/\/+$/, '')}/${rel.replace(/^\/+/, '')}` : st.path) : '';
+          update({ storage_id: sid, path: full });
+        };
+
+        const handleHlsRelPathChange = (rel: string) => {
+          const st = hlsStorages.find((s: any) => s.id === config.storage_id);
+          const full = st?.path ? (rel ? `${st.path.replace(/\/+$/, '')}/${rel.replace(/^\/+/, '')}` : st.path) : '';
+          update({ relative_path: rel, path: full });
+        };
+
         return (
           <div className="space-y-3">
             {!hasHlsStorages && (
@@ -1802,58 +2201,23 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              <div>
-                <label htmlFor="dest-hls-method" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
-                  {t('destinations.hlsIngestMethod', 'HLS Ingest Method')}
-                </label>
-                <select
-                  id="dest-hls-method"
-                  name="hls_method"
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)]"
-                  value={currentMethod}
-                  onChange={e => update({ hls_method: e.target.value })}
-                >
-                  {hasHlsStorages && (
-                    <option value="local">{t('destinations.localDir', 'Local Storage (HLS Disk Directory)')}</option>
-                  )}
-                  <option value="PUT">{t('destinations.httpPutUpload', 'HTTP PUT Upload')}</option>
-                  <option value="POST">{t('destinations.httpPostUpload', 'HTTP POST Upload')}</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label htmlFor="dest-hls-time" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
-                    {t('destinations.segmentSeconds', 'Segment Target Duration (s)')}
-                  </label>
-                  <input
-                    type="number"
-                    id="dest-hls-time"
-                    name="hls_time"
-                    min={1}
-                    max={60}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
-                    value={config.hls_time ?? 2}
-                    onChange={e => update({ hls_time: Number(e.target.value) })}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="dest-hls-list-size" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
-                    {t('destinations.listSize', 'Playlist Segment Capacity (list_size)')}
-                  </label>
-                  <input
-                    type="number"
-                    id="dest-hls-list-size"
-                    name="hls_list_size"
-                    min={2}
-                    max={100}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
-                    value={config.hls_list_size ?? 5}
-                    onChange={e => update({ hls_list_size: Number(e.target.value) })}
-                  />
-                </div>
-              </div>
+            <div>
+              <label htmlFor="dest-hls-method" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                {t('destinations.hlsIngestMethod', 'HLS Ingest Method')}
+              </label>
+              <select
+                id="dest-hls-method"
+                name="hls_method"
+                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)]"
+                value={currentMethod}
+                onChange={e => update({ hls_method: e.target.value })}
+              >
+                {hasHlsStorages && (
+                  <option value="local">{t('destinations.localDir', 'Local Storage (HLS Disk Directory)')}</option>
+                )}
+                <option value="PUT">{t('destinations.httpPutUpload', 'HTTP PUT Upload')}</option>
+                <option value="POST">{t('destinations.httpPostUpload', 'HTTP POST Upload')}</option>
+              </select>
             </div>
 
             {hasHlsStorages && currentMethod === 'local' ? (
@@ -1871,7 +2235,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         : 'border-[var(--glass-border)]'
                     }`}
                     value={config.storage_id || ''}
-                    onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
+                    onChange={e => handleHlsStorageChange(e.target.value ? Number(e.target.value) : null)}
                   >
                     <option value="">{t('sources.selectStorage', 'Select HLS Storage Volume')}</option>
                     {hlsStorages.map((s: any) => (
@@ -1887,7 +2251,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     type="text"
                     id="dest-hls-relative-path"
                     name="relative_path"
-                    placeholder="e.g. live/stream"
+                    placeholder="e.g. live"
                     className={`w-full bg-[var(--input-bg)] border rounded-lg p-2 text-xs outline-none placeholder-[var(--text-secondary)]/40 focus:border-brand-lime text-[var(--text-primary)] ${
                       validationErrors?.relative_path || validationErrors?.path
                         ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
@@ -1896,7 +2260,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                           : 'border-[var(--glass-border)]'
                     }`}
                     value={config.relative_path || ''}
-                    onChange={e => update({ relative_path: e.target.value })}
+                    onChange={e => handleHlsRelPathChange(e.target.value)}
                   />
                 </div>
                 {(validationErrors?.storage_id || validationErrors?.relative_path || validationErrors?.path) && (
@@ -1937,9 +2301,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             )}
 
             <div>
-              <label htmlFor="dest-hls-stream-name" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
-                {t('destinations.hlsStreamName', 'HLS Stream Name (Playlist / Slug)')}<span className="text-red-500 ml-0.5">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="dest-hls-stream-name" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold">
+                  {t('destinations.hlsStreamName', 'HLS Stream Name (Playlist / Slug)')}<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <span className="text-[10px] font-mono text-brand-lime bg-brand-lime/10 px-1.5 py-0.5 rounded border border-brand-lime/20">
+                  📄 {(config.hls_stream_name || 'stream').replace(/\.m3u8$/, '')}.m3u8
+                </span>
+              </div>
               <input
                 type="text"
                 id="dest-hls-stream-name"
@@ -1955,12 +2324,84 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 required
               />
               <span className="text-[10px] text-[var(--text-secondary)] block mt-0.5">
-                {t('destinations.hlsExtensionNote', 'Path must end with .m3u8 extension')}
+                {t('destinations.hlsSlugHelper', 'Playlist slug without extension (e.g. "Stream1" generates "Stream1.m3u8")')}
               </span>
               {validationErrors?.hls_stream_name && (
                 <span className="text-[10px] text-red-400 block mt-1">{validationErrors.hls_stream_name}</span>
               )}
             </div>
+
+            {/* Segment & Playlist Window Settings */}
+            <div className="p-3 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl space-y-2.5">
+              <div className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider flex items-center gap-1.5">
+                <span>⏱️</span>
+                <span>{t('destinations.hlsWindowSettings', 'HLS Playlist & Segment Window')}</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div>
+                  <label htmlFor="dest-hls-time" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.segmentSeconds', 'Segment Target Duration (s)')}
+                  </label>
+                  <input
+                    type="number"
+                    id="dest-hls-time"
+                    name="hls_time"
+                    min={1}
+                    max={60}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                    value={config.hls_time ?? 2}
+                    onChange={e => update({ hls_time: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="dest-hls-list-size" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.listSize', 'Playlist Segment Capacity (list_size)')}
+                  </label>
+                  <input
+                    type="number"
+                    id="dest-hls-list-size"
+                    name="hls_list_size"
+                    min={2}
+                    max={100}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                    value={config.hls_list_size ?? 5}
+                    onChange={e => update({ hls_list_size: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+              {hasHlsStorages && currentMethod === 'local' && (
+                <div className="flex items-center gap-2 pt-1 border-t border-[var(--glass-border)]/50">
+                  <input
+                    type="checkbox"
+                    id="hls-delete-chk"
+                    name="hls_delete_segments"
+                    className="w-3.5 h-3.5 accent-brand-lime rounded"
+                    checked={config.hls_delete_segments ?? true}
+                    onChange={e => update({ hls_delete_segments: e.target.checked })}
+                  />
+                  <label htmlFor="hls-delete-chk" className="text-xs font-medium cursor-pointer text-[var(--text-primary)] select-none">
+                    {t('destinations.deleteExpiredSegments', 'Auto-Delete Expired Segments')}
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {(currentMethod === 'PUT' || currentMethod === 'POST') && (
+              <div>
+                <label htmlFor="dest-hls-headers" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                  {t('destinations.customHttpHeaders', 'Custom HTTP Headers')}
+                </label>
+                <textarea
+                  id="dest-hls-headers"
+                  name="headers"
+                  placeholder={'e.g. Authorization: Bearer token123\nX-Custom-Header: value'}
+                  rows={2}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono resize-none"
+                  value={config.headers || ''}
+                  onChange={e => update({ headers: e.target.value })}
+                />
+              </div>
+            )}
 
             <div className="flex items-center gap-2 p-2 bg-[var(--input-bg)] rounded-lg border border-[var(--glass-border)]">
               <input
@@ -1982,72 +2423,366 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               </label>
             </div>
 
-            {hasHlsStorages && currentMethod === 'local' && (
-              <div className="flex items-center gap-2 p-2 bg-[var(--input-bg)] rounded-lg border border-[var(--glass-border)]">
-                <input
-                  type="checkbox"
-                  id="hls-delete-chk"
-                  name="hls_delete_segments"
-                  className="w-3.5 h-3.5 accent-brand-lime rounded"
-                  checked={config.hls_delete_segments ?? true}
-                  onChange={e => update({ hls_delete_segments: e.target.checked })}
-                />
-                <label htmlFor="hls-delete-chk" className="text-xs font-medium cursor-pointer text-[var(--text-primary)] select-none">
-                  {t('destinations.deleteExpiredSegments', 'Auto-Delete Expired Segments')}
-                </label>
-              </div>
-            )}
-
-            {(currentMethod === 'PUT' || currentMethod === 'POST') && (
-              <div>
-                <label htmlFor="dest-hls-headers" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
-                  {t('destinations.customHttpHeaders', 'Custom HTTP Headers')}
-                </label>
-                <textarea
-                  id="dest-hls-headers"
-                  name="headers"
-                  placeholder={'e.g. Authorization: Bearer token123\nX-Custom-Header: value'}
-                  rows={2}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono resize-none"
-                  value={config.headers || ''}
-                  onChange={e => update({ headers: e.target.value })}
-                />
-              </div>
-            )}
-
             {config.hls_abr_enabled && (
               <HlsVariantsForm
                 variants={config.variants || []}
                 onChange={variants => update({ variants })}
+                vcodec={codecConfig?.vcodec}
+                videoParams={codecConfig?.video_params}
               />
             )}
           </div>
         );
       })()}
 
-      {config.type === 'whip' && (
-        <div className="space-y-1.5 animate-in fade-in duration-200">
-          <label htmlFor="dest-whip-url" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-            {t('destinations.whipIngestUrl')}<span className="text-red-500 ml-0.5">*</span>
-          </label>
-          <input
-            type="text"
-            id="dest-whip-url"
-            name="url"
-            placeholder="WHIP Ingestion URL (e.g. http://mediamtx:8889/mystream/whip)"
-            className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
-              validationErrors?.url
-                ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                : 'border-white/10'
-            }`}
-            value={config.url || ''}
-            onChange={e => update({ url: e.target.value })}
-          />
-          {validationErrors?.url && (
-            <span className="text-[10px] text-red-400 block mt-1">{validationErrors.url}</span>
-          )}
-        </div>
-      )}
+      {config.type === 'whip' && (() => {
+        const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
+        const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
+        const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        const mtxCfg = selectedProvider?.config || {};
+        const rawPaths = mtxCfg.paths || {};
+        const configuredPaths = Object.keys(rawPaths);
+
+        const handleSelectProvider = (provId: number, isTls?: boolean) => {
+          const prov = mediamtxProviders.find(p => p.id === provId);
+          if (!prov) return;
+          const pCfg = prov.config || {};
+          const paths = pCfg.paths || {};
+          const pKeys = Object.keys(paths);
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = paths[firstPath] || {};
+
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || pCfg.security?.publish_user || pCfg.publish_user || '';
+            pubPass = pathConf.publish_pass || pCfg.security?.publish_pass || pCfg.publish_pass || '';
+          }
+
+          const useTls = isTls !== undefined ? isTls : Boolean(pCfg.ssl_enabled && (pCfg.webrtc_encryption || pCfg.webrtcEncryption));
+          const port = pCfg.webrtc_port || 8889;
+          const scheme = useTls ? 'https' : 'http';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}127.0.0.1:${port}/${firstPath}/whip`;
+
+          update({
+            provider_service_id: prov.id,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'local',
+            host: '127.0.0.1',
+            port: String(port),
+            path_id: firstPath,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            mediamtx_mode: true,
+            tls: useTls,
+            url: genUrl,
+          });
+        };
+
+        const handleSelectPath = (val: string) => {
+          const pathId = val === '__custom__' ? (config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '') : val;
+          const pathConf = rawPaths[pathId] || {};
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || mtxCfg.security?.publish_user || mtxCfg.publish_user || '';
+            pubPass = pathConf.publish_pass || mtxCfg.security?.publish_pass || mtxCfg.publish_pass || '';
+          }
+
+          const scheme = config.tls ? 'https' : 'http';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const port = config.port || '8889';
+          const genUrl = `${scheme}://${authPrefix}${config.host || '127.0.0.1'}:${port}/${pathId || 'stream1'}/whip`;
+
+          update({
+            path_id: pathId,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            url: genUrl,
+          });
+        };
+
+        return (
+          <div className="space-y-3">
+            {/* Connection Mode Switch */}
+            <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
+                  !isMediaMtxMode
+                    ? 'bg-amber-500/25 text-[var(--text-primary)] border border-amber-500/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => update({
+                  mediamtx_mode: false,
+                  service_target: 'manual',
+                  path_id: undefined,
+                  provider_service_id: undefined,
+                  mediamtx_target_type: undefined,
+                })}
+              >
+                {t('destinations.whipManualDirect', 'Manual Direct WHIP Endpoint')}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
+                  isMediaMtxMode
+                    ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  if (mediamtxProviders.length > 0) {
+                    const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                    handleSelectProvider(defaultProv.id);
+                  } else {
+                    update({
+                      mediamtx_mode: true,
+                      mediamtx_target_type: 'remote',
+                      service_target: 'mediamtx',
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8889',
+                      path_id: config.path_id || 'stream1',
+                      url: `http://${config.host || '127.0.0.1'}:${config.port || '8889'}/${config.path_id || 'stream1'}/whip`,
+                    });
+                  }
+                }}
+              >
+                <span>⚡</span>
+                {t('destinations.whipMediaMtxHub', 'MediaMTX Hub WebRTC/WHIP')}
+              </button>
+            </div>
+
+            {isMediaMtxMode ? (
+              <div className="p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl space-y-3">
+                {/* Local vs Remote Submode */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
+                    {t('destinations.targetHubLocation', 'Target MediaMTX Instance')}
+                  </span>
+                  <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                    <button
+                      type="button"
+                      disabled={mediamtxProviders.length === 0}
+                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
+                        !isRemote
+                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40'
+                      }`}
+                      onClick={() => {
+                        if (mediamtxProviders.length > 0) {
+                          handleSelectProvider(mediamtxProviders[0].id);
+                        }
+                      }}
+                    >
+                      {t('sources.localManagedHub', 'Local Managed')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
+                        isRemote
+                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                      onClick={() => update({
+                        mediamtx_target_type: 'remote',
+                        provider_service_id: undefined,
+                        host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                        port: config.port || '8889',
+                      })}
+                    >
+                      {t('sources.remoteExternalHub', 'Remote / External')}
+                    </button>
+                  </div>
+                </div>
+
+                {!isRemote && selectedProvider ? (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.selectHubService', 'MediaMTX Service')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={selectedProvider.id}
+                          onChange={e => handleSelectProvider(Number(e.target.value))}
+                        >
+                          {mediamtxProviders.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} (Port :{p.config?.webrtc_port || 8889})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.streamPath', 'Publish Path')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
+                          onChange={e => handleSelectPath(e.target.value)}
+                        >
+                          {configuredPaths.map(pName => (
+                            <option key={pName} value={pName}>
+                              /{pName} {rawPaths[pName]?.mode === 'open' ? '(LAN Open)' : ''}
+                            </option>
+                          ))}
+                          <option value="__custom__">{t('destinations.customPathOption', '+ Custom Path Slug...')}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* TLS / HTTPS toggle if supported by hub */}
+                    {mtxCfg.ssl_enabled && (
+                      <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
+                        <div className="text-xs">
+                          <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                            🔒 {t('destinations.enableHttpsWhip', 'Encrypted HTTPS WHIP Ingest (TLS)')}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-secondary)] block">
+                            Port :{mtxCfg.webrtc_port || 8889}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(config.tls)}
+                          onChange={e => handleSelectProvider(selectedProvider.id, e.target.checked)}
+                          className="accent-brand-lime cursor-pointer w-4 h-4"
+                        />
+                      </div>
+                    )}
+
+                    {(!config.path_id || !configuredPaths.includes(config.path_id)) && (
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.customPathSlug', 'Custom Path Slug')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. live1, channel_master"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.path_id || ''}
+                          onChange={e => {
+                            const newPath = e.target.value.replace(/[^a-zA-Z0-9_\-\/]/g, '');
+                            const scheme = config.tls ? 'https' : 'http';
+                            const pubUser = config.publish_user || config.auth_user || '';
+                            const pubPass = config.publish_pass || config.auth_pass || '';
+                            const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+                            update({
+                              path_id: newPath,
+                              url: `${scheme}://${authPrefix}127.0.0.1:${config.port || '8889'}/${newPath}/whip`,
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Generated URL & Auto-computed field */}
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.generatedWhipUrl', 'Generated Target WHIP Ingestion URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all cursor-pointer"
+                        value={config.url || ''}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Remote Hub Mode */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.remoteHostIp', 'Remote Host / IP')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. mediamtx.mycorp.lan"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.host || ''}
+                          onChange={e => {
+                            const h = e.target.value;
+                            const port = config.port || '8889';
+                            const path = config.path_id || 'stream1';
+                            update({ host: h, url: `http://${h}:${port}/${path}/whip` });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.port', 'Port')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="8889"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.port || '8889'}
+                          onChange={e => {
+                            const p = e.target.value;
+                            update({ port: p, url: `http://${config.host || '127.0.0.1'}:${p}/${config.path_id || 'stream1'}/whip` });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.generatedWhipUrl', 'Generated Target WHIP Ingestion URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all"
+                        value={config.url || ''}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Manual Standalone WHIP Mode */
+              <div className="space-y-1.5 animate-in fade-in duration-200">
+                <label htmlFor="dest-whip-url" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                  {t('destinations.whipIngestUrl', 'WHIP Ingestion URL')}<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="dest-whip-url"
+                  name="url"
+                  placeholder="WHIP Ingestion URL (e.g. http://mediamtx:8889/mystream/whip)"
+                  className={`w-full bg-[var(--input-bg)] border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-[var(--text-secondary)]/40 ${
+                    validationErrors?.url
+                      ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                      : 'border-[var(--glass-border)] focus:border-purple-400'
+                  }`}
+                  value={config.url || ''}
+                  onChange={e => update({ url: e.target.value })}
+                />
+                {validationErrors?.url && (
+                  <span className="text-[10px] text-red-400 block mt-1">{validationErrors.url}</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {config.type === 'alsa' && (
         <div className="space-y-1.5 animate-in fade-in duration-200">

@@ -163,10 +163,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [addValidationSuccess, setAddValidationSuccess] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingValidating, setIsAddingValidating] = useState(false);
+  const [newRoutePath, setNewRoutePath] = useState('');
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editPath, setEditPath] = useState('');
+  const [editRoutePath, setEditRoutePath] = useState('');
   const [editValidationError, setEditValidationError] = useState('');
   const [editValidationSuccess, setEditValidationSuccess] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -493,10 +495,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setEditValidationError('');
     setEditValidationSuccess('');
     try {
+      const currentStorage = storages.find(s => s.id === id);
+      const payload: any = { name: editName, path: editPath };
+      if (currentStorage?.type === 'hls') {
+        payload.route_path = editRoutePath.trim() || null;
+      }
       const res = await fetch(`${API}/settings/storages/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName, path: editPath }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {
@@ -522,15 +529,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setAddValidationError('');
     setAddValidationSuccess('');
     try {
+      const payload: any = { name: newName, type: newType, path: newPath };
+      if (newType === 'hls' && newRoutePath.trim()) {
+        payload.route_path = newRoutePath.trim();
+      }
       const res = await fetch(`${API}/settings/storages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName, type: newType, path: newPath }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok) {
         setNewName('');
         setNewPath('');
+        setNewRoutePath('');
         fetchStorages();
       } else {
         setAddValidationError(`⚠️ ${data.detail || 'Failed to add storage'}`);
@@ -1740,7 +1752,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
                   <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.storage.addTitle', 'Add Storage Drive')}</h4>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 ${newType === 'hls' ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4`}>
                   <div className="space-y-1">
                     <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.storage.name', 'Storage Name')}</label>
                     <input
@@ -1776,7 +1788,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       placeholder="e.g. /mnt/storage/media"
                     />
                   </div>
+                  {newType === 'hls' && (
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.storage.routePath', 'HTTP Route Path (Optional)')}</label>
+                      <input
+                        type="text"
+                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono text-[var(--text-primary)]"
+                        value={newRoutePath}
+                        onChange={e => setNewRoutePath(e.target.value)}
+                        placeholder="e.g. /live"
+                      />
+                    </div>
+                  )}
                 </div>
+                {newType === 'hls' && (
+                  <p className="text-[10px] text-text-secondary italic">
+                    ℹ️ {t('settings.storage.routePathHelp', 'Allows serving HLS manifests and segments via HTTP (/route_path/index.m3u8).')}
+                  </p>
+                )}
 
                 {addValidationError && (
                   <p className="text-[10px] text-red-500 font-bold mt-1">{addValidationError}</p>
@@ -1848,7 +1877,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   {isEditing ? (
                                     /* Inline Edit Mode */
                                     <div className="space-y-3">
-                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <div className={`grid grid-cols-1 ${s.type === 'hls' ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-3`}>
                                         <div className="space-y-1">
                                           <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.storage.name', 'Storage Name')}</label>
                                           <input
@@ -1867,6 +1896,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             onChange={e => setEditPath(e.target.value)}
                                           />
                                         </div>
+                                        {s.type === 'hls' && (
+                                          <div className="space-y-1">
+                                            <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.storage.routePath', 'HTTP Route Path (Optional)')}</label>
+                                            <input
+                                              type="text"
+                                              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono text-[var(--text-primary)]"
+                                              value={editRoutePath}
+                                              onChange={e => setEditRoutePath(e.target.value)}
+                                              placeholder="e.g. /live"
+                                            />
+                                          </div>
+                                        )}
                                       </div>
 
                                       {editValidationError && (
@@ -1919,6 +1960,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                                 {t('common.default', 'DEFAULT')}
                                               </span>
                                             )}
+                                            {s.route_path && (
+                                              <span className="text-[9px] font-mono font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+                                                🌐 {s.route_path}
+                                              </span>
+                                            )}
                                           </div>
                                           <div className="text-xs font-mono text-text-secondary truncate block" title={s.path}>
                                             {s.path}
@@ -1933,6 +1979,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                               setEditingId(s.id);
                                               setEditName(s.name);
                                               setEditPath(s.path);
+                                              setEditRoutePath(s.route_path || '');
                                               setEditValidationError('');
                                               setEditValidationSuccess('');
                                             }}

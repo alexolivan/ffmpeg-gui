@@ -420,5 +420,100 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-tls 1", cmd_legacy_str)
         self.assertIn("icecast://source:secret@192.168.1.50:8000/legacy.mp3", cmd_legacy_str)
 
+    def test_hls_abr_vaapi_cqp_command(self):
+        proc = MagicMock()
+        proc.id = 50
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'v4l2',
+            'path': '/dev/video0',
+            'has_video': True,
+            'has_audio': True,
+            'use_secondary_input': True,
+            'input1': {'type': 'v4l2', 'path': '/dev/video0'},
+            'input2': {'type': 'alsa', 'path': 'hw:0,0'}
+        }
+        proc.codec_config = {
+            'vcodec': 'h264_vaapi',
+            'acodec': 'aac',
+            'video_params': {'rc_mode': 'CQP', 'qp': 20},
+            'audio_params': {'ac': 2, 'ar': 48000}
+        }
+        proc.filter_config = {
+            'deinterlace': True,
+            'advanced': {'threads': 4, 'probesize': '20M', 'thread_queue_size': 8192}
+        }
+        proc.output_config = {
+            'type': 'hls',
+            'hls_stream_name': 'stream1',
+            'path': '/var/hls/live',
+            'hls_time': 2,
+            'hls_list_size': 5,
+            'hls_delete_segments': True,
+            'variants': [
+                {'resolution': '1920:1080', 'video_bitrate': '4500k', 'audio_bitrate': '192k'},
+                {'resolution': '1280:720', 'video_bitrate': '2500k', 'audio_bitrate': '128k'},
+                {'resolution': '854:480', 'video_bitrate': '1200k', 'audio_bitrate': '96k'}
+            ]
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        # 1. Global vaapi_device should be present before inputs
+        self.assertIn("-vaapi_device /dev/dri/renderD128", cmd_str)
+
+        # 2. Hardware upload should be present in filters
+        self.assertIn("format=nv12,hwupload", cmd_str)
+
+        # 3. CQP mode should be used with staggered QP values (20, 24, 28) and NO -b:v:X
+        self.assertIn("-c:v:0 h264_vaapi -rc_mode:v:0 CQP -qp:v:0 20", cmd_str)
+        self.assertIn("-c:v:1 h264_vaapi -rc_mode:v:1 CQP -qp:v:1 24", cmd_str)
+        self.assertIn("-c:v:2 h264_vaapi -rc_mode:v:2 CQP -qp:v:2 28", cmd_str)
+        self.assertNotIn("-b:v:0", cmd_str)
+        self.assertNotIn("-b:v:1", cmd_str)
+        self.assertNotIn("-b:v:2", cmd_str)
+
+        # 4. Master playlist and var_stream_map
+        self.assertIn("-master_pl_name stream1.m3u8", cmd_str)
+        self.assertIn("-var_stream_map", cmd_str)
+
+    def test_hls_abr_nvenc_command(self):
+        proc = MagicMock()
+        proc.id = 51
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'v4l2',
+            'path': '/dev/video0',
+            'has_video': True,
+            'has_audio': False,
+            'input1': {'type': 'v4l2', 'path': '/dev/video0'}
+        }
+        proc.codec_config = {
+            'vcodec': 'h264_nvenc',
+            'acodec': 'none',
+            'video_params': {'rc': 'cbr', 'preset': 'p4'},
+            'audio_params': {}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'hls',
+            'hls_stream_name': 'stream1',
+            'path': '/var/hls/live',
+            'variants': [
+                {'resolution': '1920:1080', 'video_bitrate': '4500k', 'audio_bitrate': '192k'},
+                {'resolution': '1280:720', 'video_bitrate': '2500k', 'audio_bitrate': '128k'}
+            ]
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        # NVENC accepts software nv12 directly, so hwupload must NOT be in the filter chain
+        self.assertNotIn("hwupload", cmd_str)
+        self.assertIn("-filter:v:0 scale=1920:1080,format=nv12", cmd_str)
+        self.assertIn("-c:v:0 h264_nvenc -rc:v:0 cbr -b:v:0 4500k -preset:v:0 p4", cmd_str)
+        self.assertIn("-c:v:1 h264_nvenc -rc:v:1 cbr -b:v:1 2500k -preset:v:1 p4", cmd_str)
+
 if __name__ == '__main__':
     unittest.main()

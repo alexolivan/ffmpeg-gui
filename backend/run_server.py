@@ -134,6 +134,13 @@ def main():
             rotation_max_bytes = logging_cfg.getint("rotation_max_bytes", rotation_max_bytes)
             rotation_backup_count = logging_cfg.getint("rotation_backup_count", rotation_backup_count)
             compression_enabled = logging_cfg.getboolean("compression_enabled", compression_enabled)
+            access_log_path = logging_cfg.get("access_log_path", None)
+            access_log_enabled = logging_cfg.getboolean("access_log_enabled", True)
+            access_log_ignore_media = logging_cfg.getboolean("access_log_ignore_media", True)
+        else:
+            access_log_path = None
+            access_log_enabled = True
+            access_log_ignore_media = True
 
     # 2. Sobrescribir con argumentos de la CLI
     if args.host: host = args.host
@@ -168,7 +175,7 @@ def main():
         general_handlers.append("file")
 
     if use_file:
-        log_dir = os.path.dirname(log_file)
+        log_dir = os.path.dirname(os.path.abspath(log_file))
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
         
@@ -193,11 +200,27 @@ def main():
             file_handler_cfg["()"] = logging.FileHandler
             
         log_config["handlers"]["file"] = file_handler_cfg
-        os.environ["ACCESS_LOG_PATH"] = os.path.abspath(log_file)
-        print(f"Logging accesses and system info to {log_file} (mode: {logging_mode})")
+
+        # Dedicated access log path (separate from server system log)
+        target_access_log = None
+        if access_log_enabled:
+            if access_log_path:
+                target_access_log = os.path.abspath(access_log_path)
+            elif log_dir:
+                target_access_log = os.path.join(log_dir, "access.log")
+
+        if target_access_log:
+            os.environ["ACCESS_LOG_PATH"] = target_access_log
+            print(f"Logging HTTP accesses to {target_access_log}")
+        else:
+            os.environ.pop("ACCESS_LOG_PATH", None)
+
+        os.environ["ACCESS_LOG_IGNORE_MEDIA"] = "true" if access_log_ignore_media else "false"
+        print(f"Logging system and server info to {log_file} (mode: {logging_mode})")
     else:
         os.environ.pop("ACCESS_LOG_PATH", None)
-        print(f"Logging accesses and system info to stdout (mode: {logging_mode})")
+        os.environ["ACCESS_LOG_IGNORE_MEDIA"] = "true" if access_log_ignore_media else "false"
+        print(f"Logging system info to stdout (mode: {logging_mode})")
 
     log_config["root"] = {
         "handlers": general_handlers,

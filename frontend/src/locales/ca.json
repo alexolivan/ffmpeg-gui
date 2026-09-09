@@ -29,7 +29,17 @@
     "waiting": "Esperant senyal d'entrada...",
     "clonedSuccess": "Clonat amb èxit!",
     "refresh": "Actualitzar",
-    "updated": "Actualitzat!"
+    "updated": "Actualitzat!",
+    "copyLogs": "Copiar registres",
+    "downloadLog": "Descarregar registre",
+    "offline": "Desconnectat",
+    "uptime": "Temps actiu",
+    "editConfig": "Editar configuració",
+    "copied": "Copiat!",
+    "start": "Iniciar",
+    "stop": "Aturar",
+    "restart": "Reiniciar",
+    "lines": "línies"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -170,7 +180,10 @@
         "pullUrl": "Consum (Pull):",
         "url": "URL:",
         "copy": "Copiar",
-        "copied": "✓ Copiat"
+        "copied": "✓ Copiat",
+        "ingestConflictTitle": "Conflicte d ingesta detectat",
+        "ingestConflictServiceDesc": "El path està rebent publicació activa del servei: {{name}} (PID {{pid}}). Publicar en aquest path pot provocar interrupcions.",
+        "ingestConflictExternalDesc": "El path està rebent actualment una transmissió externa en directe. Publicar en aquest path pot provocar interrupcions."
       },
       "previewModal": {
         "subtitle": "Monitor de Procés Dimoni i Registre d'Auditoria en Temps Real",
@@ -262,9 +275,14 @@
         "listenLive": "Reproductor en Viu",
         "copyUrl": "Copiar URL del Flux",
         "copied": "Copiat!",
-        "logsTitle": "Registres del Servidor (Stdout / Error Log)"
+        "logsTitle": "Registres del Servidor (Stdout / Error Log)",
+        "ingestBy": "Ingesta per"
       }
-    }
+    },
+    "startService": "Iniciar servei",
+    "stopService": "Aturar servei",
+    "restartService": "Reiniciar servei",
+    "exportProfile": "Exportar perfil"
   },
   "settings": {
     "title": "Configuració",
@@ -427,7 +445,9 @@
       "editStorage": "Editar Emmagatzematge",
       "cannotDeleteDefault": "No es pot eliminar l'emmagatzematge per defecte",
       "deleteStorage": "Eliminar Emmagatzematge",
-      "utilization": "Ús d'Espai"
+      "utilization": "Ús d'Espai",
+      "routePath": "Ruta HTTP del Stream (Opcional)",
+      "routePathHelp": "Permet servir manifests i segments HLS per HTTP (/ruta_stream/nom_stream.m3u8)."
     },
     "security": {
       "title": "Seguretat i Accés",
@@ -703,7 +723,9 @@
     "nextRunTodayAt": "Avui a les {{time}}h",
     "sniHostname": "Hostname SNI",
     "sslCertificate": "Certificat SSL",
-    "setupRequired": "CONFIGURACIÓ REQUERIDA"
+    "setupRequired": "CONFIGURACIÓ REQUERIDA",
+    "cpuUsage": "Ús de CPU",
+    "ramUsage": "Ús de RAM"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -845,7 +867,15 @@
     "updateAvailable": "Actualització disponible",
     "outdatedBuildTooltip": "Codi font actualitzat a v{{version}}. Recompila per actualitzar.",
     "updateAndRecompile": "ACTUALITZAR I RECOMPILAR",
-    "internalToolSource": "Motor Intern (Codi Font)"
+    "internalToolSource": "Motor Intern (Codi Font)",
+    "preflight": {
+      "whipTitle": "Incompatibilitat de binari detectada:",
+      "whipIncompat": "El protocol de sortida WHIP requereix FFmpeg >= 8.0. La compilació seleccionada ({{version}}) no té suport natiu per a WHIP.",
+      "ndiTitle": "Incompatibilitat de binari detectada:",
+      "ndiIncompat": "Has configurat entrada/sortida NDI, però la compilació seleccionada (\"{{buildName}}\") no inclou la llibreria libndi_newtek (--enable-libndi_newtek).",
+      "decklinkTitle": "Incompatibilitat de binari detectada:",
+      "decklinkIncompat": "Has configurat entrada/sortida DeckLink, però la compilació seleccionada (\"{{buildName}}\") no inclou el mòdul de maquinari DeckLink (--enable-decklink)."
+    }
   },
   "sources": {
     "mediaStorage": "Emmagatzematge de Mitjans",
@@ -955,7 +985,31 @@
     "srtLocalHub": "Hub Local (Aquest Node)",
     "srtRemoteHub": "Servidor MediaMTX Remot (Host Extern)",
     "srtRemoteHost": "Host / IP Remota",
-    "srtRemotePort": "Port SRT"
+    "srtRemotePort": "Port SRT",
+    "localManagedHub": "Local administrat",
+    "remoteExternalHub": "Remot / Extern",
+    "targetHubLocation": "Instància MediaMTX d origen",
+    "targetServerLocation": "Instància Icecast d origen",
+    "selectHubService": "Servei MediaMTX",
+    "selectIcecastService": "Servei Icecast",
+    "streamPath": "Ruta del flux (Path)",
+    "icecastMountPoint": "Punt de muntatge (Mountpoint)",
+    "customPathOption": "+ Slug de path personalitzat...",
+    "customMountOption": "+ Punt de muntatge personalitzat...",
+    "customPathSlug": "Slug de path personalitzat",
+    "customMountSlug": "Punt de muntatge personalitzat",
+    "generatedRtmpUrl": "URL RTMP d origen generada",
+    "generatedHlsUrl": "URL HLS d origen generada",
+    "generatedStreamUrl": "URL de pull d àudio generada",
+    "httpAudioManual": "URL HTTP / Icecast directa manual",
+    "httpAudioIcecastServer": "Integració amb Servidor Icecast",
+    "rtmpManualDirect": "RTMP directe manual",
+    "rtmpMediaMtxHub": "Integració amb Hub MediaMTX",
+    "hlsManualDirect": "URL HLS directa manual",
+    "hlsMediaMtxHub": "Integració amb Hub MediaMTX",
+    "enableRtmps": "Pull RTMPS xifrat (TLS)",
+    "enableHttpsIcecast": "Pull HTTPS segur (TLS)",
+    "enableHttpsHls": "Pull HLS HTTPS xifrat (TLS)"
   },
   "destinations": {
     "destination": "Destinació",
@@ -1000,7 +1054,25 @@
     "relativePathDir": "Ruta Relativa en Emagatzematge",
     "relativePathFilename": "Patró de Nom de Fitxer",
     "hlsStorage": "Destí d'Emagatzematge HLS",
-    "hlsExtensionNote": "La ruta ha de finalitzar en extensió .m3u8",
+    "hlsExtensionNote": "Identificador de la llista de reproducció principal (l'extensió .m3u8 es genera automàticament)",
+    "hlsSlugHelper": "Nom del slug per a la llista de reproducció principal (.m3u8 s'afig automàticament)",
+    "hlsWindowSettings": "Control de Segmentació i Finestra HLS",
+    "hlsAbrVariants": "Variants ABR HLS (Taxa de Bits Adaptativa)",
+    "vaapiCqpTitle": "Codificació Hardware VAAPI (Mode CQP)",
+    "vaapiCqpNote": "El controlador VAAPI de la teua GPU opera en mode CQP (Qualitat Constant). FFmpeg escalarà automàticament els valors de quantització QP entre variants (ex. QP 20 per a 1080p, 24 per a 720p, 28 per a 480p) per a garantir màxima compatibilitat amb el maquinari.",
+    "nvencAbrTitle": "Codificació Hardware NVIDIA NVENC",
+    "nvencAbrNote": "Acceleració maquinari NVENC activa. Les variants ABR es codificaran en GPU amb optimització directa de format NV12.",
+    "hlsQuickAddPresets": "Ajustos Predefinits Ràpids",
+    "hlsCustomVariant": "Variant Personalitzada",
+    "hlsAddCustomVariant": "Afegir Variant Personalitzada",
+    "hlsNoVariantsDefined": "No hi ha variants definides. S'utilitzarà emissió de flux únic.",
+    "hlsResolution": "Resolució",
+    "hlsVideoBitrate": "Bitrate Vídeo",
+    "hlsAudioBitrate": "Bitrate Àudio",
+    "hlsActions": "Accions",
+    "hlsRemoveVariant": "Eliminar",
+    "hlsVideoBitratePlaceholder": "Vídeo (ex. 4500k)",
+    "hlsAudioBitratePlaceholder": "Àudio (ex. 128k)",
     "hlsIngestMethod": "Mètode d'Ingesta HLS",
     "httpPutUpload": "Pujada HTTP PUT",
     "httpPostUpload": "Pujada HTTP POST",
@@ -1076,7 +1148,29 @@
       "tls": "Connexió Xifrada TLS / SSL",
       "tlsDesc": "Força transmissió xifrada TLS (-tls 1) per connectar amb ports segurs HTTPS/TLS d'Icecast.",
       "tlsAutoManaged": "Connexió xifrada TLS / SSL auto-gestionada per a aquest servidor."
-    }
+    },
+    "rtmpManualDirect": "RTMP / RTMPS directe manual",
+    "rtmpMediaMtxHub": "Integració amb Hub MediaMTX",
+    "rtmpProviderHub": "Hub MediaMTX",
+    "rtmpPathId": "Slug de ruta",
+    "targetHubLocation": "Instància de destí MediaMTX",
+    "selectHubService": "Servei MediaMTX",
+    "streamPath": "Path de publicació",
+    "enableRtmps": "Push RTMPS xifrat (TLS)",
+    "customPathOption": "+ Slug de path personalitzat...",
+    "customPathSlug": "Slug de path personalitzat",
+    "customPathPrompt": "Slug de path personalitzat",
+    "generatedRtmpUrl": "URL RTMP de destí generada",
+    "whipManualDirect": "Punt final WHIP directe manual",
+    "whipMediaMtxHub": "MediaMTX Hub WebRTC/WHIP",
+    "enableHttpsWhip": "Ingesta WHIP HTTPS xifrada (TLS)",
+    "generatedWhipUrl": "URL d ingesta WHIP generada",
+    "packetSize": "Mida del paquet (pkt_size)",
+    "standardDvb": "DVB MPEG-TS estàndard (1316 B = 7 x 188)",
+    "lanJumbo": "Alt bitrate / Jumbo Frame (7520 B = 40 x 188)",
+    "singlePacket": "Paquet TS individual per datagrama UDP (188 B)",
+    "dvbMetadata": "Taules DVB i metadades PSI",
+    "cbrMuxrate": "Bitrate constant (CBR Muxrate)"
   },
   "filters": {
     "filtersNotAvailable": "Els filtres només estan disponibles quan els fluxos de vídeo o àudio estan habilitats.",
@@ -1175,7 +1269,11 @@
     "anchorCenterRight": "Centre Dreta",
     "anchorBottomLeft": "Inferior Esquerra",
     "anchorBottomCenter": "Inferior Centre",
-    "anchorBottomRight": "Inferior Dreta"
+    "anchorBottomRight": "Inferior Dreta",
+    "advanced": {
+      "enablePreview": "Monitor de Previsualització",
+      "enablePreviewDesc": "Genera miniatures periòdiques en memòria/disc per a la GUI. Desactiva-ho en CPUs ajustades o fluxos en viu exigents per evitar caigudes de velocitat (xruns a ALSA)."
+    }
   },
   "codecs": {
     "videoCodecOutput": "Còdec de Vídeo (Eixida)",
@@ -1197,7 +1295,9 @@
     "debugMode": "Mode Debug (Consola en Directe)",
     "debugModeDesc": "Habilita lectura interactiva de registres. Sensible a reinicis del panell.",
     "logStorage": "Emmagatzematge de Registres",
-    "defaultLogStorage": "Predeterminat (Usar emmagatzematge de registres per defecte)"
+    "defaultLogStorage": "Predeterminat (Usar emmagatzematge de registres per defecte)",
+    "circuitBreaker": "Circuit Breaker davant d'errors fatals",
+    "circuitBreakerDesc": "Cancel·la automàticament els reintents davant d'errors estructurals irrecuperables (protocols, formats o còdecs no suportats pel binari)."
   },
   "form": {
     "sections": {
@@ -1286,5 +1386,41 @@
     "manageSdks": "Gestionar SDKs",
     "versionMismatchNotice": "⚠️ Advertència: El fitxer carregat conté el SDK v{{uploaded}}. La versió requerida v{{expected}} continua absent.",
     "manageDecklinkSdk": "Gestionar SDK DeckLink"
+  },
+  "modals": {
+    "debugConsole": {
+      "title": "CONSOLA D AUDITORIA I DEPURACIÓ EN TEMPS REAL",
+      "waiting": "Esperant sortida del procés...",
+      "stopped": "El procés està aturat. Els registres apareixeran aquí en executar-se en mode depuració."
+    },
+    "crashLoop": {
+      "detected": "Bucle de reinicis detectat",
+      "attempt": "Intent #{{count}}",
+      "desc": "El procés finalitza immediatament després d'arrencar. El watchdog continua reintentant segons la configuració.",
+      "stopAndCancel": "Aturar servei i cancel·lar reintents"
+    },
+    "telemetry": {
+      "title": "Telemetria de Progrés (Snapshot)",
+      "ramBuffer": "Buffer RAM"
+    },
+    "diagnosticLogs": {
+      "title": "Registre d'Execució i Diagnòstic",
+      "show": "Veure Registre d'Execució (Logs)",
+      "hide": "Amagar Logs",
+      "waiting": "Servei actiu. Esperant sortida de FFmpeg...",
+      "empty": "No hi ha registres disponibles per a aquest procés."
+    },
+    "preview": {
+      "hlsLiveTitle": "Previsualització en Viu (HLS)",
+      "mjpegLiveTitle": "Previsualització en Viu (MJPEG)",
+      "statusAndConfig": "Estat i Configuració del Servei",
+      "bufferingHls": "Connectant amb el flux HLS...",
+      "hlsNotSupported": "El vostre navegador no suporta MediaSource Extensions ni HLS.",
+      "hlsRemoteTitle": "Emissió HLS HTTP Activa (PUT/POST)",
+      "hlsRemoteDesc": "El flux es transfereix directament a una destinació HTTP remota. El monitor de vídeo local està desactivat per maximitzar el rendiment.",
+      "disabledTitle": "Monitor de Vídeo Desactivat",
+      "disabledDesc": "El monitor secundari es troba desactivat per maximitzar el rendiment de la CPU i evitar caigudes en la captura en temps real.",
+      "enableInSettings": "Podeu reactivar-lo a Configuració del Servei → Filtres → Ajustos Avançats."
+    }
   }
 }

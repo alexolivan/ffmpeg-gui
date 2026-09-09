@@ -192,6 +192,48 @@ class TestDependencyLeasing(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(detected4, [])
 
+        # Service with HLS output and stale provider_service_id produces NO dependency and is pruned
+        svc_hls = Service(
+            name="HLS Local Storage Service",
+            service_type="ffmpeg_stream",
+            status="stopped",
+            type="service",
+            output_config={"type": "hls", "storage_id": 1, "path": "/var/hls/live/stream.m3u8", "provider_service_id": self.provider.id}
+        )
+        self.db.add(svc_hls)
+        self.db.commit()
+        self.db.refresh(svc_hls)
+
+        hls_out_cfg = dict(svc_hls.output_config)
+        detected_hls = self.dm.sync_auto_dependencies(
+            'service', svc_hls.id, svc_hls.input_config, hls_out_cfg, self.db
+        )
+        self.assertEqual(detected_hls, [])
+        self.assertNotIn("provider_service_id", hls_out_cfg)
+
+        dep_hls = self.db.query(ServiceDependency).filter(
+            ServiceDependency.consumer_type == 'service',
+            ServiceDependency.consumer_id == svc_hls.id
+        ).first()
+        self.assertIsNone(dep_hls)
+
+        # Service switched from RTMP (with dependency) to HLS: dependency must be unlinked
+        svc3_out = dict(svc3.output_config)
+        svc3_out["type"] = "hls"
+        svc3.output_config = svc3_out
+        self.db.commit()
+
+        detected_switched = self.dm.sync_auto_dependencies(
+            'service', svc3.id, svc3.input_config, svc3_out, self.db
+        )
+        self.assertEqual(detected_switched, [])
+
+        dep_switched = self.db.query(ServiceDependency).filter(
+            ServiceDependency.consumer_type == 'service',
+            ServiceDependency.consumer_id == svc3.id
+        ).first()
+        self.assertIsNone(dep_switched)
+
 
 class TestDependencyProvidersAPI(unittest.TestCase):
     def test_list_available_dependency_providers_with_icecast_and_mediamtx(self):

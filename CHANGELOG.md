@@ -5,6 +5,126 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.15.0] - 2026-09-09
+
+### Consolidated Milestone Release
+Consolidates all major features, performance decoupling, architectural resilience, and stability fixes from `v2.11.0` through `v2.14.2`:
+- Native HLS decoupling & HlsPlayer integration (zero-overhead live 25/30fps preview without MJPEG transcode spikes).
+- HLS Storage route paths with public web delivery and absolute URL generation.
+- Watchdog Crash-Loop Circuit Breaker with non-transient error detection and pre-flight binary compatibility checks.
+- Multi-protocol form parity (RTMP, WebRTC/WHIP, HLS, Icecast HTTP Audio) with reactive port & credentials sync.
+- Decoupled disk logging for production services, access log rotation, and universal LAN clipboard utility.
+- Autonomous dependency manager isolation preventing auxiliary leases on standalone destinations.
+
+## [2.14.2] - 2026-09-09
+
+### Fixed
+- **HLS Public URL Display in Telemetry Broadcast & Storage Route Resolution**:
+  - Added `public_hls_path` resolution in `telemetry_broadcast_loop` over WebSocket (`/ws/telemetry`), preventing live telemetry updates from wiping out the computed public HLS URL in `currentProcess`.
+  - Added fallback to `selectedProcess?.public_hls_path` in `FfmpegPreviewModal.tsx` for immediate URL badge display.
+  - Strengthened `resolve_service_public_hls_path` in `backend/main.py`:
+    - Robust type coercion for `storage_id` (supporting integer, string, and type coercion).
+    - Fallback storage detection by matching output file path prefix against configured storage paths.
+    - Automatic relative path derivation if `relative_path` is not explicitly set in config.
+    - Automatic stream name extraction from playlist filenames.
+
+## [2.14.1] - 2026-09-09
+
+### Fixed
+- **Restricted HLS URL Display Strictly to Configured Storage Route Paths**:
+  - Conditioned the copyable HLS URL badge in `FfmpegPreviewModal.tsx` strictly to instances where the service's target storage has an explicitly configured public `route_path` in Settings.
+  - Automatically hid the HLS URL badge when no public `route_path` is configured, keeping internal preview endpoints discreet and unexposed.
+  - Formatted the copyable public HLS URL with full absolute protocol, host, and port for external player compatibility (VLC, ffplay, OBS).
+  - Added `public_hls_path` resolution in `list_processes` and `list_services` in `backend/main.py`.
+
+## [2.14.0] - 2026-09-09
+
+### Added
+- **Decoupled Preview for HLS Services & Performance Control**:
+  - Automatically omitted secondary MJPEG thumbnail generation (`-map 0:v -c:v mjpeg ...`) for all HLS services by default, eliminating periodic CPU spikes and preventing realtime hardware buffer overruns (`ALSA buffer xrun`).
+  - Added user toggle `enable_preview` (Auto / ON / OFF) in `AdvancedFlagsFormSection.tsx` and backend command builder, allowing operators to disable secondary video previews on CPU-constrained machines.
+  - Propagated `-thread_queue_size` to secondary inputs (`input2`, e.g. ALSA audio capture) to ensure high-capacity input buffering during multi-stream encoding.
+  - Implemented dedicated backend endpoint `@app.get("/processes/{process_id}/hls/{filename:path}")` serving local HLS manifests (`.m3u8`) and segments (`.ts`, `.m4s`) with CORS and video caching headers.
+  - Integrated native `HlsPlayer` component in `FfmpegPreviewModal.tsx` using `hls.js`, enabling smooth 25/30fps live video and audio preview for local HLS services with zero extra transcoding overhead in FFmpeg.
+  - Added specialized modal status banners for remote HLS uploads (`PUT`/`POST`) and disabled video monitor states with live telemetry.
+
+## [2.13.1] - 2026-09-07
+
+### Fixed
+- **Disentangled Non-Auxiliary Destinations from Stale MediaMTX Leases**:
+  - Prohibited non-auxiliary outputs (`hls`, `file`, `udp`, `rtp`, `decklink`, `ndi`, `alsa`) from detecting or retaining `ServiceDependency` rows targeting MediaMTX Hub or Icecast in `DependencyManager`.
+  - Added automatic sanitization of output configurations on process/task creation, update, and database startup scan in `backend/main.py` (`sanitize_output_config_data`).
+  - Automatically pruned obsolete `provider_service_id`, `mediamtx_mode`, and `service_target` metadata when switching destination types or selecting manual direct mode in `DestinationPanel.tsx`.
+
+## [2.13.0] - 2026-09-07
+
+### Added
+- **HLS Storage Route Paths (`/route_path -> HLS Storage`)**:
+  - Implemented custom HTTP route mappings for storages of type `hls`, allowing FFmpeg-GUI's HTTP engine to directly serve live and VOD HLS manifests and chunks.
+  - In-memory route dispatch cache with thread-safe atomic updates and O(1) prefix matching.
+  - Configured CORS headers (`Access-Control-Allow-Origin: *`, `GET, HEAD, OPTIONS`), dedicated MIME types (`application/vnd.apple.mpegurl`, `video/MP2T`, `video/iso.segment`), and differential caching (`no-cache` for playlists, `max-age=60` for segments).
+  - Built-in path traversal protection blocking directory escape attempts (`HTTP 403 Forbidden`) and explicit `HTTP 404 Not Found` for missing segments to prevent player corruption.
+- **Storage Management Route Path UI**:
+  - Added Route Path input to Add Storage Drive and Inline Edit forms in `SettingsView.tsx` for HLS storages.
+  - Added route badge (`🌐 /route_path`) and clickable direct endpoint preview link for quick playback testing.
+  - Added comprehensive localization strings across `en.json`, `es.json`, and `ca.json` with 100% key parity.
+- **Decoupled HTTP Access Logging**:
+  - Decoupled HTTP access logs (`access.log`) from internal system server logs (`ffmpeg-gui.log`) via `ACCESS_LOG_PATH` in `run_server.py`.
+  - Added high-frequency noise suppression (`ACCESS_LOG_IGNORE_MEDIA=true`) filtering media asset polling (`/assets/*`, `/favicon.*`, `/previews/*`, `.ts`, `.m4s`, `.m3u8`, icons) for successful HTTP requests (< 400).
+  - Added system settings fields `access_log_path`, `access_log_enabled`, and `access_log_ignore_media`.
+- **Scheduled Access Log Rotation**:
+  - Extended `TaskManager._execute_log_rotate` with size-based copytruncate rotation (`> rotation_max_bytes`) and expired backup purging (`> retention_days`) for `access.log`.
+
+### Fixed
+- **Process Logs Disk Read Hotfix**:
+  - Fixed `NameError: name 'lines' is not defined` in `get_process_logs` (`backend/main.py`) when reading disk logs for stopped or failed processes.
+
+## [2.12.0] - 2026-09-07
+
+### Added
+- **Watchdog Crash-Loop Circuit Breaker**:
+  - Implemented encapsulated fatal error analyzer (`backend/core/circuit_breaker.py`) identifying non-transient binary or syntax faults (e.g., missing protocols like WHIP, unrecognized filters, codec failures, protocol errors).
+  - Integrated circuit breaker into `ProcessManager._watchdog`: intercepts rapid failure loops (< 3s runtime), stops cascading infinite restarts, marks service status as error, and logs explanatory diagnostics to service history.
+  - Added user toggle `watchdog_circuit_breaker` (default: enabled) in `LifecycleFormSection.tsx` and process models, allowing operators to maintain infinite restart loops if desired.
+- **Persistent Crash-Loop Alert & Instant Abort**:
+  - Added visual crash-loop warning banner in `FfmpegPreviewModal.tsx` displaying restart attempt counts and offering an instant, non-flickering `[ ⏹ Detener servicio y cancelar reintentos ]` button.
+- **Diagnostic Execution Log Tail for Decoupled Production Services**:
+  - Extended log viewer in `FfmpegPreviewModal.tsx` to support production services (`debug_mode: false`), allowing operators to passively tail the real disk log (`data/logs/process_{id}.log`) without coupling stdout/stderr to python websockets.
+  - Provides disk path indicator, line count selector, auto-scroll, log copy, and download capabilities for all services.
+- **Pre-Flight Binary Feature Compatibility Checks**:
+  - Added pre-flight validation in `ProcessConfigForm.tsx` inspecting selected FFmpeg build capabilities against configured features.
+  - Warns operators in real-time when selecting builds lacking WHIP (< 8.0), NDI (`libndi_newtek`), or DeckLink (`decklink`) before launching the service.
+
+### Changed
+- **Disambiguated Ephemeral Telemetry Snapshot from Process Logs**:
+  - Replaced misleading `/dev/shm/ffmpeg_progress_{id}s.log` file indicator in `FfmpegPreviewModal` with an explicit `⚡ Buffer RAM` badge and direct toggle to the real execution log file.
+
+## [2.11.0] - 2026-09-07
+
+### Added
+- **Multi-Protocol Form Integration Parity (RTMP, WebRTC/WHIP, HLS, Icecast HTTP Audio)**:
+  - Elevated RTMP and WebRTC/WHIP destination forms and `http_audio`, `rtmp`, and `hls` input forms to full integration parity with SRT:
+    - Mode Switcher toggling between Manual Direct endpoints and managed Local/Remote Hub integration.
+    - Local Instance Picker for multi-instance deployments (selecting specific MediaMTX or Icecast2 services).
+    - Stream Path and Mountpoint dropdowns populated from service configuration or custom slugs.
+    - Automatic credential injection (`publish_user`/`publish_pass` for outputs, `read_user`/`read_pass` for inputs) with path-specific overrides and global fallbacks.
+    - TLS/SSL toggles (RTMPS for RTMP, HTTPS for WHIP/HLS/Icecast) with automatic port adjustments and auto-computed URI previews.
+    - Deterministic self-healing reconciliation effect ensuring ports and hosts stay synchronized with provider configurations on initial mount.
+- **Universal LAN Clipboard Utility**:
+  - Implemented `copyToClipboard` in `frontend/src/utils/clipboard.ts` with transparent fallback to `document.execCommand('copy')` via an ephemeral hidden textarea for non-secure HTTP LAN environments (`http://<ip>:<port>`).
+  - Replaced native `navigator.clipboard` calls across all modals and views (`MediaMtxPreviewModal`, `IcecastPreviewModal`, `FfmpegPreviewModal`, `ProcessPreviewModal`, `PreviewCmdModal`, `ForgeView`, `MediaMtxServiceModal`).
+- **Live Ingest Conflict Protection**:
+  - Added real-time ingest conflict warnings in `MediaMtxPreviewModal` and `IcecastPreviewModal` detecting when a path or mountpoint is actively being published to by another FFmpeg service or external publisher.
+- **FFmpeg Real-Time Debug Virtual Audit Console**:
+  - Restored real-time virtual audit console in `FfmpegPreviewModal` for services running with `debug_mode: true`.
+  - Features real-time log polling (`/processes/{id}/logs`), auto-scrolling terminal window with syntax/level coloring, 1-click log clipboard copy with fallback, and direct raw log download.
+
+### Fixed
+- **Icecast Exclusion for Video Protocols**:
+  - Eliminated erroneous auxiliary Icecast presets when configuring video destinations (RTMP, WebRTC, SRT).
+- **Destination Form Port Synchronization**:
+  - Fixed destination form initial port state retaining stale defaults by binding reactive provider reconciliation on initial mount.
+
 ## [2.10.0] - 2026-09-04
 
 ### Added

@@ -4,8 +4,9 @@ import psutil
 import logging
 import os
 import shlex
+import shutil
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, Any, List, Tuple
 import json
 import collections
 import random
@@ -54,6 +55,40 @@ class ProcessManager:
     async def stop_unused_dependencies(self, process_id: int, allow_auto_stop: bool = True):
         from core.dependency_manager import dependency_manager
         await dependency_manager.release_dependencies('service', process_id, allow_auto_stop=allow_auto_stop)
+
+    def get_process_log_storage_path(self, process_id: Optional[int] = None, log_storage_id: Optional[int] = None, session: Optional[Any] = None) -> str:
+        log_storage_path = None
+        def _lookup(s):
+            nonlocal log_storage_path, log_storage_id
+            from database.models import Service, Storage
+            if process_id and log_storage_id is None:
+                media_proc = s.query(Service).get(process_id)
+                if media_proc:
+                    log_storage_id = media_proc.log_storage_id
+            if log_storage_id:
+                storage = s.query(Storage).get(log_storage_id)
+                if storage:
+                    log_storage_path = storage.path
+            if not log_storage_path:
+                default_storage = s.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
+                if not default_storage:
+                    default_storage = s.query(Storage).filter(Storage.type == "logs").first()
+                if default_storage:
+                    log_storage_path = default_storage.path
+
+        if session is not None:
+            _lookup(session)
+        else:
+            with self.db_session_factory() as s:
+                _lookup(s)
+
+        if not log_storage_path:
+            log_storage_path = os.path.abspath("data/logs")
+        return log_storage_path
+
+    def get_process_log_path(self, process_id: int, log_storage_id: Optional[int] = None, session: Optional[Any] = None) -> str:
+        storage_dir = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
+        return os.path.join(storage_dir, f"process_{process_id}.log")
 
     async def start_process(self, process_id: int, is_restart: bool = False, is_on_demand: bool = False):
         cleanup_rogue_processes(process_id=process_id)
@@ -104,23 +139,8 @@ class ProcessManager:
             cfg = media_proc.config or {}
 
             # Resolve log_storage
-            log_storage_path = None
             log_storage_id = cfg.get("log_storage_id")
-            if log_storage_id:
-                storage = session.query(Storage).get(log_storage_id)
-                if storage:
-                    log_storage_path = storage.path
-            
-            if not log_storage_path:
-                default_storage = session.query(Storage).filter(Storage.type == "logs", Storage.is_default == True).first()
-                if not default_storage:
-                    default_storage = session.query(Storage).filter(Storage.type == "logs").first()
-                if default_storage:
-                    log_storage_path = default_storage.path
-            
-            if not log_storage_path:
-                log_storage_path = os.path.abspath("data/logs")
-            
+            log_storage_path = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
             logs_dir = log_storage_path
             debug_mode = cfg.get("debug_mode", False)
             svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
@@ -264,16 +284,33 @@ class ProcessManager:
                 
             spawn_lock = self._get_spawn_lock()
             async with spawn_lock:
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                    stdin=asyncio.subprocess.PIPE,
-                    env=sub_env
-                )
-                self.processes[process_id] = proc
-                # Start log reader IMMEDIATELY to capture early startup errors or exit messages
-                asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
+                if svc_type in ("mediamtx_hub", "icecast_server"):
+                    # Decouple stdout to file descriptor so the daemon survives parent reloads without SIGPIPE
+                    log_file_handle = open(log_path, "ab", buffering=0)
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=log_file_handle,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.DEVNULL,
+                        env=sub_env
+                    )
+                    try:
+                        log_file_handle.close()
+                    except Exception:
+                        pass
+                    self.processes[process_id] = proc
+                    asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                else:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.PIPE,
+                        env=sub_env
+                    )
+                    self.processes[process_id] = proc
+                    # Start log reader IMMEDIATELY to capture early startup errors or exit messages
+                    asyncio.create_task(self._log_reader(process_id, proc, log_path=log_path))
                 
                 # Short hardware initialization grace gap to allow CUDA / DeckLink / NVENC drivers to bind
                 await asyncio.sleep(1.0)
@@ -1209,19 +1246,54 @@ class ProcessManager:
             })
         
         # Update real-time stats if it's a status line
-        match = status_re.search(msg)
-        if match:
-            fps, bitrate, speed = match.groups()
-            with self.db_session_factory() as session:
-                from database.models import Service
-                media_proc = session.query(Service).get(process_id)
-                if media_proc:
-                    media_proc.fps = fps if fps is not None else "N/A"
-                    media_proc.bitrate = bitrate
-                    media_proc.speed = speed
-                    session.commit()
+        if status_re:
+            match = status_re.search(msg)
+            if match:
+                fps, bitrate, speed = match.groups()
+                with self.db_session_factory() as session:
+                    from database.models import Service
+                    media_proc = session.query(Service).get(process_id)
+                    if media_proc:
+                        media_proc.fps = fps if fps is not None else "N/A"
+                        media_proc.bitrate = bitrate
+                        media_proc.speed = speed
+                        session.commit()
         
         self.logger.debug(f"[{process_id}] {msg}")
+
+    async def _file_log_tailer(self, process_id: int, log_path: str, proc: Optional[asyncio.subprocess.Process] = None, pid: Optional[int] = None):
+        """Tails the physical log file on disk for daemon services to feed the in-memory log buffer."""
+        effective_pid = pid or (proc.pid if proc else None)
+        try:
+            await asyncio.sleep(0.2)
+            if not os.path.exists(log_path):
+                return
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                f.seek(0, os.SEEK_END)
+                while True:
+                    if proc is not None:
+                        if proc.returncode is not None:
+                            break
+                    elif effective_pid is not None:
+                        if not psutil.pid_exists(effective_pid):
+                            break
+                    else:
+                        break
+
+                    if process_id not in self.processes and process_id not in self.reattached_pids:
+                        break
+
+                    line = f.readline()
+                    if line:
+                        msg = line.strip()
+                        if msg:
+                            self._handle_log_msg(process_id, msg, status_re=None)
+                    else:
+                        await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.debug(f"File log tailer stopped for process {process_id}: {e}")
 
     async def _probe_url(self, url: str, ffprobe_bin: str) -> bool:
         cmd = [ffprobe_bin, "-t", "2", "-v", "quiet", url]
@@ -1696,9 +1768,33 @@ class ProcessManager:
                         cfg = media_proc.config or {}
                         watchdog_enabled = cfg.get('watchdog_enabled', False)
                         watchdog_retries = cfg.get('watchdog_retries', 5)
+                        circuit_breaker_enabled = getattr(media_proc, 'watchdog_circuit_breaker', True)
+
+                        # Check circuit breaker before scheduling any restart
+                        circuit_breaker_tripped = False
+                        fatal_reason = None
+                        execution_duration = (datetime.utcnow() - start_time).total_seconds()
+
+                        if was_unexpected and watchdog_enabled and circuit_breaker_enabled:
+                            recent_log_lines = []
+                            if process_id in self.log_buffers:
+                                recent_log_lines = [entry.get("message", "") for entry in self.log_buffers[process_id]]
+                            if not recent_log_lines:
+                                try:
+                                    log_path = self.get_process_log_path(process_id, session=session)
+                                    if os.path.exists(log_path):
+                                        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                                            recent_log_lines = [line.strip() for line in f.readlines()[-60:]]
+                                except Exception as log_err:
+                                    self.logger.warning(f"Watchdog failed to read log file for circuit breaker: {log_err}")
+
+                            from core.circuit_breaker import analyze_fatal_error
+                            is_fatal, fatal_reason = analyze_fatal_error(recent_log_lines, execution_duration)
+                            if is_fatal:
+                                circuit_breaker_tripped = True
 
                         will_restart = False
-                        if was_unexpected and watchdog_enabled:
+                        if was_unexpected and watchdog_enabled and not circuit_breaker_tripped:
                             retries = watchdog_retries
                             current_restarts = self.restart_counts.get(process_id, 0)
                             if retries == -1 or current_restarts < retries:
@@ -1738,12 +1834,28 @@ class ProcessManager:
                             message=f"Process exited with code {exit_code}"
                         )
                         session.add(log)
+
+                        if circuit_breaker_tripped:
+                            cb_msg = f"Watchdog: Circuit Breaker tripped ({fatal_reason}). Process failed fatally within {execution_duration:.2f}s. Aborting automatic retries."
+                            self.logger.warning(cb_msg)
+                            cb_log = ServiceLog(
+                                service_id=process_id,
+                                level='ERROR',
+                                message=cb_msg
+                            )
+                            session.add(cb_log)
+                            media_proc.status = 'error'
+                            media_proc.restart_count = 0
+                            self.restart_counts.pop(process_id, None)
+
                         session.commit()
 
                         # Handle notification hook for unexpected exit
                         if was_unexpected:
                             current_restarts = self.restart_counts.get(process_id, 0)
-                            if not watchdog_enabled or watchdog_retries == 0:
+                            if circuit_breaker_tripped:
+                                self.notify_service_crash(process_id, media_proc.name, exit_code=exit_code, is_initial_crash=True)
+                            elif not watchdog_enabled or watchdog_retries == 0:
                                 # No watchdog: notify single crash immediately
                                 self.notify_service_crash(process_id, media_proc.name, exit_code=exit_code, is_initial_crash=True)
                             elif watchdog_retries == -1:
@@ -1756,7 +1868,7 @@ class ProcessManager:
                                 pass
 
                         # Handle automatic restart if enabled and unexpected
-                        if was_unexpected and watchdog_enabled:
+                        if was_unexpected and watchdog_enabled and not circuit_breaker_tripped:
                             retries = watchdog_retries
                             current_restarts = self.restart_counts.get(process_id, 0)
                             if retries == -1 or current_restarts < retries:
@@ -1825,10 +1937,15 @@ class ProcessManager:
             if not media_proc:
                 self.logger.error(f"Cannot reattach service {process_id}: not found in DB")
                 return
+            svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
+            log_path = self.get_process_log_path(process_id, media_proc.log_storage_id, session=session)
 
         self.processes[process_id] = None
         self.reattached_pids[process_id] = pid
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
+        if svc_type in ("mediamtx_hub", "icecast_server"):
+            self.log_buffers[process_id] = collections.deque(maxlen=100)
+            asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
 
     async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
         """Gracefully restarts any active/running services configured with TLS/SSL encryption."""

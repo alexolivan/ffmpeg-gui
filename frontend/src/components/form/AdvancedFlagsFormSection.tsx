@@ -1,30 +1,37 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface AdvancedFlagsFormSectionProps {
   inputType: string;
+  outputType?: string;
   realtime: boolean | null;
   stream_loop: number | null;
   threads: number;
   probesize: string;
   thread_queue_size: number;
+  enable_preview?: boolean | null;
   onChange: (updates: {
     realtime?: boolean | null;
     stream_loop?: number | null;
     threads?: number;
     probesize?: string;
     thread_queue_size?: number;
+    enable_preview?: boolean | null;
   }) => void;
 }
 
 export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> = ({
   inputType,
+  outputType,
   realtime,
   stream_loop,
   threads,
   probesize,
   thread_queue_size,
+  enable_preview,
   onChange,
 }) => {
+  const { t } = useTranslation();
   return (
     <div className="glass-card p-2.5 !rounded-lg space-y-2">
       <div className="flex items-center gap-1.5 mb-1.5">
@@ -59,6 +66,35 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
           <option value="auto">Auto</option>
           <option value="on">Always ON</option>
           <option value="off">Always OFF</option>
+        </select>
+      </div>
+
+      {/* Video Preview MJPEG Toggle */}
+      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
+        <div className="flex flex-col gap-0.5 pr-2">
+          <span className="text-xs font-semibold text-white">
+            {t('filters.advanced.enablePreview', 'Monitor de Previsualización')} <code className="text-[9px] text-brand-orange bg-white/5 px-1.5 py-0.5 rounded ml-1">MJPEG</code>
+          </span>
+          <span className="text-[10px] text-[var(--text-secondary)] leading-snug">
+            {t('filters.advanced.enablePreviewDesc', 'Genera miniaturas periódicas en memoria/disco para la GUI. Desactívalo en CPUs ajustadas o flujos en vivo exigentes para evitar caídas de velocidad (xruns en ALSA).')}
+            {(enable_preview === null || enable_preview === undefined) && (
+              <span className="text-brand-lime ml-1">
+                (auto: {outputType === 'hls' ? 'OFF (HLS Web Native)' : 'ON'})
+              </span>
+            )}
+          </span>
+        </div>
+        <select
+          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-24 text-center text-[var(--text-primary)]"
+          value={enable_preview === null || enable_preview === undefined ? 'auto' : enable_preview ? 'on' : 'off'}
+          onChange={e => {
+            const val = e.target.value;
+            onChange({ enable_preview: val === 'auto' ? null : val === 'on' });
+          }}
+        >
+          <option value="auto">Auto</option>
+          <option value="on">{t('common.enabled', 'ON')}</option>
+          <option value="off">{t('common.disabled', 'OFF')}</option>
         </select>
       </div>
 

@@ -29,7 +29,17 @@
     "waiting": "Waiting for input signal...",
     "clonedSuccess": "Cloned successfully!",
     "refresh": "Refresh",
-    "updated": "Updated!"
+    "updated": "Updated!",
+    "copyLogs": "Copy Logs",
+    "downloadLog": "Download Log",
+    "offline": "Offline",
+    "uptime": "Uptime",
+    "editConfig": "Edit Config",
+    "copied": "Copied!",
+    "start": "Start",
+    "stop": "Stop",
+    "restart": "Restart",
+    "lines": "lines"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -170,7 +180,10 @@
         "pullUrl": "Pull (Playback):",
         "url": "URL:",
         "copy": "Copy",
-        "copied": "✓ Copied"
+        "copied": "✓ Copied",
+        "ingestConflictTitle": "Ingest Conflict Detected",
+        "ingestConflictServiceDesc": "Path is actively being published to by service: {{name}} (PID {{pid}}). Publishing to this path may cause stream disruption.",
+        "ingestConflictExternalDesc": "Path is currently receiving an external live stream. Publishing to this path may cause stream disruption."
       },
       "previewModal": {
         "subtitle": "Daemon Process Monitor & Real-Time Audit Logs",
@@ -262,9 +275,14 @@
         "listenLive": "Live Audio Player",
         "copyUrl": "Copy Stream URL",
         "copied": "Copied!",
-        "logsTitle": "Server Logs (Stdout / Error Log)"
+        "logsTitle": "Server Logs (Stdout / Error Log)",
+        "ingestBy": "Ingest by"
       }
-    }
+    },
+    "startService": "Start Service",
+    "stopService": "Stop Service",
+    "restartService": "Restart Service",
+    "exportProfile": "Export Profile"
   },
   "settings": {
     "title": "Settings",
@@ -427,7 +445,9 @@
       "editStorage": "Edit Storage",
       "cannotDeleteDefault": "Cannot delete default storage",
       "deleteStorage": "Delete Storage",
-      "utilization": "Space Utilization"
+      "utilization": "Space Utilization",
+      "routePath": "HTTP Route Path (Optional)",
+      "routePathHelp": "Allows serving HLS manifests and segments via HTTP (/route_path/stream_name.m3u8)."
     },
     "security": {
       "title": "Authentication & Password Management",
@@ -703,7 +723,9 @@
     "nextRunTodayAt": "Today at {{time}}",
     "sniHostname": "SNI Hostname",
     "sslCertificate": "SSL Certificate",
-    "setupRequired": "SETUP REQUIRED"
+    "setupRequired": "SETUP REQUIRED",
+    "cpuUsage": "CPU Usage",
+    "ramUsage": "RAM Usage"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -845,7 +867,15 @@
     "updateAvailable": "Update Available",
     "outdatedBuildTooltip": "Source code updated to v{{version}}. Recompile to update.",
     "updateAndRecompile": "UPDATE & RECOMPILE",
-    "internalToolSource": "Internal Source Engine"
+    "internalToolSource": "Internal Source Engine",
+    "preflight": {
+      "whipTitle": "Binary Incompatibility Detected:",
+      "whipIncompat": "The WHIP output protocol requires FFmpeg >= 8.0. The selected build ({{version}}) lacks native WHIP support.",
+      "ndiTitle": "Binary Incompatibility Detected:",
+      "ndiIncompat": "NDI input/output configured, but the selected build (\"{{buildName}}\") does not include the libndi_newtek module (--enable-libndi_newtek).",
+      "decklinkTitle": "Binary Incompatibility Detected:",
+      "decklinkIncompat": "DeckLink input/output configured, but the selected build (\"{{buildName}}\") does not include the DeckLink hardware module (--enable-decklink)."
+    }
   },
   "sources": {
     "mediaStorage": "Media Storage",
@@ -955,7 +985,31 @@
     "srtLocalHub": "Local Hub (This Node)",
     "srtRemoteHub": "Remote MediaMTX Server (External Host)",
     "srtRemoteHost": "Remote Host / IP",
-    "srtRemotePort": "SRT Port"
+    "srtRemotePort": "SRT Port",
+    "localManagedHub": "Local Managed",
+    "remoteExternalHub": "Remote / External",
+    "targetHubLocation": "Target MediaMTX Instance",
+    "targetServerLocation": "Target Icecast Instance",
+    "selectHubService": "MediaMTX Service",
+    "selectIcecastService": "Icecast Service",
+    "streamPath": "Stream Path",
+    "icecastMountPoint": "Mountpoint",
+    "customPathOption": "+ Custom Path Slug...",
+    "customMountOption": "+ Custom Mountpoint...",
+    "customPathSlug": "Custom Path Slug",
+    "customMountSlug": "Custom Mountpoint",
+    "generatedRtmpUrl": "Generated Source RTMP URL",
+    "generatedHlsUrl": "Generated Source HLS URL",
+    "generatedStreamUrl": "Generated Pull Audio URL",
+    "httpAudioManual": "Manual Direct HTTP / Icecast URL",
+    "httpAudioIcecastServer": "Icecast Server Integration",
+    "rtmpManualDirect": "Manual Direct RTMP",
+    "rtmpMediaMtxHub": "MediaMTX Hub Integration",
+    "hlsManualDirect": "Manual Direct HLS URL",
+    "hlsMediaMtxHub": "MediaMTX Hub Integration",
+    "enableRtmps": "Encrypted RTMPS Pull (TLS)",
+    "enableHttpsIcecast": "Secure HTTPS Pull (TLS)",
+    "enableHttpsHls": "Encrypted HTTPS HLS Pull (TLS)"
   },
   "destinations": {
     "destination": "Destination",
@@ -1000,7 +1054,25 @@
     "relativePathDir": "Relative Storage Path",
     "relativePathFilename": "Filename / Output Pattern",
     "hlsStorage": "HLS Storage Destination",
-    "hlsExtensionNote": "Path must end with .m3u8 extension",
+    "hlsExtensionNote": "Main playlist slug identifier (.m3u8 extension is generated automatically)",
+    "hlsSlugHelper": "Main playlist slug name (.m3u8 is appended automatically)",
+    "hlsWindowSettings": "Segment & Playlist Window Controls",
+    "hlsAbrVariants": "HLS Adaptive Bitrate (ABR) Variants",
+    "vaapiCqpTitle": "VAAPI Hardware Encoding (CQP Mode)",
+    "vaapiCqpNote": "Your GPU VAAPI driver operates in Constant QP (CQP) mode. FFmpeg will automatically scale quantization (QP) across variants (e.g. QP 20 for 1080p, 24 for 720p, 28 for 480p) to match each resolution without exceeding hardware encoder limits.",
+    "nvencAbrTitle": "NVIDIA NVENC Hardware Encoding",
+    "nvencAbrNote": "Hardware accelerated multi-rendition encoding active via NVIDIA NVENC.",
+    "hlsQuickAddPresets": "Quick Add Presets",
+    "hlsCustomVariant": "Custom Variant",
+    "hlsAddCustomVariant": "Add Custom Variant",
+    "hlsNoVariantsDefined": "No variants defined. Single-stream output will be used.",
+    "hlsResolution": "Resolution",
+    "hlsVideoBitrate": "Video Bitrate",
+    "hlsAudioBitrate": "Audio Bitrate",
+    "hlsActions": "Actions",
+    "hlsRemoveVariant": "Remove",
+    "hlsVideoBitratePlaceholder": "Video (e.g. 4500k)",
+    "hlsAudioBitratePlaceholder": "Audio (e.g. 128k)",
     "hlsIngestMethod": "HLS Ingest Method",
     "httpPutUpload": "HTTP PUT Upload",
     "httpPostUpload": "HTTP POST Upload",
@@ -1076,7 +1148,29 @@
       "tls": "Encrypted TLS / SSL Connection",
       "tlsDesc": "Enforces TLS encryption (-tls 1) when connecting to secure HTTPS/TLS Icecast ports.",
       "tlsAutoManaged": "Encrypted TLS / SSL connection automatically configured for this server."
-    }
+    },
+    "rtmpManualDirect": "Manual Direct RTMP / RTMPS",
+    "rtmpMediaMtxHub": "MediaMTX Hub Integration",
+    "rtmpProviderHub": "MediaMTX Hub",
+    "rtmpPathId": "Path Slug",
+    "targetHubLocation": "Target MediaMTX Instance",
+    "selectHubService": "MediaMTX Service",
+    "streamPath": "Publish Path",
+    "enableRtmps": "Encrypted RTMPS Push (TLS)",
+    "customPathOption": "+ Custom Path Slug...",
+    "customPathSlug": "Custom Path Slug",
+    "customPathPrompt": "Custom Path Slug",
+    "generatedRtmpUrl": "Generated Target RTMP URL",
+    "whipManualDirect": "Manual Direct WHIP Endpoint",
+    "whipMediaMtxHub": "MediaMTX Hub WebRTC/WHIP",
+    "enableHttpsWhip": "Encrypted HTTPS WHIP Ingest (TLS)",
+    "generatedWhipUrl": "Generated Target WHIP Ingestion URL",
+    "packetSize": "Packet Size (pkt_size)",
+    "standardDvb": "Standard DVB MPEG-TS (1316 B = 7 x 188)",
+    "lanJumbo": "High Bitrate / Jumbo Frame (7520 B = 40 x 188)",
+    "singlePacket": "Single TS Packet per UDP datagram (188 B)",
+    "dvbMetadata": "DVB Tables & PSI Metadata",
+    "cbrMuxrate": "Constant Bitrate (CBR Muxrate)"
   },
   "filters": {
     "filtersNotAvailable": "Filters are only available when video or audio streams are enabled.",
@@ -1175,7 +1269,11 @@
     "anchorCenterRight": "Center Right",
     "anchorBottomLeft": "Bottom Left",
     "anchorBottomCenter": "Bottom Center",
-    "anchorBottomRight": "Bottom Right"
+    "anchorBottomRight": "Bottom Right",
+    "advanced": {
+      "enablePreview": "Video Preview Monitor",
+      "enablePreviewDesc": "Generates periodic frame thumbnails in memory/disk for the GUI. Disable on CPU-constrained systems or demanding real-time streams to prevent xruns."
+    }
   },
   "codecs": {
     "videoCodecOutput": "Video Codec (Output)",
@@ -1197,7 +1295,9 @@
     "debugMode": "Debug Mode (Live Console)",
     "debugModeDesc": "Enables interactive log reading. Sensitive to panel restarts.",
     "logStorage": "Log Storage",
-    "defaultLogStorage": "Default (Use Default Log Storage)"
+    "defaultLogStorage": "Default (Use Default Log Storage)",
+    "circuitBreaker": "Crash-Loop Circuit Breaker",
+    "circuitBreakerDesc": "Abort retries automatically on fatal unrecoverable errors (missing binary protocol, format or codec)."
   },
   "form": {
     "sections": {
@@ -1286,5 +1386,41 @@
     "manageSdks": "Manage SDKs",
     "versionMismatchNotice": "⚠️ Notice: The uploaded archive contains SDK v{{uploaded}}. The required version v{{expected}} is still missing.",
     "manageDecklinkSdk": "Manage DeckLink SDK"
+  },
+  "modals": {
+    "debugConsole": {
+      "title": "REAL-TIME DEBUG AUDIT CONSOLE",
+      "waiting": "Waiting for process output...",
+      "stopped": "Process is currently stopped. Logs will appear here when running in debug mode."
+    },
+    "crashLoop": {
+      "detected": "Crash-Loop Detected",
+      "attempt": "Attempt #{{count}}",
+      "desc": "The process exits immediately upon launch. The watchdog will continue retrying according to service policy.",
+      "stopAndCancel": "Stop service and cancel retries"
+    },
+    "telemetry": {
+      "title": "Progress Telemetry (Snapshot)",
+      "ramBuffer": "RAM Buffer"
+    },
+    "diagnosticLogs": {
+      "title": "Execution & Diagnostic Log",
+      "show": "View Execution Logs",
+      "hide": "Hide Logs",
+      "waiting": "Service active. Waiting for FFmpeg output...",
+      "empty": "No log entries available for this process."
+    },
+    "preview": {
+      "hlsLiveTitle": "Live Stream Preview (HLS)",
+      "mjpegLiveTitle": "Live Stream Preview (MJPEG)",
+      "statusAndConfig": "Service Status & Configuration",
+      "bufferingHls": "Connecting to HLS stream...",
+      "hlsNotSupported": "Your browser does not support MediaSource Extensions or HLS.",
+      "hlsRemoteTitle": "Remote HTTP HLS Broadcast (PUT/POST)",
+      "hlsRemoteDesc": "Stream is pushed directly to a remote HTTP target. Local video monitor is disabled to maximize performance.",
+      "disabledTitle": "Video Monitor Disabled",
+      "disabledDesc": "The secondary monitor is disabled to maximize CPU performance and prevent real-time capture dropouts.",
+      "enableInSettings": "You can enable it in Service Settings → Filters → Advanced Flags."
+    }
   }
 }

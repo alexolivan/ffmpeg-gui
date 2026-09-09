@@ -7,6 +7,7 @@ interface LifecycleFormSectionProps {
   startup_delay?: number;
   watchdog_enabled: boolean;
   watchdog_retries: number;
+  watchdog_circuit_breaker?: boolean;
   watchdog_min_speed: number | null;
   watchdog_min_speed_duration: number;
   debug_mode: boolean;
@@ -20,6 +21,7 @@ interface LifecycleFormSectionProps {
     startup_delay?: number;
     watchdog_enabled?: boolean;
     watchdog_retries?: number;
+    watchdog_circuit_breaker?: boolean;
     watchdog_min_speed?: number | null;
     watchdog_min_speed_duration?: number;
     debug_mode?: boolean;
@@ -35,6 +37,7 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
   startup_delay = 0,
   watchdog_enabled,
   watchdog_retries,
+  watchdog_circuit_breaker = true,
   watchdog_min_speed,
   watchdog_min_speed_duration,
   debug_mode,
@@ -206,6 +209,23 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
                 />
               </div>
             )}
+          </div>
+
+          {/* Watchdog Circuit Breaker */}
+          <div className="flex items-center justify-between pt-2 border-t border-white/5">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs font-semibold text-white">{t('lifecycle.circuitBreaker', 'Crash-Loop Circuit Breaker')}</span>
+              <span className="text-[10px] text-text-secondary">{t('lifecycle.circuitBreakerDesc', 'Abort retries automatically on fatal unrecoverable errors (missing binary protocol, format or codec).')}</span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={watchdog_circuit_breaker}
+                onChange={e => onChange({ watchdog_circuit_breaker: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
+            </label>
           </div>
         </div>
       )}

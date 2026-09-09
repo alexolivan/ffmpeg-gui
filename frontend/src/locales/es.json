@@ -29,7 +29,17 @@
     "waiting": "Esperando señal de entrada...",
     "clonedSuccess": "¡Clonado con éxito!",
     "refresh": "Actualizar",
-    "updated": "¡Actualizado!"
+    "updated": "¡Actualizado!",
+    "copyLogs": "Copiar logs",
+    "downloadLog": "Descargar log",
+    "offline": "Desconectado",
+    "uptime": "Tiempo activo",
+    "editConfig": "Editar configuración",
+    "copied": "¡Copiado!",
+    "start": "Iniciar",
+    "stop": "Detener",
+    "restart": "Reiniciar",
+    "lines": "líneas"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -170,7 +180,10 @@
         "pullUrl": "Consumo (Pull):",
         "url": "URL:",
         "copy": "Copiar",
-        "copied": "✓ Copiado"
+        "copied": "✓ Copiado",
+        "ingestConflictTitle": "Conflicto de ingesta detectado",
+        "ingestConflictServiceDesc": "El path está recibiendo publicación activa del servicio: {{name}} (PID {{pid}}). Publicar en este path puede causar interrupciones.",
+        "ingestConflictExternalDesc": "El path está recibiendo actualmente una transmisión externa en vivo. Publicar en este path puede causar interrupciones."
       },
       "previewModal": {
         "subtitle": "Monitor de Proceso Demonio y Registro de Auditoría en Tiempo Real",
@@ -262,9 +275,14 @@
         "listenLive": "Reproductor en Vivo",
         "copyUrl": "Copiar URL del Stream",
         "copied": "¡Copiado!",
-        "logsTitle": "Registros del Servidor (Stdout / Error Log)"
+        "logsTitle": "Registros del Servidor (Stdout / Error Log)",
+        "ingestBy": "Ingesta por"
       }
-    }
+    },
+    "startService": "Iniciar servicio",
+    "stopService": "Detener servicio",
+    "restartService": "Reiniciar servicio",
+    "exportProfile": "Exportar perfil"
   },
   "settings": {
     "title": "Configuración",
@@ -427,7 +445,9 @@
       "editStorage": "Editar Almacenamiento",
       "cannotDeleteDefault": "No se puede eliminar el almacenamiento por defecto",
       "deleteStorage": "Eliminar Almacenamiento",
-      "utilization": "Uso de Espacio"
+      "utilization": "Uso de Espacio",
+      "routePath": "Ruta HTTP del Stream (Opcional)",
+      "routePathHelp": "Permite servir manifiestos y segmentos HLS por HTTP (/ruta_stream/nombre_stream.m3u8)."
     },
     "security": {
       "title": "Seguridad y Acceso",
@@ -703,7 +723,9 @@
     "nextRunTodayAt": "Hoy a las {{time}}h",
     "sniHostname": "Hostname SNI",
     "sslCertificate": "Certificado SSL",
-    "setupRequired": "CONFIGURACIÓN REQUERIDA"
+    "setupRequired": "CONFIGURACIÓN REQUERIDA",
+    "cpuUsage": "Uso de CPU",
+    "ramUsage": "Uso de RAM"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -845,7 +867,15 @@
     "updateAvailable": "Actualización disponible",
     "outdatedBuildTooltip": "Código fuente actualizado a v{{version}}. Recompila para actualizar.",
     "updateAndRecompile": "ACTUALIZAR Y RECOMPILAR",
-    "internalToolSource": "Motor Interno (Código Fuente)"
+    "internalToolSource": "Motor Interno (Código Fuente)",
+    "preflight": {
+      "whipTitle": "Incompatibilidad de binario detectada:",
+      "whipIncompat": "El protocolo de salida WHIP requiere FFmpeg >= 8.0. La compilación seleccionada ({{version}}) carece de soporte nativo para WHIP.",
+      "ndiTitle": "Incompatibilidad de binario detectada:",
+      "ndiIncompat": "Has configurado entrada/salida NDI, pero la compilación seleccionada (\"{{buildName}}\") no incluye la librería libndi_newtek (--enable-libndi_newtek).",
+      "decklinkTitle": "Incompatibilidad de binario detectada:",
+      "decklinkIncompat": "Has configurado entrada/salida DeckLink, pero la compilación seleccionada (\"{{buildName}}\") no incluye el módulo de hardware DeckLink (--enable-decklink)."
+    }
   },
   "sources": {
     "mediaStorage": "Almacenamiento de Medios",
@@ -955,7 +985,31 @@
     "srtLocalHub": "Hub Local (Este Nodo)",
     "srtRemoteHub": "Servidor MediaMTX Remoto (Host Externo)",
     "srtRemoteHost": "Host / IP Remota",
-    "srtRemotePort": "Puerto SRT"
+    "srtRemotePort": "Puerto SRT",
+    "localManagedHub": "Local administrado",
+    "remoteExternalHub": "Remoto / Externo",
+    "targetHubLocation": "Instancia MediaMTX de origen",
+    "targetServerLocation": "Instancia Icecast de origen",
+    "selectHubService": "Servicio MediaMTX",
+    "selectIcecastService": "Servicio Icecast",
+    "streamPath": "Ruta del flujo (Path)",
+    "icecastMountPoint": "Punto de montaje (Mountpoint)",
+    "customPathOption": "+ Slug de path personalizado...",
+    "customMountOption": "+ Punto de montaje personalizado...",
+    "customPathSlug": "Slug de path personalizado",
+    "customMountSlug": "Punto de montaje personalizado",
+    "generatedRtmpUrl": "URL RTMP de origen generada",
+    "generatedHlsUrl": "URL HLS de origen generada",
+    "generatedStreamUrl": "URL de pull de audio generada",
+    "httpAudioManual": "URL HTTP / Icecast directa manual",
+    "httpAudioIcecastServer": "Integración con Servidor Icecast",
+    "rtmpManualDirect": "RTMP directo manual",
+    "rtmpMediaMtxHub": "Integración con Hub MediaMTX",
+    "hlsManualDirect": "URL HLS directa manual",
+    "hlsMediaMtxHub": "Integración con Hub MediaMTX",
+    "enableRtmps": "Pull RTMPS cifrado (TLS)",
+    "enableHttpsIcecast": "Pull HTTPS seguro (TLS)",
+    "enableHttpsHls": "Pull HLS HTTPS cifrado (TLS)"
   },
   "destinations": {
     "destination": "Destino",
@@ -1000,7 +1054,25 @@
     "relativePathDir": "Ruta Relativa en Almacenamiento",
     "relativePathFilename": "Patrón de Nombre de Archivo",
     "hlsStorage": "Destino de Almacenamiento HLS",
-    "hlsExtensionNote": "La ruta debe finalizar en extensión .m3u8",
+    "hlsExtensionNote": "Identificador de la lista de reproducción principal (la extensión .m3u8 se genera automáticamente)",
+    "hlsSlugHelper": "Nombre del slug para la lista de reproducción principal (.m3u8 se añade automáticamente)",
+    "hlsWindowSettings": "Control de Segmentación y Ventana HLS",
+    "hlsAbrVariants": "Variantes ABR HLS (Tasa de Bits Adaptativa)",
+    "vaapiCqpTitle": "Codificación Hardware VAAPI (Modo CQP)",
+    "vaapiCqpNote": "El driver VAAPI de tu GPU opera en modo CQP (Calidad Constante). FFmpeg escalará automáticamente los valores de cuantización QP entre variantes (ej. QP 20 para 1080p, 24 para 720p, 28 para 480p) para garantizar máxima compatibilidad con el hardware.",
+    "nvencAbrTitle": "Codificación Hardware NVIDIA NVENC",
+    "nvencAbrNote": "Aceleración hardware NVENC activa. Las variantes ABR se codificarán en GPU con optimización directa de formato NV12.",
+    "hlsQuickAddPresets": "Ajustes Predefinidos Rápidos",
+    "hlsCustomVariant": "Variante Personalizada",
+    "hlsAddCustomVariant": "Añadir Variante Personalizada",
+    "hlsNoVariantsDefined": "No hay variantes definidas. Se utilizará emisión de flujo único.",
+    "hlsResolution": "Resolución",
+    "hlsVideoBitrate": "Bitrate Vídeo",
+    "hlsAudioBitrate": "Bitrate Audio",
+    "hlsActions": "Acciones",
+    "hlsRemoveVariant": "Eliminar",
+    "hlsVideoBitratePlaceholder": "Vídeo (ej. 4500k)",
+    "hlsAudioBitratePlaceholder": "Audio (ej. 128k)",
     "hlsIngestMethod": "Método de Ingesta HLS",
     "httpPutUpload": "Subida HTTP PUT",
     "httpPostUpload": "Subida HTTP POST",
@@ -1076,7 +1148,29 @@
       "tls": "Conexión Cifrada TLS / SSL",
       "tlsDesc": "Fuerza transmisión cifrada TLS (-tls 1) para conectar con puertos seguros HTTPS/TLS de Icecast.",
       "tlsAutoManaged": "Conexión cifrada TLS / SSL auto-gestionada para este servidor."
-    }
+    },
+    "rtmpManualDirect": "RTMP / RTMPS directo manual",
+    "rtmpMediaMtxHub": "Integración con Hub MediaMTX",
+    "rtmpProviderHub": "Hub MediaMTX",
+    "rtmpPathId": "Slug de ruta",
+    "targetHubLocation": "Instancia de destino MediaMTX",
+    "selectHubService": "Servicio MediaMTX",
+    "streamPath": "Path de publicación",
+    "enableRtmps": "Push RTMPS cifrado (TLS)",
+    "customPathOption": "+ Slug de path personalizado...",
+    "customPathSlug": "Slug de path personalizado",
+    "customPathPrompt": "Slug de path personalizado",
+    "generatedRtmpUrl": "URL RTMP de destino generada",
+    "whipManualDirect": "Punto final WHIP directo manual",
+    "whipMediaMtxHub": "MediaMTX Hub WebRTC/WHIP",
+    "enableHttpsWhip": "Ingesta WHIP HTTPS cifrada (TLS)",
+    "generatedWhipUrl": "URL de ingesta WHIP generada",
+    "packetSize": "Tamaño de paquete (pkt_size)",
+    "standardDvb": "DVB MPEG-TS estándar (1316 B = 7 x 188)",
+    "lanJumbo": "Alto bitrate / Jumbo Frame (7520 B = 40 x 188)",
+    "singlePacket": "Paquete TS individual por datagrama UDP (188 B)",
+    "dvbMetadata": "Tablas DVB y metadatos PSI",
+    "cbrMuxrate": "Bitrate constante (CBR Muxrate)"
   },
   "filters": {
     "filtersNotAvailable": "Los filtros solo están disponibles cuando los flujos de vídeo o audio están habilitados.",
@@ -1175,7 +1269,11 @@
     "anchorCenterRight": "Centro Derecha",
     "anchorBottomLeft": "Inferior Izquierda",
     "anchorBottomCenter": "Inferior Centro",
-    "anchorBottomRight": "Inferior Derecha"
+    "anchorBottomRight": "Inferior Derecha",
+    "advanced": {
+      "enablePreview": "Monitor de Previsualización",
+      "enablePreviewDesc": "Genera miniaturas periódicas en memoria/disco para la GUI. Desactívalo en CPUs ajustadas o flujos en vivo exigentes para evitar caídas de velocidad (xruns en ALSA)."
+    }
   },
   "codecs": {
     "videoCodecOutput": "Códec de Vídeo (Salida)",
@@ -1197,7 +1295,9 @@
     "debugMode": "Modo Debug (Consola en Vivo)",
     "debugModeDesc": "Habilita lectura interactiva de logs. Sensible a reinicios del panel.",
     "logStorage": "Almacenamiento de Logs",
-    "defaultLogStorage": "Predeterminado (Usar almacenamiento de logs por defecto)"
+    "defaultLogStorage": "Predeterminado (Usar almacenamiento de logs por defecto)",
+    "circuitBreaker": "Circuit Breaker ante errores fatales",
+    "circuitBreakerDesc": "Cancela automáticamente los reintentos ante errores estructurales irrecuperables (protocolos, formatos o códecs no soportados por el binario)."
   },
   "form": {
     "sections": {
@@ -1286,5 +1386,41 @@
     "manageSdks": "Gestionar SDKs",
     "versionMismatchNotice": "⚠️ Advertencia: El archivo subido contiene el SDK v{{uploaded}}. La versión requerida v{{expected}} continúa ausente.",
     "manageDecklinkSdk": "Gestionar SDK DeckLink"
+  },
+  "modals": {
+    "debugConsole": {
+      "title": "CONSOLA DE AUDITORÍA Y DEPURACIÓN EN TIEMPO REAL",
+      "waiting": "Esperando salida del proceso...",
+      "stopped": "El proceso está detenido. Los logs aparecerán aquí al ejecutarse en modo depuración."
+    },
+    "crashLoop": {
+      "detected": "Bucle de reinicios detectado",
+      "attempt": "Intento #{{count}}",
+      "desc": "El proceso termina inmediatamente tras arrancar. El watchdog continúa reintentando según la configuración.",
+      "stopAndCancel": "Detener servicio y cancelar reintentos"
+    },
+    "telemetry": {
+      "title": "Telemetría de Progreso (Snapshot)",
+      "ramBuffer": "Buffer RAM"
+    },
+    "diagnosticLogs": {
+      "title": "Registro de Ejecución y Diagnóstico",
+      "show": "Ver Registro de Ejecución (Logs)",
+      "hide": "Ocultar Logs",
+      "waiting": "Servicio activo. Esperando salida de FFmpeg...",
+      "empty": "No hay registros disponibles para este proceso."
+    },
+    "preview": {
+      "hlsLiveTitle": "Previsualización en Vivo (HLS)",
+      "mjpegLiveTitle": "Previsualización en Vivo (MJPEG)",
+      "statusAndConfig": "Estado y Configuración del Servicio",
+      "bufferingHls": "Conectando con el flujo HLS...",
+      "hlsNotSupported": "Tu navegador no soporta MediaSource Extensions ni HLS.",
+      "hlsRemoteTitle": "Emisión HLS HTTP Activa (PUT/POST)",
+      "hlsRemoteDesc": "El flujo se transfiere directamente a un destino HTTP remoto. El monitor de vídeo local está desactivado para maximizar el rendimiento.",
+      "disabledTitle": "Monitor de Vídeo Desactivado",
+      "disabledDesc": "El monitor secundario se encuentra desactivado para maximizar el rendimiento de la CPU y evitar caídas en la captura en tiempo real.",
+      "enableInSettings": "Puedes reactivarlo en Configuración del Servicio → Filtros → Ajustes Avanzados."
+    }
   }
 }

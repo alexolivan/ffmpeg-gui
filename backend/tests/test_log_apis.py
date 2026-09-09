@@ -231,3 +231,43 @@ progress=continue
         
         # Verify log file deleted from disk
         self.assertFalse(os.path.exists(log_path))
+
+    def test_get_process_logs_from_disk_fallback(self):
+        from database.models import MediaProcess
+        
+        # Create a stopped process with no in-memory buffer
+        proc = MediaProcess(
+            name="Test Process Disk Logs",
+            type="service",
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/out.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="stopped"
+        )
+        self.db.add(proc)
+        self.db.commit()
+        proc_id = proc.id
+
+        # Ensure no memory buffer exists
+        from main import process_manager
+        process_manager.log_buffers.pop(proc_id, None)
+
+        # Create log file on disk
+        log_path = os.path.join(self.temp_dir, f"process_{proc_id}.log")
+        with open(log_path, "w") as f:
+            f.write("Line 1: Starting ffmpeg engine...\nLine 2: [libx264 @ 0x123] frame=10 fps=30\nLine 3: FATAL error in input stream\n")
+
+        # Test both /processes/{id}/logs and /api/processes/{id}/logs
+        res = self.client.get(f"/processes/{proc_id}/logs")
+        self.assertEqual(res.status_code, 200)
+        logs = res.json()
+        self.assertIsInstance(logs, list)
+        self.assertEqual(len(logs), 3)
+        self.assertEqual(logs[0]["message"], "Line 1: Starting ffmpeg engine...")
+        self.assertEqual(logs[0]["level"], "INFO")
+        self.assertEqual(logs[2]["message"], "Line 3: FATAL error in input stream")
+        self.assertEqual(logs[2]["level"], "ERROR")
+
+        res_alias = self.client.get(f"/api/processes/{proc_id}/logs")
+        self.assertEqual(res_alias.status_code, 200)
+        self.assertEqual(len(res_alias.json()), 3)

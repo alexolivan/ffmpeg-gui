@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { hasVideo as hasVideoHelper } from '../cards/UnifiedServiceCard';
 import { EngineLogo } from '../common/EngineLogo';
+import { HlsPlayer } from '../common/HlsPlayer';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface FfmpegPreviewModalProps {
   selectedProcess: any;
@@ -36,18 +38,60 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
   const isVideoProcess = hasVideoHelper(currentProcess);
   const isRunning = currentProcess.status === 'running';
+
+  const outputConfig = currentProcess.config?.output_config || currentProcess.output_config || {};
+  const isHls = outputConfig.type === 'hls';
+  const isHlsRemote = isHls && (outputConfig.hls_method === 'PUT' || outputConfig.hls_method === 'POST');
+  const isHlsLocal = isHls && !isHlsRemote;
+
+  const advancedCfg = currentProcess.config?.filter_config?.advanced || currentProcess.filter_config?.advanced || {};
+  const explicitPreview = advancedCfg.enable_preview !== undefined && advancedCfg.enable_preview !== null
+    ? advancedCfg.enable_preview
+    : (outputConfig.enable_preview !== undefined && outputConfig.enable_preview !== null ? outputConfig.enable_preview : null);
+
+  const previewEnabled = explicitPreview !== null ? !!explicitPreview : (!isHls);
   const showPreview = isRunning && isVideoProcess;
 
+  let hlsPlaylistName = 'stream.m3u8';
+  if (outputConfig.hls_stream_name) {
+    const clean = outputConfig.hls_stream_name.replace(/\.m3u8$/, '');
+    hlsPlaylistName = `${clean}.m3u8`;
+  } else if (outputConfig.path && outputConfig.path.endsWith('.m3u8')) {
+    hlsPlaylistName = outputConfig.path.split('/').pop() || 'stream.m3u8';
+  }
+  const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
+  const port = typeof window !== 'undefined' && window.location.port ? `:${window.location.port}` : '';
+  const protocol = typeof window !== 'undefined' && window.location.protocol ? window.location.protocol : 'http:';
+
+  const publicHlsPath = currentProcess?.public_hls_path || selectedProcess?.public_hls_path || null;
+  const publicHlsUrl = publicHlsPath ? `${protocol}//${host}${port}${publicHlsPath}` : null;
+
+  const internalHlsUrl = `${API}/processes/${currentProcess.id}/hls/${hlsPlaylistName}`;
+  const activePlayerHlsSrc = publicHlsPath || internalHlsUrl;
+
+  const isCrashLoop = currentProcess.status === 'restarting' || (typeof currentProcess.restart_count === 'number' && currentProcess.restart_count > 0 && (currentProcess.status === 'error' || currentProcess.status === 'restarting'));
+
   const [progressData, setProgressData] = useState<any>(null);
+  const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [copyHlsSuccess, setCopyHlsSuccess] = useState(false);
+  const [showDiagnosticLogs, setShowDiagnosticLogs] = useState<boolean>(false);
+
+  // Automatically expand diagnostic logs if the process is in an error or restarting state
+  useEffect(() => {
+    if (currentProcess.status === 'error' || currentProcess.status === 'restarting') {
+      setShowDiagnosticLogs(true);
+    }
+  }, [currentProcess.status]);
 
   const showFrames = progressData?.frame !== undefined && progressData?.frame !== null && progressData?.frame !== '0' && progressData?.frame !== 0;
-  const showFps = progressData?.fps !== undefined && progressData?.fps !== null && progressData?.fps !== '0.0' && progressData?.fps !== '0';
-  const showBitrate = progressData?.bitrate !== undefined && progressData?.bitrate !== null && progressData?.bitrate !== 'N/A' && progressData?.bitrate !== '0.0kbits/s' && progressData?.bitrate !== '0 kb/s';
-  const showSpeed = progressData?.speed !== undefined && progressData?.speed !== null && progressData?.speed !== 'N/A' && progressData?.speed !== '0x' && progressData?.speed !== '0.00x';
+  const showFps = progressData?.fps !== undefined && progressData?.fps !== null && progressData?.fps !== '0.0' && progressData?.fps !== 0;
+  const showBitrate = progressData?.bitrate && progressData?.bitrate !== 'N/A' && progressData?.bitrate !== '0.0kbits/s' && progressData?.bitrate !== '0 kb/s';
+  const showSpeed = progressData?.speed && progressData?.speed !== 'N/A' && progressData?.speed !== '0x';
   const showDups = progressData?.dup_frames !== undefined && progressData?.dup_frames !== null && progressData?.dup_frames !== '0' && progressData?.dup_frames !== 0;
   const showDrops = progressData?.drop_frames !== undefined && progressData?.drop_frames !== null && progressData?.drop_frames !== '0' && progressData?.drop_frames !== 0;
 
-  // Poll progress data for FFmpeg services
+  // Poll progress data for FFmpeg services (only when not in debug mode)
   useEffect(() => {
     if (!isRunning || currentProcess.debug_mode) {
       setProgressData(null);
@@ -71,12 +115,49 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
     return () => clearInterval(interval);
   }, [currentProcess.id, isRunning, currentProcess.debug_mode, API]);
 
-  // Auto-scroll logs when running
+  // Poll logs for FFmpeg process when in debug mode OR when diagnostic log view is enabled
   useEffect(() => {
-    if (processLogsContainerRef.current && isRunning) {
+    if (!currentProcess.debug_mode && !showDiagnosticLogs) return;
+
+    const fetchLogs = async () => {
+      try {
+        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setDaemonLogs(data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch ffmpeg logs', err);
+      }
+    };
+
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 2500);
+    return () => clearInterval(interval);
+  }, [currentProcess.id, currentProcess.debug_mode, showDiagnosticLogs, API]);
+
+  const activeLogs = daemonLogs.length > 0 ? daemonLogs : externalLogs;
+
+  // Auto-scroll logs when container is available and active
+  useEffect(() => {
+    if (processLogsContainerRef.current && (isRunning || currentProcess.debug_mode || showDiagnosticLogs)) {
       processLogsContainerRef.current.scrollTop = processLogsContainerRef.current.scrollHeight;
     }
-  }, [externalLogs, isRunning]);
+  }, [activeLogs, isRunning, currentProcess.debug_mode, showDiagnosticLogs]);
+
+  const handleCopyLogs = () => {
+    const text = activeLogs
+      .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+      .join('\n');
+    copyToClipboard(text).then((success) => {
+      if (success) {
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      }
+    });
+  };
 
   // Escape key listener to close modal
   useEffect(() => {
@@ -112,7 +193,11 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 </span>
               </div>
               <p className="text-[var(--text-secondary)] text-xs uppercase tracking-wider mt-0.5">
-                {showPreview ? 'Live Stream Preview (MJPEG)' : 'Service Status & Configuration'}
+                {isHlsLocal
+                  ? t('modals.preview.hlsLiveTitle', 'Live Stream Preview (HLS)')
+                  : (previewEnabled
+                    ? t('modals.preview.mjpegLiveTitle', 'Live Stream Preview (MJPEG)')
+                    : t('modals.preview.statusAndConfig', 'Service Status & Configuration'))}
               </p>
             </div>
           </div>
@@ -134,6 +219,33 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 <span className="font-bold block uppercase tracking-wider mb-0.5">Configuration Pending Reboot</span>
                 This service has modified configurations that are not yet active in the running instance. Restart the service to apply these changes.
               </div>
+            </div>
+          )}
+
+          {/* Crash Loop Alert Banner */}
+          {isCrashLoop && (
+            <div className="bg-red-500/15 border border-red-500/30 text-red-300 p-4 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 animate-in fade-in duration-200">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl animate-bounce">⚠️</span>
+                <div>
+                  <div className="font-bold uppercase tracking-wider text-xs text-red-200">
+                    {t('modals.crashLoop.detected', 'Bucle de reinicios detectado')} (
+                    {t('modals.crashLoop.attempt', 'Intento #{{count}}', { count: currentProcess.restart_count || 1 })})
+                  </div>
+                  <div className="text-[11px] text-red-300/80 mt-0.5">
+                    {t('modals.crashLoop.desc', 'El proceso termina inmediatamente tras arrancar. El watchdog continúa reintentando según la configuración.')}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onStopService(currentProcess.id, currentProcess.name)}
+                disabled={actionPending[currentProcess.id] === 'stopping'}
+                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1.5 shadow-lg shadow-red-950/50"
+              >
+                <span>⏹</span>
+                <span>{t('modals.crashLoop.stopAndCancel', 'Detener servicio y cancelar reintentos')}</span>
+              </button>
             </div>
           )}
 
@@ -188,18 +300,74 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 </div>
               </div>
 
-              {/* Col 2: Live Preview */}
+              {/* Col 2: Live Preview or Informative Card */}
               <div className="flex flex-col justify-center">
-                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
-                  <img
-                    src={`${API}/processes/${currentProcess.id}/preview`}
-                    alt="Live Preview"
-                    className="max-h-full max-w-full object-contain"
-                  />
-                  <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-brand-lime text-black text-[8px] font-black rounded tracking-wider uppercase animate-pulse">
-                    LIVE
+                {isHlsLocal ? (
+                  <div className="space-y-2">
+                    <HlsPlayer src={activePlayerHlsSrc} />
+                    {publicHlsUrl && (
+                      <div className="flex items-center justify-between gap-2 p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
+                        <div className="flex items-center gap-1.5 overflow-hidden">
+                          <span className="text-[10px] uppercase font-mono font-bold text-brand-lime shrink-0">HLS URL:</span>
+                          <span className="text-[11px] font-mono text-[var(--text-secondary)] truncate" title={publicHlsUrl}>
+                            {publicHlsUrl}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            copyToClipboard(publicHlsUrl).then((ok) => {
+                              if (ok) {
+                                setCopyHlsSuccess(true);
+                                setTimeout(() => setCopyHlsSuccess(false), 2000);
+                              }
+                            });
+                          }}
+                          className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] text-[10px] font-bold uppercase rounded-lg border border-[var(--glass-border)] transition-colors shrink-0 cursor-pointer"
+                        >
+                          {copyHlsSuccess ? t('common.copied', '¡Copiado!') : t('common.copy', 'Copiar')}
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </div>
+                ) : isHlsRemote && !previewEnabled ? (
+                  <div className="aspect-video bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)] flex flex-col items-center justify-center p-6 text-center shadow-xl">
+                    <span className="text-3xl mb-2">🌐</span>
+                    <h4 className="text-xs uppercase font-bold text-brand-orange tracking-wider">
+                      {t('modals.preview.hlsRemoteTitle', 'Emisión HLS HTTP Activa (PUT/POST)')}
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-1 max-w-sm">
+                      {t('modals.preview.hlsRemoteDesc', 'El flujo se transfiere directamente a un destino HTTP remoto. El monitor de vídeo local está desactivado para maximizar el rendimiento.')}
+                    </p>
+                    <div className="mt-3 px-3 py-1.5 bg-black/40 rounded-lg border border-white/5 font-mono text-[10px] text-zinc-300 max-w-full truncate">
+                      {outputConfig.path || 'HTTP Ingest URL'}
+                    </div>
+                  </div>
+                ) : previewEnabled ? (
+                  <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
+                    <img
+                      src={`${API}/processes/${currentProcess.id}/preview`}
+                      alt="Live Preview"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                    <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-brand-lime text-black text-[8px] font-black rounded tracking-wider uppercase animate-pulse">
+                      LIVE
+                    </div>
+                  </div>
+                ) : (
+                  <div className="aspect-video bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)] flex flex-col items-center justify-center p-6 text-center shadow-xl">
+                    <span className="text-3xl mb-2">⚡</span>
+                    <h4 className="text-xs uppercase font-bold text-brand-lime tracking-wider">
+                      {t('modals.preview.disabledTitle', 'Monitor de Vídeo Desactivado')}
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-1 max-w-sm">
+                      {t('modals.preview.disabledDesc', 'El monitor secundario se encuentra desactivado para maximizar el rendimiento de la CPU y evitar caídas en la captura en tiempo real.')}
+                    </p>
+                    <span className="text-[10px] text-zinc-400 mt-2 font-mono">
+                      {t('modals.preview.enableInSettings', 'Puedes reactivarlo en Configuración del Servicio → Filtros → Ajustes Avanzados.')}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -263,16 +431,32 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
           {/* Telemetry Snapshot Panel (Normal Mode) */}
           {!currentProcess.debug_mode && (
             <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-xl p-4 max-w-5xl mx-auto w-full space-y-3">
-              <div className="flex justify-between items-center pb-2 border-b border-[var(--glass-border)]">
+              <div className="flex justify-between items-center pb-2 border-b border-[var(--glass-border)] flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-brand-lime animate-pulse" />
                   <span className="text-[var(--text-primary)] font-bold uppercase tracking-wider text-[10px]">
-                    Telemetría de Progreso (Snapshot)
+                    {t('modals.telemetry.title', 'Telemetría de Progreso (Snapshot)')}
+                  </span>
+                  <span className="text-[9px] text-[var(--text-secondary)] bg-white/5 px-2 py-0.5 rounded font-mono">
+                    ⚡ {t('modals.telemetry.ramBuffer', 'Buffer RAM')}
                   </span>
                 </div>
-                <span className="text-[9px] text-[var(--text-secondary)] bg-white/5 px-2 py-0.5 rounded">
-                  /dev/shm/ffmpeg_progress_{currentProcess.id}s.log
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowDiagnosticLogs((prev) => !prev)}
+                  className={`px-2.5 py-1 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer border flex items-center gap-1.5 ${
+                    showDiagnosticLogs
+                      ? 'bg-brand-lime/15 text-brand-lime border-brand-lime/30'
+                      : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border-[var(--glass-border)]'
+                  }`}
+                >
+                  <span>📋</span>
+                  <span>
+                    {showDiagnosticLogs
+                      ? t('modals.diagnosticLogs.hide', 'Ocultar Logs')
+                      : t('modals.diagnosticLogs.show', 'Ver Registro de Ejecución (Logs)')}
+                  </span>
+                </button>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -311,6 +495,88 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                     <span className="text-[9px] uppercase font-bold text-[var(--text-secondary)]">Drops</span>
                     <span className="text-[var(--text-primary)] font-mono font-black text-sm">{progressData?.drop_frames}</span>
                   </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Diagnostic Execution Log Panel (Production or Debug Mode) */}
+          {(currentProcess.debug_mode || showDiagnosticLogs) && (
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 font-mono text-xs space-y-2 max-w-5xl mx-auto w-full animate-in fade-in duration-200">
+              <div className="flex justify-between items-center border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`w-2 h-2 rounded-full ${currentProcess.debug_mode ? 'bg-brand-orange' : 'bg-brand-lime'} animate-pulse`} />
+                  <span className={`${currentProcess.debug_mode ? 'text-brand-orange' : 'text-brand-lime'} font-bold uppercase tracking-wider text-[10px]`}>
+                    {currentProcess.debug_mode
+                      ? t('modals.debugConsole.title', 'FFmpeg Real-Time Audit Console (Debug Mode)')
+                      : t('modals.diagnosticLogs.title', 'Registro de Ejecución y Diagnóstico')}
+                  </span>
+                  <span className="text-[9px] text-[var(--text-secondary)] bg-white/5 px-2 py-0.5 rounded font-mono select-all">
+                    📁 {currentProcess.log_file_path || `data/logs/process_${currentProcess.id}.log`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyLogs}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    {copySuccess ? '✓ ' + t('common.copied', 'Copied') : t('common.copyLogs', 'Copy Logs')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const a = document.createElement('a');
+                      a.href = `${API}/api/processes/${currentProcess.id}/download-log`;
+                      a.download = `process_${currentProcess.id}.log`;
+                      a.click();
+                    }}
+                    className={`px-2.5 py-1 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer border ${
+                      currentProcess.debug_mode
+                        ? 'bg-brand-orange/15 hover:bg-brand-orange/25 text-brand-orange border-brand-orange/30'
+                        : 'bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border-brand-lime/30'
+                    }`}
+                  >
+                    {t('common.downloadLog', 'Download Log')}
+                  </button>
+                  <span className="text-[var(--text-secondary)] text-[10px] font-bold">{activeLogs.length} {t('common.lines', 'lines')}</span>
+                </div>
+              </div>
+
+              <div
+                ref={processLogsContainerRef}
+                className="h-72 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
+              >
+                {activeLogs.length === 0 ? (
+                  <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-20 select-none">
+                    {isRunning
+                      ? t('modals.diagnosticLogs.waiting', 'Servicio activo. Esperando salida de FFmpeg...')
+                      : t('modals.diagnosticLogs.empty', 'No hay registros disponibles para este proceso.')}
+                  </div>
+                ) : (
+                  activeLogs.map((log, i) => {
+                    const logMsg = typeof log === 'string' ? log : log.message || '';
+                    const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+                    const isErr = logMsg.toLowerCase().includes('error') || logMsg.toLowerCase().includes('failed') || (typeof log === 'object' && log.level === 'ERROR');
+                    const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
+
+                    return (
+                      <div key={i} className="whitespace-pre-wrap flex items-start gap-2">
+                        {logTime && (
+                          <span className="text-[var(--text-secondary)] select-none shrink-0 opacity-70">
+                            [{logTime}]
+                          </span>
+                        )}
+                        <span
+                          className={`${
+                            isErr ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {logMsg}
+                        </span>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
