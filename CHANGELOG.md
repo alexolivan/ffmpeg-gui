@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.4] - 2026-09-10
+
+### Fixed
+- **Legacy Icecast (< v2.4) & Input TLS Auto-Resolution in Federated Services**:
+  - Enhanced `get_shared_catalog` and `_extract_service_protocols` in `backend/core/peer_manager.py` to inspect `SoftwareBuild`, service alias/name, and configuration to reliably detect and export `is_legacy` and `software_version` for shared Icecast servers.
+  - Extended `FFmpegCommandBuilder` in `backend/core/builders/ffmpeg_builder.py` to auto-resolve `legacy_icecast` and `tls` for destinations referencing federated peers (`peer_node_id` & `peer_service_id`) using `PeerRemoteNode.cached_services_json`.
+  - Added resilient regex-based version analysis helper (`isLegacyIcecastStr`) in `DestinationPanel.tsx` to automatically infer legacy Icecast versions from service name or version tag even against older host peers.
+  - Made Protocol & Compatibility Options (Legacy Icecast & TLS) permanently visible in `DestinationPanel.tsx` across all modes, displaying auto-detection badges in managed/peer mode while preserving user manual override capabilities.
+  - Fixed TLS auto-detection logic in `InputSourcePanel.tsx` for remote peer Icecast streams, preventing accidental plaintext fallback and standardizing default port fallbacks to 8000 / 8443.
+  - Added unit test cases for federated peer Icecast command generation in `test_command_generator.py` and catalog export verification in `test_peer_manager.py`.
+
 ## [2.17.3] - 2026-09-10
 
 ### Fixed

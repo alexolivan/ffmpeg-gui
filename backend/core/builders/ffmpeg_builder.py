@@ -47,9 +47,12 @@ class FFmpegCommandBuilder:
                 if resolved:
                     overlay['path'] = resolved
 
-        # Auto-resolve Icecast properties (TLS & legacy_icecast) from local provider service
+        # Auto-resolve Icecast properties (TLS & legacy_icecast) from local or federated provider service
         if output_cfg.get('type') == 'icecast':
             prov_id = output_cfg.get('provider_service_id')
+            peer_node_id = output_cfg.get('peer_node_id')
+            peer_service_id = output_cfg.get('peer_service_id')
+
             if prov_id and db_session_factory:
                 try:
                     with db_session_factory() as session:
@@ -82,6 +85,38 @@ class FFmpegCommandBuilder:
                                     output_cfg['legacy_icecast'] = cls._is_legacy_icecast(name_str)
                 except Exception:
                     pass
+            elif peer_node_id and peer_service_id and db_session_factory:
+                try:
+                    with db_session_factory() as session:
+                        from database.models import PeerRemoteNode
+                        peer = session.query(PeerRemoteNode).get(peer_node_id)
+                        if peer:
+                            services = peer.cached_services_json or []
+                            for s in services:
+                                if s.get('id') == peer_service_id:
+                                    protos = s.get('protocols') or {}
+                                    if output_cfg.get('tls') is None:
+                                        output_cfg['tls'] = bool(protos.get('ssl_enabled'))
+                                    is_leg = (
+                                        s.get('is_legacy')
+                                        or protos.get('is_legacy')
+                                        or cls._is_legacy_icecast(s.get('software_version') or '')
+                                        or cls._is_legacy_icecast(s.get('name') or '')
+                                        or cls._is_legacy_icecast(s.get('alias') or '')
+                                    )
+                                    if output_cfg.get('legacy_icecast') is None:
+                                        output_cfg['legacy_icecast'] = bool(is_leg)
+                                    elif not output_cfg.get('legacy_icecast') and is_leg:
+                                        output_cfg['legacy_icecast'] = True
+                                    break
+                except Exception:
+                    pass
+
+            if output_cfg.get('legacy_icecast') is None:
+                host_str = str(output_cfg.get('host') or '')
+                name_str = str(output_cfg.get('name') or '')
+                if cls._is_legacy_icecast(host_str) or cls._is_legacy_icecast(name_str):
+                    output_cfg['legacy_icecast'] = True
 
     @classmethod
     def _is_legacy_icecast(cls, version_str: str) -> bool:

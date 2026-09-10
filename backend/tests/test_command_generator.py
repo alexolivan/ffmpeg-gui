@@ -420,6 +420,77 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-tls 1", cmd_legacy_str)
         self.assertIn("icecast://source:secret@192.168.1.50:8000/legacy.mp3", cmd_legacy_str)
 
+        # Case 3: Federated Peer Icecast 2.3.3 node auto-resolves legacy_icecast=True from cached services
+        mock_peer = MagicMock()
+        mock_peer.id = 10
+        mock_peer.cached_services_json = [
+            {
+                "id": 101,
+                "name": "Icecast 2.3.3 Server",
+                "alias": "Legacy Node",
+                "service_type": "icecast_server",
+                "is_legacy": True,
+                "protocols": {
+                    "port": 8000,
+                    "ssl_enabled": False,
+                    "is_legacy": True
+                }
+            }
+        ]
+        mock_session = MagicMock()
+        mock_session.query.return_value.get.return_value = mock_peer
+        self.mock_session_factory.return_value.__enter__.return_value = mock_session
+
+        proc.output_config = {
+            'type': 'icecast',
+            'peer_node_id': 10,
+            'peer_service_id': 101,
+            'host': 'vps1.example.com',
+            'port': '8000',
+            'icecast_mount': '/stream.mp3',
+            'icecast_username': 'source',
+            'icecast_password': 'mypassword',
+        }
+
+        cmd_peer = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_peer_str = " ".join(cmd_peer)
+        self.assertIn("-legacy_icecast 1", cmd_peer_str)
+        self.assertNotIn("-tls 1", cmd_peer_str)
+        self.assertIn("icecast://source:mypassword@vps1.example.com:8000/stream.mp3", cmd_peer_str)
+
+        # Case 4: Federated Peer Icecast 2.5 with SSL auto-resolves tls=True & legacy_icecast=False
+        mock_peer.cached_services_json = [
+            {
+                "id": 102,
+                "name": "Icecast 2.5 Server",
+                "alias": "Modern Node",
+                "service_type": "icecast_server",
+                "is_legacy": False,
+                "protocols": {
+                    "port": 8000,
+                    "ssl_port": 8443,
+                    "ssl_enabled": True,
+                    "is_legacy": False
+                }
+            }
+        ]
+        proc.output_config = {
+            'type': 'icecast',
+            'peer_node_id': 10,
+            'peer_service_id': 102,
+            'host': 'vps1.example.com',
+            'port': '8443',
+            'icecast_mount': '/stream.mp3',
+            'icecast_username': 'source',
+            'icecast_password': 'mypassword',
+        }
+
+        cmd_peer_ssl = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_peer_ssl_str = " ".join(cmd_peer_ssl)
+        self.assertNotIn("-legacy_icecast 1", cmd_peer_ssl_str)
+        self.assertIn("-tls 1", cmd_peer_ssl_str)
+        self.assertIn("icecast://source:mypassword@vps1.example.com:8443/stream.mp3", cmd_peer_ssl_str)
+
     def test_hls_abr_vaapi_cqp_command(self):
         proc = MagicMock()
         proc.id = 50

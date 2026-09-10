@@ -63,6 +63,19 @@ export interface OutputConfig {
   tls?: boolean;
 }
 
+export const isLegacyIcecastStr = (versionStr?: string | null): boolean => {
+  if (!versionStr) return false;
+  const m = String(versionStr).match(/(\d+)\.(\d+)/);
+  if (m) {
+    const major = parseInt(m[1], 10);
+    const minor = parseInt(m[2], 10);
+    if (major < 2 || (major === 2 && minor < 4)) {
+      return true;
+    }
+  }
+  return String(versionStr).toLowerCase().includes('legacy');
+};
+
 interface DestinationPanelProps {
   config: OutputConfig;
   hasVideo: boolean;
@@ -2158,7 +2171,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           availableMounts = Array.isArray(protos.mounts) ? protos.mounts : [];
           activePass = protos.source_password || 'hackme';
           activeTls = Boolean(protos.ssl_enabled);
-          activeLegacy = Boolean(svc?.is_legacy);
+          activeLegacy = Boolean(
+            svc?.is_legacy ??
+            protos.is_legacy ??
+            isLegacyIcecastStr(svc?.software_version) ??
+            isLegacyIcecastStr(protos.software_version) ??
+            isLegacyIcecastStr(svc?.name) ??
+            isLegacyIcecastStr(svc?.alias)
+          );
           activePort = String(activeTls ? (protos.ssl_port || 8443) : (protos.port || 8000));
           try {
             currentHost = peer ? new URL(peer.base_url).hostname : '127.0.0.1';
@@ -2171,7 +2191,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           availableMounts = Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [];
           activePass = iceCfg.source_password || 'hackme';
           activeTls = Boolean(iceCfg.ssl_enabled);
-          activeLegacy = Boolean(selectedProvider.is_legacy ?? iceCfg.is_legacy);
+          activeLegacy = Boolean(
+            selectedProvider.is_legacy ??
+            iceCfg.is_legacy ??
+            isLegacyIcecastStr(selectedProvider.software_version) ??
+            isLegacyIcecastStr(iceCfg.software_version) ??
+            isLegacyIcecastStr(selectedProvider.name) ??
+            isLegacyIcecastStr(selectedProvider.alias)
+          );
           activePort = String(activeTls ? (iceCfg.ssl_port || 7443) : (iceCfg.port || 7000));
           statusBadge = selectedProvider.status || 'stopped';
         }
@@ -2186,7 +2213,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           const firstMountObj = pMounts.find((m: any) => m.mount_name === firstMount);
           const pass = firstMountObj?.source_password || pCfg.source_password || 'hackme';
           const isTls = pCfg.ssl_enabled === true;
-          const isLegacy = Boolean(prov.is_legacy ?? pCfg.is_legacy);
+          const isLegacy = Boolean(
+            prov.is_legacy ??
+            pCfg.is_legacy ??
+            isLegacyIcecastStr(prov.software_version) ??
+            isLegacyIcecastStr(pCfg.software_version) ??
+            isLegacyIcecastStr(prov.name) ??
+            isLegacyIcecastStr(prov.alias)
+          );
 
           update({
             provider_service_id: prov.id,
@@ -2222,7 +2256,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           const firstMountObj = pMounts.find((m: any) => m.mount_name === firstMount);
           const pass = firstMountObj?.source_password || protos.source_password || 'hackme';
           const isTls = protos.ssl_enabled === true;
-          const isLegacy = Boolean(svc.is_legacy);
+          const isLegacy = Boolean(
+            svc.is_legacy ??
+            protos.is_legacy ??
+            isLegacyIcecastStr(svc.software_version) ??
+            isLegacyIcecastStr(protos.software_version) ??
+            isLegacyIcecastStr(svc.name) ??
+            isLegacyIcecastStr(svc.alias)
+          );
 
           update({
             peer_node_id: peer.id,
@@ -2530,52 +2571,74 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               </div>
             </details>
 
-            {/* Protocol & Compatibility Options: Legacy SOURCE method (< v2.4) & TLS - Only displayed in Remote / Manual Server mode */}
-            {!isManagedMode && (
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col pr-2">
-                    <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
-                      <span>⚡</span>
-                      <span>{t('destinations.icecast.legacyIcecast', 'Modo Servidor Legacy (Icecast < v2.4)')}</span>
-                    </span>
-                    <span className="text-[10px] text-[var(--text-secondary)]">
-                      {t('destinations.icecast.legacyIcecastDesc', 'Activa el método HTTP SOURCE (en lugar de HTTP PUT). Imprescindible para servidores Icecast 2.3.x o anteriores.')}
-                    </span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(config.legacy_icecast)}
-                      onChange={(e) => update({ legacy_icecast: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime peer-checked:after:border-black peer-checked:after:bg-black"></div>
-                  </label>
+            {/* Protocol & Compatibility Options: Legacy SOURCE method (< v2.4) & TLS */}
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col pr-2">
+                  <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <span>⚡</span>
+                    <span>{t('destinations.icecast.legacyIcecast', 'Modo Servidor Legacy (Icecast < v2.4)')}</span>
+                    {isManagedMode && Boolean(config.legacy_icecast) && (
+                      <span className="text-[10px] text-brand-lime bg-brand-lime/10 px-1.5 py-0.5 rounded border border-brand-lime/20 font-normal">
+                        {t('destinations.icecast.legacyAutoManaged', 'Detectado automáticamente (< 2.4)')}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-[var(--text-secondary)]">
+                    {t('destinations.icecast.legacyIcecastDesc', 'Activa el método HTTP SOURCE (en lugar de HTTP PUT). Imprescindible para servidores Icecast 2.3.x o anteriores.')}
+                  </span>
                 </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-[var(--glass-border)]">
-                  <div className="flex flex-col pr-2">
-                    <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
-                      <ShieldIcon size={12} />
-                      <span>{t('destinations.icecast.tls', 'Conexión Cifrada TLS / SSL')}</span>
-                    </span>
-                    <span className="text-[10px] text-[var(--text-secondary)]">
-                      {t('destinations.icecast.tlsDesc', 'Fuerza transmisión cifrada TLS (-tls 1) para conectar con puertos seguros HTTPS/TLS de Icecast.')}
-                    </span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(config.tls)}
-                      onChange={(e) => update({ tls: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:border-black peer-checked:after:bg-black"></div>
-                  </label>
-                </div>
+                <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.legacy_icecast)}
+                    onChange={(e) => update({ legacy_icecast: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime peer-checked:after:border-black peer-checked:after:bg-black"></div>
+                </label>
               </div>
-            )}
+
+              <div className="flex items-center justify-between pt-2 border-t border-[var(--glass-border)]">
+                <div className="flex flex-col pr-2">
+                  <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <ShieldIcon size={12} />
+                    <span>{t('destinations.icecast.tls', 'Conexión Cifrada TLS / SSL')}</span>
+                    {isManagedMode && Boolean(config.tls) && (
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 font-normal">
+                        {t('destinations.icecast.tlsAutoManaged', 'Auto-configurado (SSL activo)')}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-[var(--text-secondary)]">
+                    {t('destinations.icecast.tlsDesc', 'Fuerza transmisión cifrada TLS (-tls 1) para conectar con puertos seguros HTTPS/TLS de Icecast.')}
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.tls)}
+                    onChange={(e) => {
+                      const isTls = e.target.checked;
+                      let newPort = config.port;
+                      if (config.peer_node_id) {
+                        const peer = remotePeers.find(p => p.id === config.peer_node_id);
+                        const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
+                        const svc = services.find((s: any) => s.id === config.peer_service_id);
+                        const protos = svc?.protocols || {};
+                        newPort = String(isTls ? (protos.ssl_port || 8443) : (protos.port || 8000));
+                      } else if (selectedProvider) {
+                        const pCfg = selectedProvider.config || {};
+                        newPort = String(isTls ? (pCfg.ssl_port || 7443) : (pCfg.port || 7000));
+                      }
+                      update({ tls: isTls, port: newPort });
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:border-black peer-checked:after:bg-black"></div>
+                </label>
+              </div>
+            </div>
 
             {/* Auto-negotiated Codec Notice */}
             <div className="bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-2.5 text-[11px] text-text-secondary flex items-start gap-2">

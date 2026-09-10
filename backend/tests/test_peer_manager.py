@@ -242,5 +242,34 @@ class TestPeerManager(unittest.TestCase):
         self.peer_mgr.send_all_active_remote_heartbeats(self.session)
         mock_post.assert_called()
 
+    def test_shared_catalog_icecast_legacy_export(self):
+        # Add a shared Icecast 2.3.3 server
+        ice_legacy = Service(
+            name="Icecast 2.3.3 Server",
+            alias="Legacy Radio",
+            service_type="icecast_server",
+            config={
+                "icecast_config": {
+                    "port": 8000,
+                    "ssl_enabled": False,
+                    "mounts": [{"mount_name": "/live.mp3"}],
+                    "source_password": "pass"
+                }
+            },
+            is_shared_with_peers=True,
+            allow_peer_lease=True,
+            status="running"
+        )
+        self.session.add(ice_legacy)
+        self.session.commit()
+
+        catalog = self.peer_mgr.get_shared_catalog(self.session)
+        ice_entry = next((s for s in catalog if s["id"] == ice_legacy.id), None)
+        self.assertIsNotNone(ice_entry)
+        self.assertTrue(ice_entry["is_legacy"])
+        self.assertTrue(ice_entry["protocols"]["is_legacy"])
+        self.assertFalse(ice_entry["protocols"]["ssl_enabled"])
+        self.assertEqual(ice_entry["protocols"]["port"], 8000)
+
 if __name__ == "__main__":
     unittest.main()

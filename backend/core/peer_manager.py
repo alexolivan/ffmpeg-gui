@@ -114,7 +114,7 @@ class PeerManager:
             except Exception as err:
                 logger.warning(f"Failed to send remote heartbeat to peer {p_node} for service {p_svc}: {err}")
 
-    def _extract_service_protocols(self, svc: Service) -> Dict[str, Any]:
+    def _extract_service_protocols(self, svc: Service, is_legacy: bool = False, software_version: Optional[str] = None) -> Dict[str, Any]:
         cfg = svc.config or {}
         protocols = {}
         if svc.service_type == "mediamtx_hub":
@@ -138,24 +138,68 @@ class PeerManager:
             protocols["ssl_enabled"] = bool(ice.get("ssl_enabled", False))
             protocols["mounts"] = ice.get("mounts", [])
             protocols["source_password"] = ice.get("source_password", "")
+            protocols["is_legacy"] = is_legacy
+            if software_version:
+                protocols["software_version"] = software_version
         return protocols
 
     def get_shared_catalog(self, db_session, allowed_service_ids: Optional[List[int]] = None) -> List[Dict[str, Any]]:
+        from database.models import SoftwareBuild
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+
         query = db_session.query(Service).filter(Service.is_shared_with_peers == True)
         services = query.all()
         catalog = []
         for svc in services:
             if allowed_service_ids and svc.id not in allowed_service_ids:
                 continue
-            catalog.append({
+
+            cfg = svc.config or {}
+            is_legacy = False
+            software_version = None
+
+            if svc.service_type == "icecast_server":
+                build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or getattr(svc, 'ffmpeg_build_id', None)
+                build = None
+                if build_id:
+                    build = db_session.query(SoftwareBuild).get(build_id)
+                if not build:
+                    build = db_session.query(SoftwareBuild).filter(
+                        SoftwareBuild.software_type == 'icecast2',
+                        SoftwareBuild.status == 'ready',
+                        SoftwareBuild.is_default == True
+                    ).first() or db_session.query(SoftwareBuild).filter(
+                        SoftwareBuild.software_type == 'icecast2',
+                        SoftwareBuild.status == 'ready'
+                    ).first()
+                if build:
+                    software_version = build.version_tag or build.name
+                    is_legacy = FFmpegCommandBuilder._is_legacy_icecast(software_version)
+                if not is_legacy:
+                    is_legacy = (
+                        FFmpegCommandBuilder._is_legacy_icecast(svc.name or '')
+                        or FFmpegCommandBuilder._is_legacy_icecast(svc.alias or '')
+                        or bool(cfg.get("icecast_config", {}).get("is_legacy", False))
+                        or bool(cfg.get("is_legacy", False))
+                    )
+
+            protocols = self._extract_service_protocols(svc, is_legacy=is_legacy, software_version=software_version)
+
+            entry = {
                 "id": svc.id,
                 "name": svc.name,
                 "alias": svc.alias,
                 "service_type": svc.service_type,
                 "status": svc.status,
                 "allow_peer_lease": bool(svc.allow_peer_lease),
-                "protocols": self._extract_service_protocols(svc)
-            })
+                "protocols": protocols,
+            }
+            if svc.service_type == "icecast_server":
+                entry["is_legacy"] = is_legacy
+                if software_version:
+                    entry["software_version"] = software_version
+
+            catalog.append(entry)
         return catalog
 
     def get_catalog_version_and_hash(self, db_session) -> Tuple[int, str]:
