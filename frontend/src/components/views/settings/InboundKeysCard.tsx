@@ -81,21 +81,28 @@ export const InboundKeysCard: React.FC<InboundKeysCardProps> = ({ API }) => {
     setCopied(false);
     setLoadingCandidates(true);
 
+    const browserCandidate: CandidateEndpoint = {
+      interface: 'browser',
+      ip: window.location.hostname,
+      url: window.location.origin
+    };
+
     try {
       const res = await fetch(`${API}/api/peers/candidate-endpoints`);
       if (res.ok) {
         const data: CandidateResponse = await res.json();
-        setCandidateOptions(data.candidates || []);
-        if (data.candidates && data.candidates.length > 0) {
-          setSelectedEndpointMode(data.candidates[0].url);
-        } else {
-          setSelectedEndpointMode('custom');
-        }
+        const serverCandidates = data.candidates || [];
+        const exists = serverCandidates.some(c => c.url === browserCandidate.url);
+        const combined = exists ? serverCandidates : [browserCandidate, ...serverCandidates];
+        setCandidateOptions(combined);
+        setSelectedEndpointMode(combined.length > 0 ? combined[0].url : 'custom');
       } else {
-        setSelectedEndpointMode('custom');
+        setCandidateOptions([browserCandidate]);
+        setSelectedEndpointMode(browserCandidate.url);
       }
     } catch {
-      setSelectedEndpointMode('custom');
+      setCandidateOptions([browserCandidate]);
+      setSelectedEndpointMode(browserCandidate.url);
     } finally {
       setLoadingCandidates(false);
     }
@@ -343,12 +350,15 @@ export const InboundKeysCard: React.FC<InboundKeysCardProps> = ({ API }) => {
 
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
-                    {t('settings.peers.aliasLabel', 'Remote Node Alias / Label')}
+                    {t('settings.peers.aliasLabel', 'Remote Client Alias / Label')}
                   </label>
+                  <p className="text-[10px] text-[var(--text-secondary)]">
+                    {t('settings.peers.aliasHelper', 'Name or identifier of the remote client node that will use this key (e.g. test1, Remote Studio).')}
+                  </p>
                   <input
                     type="text"
                     required
-                    placeholder={t('settings.peers.aliasPlaceholder', 'e.g. VPS1 Ingest Node')}
+                    placeholder={t('settings.peers.aliasPlaceholder', 'e.g. test1')}
                     value={alias}
                     onChange={(e) => setAlias(e.target.value)}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)]"
@@ -357,8 +367,11 @@ export const InboundKeysCard: React.FC<InboundKeysCardProps> = ({ API }) => {
 
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
-                    {t('settings.peers.endpointSelectLabel', 'Candidate Endpoint Address')}
+                    {t('settings.peers.endpointSelectLabel', 'Server Address for this Node')}
                   </label>
+                  <p className="text-[10px] text-[var(--text-secondary)]">
+                    {t('settings.peers.endpointSelectHelper', 'Select the IP address or URL of this server that the remote client can reach.')}
+                  </p>
                   {loadingCandidates ? (
                     <div className="text-xs text-text-secondary flex items-center gap-2 p-2">
                       <span className="w-3.5 h-3.5 border-2 border-brand-lime border-t-transparent rounded-full animate-spin" />
@@ -372,7 +385,7 @@ export const InboundKeysCard: React.FC<InboundKeysCardProps> = ({ API }) => {
                     >
                       {candidateOptions.map((cand, idx) => (
                         <option key={idx} value={cand.url} className="bg-[var(--bg-card)] text-[var(--text-primary)]">
-                          {cand.url} ({cand.interface} - {cand.ip})
+                          {cand.url} {cand.interface === 'browser' ? `(${t('settings.peers.browserUrl', 'Current Browser URL')})` : `(${cand.interface} - ${cand.ip})`}
                         </option>
                       ))}
                       <option value="custom" className="bg-[var(--bg-card)] text-[var(--text-primary)]">
@@ -387,10 +400,13 @@ export const InboundKeysCard: React.FC<InboundKeysCardProps> = ({ API }) => {
                     <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
                       {t('settings.peers.customEndpointLabel', 'Custom Base URL / Endpoint')}
                     </label>
+                    <p className="text-[10px] text-[var(--text-secondary)]">
+                      {t('settings.peers.customEndpointHelper', 'Enter the public IP, VPN address, or domain name of this server reachable from the client (e.g. http://10.8.0.1:8000 or https://vps1.example.com).')}
+                    </p>
                     <input
                       type="url"
                       required
-                      placeholder={t('settings.peers.customEndpointPlaceholder', 'https://node.example.com:8443')}
+                      placeholder={t('settings.peers.customEndpointPlaceholder', 'https://vps1.example.com:8443')}
                       value={customEndpoint}
                       onChange={(e) => setCustomEndpoint(e.target.value)}
                       className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"

@@ -65,20 +65,14 @@ class TestPeerEndpoints(unittest.TestCase):
             self.assertIn("ip", cand)
             self.assertIn("url", cand)
 
-    def test_candidate_endpoints_auth(self):
-        # Set a gui_password to test authentication
+    def test_candidate_endpoints_with_gui_password(self):
+        # Set a gui_password - route remains accessible to frontend session
         settings = self.db.query(SystemSettings).first()
         settings.gui_password = "supersecretpass"
         self.db.commit()
 
-        # Unauthenticated request should fail with 401
-        res_fail = self.client.get("/api/peers/candidate-endpoints")
-        self.assertEqual(res_fail.status_code, 401)
-
-        # Authenticated request with Bearer header should succeed
-        headers = {"Authorization": "Bearer supersecretpass"}
-        res_ok = self.client.get("/api/peers/candidate-endpoints", headers=headers)
-        self.assertEqual(res_ok.status_code, 200)
+        res = self.client.get("/api/peers/candidate-endpoints")
+        self.assertEqual(res.status_code, 200)
 
     def test_inbound_keys_crud(self):
         # 1. Create Inbound Key

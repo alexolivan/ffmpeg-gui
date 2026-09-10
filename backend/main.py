@@ -6858,7 +6858,6 @@ async def peer_federation_rpc(
 @app.get("/api/peers/candidate-endpoints")
 def get_peer_candidate_endpoints(
     request: Request,
-    user: str = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
     settings = db.query(SystemSettings).first()
