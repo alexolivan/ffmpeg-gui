@@ -204,6 +204,22 @@ class LCDManager:
 
                         self._cached_led_states["is_recording"] = is_recording
                         self._cached_led_states["storage_alert"] = storage_alert
+
+                        # 6. Check Peer Federation status (P2P LED profile)
+                        from database.models import PeerRemoteNode
+                        peer_state = "none"
+                        try:
+                            peers = db.query(PeerRemoteNode).all()
+                            if peers:
+                                if any(p.status in ('offline', 'error') or p.last_error for p in peers):
+                                    peer_state = "error"
+                                elif any(p.status == 'pending' or (p.latency_ms is not None and p.latency_ms > 400) for p in peers):
+                                    peer_state = "warn"
+                                else:
+                                    peer_state = "ok"
+                        except Exception as ex:
+                            logger.error(f"Error querying PeerRemoteNode for LCD: {ex}")
+                        self._cached_led_states["peer_state"] = peer_state
                     except Exception as e:
                         logger.error(f"Error polling LED DB states: {e}")
                     finally:
@@ -330,6 +346,16 @@ class LCDManager:
                             color = "red"
                         else:
                             color = "green"
+                    elif profile in ("peers", "p2p"):
+                        peer_st = self._cached_led_states.get("peer_state", "none")
+                        if peer_st == "error":
+                            color = "red"
+                        elif peer_st == "warn":
+                            color = "yellow"
+                        elif peer_st == "ok":
+                            color = "green"
+                        else:
+                            color = "off"
                     
                     self.set_led_color(idx, color)
             except Exception as e:
@@ -403,6 +429,8 @@ class LCDManager:
             return "REC "
         elif profile == "storage":
             return "STO "
+        elif profile in ("peers", "p2p"):
+            return "P2P "
         return "    "
 
     def refresh_display(self):

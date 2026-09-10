@@ -3,7 +3,7 @@ import json
 from fastapi.testclient import TestClient
 from main import app
 from database.db import SessionLocal, init_db
-from database.models import MediaProcess, ScheduledTask, Storage, FfmpegBuild
+from database.models import MediaProcess, ScheduledTask, Storage, FfmpegBuild, PeerInboundKey, PeerRemoteNode, SystemSettings
 
 class TestBackupRestoreAPI(unittest.TestCase):
     def setUp(self):
@@ -15,6 +15,8 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.db.query(MediaProcess).filter(MediaProcess.name.like("Backup Test%")).delete(synchronize_session=False)
         self.db.query(ScheduledTask).filter(ScheduledTask.name.like("Backup Test%")).delete(synchronize_session=False)
         self.db.query(FfmpegBuild).filter(FfmpegBuild.name.like("Backup Test%")).delete(synchronize_session=False)
+        self.db.query(PeerInboundKey).filter(PeerInboundKey.token_id.like("fgp_k_test%")).delete(synchronize_session=False)
+        self.db.query(PeerRemoteNode).filter(PeerRemoteNode.token_id.like("fgp_k_test%")).delete(synchronize_session=False)
         self.db.commit()
         self.db.close()
 
@@ -27,13 +29,18 @@ class TestBackupRestoreAPI(unittest.TestCase):
             input_config={"input1": {"type": "file", "path": "/tmp/test.mp4"}},
             output_config={"type": "udp", "host": "127.0.0.1", "port": "1234"},
             codec_config={"vcodec": "copy"},
-            filter_config={}
+            filter_config={},
+            watchdog_circuit_breaker=True,
+            is_shared_with_peers=True,
+            allow_peer_lease=True
         )
         mtx_proc = MediaProcess(
             name="Backup Test MediaMTX",
             service_type="mediamtx_hub",
             status="stopped",
-            mediamtx_config={"paths": {"live": {}}, "srt_port": 8890}
+            mediamtx_config={"paths": {"live": {}}, "srt_port": 8890},
+            is_shared_with_peers=True,
+            allow_peer_lease=True
         )
         ice_proc = MediaProcess(
             name="Backup Test Icecast",
@@ -48,7 +55,9 @@ class TestBackupRestoreAPI(unittest.TestCase):
             input_config={"input1": {"type": "file", "path": "/tmp/test.mp4"}},
             output_config={"type": "udp", "host": "127.0.0.1", "port": "1234"},
             codec_config={"vcodec": "copy"},
-            filter_config={}
+            filter_config={},
+            allow_auto_start_deps=True,
+            allow_auto_stop_deps=True
         )
         build = FfmpegBuild(
             name="Backup Test Build",
@@ -68,12 +77,44 @@ class TestBackupRestoreAPI(unittest.TestCase):
             is_managed=False,
             status="ready"
         )
+        inbound_key = PeerInboundKey(
+            alias="Backup Test Key",
+            token_id="fgp_k_test12345678",
+            secret_key="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            allowed_services=["mediamtx_hub"],
+            status="active"
+        )
+        remote_node = PeerRemoteNode(
+            name="Backup Test Remote Node",
+            base_url="https://remote.example.com:8443",
+            token_id="fgp_k_test87654321",
+            secret_key="fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            status="online"
+        )
+
         self.db.add(proc)
         self.db.add(mtx_proc)
         self.db.add(ice_proc)
         self.db.add(task)
         self.db.add(build)
         self.db.add(ice_build)
+        self.db.add(inbound_key)
+        self.db.add(remote_node)
+
+        # Set up SystemSettings to test LCD and General settings backup synchronization
+        sys_settings = self.db.query(SystemSettings).first()
+        if not sys_settings:
+            sys_settings = SystemSettings()
+            self.db.add(sys_settings)
+        sys_settings.node_name = "Backup Test Node"
+        sys_settings.accent_color = "#123456"
+        sys_settings.lcd_enabled = True
+        sys_settings.lcd_port = "/dev/ttyTest"
+        sys_settings.lcd_brightness = 85
+        sys_settings.lcd_led0_profile = "peers"
+        sys_settings.lcd_led1_profile = "services"
+        sys_settings.lcd_led2_profile = "tasks"
+        sys_settings.lcd_led3_profile = "alert"
         self.db.commit()
 
         # 1. Export
@@ -87,7 +128,8 @@ class TestBackupRestoreAPI(unittest.TestCase):
             "tasks": True,
             "storage_volumes": True,
             "notifications": True,
-            "software_engines": True
+            "software_engines": True,
+            "peer_federation": True
         }
         res = self.client.post("/api/backup/export", json=export_payload)
         self.assertEqual(res.status_code, 200)
@@ -99,6 +141,23 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertIn("services", data["sections"])
         self.assertIn("tasks", data["sections"])
         self.assertIn("software_engines", data["sections"])
+        self.assertIn("peer_federation", data["sections"])
+
+        # Check LCD & General export from SystemSettings
+        lcd_export = data["sections"]["lcd_display"]
+        self.assertEqual(lcd_export["lcd_led0_profile"], "peers")
+        self.assertEqual(str(lcd_export["lcd_brightness"]), "85")
+        self.assertEqual(lcd_export["lcd_port"], "/dev/ttyTest")
+        gen_export = data["sections"]["gui_general"]
+        self.assertEqual(gen_export["node_name"], "Backup Test Node")
+        self.assertEqual(gen_export["accent_color"], "#123456")
+
+        # Check peer federation in exported data
+        fed_data = data["sections"]["peer_federation"]
+        self.assertIn("inbound_keys", fed_data)
+        self.assertIn("remote_nodes", fed_data)
+        self.assertTrue(any(k["token_id"] == "fgp_k_test12345678" for k in fed_data["inbound_keys"]))
+        self.assertTrue(any(n["token_id"] == "fgp_k_test87654321" for n in fed_data["remote_nodes"]))
 
         # Check service name and type in exported data
         service_names = [s["name"] for s in data["sections"]["services"]]
@@ -106,15 +165,26 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertIn("Backup Test MediaMTX", service_names)
         self.assertIn("Backup Test Icecast", service_names)
 
+        svc_export = next(s for s in data["sections"]["services"] if s["name"] == "Backup Test Service")
+        self.assertTrue(svc_export["is_shared_with_peers"])
+        self.assertTrue(svc_export["allow_peer_lease"])
+
         mtx_export = next(s for s in data["sections"]["services"] if s["name"] == "Backup Test MediaMTX")
         self.assertEqual(mtx_export["service_type"], "mediamtx_hub")
         self.assertEqual(mtx_export["mediamtx_config"]["srt_port"], 8890)
+        self.assertTrue(mtx_export["is_shared_with_peers"])
+        self.assertTrue(mtx_export["allow_peer_lease"])
 
         ice_export = next(s for s in data["sections"]["services"] if s["name"] == "Backup Test Icecast")
         self.assertEqual(ice_export["service_type"], "icecast_server")
         self.assertEqual(ice_export["icecast_config"]["port"], 7000)
         self.assertTrue(ice_export["icecast_config"]["ssl_enabled"])
         self.assertEqual(ice_export["icecast_config"]["mounts"][0]["mount_name"], "/stream.mp3")
+
+        # Check tasks export
+        task_export = next(t for t in data["sections"]["tasks"] if t["name"] == "Backup Test Task")
+        self.assertTrue(task_export["allow_auto_start_deps"])
+        self.assertTrue(task_export["allow_auto_stop_deps"])
 
         # 2. Delete from DB
         self.db.query(MediaProcess).filter_by(name="Backup Test Service").delete()
@@ -123,6 +193,23 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.db.query(ScheduledTask).filter_by(name="Backup Test Task").delete()
         self.db.query(FfmpegBuild).filter_by(name="Backup Test Build").delete()
         self.db.query(FfmpegBuild).filter_by(name="Backup Test Icecast Build").delete()
+        self.db.query(PeerInboundKey).filter_by(token_id="fgp_k_test12345678").delete()
+        self.db.query(PeerRemoteNode).filter_by(token_id="fgp_k_test87654321").delete()
+
+        # Reset SystemSettings to verify restore
+        sys_settings = self.db.query(SystemSettings).first()
+        if sys_settings:
+            sys_settings.node_name = "Default Node"
+            sys_settings.accent_color = "#FF6B00"
+            sys_settings.lcd_enabled = False
+            sys_settings.lcd_port = "/dev/ttyACM0"
+            sys_settings.lcd_brightness = 100
+            sys_settings.lcd_led0_profile = "heartbeat"
+            sys_settings.lcd_led1_profile = "streams"
+            sys_settings.lcd_led2_profile = "tasks"
+            sys_settings.lcd_led3_profile = "alert"
+            self.db.commit()
+
         self.db.commit()
 
         # 3. Import
@@ -130,16 +217,23 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertEqual(import_res.status_code, 200)
         import_data = import_res.json()
         self.assertEqual(import_data["status"], "success")
+        self.assertEqual(import_data["imported"]["peer_federation"]["inbound_keys"], 1)
+        self.assertEqual(import_data["imported"]["peer_federation"]["remote_nodes"], 1)
 
         # 4. Verify restored
         restored_proc = self.db.query(MediaProcess).filter_by(name="Backup Test Service").first()
         self.assertIsNotNone(restored_proc)
         self.assertEqual(restored_proc.service_type, "ffmpeg_stream")
+        self.assertTrue(restored_proc.is_shared_with_peers)
+        self.assertTrue(restored_proc.allow_peer_lease)
+        self.assertTrue(restored_proc.watchdog_circuit_breaker)
 
         restored_mtx = self.db.query(MediaProcess).filter_by(name="Backup Test MediaMTX").first()
         self.assertIsNotNone(restored_mtx)
         self.assertEqual(restored_mtx.service_type, "mediamtx_hub")
         self.assertEqual(restored_mtx.mediamtx_config.get("srt_port"), 8890)
+        self.assertTrue(restored_mtx.is_shared_with_peers)
+        self.assertTrue(restored_mtx.allow_peer_lease)
 
         restored_ice = self.db.query(MediaProcess).filter_by(name="Backup Test Icecast").first()
         self.assertIsNotNone(restored_ice)
@@ -150,6 +244,8 @@ class TestBackupRestoreAPI(unittest.TestCase):
 
         restored_task = self.db.query(ScheduledTask).filter_by(name="Backup Test Task").first()
         self.assertIsNotNone(restored_task)
+        self.assertTrue(restored_task.allow_auto_start_deps)
+        self.assertTrue(restored_task.allow_auto_stop_deps)
 
         restored_build = self.db.query(FfmpegBuild).filter_by(name="Backup Test Build").first()
         self.assertIsNotNone(restored_build)
@@ -159,4 +255,25 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertIsNotNone(restored_ice_build)
         self.assertEqual(restored_ice_build.software_type, "icecast2")
         self.assertEqual(restored_ice_build.version_tag, "2.4.4")
+
+        restored_key = self.db.query(PeerInboundKey).filter_by(token_id="fgp_k_test12345678").first()
+        self.assertIsNotNone(restored_key)
+        self.assertEqual(restored_key.alias, "Backup Test Key")
+
+        restored_node = self.db.query(PeerRemoteNode).filter_by(token_id="fgp_k_test87654321").first()
+        self.assertIsNotNone(restored_node)
+        self.assertEqual(restored_node.name, "Backup Test Remote Node")
+
+        # Verify restored SystemSettings (LCD & General)
+        restored_settings = self.db.query(SystemSettings).first()
+        self.assertIsNotNone(restored_settings)
+        self.assertEqual(restored_settings.node_name, "Backup Test Node")
+        self.assertEqual(restored_settings.accent_color, "#123456")
+        self.assertTrue(restored_settings.lcd_enabled)
+        self.assertEqual(restored_settings.lcd_port, "/dev/ttyTest")
+        self.assertEqual(restored_settings.lcd_brightness, 85)
+        self.assertEqual(restored_settings.lcd_led0_profile, "peers")
+        self.assertEqual(restored_settings.lcd_led1_profile, "services")
+        self.assertEqual(restored_settings.lcd_led2_profile, "tasks")
+        self.assertEqual(restored_settings.lcd_led3_profile, "alert")
 

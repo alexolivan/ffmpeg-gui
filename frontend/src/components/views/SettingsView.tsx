@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n/i18n';
-import { ShieldIcon, GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon, ExportIcon } from '../Icons';
+import { GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon, ExportIcon } from '../Icons';
 import { AlsaAudioSettingsCard } from './settings/AlsaAudioSettingsCard';
 import { DecklinkSettingsCard } from './settings/DecklinkSettingsCard';
 import { MagewellSettingsCard } from './settings/MagewellSettingsCard';
 import { BackupRestoreCard } from './settings/BackupRestoreCard';
 import { SoftwareEngineCard, type SoftwareEngineData } from './settings/SoftwareEngineCard';
+import { InboundKeysCard } from './settings/InboundKeysCard';
+import { RemotePeersCard } from './settings/RemotePeersCard';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
 
@@ -107,7 +109,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup'>('general');
 
   const [softwareEngines, setSoftwareEngines] = useState<Record<string, SoftwareEngineData>>({});
 
@@ -966,6 +968,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </button>
         <button
           type="button"
+          onClick={() => setActiveTab('network')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+            activeTab === 'network'
+              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span className="text-sm">🌐</span>
+          {t('settings.tabs.network', 'Network')}
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab('security')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
             activeTab === 'security'
@@ -973,8 +987,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
           }`}
         >
-          <ShieldIcon size={14} />
-          {t('settings.tabs.security', 'Network & Security')}
+          <span className="text-sm">🔒</span>
+          {t('settings.tabs.security', 'Security')}
         </button>
         {hasAlsaHardware && (
           <button
@@ -1639,6 +1653,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <option value="resources" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
                     <option value="recording" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
                     <option value="storage" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
+                    <option value="peers" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.peers', 'Peer Federation (P2P)')}</option>
                     <option value="disabled" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -1655,6 +1670,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <option value="resources" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
                     <option value="recording" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
                     <option value="storage" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
+                    <option value="peers" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.peers', 'Peer Federation (P2P)')}</option>
                     <option value="disabled" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -1671,6 +1687,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <option value="resources" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
                     <option value="recording" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
                     <option value="storage" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
+                    <option value="peers" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.peers', 'Peer Federation (P2P)')}</option>
                     <option value="disabled" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -1687,6 +1704,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <option value="resources" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
                     <option value="recording" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
                     <option value="storage" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
+                    <option value="peers" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.peers', 'Peer Federation (P2P)')}</option>
                     <option value="disabled" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -2035,73 +2053,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           );
         })()}
 
-        {/* TAB 3: Network & Security */}
-        {activeTab === 'security' && (
+        {/* TAB: Network */}
+        {activeTab === 'network' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            {/* CARD 1: ACCESS PASSWORD */}
-            <div className="glass-card p-5 !rounded-2xl space-y-4">
-              <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-2 mb-2">
-                <span className="w-2 h-2 rounded-full bg-red-500" />
-                <h4 className="text-red-400 font-bold text-xs uppercase tracking-wider">🔑 {t('settings.security.passwordTitle', 'ACCESS PASSWORD')}</h4>
-              </div>
-
-              <div className="max-w-md space-y-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.security.newPassword', 'New Password')}</label>
-                  <input 
-                    type="password" 
-                    autoComplete="new-password"
-                    placeholder={settings.gui_password ? t('settings.security.newPasswordPlaceholderKeep', 'Leave empty to keep current password') : t('settings.security.newPasswordPlaceholder', 'Enter new password')}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-red-500 text-[var(--text-primary)] transition-all"
-                    value={newPassword}
-                    onChange={e => { setNewPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.security.confirmPassword', 'Confirm Password')}</label>
-                  <input 
-                    type="password" 
-                    autoComplete="new-password"
-                    placeholder={t('settings.security.confirmPasswordPlaceholder', 'Confirm new password')}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-red-500 text-[var(--text-primary)] transition-all"
-                    value={confirmPassword}
-                    onChange={e => { setConfirmPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
-                  />
-                </div>
-                
-                {passwordError && <p className="text-[10px] text-red-500 font-bold mt-1">{passwordError}</p>}
-                {passwordSuccess && <p className="text-[10px] text-brand-lime font-bold mt-1">{passwordSuccess}</p>}
-
-                {settings.gui_password && (
-                  <div className="pt-1">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (window.confirm(t('settings.security.confirmRemovePassword', 'Are you sure you want to remove password protection from this node?'))) {
-                          try {
-                            await onUpdateSettings({ gui_password: '' });
-                            setPasswordSuccess(t('settings.security.passwordRemoved', 'Password protection removed successfully'));
-                            setNewPassword('');
-                            setConfirmPassword('');
-                            setTimeout(() => setPasswordSuccess(''), 3000);
-                          } catch (err) {
-                            setPasswordError(t('settings.security.passwordError', 'Failed to remove password'));
-                          }
-                        }
-                      }}
-                      className="text-xs text-red-400 hover:text-red-300 font-bold underline cursor-pointer"
-                    >
-                      🔓 {t('settings.security.removePasswordBtn', 'Remove Password Protection (Open Access)')}
-                    </button>
-                  </div>
-                )}
-                
-                <p className="text-[9px] text-text-secondary leading-tight italic">
-                  {t('settings.security.description', 'Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.')}
-                </p>
-              </div>
-            </div>
-
             {/* CARD 2: LISTEN PORTS & NETWORK INTERFACES */}
             <div className="glass-card p-5 !rounded-2xl space-y-4">
               <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-2 mb-2">
@@ -2180,188 +2134,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {t('settings.network.forceHttpsRedirect', 'Automatically Redirect HTTP -> HTTPS')}
                   </label>
                 </div>
-              </div>
-            </div>
-
-            {/* CARD 3: SSL / TLS CERTIFICATES */}
-            <div className="glass-card p-5 !rounded-2xl space-y-5">
-              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-brand-lime" />
-                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">📜 {t('settings.ssl.title', 'SSL / TLS CERTIFICATE MANAGEMENT')}</h4>
-                </div>
-
-                {/* Status Badge */}
-                {sslStatus && (
-                  <div className={`px-3 py-1 rounded-lg border text-xs font-mono font-bold flex items-center gap-2 ${
-                    sslStatus.status === 'valid' ? 'bg-brand-lime/15 border-brand-lime/30 text-brand-lime' :
-                    sslStatus.status === 'warning' ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' :
-                    sslStatus.status === 'critical' || sslStatus.status === 'expired' ? 'bg-red-500/15 border-red-500/30 text-red-400 animate-pulse' :
-                    'bg-[var(--input-bg)] border-[var(--glass-border)] text-text-secondary'
-                  }`}>
-                    <span>{sslStatus.status === 'valid' ? '🟢' : sslStatus.status === 'warning' ? '🟡' : '🔴'}</span>
-                    <span className="uppercase">
-                      {sslStatus.status === 'valid' ? t('settings.ssl.statusValid', 'Valid Certificate') :
-                       sslStatus.status === 'warning' ? t('settings.ssl.statusWarning', 'Expiring Soon') :
-                       sslStatus.status === 'critical' ? t('settings.ssl.statusCritical', 'Critical Expiration') :
-                       sslStatus.status === 'expired' ? t('settings.ssl.statusExpired', 'Expired Certificate') :
-                       t('settings.ssl.statusMissing', 'No Active Certificate')}
-                    </span>
-                    {sslStatus.valid && (
-                      <span className="opacity-80">({sslStatus.days_remaining}d remaining)</span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Mode Selector */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.mode', 'Certificate Source Mode')}</label>
-                  <select
-                    value={sslMode}
-                    onChange={e => setSslMode(e.target.value)}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono cursor-pointer"
-                  >
-                    <option value="disabled">{t('settings.ssl.disabled', 'Disabled / Local Fallback')}</option>
-                    <option value="acme">{t('settings.ssl.acme', "Let's Encrypt (ACME Auto-Renewal)")}</option>
-                    <option value="custom">{t('settings.ssl.custom', 'Custom Certificate Upload')}</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.domain', 'Domain Name (FQDN / SNI)')}</label>
-                  <input
-                    type="text"
-                    placeholder="stream.vps-server.net"
-                    value={sslDomain}
-                    onChange={e => setSslDomain(e.target.value)}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* ACME Configuration Panel */}
-              {(sslMode === 'acme' || !sslMode) && (
-                <div className="p-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl space-y-4">
-                  <h5 className="text-xs font-bold uppercase tracking-wider text-brand-lime flex items-center gap-2">
-                    <span>🔒</span> Let's Encrypt ACME Configuration
-                  </h5>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.email', 'ACME Contact Email')}</label>
-                      <input
-                        type="email"
-                        placeholder="admin@vps-server.net"
-                        value={sslEmail}
-                        onChange={e => setSslEmail(e.target.value)}
-                        className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.challenge', 'Validation Challenge')}</label>
-                      <select
-                        value={sslChallengeType}
-                        onChange={e => setSslChallengeType(e.target.value)}
-                        className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono cursor-pointer"
-                      >
-                        <option value="http-01">HTTP-01 Challenge (Requires TCP Port 80)</option>
-                        <option value="dns-01">DNS-01 Challenge (API Token)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 pt-2">
-                    <div className="flex items-center justify-between">
-                      <button
-                        onClick={handleRenewSsl}
-                        disabled={isRenewingSsl}
-                        className="px-4 py-2 bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2"
-                      >
-                        <span>🔄</span>
-                        <span>{isRenewingSsl ? 'Renewing...' : t('settings.ssl.renewNow', 'Renew Certificate Now')}</span>
-                      </button>
-                    </div>
-
-                    {sslRenewMessage && (
-                      <div className={`p-3.5 rounded-xl border text-xs font-mono flex items-start gap-2.5 animate-in fade-in duration-300 ${
-                        sslRenewMessage.startsWith('✓')
-                          ? 'bg-brand-lime/10 border-brand-lime/30 text-brand-lime'
-                          : 'bg-red-500/10 border-red-500/30 text-red-400'
-                      }`}>
-                        <span className="text-sm shrink-0">{sslRenewMessage.startsWith('✓') ? '✓' : '⚠️'}</span>
-                        <div className="leading-relaxed break-words flex-1">
-                          {sslRenewMessage.replace(/^[✓⚠️]\s*/, '')}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Custom Upload Drawer */}
-              {(sslMode === 'custom' || sslMode === 'disabled') && (
-                <div className="p-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl space-y-4">
-                  <h5 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
-                    <span>📤</span> {t('settings.ssl.uploadTitle', 'Upload Custom Certificate & Private Key')}
-                  </h5>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.certFile', 'Fullchain Certificate (.crt / .pem)')}</label>
-                      <input
-                        type="file"
-                        accept=".pem,.crt,.cer"
-                        onChange={e => setCertFile(e.target.files?.[0] || null)}
-                        className="w-full text-xs font-mono text-[var(--text-primary)] bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.keyFile', 'Private Key (.key / privkey.pem)')}</label>
-                      <input
-                        type="file"
-                        accept=".key,.pem"
-                        onChange={e => setKeyFile(e.target.files?.[0] || null)}
-                        className="w-full text-xs font-mono text-[var(--text-primary)] bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 cursor-pointer"
-                      />
-                    </div>
-                  </div>
-
-                  {sslUploadError && <p className="text-xs font-mono font-bold text-red-500">{sslUploadError}</p>}
-                  {sslUploadSuccess && <p className="text-xs font-mono font-bold text-brand-lime">{sslUploadSuccess}</p>}
-
-                  <div className="flex justify-end pt-2">
-                    <button
-                      onClick={handleUploadCustomSsl}
-                      disabled={isUploadingSsl || !certFile || !keyFile}
-                      className="px-4 py-2 bg-brand-blue/15 hover:bg-brand-blue/25 text-brand-blue border border-brand-blue/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      <span>📤</span>
-                      <span>{isUploadingSsl ? 'Validating & Saving...' : t('settings.ssl.uploadBtn', 'Upload & Validate Keypair')}</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Auto-Reload Services Toggle */}
-              <div className="flex items-center justify-between p-3.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
-                <div>
-                  <span className="text-xs font-bold text-[var(--text-primary)] block">
-                    {t('settings.ssl.autoReloadServices', 'Auto-reload SSL services upon certificate renewal')}
-                  </span>
-                  <span className="text-[10px] text-text-secondary block mt-0.5">
-                    {t('settings.ssl.autoReloadServicesDesc', 'Automatically restarts active media services utilizing TLS (MediaMTX Hub, Icecast2) when certificates are renewed or uploaded.')}
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={autoReloadSslServices}
-                  onChange={e => setAutoReloadSslServices(e.target.checked)}
-                  className="rounded text-brand-lime cursor-pointer w-4 h-4"
-                />
               </div>
             </div>
 
@@ -2663,6 +2435,263 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* CARD 3: REMOTE PEERS (FEDERATION) */}
+            <RemotePeersCard API={API} />
+          </div>
+        )}
+
+        {/* TAB: Security */}
+        {activeTab === 'security' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* CARD 1: ACCESS PASSWORD */}
+            <div className="glass-card p-5 !rounded-2xl space-y-4">
+              <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-2 mb-2">
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                <h4 className="text-red-400 font-bold text-xs uppercase tracking-wider">🔑 {t('settings.security.passwordTitle', 'ACCESS PASSWORD')}</h4>
+              </div>
+
+              <div className="max-w-md space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.security.newPassword', 'New Password')}</label>
+                  <input 
+                    type="password" 
+                    autoComplete="new-password"
+                    placeholder={settings.gui_password ? t('settings.security.newPasswordPlaceholderKeep', 'Leave empty to keep current password') : t('settings.security.newPasswordPlaceholder', 'Enter new password')}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-red-500 text-[var(--text-primary)] transition-all"
+                    value={newPassword}
+                    onChange={e => { setNewPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.security.confirmPassword', 'Confirm Password')}</label>
+                  <input 
+                    type="password" 
+                    autoComplete="new-password"
+                    placeholder={t('settings.security.confirmPasswordPlaceholder', 'Confirm new password')}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-red-500 text-[var(--text-primary)] transition-all"
+                    value={confirmPassword}
+                    onChange={e => { setConfirmPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
+                  />
+                </div>
+                
+                {passwordError && <p className="text-[10px] text-red-500 font-bold mt-1">{passwordError}</p>}
+                {passwordSuccess && <p className="text-[10px] text-brand-lime font-bold mt-1">{passwordSuccess}</p>}
+
+                {settings.gui_password && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (window.confirm(t('settings.security.confirmRemovePassword', 'Are you sure you want to remove password protection from this node?'))) {
+                          try {
+                            await onUpdateSettings({ gui_password: '' });
+                            setPasswordSuccess(t('settings.security.passwordRemoved', 'Password protection removed successfully'));
+                            setNewPassword('');
+                            setConfirmPassword('');
+                            setTimeout(() => setPasswordSuccess(''), 3000);
+                          } catch (err) {
+                            setPasswordError(t('settings.security.passwordError', 'Failed to remove password'));
+                          }
+                        }
+                      }}
+                      className="text-xs text-red-400 hover:text-red-300 font-bold underline cursor-pointer"
+                    >
+                      🔓 {t('settings.security.removePasswordBtn', 'Remove Password Protection (Open Access)')}
+                    </button>
+                  </div>
+                )}
+                
+                <p className="text-[9px] text-text-secondary leading-tight italic">
+                  {t('settings.security.description', 'Protect your FFmpeg node dashboard from unauthorized stream modifications or command execution.')}
+                </p>
+              </div>
+            </div>
+
+            {/* CARD 3: SSL / TLS CERTIFICATES */}
+            <div className="glass-card p-5 !rounded-2xl space-y-5">
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-brand-lime" />
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">📜 {t('settings.ssl.title', 'SSL / TLS CERTIFICATE MANAGEMENT')}</h4>
+                </div>
+
+                {/* Status Badge */}
+                {sslStatus && (
+                  <div className={`px-3 py-1 rounded-lg border text-xs font-mono font-bold flex items-center gap-2 ${
+                    sslStatus.status === 'valid' ? 'bg-brand-lime/15 border-brand-lime/30 text-brand-lime' :
+                    sslStatus.status === 'warning' ? 'bg-amber-500/15 border-amber-500/30 text-amber-400' :
+                    sslStatus.status === 'critical' || sslStatus.status === 'expired' ? 'bg-red-500/15 border-red-500/30 text-red-400 animate-pulse' :
+                    'bg-[var(--input-bg)] border-[var(--glass-border)] text-text-secondary'
+                  }`}>
+                    <span>{sslStatus.status === 'valid' ? '🟢' : sslStatus.status === 'warning' ? '🟡' : '🔴'}</span>
+                    <span className="uppercase">
+                      {sslStatus.status === 'valid' ? t('settings.ssl.statusValid', 'Valid Certificate') :
+                       sslStatus.status === 'warning' ? t('settings.ssl.statusWarning', 'Expiring Soon') :
+                       sslStatus.status === 'critical' ? t('settings.ssl.statusCritical', 'Critical Expiration') :
+                       sslStatus.status === 'expired' ? t('settings.ssl.statusExpired', 'Expired Certificate') :
+                       t('settings.ssl.statusMissing', 'No Active Certificate')}
+                    </span>
+                    {sslStatus.valid && (
+                      <span className="opacity-80">({sslStatus.days_remaining}d remaining)</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Mode Selector */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.mode', 'Certificate Source Mode')}</label>
+                  <select
+                    value={sslMode}
+                    onChange={e => setSslMode(e.target.value)}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono cursor-pointer"
+                  >
+                    <option value="disabled">{t('settings.ssl.disabled', 'Disabled / Local Fallback')}</option>
+                    <option value="acme">{t('settings.ssl.acme', "Let's Encrypt (ACME Auto-Renewal)")}</option>
+                    <option value="custom">{t('settings.ssl.custom', 'Custom Certificate Upload')}</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.domain', 'Domain Name (FQDN / SNI)')}</label>
+                  <input
+                    type="text"
+                    placeholder="stream.vps-server.net"
+                    value={sslDomain}
+                    onChange={e => setSslDomain(e.target.value)}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* ACME Configuration Panel */}
+              {(sslMode === 'acme' || !sslMode) && (
+                <div className="p-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl space-y-4">
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-brand-lime flex items-center gap-2">
+                    <span>🔒</span> Let's Encrypt ACME Configuration
+                  </h5>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.email', 'ACME Contact Email')}</label>
+                      <input
+                        type="email"
+                        placeholder="admin@vps-server.net"
+                        value={sslEmail}
+                        onChange={e => setSslEmail(e.target.value)}
+                        className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.challenge', 'Validation Challenge')}</label>
+                      <select
+                        value={sslChallengeType}
+                        onChange={e => setSslChallengeType(e.target.value)}
+                        className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono cursor-pointer"
+                      >
+                        <option value="http-01">HTTP-01 Challenge (Requires TCP Port 80)</option>
+                        <option value="dns-01">DNS-01 Challenge (API Token)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={handleRenewSsl}
+                        disabled={isRenewingSsl}
+                        className="px-4 py-2 bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2"
+                      >
+                        <span>🔄</span>
+                        <span>{isRenewingSsl ? 'Renewing...' : t('settings.ssl.renewNow', 'Renew Certificate Now')}</span>
+                      </button>
+                    </div>
+
+                    {sslRenewMessage && (
+                      <div className={`p-3.5 rounded-xl border text-xs font-mono flex items-start gap-2.5 animate-in fade-in duration-300 ${
+                        sslRenewMessage.startsWith('✓')
+                          ? 'bg-brand-lime/10 border-brand-lime/30 text-brand-lime'
+                          : 'bg-red-500/10 border-red-500/30 text-red-400'
+                      }`}>
+                        <span className="text-sm shrink-0">{sslRenewMessage.startsWith('✓') ? '✓' : '⚠️'}</span>
+                        <div className="leading-relaxed break-words flex-1">
+                          {sslRenewMessage.replace(/^[✓⚠️]\s*/, '')}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Upload Drawer */}
+              {(sslMode === 'custom' || sslMode === 'disabled') && (
+                <div className="p-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl space-y-4">
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
+                    <span>📤</span> {t('settings.ssl.uploadTitle', 'Upload Custom Certificate & Private Key')}
+                  </h5>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.certFile', 'Fullchain Certificate (.crt / .pem)')}</label>
+                      <input
+                        type="file"
+                        accept=".pem,.crt,.cer"
+                        onChange={e => setCertFile(e.target.files?.[0] || null)}
+                        className="w-full text-xs font-mono text-[var(--text-primary)] bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.ssl.keyFile', 'Private Key (.key / privkey.pem)')}</label>
+                      <input
+                        type="file"
+                        accept=".key,.pem"
+                        onChange={e => setKeyFile(e.target.files?.[0] || null)}
+                        className="w-full text-xs font-mono text-[var(--text-primary)] bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-2 cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  {sslUploadError && <p className="text-xs font-mono font-bold text-red-500">{sslUploadError}</p>}
+                  {sslUploadSuccess && <p className="text-xs font-mono font-bold text-brand-lime">{sslUploadSuccess}</p>}
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={handleUploadCustomSsl}
+                      disabled={isUploadingSsl || !certFile || !keyFile}
+                      className="px-4 py-2 bg-brand-blue/15 hover:bg-brand-blue/25 text-brand-blue border border-brand-blue/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <span>📤</span>
+                      <span>{isUploadingSsl ? 'Validating & Saving...' : t('settings.ssl.uploadBtn', 'Upload & Validate Keypair')}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Auto-Reload Services Toggle */}
+              <div className="flex items-center justify-between p-3.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
+                <div>
+                  <span className="text-xs font-bold text-[var(--text-primary)] block">
+                    {t('settings.ssl.autoReloadServices', 'Auto-reload SSL services upon certificate renewal')}
+                  </span>
+                  <span className="text-[10px] text-text-secondary block mt-0.5">
+                    {t('settings.ssl.autoReloadServicesDesc', 'Automatically restarts active media services utilizing TLS (MediaMTX Hub, Icecast2) when certificates are renewed or uploaded.')}
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoReloadSslServices}
+                  onChange={e => setAutoReloadSslServices(e.target.checked)}
+                  className="rounded text-brand-lime cursor-pointer w-4 h-4"
+                />
+              </div>
+            </div>
+
+            {/* CARD 3: INBOUND PAIRING KEYS (FEDERATION) */}
+            <InboundKeysCard API={API} />
           </div>
         )}
 

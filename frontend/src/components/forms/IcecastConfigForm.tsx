@@ -60,6 +60,10 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
   const [sourcesLimit, setSourcesLimit] = useState(iceCfg.sources_limit || 10);
   const [burstSize, setBurstSize] = useState(iceCfg.burst_size || 65536);
 
+  // Peer Federation & Sharing
+  const [isSharedWithPeers, setIsSharedWithPeers] = useState<boolean>(Boolean(initialConfig?.is_shared_with_peers));
+  const [allowPeerLease, setAllowPeerLease] = useState<boolean>(Boolean(initialConfig?.allow_peer_lease));
+
   // Mountpoints
   const [mounts, setMounts] = useState<MountpointConfig[]>(
     Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [
@@ -222,6 +226,8 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
       watchdog_enabled: watchdogEnabled,
       watchdog_retries: Number(watchdogRetries) || 5,
       log_storage_id: logStorageId ? Number(logStorageId) : null,
+      is_shared_with_peers: isSharedWithPeers,
+      allow_peer_lease: allowPeerLease,
       config: {
         auto_start: autoStart,
         startup_order: Number(startupOrder) || 1,
@@ -775,6 +781,63 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* ── Section 8: Peer Federation & Remote Sharing ── */}
+        <div className="bg-[var(--input-bg)]/35 p-3 rounded-xl border border-[var(--glass-border)] space-y-2.5">
+          <div className="flex items-center gap-2 border-b border-[var(--glass-border)] pb-1.5">
+            <span className="w-2 h-2 rounded-full bg-cyan-400" />
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">
+              8. {t('services.federation.title', 'Federación y Compartición con Peers')}
+            </h4>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isSharedWithPeers}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setIsSharedWithPeers(checked);
+                  if (!checked) {
+                    setAllowPeerLease(false);
+                  }
+                }}
+                className="mt-0.5 rounded text-cyan-400 cursor-pointer"
+              />
+              <div>
+                <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
+                  {t('services.federation.shareWithPeers', 'Compartir con Peers Remotos')}
+                </span>
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {t('services.federation.shareWithPeersHelp', 'Expone este servidor Icecast en el catálogo federado para que peers autorizados puedan descubrirlo y emitir hacia sus puntos de montaje.')}
+                </span>
+              </div>
+            </label>
+
+            <label
+              className={`flex items-start gap-2.5 select-none transition-opacity ${
+                !isSharedWithPeers ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              }`}
+            >
+              <input
+                type="checkbox"
+                disabled={!isSharedWithPeers}
+                checked={isSharedWithPeers && allowPeerLease}
+                onChange={(e) => setAllowPeerLease(e.target.checked)}
+                className="mt-0.5 rounded text-cyan-400 disabled:cursor-not-allowed"
+              />
+              <div>
+                <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
+                  {t('services.federation.allowPeerLease', 'Permitir Arrendamiento Remoto (Auto-arranque y Keep-alive)')}
+                </span>
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {t('services.federation.allowPeerLeaseHelp', 'Permite que procesos en peers remotos arranquen y mantengan activo este servidor Icecast automáticamente al emitir.')}
+                </span>
+              </div>
+            </label>
           </div>
         </div>
       </div>

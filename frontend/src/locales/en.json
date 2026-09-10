@@ -39,7 +39,10 @@
     "start": "Start",
     "stop": "Stop",
     "restart": "Restart",
-    "lines": "lines"
+    "lines": "lines",
+    "activeConsumer": "Active Consumer",
+    "activeConsumers": "Active Consumers",
+    "idle": "0 Leases (Idle)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -57,6 +60,13 @@
   "services": {
     "title": "Services",
     "subtitle": "Continuous media streaming and processing node instances",
+    "federation": {
+      "title": "Peer Federation & Remote Sharing",
+      "shareWithPeers": "Share with Remote Peers",
+      "shareWithPeersHelp": "Exposes this service in the federated catalog for authorized remote peers to discover and stream to.",
+      "allowPeerLease": "Allow Remote Lease (Auto-start & Keep-alive)",
+      "allowPeerLeaseHelp": "Allows processes on remote peers to automatically start and keep this service alive while streaming."
+    },
     "addNewService": "ADD NEW SERVICE",
     "editService": "EDIT SERVICE",
     "importProfile": "Import Profile",
@@ -196,7 +206,9 @@
         "downloadLog": "Download Log",
         "lines": "{{count}} lines",
         "waitingLogs": "Daemon active. Waiting for stream connection activity...",
-        "stoppedLogs": "Daemon is stopped. Start service to monitor stream routing."
+        "stoppedLogs": "Daemon is stopped. Start service to monitor stream routing.",
+        "leasesTitle": "Active Connected Consumers & Leases",
+        "noLeases": "No active tasks, services or peers currently leasing this Hub."
       }
     },
     "picker": {
@@ -276,7 +288,9 @@
         "copyUrl": "Copy Stream URL",
         "copied": "Copied!",
         "logsTitle": "Server Logs (Stdout / Error Log)",
-        "ingestBy": "Ingest by"
+        "ingestBy": "Ingest by",
+        "leasesTitle": "Active Connected Broadcasters & Leases",
+        "noLeases": "No active broadcasters or peers currently leasing this server."
       }
     },
     "startService": "Start Service",
@@ -297,7 +311,8 @@
       "software": "Software",
       "lcd": "LCD Display",
       "storage": "Storage",
-      "security": "Network & Security",
+      "network": "Network",
+      "security": "Security",
       "alsa": "ALSA Audio",
       "decklink": "DeckLink",
       "magewell": "Magewell",
@@ -427,7 +442,8 @@
         "resources": "Resources Alert (CPU/RAM)",
         "alert": "Resources Alert (CPU/RAM)",
         "recording": "Recording (REC Pilot)",
-        "storage": "Storage Alert"
+        "storage": "Storage Alert",
+        "peers": "Peer Federation (P2P)"
       }
     },
     "storage": {
@@ -522,6 +538,8 @@
       "sectionEnginesDesc": "Forge recipes, system binaries & engine builds",
       "sectionNotificationsTitle": "Notifications",
       "sectionNotificationsDesc": "SMTP email server & alert triggers",
+      "sectionFederationTitle": "Peer Federation & Links",
+      "sectionFederationDesc": "Inbound pairing keys and linked remote peer nodes",
       "exporting": "GENERATING BACKUP...",
       "exportBtn": "EXPORT BACKUP (.JSON)",
       "importTitle": "Restore System Backup",
@@ -667,6 +685,70 @@
       "liveStatus": "● Live Mode",
       "liveSyncShort": "Auto-Saved in Real-Time",
       "subtitleCompact": "Configure active media processing engines, system packages ($PATH), precompiled releases, and custom branding. Changes apply immediately without panel restarts."
+    },
+    "peers": {
+      "inboundTitle": "PEER PAIRING KEYS (INBOUND KEYS)",
+      "inboundSubtitle": "Pairing keys authorize remote ffmpeg-gui nodes to discover and lease auxiliary media services shared on this server.",
+      "generateKeyBtn": "Generate Pairing Key",
+      "aliasRequired": "Please enter an alias",
+      "endpointRequired": "Please select or enter an endpoint",
+      "aliasLabel": "Remote Client Alias / Label",
+      "aliasHelper": "Name or identifier of the remote client node that will use this key (e.g. test1, Remote Studio).",
+      "aliasPlaceholder": "e.g. test1",
+      "endpointSelectLabel": "Server Address for this Node",
+      "endpointSelectHelper": "Select the IP address or URL of this server that the remote client can reach.",
+      "browserUrl": "Current Browser URL",
+      "endpointCustom": "Custom Endpoint URL...",
+      "customEndpointLabel": "Custom Base URL / Endpoint",
+      "customEndpointHelper": "Enter the public IP, VPN address, or domain name of this server reachable from the client (e.g. http://10.8.0.1:8000 or https://vps1.example.com).",
+      "customEndpointPlaceholder": "https://vps1.example.com:8443",
+      "submitGenerateKey": "Generate Pairing Key",
+      "generatingKey": "Generating Key...",
+      "tokenGeneratedTitle": "Pairing Join Token Generated",
+      "tokenSecretWarning": "IMPORTANT: This token contains the pre-shared AES-256-GCM secret key. It will not be shown again. Securely transfer it to the remote node administrator.",
+      "copyToken": "Copy Token",
+      "tokenCopied": "Copied!",
+      "tableAlias": "Alias / Remote Node",
+      "tableTokenId": "Token ID",
+      "tableStatus": "Status",
+      "tableCreatedAt": "Created At",
+      "tableLastUsedAt": "Last Used",
+      "tableActions": "Actions",
+      "statusActive": "Active",
+      "statusSuspended": "Suspended",
+      "neverUsed": "Never",
+      "suspendBtn": "Suspend",
+      "reactivateBtn": "Reactivate",
+      "revokeBtn": "Revoke",
+      "confirmRevokeKey": "Are you sure you want to revoke this pairing key? The remote peer node will immediately lose auxiliary access.",
+      "noInboundKeys": "No pairing keys issued yet",
+      "noInboundKeysDesc": "Generate a pairing key to allow external ffmpeg-gui nodes to connect and discover shared services.",
+      "remoteTitle": "LINKED REMOTE PEERS",
+      "remoteSubtitle": "Auxiliary services hosted on connected remote peers can be leased and used directly in local FFmpeg pipelines.",
+      "connectRemoteBtn": "Connect to Remote Peer",
+      "joinTokenRequired": "Please enter a join token",
+      "connectModalTitle": "Connect to Remote Peer Node",
+      "joinTokenLabel": "Join Token (from remote node)",
+      "joinTokenPlaceholder": "Paste Join Token (FGPEER-...)",
+      "localAliasLabel": "Local Alias / Override Name (Optional)",
+      "localAliasPlaceholder": "Leave blank to use remote node hostname",
+      "connectBtn": "Connect Peer",
+      "connecting": "Connecting...",
+      "statusOnline": "Online",
+      "statusOffline": "Offline",
+      "statusError": "Error",
+      "noRemotePeers": "No remote peers connected",
+      "noRemotePeersDesc": "Link remote peers to discover their auxiliary services (MediaMTX, Icecast) and use them across nodes.",
+      "noServicesDiscovered": "No services discovered",
+      "servicesDiscovered": "Discovered Services:",
+      "syncBtn": "Sync",
+      "syncing": "Syncing...",
+      "unlinkBtn": "Unlink",
+      "confirmUnlinkPeer": "Are you sure you want to unlink this remote peer? Discovered services from this peer will no longer be available.",
+      "lastSeen": "Last Seen",
+      "neverSeen": "Never",
+      "pathsCount": "{{count}} Paths",
+      "mountsCount": "{{count}} Mounts"
     }
   },
   "dashboard": {
@@ -710,6 +792,12 @@
     "start": "Start",
     "stop": "Stop",
     "restart": "Restart",
+    "peerStatus": {
+      "title": "PEER STATUS",
+      "online": "online",
+      "servicesShared": "services shared",
+      "syncTooltip": "Refresh connection & catalog"
+    },
     "upcomingTasksTitle": "Upcoming Tasks",
     "scheduledCount": "scheduled",
     "noUpcomingTasks": "No upcoming tasks scheduled in the near future.",
@@ -725,7 +813,9 @@
     "sslCertificate": "SSL Certificate",
     "setupRequired": "SETUP REQUIRED",
     "cpuUsage": "CPU Usage",
-    "ramUsage": "RAM Usage"
+    "ramUsage": "RAM Usage",
+    "noActiveHardware": "No specialized hardware acceleration or capture devices detected.",
+    "lcdUnavailableDetails": "External hardware control panel is not detected"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -878,6 +968,8 @@
     }
   },
   "sources": {
+    "localServices": "Local Hubs (This Node)",
+    "remotePeers": "Federated Remote Peers",
     "mediaStorage": "Media Storage",
     "selectStorage": "-- Select Media Storage --",
     "networkSettingsTitle": "Input Network Settings",
@@ -982,6 +1074,8 @@
     "srtPbkeylenDefault": "Auto / Default",
     "srtStreamIdPreview": "Generated SRT Stream ID & URI",
     "srtTargetType": "MediaMTX Hub Location",
+    "managedService": "Managed Service (Local & Peers)",
+    "externalServer": "Manual External Server (Unfederated Host)",
     "srtLocalHub": "Local Hub (This Node)",
     "srtRemoteHub": "Remote MediaMTX Server (External Host)",
     "srtRemoteHost": "Remote Host / IP",
@@ -1013,6 +1107,8 @@
   },
   "destinations": {
     "destination": "Destination",
+    "localServices": "Local Hubs (This Node)",
+    "remotePeers": "Federated Remote Peers",
     "types": {
       "udp": "UDP Multicast (MPEG-TS)",
       "srt": "SRT Stream",
@@ -1126,6 +1222,8 @@
     "srtPbkeylenDefault": "Auto / Default",
     "srtStreamIdPreview": "Generated SRT Stream ID & URI",
     "srtTargetType": "MediaMTX Hub Location",
+    "managedService": "Managed Service (Local & Peers)",
+    "externalServer": "Manual External Server (Unfederated Host)",
     "srtLocalHub": "Local Hub (This Node)",
     "srtRemoteHub": "Remote MediaMTX Server (External Host)",
     "srtRemoteHost": "Remote Host / IP",
@@ -1138,6 +1236,7 @@
       "iceGenre": "Musical Genre / Category",
       "iceName": "Station Name",
       "localHub": "Local Icecast2 Server",
+      "managedHub": "Managed Icecast2 Server (Local & Peers)",
       "remoteServer": "Remote / Manual Server",
       "streamMeta": "Stream Metadata (Optional)",
       "targetMount": "Mountpoint",

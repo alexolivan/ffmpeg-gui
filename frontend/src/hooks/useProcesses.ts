@@ -16,7 +16,8 @@ export function useProcesses() {
     net_sent_kb: 0,
     net_recv_kb: 0,
     uptime_seconds: 0,
-    storages: []
+    storages: [],
+    peers: []
   });
   const [taskStats, setTaskStats] = useState<any>({
     active_count: 0,
@@ -64,7 +65,8 @@ export function useProcesses() {
         if (msg.system) {
           setSystemTelemetry({
             ...msg.system,
-            storages: msg.storages || []
+            storages: msg.storages || [],
+            peers: msg.peers || []
           });
         }
         if (msg.task_stats) {

@@ -66,7 +66,17 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Icecast2 Server Preview, Mountpoint Telemetry & Live Player](docs/assets/screenshot15.png)
 
-### 🎛️ 5. Professional AV Hardware & Control
+### 🌐 5. Multi-Peer Federation & Auxiliary Service Sharing
+- **Cluster Pairing & Cryptographic Inbound Keys**: Securely connect distributed `ffmpeg-gui` instances (e.g., edge transcoders and cloud relays). Generate signed pairing tokens (`FGPEER-...`) backed by AES-256-GCM pre-shared encryption keys and token identifiers (`fgp_k_...`).
+- **Encrypted RPC & Service Catalog Exchange**: Remote nodes periodically synchronize catalogs of shared auxiliary services (MediaMTX Hubs, Icecast2 mountpoints) over encrypted zero-trust RPC endpoints without exposing administrative UI access.
+- **Transparent Remote Leasing**: FFmpeg processes and automated scheduled tasks can bind to remote services as sources or destinations. The orchestrator automatically leases the remote service, provides real-time keep-alive heartbeats, and releases the lease upon process termination.
+- **Latency & Cluster Health Monitoring**: Real-time round-trip latency tracking displayed in the Dashboard and Network settings. Supported on physical front-panel LCD displays via the dedicated `P2P` bi-color LED health profile.
+
+![Peer Pairing Keys Management](docs/assets/screenshot18.png)
+
+![Remote Federated Peer Nodes](docs/assets/screenshot19.png)
+
+### 🎛️ 6. Professional AV Hardware & Control
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
 - **Magewell Capture Cards**: Hardware telemetry and routing for Pro Capture / Eco Capture / USB Capture devices (`mwcap-info` / `mwcap-control`), live FPGA temperature monitoring, connector switching, and V4L2/ALSA stream integration.
 - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping and crosspoint volume matrix routing.
@@ -81,45 +91,48 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Graphic EQ & Dynamics Compressor](docs/assets/screenshot7.png)
 
-### 🛡️ 6. Decoupled Watchdog Recovery
+### 🛡️ 7. Decoupled Watchdog Recovery
 - **Automatic Auto-Start**: Recovers crashed or disconnected streams automatically.
 - **Freeze Protection**: Actively monitors process FPS, bitrate, and outputs, force-restarting streams if frames freeze or connection drops.
 - **Jittered Backoff**: Uses exponential backoff delays combined with randomized jitter to break lockstep recovery loops and reduce server resource peaks during network outages.
 
-### ⏰ 7. Task Scheduler & Bilateral Cloning
+### ⏰ 8. Task Scheduler & Bilateral Cloning
 - **Automation Jobs**: Schedule recurring (cron-like) or one-shot encoding tasks (e.g., recording daily broadcasts, scheduled stream dumps).
 - **Safety Runtime Limits**: Define max duration timers to automatically clean up active tasks.
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
 
 ![Scheduled Tasks & Cron Automation](docs/assets/screenshot4.png)
 
-### 🔒 8. HTTPS & Let's Encrypt SSL Manager
+### 🔒 9. HTTPS & Let's Encrypt SSL Manager
 - **Automated SSL/TLS Certificates**: Request and renew Let's Encrypt certificates directly from the GUI panel.
 - **ACME Challenge Handler**: Integrated HTTP-01 challenge router (`/.well-known/acme-challenge/*`) for automated domain verification.
 - **Status & Monitoring**: Real-time display of certificate validity, domain bindings, and automated expiration warnings.
 
-### 💾 9. Granular Backup & Restore
-- **Selective Section Toggles**: Export and import specific configuration parts (e.g., only backing up media services and scheduled tasks while leaving SMTP credentials or network port configs unchanged).
-- **Format Verification**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions and config file updates.
+### 💾 10. Granular Backup & Restore
+- **Selective Section Toggles**: Export and import specific configuration parts (e.g., backing up media services and scheduled tasks, storage volumes, software engines, and peer federation credentials while leaving SMTP credentials or network port configs unchanged).
+- **Format Verification & SSOT Synchronization**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions (`SystemSettings`) and configuration file updates.
 
-### 🗄️ 10. Storage, HTTP HLS Routes, Log Retention & Branding
+### 🗄️ 11. Storage, HTTP HLS Routes, Log Retention & Branding
 - **Storage Management & HTTP HLS Delivery**: Configure local or mounted storage volumes, monitor disk space usage in real time, and map custom HTTP route paths (`/route_path -> HLS Storage`) with CORS and video caching headers to serve live and archived HLS manifests (`.m3u8`) and segments (`.ts`) directly through the web engine.
 - **Decoupled Logging & Automated Rotation**: Decouples application server logs (`ffmpeg-gui.log`) from HTTP access logs (`access.log`), with noise suppression for media chunks and copytruncate rotation with configurable retention periods.
 - **Branding Customization**: Customize the application name, panel headers, and console branding directly from the interface settings.
 
-### 🔔 11. State-Based SMTP Notifications
+### 🔔 12. State-Based SMTP Notifications
 - **Alert Fatigue Prevention**: Stateful notification queue that filters redundant alerts. Emails are dispatched exclusively on initial stream crashes, recovery success, and final retry exhaustion.
 - **System Health Checks**: Active warnings for pending SSL/TLS certificate expirations and disk space utilization exceeding 90%.
 
-### 📟 12. CFA635 LCD Display Driver
+### 📟 13. CFA635 LCD Display Driver
 - **Serial LCD Integration**: Direct driver control for CrystalFontz CFA635 USB/Serial displays. Renders live CPU, RAM, active stream counts, locator beacons, and handles backlight dimming timeouts.
 - **Bicolor Status LEDs**: Maps physical LEDs to profile monitors:
   - Heartbeat status indicator.
   - Active stream/service health.
   - Task execution monitor (reflects latest execution results).
   - High-resource alerts.
+  - Storage usage alerts.
+  - Recording indicator (active REC pilot).
+  - Federated peer status monitor (`P2P` profile with worst-state aggregation).
 
-### 🌐 13. Styling & Localization
+### 🌐 14. Styling & Localization
 - **Multi-Theme Engine**: 5 visual styles (Studio Dark, Cyberpunk Neon, Nordic Frost, Broadcast Light, Warm Paper) loaded instantly without page flash.
 - **Full Translations**: English, Spanish, and Catalan interfaces with 100% i18n parity.
 

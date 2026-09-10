@@ -167,15 +167,14 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const webScheme = mtxCfg.ssl_enabled || isHttps ? 'https' : 'http';
 
-  // Discover live active paths via MediaMTX REST API if running
+  // Discover live active paths via MediaMTX REST API via backend proxy if running
   useEffect(() => {
     if (!isRunning || mtxCfg.api_enabled === false) return;
-    const apiPort = mtxCfg.api_port || 9997;
 
     const fetchLivePaths = async () => {
       try {
-        const res = await fetch(`http://${host}:${apiPort}/v3/paths/list`, {
-          signal: AbortSignal.timeout(2000),
+        const res = await fetch(`${API}/processes/${currentProcess.id}/mediamtx/paths`, {
+          signal: AbortSignal.timeout(3000),
         });
         if (res.ok) {
           const data = await res.json();
@@ -185,14 +184,14 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
           }
         }
       } catch {
-        // Silent catch: browser network/CORS or stopped daemon
+        // Silent catch: network or stopped daemon
       }
     };
 
     fetchLivePaths();
     const interval = setInterval(fetchLivePaths, 5000);
     return () => clearInterval(interval);
-  }, [isRunning, mtxCfg.api_enabled, mtxCfg.api_port, host]);
+  }, [isRunning, mtxCfg.api_enabled, currentProcess.id, API]);
 
   // Poll logs for MediaMTX daemon
   useEffect(() => {
@@ -324,6 +323,18 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
                 {mtxCfg.ssl_enabled && (
                   <span className="text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-bold bg-emerald-500/10 text-emerald-400 border-emerald-500/30 flex items-center gap-1">
                     <ShieldIcon size={10} /> TLS/SSL
+                  </span>
+                )}
+                {currentProcess.active_leases && currentProcess.active_leases.length > 0 ? (
+                  <span
+                    className="text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-black bg-brand-lime/20 text-brand-lime border-brand-lime/30 flex items-center gap-1 shadow-[0_0_8px_rgba(212,255,91,0.2)]"
+                    title={`Active connected consumers: ${currentProcess.active_leases.join(', ')}`}
+                  >
+                    🔗 {currentProcess.active_leases.length} {currentProcess.active_leases.length === 1 ? 'LEASE' : 'LEASES'}
+                  </span>
+                ) : (
+                  <span className="text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-medium bg-white/5 text-[var(--text-secondary)] border-white/10 flex items-center gap-1">
+                    🔗 0 LEASES
                   </span>
                 )}
               </div>
@@ -473,6 +484,48 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Active Connected Consumers & Leases Strip */}
+          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-brand-lime flex items-center gap-1.5">
+                <span>🔗</span>
+                {t('services.mediamtx.previewModal.leasesTitle', 'Active Connected Consumers & Leases')}
+              </span>
+              <span className="text-[9px] text-[var(--text-secondary)] font-mono">
+                {currentProcess.active_leases && currentProcess.active_leases.length > 0 
+                  ? `${currentProcess.active_leases.length} ${currentProcess.active_leases.length === 1 ? t('common.activeConsumer', 'Active Consumer') : t('common.activeConsumers', 'Active Consumers')}`
+                  : t('common.idle', '0 Leases (Idle)')}
+              </span>
+            </div>
+
+            {currentProcess.active_leases && currentProcess.active_leases.length > 0 ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                {currentProcess.active_leases.map((lease: string, idx: number) => {
+                  const isPeer = lease.startsWith('peer:');
+                  const label = isPeer ? lease.replace('peer:', '') : lease;
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-bold ${
+                        isPeer 
+                          ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' 
+                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                      }`}
+                    >
+                      <span>{isPeer ? '🌐' : '🔗'}</span>
+                      <span className="text-[9px] uppercase tracking-wider opacity-75">{isPeer ? 'PEER' : 'LOCAL'}:</span>
+                      <span>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-xs text-[var(--text-secondary)] font-mono italic">
+                {t('services.mediamtx.previewModal.noLeases', 'No active tasks, services or peers currently leasing this Hub.')}
+              </div>
+            )}
           </div>
 
           {/* STREAM CONNECTION MATRIX & URL GENERATOR */}

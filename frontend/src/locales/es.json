@@ -39,7 +39,10 @@
     "start": "Iniciar",
     "stop": "Detener",
     "restart": "Reiniciar",
-    "lines": "líneas"
+    "lines": "líneas",
+    "activeConsumer": "Consumidor Activo",
+    "activeConsumers": "Consumidores Activos",
+    "idle": "0 Leases (Inactivo)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -56,7 +59,14 @@
   },
   "services": {
     "title": "Servicios",
-    "subtitle": "Instancias de nodo para emisión y procesamiento continuo",
+    "subtitle": "Instancias de procesos de emisión continua y streaming del nodo",
+    "federation": {
+      "title": "Federación y Compartición con Peers",
+      "shareWithPeers": "Compartir con Peers Remotos",
+      "shareWithPeersHelp": "Expone este servicio en el catálogo federado para que peers autorizados puedan descubrirlo y emitir hacia él.",
+      "allowPeerLease": "Permitir Arrendamiento Remoto (Auto-arranque y Keep-alive)",
+      "allowPeerLeaseHelp": "Permite que procesos en peers remotos arranquen y mantengan activo este servicio automáticamente al emitir."
+    },
     "addNewService": "AÑADIR NUEVO SERVICIO",
     "editService": "EDITAR SERVICIO",
     "importProfile": "Importar Perfil",
@@ -196,7 +206,9 @@
         "downloadLog": "Descargar Log",
         "lines": "{{count}} líneas",
         "waitingLogs": "Demonio activo. Esperando actividad de conexión de streams...",
-        "stoppedLogs": "El demonio está detenido. Inicia el servicio para monitorizar el enrutamiento."
+        "stoppedLogs": "El demonio está detenido. Inicia el servicio para monitorizar el enrutamiento.",
+        "leasesTitle": "Consumidores y Arrendamientos Activos (Leases)",
+        "noLeases": "No hay procesos locales ni peers conectados arrendando este Hub."
       }
     },
     "picker": {
@@ -276,7 +288,9 @@
         "copyUrl": "Copiar URL del Stream",
         "copied": "¡Copiado!",
         "logsTitle": "Registros del Servidor (Stdout / Error Log)",
-        "ingestBy": "Ingesta por"
+        "ingestBy": "Ingesta por",
+        "leasesTitle": "Emisores y Arrendamientos Activos (Leases)",
+        "noLeases": "No hay emisores locales ni peers conectados arrendando este servidor."
       }
     },
     "startService": "Iniciar servicio",
@@ -297,7 +311,8 @@
       "software": "Software",
       "lcd": "Pantalla LCD",
       "storage": "Almacenamiento",
-      "security": "Red y Seguridad",
+      "network": "Red",
+      "security": "Seguridad",
       "alsa": "Audio ALSA",
       "decklink": "DeckLink",
       "magewell": "Magewell",
@@ -427,7 +442,8 @@
         "resources": "Alerta Recursos (CPU/RAM)",
         "alert": "Alerta Recursos (CPU/RAM)",
         "recording": "Grabación (Piloto REC)",
-        "storage": "Alerta Almacenamiento"
+        "storage": "Alerta Almacenamiento",
+        "peers": "Federación de Peers (P2P)"
       }
     },
     "storage": {
@@ -522,6 +538,8 @@
       "sectionEnginesDesc": "Recetas de Forja, binarios del sistema y compilaciones",
       "sectionNotificationsTitle": "Notificaciones",
       "sectionNotificationsDesc": "Servidor de correo SMTP y alertas",
+      "sectionFederationTitle": "Peer Federation & Enlaces",
+      "sectionFederationDesc": "Claves de enlace y nodos peers vinculados",
       "exporting": "GENERANDO COPIA...",
       "exportBtn": "EXPORTAR COPIA DE SEGURIDAD (.JSON)",
       "importTitle": "Restaurar Copia de Seguridad",
@@ -667,6 +685,70 @@
       "liveStatus": "● Modo en Vivo",
       "liveSyncShort": "Auto-Guardado en Tiempo Real",
       "subtitleCompact": "Configura motores de procesamiento activos, paquetes del sistema ($PATH), releases precompiladas y branding personalizado. Los cambios se aplican inmediatamente sin reiniciar el panel."
+    },
+    "peers": {
+      "inboundTitle": "CLAVES DE ENLACE PARA PEERS (INBOUND KEYS)",
+      "inboundSubtitle": "Las claves de enlace autorizan a nodos remotos de ffmpeg-gui a descubrir y arrendar servicios auxiliares compartidos en este servidor.",
+      "generateKeyBtn": "Generar Clave de Enlace",
+      "aliasRequired": "Por favor introduce un alias",
+      "endpointRequired": "Por favor selecciona o introduce un endpoint",
+      "aliasLabel": "Alias / Etiqueta del Cliente Remoto",
+      "aliasHelper": "Nombre identificativo del equipo cliente que usará esta clave (ej: test1, Estudio Remoto).",
+      "aliasPlaceholder": "ej: test1",
+      "endpointSelectLabel": "Dirección de este Servidor",
+      "endpointSelectHelper": "Selecciona la dirección IP o URL de este servidor a la que el cliente remoto tiene acceso.",
+      "browserUrl": "Dirección actual del navegador",
+      "endpointCustom": "URL de endpoint personalizada...",
+      "customEndpointLabel": "URL Base / Endpoint Personalizado",
+      "customEndpointHelper": "Introduce la IP pública, IP de VPN o dominio accesible desde el cliente (ej: http://10.8.0.1:8000 o https://vps1.midominio.com).",
+      "customEndpointPlaceholder": "https://vps1.midominio.com:8443",
+      "submitGenerateKey": "Generar Clave de Enlace",
+      "generatingKey": "Generando Clave...",
+      "tokenGeneratedTitle": "Join Token de Enlace Generado",
+      "tokenSecretWarning": "IMPORTANTE: Este token contiene la clave secreta precompartida AES-256-GCM. No se volverá a mostrar. Guárdalo o compártelo de forma segura con el administrador del nodo remoto.",
+      "copyToken": "Copiar Token",
+      "tokenCopied": "¡Copiado!",
+      "tableAlias": "Alias / Nodo Remoto",
+      "tableTokenId": "ID de Token",
+      "tableStatus": "Estado",
+      "tableCreatedAt": "Fecha Creación",
+      "tableLastUsedAt": "Último Uso",
+      "tableActions": "Acciones",
+      "statusActive": "Activo",
+      "statusSuspended": "Suspendido",
+      "neverUsed": "Nunca",
+      "suspendBtn": "Suspender",
+      "reactivateBtn": "Reactivar",
+      "revokeBtn": "Revocar",
+      "confirmRevokeKey": "¿Estás seguro de que deseas revocar esta clave de enlace? El peer remoto perderá el acceso inmediatamente.",
+      "noInboundKeys": "No hay claves de enlace generadas",
+      "noInboundKeysDesc": "Genera una clave de enlace para autorizar que nodos remotos de ffmpeg-gui descubran y arrienden servicios compartidos.",
+      "remoteTitle": "PEERS REMOTOS ENLAZADOS (REMOTE PEERS)",
+      "remoteSubtitle": "Los servicios auxiliares alojados en peers remotos conectados podrán arrendarse y utilizarse directamente en tuberías locales de FFmpeg.",
+      "connectRemoteBtn": "Conectar con Peer Remoto",
+      "joinTokenRequired": "Por favor introduce un join token",
+      "connectModalTitle": "Conectar con Nodo Peer Remoto",
+      "joinTokenLabel": "Join Token (proporcionado por el nodo remoto)",
+      "joinTokenPlaceholder": "Pega el Join Token (FGPEER-...)",
+      "localAliasLabel": "Alias Local / Nombre Personalizado (Opcional)",
+      "localAliasPlaceholder": "Dejar en blanco para usar el nombre del nodo remoto",
+      "connectBtn": "Conectar Peer",
+      "connecting": "Conectando...",
+      "statusOnline": "Online",
+      "statusOffline": "Offline",
+      "statusError": "Error",
+      "noRemotePeers": "No hay peers remotos enlazados",
+      "noRemotePeersDesc": "Enlaza peers remotos para descubrir sus servicios auxiliares (MediaMTX, Icecast) y compartirlos entre nodos.",
+      "noServicesDiscovered": "Sin servicios descubiertos",
+      "servicesDiscovered": "Servicios Descubiertos:",
+      "syncBtn": "Sincronizar",
+      "syncing": "Sincronizando...",
+      "unlinkBtn": "Desvincular",
+      "confirmUnlinkPeer": "¿Estás seguro de que deseas desvincular este peer remoto? Los servicios compartidos asociados dejarán de estar disponibles.",
+      "lastSeen": "Última Conexión",
+      "neverSeen": "Nunca",
+      "pathsCount": "{{count}} Rutas",
+      "mountsCount": "{{count}} Puntos de Montaje"
     }
   },
   "dashboard": {
@@ -710,6 +792,12 @@
     "start": "Iniciar",
     "stop": "Detener",
     "restart": "Reiniciar",
+    "peerStatus": {
+      "title": "ESTADO DE PEERS",
+      "online": "conectados",
+      "servicesShared": "servicios compartidos",
+      "syncTooltip": "Refrescar conexión y catálogo"
+    },
     "upcomingTasksTitle": "Próximas Ejecuciones",
     "scheduledCount": "programadas",
     "noUpcomingTasks": "No hay tareas programadas próximamente.",
@@ -725,7 +813,9 @@
     "sslCertificate": "Certificado SSL",
     "setupRequired": "CONFIGURACIÓN REQUERIDA",
     "cpuUsage": "Uso de CPU",
-    "ramUsage": "Uso de RAM"
+    "ramUsage": "Uso de RAM",
+    "noActiveHardware": "No se detectaron dispositivos de captura o aceleración por hardware dedicados.",
+    "lcdUnavailableDetails": "Panel de control de hardware externo no detectado"
   },
   "forge": {
     "title": "FFMPEG FORGE",
@@ -878,6 +968,8 @@
     }
   },
   "sources": {
+    "localServices": "Servicios Locales (Este Nodo)",
+    "remotePeers": "Peers Remotos Federados",
     "mediaStorage": "Almacenamiento de Medios",
     "selectStorage": "-- Seleccionar Almacenamiento --",
     "networkSettingsTitle": "Ajustes de Red de Entrada",
@@ -982,6 +1074,8 @@
     "srtPbkeylenDefault": "Automático / Por Defecto",
     "srtStreamIdPreview": "URI y Stream ID SRT Generados",
     "srtTargetType": "Ubicación del MediaMTX Hub",
+    "managedService": "Servicio Gestionado (Local y Peers)",
+    "externalServer": "Servidor Externo Manual (Host No Federado)",
     "srtLocalHub": "Hub Local (Este Nodo)",
     "srtRemoteHub": "Servidor MediaMTX Remoto (Host Externo)",
     "srtRemoteHost": "Host / IP Remota",
@@ -1013,6 +1107,8 @@
   },
   "destinations": {
     "destination": "Destino",
+    "localServices": "Servicios Locales (Este Nodo)",
+    "remotePeers": "Peers Remotos Federados",
     "types": {
       "udp": "UDP Multicast (MPEG-TS)",
       "srt": "Stream SRT",
@@ -1126,6 +1222,8 @@
     "srtPbkeylenDefault": "Automático / Por Defecto",
     "srtStreamIdPreview": "URI y Stream ID SRT Generados",
     "srtTargetType": "Ubicación del MediaMTX Hub",
+    "managedService": "Servicio Gestionado (Local y Peers)",
+    "externalServer": "Servidor Externo Manual (Host No Federado)",
     "srtLocalHub": "Hub Local (Este Nodo)",
     "srtRemoteHub": "Servidor MediaMTX Remoto (Host Externo)",
     "srtRemoteHost": "Host / IP Remota",
@@ -1138,6 +1236,7 @@
       "iceGenre": "Género Musical / Categoría",
       "iceName": "Nombre de la Emisora",
       "localHub": "Servidor Icecast2 Local",
+      "managedHub": "Servidor Icecast2 Gestionado (Local y Peers)",
       "remoteServer": "Servidor Remoto / Manual",
       "streamMeta": "Metadatos de la Emisión (Opcional)",
       "targetMount": "Punto de Montaje (Mountpoint)",

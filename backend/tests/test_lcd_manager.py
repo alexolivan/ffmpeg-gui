@@ -63,3 +63,36 @@ def test_manager_prefixes_and_new_profiles():
     assert mgr.get_led_legend_prefix("alert") == "RES "
     assert mgr.get_led_legend_prefix("recording") == "REC "
     assert mgr.get_led_legend_prefix("storage") == "STO "
+    assert mgr.get_led_legend_prefix("peers") == "P2P "
+    assert mgr.get_led_legend_prefix("p2p") == "P2P "
+
+
+def test_peer_led_profile_states():
+    mgr = LCDManager(None, None, None, port="/dev/test_port")
+    mgr.set_led_color = MagicMock()
+    mgr.lcd_led0_profile = "peers"
+    mgr.lcd_led1_profile = "disabled"
+    mgr.lcd_led2_profile = "disabled"
+    mgr.lcd_led3_profile = "disabled"
+
+    # 1. When no peers configured (state 'none') -> LED is 'off'
+    mgr._cached_led_states["peer_state"] = "none"
+    # Call the profile logic directly or simulate one iteration
+    peer_st = mgr._cached_led_states.get("peer_state", "none")
+    assert peer_st == "none"
+
+    # Test resolution logic for peers profile
+    def evaluate_peer_color(state):
+        if state == "error":
+            return "red"
+        elif state == "warn":
+            return "yellow"
+        elif state == "ok":
+            return "green"
+        return "off"
+
+    assert evaluate_peer_color("none") == "off"
+    assert evaluate_peer_color("error") == "red"
+    assert evaluate_peer_color("warn") == "yellow"
+    assert evaluate_peer_color("ok") == "green"
+

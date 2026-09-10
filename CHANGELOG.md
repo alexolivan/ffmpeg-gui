@@ -5,6 +5,111 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.3] - 2026-09-10
+
+### Fixed
+- **SystemSettings Backup Export & Restore SSOT Harmonization**:
+  - Unified `/api/backup/export` and `/api/backup/import` with the SQLite `SystemSettings` database table as the primary Single Source of Truth (SSOT).
+  - Ensured all 10 LCD parameters (`lcd_enabled`, `lcd_port`, `lcd_model`, `lcd_brightness`, `lcd_dim_brightness`, `lcd_dim_timeout`, `lcd_led0_profile`..`lcd_led3_profile`) are faithfully exported from `SystemSettings` and re-injected on import.
+  - Added live `lcd_manager` in-memory attribute reload and display refresh (`refresh_display()`) upon backup restoration.
+  - Unified General Panel settings (`node_name`, `logo_text`, `lcd_alias`, `gui_password`, `accent_color`, `logo_path`) and `auto_reload_ssl_services` to persist directly into `SystemSettings` upon backup restoration.
+  - Extended unit tests in `test_backup_restore_api.py` to assert full export and import fidelity of `SystemSettings` and LCD profiles.
+
+## [2.17.2] - 2026-09-10
+
+### Added
+- **P2P LED Profile for Peer Federation in LCD Subsystem**:
+  - Integrated `P2P` status LED profile into Crystalfontz CFA-635 (and compatible) front-panel LCD managers.
+  - Implemented worst-state aggregation heuristic across all configured `PeerRemoteNode` records:
+    - `Off`: 0 federated peer nodes configured.
+    - `Solid Red`: Any configured peer node is unreachable (`status == 'offline'` / `'error'`) or reports an active communication error (`last_error`).
+    - `Solid Amber/Yellow`: All peers reachable, but at least one peer node is in `pending` state or exceeds the WAN latency alert threshold (> 400 ms).
+    - `Solid Green`: All configured peer nodes are online, healthy, and operating within nominal latency.
+  - Added physical 4-character row prefix legend (`"P2P "`) for 20x4 LCD displays.
+  - Added "Peer Federation (P2P)" LED profile selection options to all 4 LED selectors in `SettingsView.tsx`.
+  - Added multi-language localization strings for `settings.lcd.ledOption.peers` across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`) maintaining 100% key parity.
+
+## [2.17.1] - 2026-09-10
+
+### Changed
+- **Dashboard Visual Consistency & Information Densification**:
+  - Removed raw emojis (`🌐`, `📅`) from `PeerStatusCard` and `Upcoming Tasks` card headers to establish uniform broadcast typography across all 5 dashboard cards.
+  - Densified padding, margins, and row heights in `PeerStatusCard` and `Upcoming Tasks` (`py-1.5 px-2.5`) and introduced a scrollable container (`max-h-56 overflow-y-auto`) to prevent vertical layout runaway when items grow.
+  - Refactored `Hardware & Peripherals` card: partitioned capabilities to prioritize active hardware with full technical details while collapsing all non-detected devices into a sleek, compact summary row (`UNAVAILABLE: LCD · VA-API · V4L2 · ...`) with detailed hover tooltips, freeing up over 65% of the card's vertical footprint.
+  - Synchronized localization strings (`dashboard.noActiveHardware`, `dashboard.lcdUnavailableDetails`) across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
+
+## [2.17.0] - 2026-09-10
+
+### Added
+- **Global Backup & Restore Modernization with Peer Federation**:
+  - Full export and restore support for Peer Federation entities (`PeerInboundKey` and `PeerRemoteNode`), preserving cluster connectivity across nodes during migrations.
+  - Export and restore coverage for modern service attributes: `is_shared_with_peers`, `allow_peer_lease`, `watchdog_circuit_breaker`, and `log_storage_id`.
+  - Export and restore coverage for scheduled task auto-dependency flags (`allow_auto_start_deps`, `allow_auto_stop_deps`).
+  - Added dedicated "Peer Federation & Links" export selector card in `BackupRestoreCard.tsx` and updated backup metadata preview grid with entry counters.
+  - Multi-language localization for Peer Federation backup settings across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`) maintaining 100% key parity.
+
+### Changed
+- **Individual Service & Scheduled Task Import/Export Resilience**:
+  - Parity in single service export/import (`/processes/{id}/export` and `/processes/import`) with full retention of peer sharing flags (`is_shared_with_peers`, `allow_peer_lease`).
+  - Automatic foreign reference sanitization in `migrate_and_validate_profile`: strips foreign or non-existent `peer_node_id`, `peer_service_id`, and `provider_service_id` keys to prevent broken references or foreign key violations when transferring services or tasks between different nodes.
+  - Scheduled task export/import (`/tasks/export`, `/tasks/{id}/export`, `/tasks/import`) upgraded with dynamic `ffmpeg_build_id` fallback matching available ready builds in SQLite.
+  - Automatic task dependency graph synchronization (`sync_auto_dependencies`) triggered upon scheduled task import.
+
+## [2.16.2] - 2026-09-10
+
+### Fixed
+- **MediaMTX Paths Proxy Endpoint & Mixed Content Resolution**:
+  - Replaced unencrypted browser HTTP fetch to port 9997 in `MediaMtxPreviewModal.tsx` with a backend proxy endpoint (`/processes/{id}/mediamtx/paths`), resolving browser Mixed Content blocking on HTTPS-secured nodes.
+- **Server Remote Leases Auto-Reacquisition & SSL Resilience**:
+  - Coerced incoming service IDs to integers across all lease RPC handlers (`ACQUIRE_LEASE`, `HEARTBEAT`, `RELEASE_LEASE`) ensuring reliable dictionary mapping.
+  - Implemented automatic lease re-acquisition in `HEARTBEAT` handler when `allow_peer_lease` is subsequently enabled on the server without requiring manual client restarts.
+  - Added SSL fallback (`verify=False`) in outbound node RPCs and synchronization to ensure peer communication succeeds even if self-signed or private TLS certificates are in use.
+- **Enriched Federated Client Badges**:
+  - Augmented federated remote peer dependency resolution (`get_federated_peer_dependency`) to resolve the target service name and type from cached peer catalog data.
+  - Updated service and scheduled task cards to display `🌐 {peer_name} · {service_name}` with descriptive tooltips.
+
+## [2.16.1] - 2026-09-10
+
+### Fixed
+- **Federated Service Discovery in Destination and Source Forms**:
+  - Added dual support for `cached_services` and `cached_services_json` in `serialize_peer_remote_node` (`backend/main.py`), ensuring remote peer service catalogs are seamlessly discoverable by frontend clients.
+  - Resolved auxiliary service selection and path/mountpoint introspection across SRT, RTMP, HLS, WHIP, and Icecast HTTP Audio forms for both local and peer instances.
+  - Eliminated runtime reference errors and guarded null checks on remote peer TLS and mountpoint handlers.
+- **Federated Auxiliary Service Leases Telemetry & Periodic Heartbeat**:
+  - Unified remote peer leases from `PeerManager` with local consumer leases from `DependencyManager` in `/processes` and `/ws/telemetry`, accurately reflecting active peer leases on MediaMTX and Icecast server cards.
+  - Implemented automatic periodic `HEARTBEAT` RPC dispatch for active processes streaming to or ingesting from remote peers to maintain lease liveness.
+
+### Changed
+- **Streamlined UI Terminology for Federated Service Integration**:
+  - Replaced ambiguous "Local Hub (This Node) vs Remote Server (External Host)" labels with "⚡ Managed Service (Local & Peers)" and "🌐 Manual External Server (Unfederated Host)" across all destination and source forms.
+  - Synchronized updated locale strings across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`) maintaining 100% key parity.
+- **Minimalist Card Badges & Extended Preview Modals**:
+  - Standardized auxiliary service leases badge on cards to strictly numeric counters (`🔗 N LEASES`), moving verbose consumer lists to native hover tooltips.
+  - Added discrete federated remote peer badges (`🌐 {peer_name}`) on client service and task cards.
+  - Added dedicated "Active Connected Consumers & Leases" section in `MediaMtxPreviewModal` and `IcecastPreviewModal` with clear local and peer origin tags.
+
+## [2.16.0] - 2026-09-09
+
+### Added
+- **Multi-Peer Auxiliary Service Federation & Sharing**:
+  - Decentralized, sovereign peer-to-peer auxiliary service federation allowing `ffmpeg-gui` instances to discover, share, and lease MediaMTX hubs and Icecast2 audio servers across nodes.
+  - Zero-friction encrypted communication using application-layer AES-256-GCM symmetric pre-shared keys generated inside portable Join Tokens (`FGPEER-...`).
+  - Strict timestamp-based anti-replay verification (±60s window) and single-use salt tokens for all inter-peer RPC requests (`DISCOVER_SERVICES`, `ACQUIRE_LEASE`, `HEARTBEAT`, `RELEASE_LEASE`).
+  - Remote service leasing integration in `ProcessManager`: acquiring remote leases on service start and cleanly releasing them on service stop.
+  - Local owner architecture with granular per-service sharing toggles (`is_shared_with_peers` and `allow_peer_lease`) on MediaMTX and Icecast configuration forms.
+  - Database models `PeerInboundKey` and `PeerRemoteNode` with automatic SQLite PRAGMA migrations to schema version `2.3.0`.
+  - Background periodic peer synchronization loop (every 30s) running in a decoupled thread without blocking FastAPI's event loop.
+  - Interactive Join Token generator with local IPv4 candidate endpoint introspection and one-click clipboard copying in Settings.
+  - Remote peer management card in Settings supporting token connection, latency tracking, service catalog summary, and manual sync.
+  - Form integration with grouped `<optgroup>` selectors in `DestinationPanel` and `InputSourcePanel` for both RTMP and SRT, facilitating direct selection of federated remote peer hubs.
+  - Real-time `PeerStatusCard` on the Dashboard displaying peer link quality, latency in milliseconds, shared service count, and on-demand refresh trigger.
+
+### Changed
+- **Settings View Architectural Reorganization**:
+  - Split the monolithic settings view into distinct `Network` and `Security` tabs.
+  - `Network` tab now groups Listen Ports & Interfaces, Email Notifications & Alerting, and Remote Peers.
+  - `Security` tab now groups Access Password, SSL/TLS Certificates, and Inbound Pairing Keys.
+
 ## [2.15.0] - 2026-09-09
 
 ### Consolidated Milestone Release

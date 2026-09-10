@@ -107,6 +107,21 @@ class ProcessManager:
 
         # Start auto-managed dependencies first
         await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
+
+        # Acquire remote peer lease if configured
+        with self.db_session_factory() as session:
+            from database.models import Service
+            svc_remote = session.get(Service, process_id)
+            if svc_remote:
+                cfg_remote = svc_remote.config or {}
+                peer_node_id = cfg_remote.get("output_config", {}).get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id") or (svc_remote.output_config or {}).get("peer_node_id")
+                peer_svc_id = cfg_remote.get("output_config", {}).get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id") or (svc_remote.output_config or {}).get("peer_service_id")
+                if peer_node_id and peer_svc_id:
+                    from core.peer_manager import peer_manager
+                    try:
+                        await asyncio.to_thread(peer_manager.acquire_remote_lease, session, int(peer_node_id), int(peer_svc_id))
+                    except Exception as e:
+                        self.logger.warning(f"Failed to acquire remote lease on peer node {peer_node_id}: {e}")
         
         logs_dir = None
         debug_mode = False
@@ -509,6 +524,22 @@ class ProcessManager:
 
             # Stop any auto-managed dependencies that are no longer needed
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
+
+            # Release remote peer lease if configured
+            if not is_restart:
+                with self.db_session_factory() as session:
+                    from database.models import Service
+                    svc_remote = session.get(Service, process_id)
+                    if svc_remote:
+                        cfg_remote = svc_remote.config or {}
+                        peer_node_id = cfg_remote.get("output_config", {}).get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id") or (svc_remote.output_config or {}).get("peer_node_id")
+                        peer_svc_id = cfg_remote.get("output_config", {}).get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id") or (svc_remote.output_config or {}).get("peer_service_id")
+                        if peer_node_id and peer_svc_id:
+                            from core.peer_manager import peer_manager
+                            try:
+                                await asyncio.to_thread(peer_manager.release_remote_lease, session, int(peer_node_id), int(peer_svc_id))
+                            except Exception as e:
+                                self.logger.warning(f"Failed to release remote lease on peer node {peer_node_id}: {e}")
         finally:
             self.stopping_processes.discard(process_id)
 

@@ -336,12 +336,16 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                   {currentProcess.status}
                 </span>
 
-                {currentProcess.active_leases && currentProcess.active_leases.length > 0 && (
+                {currentProcess.active_leases && currentProcess.active_leases.length > 0 ? (
                   <span
                     className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-black flex items-center gap-1 shadow-[0_0_8px_rgba(212,255,91,0.2)]"
                     title={`Active connected broadcasters: ${currentProcess.active_leases.join(', ')}`}
                   >
-                    🔗 {currentProcess.active_leases.length} {currentProcess.active_leases.length === 1 ? 'CONSUMER' : 'CONSUMERS'}
+                    🔗 {currentProcess.active_leases.length} {currentProcess.active_leases.length === 1 ? 'LEASE' : 'LEASES'}
+                  </span>
+                ) : (
+                  <span className="text-[9px] bg-white/5 text-[var(--text-secondary)] border border-white/10 px-2 py-0.5 rounded font-medium flex items-center gap-1">
+                    🔗 0 LEASES
                   </span>
                 )}
               </div>
@@ -595,6 +599,48 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Active Connected Broadcasters / Leases Strip */}
+          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-brand-lime flex items-center gap-1.5">
+                <span>🔗</span>
+                {t('services.icecast.preview.leasesTitle', 'Active Connected Broadcasters & Leases')}
+              </span>
+              <span className="text-[9px] text-[var(--text-secondary)] font-mono">
+                {currentProcess.active_leases && currentProcess.active_leases.length > 0 
+                  ? `${currentProcess.active_leases.length} ${currentProcess.active_leases.length === 1 ? t('common.activeConsumer', 'Active Consumer') : t('common.activeConsumers', 'Active Consumers')}`
+                  : t('common.idle', '0 Leases (Idle)')}
+              </span>
+            </div>
+
+            {currentProcess.active_leases && currentProcess.active_leases.length > 0 ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                {currentProcess.active_leases.map((lease: string, idx: number) => {
+                  const isPeer = lease.startsWith('peer:');
+                  const label = isPeer ? lease.replace('peer:', '') : lease;
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-bold ${
+                        isPeer 
+                          ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' 
+                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                      }`}
+                    >
+                      <span>{isPeer ? '🌐' : '🔗'}</span>
+                      <span className="text-[9px] uppercase tracking-wider opacity-75">{isPeer ? 'PEER' : 'LOCAL'}:</span>
+                      <span>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-xs text-[var(--text-secondary)] font-mono italic">
+                {t('services.icecast.preview.noLeases', 'No active broadcasters or peers currently leasing this server.')}
+              </div>
+            )}
           </div>
 
           {/* Section 2: Extended Per-Mountpoint Telemetry & Live Audio Player */}

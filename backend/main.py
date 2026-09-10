@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, Query, Body
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, Query, Body, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -7,6 +7,7 @@ import json
 import copy
 import shutil
 import uuid
+import socket
 import shlex
 import platform
 import configparser
@@ -17,7 +18,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
 from database.db import init_db, get_db, SessionLocal
-from database.models import FfmpegBuild, SoftwareBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage
+from database.models import FfmpegBuild, SoftwareBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage, PeerInboundKey, PeerRemoteNode, SystemSettings
+from core.peer_manager import peer_manager
+from core.peer_crypto import PeerCrypto
 from core.process_manager import ProcessManager
 from core.preview_manager import PreviewManager
 from core.build_manager import BuildManager
@@ -237,6 +240,8 @@ class ProcessCreate(BaseModel):
     network_timeout: Optional[int] = 15
     debug_mode: Optional[bool] = False
     log_storage_id: Optional[int] = None
+    is_shared_with_peers: Optional[bool] = False
+    allow_peer_lease: Optional[bool] = False
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -273,6 +278,8 @@ class ProcessUpdate(BaseModel):
     network_timeout: Optional[int] = None
     debug_mode: Optional[bool] = None
     log_storage_id: Optional[int] = None
+    is_shared_with_peers: Optional[bool] = None
+    allow_peer_lease: Optional[bool] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -294,6 +301,8 @@ class ServiceCreate(BaseModel):
     config: dict
     is_active: Optional[bool] = True
     alias: Optional[str] = None
+    is_shared_with_peers: Optional[bool] = False
+    allow_peer_lease: Optional[bool] = False
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -315,6 +324,8 @@ class ServiceUpdate(BaseModel):
     config: Optional[dict] = None
     is_active: Optional[bool] = None
     alias: Optional[str] = None
+    is_shared_with_peers: Optional[bool] = None
+    allow_peer_lease: Optional[bool] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -356,6 +367,7 @@ class BackupExportRequest(BaseModel):
     storage_volumes: bool = True
     notifications: bool = True
     software_engines: bool = True
+    peer_federation: bool = True
 
 class BackupImportPayload(BaseModel):
     app: str
@@ -518,6 +530,36 @@ class StorageTest(BaseModel):
 
 class SdkMigrateRequest(BaseModel):
     target_storage_id: int
+
+class PeerInboundKeyCreate(BaseModel):
+    alias: str
+    endpoint: str
+    allowed_services: Optional[List[Any]] = None
+
+class PeerInboundKeyUpdate(BaseModel):
+    alias: Optional[str] = None
+    status: Optional[str] = None
+    allowed_services: Optional[List[Any]] = None
+
+class PeerRemoteNodeCreate(BaseModel):
+    join_token: str
+    name: Optional[str] = None
+
+def verify_token(request: Request = None, db: Session = Depends(get_db)) -> str:
+    import secrets
+    settings = db.query(SystemSettings).first()
+    if not settings or not settings.gui_password:
+        return "admin"
+    if request:
+        auth_header = request.headers.get("Authorization")
+        if auth_header:
+            token = auth_header.replace("Bearer ", "").strip()
+            if secrets.compare_digest(token, settings.gui_password):
+                return "admin"
+        query_token = request.query_params.get("token")
+        if query_token and secrets.compare_digest(query_token, settings.gui_password):
+            return "admin"
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 # ── System Settings & Auth ────────────────────────────────────────
@@ -1379,6 +1421,9 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     if os.path.exists(config_path):
         config.read(config_path)
 
+    from database.models import SystemSettings
+    sys_settings = db.query(SystemSettings).first()
+
     # 1. General Panel
     if req.gui_general:
         gen_dict = {}
@@ -1386,6 +1431,13 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for k in ["language", "theme", "node_name", "logo_text", "lcd_alias", "gui_password", "auto_restart_panel"]:
                 if k in config["general"]:
                     gen_dict[k] = config["general"][k]
+        if sys_settings:
+            if sys_settings.node_name: gen_dict["node_name"] = sys_settings.node_name
+            if sys_settings.logo_text: gen_dict["logo_text"] = sys_settings.logo_text
+            if sys_settings.lcd_alias: gen_dict["lcd_alias"] = sys_settings.lcd_alias
+            if sys_settings.gui_password: gen_dict["gui_password"] = sys_settings.gui_password
+            if sys_settings.accent_color: gen_dict["accent_color"] = sys_settings.accent_color
+            if sys_settings.logo_path: gen_dict["logo_path"] = sys_settings.logo_path
         sections["gui_general"] = gen_dict
 
     # 2. Network & SSL
@@ -1395,12 +1447,27 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for k in ["bind_address", "gui_port", "http_port", "https_port", "ssl_enabled", "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email", "ssl_challenge_type", "auto_reload_ssl_services"]:
                 if k in config["general"]:
                     net_dict[k] = config["general"][k]
+        if sys_settings and sys_settings.auto_reload_ssl_services is not None:
+            net_dict["auto_reload_ssl_services"] = str(sys_settings.auto_reload_ssl_services).lower()
         sections["gui_network_ssl"] = net_dict
 
     # 3. LCD Display
     if req.lcd_display:
         lcd_dict = {}
-        if "lcd" in config:
+        if sys_settings:
+            lcd_dict = {
+                "lcd_enabled": str(sys_settings.lcd_enabled).lower() if sys_settings.lcd_enabled is not None else "false",
+                "lcd_port": sys_settings.lcd_port or "/dev/ttyACM0",
+                "lcd_model": sys_settings.lcd_model or "cfa635",
+                "lcd_brightness": str(sys_settings.lcd_brightness) if sys_settings.lcd_brightness is not None else "100",
+                "lcd_dim_brightness": str(sys_settings.lcd_dim_brightness) if sys_settings.lcd_dim_brightness is not None else "20",
+                "lcd_dim_timeout": str(sys_settings.lcd_dim_timeout) if sys_settings.lcd_dim_timeout is not None else "30",
+                "lcd_led0_profile": sys_settings.lcd_led0_profile or "heartbeat",
+                "lcd_led1_profile": sys_settings.lcd_led1_profile or "streams",
+                "lcd_led2_profile": sys_settings.lcd_led2_profile or "tasks",
+                "lcd_led3_profile": sys_settings.lcd_led3_profile or "alert"
+            }
+        elif "lcd" in config:
             lcd_dict = dict(config["lcd"])
         elif "general" in config:
             for k in ["lcd_enabled", "lcd_port", "lcd_model", "lcd_brightness", "lcd_dim_brightness", "lcd_dim_timeout", "lcd_led0_profile", "lcd_led1_profile", "lcd_led2_profile", "lcd_led3_profile"]:
@@ -1465,6 +1532,9 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "software_version": p.software_version,
                 "ffmpeg_build_id": p.ffmpeg_build_id,
                 "software_build_id": p.software_build_id,
+                "is_shared_with_peers": getattr(p, "is_shared_with_peers", False),
+                "allow_peer_lease": getattr(p, "allow_peer_lease", False),
+                "log_storage_id": getattr(p, "log_storage_id", None),
             }
             for p in procs
         ]
@@ -1488,8 +1558,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
                 "is_active": t.is_active,
                 "retry_policy": t.retry_policy,
-                "allow_auto_start_deps": t.allow_auto_start_deps,
-                "allow_auto_stop_deps": t.allow_auto_stop_deps,
+                "allow_auto_start_deps": getattr(t, "allow_auto_start_deps", True),
+                "allow_auto_stop_deps": getattr(t, "allow_auto_stop_deps", True),
                 "alias": t.alias,
             }
             for t in tasks
@@ -1529,6 +1599,32 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for b in builds
         ]
 
+    # 11. Peer Federation & Enlaces
+    if getattr(req, "peer_federation", True):
+        from database.models import PeerInboundKey, PeerRemoteNode
+        inbound_keys = db.query(PeerInboundKey).all()
+        remote_nodes = db.query(PeerRemoteNode).all()
+        sections["peer_federation"] = {
+            "inbound_keys": [
+                {
+                    "alias": k.alias,
+                    "token_id": k.token_id,
+                    "secret_key": k.secret_key,
+                    "allowed_services": k.allowed_services,
+                    "status": k.status,
+                }
+                for k in inbound_keys
+            ],
+            "remote_nodes": [
+                {
+                    "name": n.name,
+                    "base_url": n.base_url,
+                    "token_id": n.token_id,
+                    "secret_key": n.secret_key,
+                }
+                for n in remote_nodes
+            ]
+        }
 
     return {
         "app": "ffmpeg-gui",
@@ -1553,6 +1649,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         "tasks": 0,
         "storage_volumes": 0,
         "software_engines": 0,
+        "peer_federation": {"inbound_keys": 0, "remote_nodes": 0},
         "notifications": False
     }
     sections = payload.sections or {}
@@ -1582,21 +1679,94 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     config.set(sec_name, k, str(v))
         imported_summary["gui_general"] = True
 
+    from database.models import SystemSettings
+    sys_settings = db.query(SystemSettings).first()
+    if not sys_settings:
+        sys_settings = SystemSettings()
+        db.add(sys_settings)
+
     # Granular subsections
     if "gui_general" in sections and isinstance(sections["gui_general"], dict):
         for k, v in sections["gui_general"].items():
             config.set("general", k, str(v))
+        gen_sec = sections["gui_general"]
+        if "node_name" in gen_sec and gen_sec["node_name"] is not None:
+            sys_settings.node_name = str(gen_sec["node_name"])
+        if "logo_text" in gen_sec and gen_sec["logo_text"] is not None:
+            sys_settings.logo_text = str(gen_sec["logo_text"])
+        if "lcd_alias" in gen_sec and gen_sec["lcd_alias"] is not None:
+            sys_settings.lcd_alias = str(gen_sec["lcd_alias"])
+        if "gui_password" in gen_sec:
+            sys_settings.gui_password = str(gen_sec["gui_password"]) if gen_sec["gui_password"] else None
+        if "accent_color" in gen_sec and gen_sec["accent_color"] is not None:
+            sys_settings.accent_color = str(gen_sec["accent_color"])
+        if "logo_path" in gen_sec and gen_sec["logo_path"] is not None:
+            sys_settings.logo_path = str(gen_sec["logo_path"])
         imported_summary["gui_general"] = True
 
     if "gui_network_ssl" in sections and isinstance(sections["gui_network_ssl"], dict):
         for k, v in sections["gui_network_ssl"].items():
             config.set("general", k, str(v))
+        net_sec = sections["gui_network_ssl"]
+        if "auto_reload_ssl_services" in net_sec and net_sec["auto_reload_ssl_services"] is not None:
+            val = net_sec["auto_reload_ssl_services"]
+            sys_settings.auto_reload_ssl_services = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
         imported_summary["gui_network_ssl"] = True
 
     if "lcd_display" in sections and isinstance(sections["lcd_display"], dict):
         for k, v in sections["lcd_display"].items():
             config.set("lcd", k, str(v))
+        lcd_sec = sections["lcd_display"]
+        if "lcd_enabled" in lcd_sec and lcd_sec["lcd_enabled"] is not None:
+            val = lcd_sec["lcd_enabled"]
+            sys_settings.lcd_enabled = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
+        if "lcd_port" in lcd_sec and lcd_sec["lcd_port"] is not None:
+            sys_settings.lcd_port = str(lcd_sec["lcd_port"])
+        if "lcd_model" in lcd_sec and lcd_sec["lcd_model"] is not None:
+            sys_settings.lcd_model = str(lcd_sec["lcd_model"])
+        if "lcd_brightness" in lcd_sec and lcd_sec["lcd_brightness"] is not None:
+            try: sys_settings.lcd_brightness = int(lcd_sec["lcd_brightness"])
+            except (ValueError, TypeError): pass
+        if "lcd_dim_brightness" in lcd_sec and lcd_sec["lcd_dim_brightness"] is not None:
+            try: sys_settings.lcd_dim_brightness = int(lcd_sec["lcd_dim_brightness"])
+            except (ValueError, TypeError): pass
+        if "lcd_dim_timeout" in lcd_sec and lcd_sec["lcd_dim_timeout"] is not None:
+            try: sys_settings.lcd_dim_timeout = int(lcd_sec["lcd_dim_timeout"])
+            except (ValueError, TypeError): pass
+        if "lcd_led0_profile" in lcd_sec and lcd_sec["lcd_led0_profile"] is not None:
+            sys_settings.lcd_led0_profile = str(lcd_sec["lcd_led0_profile"])
+        if "lcd_led1_profile" in lcd_sec and lcd_sec["lcd_led1_profile"] is not None:
+            sys_settings.lcd_led1_profile = str(lcd_sec["lcd_led1_profile"])
+        if "lcd_led2_profile" in lcd_sec and lcd_sec["lcd_led2_profile"] is not None:
+            sys_settings.lcd_led2_profile = str(lcd_sec["lcd_led2_profile"])
+        if "lcd_led3_profile" in lcd_sec and lcd_sec["lcd_led3_profile"] is not None:
+            sys_settings.lcd_led3_profile = str(lcd_sec["lcd_led3_profile"])
+
+        # Update active lcd_manager if running
+        global lcd_manager
+        if lcd_manager and lcd_manager._running:
+            if sys_settings.lcd_brightness is not None:
+                lcd_manager.active_brightness = sys_settings.lcd_brightness
+            if sys_settings.lcd_dim_brightness is not None:
+                lcd_manager.dim_brightness = sys_settings.lcd_dim_brightness
+            if sys_settings.lcd_dim_timeout is not None:
+                lcd_manager.dim_timeout = sys_settings.lcd_dim_timeout
+            if sys_settings.lcd_led0_profile is not None:
+                lcd_manager.lcd_led0_profile = sys_settings.lcd_led0_profile
+            if sys_settings.lcd_led1_profile is not None:
+                lcd_manager.lcd_led1_profile = sys_settings.lcd_led1_profile
+            if sys_settings.lcd_led2_profile is not None:
+                lcd_manager.lcd_led2_profile = sys_settings.lcd_led2_profile
+            if sys_settings.lcd_led3_profile is not None:
+                lcd_manager.lcd_led3_profile = sys_settings.lcd_led3_profile
+            try:
+                lcd_manager.refresh_display()
+            except Exception:
+                pass
+
         imported_summary["lcd_display"] = True
+
+    db.commit()
 
     if "logging_retention" in sections and isinstance(sections["logging_retention"], dict):
         for k, v in sections["logging_retention"].items():
@@ -1664,11 +1834,15 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     startup_delay=p_data.get("startup_delay", 0),
                     watchdog_enabled=p_data.get("watchdog_enabled", True),
                     watchdog_retries=p_data.get("watchdog_retries", 3),
+                    watchdog_circuit_breaker=p_data.get("watchdog_circuit_breaker", True),
                     watchdog_min_speed=p_data.get("watchdog_min_speed", 0.85),
                     watchdog_min_speed_duration=p_data.get("watchdog_min_speed_duration", 30),
                     alias=p_data.get("alias"),
                     network_timeout=p_data.get("network_timeout", 30),
                     debug_mode=p_data.get("debug_mode", False),
+                    log_storage_id=p_data.get("log_storage_id"),
+                    is_shared_with_peers=bool(p_data.get("is_shared_with_peers", False)),
+                    allow_peer_lease=bool(p_data.get("allow_peer_lease", False)),
                     allow_auto_start_deps=p_data.get("allow_auto_start_deps", True),
                     allow_auto_stop_deps=p_data.get("allow_auto_stop_deps", True),
                     software_type=p_data.get("software_type"),
@@ -1698,6 +1872,15 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                         dur_end = datetime.datetime.fromisoformat(t_data["duration_end_time"])
                     except Exception:
                         pass
+
+                build_id = t_data.get("ffmpeg_build_id")
+                if build_id:
+                    from database.models import SoftwareBuild
+                    b_exists = db.query(SoftwareBuild).filter(SoftwareBuild.id == build_id, SoftwareBuild.software_type == "ffmpeg").first()
+                    if not b_exists:
+                        def_b = db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready", SoftwareBuild.is_default == True).first() or db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready").first()
+                        build_id = def_b.id if def_b else None
+
                 task = ScheduledTask(
                     name=t_data.get("name"),
                     command="ffmpeg",
@@ -1705,7 +1888,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     output_config=t_data.get("output_config") or {},
                     codec_config=t_data.get("codec_config") or {},
                     filter_config=t_data.get("filter_config") or {},
-                    ffmpeg_build_id=t_data.get("ffmpeg_build_id"),
+                    ffmpeg_build_id=build_id,
                     schedule_type=t_data.get("schedule_type", "manual"),
                     schedule_cron=t_data.get("schedule_cron"),
                     schedule_datetime=sched_dt,
@@ -1745,6 +1928,36 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                 )
                 db.add(build)
                 imported_summary["software_engines"] += 1
+
+    # Restore Peer Federation
+    if "peer_federation" in sections and isinstance(sections["peer_federation"], dict):
+        from database.models import PeerInboundKey, PeerRemoteNode
+        fed_data = sections["peer_federation"]
+        for k_data in fed_data.get("inbound_keys", []):
+            tok = k_data.get("token_id")
+            if tok and not db.query(PeerInboundKey).filter(PeerInboundKey.token_id == tok).first():
+                new_key = PeerInboundKey(
+                    alias=k_data.get("alias", "Imported Key"),
+                    token_id=tok,
+                    secret_key=k_data.get("secret_key", ""),
+                    allowed_services=k_data.get("allowed_services"),
+                    status=k_data.get("status", "active")
+                )
+                db.add(new_key)
+                imported_summary["peer_federation"]["inbound_keys"] += 1
+
+        for n_data in fed_data.get("remote_nodes", []):
+            tok = n_data.get("token_id")
+            if tok and not db.query(PeerRemoteNode).filter(PeerRemoteNode.token_id == tok).first():
+                new_node = PeerRemoteNode(
+                    name=n_data.get("name", "Imported Peer"),
+                    base_url=n_data.get("base_url", ""),
+                    token_id=tok,
+                    secret_key=n_data.get("secret_key", ""),
+                    status="offline"
+                )
+                db.add(new_node)
+                imported_summary["peer_federation"]["remote_nodes"] += 1
 
 
     db.commit()
@@ -2587,6 +2800,46 @@ def resolve_service_public_hls_path(p, hls_storages_map: dict) -> Optional[str]:
             return "/" + "/".join(part.strip("/") for part in parts if part.strip())
     return None
 
+def get_federated_peer_dependency(conf_dict: dict, peer_nodes_map: dict) -> Optional[dict]:
+    if not conf_dict or not isinstance(conf_dict, dict):
+        return None
+    out_cfg = conf_dict.get("output_config") or {}
+    inp_cfg = conf_dict.get("input_config") or {}
+    peer_node_id = out_cfg.get("peer_node_id") or inp_cfg.get("peer_node_id")
+    peer_svc_id = out_cfg.get("peer_service_id") or inp_cfg.get("peer_service_id")
+    if not (peer_node_id and peer_svc_id) and isinstance(inp_cfg, dict):
+        for k in ("input1", "input2"):
+            sub_inp = inp_cfg.get(k)
+            if isinstance(sub_inp, dict) and sub_inp.get("peer_node_id") and sub_inp.get("peer_service_id"):
+                peer_node_id = sub_inp.get("peer_node_id")
+                peer_svc_id = sub_inp.get("peer_service_id")
+                break
+    if peer_node_id and peer_svc_id:
+        try:
+            p_node = peer_nodes_map.get(int(peer_node_id))
+            name = p_node.name if p_node else f"Peer #{peer_node_id}"
+            service_name = None
+            service_type = None
+            if p_node and p_node.cached_services_json:
+                for s in p_node.cached_services_json:
+                    if s.get("id") == int(peer_svc_id):
+                        service_name = s.get("name")
+                        service_type = s.get("service_type")
+                        break
+            return {
+                "provider_service_id": int(peer_svc_id),
+                "provider_name": name,
+                "is_auto_managed": True,
+                "is_remote_peer": True,
+                "peer_name": name,
+                "peer_node_id": int(peer_node_id),
+                "service_name": service_name,
+                "service_type": service_type
+            }
+        except (ValueError, TypeError):
+            pass
+    return None
+
 # ── Telemetry WebSocket ──────────────────────────────────────────
 
 @app.websocket("/ws/telemetry")
@@ -2607,10 +2860,11 @@ async def telemetry_broadcast_loop():
             exec_data = []
             task_stats = {}
             storages_data = []
+            peers_data = []
             
             with SessionLocal() as db:
                 from core.dependency_manager import dependency_manager
-                from database.models import ServiceDependency
+                from database.models import ServiceDependency, PeerRemoteNode
                 all_deps = db.query(ServiceDependency).all()
                 deps_by_proc = {}
                 for d in all_deps:
@@ -2625,9 +2879,30 @@ async def telemetry_broadcast_loop():
 
                 hls_storages = get_routed_hls_storages(db)
 
-                processes = db.query(MediaProcess).all()
-                processes_data = [
+                peer_nodes = db.query(PeerRemoteNode).all()
+                peer_nodes_map = {p.id: p for p in peer_nodes}
+                peers_data = [
                     {
+                        "id": p.id,
+                        "name": p.name,
+                        "base_url": p.base_url,
+                        "status": p.status,
+                        "latency_ms": p.latency_ms,
+                        "cached_services_count": len(p.cached_services_json) if p.cached_services_json else 0,
+                        "last_seen": p.last_seen.isoformat() + "Z" if p.last_seen else None,
+                        "last_error": p.last_error
+                    } for p in peer_nodes
+                ]
+
+                processes = db.query(MediaProcess).all()
+                processes_data = []
+                for p in processes:
+                    p_deps = list(deps_by_proc.get(p.id, []))
+                    fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
+                    if fed_dep:
+                        p_deps.append(fed_dep)
+                    p_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+                    processes_data.append({
                         "id": p.id,
                         "name": p.name,
                         "alias": p.alias,
@@ -2657,9 +2932,9 @@ async def telemetry_broadcast_loop():
                         "pending_changes": p.pending_changes,
                         "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
                         "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
-                        "active_leases": dependency_manager.get_active_leases(p.id),
+                        "active_leases": p_leases,
                         "is_pinned": dependency_manager.is_pinned(p.id),
-                        "dependencies": deps_by_proc.get(p.id, []),
+                        "dependencies": p_deps,
                         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
                         "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
                         "restart_count": p.restart_count,
@@ -2667,9 +2942,10 @@ async def telemetry_broadcast_loop():
                         "debug_mode": p.debug_mode,
                         "log_storage_id": p.log_storage_id,
                         "log_file_path": process_manager.get_process_log_path(p.id),
+                        "is_shared_with_peers": bool(p.is_shared_with_peers),
+                        "allow_peer_lease": bool(p.allow_peer_lease),
                         "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
-                    } for p in processes
-                ]
+                    })
 
                 active_executions = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "pending"])).all()
                 exec_data = [
@@ -2788,11 +3064,26 @@ async def telemetry_broadcast_loop():
                 "upcoming_tasks": upcoming_data,
                 "system": system_data,
                 "task_stats": task_stats,
-                "storages": storages_data
+                "storages": storages_data,
+                "peers": peers_data
             })
         except Exception as e:
             logger.exception(f"Error in telemetry broadcast loop: {e}")
         await asyncio.sleep(1)
+
+def _run_peer_sync_cycle():
+    with SessionLocal() as db:
+        peer_manager.sync_all_remote_nodes(db)
+        peer_manager.purge_expired_leases(db)
+        peer_manager.send_all_active_remote_heartbeats(db)
+
+async def peer_federation_sync_loop():
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await asyncio.to_thread(_run_peer_sync_cycle)
+        except Exception as e:
+            logger.error(f"Error in peer federation sync loop: {e}")
 
 async def auto_start_services():
     config_path = os.environ.get("CONFIG_FILE_PATH")
@@ -3115,6 +3406,7 @@ async def startup_event():
 
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
+    asyncio.create_task(peer_federation_sync_loop())
     asyncio.create_task(task_manager.execute_on_boot_cleanup())
     await scheduler.start()
 
@@ -3906,6 +4198,9 @@ def list_processes(db: Session = Depends(get_db)):
 
     hls_storages = get_routed_hls_storages(db)
     
+    peer_nodes = db.query(PeerRemoteNode).all()
+    peer_nodes_map = {p.id: p for p in peer_nodes}
+
     all_deps = db.query(ServiceDependency).all()
     deps_by_consumer = {}
     for d in all_deps:
@@ -3918,8 +4213,14 @@ def list_processes(db: Session = Depends(get_db)):
             "is_auto_managed": d.is_auto_managed
         })
 
-    return [
-        {
+    processes_data = []
+    for p in processes:
+        p_deps = list(deps_by_consumer.get(('service', p.id), []))
+        fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
+        if fed_dep:
+            p_deps.append(fed_dep)
+        p_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+        processes_data.append({
             "id": p.id,
             "name": p.name,
             "alias": p.alias,
@@ -3948,9 +4249,9 @@ def list_processes(db: Session = Depends(get_db)):
             "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
             "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
             "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
-            "active_leases": dependency_manager.get_active_leases(p.id),
+            "active_leases": p_leases,
             "is_pinned": dependency_manager.is_pinned(p.id),
-            "dependencies": deps_by_consumer.get(('service', p.id), []),
+            "dependencies": p_deps,
             "pending_changes": p.pending_changes,
             "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
             "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
@@ -3960,8 +4261,11 @@ def list_processes(db: Session = Depends(get_db)):
             "log_storage_id": p.log_storage_id,
             "log_file_path": process_manager.get_process_log_path(p.id),
             "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
-        } for p in processes
-    ]
+            "is_shared_with_peers": bool(getattr(p, 'is_shared_with_peers', False)),
+            "allow_peer_lease": bool(getattr(p, 'allow_peer_lease', False)),
+        })
+
+    return processes_data
 
 @app.post("/processes")
 def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
@@ -4034,6 +4338,8 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         network_timeout=proc_in.network_timeout if proc_in.network_timeout is not None else 15,
         debug_mode=proc_in.debug_mode if proc_in.debug_mode is not None else False,
         log_storage_id=proc_in.log_storage_id,
+        is_shared_with_peers=bool(proc_in.is_shared_with_peers),
+        allow_peer_lease=bool(proc_in.allow_peer_lease),
     )
     db.add(db_proc)
     db.commit()
@@ -4154,6 +4460,8 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.network_timeout is not None: db_proc.network_timeout = proc_in.network_timeout
     if proc_in.debug_mode is not None: db_proc.debug_mode = proc_in.debug_mode
     if proc_in.log_storage_id is not None: db_proc.log_storage_id = proc_in.log_storage_id
+    if proc_in.is_shared_with_peers is not None: db_proc.is_shared_with_peers = bool(proc_in.is_shared_with_peers)
+    if proc_in.allow_peer_lease is not None: db_proc.allow_peer_lease = bool(proc_in.allow_peer_lease)
 
     from utils.port_validator import validate_service_port_conflicts
     validate_service_port_conflicts(
@@ -4682,6 +4990,28 @@ def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
     return {"icestats": {"listeners": 0, "source": []}}
 
 
+@app.get("/processes/{process_id}/mediamtx/paths")
+@app.get("/api/processes/{process_id}/mediamtx/paths")
+def get_mediamtx_live_paths(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    cfg = db_proc.config or {}
+    mtx_cfg = cfg.get("mediamtx_config") or {}
+    api_port = mtx_cfg.get("api_port", 9997)
+    api_enabled = mtx_cfg.get("api_enabled", True)
+    if not api_enabled:
+        return {"items": []}
+    try:
+        import requests
+        resp = requests.get(f"http://127.0.0.1:{api_port}/v3/paths/list", timeout=2)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return {"items": []}
+
+
 @app.post("/processes/{process_id}/start")
 async def start_process(process_id: int):
     await process_manager.start_process(process_id)
@@ -4808,6 +5138,29 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
         profile["alias"] = alias
     else:
         profile["alias"] = None
+
+    # 6. Sanitize peer federation & local provider references
+    from database.models import PeerRemoteNode, Service
+    for cfg_dict in [profile.get("input_config"), profile.get("output_config"), profile.get("config", {}).get("output_config"), profile.get("config", {}).get("input_config")]:
+        if isinstance(cfg_dict, dict):
+            p_node = cfg_dict.get("peer_node_id")
+            if p_node:
+                try:
+                    exists = db.query(PeerRemoteNode).filter(PeerRemoteNode.id == int(p_node)).first()
+                    if not exists:
+                        cfg_dict.pop("peer_node_id", None)
+                        cfg_dict.pop("peer_service_id", None)
+                except Exception:
+                    cfg_dict.pop("peer_node_id", None)
+                    cfg_dict.pop("peer_service_id", None)
+            prov_id = cfg_dict.get("provider_service_id")
+            if prov_id:
+                try:
+                    p_exists = db.query(Service).filter(Service.id == int(prov_id)).first()
+                    if not p_exists:
+                        cfg_dict.pop("provider_service_id", None)
+                except Exception:
+                    cfg_dict.pop("provider_service_id", None)
                     
     return profile
 
@@ -4847,6 +5200,8 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "network_timeout": getattr(proc, 'network_timeout', 15),
             "debug_mode": getattr(proc, 'debug_mode', False),
             "log_storage_id": getattr(proc, 'log_storage_id', None),
+            "is_shared_with_peers": getattr(proc, 'is_shared_with_peers', False),
+            "allow_peer_lease": getattr(proc, 'allow_peer_lease', False),
         }
     }
 
@@ -4884,6 +5239,8 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         network_timeout=profile.get('network_timeout', 15),
         debug_mode=profile.get('debug_mode', False),
         log_storage_id=profile.get('log_storage_id'),
+        is_shared_with_peers=bool(profile.get('is_shared_with_peers', False)),
+        allow_peer_lease=bool(profile.get('allow_peer_lease', False)),
     )
     db.add(db_proc)
     db.commit()
@@ -5120,6 +5477,8 @@ def list_services(db: Session = Depends(get_db)):
             "last_stop": s.last_stop.isoformat() + "Z" if s.last_stop else None,
             "restart_count": s.restart_count,
             "pending_changes": s.pending_changes,
+            "is_shared_with_peers": bool(s.is_shared_with_peers),
+            "allow_peer_lease": bool(s.allow_peer_lease),
             "public_hls_path": resolve_service_public_hls_path(s, hls_storages),
         } for s in services
     ]
@@ -5131,7 +5490,9 @@ def create_service(svc_in: ServiceCreate, db: Session = Depends(get_db)):
         service_type=svc_in.service_type,
         config=svc_in.config,
         is_active=svc_in.is_active,
-        alias=svc_in.alias
+        alias=svc_in.alias,
+        is_shared_with_peers=bool(svc_in.is_shared_with_peers) if svc_in.is_shared_with_peers is not None else False,
+        allow_peer_lease=bool(svc_in.allow_peer_lease) if svc_in.allow_peer_lease is not None else False
     )
     db.add(svc)
     db.commit()
@@ -5162,6 +5523,10 @@ def update_service(service_id: int, svc_in: ServiceUpdate, db: Session = Depends
         svc.is_active = svc_in.is_active
     if svc_in.alias is not None:
         svc.alias = svc_in.alias
+    if svc_in.is_shared_with_peers is not None:
+        svc.is_shared_with_peers = svc_in.is_shared_with_peers
+    if svc_in.allow_peer_lease is not None:
+        svc.allow_peer_lease = svc_in.allow_peer_lease
     db.commit()
     db.refresh(svc)
     return svc
@@ -5479,6 +5844,12 @@ def serialize_task_item(t: ScheduledTask, db: Session, deps_list: Optional[list]
             "is_auto_managed": d.is_auto_managed
         } for d in deps]
 
+    peer_nodes = db.query(PeerRemoteNode).all()
+    peer_nodes_map = {p.id: p for p in peer_nodes}
+    fed_dep = get_federated_peer_dependency({"output_config": t.output_config, "input_config": t.input_config}, peer_nodes_map)
+    if fed_dep:
+        deps_list = list(deps_list) + [fed_dep]
+
     last_exec = db.query(TaskExecution).filter(TaskExecution.task_id == t.id).order_by(TaskExecution.id.desc()).first()
     return {
         "id": t.id,
@@ -5605,6 +5976,8 @@ def export_tasks(db: Session = Depends(get_db)):
             "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
             "retry_policy": t.retry_policy,
             "alias": t.alias,
+            "allow_auto_start_deps": getattr(t, "allow_auto_start_deps", True),
+            "allow_auto_stop_deps": getattr(t, "allow_auto_stop_deps", True),
         })
     return {
         "version": 2,
@@ -5637,6 +6010,8 @@ def export_single_task(task_id: int, db: Session = Depends(get_db)):
             "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
             "retry_policy": t.retry_policy,
             "alias": t.alias,
+            "allow_auto_start_deps": getattr(t, "allow_auto_start_deps", True),
+            "allow_auto_stop_deps": getattr(t, "allow_auto_stop_deps", True),
         }
     }
 
@@ -5675,6 +6050,8 @@ def _serialize_service(p) -> dict:
         "network_timeout": p.network_timeout,
         "debug_mode": p.debug_mode,
         "log_storage_id": p.log_storage_id,
+        "is_shared_with_peers": getattr(p, 'is_shared_with_peers', False),
+        "allow_peer_lease": getattr(p, 'allow_peer_lease', False),
         "log_file_path": process_manager.get_process_log_path(p.id),
     }
 
@@ -5766,16 +6143,29 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
         elif stype == "one_shot" and td.get("schedule_datetime"):
             next_run = datetime.datetime.fromisoformat(td["schedule_datetime"])
 
+        build_id = td.get("ffmpeg_build_id")
+        if build_id:
+            from database.models import SoftwareBuild
+            b_exists = db.query(SoftwareBuild).filter(SoftwareBuild.id == build_id, SoftwareBuild.software_type == "ffmpeg").first()
+            if not b_exists:
+                def_b = db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready", SoftwareBuild.is_default == True).first() or db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready").first()
+                build_id = def_b.id if def_b else None
+
+        sanitized_cfg = migrate_and_validate_profile({
+            "input_config": td.get("input_config", {}),
+            "output_config": td.get("output_config", {})
+        }, db)
+
         db_task = ScheduledTask(
             name=f"Imported: {td.get('name', 'Untitled')}",
             is_system=False,
             command=None,
             is_active=td.get("is_active", False),
-            input_config=td.get("input_config", {}),
-            output_config=td.get("output_config", {}),
+            input_config=sanitized_cfg.get("input_config", {}),
+            output_config=sanitized_cfg.get("output_config", {}),
             codec_config=td.get("codec_config", {}),
             filter_config=td.get("filter_config"),
-            ffmpeg_build_id=td.get("ffmpeg_build_id"),
+            ffmpeg_build_id=build_id,
             schedule_type=stype,
             schedule_cron=td.get("schedule_cron"),
             schedule_datetime=datetime.datetime.fromisoformat(td["schedule_datetime"]) if td.get("schedule_datetime") else None,
@@ -5784,12 +6174,22 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
             duration_seconds=td.get("duration_seconds"),
             duration_end_time=datetime.datetime.fromisoformat(td["duration_end_time"]) if td.get("duration_end_time") else None,
             retry_policy=td.get("retry_policy"),
-            alias=td.get("alias")
+            alias=td.get("alias"),
+            allow_auto_start_deps=td.get("allow_auto_start_deps", True),
+            allow_auto_stop_deps=td.get("allow_auto_stop_deps", True)
         )
         db.add(db_task)
         imported.append(db_task)
         
     db.commit()
+
+    from core.dependency_manager import dependency_manager
+    for db_task in imported:
+        try:
+            dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
+        except Exception as e:
+            logger.warning(f"Error syncing auto dependencies for imported task {db_task.id}: {e}")
+
     return {"status": "success", "count": len(imported)}
 
 @app.get("/tasks/{task_id}")
@@ -6720,6 +7120,250 @@ def delete_software_icon(software_type: str, db: Session = Depends(get_db)):
     base_dir = storage.path if storage else os.path.abspath("data")
     deleted = software_manager.delete_engine_icon(software_type, base_dir)
     return {"success": True, "deleted": deleted}
+
+
+# ══════════════════════════════════════════════════════════════════
+# PEER FEDERATION & AUXILIARY SERVICES (v2.0)
+# ══════════════════════════════════════════════════════════════════
+
+def serialize_peer_inbound_key(k: PeerInboundKey) -> dict:
+    return {
+        "id": k.id,
+        "alias": k.alias,
+        "token_id": k.token_id,
+        "allowed_services": k.allowed_services,
+        "status": k.status,
+        "created_at": k.created_at.isoformat() + "Z" if k.created_at else None,
+        "last_used_at": k.last_used_at.isoformat() + "Z" if k.last_used_at else None,
+    }
+
+def serialize_peer_remote_node(node: PeerRemoteNode) -> dict:
+    return {
+        "id": node.id,
+        "name": node.name,
+        "base_url": node.base_url,
+        "token_id": node.token_id,
+        "status": node.status,
+        "latency_ms": node.latency_ms,
+        "catalog_version": node.catalog_version,
+        "cached_services": node.cached_services_json or [],
+        "cached_services_json": node.cached_services_json or [],
+        "last_seen": node.last_seen.isoformat() + "Z" if node.last_seen else None,
+        "last_error": node.last_error,
+        "created_at": node.created_at.isoformat() + "Z" if node.created_at else None,
+    }
+
+@app.post("/api/peer-federation/v1/rpc")
+async def peer_federation_rpc(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_peer_key_id: Optional[str] = Header(None, alias="X-Peer-Key-ID")
+):
+    if not x_peer_key_id:
+        raise HTTPException(status_code=400, detail="Missing X-Peer-Key-ID header")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+
+    status_code, res = peer_manager.handle_inbound_rpc(
+        token_id=x_peer_key_id,
+        encrypted_pkg=body,
+        db_session=db,
+        process_manager=process_manager
+    )
+    if status_code != 200:
+        raise HTTPException(status_code=status_code, detail=res.get("detail", "Peer RPC error"))
+    return res
+
+@app.get("/api/peers/candidate-endpoints")
+def get_peer_candidate_endpoints(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    settings = db.query(SystemSettings).first()
+    node_name = settings.node_name if settings and settings.node_name else socket.gethostname()
+
+    scheme = "http"
+    if request.headers.get("x-forwarded-proto"):
+        scheme = request.headers.get("x-forwarded-proto")
+    elif request.url.scheme:
+        scheme = request.url.scheme
+
+    port = None
+    if request.url.port:
+        port = request.url.port
+    elif os.environ.get("ACTIVE_PORT"):
+        try:
+            port = int(os.environ.get("ACTIVE_PORT"))
+        except ValueError:
+            pass
+    if not port:
+        port = 443 if scheme == "https" else 8000
+
+    candidates = []
+    try:
+        addrs = psutil.net_if_addrs()
+        for iface_name, iface_addrs in addrs.items():
+            for addr in iface_addrs:
+                if getattr(addr, "family", None) == socket.AF_INET:
+                    ip = addr.address
+                    if ip.startswith("127."):
+                        continue
+                    candidates.append({
+                        "interface": iface_name,
+                        "ip": ip,
+                        "url": f"{scheme}://{ip}:{port}"
+                    })
+    except Exception as e:
+        logger.warning(f"Failed to query network interfaces: {e}")
+
+    if not candidates:
+        candidates.append({
+            "interface": "lo",
+            "ip": "127.0.0.1",
+            "url": f"{scheme}://127.0.0.1:{port}"
+        })
+
+    return {
+        "node_name": node_name,
+        "port": port,
+        "scheme": scheme,
+        "candidates": candidates
+    }
+
+# ── Inbound Keys ──────────────────────────────────────────────────
+
+@app.get("/api/peers/inbound-keys")
+def list_peer_inbound_keys(db: Session = Depends(get_db)):
+    keys = db.query(PeerInboundKey).all()
+    return [serialize_peer_inbound_key(k) for k in keys]
+
+@app.post("/api/peers/inbound-keys")
+def create_peer_inbound_key(req: PeerInboundKeyCreate, db: Session = Depends(get_db)):
+    if not req.alias or not req.alias.strip():
+        raise HTTPException(status_code=400, detail="Alias cannot be empty")
+    if not req.endpoint or not req.endpoint.strip():
+        raise HTTPException(status_code=400, detail="Endpoint cannot be empty")
+
+    settings = db.query(SystemSettings).first()
+    node_name = settings.node_name if settings and settings.node_name else socket.gethostname()
+
+    token_id, secret_key = PeerCrypto.generate_keypair()
+    join_token = PeerCrypto.create_join_token(
+        node_name=node_name,
+        endpoint=req.endpoint.strip(),
+        token_id=token_id,
+        secret_key_b64=secret_key,
+        allowed_services=req.allowed_services
+    )
+
+    inbound_key = PeerInboundKey(
+        alias=req.alias.strip(),
+        token_id=token_id,
+        secret_key=secret_key,
+        allowed_services=req.allowed_services,
+        status="active"
+    )
+    db.add(inbound_key)
+    db.commit()
+    db.refresh(inbound_key)
+
+    return {
+        "id": inbound_key.id,
+        "alias": inbound_key.alias,
+        "token_id": inbound_key.token_id,
+        "join_token": join_token,
+        "status": inbound_key.status,
+        "created_at": inbound_key.created_at.isoformat() + "Z" if inbound_key.created_at else None
+    }
+
+@app.put("/api/peers/inbound-keys/{key_id}")
+def update_peer_inbound_key(key_id: int, req: PeerInboundKeyUpdate, db: Session = Depends(get_db)):
+    key = db.query(PeerInboundKey).get(key_id)
+    if not key:
+        raise HTTPException(status_code=404, detail="Inbound key not found")
+    if req.alias is not None:
+        if not req.alias.strip():
+            raise HTTPException(status_code=400, detail="Alias cannot be empty")
+        key.alias = req.alias.strip()
+    if req.status is not None:
+        if req.status not in ["active", "suspended", "revoked"]:
+            raise HTTPException(status_code=400, detail="Invalid status")
+        key.status = req.status
+    if req.allowed_services is not None:
+        key.allowed_services = req.allowed_services
+    db.commit()
+    db.refresh(key)
+    return serialize_peer_inbound_key(key)
+
+@app.delete("/api/peers/inbound-keys/{key_id}")
+def delete_peer_inbound_key(key_id: int, db: Session = Depends(get_db)):
+    key = db.query(PeerInboundKey).get(key_id)
+    if not key:
+        raise HTTPException(status_code=404, detail="Inbound key not found")
+    db.delete(key)
+    db.commit()
+    return {"detail": "Inbound key deleted"}
+
+# ── Remote Peer Nodes ─────────────────────────────────────────────
+
+@app.get("/api/peers/remote-nodes")
+def list_peer_remote_nodes(db: Session = Depends(get_db)):
+    nodes = db.query(PeerRemoteNode).all()
+    return [serialize_peer_remote_node(n) for n in nodes]
+
+@app.post("/api/peers/remote-nodes")
+def create_peer_remote_node(req: PeerRemoteNodeCreate, db: Session = Depends(get_db)):
+    try:
+        token_data = PeerCrypto.parse_join_token(req.join_token)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid join token: {str(e)}")
+
+    existing = db.query(PeerRemoteNode).filter(PeerRemoteNode.token_id == token_data["token_id"]).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Remote peer node with token ID {token_data['token_id']} already exists")
+
+    node_name = req.name.strip() if req.name and req.name.strip() else token_data["name"]
+    node = PeerRemoteNode(
+        name=node_name,
+        base_url=token_data["endpoint"],
+        token_id=token_data["token_id"],
+        secret_key=token_data["secret_key"],
+        status="offline"
+    )
+    db.add(node)
+    db.commit()
+    db.refresh(node)
+
+    try:
+        peer_manager.sync_remote_node(node.id, db)
+        db.refresh(node)
+    except Exception as e:
+        logger.warning(f"Initial sync failed for peer node {node.id}: {e}")
+
+    return serialize_peer_remote_node(node)
+
+@app.post("/api/peers/remote-nodes/{node_id}/sync")
+def sync_peer_remote_node_endpoint(node_id: int, db: Session = Depends(get_db)):
+    node = db.query(PeerRemoteNode).get(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Remote node not found")
+    peer_manager.sync_remote_node(node.id, db)
+    db.refresh(node)
+    return serialize_peer_remote_node(node)
+
+@app.delete("/api/peers/remote-nodes/{node_id}")
+def delete_peer_remote_node(node_id: int, db: Session = Depends(get_db)):
+    node = db.query(PeerRemoteNode).get(node_id)
+    if not node:
+        raise HTTPException(status_code=404, detail="Remote node not found")
+    db.delete(node)
+    db.commit()
+    return {"detail": "Remote node deleted"}
 
 
 # Mounting static files and SPA fallback
