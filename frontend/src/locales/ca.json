@@ -442,7 +442,8 @@
         "resources": "Alerta Recursos (CPU/RAM)",
         "alert": "Alerta Recursos (CPU/RAM)",
         "recording": "Gravació (Pilot REC)",
-        "storage": "Alerta Emmagatzematge"
+        "storage": "Alerta Emmagatzematge",
+        "peers": "Federació de Peers (P2P)"
       }
     },
     "storage": {

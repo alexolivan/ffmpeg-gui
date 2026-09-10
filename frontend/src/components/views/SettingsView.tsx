@@ -1653,6 +1653,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <option value="resources" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
                     <option value="recording" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
                     <option value="storage" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
+                    <option value="peers" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.peers', 'Peer Federation (P2P)')}</option>
                     <option value="disabled" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -1669,6 +1670,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <option value="resources" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
                     <option value="recording" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
                     <option value="storage" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
+                    <option value="peers" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.peers', 'Peer Federation (P2P)')}</option>
                     <option value="disabled" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -1685,6 +1687,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <option value="resources" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
                     <option value="recording" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
                     <option value="storage" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
+                    <option value="peers" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.peers', 'Peer Federation (P2P)')}</option>
                     <option value="disabled" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>
@@ -1701,6 +1704,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <option value="resources" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.resources', 'Resources Alert (CPU/RAM)')}</option>
                     <option value="recording" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.recording', 'Recording (REC Pilot)')}</option>
                     <option value="storage" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.storage', 'Storage Alert')}</option>
+                    <option value="peers" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.lcd.ledOption.peers', 'Peer Federation (P2P)')}</option>
                     <option value="disabled" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('common.disabled', 'Disabled')}</option>
                   </select>
                 </div>

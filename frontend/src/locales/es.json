@@ -442,7 +442,8 @@
         "resources": "Alerta Recursos (CPU/RAM)",
         "alert": "Alerta Recursos (CPU/RAM)",
         "recording": "Grabación (Piloto REC)",
-        "storage": "Alerta Almacenamiento"
+        "storage": "Alerta Almacenamiento",
+        "peers": "Federación de Peers (P2P)"
       }
     },
     "storage": {

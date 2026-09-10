@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.2] - 2026-09-10
+
+### Added
+- **P2P LED Profile for Peer Federation in LCD Subsystem**:
+  - Integrated `P2P` status LED profile into Crystalfontz CFA-635 (and compatible) front-panel LCD managers.
+  - Implemented worst-state aggregation heuristic across all configured `PeerRemoteNode` records:
+    - `Off`: 0 federated peer nodes configured.
+    - `Solid Red`: Any configured peer node is unreachable (`status == 'offline'` / `'error'`) or reports an active communication error (`last_error`).
+    - `Solid Amber/Yellow`: All peers reachable, but at least one peer node is in `pending` state or exceeds the WAN latency alert threshold (> 400 ms).
+    - `Solid Green`: All configured peer nodes are online, healthy, and operating within nominal latency.
+  - Added physical 4-character row prefix legend (`"P2P "`) for 20x4 LCD displays.
+  - Added "Peer Federation (P2P)" LED profile selection options to all 4 LED selectors in `SettingsView.tsx`.
+  - Added multi-language localization strings for `settings.lcd.ledOption.peers` across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`) maintaining 100% key parity.
+
 ## [2.17.1] - 2026-09-10
 
 ### Changed
