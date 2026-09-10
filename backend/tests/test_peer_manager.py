@@ -192,5 +192,55 @@ class TestPeerManager(unittest.TestCase):
         self.assertTrue(ok_rel)
         self.assertIsNone(err_rel)
 
+    @patch("requests.post")
+    def test_active_remote_leases_resolution_and_heartbeats(self, mock_post):
+        # Setup inbound key
+        key = PeerInboundKey(
+            alias="test-client-1",
+            token_id="tok_abc123",
+            secret_key=self.secret_key,
+            allowed_services=[]
+        )
+        self.session.add(key)
+        self.session.commit()
+
+        # Simulate inbound lease
+        self.peer_mgr._active_remote_leases[10] = {"tok_abc123": time.time()}
+        leases = self.peer_mgr.get_active_remote_leases(10, self.session)
+        self.assertEqual(leases, ["peer:test-client-1"])
+
+        # Setup running service with remote peer lease
+        svc = Service(
+            name="Streaming to remote",
+            service_type="ffmpeg_stream",
+            status="running",
+            config={
+                "output_config": {
+                    "type": "srt",
+                    "peer_node_id": 1,
+                    "peer_service_id": 42
+                }
+            }
+        )
+        self.session.add(svc)
+        node = PeerRemoteNode(
+            id=1,
+            name="vps1",
+            base_url="https://vps1.example.com",
+            token_id="tok_vps1",
+            secret_key=self.secret_key,
+            status="online"
+        )
+        self.session.add(node)
+        self.session.commit()
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = PeerCrypto.encrypt_payload({"status": "HEARTBEAT_ACK"}, self.secret_key)
+        mock_post.return_value = mock_resp
+
+        self.peer_mgr.send_all_active_remote_heartbeats(self.session)
+        mock_post.assert_called()
+
 if __name__ == "__main__":
     unittest.main()

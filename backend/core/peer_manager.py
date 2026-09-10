@@ -44,6 +44,76 @@ class PeerManager:
             if not leases:
                 del self._active_remote_leases[svc_id]
 
+    def get_active_remote_leases(self, service_id: int, db_session = None) -> List[str]:
+        """
+        Returns a list of active remote peer lease identifiers for a service,
+        e.g. ['peer:test1'] or ['peer:fgp_k_...']
+        """
+        self.purge_expired_leases()
+        token_timestamps = self._active_remote_leases.get(service_id, {})
+        if not token_timestamps:
+            return []
+
+        aliases = {}
+        if db_session:
+            from database.models import PeerInboundKey
+            try:
+                keys = db_session.query(PeerInboundKey).filter(PeerInboundKey.token_id.in_(list(token_timestamps.keys()))).all()
+                aliases = {k.token_id: k.alias for k in keys if k.alias}
+            except Exception as e:
+                logger.debug(f"Could not resolve inbound key aliases: {e}")
+
+        results = []
+        for tok in token_timestamps.keys():
+            label = aliases.get(tok) or tok[:10]
+            results.append(f"peer:{label}")
+        return results
+
+    def send_all_active_remote_heartbeats(self, db_session) -> None:
+        """
+        Sends HEARTBEAT RPC for all locally running services and tasks
+        that lease auxiliary services on remote peer nodes.
+        """
+        from database.models import Service, ScheduledTask
+        active_pairs = set()
+
+        try:
+            running_services = db_session.query(Service).filter(Service.status == "running").all()
+            for s in running_services:
+                cfg = s.config or {}
+                out_cfg = cfg.get("output_config", {}) or (s.output_config or {})
+                inp_cfg = cfg.get("input_config", {}) or (s.input_config or {})
+                p_node = out_cfg.get("peer_node_id") or inp_cfg.get("peer_node_id")
+                p_svc = out_cfg.get("peer_service_id") or inp_cfg.get("peer_service_id")
+                if p_node and p_svc:
+                    try:
+                        active_pairs.add((int(p_node), int(p_svc)))
+                    except (ValueError, TypeError):
+                        pass
+        except Exception as e:
+            logger.warning(f"Failed to query running services for peer heartbeat: {e}")
+
+        try:
+            running_tasks = db_session.query(ScheduledTask).filter(ScheduledTask.status == "running").all()
+            for t in running_tasks:
+                out_cfg = t.output_config or {}
+                inp_cfg = t.input_config or {}
+                p_node = out_cfg.get("peer_node_id") or inp_cfg.get("peer_node_id")
+                p_svc = out_cfg.get("peer_service_id") or inp_cfg.get("peer_service_id")
+                if p_node and p_svc:
+                    try:
+                        active_pairs.add((int(p_node), int(p_svc)))
+                    except (ValueError, TypeError):
+                        pass
+        except Exception as e:
+            logger.debug(f"Failed to query running tasks for peer heartbeat: {e}")
+
+        for p_node, p_svc in active_pairs:
+            try:
+                self.send_remote_heartbeat(db_session, p_node, p_svc)
+            except Exception as err:
+                logger.warning(f"Failed to send remote heartbeat to peer {p_node} for service {p_svc}: {err}")
+
     def _extract_service_protocols(self, svc: Service) -> Dict[str, Any]:
         cfg = svc.config or {}
         protocols = {}

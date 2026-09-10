@@ -467,14 +467,21 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             </span>
                           )
                         )}
-                        {task.dependencies && task.dependencies.length > 0 && (
+                        {task.dependencies && task.dependencies.length > 0 && task.dependencies.map((d: any, idx: number) => (
                           <span 
-                            className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
-                            title={`Depends on auxiliary service: ${task.dependencies.map((d: any) => d.provider_name).join(', ')}`}
+                            key={idx}
+                            className={`text-[9px] px-2 py-0.5 rounded font-bold flex items-center gap-1 ${
+                              d.is_remote_peer 
+                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
+                                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            }`}
+                            title={d.is_remote_peer 
+                              ? `Federated remote peer: ${d.peer_name || d.provider_name}` 
+                              : `Depends on auxiliary service: ${d.provider_name}`}
                           >
-                            🔗 {task.dependencies.map((d: any) => d.provider_name).join(', ')}
+                            {d.is_remote_peer ? '🌐' : '🔗'} {d.peer_name || d.provider_name}
                           </span>
-                        )}
+                        ))}
                         {task.retry_policy?.max_retries > 0 && (!exec || exec.retry_count === 0 || exec.status !== 'running') && (
                           <span className="text-[9px] bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-2 py-0.5 rounded font-black flex items-center gap-1" title={`Watchdog active (${task.retry_policy.max_retries} max retries)`}>
                             🛡️ WATCHDOG ({task.retry_policy.max_retries})
@@ -750,14 +757,21 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             </span>
                           )
                         )}
-                        {task.dependencies && task.dependencies.length > 0 && (
+                        {task.dependencies && task.dependencies.length > 0 && task.dependencies.map((d: any, idx: number) => (
                           <span 
-                            className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
-                            title={`Depends on auxiliary service: ${task.dependencies.map((d: any) => d.provider_name).join(', ')}`}
+                            key={idx}
+                            className={`text-[9px] px-2 py-0.5 rounded font-bold flex items-center gap-1 ${
+                              d.is_remote_peer 
+                                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
+                                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            }`}
+                            title={d.is_remote_peer 
+                              ? `Federated remote peer: ${d.peer_name || d.provider_name}` 
+                              : `Depends on auxiliary service: ${d.provider_name}`}
                           >
-                            🔗 {task.dependencies.map((d: any) => d.provider_name).join(', ')}
+                            {d.is_remote_peer ? '🌐' : '🔗'} {d.peer_name || d.provider_name}
                           </span>
-                        )}
+                        ))}
                         {task.retry_policy?.max_retries > 0 && (!exec || exec.retry_count === 0 || exec.status !== 'running') && (
                           <span className="text-[9px] bg-brand-blue/20 text-brand-blue border border-brand-blue/30 px-2 py-0.5 rounded font-black flex items-center gap-1" title={`Watchdog active (${task.retry_policy.max_retries} max retries)`}>
                             🛡️ WATCHDOG ({task.retry_policy.max_retries})

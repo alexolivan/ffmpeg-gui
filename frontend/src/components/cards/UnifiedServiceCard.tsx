@@ -239,11 +239,21 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
             </span>
           )}
 
-          {service.dependencies && service.dependencies.length > 0 && (
-            <span className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
-              🔗 LINKED ({service.dependencies.length})
+          {service.dependencies && service.dependencies.length > 0 && service.dependencies.map((d: any, idx: number) => (
+            <span 
+              key={idx}
+              className={`text-[9px] px-2 py-0.5 rounded font-bold flex items-center gap-1 ${
+                d.is_remote_peer 
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
+                  : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+              }`}
+              title={d.is_remote_peer 
+                ? `Federated remote peer: ${d.peer_name || d.provider_name}` 
+                : `Depends on auxiliary service: ${d.provider_name}`}
+            >
+              {d.is_remote_peer ? '🌐' : '🔗'} {d.peer_name || d.provider_name}
             </span>
-          )}
+          ))}
 
           {isRetrying && (
             <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">

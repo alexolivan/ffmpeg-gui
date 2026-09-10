@@ -2628,6 +2628,36 @@ def resolve_service_public_hls_path(p, hls_storages_map: dict) -> Optional[str]:
             return "/" + "/".join(part.strip("/") for part in parts if part.strip())
     return None
 
+def get_federated_peer_dependency(conf_dict: dict, peer_nodes_map: dict) -> Optional[dict]:
+    if not conf_dict or not isinstance(conf_dict, dict):
+        return None
+    out_cfg = conf_dict.get("output_config") or {}
+    inp_cfg = conf_dict.get("input_config") or {}
+    peer_node_id = out_cfg.get("peer_node_id") or inp_cfg.get("peer_node_id")
+    peer_svc_id = out_cfg.get("peer_service_id") or inp_cfg.get("peer_service_id")
+    if not (peer_node_id and peer_svc_id) and isinstance(inp_cfg, dict):
+        for k in ("input1", "input2"):
+            sub_inp = inp_cfg.get(k)
+            if isinstance(sub_inp, dict) and sub_inp.get("peer_node_id") and sub_inp.get("peer_service_id"):
+                peer_node_id = sub_inp.get("peer_node_id")
+                peer_svc_id = sub_inp.get("peer_service_id")
+                break
+    if peer_node_id and peer_svc_id:
+        try:
+            p_node = peer_nodes_map.get(int(peer_node_id))
+            name = p_node.name if p_node else f"Peer #{peer_node_id}"
+            return {
+                "provider_service_id": int(peer_svc_id),
+                "provider_name": name,
+                "is_auto_managed": True,
+                "is_remote_peer": True,
+                "peer_name": name,
+                "peer_node_id": int(peer_node_id)
+            }
+        except (ValueError, TypeError):
+            pass
+    return None
+
 # ── Telemetry WebSocket ──────────────────────────────────────────
 
 @app.websocket("/ws/telemetry")
@@ -2667,9 +2697,30 @@ async def telemetry_broadcast_loop():
 
                 hls_storages = get_routed_hls_storages(db)
 
-                processes = db.query(MediaProcess).all()
-                processes_data = [
+                peer_nodes = db.query(PeerRemoteNode).all()
+                peer_nodes_map = {p.id: p for p in peer_nodes}
+                peers_data = [
                     {
+                        "id": p.id,
+                        "name": p.name,
+                        "base_url": p.base_url,
+                        "status": p.status,
+                        "latency_ms": p.latency_ms,
+                        "cached_services_count": len(p.cached_services_json) if p.cached_services_json else 0,
+                        "last_seen": p.last_seen.isoformat() + "Z" if p.last_seen else None,
+                        "last_error": p.last_error
+                    } for p in peer_nodes
+                ]
+
+                processes = db.query(MediaProcess).all()
+                processes_data = []
+                for p in processes:
+                    p_deps = list(deps_by_proc.get(p.id, []))
+                    fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
+                    if fed_dep:
+                        p_deps.append(fed_dep)
+                    p_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+                    processes_data.append({
                         "id": p.id,
                         "name": p.name,
                         "alias": p.alias,
@@ -2699,9 +2750,9 @@ async def telemetry_broadcast_loop():
                         "pending_changes": p.pending_changes,
                         "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
                         "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
-                        "active_leases": dependency_manager.get_active_leases(p.id),
+                        "active_leases": p_leases,
                         "is_pinned": dependency_manager.is_pinned(p.id),
-                        "dependencies": deps_by_proc.get(p.id, []),
+                        "dependencies": p_deps,
                         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
                         "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
                         "restart_count": p.restart_count,
@@ -2712,22 +2763,7 @@ async def telemetry_broadcast_loop():
                         "is_shared_with_peers": bool(p.is_shared_with_peers),
                         "allow_peer_lease": bool(p.allow_peer_lease),
                         "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
-                    } for p in processes
-                ]
-
-                peer_nodes = db.query(PeerRemoteNode).all()
-                peers_data = [
-                    {
-                        "id": p.id,
-                        "name": p.name,
-                        "base_url": p.base_url,
-                        "status": p.status,
-                        "latency_ms": p.latency_ms,
-                        "cached_services_count": len(p.cached_services_json) if p.cached_services_json else 0,
-                        "last_seen": p.last_seen.isoformat() + "Z" if p.last_seen else None,
-                        "last_error": p.last_error
-                    } for p in peer_nodes
-                ]
+                    })
 
                 active_executions = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "pending"])).all()
                 exec_data = [
@@ -2857,6 +2893,7 @@ def _run_peer_sync_cycle():
     with SessionLocal() as db:
         peer_manager.sync_all_remote_nodes(db)
         peer_manager.purge_expired_leases(db)
+        peer_manager.send_all_active_remote_heartbeats(db)
 
 async def peer_federation_sync_loop():
     while True:
@@ -3979,6 +4016,9 @@ def list_processes(db: Session = Depends(get_db)):
 
     hls_storages = get_routed_hls_storages(db)
     
+    peer_nodes = db.query(PeerRemoteNode).all()
+    peer_nodes_map = {p.id: p for p in peer_nodes}
+
     all_deps = db.query(ServiceDependency).all()
     deps_by_consumer = {}
     for d in all_deps:
@@ -3991,8 +4031,14 @@ def list_processes(db: Session = Depends(get_db)):
             "is_auto_managed": d.is_auto_managed
         })
 
-    return [
-        {
+    processes_data = []
+    for p in processes:
+        p_deps = list(deps_by_consumer.get(('service', p.id), []))
+        fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
+        if fed_dep:
+            p_deps.append(fed_dep)
+        p_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+        processes_data.append({
             "id": p.id,
             "name": p.name,
             "alias": p.alias,
@@ -4021,9 +4067,9 @@ def list_processes(db: Session = Depends(get_db)):
             "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
             "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
             "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
-            "active_leases": dependency_manager.get_active_leases(p.id),
+            "active_leases": p_leases,
             "is_pinned": dependency_manager.is_pinned(p.id),
-            "dependencies": deps_by_consumer.get(('service', p.id), []),
+            "dependencies": p_deps,
             "pending_changes": p.pending_changes,
             "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
             "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
@@ -4035,8 +4081,9 @@ def list_processes(db: Session = Depends(get_db)):
             "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
             "is_shared_with_peers": bool(getattr(p, 'is_shared_with_peers', False)),
             "allow_peer_lease": bool(getattr(p, 'allow_peer_lease', False)),
-        } for p in processes
-    ]
+        })
+
+    return processes_data
 
 @app.post("/processes")
 def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
@@ -5565,6 +5612,12 @@ def serialize_task_item(t: ScheduledTask, db: Session, deps_list: Optional[list]
             "provider_name": d.provider_service.name if d.provider_service else f"Service #{d.provider_service_id}",
             "is_auto_managed": d.is_auto_managed
         } for d in deps]
+
+    peer_nodes = db.query(PeerRemoteNode).all()
+    peer_nodes_map = {p.id: p for p in peer_nodes}
+    fed_dep = get_federated_peer_dependency({"output_config": t.output_config, "input_config": t.input_config}, peer_nodes_map)
+    if fed_dep:
+        deps_list = list(deps_list) + [fed_dep]
 
     last_exec = db.query(TaskExecution).filter(TaskExecution.task_id == t.id).order_by(TaskExecution.id.desc()).first()
     return {

@@ -12,11 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added dual support for `cached_services` and `cached_services_json` in `serialize_peer_remote_node` (`backend/main.py`), ensuring remote peer service catalogs are seamlessly discoverable by frontend clients.
   - Resolved auxiliary service selection and path/mountpoint introspection across SRT, RTMP, HLS, WHIP, and Icecast HTTP Audio forms for both local and peer instances.
   - Eliminated runtime reference errors and guarded null checks on remote peer TLS and mountpoint handlers.
+- **Federated Auxiliary Service Leases Telemetry & Periodic Heartbeat**:
+  - Unified remote peer leases from `PeerManager` with local consumer leases from `DependencyManager` in `/processes` and `/ws/telemetry`, accurately reflecting active peer leases on MediaMTX and Icecast server cards.
+  - Implemented automatic periodic `HEARTBEAT` RPC dispatch for active processes streaming to or ingesting from remote peers to maintain lease liveness.
 
 ### Changed
 - **Streamlined UI Terminology for Federated Service Integration**:
   - Replaced ambiguous "Local Hub (This Node) vs Remote Server (External Host)" labels with "⚡ Managed Service (Local & Peers)" and "🌐 Manual External Server (Unfederated Host)" across all destination and source forms.
   - Synchronized updated locale strings across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`) maintaining 100% key parity.
+- **Minimalist Card Badges & Extended Preview Modals**:
+  - Standardized auxiliary service leases badge on cards to strictly numeric counters (`🔗 N LEASES`), moving verbose consumer lists to native hover tooltips.
+  - Added discrete federated remote peer badges (`🌐 {peer_name}`) on client service and task cards.
+  - Added dedicated "Active Connected Consumers & Leases" section in `MediaMtxPreviewModal` and `IcecastPreviewModal` with clear local and peer origin tags.
 
 ## [2.16.0] - 2026-09-09
 

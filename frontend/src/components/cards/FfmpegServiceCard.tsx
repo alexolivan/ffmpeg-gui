@@ -239,14 +239,21 @@ export const FfmpegServiceCard: React.FC<UnifiedServiceCardProps> = ({
             </span>
           )}
 
-          {service.dependencies && service.dependencies.length > 0 && (
+          {service.dependencies && service.dependencies.length > 0 && service.dependencies.map((d: any, idx: number) => (
             <span 
-              className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
-              title={`Depends on auxiliary service: ${service.dependencies.map((d: any) => d.provider_name).join(', ')}`}
+              key={idx}
+              className={`text-[9px] px-2 py-0.5 rounded font-bold flex items-center gap-1 ${
+                d.is_remote_peer 
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' 
+                  : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+              }`}
+              title={d.is_remote_peer 
+                ? `Federated remote peer: ${d.peer_name || d.provider_name}` 
+                : `Depends on auxiliary service: ${d.provider_name}`}
             >
-              🔗 {service.dependencies.map((d: any) => d.provider_name).join(', ')}
+              {d.is_remote_peer ? '🌐' : '🔗'} {d.peer_name || d.provider_name}
             </span>
-          )}
+          ))}
 
           {isRetrying && (
             <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">

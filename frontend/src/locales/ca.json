@@ -39,7 +39,10 @@
     "start": "Iniciar",
     "stop": "Aturar",
     "restart": "Reiniciar",
-    "lines": "línies"
+    "lines": "línies",
+    "activeConsumer": "Consumidor Actiu",
+    "activeConsumers": "Consumidors Actius",
+    "idle": "0 Leases (Inactiu)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -203,7 +206,9 @@
         "downloadLog": "Descarregar Log",
         "lines": "{{count}} línies",
         "waitingLogs": "Dimoni actiu. Esperant activitat de connexió de streams...",
-        "stoppedLogs": "El dimoni està aturat. Inicia el servei per monitoritzar l'enrutament."
+        "stoppedLogs": "El dimoni està aturat. Inicia el servei per monitoritzar l'enrutament.",
+        "leasesTitle": "Consumidors i Arrendaments Actius (Leases)",
+        "noLeases": "No hi ha processos locals ni peers connectats arrendant aquest Hub."
       }
     },
     "picker": {
@@ -283,7 +288,9 @@
         "copyUrl": "Copiar URL del Flux",
         "copied": "Copiat!",
         "logsTitle": "Registres del Servidor (Stdout / Error Log)",
-        "ingestBy": "Ingesta per"
+        "ingestBy": "Ingesta per",
+        "leasesTitle": "Emissors i Arrendaments Actius (Leases)",
+        "noLeases": "No hi ha emissors locals ni peers connectats arrendant aquest servidor."
       }
     },
     "startService": "Iniciar servei",

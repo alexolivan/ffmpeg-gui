@@ -39,7 +39,10 @@
     "start": "Iniciar",
     "stop": "Detener",
     "restart": "Reiniciar",
-    "lines": "líneas"
+    "lines": "líneas",
+    "activeConsumer": "Consumidor Activo",
+    "activeConsumers": "Consumidores Activos",
+    "idle": "0 Leases (Inactivo)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -203,7 +206,9 @@
         "downloadLog": "Descargar Log",
         "lines": "{{count}} líneas",
         "waitingLogs": "Demonio activo. Esperando actividad de conexión de streams...",
-        "stoppedLogs": "El demonio está detenido. Inicia el servicio para monitorizar el enrutamiento."
+        "stoppedLogs": "El demonio está detenido. Inicia el servicio para monitorizar el enrutamiento.",
+        "leasesTitle": "Consumidores y Arrendamientos Activos (Leases)",
+        "noLeases": "No hay procesos locales ni peers conectados arrendando este Hub."
       }
     },
     "picker": {
@@ -283,7 +288,9 @@
         "copyUrl": "Copiar URL del Stream",
         "copied": "¡Copiado!",
         "logsTitle": "Registros del Servidor (Stdout / Error Log)",
-        "ingestBy": "Ingesta por"
+        "ingestBy": "Ingesta por",
+        "leasesTitle": "Emisores y Arrendamientos Activos (Leases)",
+        "noLeases": "No hay emisores locales ni peers conectados arrendando este servidor."
       }
     },
     "startService": "Iniciar servicio",

@@ -39,7 +39,10 @@
     "start": "Start",
     "stop": "Stop",
     "restart": "Restart",
-    "lines": "lines"
+    "lines": "lines",
+    "activeConsumer": "Active Consumer",
+    "activeConsumers": "Active Consumers",
+    "idle": "0 Leases (Idle)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -203,7 +206,9 @@
         "downloadLog": "Download Log",
         "lines": "{{count}} lines",
         "waitingLogs": "Daemon active. Waiting for stream connection activity...",
-        "stoppedLogs": "Daemon is stopped. Start service to monitor stream routing."
+        "stoppedLogs": "Daemon is stopped. Start service to monitor stream routing.",
+        "leasesTitle": "Active Connected Consumers & Leases",
+        "noLeases": "No active tasks, services or peers currently leasing this Hub."
       }
     },
     "picker": {
@@ -283,7 +288,9 @@
         "copyUrl": "Copy Stream URL",
         "copied": "Copied!",
         "logsTitle": "Server Logs (Stdout / Error Log)",
-        "ingestBy": "Ingest by"
+        "ingestBy": "Ingest by",
+        "leasesTitle": "Active Connected Broadcasters & Leases",
+        "noLeases": "No active broadcasters or peers currently leasing this server."
       }
     },
     "startService": "Start Service",
