@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.1] - 2026-09-10
+
+### Changed
+- **Dashboard Visual Consistency & Information Densification**:
+  - Removed raw emojis (`🌐`, `📅`) from `PeerStatusCard` and `Upcoming Tasks` card headers to establish uniform broadcast typography across all 5 dashboard cards.
+  - Densified padding, margins, and row heights in `PeerStatusCard` and `Upcoming Tasks` (`py-1.5 px-2.5`) and introduced a scrollable container (`max-h-56 overflow-y-auto`) to prevent vertical layout runaway when items grow.
+  - Refactored `Hardware & Peripherals` card: partitioned capabilities to prioritize active hardware with full technical details while collapsing all non-detected devices into a sleek, compact summary row (`UNAVAILABLE: LCD · VA-API · V4L2 · ...`) with detailed hover tooltips, freeing up over 65% of the card's vertical footprint.
+  - Synchronized localization strings (`dashboard.noActiveHardware`, `dashboard.lcdUnavailableDetails`) across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
+
 ## [2.17.0] - 2026-09-10
 
 ### Added

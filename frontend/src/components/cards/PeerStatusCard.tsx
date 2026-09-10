@@ -40,20 +40,17 @@ export const PeerStatusCard: React.FC<PeerStatusCardProps> = ({ peers = [], onRe
   const onlineCount = peers.filter(p => p.status === 'online').length;
 
   return (
-    <div className="glass-card p-4 border-cyan-500/10 bg-cyan-500/2 space-y-3">
-      <div className="flex items-center justify-between border-b border-cyan-500/10 pb-2 mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">🌐</span>
-          <h3 className="text-sm font-black uppercase text-[var(--text-primary)] tracking-wider">
-            {t('dashboard.peerStatus.title', 'Peer Status')}
-          </h3>
-        </div>
+    <div className="glass-card p-3.5 border-cyan-500/10 bg-cyan-500/2 space-y-2.5">
+      <div className="flex items-center justify-between border-b border-cyan-500/10 pb-1.5 mb-2">
+        <h3 className="text-sm font-black uppercase text-[var(--text-primary)] tracking-wider">
+          {t('dashboard.peerStatus.title', 'Peer Status')}
+        </h3>
         <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-500/30 text-cyan-300">
           {onlineCount}/{peers.length} {t('dashboard.peerStatus.online', 'online')}
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
         {peers.map(peer => {
           const isOnline = peer.status === 'online';
           const isPending = peer.status === 'pending';
@@ -62,14 +59,14 @@ export const PeerStatusCard: React.FC<PeerStatusCardProps> = ({ peers = [], onRe
           return (
             <div
               key={peer.id}
-              className="p-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl flex items-center justify-between gap-3 hover:border-cyan-500/40 transition-all"
+              className="py-1.5 px-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg flex items-center justify-between gap-2.5 hover:border-cyan-500/40 transition-all"
             >
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
+                <div className="flex items-center gap-1.5 mb-0.5">
                   <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                       isOnline
-                        ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                        ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]'
                         : isPending
                         ? 'bg-amber-400 animate-pulse'
                         : 'bg-rose-500'
@@ -78,7 +75,7 @@ export const PeerStatusCard: React.FC<PeerStatusCardProps> = ({ peers = [], onRe
                   <span className="text-xs font-bold text-[var(--text-primary)] truncate" title={peer.name}>
                     {peer.name}
                   </span>
-                  <span className="text-[10px] text-[var(--text-secondary)] font-mono truncate max-w-[150px]" title={peer.base_url}>
+                  <span className="text-[10px] text-[var(--text-secondary)] font-mono truncate max-w-[140px]" title={peer.base_url}>
                     {peer.base_url}
                   </span>
                 </div>
@@ -88,7 +85,7 @@ export const PeerStatusCard: React.FC<PeerStatusCardProps> = ({ peers = [], onRe
                     {t('dashboard.peerStatus.servicesShared', 'services shared')}
                   </span>
                   {peer.last_error && !isOnline && (
-                    <span className="text-rose-400 truncate max-w-[200px]" title={peer.last_error}>
+                    <span className="text-rose-400 truncate max-w-[180px]" title={peer.last_error}>
                       ⚠️ {peer.last_error}
                     </span>
                   )}
@@ -118,7 +115,7 @@ export const PeerStatusCard: React.FC<PeerStatusCardProps> = ({ peers = [], onRe
                   disabled={isSyncing}
                   onClick={() => handleSync(peer.id)}
                   title={t('dashboard.peerStatus.syncTooltip', 'Refresh connection & catalog')}
-                  className="p-1.5 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-cyan-300 hover:border-cyan-500/40 transition-colors disabled:opacity-50"
+                  className="p-1 rounded bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-cyan-300 hover:border-cyan-500/40 transition-colors disabled:opacity-50"
                 >
                   <span className={`inline-block text-xs ${isSyncing ? 'animate-spin' : ''}`}>↻</span>
                 </button>

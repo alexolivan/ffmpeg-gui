@@ -812,7 +812,9 @@
     "sslCertificate": "Certificado SSL",
     "setupRequired": "CONFIGURACIÓN REQUERIDA",
     "cpuUsage": "Uso de CPU",
-    "ramUsage": "Uso de RAM"
+    "ramUsage": "Uso de RAM",
+    "noActiveHardware": "No se detectaron dispositivos de captura o aceleración por hardware dedicados.",
+    "lcdUnavailableDetails": "Panel de control de hardware externo no detectado"
   },
   "forge": {
     "title": "FFMPEG FORGE",

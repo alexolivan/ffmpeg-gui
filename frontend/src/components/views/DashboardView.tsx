@@ -126,6 +126,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
+  // Partition hardware capabilities into active and unavailable
+  const capabilitiesList = Object.entries(systemTelemetry.capabilities || {})
+    .filter(([key]) => key !== 'ffmpeg' && key !== 'avahi');
+
+  const activeCapabilities = capabilitiesList.filter(
+    ([, value]: [string, any]) => value.available || value.status === 'SETUP_REQUIRED'
+  );
+
+  const unavailableHardware: { key: string; name: string; details?: string }[] = [];
+  if (systemTelemetry.lcd && !systemTelemetry.lcd.connected) {
+    unavailableHardware.push({
+      key: 'lcd',
+      name: 'LCD',
+      details: t('dashboard.lcdUnavailableDetails', 'External hardware control panel is not detected'),
+    });
+  }
+  capabilitiesList
+    .filter(([, value]: [string, any]) => !value.available && value.status !== 'SETUP_REQUIRED')
+    .forEach(([key, value]: [string, any]) => {
+      unavailableHardware.push({
+        key,
+        name: key.toUpperCase(),
+        details: value.details,
+      });
+    });
+
   return (
     <>
       <header className="flex justify-between items-center mb-4">
@@ -324,47 +350,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Column 2: Hardware Capabilities Detection */}
         <div className="glass-card p-4 border-brand-orange/10 space-y-2.5">
-          <h3 className="text-base font-black mb-1.5 text-[var(--text-primary)] uppercase tracking-wider">{t('dashboard.hardwarePeripherals')}</h3>
+          <h3 className="text-sm font-black mb-1.5 text-[var(--text-primary)] uppercase tracking-wider">
+            {t('dashboard.hardwarePeripherals')}
+          </h3>
           <p className="text-xs text-text-secondary mb-3 leading-normal">
             {t('dashboard.hardwareIntrospection')}
           </p>
           <div className="space-y-2">
-            {/* LCD Status Item */}
-            {systemTelemetry.lcd && (
+            {/* LCD Status Item - Only when connected */}
+            {systemTelemetry.lcd && systemTelemetry.lcd.connected && (
               <div className="flex flex-col gap-1 p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-xs uppercase text-[var(--text-primary)] font-mono">{t('dashboard.lcdPanel')}</span>
-                  <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
-                    systemTelemetry.lcd.connected
-                      ? 'bg-brand-lime/25 text-brand-lime'
-                      : 'bg-white/5 text-text-secondary'
-                  }`}>
-                    {systemTelemetry.lcd.connected ? t('dashboard.available') : t('dashboard.unavailable')}
+                  <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-brand-lime/25 text-brand-lime">
+                    {t('dashboard.available')}
                   </span>
                 </div>
                 <p className="text-[10px] text-text-secondary mt-1">
-                  {systemTelemetry.lcd.connected 
-                    ? `Crystalfontz CFA-635 active on ${systemTelemetry.lcd.port || 'detected port'}`
-                    : 'External hardware control panel is not detected'
-                  }
+                  Crystalfontz CFA-635 active on {systemTelemetry.lcd.port || 'detected port'}
                 </p>
               </div>
             )}
 
-            {Object.entries(systemTelemetry.capabilities || {})
-              .filter(([key]) => key !== 'ffmpeg' && key !== 'avahi')
-              .map(([key, value]: [string, any]) => (
+            {/* Active Hardware Capabilities */}
+            {activeCapabilities.map(([key, value]: [string, any]) => (
               <div key={key} className="flex flex-col gap-1 p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-xs uppercase text-[var(--text-primary)] font-mono">{key}</span>
                   <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded ${
                     value.available
                       ? 'bg-brand-lime/25 text-brand-lime'
-                      : value.status === 'SETUP_REQUIRED'
-                      ? 'bg-amber-500/25 text-amber-300'
-                      : 'bg-white/5 text-text-secondary'
+                      : 'bg-amber-500/25 text-amber-300'
                   }`}>
-                    {value.available ? t('dashboard.available') : value.status === 'SETUP_REQUIRED' ? t('dashboard.setupRequired', 'SETUP REQUIRED') : t('dashboard.unavailable')}
+                    {value.available ? t('dashboard.available') : t('dashboard.setupRequired', 'SETUP REQUIRED')}
                   </span>
                 </div>
                 <p className="text-[10px] text-text-secondary mt-1">{value.details}</p>
@@ -414,6 +432,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 )}
               </div>
             ))}
+
+            {/* Empty state if no active hardware acceleration is detected */}
+            {activeCapabilities.length === 0 && (!systemTelemetry.lcd || !systemTelemetry.lcd.connected) && (
+              <div className="p-3 bg-[var(--input-bg)]/40 border border-[var(--glass-border)] rounded-xl text-center">
+                <p className="text-xs text-text-secondary">
+                  {t('dashboard.noActiveHardware', 'No specialized hardware acceleration or capture devices detected.')}
+                </p>
+              </div>
+            )}
+
+            {/* Compact Unavailable Devices Summary Row */}
+            {unavailableHardware.length > 0 && (
+              <div className="pt-2 border-t border-[var(--glass-border)]">
+                <div className="flex flex-wrap items-center gap-1.5 p-2 bg-[var(--input-bg)]/60 border border-[var(--glass-border)] rounded-xl text-xs">
+                  <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/5 text-text-secondary shrink-0">
+                    {t('dashboard.unavailable', 'UNAVAILABLE')}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1 min-w-0">
+                    {unavailableHardware.map((item) => (
+                      <span
+                        key={item.key}
+                        title={item.details}
+                        className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-text-secondary border border-white/5 hover:border-white/20 transition-colors cursor-help"
+                      >
+                        {item.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -476,12 +525,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
 
           {/* Upcoming Scheduled Tasks */}
-          <div className="glass-card p-4 border-purple-500/10 bg-purple-500/2 space-y-3">
-            <div className="flex items-center justify-between border-b border-purple-500/10 pb-2 mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">📅</span>
-                <h3 className="text-sm font-black uppercase text-[var(--text-primary)] tracking-wider">{t('dashboard.upcomingTasksTitle', 'Upcoming Tasks')}</h3>
-              </div>
+          <div className="glass-card p-3.5 border-purple-500/10 bg-purple-500/2 space-y-2.5">
+            <div className="flex items-center justify-between border-b border-purple-500/10 pb-1.5 mb-2">
+              <h3 className="text-sm font-black uppercase text-[var(--text-primary)] tracking-wider">
+                {t('dashboard.upcomingTasksTitle', 'Upcoming Tasks')}
+              </h3>
               {upcomingTasks && upcomingTasks.length > 0 && (
                 <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300">
                   {upcomingTasks.length} {t('dashboard.scheduledCount', 'scheduled')}
@@ -490,14 +538,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             {!upcomingTasks || upcomingTasks.length === 0 ? (
-              <div className="p-4 bg-purple-500/5 border border-purple-500/15 rounded-2xl text-center space-y-1">
+              <div className="p-3 bg-purple-500/5 border border-purple-500/15 rounded-xl text-center space-y-0.5">
                 <p className="text-xs text-text-secondary font-medium">{t('dashboard.noUpcomingTasks', 'No upcoming tasks scheduled in the near future.')}</p>
                 <p className="text-[9px] text-text-secondary">{t('dashboard.noUpcomingTasksSub', 'Active recurring or one-shot tasks will be listed here.')}</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
                 {upcomingTasks.map((task: any) => (
-                  <div key={task.id} className="p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-between gap-2 hover:border-purple-500/40 transition-all">
+                  <div key={task.id} className="py-1.5 px-2.5 bg-purple-500/10 border border-purple-500/20 rounded-lg flex items-center justify-between gap-2 hover:border-purple-500/40 transition-all">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider ${

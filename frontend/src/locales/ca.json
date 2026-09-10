@@ -812,7 +812,9 @@
     "sslCertificate": "Certificat SSL",
     "setupRequired": "CONFIGURACIÓ REQUERIDA",
     "cpuUsage": "Ús de CPU",
-    "ramUsage": "Ús de RAM"
+    "ramUsage": "Ús de RAM",
+    "noActiveHardware": "No s'han detectat dispositius de captura o acceleració per maquinari dedicats.",
+    "lcdUnavailableDetails": "Panel de control de maquinari extern no detectat"
   },
   "forge": {
     "title": "FFMPEG FORGE",

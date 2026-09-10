@@ -812,7 +812,9 @@
     "sslCertificate": "SSL Certificate",
     "setupRequired": "SETUP REQUIRED",
     "cpuUsage": "CPU Usage",
-    "ramUsage": "RAM Usage"
+    "ramUsage": "RAM Usage",
+    "noActiveHardware": "No specialized hardware acceleration or capture devices detected.",
+    "lcdUnavailableDetails": "External hardware control panel is not detected"
   },
   "forge": {
     "title": "FFMPEG FORGE",
