@@ -108,18 +108,57 @@ class ProcessManager:
         # Start auto-managed dependencies first
         await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
 
+        # Check and acquire exclusive resource lock for publisher outputs
+        from core.resource_lock_manager import resource_lock_manager
+        with self.db_session_factory() as session:
+            from database.models import Service
+            media_proc_chk = session.get(Service, process_id)
+            if media_proc_chk:
+                out_cfg_chk = (media_proc_chk.config or {}).get("output_config") or media_proc_chk.output_config
+                ok_lock, err_lock, lock_info = resource_lock_manager.acquire_lock(
+                    owner_type="service",
+                    owner_id=process_id,
+                    output_config=out_cfg_chk,
+                    owner_name=media_proc_chk.name
+                )
+                if not ok_lock:
+                    self.logger.error(f"Cannot start service {process_id}: {err_lock}")
+                    media_proc_chk.status = "error"
+                    media_proc_chk.error_message = err_lock
+                    session.commit()
+                    await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+                    return
+
         # Acquire remote peer lease if configured
         with self.db_session_factory() as session:
             from database.models import Service
             svc_remote = session.get(Service, process_id)
             if svc_remote:
                 cfg_remote = svc_remote.config or {}
-                peer_node_id = cfg_remote.get("output_config", {}).get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id") or (svc_remote.output_config or {}).get("peer_node_id")
-                peer_svc_id = cfg_remote.get("output_config", {}).get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id") or (svc_remote.output_config or {}).get("peer_service_id")
+                out_cfg_remote = cfg_remote.get("output_config") or svc_remote.output_config or {}
+                peer_node_id = out_cfg_remote.get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id")
+                peer_svc_id = out_cfg_remote.get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id")
                 if peer_node_id and peer_svc_id:
                     from core.peer_manager import peer_manager
                     try:
-                        await asyncio.to_thread(peer_manager.acquire_remote_lease, session, int(peer_node_id), int(peer_svc_id))
+                        res_info = resource_lock_manager.extract_resource_info(out_cfg_remote)
+                        res_path = res_info["resource_path"] if res_info else None
+                        ok_peer, peer_err = await asyncio.to_thread(
+                            peer_manager.acquire_remote_lease,
+                            session,
+                            int(peer_node_id),
+                            int(peer_svc_id),
+                            resource_path=res_path
+                        )
+                        if not ok_peer:
+                            err_msg = peer_err or f"Failed to acquire remote lease on peer node {peer_node_id}"
+                            self.logger.error(f"Cannot start service {process_id}: {err_msg}")
+                            svc_remote.status = "error"
+                            svc_remote.error_message = err_msg
+                            session.commit()
+                            resource_lock_manager.release_lock("service", process_id)
+                            await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+                            return
                     except Exception as e:
                         self.logger.warning(f"Failed to acquire remote lease on peer node {peer_node_id}: {e}")
         
@@ -540,6 +579,10 @@ class ProcessManager:
                                 await asyncio.to_thread(peer_manager.release_remote_lease, session, int(peer_node_id), int(peer_svc_id))
                             except Exception as e:
                                 self.logger.warning(f"Failed to release remote lease on peer node {peer_node_id}: {e}")
+
+                # Release exclusive resource lock
+                from core.resource_lock_manager import resource_lock_manager
+                resource_lock_manager.release_lock("service", process_id)
         finally:
             self.stopping_processes.discard(process_id)
 
@@ -1906,6 +1949,8 @@ class ProcessManager:
                             media_proc.status = 'error'
                             media_proc.restart_count = 0
                             self.restart_counts.pop(process_id, None)
+                            from core.resource_lock_manager import resource_lock_manager
+                            resource_lock_manager.release_lock("service", process_id)
 
                         session.commit()
 
@@ -1973,6 +2018,8 @@ class ProcessManager:
                                 media_proc.bitrate = "0 kb/s"
                                 media_proc.speed = "0x"
                                 self.restart_counts.pop(process_id, None)
+                                from core.resource_lock_manager import resource_lock_manager
+                                resource_lock_manager.release_lock("service", process_id)
                                 session.commit()
                                 # Notify finite retry exhaustion (1 single email when max retries reached!)
                                 self.notify_service_exhausted(process_id, media_proc.name, retries=retries)

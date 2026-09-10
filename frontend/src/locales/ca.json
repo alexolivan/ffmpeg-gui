@@ -1269,7 +1269,14 @@
     "lanJumbo": "Alt bitrate / Jumbo Frame (7520 B = 40 x 188)",
     "singlePacket": "Paquet TS individual per datagrama UDP (188 B)",
     "dvbMetadata": "Taules DVB i metadades PSI",
-    "cbrMuxrate": "Bitrate constant (CBR Muxrate)"
+    "cbrMuxrate": "Bitrate constant (CBR Muxrate)",
+    "resourceLocks": {
+      "available": "Disponible",
+      "inUseCurrent": "En ús (aquest procés)",
+      "inUseBy": "En ús per",
+      "warningTitle": "Recurs en ús",
+      "warningDesc": "Aquest punt d'emissió ({{resource}}) ja està sent utilitzat activament per \"{{owner}}\". Pots desar la configuració, però l'arrencada concurrent serà bloquejada."
+    }
   },
   "filters": {
     "filtersNotAvailable": "Els filtres només estan disponibles quan els fluxos de vídeo o àudio estan habilitats.",

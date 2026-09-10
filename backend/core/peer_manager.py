@@ -41,6 +41,11 @@ class PeerManager:
                 if now - leases[tok] > timeout_seconds:
                     logger.info(f"Peer lease expired for service {svc_id} from token {tok}")
                     del leases[tok]
+                    try:
+                        from core.resource_lock_manager import resource_lock_manager
+                        resource_lock_manager.release_peer_locks(tok, service_id=svc_id)
+                    except Exception as err:
+                        logger.warning(f"Failed to release peer locks on lease expiry: {err}")
             if not leases:
                 del self._active_remote_leases[svc_id]
 
@@ -272,6 +277,7 @@ class PeerManager:
 
         elif action == "ACQUIRE_LEASE":
             raw_svc_id = req.get("service_id")
+            resource_path = req.get("resource_path")
             try:
                 svc_id = int(raw_svc_id)
             except (ValueError, TypeError):
@@ -287,27 +293,45 @@ class PeerManager:
                 logger.warning(f"[Inbound RPC] ACQUIRE_LEASE: Service {svc_id} ({svc.name}) does not allow peer lease")
                 res_payload = {"status": "ERROR", "detail": f"Service {svc_id} does not allow peer lease"}
             else:
-                if svc_id not in self._active_remote_leases:
-                    self._active_remote_leases[svc_id] = {}
-                self._active_remote_leases[svc_id][token_id] = time.time()
-                logger.info(f"[Inbound RPC] ACQUIRE_LEASE: Acquired lease on service {svc_id} ({svc.name}) for token {token_id}. Total leases: {len(self._active_remote_leases[svc_id])}")
-                
-                # Auto-start service if stopped and process_manager available
-                if svc.status != "running" and process_manager:
-                    try:
-                        import asyncio
-                        # Trigger background start if async event loop active
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.create_task(process_manager.start_process(svc_id))
-                    except Exception as err:
-                        logger.warning(f"Failed to auto-start leased service {svc_id}: {err}")
+                conflict_err = None
+                if resource_path:
+                    from core.resource_lock_manager import resource_lock_manager
+                    raw_type = getattr(svc, 'service_type', '')
+                    mapped_type = 'icecast' if raw_type == 'icecast_server' else ('mediamtx' if raw_type == 'mediamtx_hub' else 'generic')
+                    ok_lock, err_lock, lock_entry = resource_lock_manager.acquire_peer_lock(
+                        token_id=token_id,
+                        service_id=svc_id,
+                        service_type=mapped_type,
+                        resource_path=resource_path,
+                        peer_name=inbound_key.alias or f"Peer {token_id}"
+                    )
+                    if not ok_lock:
+                        conflict_err = err_lock
 
-                res_payload = {
-                    "status": "LEASE_ACQUIRED",
-                    "service_status": svc.status,
-                    "lease_count": len(self._active_remote_leases[svc_id])
-                }
+                if conflict_err:
+                    res_payload = {"status": "CONFLICT", "detail": conflict_err}
+                else:
+                    if svc_id not in self._active_remote_leases:
+                        self._active_remote_leases[svc_id] = {}
+                    self._active_remote_leases[svc_id][token_id] = time.time()
+                    logger.info(f"[Inbound RPC] ACQUIRE_LEASE: Acquired lease on service {svc_id} ({svc.name}) for token {token_id}. Total leases: {len(self._active_remote_leases[svc_id])}")
+                    
+                    # Auto-start service if stopped and process_manager available
+                    if svc.status != "running" and process_manager:
+                        try:
+                            import asyncio
+                            # Trigger background start if async event loop active
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                asyncio.create_task(process_manager.start_process(svc_id))
+                        except Exception as err:
+                            logger.warning(f"Failed to auto-start leased service {svc_id}: {err}")
+
+                    res_payload = {
+                        "status": "LEASE_ACQUIRED",
+                        "service_status": svc.status,
+                        "lease_count": len(self._active_remote_leases[svc_id])
+                    }
 
         elif action == "HEARTBEAT":
             raw_svc_id = req.get("service_id")
@@ -339,6 +363,11 @@ class PeerManager:
                 self._active_remote_leases[svc_id].pop(token_id, None)
                 if not self._active_remote_leases[svc_id]:
                     del self._active_remote_leases[svc_id]
+            try:
+                from core.resource_lock_manager import resource_lock_manager
+                resource_lock_manager.release_peer_locks(token_id, service_id=svc_id, resource_path=req.get("resource_path"))
+            except Exception as err:
+                logger.warning(f"Failed to release peer locks on RELEASE_LEASE: {err}")
             res_payload = {"status": "LEASE_RELEASED"}
 
         else:
@@ -436,21 +465,24 @@ class PeerManager:
                 resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5)
             except requests.exceptions.SSLError:
                 resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5, verify=False)
-            if resp.status_code != 200:
+            if resp.status_code not in (200, 409):
                 return False, None, f"HTTP {resp.status_code}: {resp.text[:100]}"
             dec_res = PeerCrypto.decrypt_payload(resp.json(), node.secret_key)
             return True, dec_res, None
         except Exception as e:
             return False, None, str(e)
 
-    def acquire_remote_lease(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:
-        success, res, err = self._send_rpc_to_node(db_session, node_id, {
+    def acquire_remote_lease(self, db_session, node_id: int, service_id: int, resource_path: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        payload = {
             "action": "ACQUIRE_LEASE",
             "service_id": service_id
-        })
+        }
+        if resource_path:
+            payload["resource_path"] = resource_path
+        success, res, err = self._send_rpc_to_node(db_session, node_id, payload)
         if not success:
             return False, err
-        if not res or res.get("status") == "ERROR":
+        if not res or res.get("status") in ("ERROR", "CONFLICT"):
             return False, res.get("detail", "Failed to acquire remote lease") if res else "Unknown error"
         return True, None
 
@@ -463,11 +495,14 @@ class PeerManager:
             return False, err
         return True, None
 
-    def release_remote_lease(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:
-        success, res, err = self._send_rpc_to_node(db_session, node_id, {
+    def release_remote_lease(self, db_session, node_id: int, service_id: int, resource_path: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        payload = {
             "action": "RELEASE_LEASE",
             "service_id": service_id
-        })
+        }
+        if resource_path:
+            payload["resource_path"] = resource_path
+        success, res, err = self._send_rpc_to_node(db_session, node_id, payload)
         if not success:
             return False, err
         return True, None

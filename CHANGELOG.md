@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.0] - 2026-09-10
+
+### Added
+- **Granular Resource Collision Prevention (Mountpoints & Stream Paths)**:
+  - Implemented thread-safe `ResourceLockManager` singleton managing exclusive write/publish locks on Icecast mountpoints (`/live.mp3`) and MediaMTX stream paths (`cam1`).
+  - Added publisher-only acquisition interlock in `ProcessManager.start_process` and `TaskManager.start_execution`, preventing conflicting FFmpeg processes from hijacking or colliding on identical broadcast paths.
+  - Implemented first-wins startup arbitration: subsequent conflicting processes abort immediately with descriptive error messages before spawning the subprocess, cleanly releasing dependencies.
+  - Extended Peer Federation RPC (`ACQUIRE_LEASE` & `RELEASE_LEASE`) to negotiate `resource_path`, returning `409 Conflict` if an auxiliary service mount or path is held by another local process or federated peer.
+  - Added `resource_locks` to WebSocket telemetry broadcasts and implemented REST endpoint `GET /api/resources/locks`.
+  - Added live collision awareness in `DestinationPanel.tsx`: status pills in path/mount selectors (🟢 Disponible / 🔴 En uso por [owner]) and informative alert banners warning operators before concurrent execution.
+  - Added comprehensive automated unit and integration tests (`test_resource_locks.py`, `test_collision_interlock.py`, `test_peer_manager.py`).
+
 ## [2.18.0] - 2026-09-10
 
 ### Added

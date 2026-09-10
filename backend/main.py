@@ -3057,6 +3057,9 @@ async def telemetry_broadcast_loop():
                 }
             }
 
+            from core.resource_lock_manager import resource_lock_manager
+            active_resource_locks = resource_lock_manager.get_active_locks()
+
             await manager.broadcast({
                 "type": "telemetry",
                 "data": processes_data,
@@ -3065,7 +3068,8 @@ async def telemetry_broadcast_loop():
                 "system": system_data,
                 "task_stats": task_stats,
                 "storages": storages_data,
-                "peers": peers_data
+                "peers": peers_data,
+                "resource_locks": active_resource_locks
             })
         except Exception as e:
             logger.exception(f"Error in telemetry broadcast loop: {e}")
@@ -7364,6 +7368,11 @@ def delete_peer_remote_node(node_id: int, db: Session = Depends(get_db)):
     db.delete(node)
     db.commit()
     return {"detail": "Remote node deleted"}
+# --- Resource Locks Endpoints ---
+@app.get("/api/resources/locks")
+def get_resource_locks_endpoint(user: str = Depends(verify_token)):
+    from core.resource_lock_manager import resource_lock_manager
+    return {"locks": resource_lock_manager.get_active_locks()}
 
 
 # Mounting static files and SPA fallback

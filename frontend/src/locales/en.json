@@ -1269,7 +1269,14 @@
     "lanJumbo": "High Bitrate / Jumbo Frame (7520 B = 40 x 188)",
     "singlePacket": "Single TS Packet per UDP datagram (188 B)",
     "dvbMetadata": "DVB Tables & PSI Metadata",
-    "cbrMuxrate": "Constant Bitrate (CBR Muxrate)"
+    "cbrMuxrate": "Constant Bitrate (CBR Muxrate)",
+    "resourceLocks": {
+      "available": "Available",
+      "inUseCurrent": "In use (this process)",
+      "inUseBy": "In use by",
+      "warningTitle": "Resource In Use",
+      "warningDesc": "This emission point ({{resource}}) is currently active and held by \"{{owner}}\". You can save this configuration, but concurrent startup will be blocked."
+    }
   },
   "filters": {
     "filtersNotAvailable": "Filters are only available when video or audio streams are enabled.",

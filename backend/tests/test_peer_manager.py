@@ -271,5 +271,61 @@ class TestPeerManager(unittest.TestCase):
         self.assertFalse(ice_entry["protocols"]["ssl_enabled"])
         self.assertEqual(ice_entry["protocols"]["port"], 8000)
 
+    def test_inbound_lease_resource_locks(self):
+        from core.resource_lock_manager import resource_lock_manager
+        resource_lock_manager.clear_all()
+
+        # Shared service
+        svc = Service(
+            name="Shared Hub",
+            service_type="mediamtx_hub",
+            status="running",
+            config={"mediamtx_config": {}},
+            is_shared_with_peers=True,
+            allow_peer_lease=True
+        )
+        self.session.add(svc)
+        self.session.commit()
+        self.session.refresh(svc)
+
+        # 1. First peer acquires lease on path 'cam1'
+        req1 = {"action": "ACQUIRE_LEASE", "service_id": svc.id, "resource_path": "cam1"}
+        enc1 = PeerCrypto.encrypt_payload(req1, self.secret_key)
+        code1, resp1 = self.peer_mgr.handle_inbound_rpc(self.token_id, enc1, self.session)
+        self.assertEqual(code1, 200)
+        dec1 = PeerCrypto.decrypt_payload(resp1, self.secret_key)
+        self.assertEqual(dec1.get("status"), "LEASE_ACQUIRED")
+        self.assertEqual(len(resource_lock_manager.get_active_locks()), 1)
+
+        # 2. Second peer (different key) tries to acquire same path 'cam1' -> CONFLICT
+        token2, sec2 = PeerCrypto.generate_keypair()
+        key2 = PeerInboundKey(alias="client-beta", token_id=token2, secret_key=sec2)
+        self.session.add(key2)
+        self.session.commit()
+
+        req2 = {"action": "ACQUIRE_LEASE", "service_id": svc.id, "resource_path": "cam1"}
+        enc2 = PeerCrypto.encrypt_payload(req2, sec2)
+        code2, resp2 = self.peer_mgr.handle_inbound_rpc(token2, enc2, self.session)
+        self.assertEqual(code2, 200)
+        dec2 = PeerCrypto.decrypt_payload(resp2, sec2)
+        self.assertEqual(dec2.get("status"), "CONFLICT")
+        self.assertIn("ya está siendo emitido", dec2.get("detail", ""))
+
+        # 3. First peer releases lease
+        req_rel = {"action": "RELEASE_LEASE", "service_id": svc.id, "resource_path": "cam1"}
+        enc_rel = PeerCrypto.encrypt_payload(req_rel, self.secret_key)
+        code_rel, resp_rel = self.peer_mgr.handle_inbound_rpc(self.token_id, enc_rel, self.session)
+        self.assertEqual(code_rel, 200)
+        dec_rel = PeerCrypto.decrypt_payload(resp_rel, self.secret_key)
+        self.assertEqual(dec_rel.get("status"), "LEASE_RELEASED")
+        self.assertEqual(len(resource_lock_manager.get_active_locks()), 0)
+
+        # 4. Now second peer can acquire it
+        code2_retry, resp2_retry = self.peer_mgr.handle_inbound_rpc(token2, enc2, self.session)
+        self.assertEqual(code2_retry, 200)
+        dec2_retry = PeerCrypto.decrypt_payload(resp2_retry, sec2)
+        self.assertEqual(dec2_retry.get("status"), "LEASE_ACQUIRED")
+        self.assertEqual(len(resource_lock_manager.get_active_locks()), 1)
+
 if __name__ == "__main__":
     unittest.main()

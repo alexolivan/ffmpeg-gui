@@ -86,6 +86,8 @@ interface DestinationPanelProps {
   validationWarnings?: Record<string, string>;
   storages?: any[];
   codecConfig?: any;
+  currentProcessId?: number | string | null;
+  isTask?: boolean;
 }
 
 const OUTPUT_TYPES = [
@@ -129,6 +131,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   validationWarnings,
   storages = [],
   codecConfig,
+  currentProcessId,
+  isTask = false,
 }) => {
   const { t } = useTranslation();
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
@@ -305,6 +309,91 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
     return () => { active = false; };
   }, []);
+
+  // Resource collision locks tracking
+  const [resourceLocks, setResourceLocks] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    let active = true;
+    const fetchLocks = () => {
+      fetch('/api/resources/locks')
+        .then(res => res.ok ? res.json() : { locks: [] })
+        .then(data => {
+          if (active) setResourceLocks(data.locks || []);
+        })
+        .catch(() => {
+          if (active) setResourceLocks([]);
+        });
+    };
+    fetchLocks();
+    const timer = setInterval(fetchLocks, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const getResourceLock = (serviceType: 'icecast' | 'mediamtx', pathOrMount: string) => {
+    if (!pathOrMount) return null;
+    const cleanPath = pathOrMount.trim();
+    return resourceLocks.find(l => {
+      if (l.service_type !== serviceType && l.service_type !== 'generic') return false;
+      const lockPath = l.resource_path;
+      const pathMatch = lockPath === cleanPath ||
+        (serviceType === 'icecast' && (lockPath === (cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`)));
+      if (!pathMatch) return false;
+
+      // Match provider if set
+      if (config.provider_service_id && l.service_id) {
+        return l.service_id === config.provider_service_id;
+      }
+      if (config.peer_service_id && l.service_id) {
+        return l.service_id === config.peer_service_id;
+      }
+      if (config.host && l.lock_key && l.lock_key.includes(config.host)) {
+        return true;
+      }
+      return true;
+    });
+  };
+
+  const isLockHeldByCurrent = (lock: any) => {
+    if (!lock || !currentProcessId) return false;
+    const expectedOwnerType = isTask ? 'task' : 'service';
+    return lock.owner_type === expectedOwnerType && String(lock.owner_id) === String(currentProcessId);
+  };
+
+  const getOptionLockStatus = (serviceType: 'icecast' | 'mediamtx', pathOrMount: string) => {
+    const lock = getResourceLock(serviceType, pathOrMount);
+    if (!lock) {
+      return ` · 🟢 [${t('destinations.resourceLocks.available', 'Disponible')}]`;
+    }
+    if (isLockHeldByCurrent(lock)) {
+      return ` · 🟢 [${t('destinations.resourceLocks.inUseCurrent', 'En uso (este proceso)')}]`;
+    }
+    return ` · 🔴 [${t('destinations.resourceLocks.inUseBy', 'En uso por')} ${lock.owner_name || lock.owner_type}]`;
+  };
+
+  const renderCollisionWarning = (lock: any, resourceLabel: string) => {
+    if (!lock || isLockHeldByCurrent(lock)) return null;
+    const ownerDesc = lock.owner_name ? `${lock.owner_name} (${lock.owner_type})` : lock.owner_type;
+    return (
+      <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs my-2">
+        <span className="text-sm">⚠️</span>
+        <div className="space-y-0.5">
+          <div className="font-semibold text-amber-200">
+            {t('destinations.resourceLocks.warningTitle', 'Recurso en uso')}
+          </div>
+          <div className="text-[11px] opacity-90">
+            {t('destinations.resourceLocks.warningDesc', 'Este punto de emisión ({{resource}}) ya está siendo utilizado activamente por "{{owner}}". Puedes guardar la configuración, pero el arranque concurrente será bloqueado.', {
+              resource: resourceLabel,
+              owner: ownerDesc
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Deterministic port and provider synchronization on mount or provider resolution
   React.useEffect(() => {
@@ -985,7 +1074,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         >
                           {configuredPaths.map(pKey => (
                             <option key={pKey} value={pKey}>
-                              /{pKey} {activePathsDict[pKey]?.mode ? `(${activePathsDict[pKey].mode})` : ''}
+                              /{pKey} {activePathsDict[pKey]?.mode ? `(${activePathsDict[pKey].mode})` : ''} {getOptionLockStatus('mediamtx', pKey)}
                             </option>
                           ))}
                           <option value="__custom__">{t('destinations.srtCustomPath', '✏️ Custom Path Slug...')}</option>
@@ -1031,6 +1120,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         <span>{authHint}</span>
                       </div>
                     )}
+
+                    {/* Resource collision warning banner */}
+                    {renderCollisionWarning(getResourceLock('mediamtx', config.path_id || ''), config.path_id || '')}
 
                     {/* Stream ID Preview */}
                     <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2">
@@ -1674,7 +1766,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                           onChange={e => handleSelectPath(e.target.value)}
                         >
                           {configuredPaths.map(pName => (
-                            <option key={pName} value={pName}>/{pName}</option>
+                            <option key={pName} value={pName}>/{pName} {getOptionLockStatus('mediamtx', pName)}</option>
                           ))}
                           <option value="__custom__">✎ {t('destinations.customPathPrompt', 'Custom Path...')}</option>
                         </select>
@@ -1731,6 +1823,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         />
                       </div>
                     )}
+
+                    {/* Resource collision warning banner */}
+                    {renderCollisionWarning(getResourceLock('mediamtx', config.path_id || ''), config.path_id || '')}
 
                     {/* Generated URL & Auto-computed field */}
                     <div>
@@ -2383,7 +2478,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       >
                         {mountNames.map((m: string) => (
                           <option key={m} value={m}>
-                            {m}
+                            {m} {getOptionLockStatus('icecast', m)}
                           </option>
                         ))}
                         <option value="__custom__">✎ {t('destinations.icecast.customMount', 'Personalizado...')}</option>
@@ -2407,6 +2502,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     />
                   </div>
                 )}
+
+                {/* Resource collision warning banner */}
+                {renderCollisionWarning(getResourceLock('icecast', config.icecast_mount || ''), config.icecast_mount || '')}
 
                 {/* Auto-managed Protocol & TLS notices */}
                 {activeLegacy && (
@@ -2500,6 +2598,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   {validationErrors?.icecast_mount && (
                     <span className="text-[10px] text-red-400 block mt-1">{validationErrors.icecast_mount}</span>
                   )}
+                  {renderCollisionWarning(getResourceLock('icecast', config.icecast_mount || ''), config.icecast_mount || '')}
                 </div>
 
                 <div>
@@ -3279,7 +3378,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         >
                           {configuredPaths.map(pName => (
                             <option key={pName} value={pName}>
-                              /{pName} {activePathsDict[pName]?.mode === 'open' ? '(LAN Open)' : ''}
+                              /{pName} {activePathsDict[pName]?.mode === 'open' ? '(LAN Open)' : ''} {getOptionLockStatus('mediamtx', pName)}
                             </option>
                           ))}
                           <option value="__custom__">{t('destinations.customPathOption', '+ Custom Path Slug...')}</option>
@@ -3337,6 +3436,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         />
                       </div>
                     )}
+
+                    {/* Resource collision warning banner */}
+                    {renderCollisionWarning(getResourceLock('mediamtx', config.path_id || ''), config.path_id || '')}
 
                     {/* Generated URL & Auto-computed field */}
                     <div>
