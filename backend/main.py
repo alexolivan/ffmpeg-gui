@@ -6833,6 +6833,7 @@ def serialize_peer_remote_node(node: PeerRemoteNode) -> dict:
         "status": node.status,
         "latency_ms": node.latency_ms,
         "catalog_version": node.catalog_version,
+        "cached_services": node.cached_services_json or [],
         "cached_services_json": node.cached_services_json or [],
         "last_seen": node.last_seen.isoformat() + "Z" if node.last_seen else None,
         "last_error": node.last_error,

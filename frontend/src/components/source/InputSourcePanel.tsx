@@ -40,12 +40,12 @@ export interface InputSourceConfig {
   pbkeylen?: number | string;
   stream_action?: string;
   service_target?: string;
-  mediamtx_target_type?: 'local' | 'remote';
+  mediamtx_target_type?: 'local' | 'remote' | 'managed' | 'external';
   peer_node_id?: number | null;
   peer_service_id?: number | null;
   icecast_mode?: boolean;
   icecast_mount?: string;
-  icecast_target_type?: 'local' | 'remote';
+  icecast_target_type?: 'local' | 'remote' | 'managed' | 'external';
   tls?: boolean;
 }
 
@@ -408,7 +408,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
     const icecastProviders = providers.filter(p => p.service_type === 'icecast_server');
 
     if (config.type === 'srt' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
-      if (config.mediamtx_target_type !== 'remote' && mediamtxProviders.length > 0) {
+      if (!config.peer_node_id && config.mediamtx_target_type !== 'remote' && config.mediamtx_target_type !== 'external' && mediamtxProviders.length > 0) {
         const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         if (prov) {
           const pCfg = prov.config || {};
@@ -423,7 +423,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         }
       }
     } else if (config.type === 'rtmp' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
-      if (config.mediamtx_target_type !== 'remote' && mediamtxProviders.length > 0) {
+      if (!config.peer_node_id && config.mediamtx_target_type !== 'remote' && config.mediamtx_target_type !== 'external' && mediamtxProviders.length > 0) {
         const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         if (prov) {
           const pCfg = prov.config || {};
@@ -439,7 +439,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         }
       }
     } else if (config.type === 'hls' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
-      if (config.mediamtx_target_type !== 'remote' && mediamtxProviders.length > 0) {
+      if (!config.peer_node_id && config.mediamtx_target_type !== 'remote' && config.mediamtx_target_type !== 'external' && mediamtxProviders.length > 0) {
         const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
         if (prov) {
           const pCfg = prov.config || {};
@@ -454,7 +454,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         }
       }
     } else if (config.type === 'http_audio' && (config.icecast_mode || config.service_target === 'icecast')) {
-      if (config.icecast_target_type !== 'remote' && icecastProviders.length > 0) {
+      if (!config.peer_node_id && config.icecast_target_type !== 'remote' && config.icecast_target_type !== 'external' && icecastProviders.length > 0) {
         const prov = icecastProviders.find(p => p.id === config.provider_service_id) || icecastProviders[0];
         if (prov) {
           const pCfg = prov.config || {};
@@ -470,7 +470,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         }
       }
     }
-  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls]);
+  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls, config.peer_node_id, config.mediamtx_target_type, config.icecast_target_type]);
 
   return (
     <div className="space-y-2">
@@ -545,19 +545,51 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {/* ── HTTP Audio (Icecast / Shoutcast) Input Assistant ── */}
       {config.type === 'http_audio' && (() => {
         const icecastProviders = providers.filter(p => p.service_type === 'icecast_server');
-        const isIcecastMode = Boolean(config.icecast_mode || config.service_target === 'icecast' || config.provider_service_id);
-        const isRemote = config.icecast_target_type === 'remote' || (!config.provider_service_id && icecastProviders.length === 0);
+        const remoteIcecastServices = remotePeers.flatMap(peer =>
+          (peer.cached_services || peer.cached_services_json || [])
+            .filter((s: any) => s.service_type === 'icecast_server')
+            .map((s: any) => ({ peer, svc: s }))
+        );
+        const hasManagedProviders = icecastProviders.length > 0 || remoteIcecastServices.length > 0;
+        const isIcecastMode = Boolean(config.icecast_mode || config.service_target === 'icecast' || config.provider_service_id || config.peer_node_id);
+        const isExternal = (config.icecast_target_type === 'external' || (config.icecast_target_type === 'remote' && !config.peer_node_id)) || (!config.provider_service_id && !config.peer_node_id && !hasManagedProviders);
         const selectedProvider = icecastProviders.find(p => p.id === config.provider_service_id) || icecastProviders[0];
-        const iceCfg = selectedProvider?.config || {};
-        const availableMounts: any[] = Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [];
-        const mountNames = availableMounts.map((m: any) => m.mount_name).filter(Boolean);
+
+        // Resolve active icecast configuration (Local vs Peer)
+        let availableMounts: any[] = [];
+        let activeTls = false;
+        let activePort = '7000';
+        let currentHost = '127.0.0.1';
+
+        if (config.peer_node_id) {
+          const peer = remotePeers.find(p => p.id === config.peer_node_id);
+          const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
+          const svc = services.find((s: any) => s.id === config.peer_service_id);
+          const protos = svc?.protocols || {};
+          availableMounts = Array.isArray(protos.mounts) ? protos.mounts : [];
+          activeTls = Boolean(protos.ssl_enabled);
+          activePort = String(config.tls ? (protos.ssl_port || 7443) : (protos.port || 7000));
+          try {
+            currentHost = peer ? new URL(peer.base_url).hostname : '127.0.0.1';
+          } catch {
+            currentHost = peer ? peer.base_url.replace(/https?:\/\//, '').split(':')[0] : '127.0.0.1';
+          }
+        } else {
+          const iceCfg = selectedProvider?.config || {};
+          availableMounts = Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [];
+          activeTls = Boolean(iceCfg.ssl_enabled || iceCfg.is_ssl);
+          activePort = String(config.tls ? (iceCfg.ssl_port || 7443) : (iceCfg.port || 7000));
+          currentHost = '127.0.0.1';
+        }
+
+        const mountNames = availableMounts.map((m: any) => typeof m === 'string' ? m : m.mount_name).filter(Boolean);
 
         const handleSelectProvider = (provId: number, isTls?: boolean) => {
           const prov = icecastProviders.find(p => p.id === provId);
           if (!prov) return;
           const pCfg = prov.config || {};
           const pMounts: any[] = Array.isArray(pCfg.mounts) ? pCfg.mounts : [];
-          const firstMount = pMounts.length > 0 ? pMounts[0].mount_name : (config.icecast_mount || '/live.mp3');
+          const firstMount = pMounts.length > 0 ? (typeof pMounts[0] === 'string' ? pMounts[0] : pMounts[0].mount_name) : (config.icecast_mount || '/live.mp3');
 
           const useTls = isTls !== undefined ? isTls : Boolean(pCfg.ssl_enabled || pCfg.is_ssl);
           const port = useTls ? (pCfg.ssl_port || 7443) : (pCfg.port || 7000);
@@ -569,9 +601,54 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
           update({
             provider_service_id: prov.id,
+            peer_node_id: undefined,
+            peer_service_id: undefined,
             service_target: 'icecast',
-            icecast_target_type: 'local',
+            icecast_target_type: 'managed',
             host: '127.0.0.1',
+            port: String(port),
+            icecast_mount: firstMount,
+            icecast_mode: true,
+            tls: useTls,
+            path: genUrl,
+          });
+        };
+
+        const handleSelectRemotePeer = (peerId: number, svcId: number) => {
+          const peer = remotePeers.find(p => p.id === peerId);
+          if (!peer) return;
+          const services = peer.cached_services || peer.cached_services_json || [];
+          const svc = services.find((s: any) => s.id === svcId);
+          if (!svc) return;
+
+          let host = '127.0.0.1';
+          try {
+            host = new URL(peer.base_url).hostname;
+          } catch {
+            host = peer.base_url.replace(/https?:\/\//, '').split(':')[0];
+          }
+
+          const protos = svc.protocols || {};
+          const pMounts: any[] = Array.isArray(protos.mounts) ? protos.mounts : [];
+          const firstMount = pMounts.length > 0
+            ? (typeof pMounts[0] === 'string' ? pMounts[0] : pMounts[0].mount_name)
+            : (config.icecast_mount || '/live.mp3');
+
+          const useTls = Boolean(protos.ssl_enabled && config.tls);
+          const port = useTls ? (protos.ssl_port || 7443) : (protos.port || 7000);
+          const scheme = useTls ? 'https' : 'http';
+          const rUser = config.read_user || config.auth_user || '';
+          const rPass = config.read_pass || config.auth_pass || '';
+          const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}${host}:${port}${firstMount.startsWith('/') ? firstMount : `/${firstMount}`}`;
+
+          update({
+            provider_service_id: undefined,
+            peer_node_id: peer.id,
+            peer_service_id: svc.id,
+            service_target: 'icecast',
+            icecast_target_type: 'managed',
+            host: host,
             port: String(port),
             icecast_mount: firstMount,
             icecast_mode: true,
@@ -586,9 +663,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           const rUser = config.read_user || config.auth_user || '';
           const rPass = config.read_pass || config.auth_pass || '';
           const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
-          const port = config.port || (config.tls ? '7443' : '7000');
+          const port = config.port || activePort;
           const cleanMount = mountName ? (mountName.startsWith('/') ? mountName : `/${mountName}`) : '/live.mp3';
-          const genUrl = `${scheme}://${authPrefix}${config.host || '127.0.0.1'}:${port}${cleanMount}`;
+          const genUrl = `${scheme}://${authPrefix}${config.host || currentHost}:${port}${cleanMount}`;
 
           update({
             icecast_mount: mountName,
@@ -612,6 +689,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   service_target: undefined,
                   icecast_mount: undefined,
                   provider_service_id: undefined,
+                  peer_node_id: undefined,
+                  peer_service_id: undefined,
                   icecast_target_type: undefined,
                 })}
               >
@@ -628,10 +707,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   if (icecastProviders.length > 0) {
                     const defaultProv = icecastProviders.find(p => p.id === config.provider_service_id) || icecastProviders[0];
                     handleSelectProvider(defaultProv.id);
+                  } else if (remoteIcecastServices.length > 0) {
+                    handleSelectRemotePeer(remoteIcecastServices[0].peer.id, remoteIcecastServices[0].svc.id);
                   } else {
                     update({
                       icecast_mode: true,
-                      icecast_target_type: 'remote',
+                      icecast_target_type: 'external',
                       service_target: 'icecast',
                       host: config.host && config.host !== '127.0.0.1' ? config.host : '',
                       port: config.port || '8000',
@@ -648,48 +729,48 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
             {isIcecastMode ? (
               <div className="p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl space-y-3">
-                {/* Local vs Remote Submode */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
-                    {t('sources.targetServerLocation', 'Target Icecast Instance')}
-                  </span>
-                  <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
-                    <button
-                      type="button"
-                      disabled={icecastProviders.length === 0}
-                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
-                        !isRemote
-                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40'
-                      }`}
-                      onClick={() => {
-                        if (icecastProviders.length > 0) {
-                          handleSelectProvider(icecastProviders[0].id);
-                        }
-                      }}
-                    >
-                      {t('sources.localManagedHub', 'Local Managed')}
-                    </button>
-                    <button
-                      type="button"
-                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
-                        isRemote
-                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                      }`}
-                      onClick={() => update({
-                        icecast_target_type: 'remote',
-                        provider_service_id: undefined,
-                        host: config.host && config.host !== '127.0.0.1' ? config.host : '',
-                        port: config.port || '8000',
-                      })}
-                    >
-                      {t('sources.remoteExternalHub', 'Remote / External')}
-                    </button>
-                  </div>
+                {/* Managed Service vs Manual External Server */}
+                <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                  <button
+                    type="button"
+                    disabled={!hasManagedProviders}
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      !isExternal && hasManagedProviders
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => {
+                      if (icecastProviders.length > 0) {
+                        const defaultProv = icecastProviders.find(p => p.id === config.provider_service_id) || icecastProviders[0];
+                        if (defaultProv) handleSelectProvider(defaultProv.id);
+                      } else if (remoteIcecastServices.length > 0) {
+                        handleSelectRemotePeer(remoteIcecastServices[0].peer.id, remoteIcecastServices[0].svc.id);
+                      }
+                    }}
+                  >
+                    <span>📻</span> {t('sources.managedService', 'Managed Service (Local & Peers)')} {!hasManagedProviders ? `(${t('common.none', 'None')})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      isExternal
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => update({
+                      icecast_target_type: 'external',
+                      provider_service_id: undefined,
+                      peer_node_id: undefined,
+                      peer_service_id: undefined,
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8000',
+                    })}
+                  >
+                    <span>🌐</span> {t('sources.externalServer', 'Manual External Server (Unfederated Host)')}
+                  </button>
                 </div>
 
-                {!isRemote && selectedProvider ? (
+                {!isExternal ? (
                   <div className="space-y-2.5">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -697,15 +778,36 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           {t('sources.selectIcecastService', 'Icecast Service')}
                         </label>
                         <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
-                          value={selectedProvider.id}
-                          onChange={e => handleSelectProvider(Number(e.target.value))}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val.startsWith('peer:')) {
+                              const [, pId, sId] = val.split(':');
+                              handleSelectRemotePeer(parseInt(pId), parseInt(sId));
+                            } else {
+                              handleSelectProvider(Number(val));
+                            }
+                          }}
                         >
-                          {icecastProviders.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} (Port :{p.config?.port || 7000})
-                            </option>
-                          ))}
+                          {icecastProviders.length > 0 && (
+                            <optgroup label={t('sources.localServices', 'Local Services (This Node)')}>
+                              {icecastProviders.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name} (Port :{p.config?.port || 7000})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {remoteIcecastServices.length > 0 && (
+                            <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
+                              {remoteIcecastServices.map(({ peer, svc }) => (
+                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
+                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
                       </div>
                       <div>
@@ -713,7 +815,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           {t('sources.icecastMountPoint', 'Mountpoint')}
                         </label>
                         <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
                           value={mountNames.includes(config.icecast_mount || '') ? config.icecast_mount : '__custom__'}
                           onChange={e => handleSelectMount(e.target.value)}
                         >
@@ -726,20 +828,42 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     </div>
 
                     {/* TLS / HTTPS toggle if supported by server */}
-                    {(iceCfg.ssl_enabled || iceCfg.is_ssl) && (
+                    {activeTls && (
                       <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
                         <div className="text-xs">
                           <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
                             🔒 {t('sources.enableHttpsIcecast', 'Secure HTTPS Pull (TLS)')}
                           </span>
                           <span className="text-[10px] text-[var(--text-secondary)] block">
-                            Port :{iceCfg.ssl_port || 7443}
+                            Port :{activePort}
                           </span>
                         </div>
                         <input
                           type="checkbox"
                           checked={Boolean(config.tls)}
-                          onChange={e => handleSelectProvider(selectedProvider.id, e.target.checked)}
+                          onChange={e => {
+                            const useTls = e.target.checked;
+                            if (config.peer_node_id) {
+                              const peer = remotePeers.find(p => p.id === config.peer_node_id);
+                              const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
+                              const svc = services.find((s: any) => s.id === config.peer_service_id);
+                              const protos = svc?.protocols || {};
+                              const port = useTls ? (protos.ssl_port || 7443) : (protos.port || 7000);
+                              const scheme = useTls ? 'https' : 'http';
+                              const rUser = config.read_user || config.auth_user || '';
+                              const rPass = config.read_pass || config.auth_pass || '';
+                              const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+                              const mount = config.icecast_mount || '/live.mp3';
+                              const cleanMount = mount.startsWith('/') ? mount : `/${mount}`;
+                              update({
+                                tls: useTls,
+                                port: String(port),
+                                path: `${scheme}://${authPrefix}${currentHost}:${port}${cleanMount}`,
+                              });
+                            } else if (selectedProvider) {
+                              handleSelectProvider(selectedProvider.id, useTls);
+                            }
+                          }}
                           className="accent-brand-lime cursor-pointer w-4 h-4"
                         />
                       </div>
@@ -764,7 +888,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                             const cleanMount = newMount ? (newMount.startsWith('/') ? newMount : `/${newMount}`) : '/live.mp3';
                             update({
                               icecast_mount: newMount,
-                              path: `${scheme}://${authPrefix}127.0.0.1:${config.port || (config.tls ? 7443 : 7000)}${cleanMount}`,
+                              path: `${scheme}://${authPrefix}${config.host || currentHost}:${config.port || activePort}${cleanMount}`,
                             });
                           }}
                         />
@@ -881,21 +1005,83 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {/* ── RTMP Input Assistant ── */}
       {config.type === 'rtmp' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
-        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
-        const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
+        const remoteMtxServices = remotePeers.flatMap(peer =>
+          (peer.cached_services || peer.cached_services_json || [])
+            .filter((s: any) => s.service_type === 'mediamtx_hub')
+            .map((s: any) => ({ peer, svc: s }))
+        );
+        const hasManagedProviders = mediamtxProviders.length > 0 || remoteMtxServices.length > 0;
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id || config.peer_node_id);
+        const isExternal = (config.mediamtx_target_type === 'external' || (config.mediamtx_target_type === 'remote' && !config.peer_node_id)) || (!config.provider_service_id && !config.peer_node_id && !hasManagedProviders);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
-        const mtxCfg = selectedProvider?.config || {};
-        const rawPaths = mtxCfg.paths || {};
-        const configuredPaths = Object.keys(rawPaths);
+
+        // Resolve active paths dictionary and security (Local vs Peer)
+        let activePathsDict: Record<string, any> = {};
+        let activeSecurity: any = {};
+        let currentHost = '127.0.0.1';
+        let activeSsl = false;
+        let activeRtmpsPort = 1936;
+
+        if (config.peer_node_id) {
+          const peer = remotePeers.find(p => p.id === config.peer_node_id);
+          const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
+          const svc = services.find((s: any) => s.id === config.peer_service_id);
+          const protos = svc?.protocols || {};
+          activeSecurity = protos.security || {};
+          activeSsl = Boolean(protos.ssl_enabled);
+          activeRtmpsPort = protos.rtmps?.port || 1936;
+          try {
+            currentHost = peer ? new URL(peer.base_url).hostname : '127.0.0.1';
+          } catch {
+            currentHost = peer ? peer.base_url.replace(/https?:\/\//, '').split(':')[0] : '127.0.0.1';
+          }
+          const paths = protos.paths || {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            activePathsDict = paths;
+          }
+        } else {
+          const mtxCfg = selectedProvider?.config || {};
+          activeSecurity = mtxCfg.security || {};
+          activeSsl = Boolean(mtxCfg.ssl_enabled && mtxCfg.rtmps_enabled);
+          activeRtmpsPort = mtxCfg.rtmps_port || 1936;
+          currentHost = '127.0.0.1';
+          const rawPaths = mtxCfg.paths || {};
+          if (Array.isArray(rawPaths)) {
+            for (const p of rawPaths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof rawPaths === 'object' && rawPaths !== null) {
+            activePathsDict = rawPaths;
+          }
+        }
+        const configuredPaths = Object.keys(activePathsDict);
 
         const handleSelectProvider = (provId: number, isTls?: boolean) => {
           const prov = mediamtxProviders.find(p => p.id === provId);
           if (!prov) return;
           const pCfg = prov.config || {};
           const paths = pCfg.paths || {};
-          const pKeys = Object.keys(paths);
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
           const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
-          const pathConf = paths[firstPath] || {};
+          const pathConf = pathsDict[firstPath] || {};
 
           let rUser = '';
           let rPass = '';
@@ -918,7 +1104,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             peer_node_id: undefined,
             peer_service_id: undefined,
             service_target: 'mediamtx',
-            mediamtx_target_type: 'local',
+            mediamtx_target_type: 'managed',
             host: '127.0.0.1',
             port: String(port),
             path_id: firstPath,
@@ -932,26 +1118,35 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           });
         };
 
-        const handleSelectRemotePeer = (peerId: number, svcId: number) => {
+        const handleSelectRemotePeer = (peerId: number, svcId: number, isTls?: boolean) => {
           const peer = remotePeers.find(p => p.id === peerId);
           if (!peer) return;
-          const svc = (peer.cached_services || []).find((s: any) => s.id === svcId);
+          const services = peer.cached_services || peer.cached_services_json || [];
+          const svc = services.find((s: any) => s.id === svcId);
           if (!svc) return;
 
           let host = '127.0.0.1';
           try {
-            const u = new URL(peer.base_url);
-            host = u.hostname;
+            host = new URL(peer.base_url).hostname;
           } catch {
             host = peer.base_url.replace(/https?:\/\//, '').split(':')[0];
           }
 
           const protos = svc.protocols || {};
-          const rtmpPort = protos.rtmp?.port || 1935;
           const paths = protos.paths || {};
-          const pKeys = Object.keys(paths);
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
           const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
-          const pathConf = paths[firstPath] || {};
+          const pathConf = pathsDict[firstPath] || {};
 
           let rUser = '';
           let rPass = '';
@@ -963,15 +1158,18 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             rPass = pathConf.read_pass || protos.security?.read_pass || '';
           }
 
+          const useTls = isTls !== undefined ? isTls : Boolean(protos.ssl_enabled && protos.rtmps?.enabled && config.tls);
+          const rtmpPort = useTls ? (protos.rtmps?.port || 1936) : (protos.rtmp?.port || 1935);
+          const scheme = useTls ? 'rtmps' : 'rtmp';
           const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
-          const genUrl = `rtmp://${authPrefix}${host}:${rtmpPort}/${firstPath}`;
+          const genUrl = `${scheme}://${authPrefix}${host}:${rtmpPort}/${firstPath}`;
 
           update({
             peer_node_id: peer.id,
             peer_service_id: svc.id,
             provider_service_id: undefined,
             service_target: 'mediamtx',
-            mediamtx_target_type: 'remote',
+            mediamtx_target_type: 'managed',
             host: host,
             port: String(rtmpPort),
             path_id: firstPath,
@@ -980,27 +1178,28 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             auth_user: rUser,
             auth_pass: rPass,
             mediamtx_mode: true,
+            tls: useTls,
             path: genUrl,
           });
         };
 
         const handleSelectPath = (val: string) => {
           const pathId = val === '__custom__' ? (config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '') : val;
-          const pathConf = rawPaths[pathId] || {};
+          const pathConf = activePathsDict[pathId] || {};
           let rUser = '';
           let rPass = '';
           if (pathConf.mode === 'custom') {
             rUser = pathConf.read_user || '';
             rPass = pathConf.read_pass || '';
           } else if (pathConf.mode !== 'open') {
-            rUser = pathConf.read_user || mtxCfg.security?.read_user || mtxCfg.read_user || '';
-            rPass = pathConf.read_pass || mtxCfg.security?.read_pass || mtxCfg.read_pass || '';
+            rUser = pathConf.read_user || activeSecurity?.read_user || '';
+            rPass = pathConf.read_pass || activeSecurity?.read_pass || '';
           }
 
           const scheme = config.tls ? 'rtmps' : 'rtmp';
           const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
           const port = config.port || (config.tls ? '1936' : '1935');
-          const genUrl = `${scheme}://${authPrefix}${config.host || '127.0.0.1'}:${port}/${pathId || 'stream1'}`;
+          const genUrl = `${scheme}://${authPrefix}${config.host || currentHost}:${port}/${pathId || 'stream1'}`;
 
           update({
             path_id: pathId,
@@ -1028,6 +1227,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   service_target: undefined,
                   path_id: undefined,
                   provider_service_id: undefined,
+                  peer_node_id: undefined,
+                  peer_service_id: undefined,
                   mediamtx_target_type: undefined,
                 })}
               >
@@ -1044,10 +1245,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   if (mediamtxProviders.length > 0) {
                     const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
                     handleSelectProvider(defaultProv.id);
+                  } else if (remoteMtxServices.length > 0) {
+                    handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
                   } else {
                     update({
                       mediamtx_mode: true,
-                      mediamtx_target_type: 'remote',
+                      mediamtx_target_type: 'external',
                       service_target: 'mediamtx',
                       host: config.host && config.host !== '127.0.0.1' ? config.host : '',
                       port: config.port || '1935',
@@ -1064,48 +1267,48 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
             {isMediaMtxMode ? (
               <div className="p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl space-y-3">
-                {/* Local vs Remote Submode */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
-                    {t('sources.targetHubLocation', 'Target MediaMTX Instance')}
-                  </span>
-                  <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
-                    <button
-                      type="button"
-                      disabled={mediamtxProviders.length === 0}
-                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
-                        !isRemote
-                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40'
-                      }`}
-                      onClick={() => {
-                        if (mediamtxProviders.length > 0) {
-                          handleSelectProvider(mediamtxProviders[0].id);
-                        }
-                      }}
-                    >
-                      {t('sources.localManagedHub', 'Local Managed')}
-                    </button>
-                    <button
-                      type="button"
-                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
-                        isRemote
-                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                      }`}
-                      onClick={() => update({
-                        mediamtx_target_type: 'remote',
-                        provider_service_id: undefined,
-                        host: config.host && config.host !== '127.0.0.1' ? config.host : '',
-                        port: config.port || '1935',
-                      })}
-                    >
-                      {t('sources.remoteExternalHub', 'Remote / External')}
-                    </button>
-                  </div>
+                {/* Managed Service vs Manual External Server */}
+                <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                  <button
+                    type="button"
+                    disabled={!hasManagedProviders}
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      !isExternal && hasManagedProviders
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => {
+                      if (mediamtxProviders.length > 0) {
+                        const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                        if (defaultProv) handleSelectProvider(defaultProv.id);
+                      } else if (remoteMtxServices.length > 0) {
+                        handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
+                      }
+                    }}
+                  >
+                    <span>⚡</span> {t('sources.managedService', 'Managed Service (Local & Peers)')} {!hasManagedProviders ? `(${t('common.none', 'None')})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      isExternal
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => update({
+                      mediamtx_target_type: 'external',
+                      provider_service_id: undefined,
+                      peer_node_id: undefined,
+                      peer_service_id: undefined,
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '1935',
+                    })}
+                  >
+                    <span>🌐</span> {t('sources.externalServer', 'Manual External Server (Unfederated Host)')}
+                  </button>
                 </div>
 
-                {!isRemote && selectedProvider ? (
+                {!isExternal ? (
                   <div className="space-y-2.5">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -1113,7 +1316,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           {t('sources.selectHubService', 'MediaMTX Service')}
                         </label>
                         <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
                           value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
                           onChange={e => {
                             const val = e.target.value;
@@ -1125,24 +1328,22 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                             }
                           }}
                         >
-                          <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
-                            {mediamtxProviders.map(p => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} (Port :{p.config?.rtmp_port || 1935})
-                              </option>
-                            ))}
-                          </optgroup>
-                          {remotePeers.length > 0 && (
+                          {mediamtxProviders.length > 0 && (
+                            <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
+                              {mediamtxProviders.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name} (Port :{p.config?.rtmp_port || 1935})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {remoteMtxServices.length > 0 && (
                             <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
-                              {remotePeers.map(peer =>
-                                (peer.cached_services || [])
-                                  .filter((s: any) => s.service_type === 'mediamtx_hub')
-                                  .map((s: any) => (
-                                    <option key={`peer:${peer.id}:${s.id}`} value={`peer:${peer.id}:${s.id}`}>
-                                      {s.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                                    </option>
-                                  ))
-                              )}
+                              {remoteMtxServices.map(({ peer, svc }) => (
+                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
+                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
+                                </option>
+                              ))}
                             </optgroup>
                           )}
                         </select>
@@ -1152,13 +1353,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           {t('sources.streamPath', 'Stream Path')}
                         </label>
                         <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
                           value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
                           onChange={e => handleSelectPath(e.target.value)}
                         >
                           {configuredPaths.map(pName => (
                             <option key={pName} value={pName}>
-                              /{pName} {rawPaths[pName]?.mode === 'open' ? '(LAN Open)' : ''}
+                              /{pName} {activePathsDict[pName]?.mode === 'open' ? '(LAN Open)' : ''}
                             </option>
                           ))}
                           <option value="__custom__">{t('sources.customPathOption', '+ Custom Path Slug...')}</option>
@@ -1167,20 +1368,27 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     </div>
 
                     {/* TLS / RTMPS toggle if supported by hub */}
-                    {mtxCfg.ssl_enabled && mtxCfg.rtmps_enabled && (
+                    {activeSsl && (
                       <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
                         <div className="text-xs">
                           <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
                             🔒 {t('sources.enableRtmps', 'Encrypted RTMPS Pull (TLS)')}
                           </span>
                           <span className="text-[10px] text-[var(--text-secondary)] block">
-                            Port :{mtxCfg.rtmps_port || 1936}
+                            Port :{activeRtmpsPort}
                           </span>
                         </div>
                         <input
                           type="checkbox"
                           checked={Boolean(config.tls)}
-                          onChange={e => handleSelectProvider(selectedProvider.id, e.target.checked)}
+                          onChange={e => {
+                            const useTls = e.target.checked;
+                            if (config.peer_node_id && config.peer_service_id) {
+                              handleSelectRemotePeer(config.peer_node_id, config.peer_service_id, useTls);
+                            } else if (selectedProvider) {
+                              handleSelectProvider(selectedProvider.id, useTls);
+                            }
+                          }}
                           className="accent-brand-lime cursor-pointer w-4 h-4"
                         />
                       </div>
@@ -1204,7 +1412,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                             const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
                             update({
                               path_id: newPath,
-                              path: `${scheme}://${authPrefix}127.0.0.1:${config.port || (config.tls ? 1936 : 1935)}/${newPath}`,
+                              path: `${scheme}://${authPrefix}${config.host || currentHost}:${config.port || (config.tls ? activeRtmpsPort : 1935)}/${newPath}`,
                             });
                           }}
                         />
@@ -1299,21 +1507,83 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {/* ── HLS Input Assistant ── */}
       {config.type === 'hls' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
-        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
-        const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
+        const remoteMtxServices = remotePeers.flatMap(peer =>
+          (peer.cached_services || peer.cached_services_json || [])
+            .filter((s: any) => s.service_type === 'mediamtx_hub')
+            .map((s: any) => ({ peer, svc: s }))
+        );
+        const hasManagedProviders = mediamtxProviders.length > 0 || remoteMtxServices.length > 0;
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id || config.peer_node_id);
+        const isExternal = (config.mediamtx_target_type === 'external' || (config.mediamtx_target_type === 'remote' && !config.peer_node_id)) || (!config.provider_service_id && !config.peer_node_id && !hasManagedProviders);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
-        const mtxCfg = selectedProvider?.config || {};
-        const rawPaths = mtxCfg.paths || {};
-        const configuredPaths = Object.keys(rawPaths);
+
+        // Resolve active paths dictionary and security (Local vs Peer)
+        let activePathsDict: Record<string, any> = {};
+        let activeSecurity: any = {};
+        let currentHost = '127.0.0.1';
+        let activeSsl = false;
+        let activeHlsPort = 8888;
+
+        if (config.peer_node_id) {
+          const peer = remotePeers.find(p => p.id === config.peer_node_id);
+          const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
+          const svc = services.find((s: any) => s.id === config.peer_service_id);
+          const protos = svc?.protocols || {};
+          activeSecurity = protos.security || {};
+          activeSsl = Boolean(protos.ssl_enabled);
+          activeHlsPort = protos.hls?.port || 8888;
+          try {
+            currentHost = peer ? new URL(peer.base_url).hostname : '127.0.0.1';
+          } catch {
+            currentHost = peer ? peer.base_url.replace(/https?:\/\//, '').split(':')[0] : '127.0.0.1';
+          }
+          const paths = protos.paths || {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            activePathsDict = paths;
+          }
+        } else {
+          const mtxCfg = selectedProvider?.config || {};
+          activeSecurity = mtxCfg.security || {};
+          activeSsl = Boolean(mtxCfg.ssl_enabled && (mtxCfg.hls_encryption || mtxCfg.hlsEncryption || mtxCfg.ssl_enabled));
+          activeHlsPort = mtxCfg.hls_port || 8888;
+          currentHost = '127.0.0.1';
+          const rawPaths = mtxCfg.paths || {};
+          if (Array.isArray(rawPaths)) {
+            for (const p of rawPaths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof rawPaths === 'object' && rawPaths !== null) {
+            activePathsDict = rawPaths;
+          }
+        }
+        const configuredPaths = Object.keys(activePathsDict);
 
         const handleSelectProvider = (provId: number, isTls?: boolean) => {
           const prov = mediamtxProviders.find(p => p.id === provId);
           if (!prov) return;
           const pCfg = prov.config || {};
           const paths = pCfg.paths || {};
-          const pKeys = Object.keys(paths);
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
           const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
-          const pathConf = paths[firstPath] || {};
+          const pathConf = pathsDict[firstPath] || {};
 
           let rUser = '';
           let rPass = '';
@@ -1333,8 +1603,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
           update({
             provider_service_id: prov.id,
+            peer_node_id: undefined,
+            peer_service_id: undefined,
             service_target: 'mediamtx',
-            mediamtx_target_type: 'local',
+            mediamtx_target_type: 'managed',
             host: '127.0.0.1',
             port: String(port),
             path_id: firstPath,
@@ -1348,23 +1620,88 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           });
         };
 
-        const handleSelectPath = (val: string) => {
-          const pathId = val === '__custom__' ? (config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '') : val;
-          const pathConf = rawPaths[pathId] || {};
+        const handleSelectRemotePeer = (peerId: number, svcId: number, isTls?: boolean) => {
+          const peer = remotePeers.find(p => p.id === peerId);
+          if (!peer) return;
+          const services = peer.cached_services || peer.cached_services_json || [];
+          const svc = services.find((s: any) => s.id === svcId);
+          if (!svc) return;
+
+          let host = '127.0.0.1';
+          try {
+            host = new URL(peer.base_url).hostname;
+          } catch {
+            host = peer.base_url.replace(/https?:\/\//, '').split(':')[0];
+          }
+
+          const protos = svc.protocols || {};
+          const paths = protos.paths || {};
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = pathsDict[firstPath] || {};
+
           let rUser = '';
           let rPass = '';
           if (pathConf.mode === 'custom') {
             rUser = pathConf.read_user || '';
             rPass = pathConf.read_pass || '';
           } else if (pathConf.mode !== 'open') {
-            rUser = pathConf.read_user || mtxCfg.security?.read_user || mtxCfg.read_user || '';
-            rPass = pathConf.read_pass || mtxCfg.security?.read_pass || mtxCfg.read_pass || '';
+            rUser = pathConf.read_user || protos.security?.read_user || '';
+            rPass = pathConf.read_pass || protos.security?.read_pass || '';
+          }
+
+          const useTls = isTls !== undefined ? isTls : Boolean(protos.ssl_enabled && config.tls);
+          const hlsPort = protos.hls?.port || 8888;
+          const scheme = useTls ? 'https' : 'http';
+          const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}${host}:${hlsPort}/${firstPath}/index.m3u8`;
+
+          update({
+            peer_node_id: peer.id,
+            peer_service_id: svc.id,
+            provider_service_id: undefined,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'managed',
+            host: host,
+            port: String(hlsPort),
+            path_id: firstPath,
+            read_user: rUser,
+            read_pass: rPass,
+            auth_user: rUser,
+            auth_pass: rPass,
+            mediamtx_mode: true,
+            tls: useTls,
+            path: genUrl,
+          });
+        };
+
+        const handleSelectPath = (val: string) => {
+          const pathId = val === '__custom__' ? (config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '') : val;
+          const pathConf = activePathsDict[pathId] || {};
+          let rUser = '';
+          let rPass = '';
+          if (pathConf.mode === 'custom') {
+            rUser = pathConf.read_user || '';
+            rPass = pathConf.read_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            rUser = pathConf.read_user || activeSecurity?.read_user || '';
+            rPass = pathConf.read_pass || activeSecurity?.read_pass || '';
           }
 
           const scheme = config.tls ? 'https' : 'http';
           const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
-          const port = config.port || '8888';
-          const genUrl = `${scheme}://${authPrefix}${config.host || '127.0.0.1'}:${port}/${pathId || 'stream1'}/index.m3u8`;
+          const port = config.port || activeHlsPort;
+          const genUrl = `${scheme}://${authPrefix}${config.host || currentHost}:${port}/${pathId || 'stream1'}/index.m3u8`;
 
           update({
             path_id: pathId,
@@ -1392,6 +1729,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   service_target: undefined,
                   path_id: undefined,
                   provider_service_id: undefined,
+                  peer_node_id: undefined,
+                  peer_service_id: undefined,
                   mediamtx_target_type: undefined,
                 })}
               >
@@ -1408,10 +1747,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   if (mediamtxProviders.length > 0) {
                     const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
                     handleSelectProvider(defaultProv.id);
+                  } else if (remoteMtxServices.length > 0) {
+                    handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
                   } else {
                     update({
                       mediamtx_mode: true,
-                      mediamtx_target_type: 'remote',
+                      mediamtx_target_type: 'external',
                       service_target: 'mediamtx',
                       host: config.host && config.host !== '127.0.0.1' ? config.host : '',
                       port: config.port || '8888',
@@ -1428,48 +1769,48 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
             {isMediaMtxMode ? (
               <div className="p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl space-y-3">
-                {/* Local vs Remote Submode */}
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
-                    {t('sources.targetHubLocation', 'Target MediaMTX Instance')}
-                  </span>
-                  <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
-                    <button
-                      type="button"
-                      disabled={mediamtxProviders.length === 0}
-                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
-                        !isRemote
-                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40'
-                      }`}
-                      onClick={() => {
-                        if (mediamtxProviders.length > 0) {
-                          handleSelectProvider(mediamtxProviders[0].id);
-                        }
-                      }}
-                    >
-                      {t('sources.localManagedHub', 'Local Managed')}
-                    </button>
-                    <button
-                      type="button"
-                      className={`px-2.5 py-0.5 rounded font-medium transition-colors ${
-                        isRemote
-                          ? 'bg-brand-lime/20 text-brand-lime font-bold'
-                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                      }`}
-                      onClick={() => update({
-                        mediamtx_target_type: 'remote',
-                        provider_service_id: undefined,
-                        host: config.host && config.host !== '127.0.0.1' ? config.host : '',
-                        port: config.port || '8888',
-                      })}
-                    >
-                      {t('sources.remoteExternalHub', 'Remote / External')}
-                    </button>
-                  </div>
+                {/* Managed Service vs Manual External Server */}
+                <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                  <button
+                    type="button"
+                    disabled={!hasManagedProviders}
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      !isExternal && hasManagedProviders
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => {
+                      if (mediamtxProviders.length > 0) {
+                        const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                        if (defaultProv) handleSelectProvider(defaultProv.id);
+                      } else if (remoteMtxServices.length > 0) {
+                        handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
+                      }
+                    }}
+                  >
+                    <span>⚡</span> {t('sources.managedService', 'Managed Service (Local & Peers)')} {!hasManagedProviders ? `(${t('common.none', 'None')})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      isExternal
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => update({
+                      mediamtx_target_type: 'external',
+                      provider_service_id: undefined,
+                      peer_node_id: undefined,
+                      peer_service_id: undefined,
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8888',
+                    })}
+                  >
+                    <span>🌐</span> {t('sources.externalServer', 'Manual External Server (Unfederated Host)')}
+                  </button>
                 </div>
 
-                {!isRemote && selectedProvider ? (
+                {!isExternal ? (
                   <div className="space-y-2.5">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
@@ -1477,15 +1818,36 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           {t('sources.selectHubService', 'MediaMTX Service')}
                         </label>
                         <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
-                          value={selectedProvider.id}
-                          onChange={e => handleSelectProvider(Number(e.target.value))}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val.startsWith('peer:')) {
+                              const [, pId, sId] = val.split(':');
+                              handleSelectRemotePeer(parseInt(pId), parseInt(sId));
+                            } else {
+                              handleSelectProvider(Number(val));
+                            }
+                          }}
                         >
-                          {mediamtxProviders.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} (Port :{p.config?.hls_port || 8888})
-                            </option>
-                          ))}
+                          {mediamtxProviders.length > 0 && (
+                            <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
+                              {mediamtxProviders.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name} (Port :{p.config?.hls_port || 8888})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {remoteMtxServices.length > 0 && (
+                            <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
+                              {remoteMtxServices.map(({ peer, svc }) => (
+                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
+                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
                       </div>
                       <div>
@@ -1493,13 +1855,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           {t('sources.streamPath', 'Stream Path')}
                         </label>
                         <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
                           value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
                           onChange={e => handleSelectPath(e.target.value)}
                         >
                           {configuredPaths.map(pName => (
                             <option key={pName} value={pName}>
-                              /{pName} {rawPaths[pName]?.mode === 'open' ? '(LAN Open)' : ''}
+                              /{pName} {activePathsDict[pName]?.mode === 'open' ? '(LAN Open)' : ''}
                             </option>
                           ))}
                           <option value="__custom__">{t('sources.customPathOption', '+ Custom Path Slug...')}</option>
@@ -1508,20 +1870,27 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     </div>
 
                     {/* TLS / HTTPS toggle if supported by hub */}
-                    {mtxCfg.ssl_enabled && (
+                    {activeSsl && (
                       <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
                         <div className="text-xs">
                           <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
                             🔒 {t('sources.enableHttpsHls', 'Encrypted HTTPS HLS Pull (TLS)')}
                           </span>
                           <span className="text-[10px] text-[var(--text-secondary)] block">
-                            Port :{mtxCfg.hls_port || 8888}
+                            Port :{activeHlsPort}
                           </span>
                         </div>
                         <input
                           type="checkbox"
                           checked={Boolean(config.tls)}
-                          onChange={e => handleSelectProvider(selectedProvider.id, e.target.checked)}
+                          onChange={e => {
+                            const useTls = e.target.checked;
+                            if (config.peer_node_id && config.peer_service_id) {
+                              handleSelectRemotePeer(config.peer_node_id, config.peer_service_id, useTls);
+                            } else if (selectedProvider) {
+                              handleSelectProvider(selectedProvider.id, useTls);
+                            }
+                          }}
                           className="accent-brand-lime cursor-pointer w-4 h-4"
                         />
                       </div>
@@ -1545,7 +1914,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                             const authPrefix = rUser ? `${encodeURIComponent(rUser)}:${encodeURIComponent(rPass)}@` : '';
                             update({
                               path_id: newPath,
-                              path: `${scheme}://${authPrefix}127.0.0.1:${config.port || '8888'}/${newPath}/index.m3u8`,
+                              path: `${scheme}://${authPrefix}${config.host || currentHost}:${config.port || activeHlsPort}/${newPath}/index.m3u8`,
                             });
                           }}
                         />
@@ -1639,12 +2008,50 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
       {config.type === 'srt' && (() => {
         const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
-        const isMediaMtxMode = Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id);
-        const isRemote = config.mediamtx_target_type === 'remote' || (!config.provider_service_id && mediamtxProviders.length === 0);
+        const remoteMtxServices = remotePeers.flatMap(peer =>
+          (peer.cached_services || peer.cached_services_json || [])
+            .filter((s: any) => s.service_type === 'mediamtx_hub')
+            .map((s: any) => ({ peer, svc: s }))
+        );
+        const hasManagedProviders = mediamtxProviders.length > 0 || remoteMtxServices.length > 0;
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id || config.peer_node_id);
+        const isExternal = (config.mediamtx_target_type === 'external' || (config.mediamtx_target_type === 'remote' && !config.peer_node_id)) || (!config.provider_service_id && !config.peer_node_id && !hasManagedProviders);
         const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
-        const mtxCfg = selectedProvider?.config || {};
-        const rawPaths = mtxCfg.paths || {};
-        const configuredPaths = Object.keys(rawPaths);
+
+        // Resolve active paths dictionary and security (Local vs Peer)
+        let activePathsDict: Record<string, any> = {};
+        let activeSecurity: any = {};
+        if (config.peer_node_id) {
+          const peer = remotePeers.find(p => p.id === config.peer_node_id);
+          const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
+          const svc = services.find((s: any) => s.id === config.peer_service_id);
+          const protos = svc?.protocols || {};
+          activeSecurity = protos.security || {};
+          const paths = protos.paths || {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            activePathsDict = paths;
+          }
+        } else {
+          const mtxCfg = selectedProvider?.config || {};
+          activeSecurity = mtxCfg.security || {};
+          const rawPaths = mtxCfg.paths || {};
+          if (Array.isArray(rawPaths)) {
+            for (const p of rawPaths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof rawPaths === 'object' && rawPaths !== null) {
+            activePathsDict = rawPaths;
+          }
+        }
+        const configuredPaths = Object.keys(activePathsDict);
         const isCustomPath = !config.path_id || !configuredPaths.includes(config.path_id);
 
         const handleSelectProvider = (provId: number) => {
@@ -1652,9 +2059,19 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           if (!prov) return;
           const pCfg = prov.config || {};
           const paths = pCfg.paths || {};
-          const pKeys = Object.keys(paths);
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
           const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
-          const pathConf = paths[firstPath] || {};
+          const pathConf = pathsDict[firstPath] || {};
 
           let rUser = '';
           let rPass = '';
@@ -1671,7 +2088,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             peer_node_id: undefined,
             peer_service_id: undefined,
             service_target: 'mediamtx',
-            mediamtx_target_type: 'local',
+            mediamtx_target_type: 'managed',
             host: '127.0.0.1',
             port: String(pCfg.srt_port || 8890),
             path_id: firstPath,
@@ -1688,13 +2105,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         const handleSelectRemotePeer = (peerId: number, svcId: number) => {
           const peer = remotePeers.find(p => p.id === peerId);
           if (!peer) return;
-          const svc = (peer.cached_services || []).find((s: any) => s.id === svcId);
+          const services = peer.cached_services || peer.cached_services_json || [];
+          const svc = services.find((s: any) => s.id === svcId);
           if (!svc) return;
 
           let host = '127.0.0.1';
           try {
-            const u = new URL(peer.base_url);
-            host = u.hostname;
+            host = new URL(peer.base_url).hostname;
           } catch {
             host = peer.base_url.replace(/https?:\/\//, '').split(':')[0];
           }
@@ -1702,9 +2119,19 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           const protos = svc.protocols || {};
           const srtPort = protos.srt?.port || 8890;
           const paths = protos.paths || {};
-          const pKeys = Object.keys(paths);
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
           const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
-          const pathConf = paths[firstPath] || {};
+          const pathConf = pathsDict[firstPath] || {};
 
           let rUser = '';
           let rPass = '';
@@ -1721,7 +2148,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             peer_service_id: svc.id,
             provider_service_id: undefined,
             service_target: 'mediamtx',
-            mediamtx_target_type: 'remote',
+            mediamtx_target_type: 'managed',
             host: host,
             port: String(srtPort),
             path_id: firstPath,
@@ -1742,15 +2169,15 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             });
             return;
           }
-          const pathConf = rawPaths[val] || {};
+          const pathConf = activePathsDict[val] || {};
           let rUser = '';
           let rPass = '';
           if (pathConf.mode === 'custom') {
             rUser = pathConf.read_user || '';
             rPass = pathConf.read_pass || '';
           } else if (pathConf.mode !== 'open') {
-            rUser = pathConf.read_user || mtxCfg.security?.read_user || mtxCfg.read_user || '';
-            rPass = pathConf.read_pass || mtxCfg.security?.read_pass || mtxCfg.read_pass || '';
+            rUser = pathConf.read_user || activeSecurity?.read_user || '';
+            rPass = pathConf.read_pass || activeSecurity?.read_pass || '';
           }
 
           update({
@@ -1762,13 +2189,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           });
         };
 
-        const currentPathConf = rawPaths[config.path_id || ''];
-        const authHint = isMediaMtxMode && !isRemote ? (
+        const currentPathConf = activePathsDict[config.path_id || ''];
+        const authHint = isMediaMtxMode && !isExternal ? (
           currentPathConf?.mode === 'custom'
             ? t('sources.srtAuthCustomHint', 'Credentials loaded from path-specific rules')
             : currentPathConf?.mode === 'open'
             ? t('sources.srtAuthOpenHint', 'Open path (no credentials required)')
-            : (config.read_user || config.auth_user || mtxCfg.security?.read_user)
+            : (config.read_user || config.auth_user || activeSecurity?.read_user)
             ? t('sources.srtAuthInheritedHint', 'Credentials inherited from MediaMTX global security')
             : null
         ) : null;
@@ -1796,6 +2223,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   stream_action: undefined,
                   path_id: undefined,
                   provider_service_id: undefined,
+                  peer_node_id: undefined,
+                  peer_service_id: undefined,
                   mediamtx_target_type: undefined,
                 })}
               >
@@ -1812,10 +2241,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   if (mediamtxProviders.length > 0) {
                     const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
                     handleSelectProvider(defaultProv.id);
+                  } else if (remoteMtxServices.length > 0) {
+                    handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
                   } else {
                     update({
                       mediamtx_mode: true,
-                      mediamtx_target_type: 'remote',
+                      mediamtx_target_type: 'external',
                       mode: 'caller',
                       stream_action: 'request',
                       service_target: 'mediamtx',
@@ -1843,35 +2274,41 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   </span>
                 </div>
 
-                {/* Sub-selector: Local Hub vs Remote Server */}
+                {/* Sub-selector: Managed Service vs Manual External Server */}
                 <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
                   <button
                     type="button"
-                    disabled={mediamtxProviders.length === 0}
+                    disabled={!hasManagedProviders}
                     className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
-                      !isRemote && mediamtxProviders.length > 0
+                      !isExternal && hasManagedProviders
                         ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
                         : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
                     }`}
                     onClick={() => {
-                      const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
-                      if (defaultProv) {
-                        handleSelectProvider(defaultProv.id);
+                      if (mediamtxProviders.length > 0) {
+                        const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                        if (defaultProv) {
+                          handleSelectProvider(defaultProv.id);
+                        }
+                      } else if (remoteMtxServices.length > 0) {
+                        handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
                       }
                     }}
                   >
-                    <span>🏠</span> {t('sources.srtLocalHub', 'Local Hub (This Node)')} {mediamtxProviders.length === 0 ? `(${t('common.none', 'None')})` : ''}
+                    <span>⚡</span> {t('sources.managedService', 'Managed Service (Local & Peers)')} {!hasManagedProviders ? `(${t('common.none', 'None')})` : ''}
                   </button>
                   <button
                     type="button"
                     className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
-                      isRemote
+                      isExternal
                         ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
                         : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
                     }`}
                     onClick={() => update({
-                      mediamtx_target_type: 'remote',
+                      mediamtx_target_type: 'external',
                       provider_service_id: undefined,
+                      peer_node_id: undefined,
+                      peer_service_id: undefined,
                       service_target: 'mediamtx',
                       mediamtx_mode: true,
                       mode: 'caller',
@@ -1881,12 +2318,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       path_id: config.path_id || 'stream1',
                     })}
                   >
-                    <span>🌐</span> {t('sources.srtRemoteHub', 'Remote MediaMTX Server (External Host)')}
+                    <span>🌐</span> {t('sources.externalServer', 'Manual External Server (Unfederated Host)')}
                   </button>
                 </div>
 
-                {!isRemote ? (
-                  /* Local Hub selector */
+                {!isExternal ? (
+                  /* Managed Hub selector */
                   <div className="space-y-2">
                     <div>
                       <label htmlFor={`${idPrefix}-srt-hub`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
@@ -1906,24 +2343,22 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                           }
                         }}
                       >
-                        <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
-                          {mediamtxProviders.map(p => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} {p.alias ? `(${p.alias})` : ''} — {p.status}
-                            </option>
-                          ))}
-                        </optgroup>
-                        {remotePeers.length > 0 && (
+                        {mediamtxProviders.length > 0 && (
+                          <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
+                            {mediamtxProviders.map(p => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} {p.alias ? `(${p.alias})` : ''} — {p.status}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {remoteMtxServices.length > 0 && (
                           <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
-                            {remotePeers.map(peer =>
-                              (peer.cached_services || [])
-                                .filter((s: any) => s.service_type === 'mediamtx_hub')
-                                .map((s: any) => (
-                                  <option key={`peer:${peer.id}:${s.id}`} value={`peer:${peer.id}:${s.id}`}>
-                                    {s.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                                  </option>
-                                ))
-                            )}
+                            {remoteMtxServices.map(({ peer, svc }) => (
+                              <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
+                                {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
+                              </option>
+                            ))}
                           </optgroup>
                         )}
                       </select>
@@ -1942,7 +2377,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         >
                           {configuredPaths.map(pKey => (
                             <option key={pKey} value={pKey}>
-                              /{pKey} {rawPaths[pKey]?.mode ? `(${rawPaths[pKey].mode})` : ''}
+                              /{pKey} {activePathsDict[pKey]?.mode ? `(${activePathsDict[pKey].mode})` : ''}
                             </option>
                           ))}
                           <option value="__custom__">{t('sources.srtCustomPath', '✏️ Custom Path Slug...')}</option>
