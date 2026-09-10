@@ -2646,13 +2646,23 @@ def get_federated_peer_dependency(conf_dict: dict, peer_nodes_map: dict) -> Opti
         try:
             p_node = peer_nodes_map.get(int(peer_node_id))
             name = p_node.name if p_node else f"Peer #{peer_node_id}"
+            service_name = None
+            service_type = None
+            if p_node and p_node.cached_services_json:
+                for s in p_node.cached_services_json:
+                    if s.get("id") == int(peer_svc_id):
+                        service_name = s.get("name")
+                        service_type = s.get("service_type")
+                        break
             return {
                 "provider_service_id": int(peer_svc_id),
                 "provider_name": name,
                 "is_auto_managed": True,
                 "is_remote_peer": True,
                 "peer_name": name,
-                "peer_node_id": int(peer_node_id)
+                "peer_node_id": int(peer_node_id),
+                "service_name": service_name,
+                "service_type": service_type
             }
         except (ValueError, TypeError):
             pass
@@ -4806,6 +4816,28 @@ def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
     if cached_stats:
         return {"icestats": cached_stats}
     return {"icestats": {"listeners": 0, "source": []}}
+
+
+@app.get("/processes/{process_id}/mediamtx/paths")
+@app.get("/api/processes/{process_id}/mediamtx/paths")
+def get_mediamtx_live_paths(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    cfg = db_proc.config or {}
+    mtx_cfg = cfg.get("mediamtx_config") or {}
+    api_port = mtx_cfg.get("api_port", 9997)
+    api_enabled = mtx_cfg.get("api_enabled", True)
+    if not api_enabled:
+        return {"items": []}
+    try:
+        import requests
+        resp = requests.get(f"http://127.0.0.1:{api_port}/v3/paths/list", timeout=2)
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return {"items": []}
 
 
 @app.post("/processes/{process_id}/start")

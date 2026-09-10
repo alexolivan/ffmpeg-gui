@@ -476,10 +476,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                                 : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                             }`}
                             title={d.is_remote_peer 
-                              ? `Federated remote peer: ${d.peer_name || d.provider_name}` 
+                              ? `Federated remote peer: ${d.service_name ? `${d.service_name} @ ${d.peer_name}` : (d.peer_name || d.provider_name)}` 
                               : `Depends on auxiliary service: ${d.provider_name}`}
                           >
-                            {d.is_remote_peer ? '🌐' : '🔗'} {d.peer_name || d.provider_name}
+                            {d.is_remote_peer ? '🌐' : '🔗'} {d.is_remote_peer && d.service_name ? `${d.peer_name} · ${d.service_name}` : (d.peer_name || d.provider_name)}
                           </span>
                         ))}
                         {task.retry_policy?.max_retries > 0 && (!exec || exec.retry_count === 0 || exec.status !== 'running') && (
@@ -766,10 +766,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                                 : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                             }`}
                             title={d.is_remote_peer 
-                              ? `Federated remote peer: ${d.peer_name || d.provider_name}` 
+                              ? `Federated remote peer: ${d.service_name ? `${d.service_name} @ ${d.peer_name}` : (d.peer_name || d.provider_name)}` 
                               : `Depends on auxiliary service: ${d.provider_name}`}
                           >
-                            {d.is_remote_peer ? '🌐' : '🔗'} {d.peer_name || d.provider_name}
+                            {d.is_remote_peer ? '🌐' : '🔗'} {d.is_remote_peer && d.service_name ? `${d.peer_name} · ${d.service_name}` : (d.peer_name || d.provider_name)}
                           </span>
                         ))}
                         {task.retry_policy?.max_retries > 0 && (!exec || exec.retry_count === 0 || exec.status !== 'running') && (

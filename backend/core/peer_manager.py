@@ -227,14 +227,26 @@ class PeerManager:
                 }
 
         elif action == "ACQUIRE_LEASE":
-            svc_id = req.get("service_id")
+            raw_svc_id = req.get("service_id")
+            try:
+                svc_id = int(raw_svc_id)
+            except (ValueError, TypeError):
+                svc_id = raw_svc_id
             svc = db_session.query(Service).get(svc_id)
-            if not svc or not svc.is_shared_with_peers or not svc.allow_peer_lease:
-                res_payload = {"status": "ERROR", "detail": "Service not found or leasing not permitted"}
+            if not svc:
+                logger.warning(f"[Inbound RPC] ACQUIRE_LEASE: Service {svc_id} not found in DB")
+                res_payload = {"status": "ERROR", "detail": f"Service {svc_id} not found"}
+            elif not svc.is_shared_with_peers:
+                logger.warning(f"[Inbound RPC] ACQUIRE_LEASE: Service {svc_id} ({svc.name}) is not shared with peers")
+                res_payload = {"status": "ERROR", "detail": f"Service {svc_id} is not shared with peers"}
+            elif not svc.allow_peer_lease:
+                logger.warning(f"[Inbound RPC] ACQUIRE_LEASE: Service {svc_id} ({svc.name}) does not allow peer lease")
+                res_payload = {"status": "ERROR", "detail": f"Service {svc_id} does not allow peer lease"}
             else:
                 if svc_id not in self._active_remote_leases:
                     self._active_remote_leases[svc_id] = {}
                 self._active_remote_leases[svc_id][token_id] = time.time()
+                logger.info(f"[Inbound RPC] ACQUIRE_LEASE: Acquired lease on service {svc_id} ({svc.name}) for token {token_id}. Total leases: {len(self._active_remote_leases[svc_id])}")
                 
                 # Auto-start service if stopped and process_manager available
                 if svc.status != "running" and process_manager:
@@ -254,15 +266,31 @@ class PeerManager:
                 }
 
         elif action == "HEARTBEAT":
-            svc_id = req.get("service_id")
+            raw_svc_id = req.get("service_id")
+            try:
+                svc_id = int(raw_svc_id)
+            except (ValueError, TypeError):
+                svc_id = raw_svc_id
             if svc_id in self._active_remote_leases and token_id in self._active_remote_leases[svc_id]:
                 self._active_remote_leases[svc_id][token_id] = time.time()
                 res_payload = {"status": "HEARTBEAT_ACK"}
             else:
-                res_payload = {"status": "LEASE_NOT_FOUND"}
+                svc = db_session.query(Service).get(svc_id)
+                if svc and svc.is_shared_with_peers and svc.allow_peer_lease:
+                    if svc_id not in self._active_remote_leases:
+                        self._active_remote_leases[svc_id] = {}
+                    self._active_remote_leases[svc_id][token_id] = time.time()
+                    logger.info(f"[Inbound RPC] HEARTBEAT: Auto-reacquired lease for service {svc_id} ({svc.name}) from token {token_id}")
+                    res_payload = {"status": "LEASE_REACQUIRED"}
+                else:
+                    res_payload = {"status": "LEASE_NOT_FOUND"}
 
         elif action == "RELEASE_LEASE":
-            svc_id = req.get("service_id")
+            raw_svc_id = req.get("service_id")
+            try:
+                svc_id = int(raw_svc_id)
+            except (ValueError, TypeError):
+                svc_id = raw_svc_id
             if svc_id in self._active_remote_leases:
                 self._active_remote_leases[svc_id].pop(token_id, None)
                 if not self._active_remote_leases[svc_id]:
@@ -310,7 +338,10 @@ class PeerManager:
             }
             
             t0 = time.time()
-            resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5)
+            try:
+                resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5)
+            except requests.exceptions.SSLError:
+                resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5, verify=False)
             latency_ms = int((time.time() - t0) * 1000)
             
             if resp.status_code != 200:
@@ -357,7 +388,10 @@ class PeerManager:
                 "X-Peer-Key-ID": node.token_id,
                 "Content-Type": "application/json"
             }
-            resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5)
+            try:
+                resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5)
+            except requests.exceptions.SSLError:
+                resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5, verify=False)
             if resp.status_code != 200:
                 return False, None, f"HTTP {resp.status_code}: {resp.text[:100]}"
             dec_res = PeerCrypto.decrypt_payload(resp.json(), node.secret_key)
@@ -372,8 +406,8 @@ class PeerManager:
         })
         if not success:
             return False, err
-        if not res or not res.get("success", True):
-            return False, res.get("error", "Failed to acquire remote lease") if res else "Unknown error"
+        if not res or res.get("status") == "ERROR":
+            return False, res.get("detail", "Failed to acquire remote lease") if res else "Unknown error"
         return True, None
 
     def send_remote_heartbeat(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:

@@ -167,15 +167,14 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const webScheme = mtxCfg.ssl_enabled || isHttps ? 'https' : 'http';
 
-  // Discover live active paths via MediaMTX REST API if running
+  // Discover live active paths via MediaMTX REST API via backend proxy if running
   useEffect(() => {
     if (!isRunning || mtxCfg.api_enabled === false) return;
-    const apiPort = mtxCfg.api_port || 9997;
 
     const fetchLivePaths = async () => {
       try {
-        const res = await fetch(`http://${host}:${apiPort}/v3/paths/list`, {
-          signal: AbortSignal.timeout(2000),
+        const res = await fetch(`${API}/processes/${currentProcess.id}/mediamtx/paths`, {
+          signal: AbortSignal.timeout(3000),
         });
         if (res.ok) {
           const data = await res.json();
@@ -185,14 +184,14 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
           }
         }
       } catch {
-        // Silent catch: browser network/CORS or stopped daemon
+        // Silent catch: network or stopped daemon
       }
     };
 
     fetchLivePaths();
     const interval = setInterval(fetchLivePaths, 5000);
     return () => clearInterval(interval);
-  }, [isRunning, mtxCfg.api_enabled, mtxCfg.api_port, host]);
+  }, [isRunning, mtxCfg.api_enabled, currentProcess.id, API]);
 
   // Poll logs for MediaMTX daemon
   useEffect(() => {

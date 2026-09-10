@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.2] - 2026-09-10
+
+### Fixed
+- **MediaMTX Paths Proxy Endpoint & Mixed Content Resolution**:
+  - Replaced unencrypted browser HTTP fetch to port 9997 in `MediaMtxPreviewModal.tsx` with a backend proxy endpoint (`/processes/{id}/mediamtx/paths`), resolving browser Mixed Content blocking on HTTPS-secured nodes.
+- **Server Remote Leases Auto-Reacquisition & SSL Resilience**:
+  - Coerced incoming service IDs to integers across all lease RPC handlers (`ACQUIRE_LEASE`, `HEARTBEAT`, `RELEASE_LEASE`) ensuring reliable dictionary mapping.
+  - Implemented automatic lease re-acquisition in `HEARTBEAT` handler when `allow_peer_lease` is subsequently enabled on the server without requiring manual client restarts.
+  - Added SSL fallback (`verify=False`) in outbound node RPCs and synchronization to ensure peer communication succeeds even if self-signed or private TLS certificates are in use.
+- **Enriched Federated Client Badges**:
+  - Augmented federated remote peer dependency resolution (`get_federated_peer_dependency`) to resolve the target service name and type from cached peer catalog data.
+  - Updated service and scheduled task cards to display `🌐 {peer_name} · {service_name}` with descriptive tooltips.
+
 ## [2.16.1] - 2026-09-10
 
 ### Fixed
