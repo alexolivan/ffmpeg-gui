@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.3] - 2026-09-10
+
+### Fixed
+- **SystemSettings Backup Export & Restore SSOT Harmonization**:
+  - Unified `/api/backup/export` and `/api/backup/import` with the SQLite `SystemSettings` database table as the primary Single Source of Truth (SSOT).
+  - Ensured all 10 LCD parameters (`lcd_enabled`, `lcd_port`, `lcd_model`, `lcd_brightness`, `lcd_dim_brightness`, `lcd_dim_timeout`, `lcd_led0_profile`..`lcd_led3_profile`) are faithfully exported from `SystemSettings` and re-injected on import.
+  - Added live `lcd_manager` in-memory attribute reload and display refresh (`refresh_display()`) upon backup restoration.
+  - Unified General Panel settings (`node_name`, `logo_text`, `lcd_alias`, `gui_password`, `accent_color`, `logo_path`) and `auto_reload_ssl_services` to persist directly into `SystemSettings` upon backup restoration.
+  - Extended unit tests in `test_backup_restore_api.py` to assert full export and import fidelity of `SystemSettings` and LCD profiles.
+
 ## [2.17.2] - 2026-09-10
 
 ### Added

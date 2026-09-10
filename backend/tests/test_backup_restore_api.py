@@ -3,7 +3,7 @@ import json
 from fastapi.testclient import TestClient
 from main import app
 from database.db import SessionLocal, init_db
-from database.models import MediaProcess, ScheduledTask, Storage, FfmpegBuild, PeerInboundKey, PeerRemoteNode
+from database.models import MediaProcess, ScheduledTask, Storage, FfmpegBuild, PeerInboundKey, PeerRemoteNode, SystemSettings
 
 class TestBackupRestoreAPI(unittest.TestCase):
     def setUp(self):
@@ -100,6 +100,21 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.db.add(ice_build)
         self.db.add(inbound_key)
         self.db.add(remote_node)
+
+        # Set up SystemSettings to test LCD and General settings backup synchronization
+        sys_settings = self.db.query(SystemSettings).first()
+        if not sys_settings:
+            sys_settings = SystemSettings()
+            self.db.add(sys_settings)
+        sys_settings.node_name = "Backup Test Node"
+        sys_settings.accent_color = "#123456"
+        sys_settings.lcd_enabled = True
+        sys_settings.lcd_port = "/dev/ttyTest"
+        sys_settings.lcd_brightness = 85
+        sys_settings.lcd_led0_profile = "peers"
+        sys_settings.lcd_led1_profile = "services"
+        sys_settings.lcd_led2_profile = "tasks"
+        sys_settings.lcd_led3_profile = "alert"
         self.db.commit()
 
         # 1. Export
@@ -127,6 +142,15 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertIn("tasks", data["sections"])
         self.assertIn("software_engines", data["sections"])
         self.assertIn("peer_federation", data["sections"])
+
+        # Check LCD & General export from SystemSettings
+        lcd_export = data["sections"]["lcd_display"]
+        self.assertEqual(lcd_export["lcd_led0_profile"], "peers")
+        self.assertEqual(str(lcd_export["lcd_brightness"]), "85")
+        self.assertEqual(lcd_export["lcd_port"], "/dev/ttyTest")
+        gen_export = data["sections"]["gui_general"]
+        self.assertEqual(gen_export["node_name"], "Backup Test Node")
+        self.assertEqual(gen_export["accent_color"], "#123456")
 
         # Check peer federation in exported data
         fed_data = data["sections"]["peer_federation"]
@@ -171,6 +195,21 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.db.query(FfmpegBuild).filter_by(name="Backup Test Icecast Build").delete()
         self.db.query(PeerInboundKey).filter_by(token_id="fgp_k_test12345678").delete()
         self.db.query(PeerRemoteNode).filter_by(token_id="fgp_k_test87654321").delete()
+
+        # Reset SystemSettings to verify restore
+        sys_settings = self.db.query(SystemSettings).first()
+        if sys_settings:
+            sys_settings.node_name = "Default Node"
+            sys_settings.accent_color = "#FF6B00"
+            sys_settings.lcd_enabled = False
+            sys_settings.lcd_port = "/dev/ttyACM0"
+            sys_settings.lcd_brightness = 100
+            sys_settings.lcd_led0_profile = "heartbeat"
+            sys_settings.lcd_led1_profile = "streams"
+            sys_settings.lcd_led2_profile = "tasks"
+            sys_settings.lcd_led3_profile = "alert"
+            self.db.commit()
+
         self.db.commit()
 
         # 3. Import
@@ -224,4 +263,17 @@ class TestBackupRestoreAPI(unittest.TestCase):
         restored_node = self.db.query(PeerRemoteNode).filter_by(token_id="fgp_k_test87654321").first()
         self.assertIsNotNone(restored_node)
         self.assertEqual(restored_node.name, "Backup Test Remote Node")
+
+        # Verify restored SystemSettings (LCD & General)
+        restored_settings = self.db.query(SystemSettings).first()
+        self.assertIsNotNone(restored_settings)
+        self.assertEqual(restored_settings.node_name, "Backup Test Node")
+        self.assertEqual(restored_settings.accent_color, "#123456")
+        self.assertTrue(restored_settings.lcd_enabled)
+        self.assertEqual(restored_settings.lcd_port, "/dev/ttyTest")
+        self.assertEqual(restored_settings.lcd_brightness, 85)
+        self.assertEqual(restored_settings.lcd_led0_profile, "peers")
+        self.assertEqual(restored_settings.lcd_led1_profile, "services")
+        self.assertEqual(restored_settings.lcd_led2_profile, "tasks")
+        self.assertEqual(restored_settings.lcd_led3_profile, "alert")
 

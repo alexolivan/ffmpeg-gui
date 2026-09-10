@@ -1421,6 +1421,9 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     if os.path.exists(config_path):
         config.read(config_path)
 
+    from database.models import SystemSettings
+    sys_settings = db.query(SystemSettings).first()
+
     # 1. General Panel
     if req.gui_general:
         gen_dict = {}
@@ -1428,6 +1431,13 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for k in ["language", "theme", "node_name", "logo_text", "lcd_alias", "gui_password", "auto_restart_panel"]:
                 if k in config["general"]:
                     gen_dict[k] = config["general"][k]
+        if sys_settings:
+            if sys_settings.node_name: gen_dict["node_name"] = sys_settings.node_name
+            if sys_settings.logo_text: gen_dict["logo_text"] = sys_settings.logo_text
+            if sys_settings.lcd_alias: gen_dict["lcd_alias"] = sys_settings.lcd_alias
+            if sys_settings.gui_password: gen_dict["gui_password"] = sys_settings.gui_password
+            if sys_settings.accent_color: gen_dict["accent_color"] = sys_settings.accent_color
+            if sys_settings.logo_path: gen_dict["logo_path"] = sys_settings.logo_path
         sections["gui_general"] = gen_dict
 
     # 2. Network & SSL
@@ -1437,12 +1447,27 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for k in ["bind_address", "gui_port", "http_port", "https_port", "ssl_enabled", "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email", "ssl_challenge_type", "auto_reload_ssl_services"]:
                 if k in config["general"]:
                     net_dict[k] = config["general"][k]
+        if sys_settings and sys_settings.auto_reload_ssl_services is not None:
+            net_dict["auto_reload_ssl_services"] = str(sys_settings.auto_reload_ssl_services).lower()
         sections["gui_network_ssl"] = net_dict
 
     # 3. LCD Display
     if req.lcd_display:
         lcd_dict = {}
-        if "lcd" in config:
+        if sys_settings:
+            lcd_dict = {
+                "lcd_enabled": str(sys_settings.lcd_enabled).lower() if sys_settings.lcd_enabled is not None else "false",
+                "lcd_port": sys_settings.lcd_port or "/dev/ttyACM0",
+                "lcd_model": sys_settings.lcd_model or "cfa635",
+                "lcd_brightness": str(sys_settings.lcd_brightness) if sys_settings.lcd_brightness is not None else "100",
+                "lcd_dim_brightness": str(sys_settings.lcd_dim_brightness) if sys_settings.lcd_dim_brightness is not None else "20",
+                "lcd_dim_timeout": str(sys_settings.lcd_dim_timeout) if sys_settings.lcd_dim_timeout is not None else "30",
+                "lcd_led0_profile": sys_settings.lcd_led0_profile or "heartbeat",
+                "lcd_led1_profile": sys_settings.lcd_led1_profile or "streams",
+                "lcd_led2_profile": sys_settings.lcd_led2_profile or "tasks",
+                "lcd_led3_profile": sys_settings.lcd_led3_profile or "alert"
+            }
+        elif "lcd" in config:
             lcd_dict = dict(config["lcd"])
         elif "general" in config:
             for k in ["lcd_enabled", "lcd_port", "lcd_model", "lcd_brightness", "lcd_dim_brightness", "lcd_dim_timeout", "lcd_led0_profile", "lcd_led1_profile", "lcd_led2_profile", "lcd_led3_profile"]:
@@ -1654,21 +1679,94 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     config.set(sec_name, k, str(v))
         imported_summary["gui_general"] = True
 
+    from database.models import SystemSettings
+    sys_settings = db.query(SystemSettings).first()
+    if not sys_settings:
+        sys_settings = SystemSettings()
+        db.add(sys_settings)
+
     # Granular subsections
     if "gui_general" in sections and isinstance(sections["gui_general"], dict):
         for k, v in sections["gui_general"].items():
             config.set("general", k, str(v))
+        gen_sec = sections["gui_general"]
+        if "node_name" in gen_sec and gen_sec["node_name"] is not None:
+            sys_settings.node_name = str(gen_sec["node_name"])
+        if "logo_text" in gen_sec and gen_sec["logo_text"] is not None:
+            sys_settings.logo_text = str(gen_sec["logo_text"])
+        if "lcd_alias" in gen_sec and gen_sec["lcd_alias"] is not None:
+            sys_settings.lcd_alias = str(gen_sec["lcd_alias"])
+        if "gui_password" in gen_sec:
+            sys_settings.gui_password = str(gen_sec["gui_password"]) if gen_sec["gui_password"] else None
+        if "accent_color" in gen_sec and gen_sec["accent_color"] is not None:
+            sys_settings.accent_color = str(gen_sec["accent_color"])
+        if "logo_path" in gen_sec and gen_sec["logo_path"] is not None:
+            sys_settings.logo_path = str(gen_sec["logo_path"])
         imported_summary["gui_general"] = True
 
     if "gui_network_ssl" in sections and isinstance(sections["gui_network_ssl"], dict):
         for k, v in sections["gui_network_ssl"].items():
             config.set("general", k, str(v))
+        net_sec = sections["gui_network_ssl"]
+        if "auto_reload_ssl_services" in net_sec and net_sec["auto_reload_ssl_services"] is not None:
+            val = net_sec["auto_reload_ssl_services"]
+            sys_settings.auto_reload_ssl_services = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
         imported_summary["gui_network_ssl"] = True
 
     if "lcd_display" in sections and isinstance(sections["lcd_display"], dict):
         for k, v in sections["lcd_display"].items():
             config.set("lcd", k, str(v))
+        lcd_sec = sections["lcd_display"]
+        if "lcd_enabled" in lcd_sec and lcd_sec["lcd_enabled"] is not None:
+            val = lcd_sec["lcd_enabled"]
+            sys_settings.lcd_enabled = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
+        if "lcd_port" in lcd_sec and lcd_sec["lcd_port"] is not None:
+            sys_settings.lcd_port = str(lcd_sec["lcd_port"])
+        if "lcd_model" in lcd_sec and lcd_sec["lcd_model"] is not None:
+            sys_settings.lcd_model = str(lcd_sec["lcd_model"])
+        if "lcd_brightness" in lcd_sec and lcd_sec["lcd_brightness"] is not None:
+            try: sys_settings.lcd_brightness = int(lcd_sec["lcd_brightness"])
+            except (ValueError, TypeError): pass
+        if "lcd_dim_brightness" in lcd_sec and lcd_sec["lcd_dim_brightness"] is not None:
+            try: sys_settings.lcd_dim_brightness = int(lcd_sec["lcd_dim_brightness"])
+            except (ValueError, TypeError): pass
+        if "lcd_dim_timeout" in lcd_sec and lcd_sec["lcd_dim_timeout"] is not None:
+            try: sys_settings.lcd_dim_timeout = int(lcd_sec["lcd_dim_timeout"])
+            except (ValueError, TypeError): pass
+        if "lcd_led0_profile" in lcd_sec and lcd_sec["lcd_led0_profile"] is not None:
+            sys_settings.lcd_led0_profile = str(lcd_sec["lcd_led0_profile"])
+        if "lcd_led1_profile" in lcd_sec and lcd_sec["lcd_led1_profile"] is not None:
+            sys_settings.lcd_led1_profile = str(lcd_sec["lcd_led1_profile"])
+        if "lcd_led2_profile" in lcd_sec and lcd_sec["lcd_led2_profile"] is not None:
+            sys_settings.lcd_led2_profile = str(lcd_sec["lcd_led2_profile"])
+        if "lcd_led3_profile" in lcd_sec and lcd_sec["lcd_led3_profile"] is not None:
+            sys_settings.lcd_led3_profile = str(lcd_sec["lcd_led3_profile"])
+
+        # Update active lcd_manager if running
+        global lcd_manager
+        if lcd_manager and lcd_manager._running:
+            if sys_settings.lcd_brightness is not None:
+                lcd_manager.active_brightness = sys_settings.lcd_brightness
+            if sys_settings.lcd_dim_brightness is not None:
+                lcd_manager.dim_brightness = sys_settings.lcd_dim_brightness
+            if sys_settings.lcd_dim_timeout is not None:
+                lcd_manager.dim_timeout = sys_settings.lcd_dim_timeout
+            if sys_settings.lcd_led0_profile is not None:
+                lcd_manager.lcd_led0_profile = sys_settings.lcd_led0_profile
+            if sys_settings.lcd_led1_profile is not None:
+                lcd_manager.lcd_led1_profile = sys_settings.lcd_led1_profile
+            if sys_settings.lcd_led2_profile is not None:
+                lcd_manager.lcd_led2_profile = sys_settings.lcd_led2_profile
+            if sys_settings.lcd_led3_profile is not None:
+                lcd_manager.lcd_led3_profile = sys_settings.lcd_led3_profile
+            try:
+                lcd_manager.refresh_display()
+            except Exception:
+                pass
+
         imported_summary["lcd_display"] = True
+
+    db.commit()
 
     if "logging_retention" in sections and isinstance(sections["logging_retention"], dict):
         for k, v in sections["logging_retention"].items():
