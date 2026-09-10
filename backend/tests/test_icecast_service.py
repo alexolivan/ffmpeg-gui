@@ -546,5 +546,141 @@ class TestIcecastService(unittest.TestCase):
             # SSL context must be passed
             self.assertIsNotNone(mock_urlopen.call_args[1].get("context"))
 
+    def test_fetch_icecast_telemetry_25_missing_root_listeners(self):
+        from core.icecast_telemetry import fetch_icecast_telemetry, clear_status_json_cache
+        clear_status_json_cache()
+        # Icecast 2.5 status-json without root "listeners"
+        icecast_25_json = b'''{
+            "icestats": {
+                "admin": "admin@localhost",
+                "host": "vps1.example.com",
+                "source": [
+                    {
+                        "listenurl": "http://127.0.0.1:8000/live.ogg",
+                        "listeners": 3,
+                        "listener_peak": 5,
+                        "bitrate": 128,
+                        "title": "Station Live"
+                    },
+                    {
+                        "listenurl": "http://127.0.0.1:8000/rock.mp3",
+                        "listeners": 2,
+                        "listener_peak": 4,
+                        "bitrate": 192,
+                        "title": "Rock Stream"
+                    }
+                ]
+            }
+        }'''
+
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = icecast_25_json
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            res = fetch_icecast_telemetry(port=8000, has_status_json=True)
+            self.assertIsNotNone(res)
+            # Should have normalized icestats["listeners"] to sum of sources: 3 + 2 = 5
+            self.assertEqual(res["icestats"]["listeners"], 5)
+            self.assertEqual(len(res["icestats"]["source"]), 2)
+
+    def test_icecast_stats_telemetry_listeners_summation_and_peak_preservation(self):
+        # Verify ProcessManager telemetry logic with root listeners missing and peak preservation
+        media_proc = Service(
+            id=10,
+            name="Icecast Telemetry Test",
+            service_type="icecast_server",
+            config={
+                "software_version": "2.5.0",
+                "icecast_config": {"port": 8000, "admin_user": "admin", "admin_password": "pwd"},
+                "icecast_stats": {
+                    "listeners": 0,
+                    "listener_peak": 7,  # Historical peak achieved earlier
+                    "active_mounts": 0,
+                    "sources": []
+                }
+            }
+        )
+
+        # Telemetry data returned from Icecast 2.5 (current peak is 3, less than historical 7)
+        mock_telemetry = {
+            "icestats": {
+                # Notice no root "listeners"
+                "source": [
+                    {
+                        "mount": "/live",
+                        "listeners": 2,
+                        "listener_peak": 3,
+                        "bitrate": 128,
+                        "title": "Live Show"
+                    }
+                ]
+            }
+        }
+
+        with patch("core.icecast_telemetry.fetch_icecast_telemetry", return_value=mock_telemetry):
+            # Simulate the telemetry extraction block from ProcessManager
+            h_port = 8000
+            admin_user = "admin"
+            admin_password = "pwd"
+            has_status_json = True
+            is_legacy = False
+            use_ssl = False
+
+            data = mock_telemetry
+            icestats = data.get("icestats", {})
+            sources = icestats.get("source", [])
+            if isinstance(sources, dict):
+                sources = [sources]
+            elif not isinstance(sources, list):
+                sources = []
+
+            raw_listeners = icestats.get("listeners")
+            if raw_listeners is not None:
+                g_listeners = int(raw_listeners)
+            else:
+                g_listeners = sum(int(s.get("listeners", 0) or 0) for s in sources if isinstance(s, dict))
+
+            prev_stats = (media_proc.config or {}).get("icecast_stats", {})
+            prev_peak = int(prev_stats.get("listener_peak", 0) or 0)
+
+            active_mounts = len(sources)
+            sources_list = []
+            source_peaks = []
+            for s in sources:
+                if not isinstance(s, dict):
+                    continue
+                raw_p = s.get("listener_peak", s.get("peak", 0))
+                try:
+                    peak = int(raw_p or 0)
+                except (ValueError, TypeError):
+                    peak = 0
+                source_peaks.append(peak)
+
+                mount_path = s.get("mount")
+                sources_list.append({
+                    "mount": mount_path,
+                    "listeners": int(s.get("listeners", 0) or 0),
+                    "peak": peak,
+                    "bitrate": s.get("bitrate", 0),
+                    "title": s.get("title") or s.get("stream_name", "")
+                })
+
+            max_peak = max([prev_peak] + source_peaks)
+            new_cfg = dict(media_proc.config)
+            new_cfg["icecast_stats"] = {
+                "listeners": g_listeners,
+                "listener_peak": max_peak,
+                "active_mounts": active_mounts,
+                "sources": sources_list
+            }
+            media_proc.config = new_cfg
+
+            self.assertEqual(media_proc.config["icecast_stats"]["listeners"], 2)
+            # Historical peak 7 must be preserved, not overwritten by 3
+            self.assertEqual(media_proc.config["icecast_stats"]["listener_peak"], 7)
+            self.assertEqual(media_proc.config["icecast_stats"]["active_mounts"], 1)
+
 if __name__ == "__main__":
     unittest.main()

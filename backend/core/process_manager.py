@@ -1564,28 +1564,56 @@ class ProcessManager:
                                     data = fetch_icecast_telemetry(h_port, admin_user, admin_password, has_status_json=has_status_json, is_legacy=is_legacy, use_ssl=use_ssl)
                                     if data:
                                         icestats = data.get("icestats", {})
-                                        g_listeners = icestats.get("listeners", 0)
                                         sources = icestats.get("source", [])
                                         if isinstance(sources, dict):
                                             sources = [sources]
-                                        max_peak = 0
+                                        elif not isinstance(sources, list):
+                                            sources = []
+
+                                        raw_listeners = icestats.get("listeners")
+                                        if raw_listeners is not None:
+                                            try:
+                                                g_listeners = int(raw_listeners)
+                                            except (ValueError, TypeError):
+                                                g_listeners = 0
+                                        else:
+                                            g_listeners = sum(int(s.get("listeners", 0) or 0) for s in sources if isinstance(s, dict))
+
+                                        prev_stats = (media_proc.config or {}).get("icecast_stats", {})
+                                        prev_peak = int(prev_stats.get("listener_peak", 0) or 0)
+
                                         active_mounts = len(sources)
                                         sources_list = []
+                                        source_peaks = []
                                         for s in sources:
-                                            peak = s.get("listener_peak", s.get("peak", 0))
-                                            if isinstance(peak, int) and peak > max_peak:
-                                                max_peak = peak
+                                            if not isinstance(s, dict):
+                                                continue
+                                            raw_p = s.get("listener_peak", s.get("peak", 0))
+                                            try:
+                                                peak = int(raw_p or 0)
+                                            except (ValueError, TypeError):
+                                                peak = 0
+                                            source_peaks.append(peak)
+
                                             mount_path = s.get("mount")
                                             if not mount_path:
                                                 listen_url = s.get("listenurl", "")
                                                 mount_path = listen_url.split(f":{h_port}")[-1] if f":{h_port}" in listen_url else listen_url
+
+                                            try:
+                                                curr_listeners = int(s.get("listeners", 0) or 0)
+                                            except (ValueError, TypeError):
+                                                curr_listeners = 0
+
                                             sources_list.append({
                                                 "mount": mount_path,
-                                                "listeners": s.get("listeners", 0),
+                                                "listeners": curr_listeners,
                                                 "peak": peak,
                                                 "bitrate": s.get("bitrate", 0),
                                                 "title": s.get("title") or s.get("stream_name", "")
                                             })
+
+                                        max_peak = max([prev_peak] + source_peaks)
                                         new_cfg = dict(media_proc.config)
                                         new_cfg["icecast_stats"] = {
                                             "listeners": g_listeners,

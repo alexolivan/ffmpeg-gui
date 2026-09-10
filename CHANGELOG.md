@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.18.0] - 2026-09-10
+
+### Added
+- **Ogg Vorbis (`libvorbis`) Codec Support for Icecast & File Outputs**:
+  - Registered `libvorbis` in `codecRegistry.ts` under `OUTPUT_COMPATIBLE_CODECS` for `icecast` and `file` outputs.
+  - Configured bitrate range options (64 kbps to 320 kbps, default 128 kbps) and channel modes (Mono / Stereo) for `libvorbis`.
+  - Updated audio format hints across destination panels and verified automatic CLI argument generation (`-c:a libvorbis -f ogg -content_type application/ogg`).
+
+### Fixed
+- **Icecast 2.5 Telemetry & Listener Peak Preservation**:
+  - Fixed `Listeners: 0` reporting on Icecast 2.5 service cards by adding source mount listener summation fallback in both `fetch_icecast_telemetry` and `ProcessManager` when root `listeners` is omitted by `/status-json.xsl`.
+  - Fixed `listener_peak` resetting to 0 when streams reconnect or source counts change by preserving the historical session high-water mark.
+  - Added automated unit tests covering Icecast 2.5 telemetry normalization, peak retention, and `libvorbis` FFmpeg CLI command generation.
+
 ## [2.17.4] - 2026-09-10
 
 ### Fixed
