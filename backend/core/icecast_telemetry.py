@@ -66,7 +66,17 @@ def fetch_icecast_telemetry(
             req = urllib.request.Request(url, headers={"User-Agent": "ffmpeg-gui"})
             with urllib.request.urlopen(req, timeout=1.5, context=ssl_ctx) as resp:
                 if resp.status == 200:
-                    return pyjson.loads(resp.read().decode("utf-8"))
+                    raw_data = pyjson.loads(resp.read().decode("utf-8"))
+                    if isinstance(raw_data, dict) and "icestats" in raw_data:
+                        icestats = raw_data["icestats"]
+                        if "listeners" not in icestats:
+                            srcs = icestats.get("source", [])
+                            if isinstance(srcs, dict):
+                                srcs = [srcs]
+                            elif not isinstance(srcs, list):
+                                srcs = []
+                            icestats["listeners"] = sum(int(s.get("listeners", 0) or 0) for s in srcs if isinstance(s, dict))
+                    return raw_data
         except Exception:
             _MISSING_STATUS_JSON_PORTS.add(port)
 

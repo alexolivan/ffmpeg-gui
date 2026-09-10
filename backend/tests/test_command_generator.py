@@ -491,6 +491,24 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-tls 1", cmd_peer_ssl_str)
         self.assertIn("icecast://source:mypassword@vps1.example.com:8443/stream.mp3", cmd_peer_ssl_str)
 
+        # Case 5: Icecast with libvorbis (Ogg Vorbis)
+        proc.codec_config = {'vcodec': 'none', 'acodec': 'libvorbis', 'audio_params': {'b:a': '128k', 'ac': 2}}
+        proc.output_config = {
+            'type': 'icecast',
+            'host': '127.0.0.1',
+            'port': '8000',
+            'icecast_mount': '/stream.ogg',
+            'icecast_username': 'source',
+            'icecast_password': 'hackme'
+        }
+        cmd_vorbis = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_vorbis_str = " ".join(cmd_vorbis)
+        self.assertIn("-c:a libvorbis", cmd_vorbis_str)
+        self.assertIn("-b:a 128k", cmd_vorbis_str)
+        self.assertIn("-ac 2", cmd_vorbis_str)
+        self.assertIn("-f ogg -content_type application/ogg", cmd_vorbis_str)
+        self.assertIn("icecast://source:hackme@127.0.0.1:8000/stream.ogg", cmd_vorbis_str)
+
     def test_hls_abr_vaapi_cqp_command(self):
         proc = MagicMock()
         proc.id = 50

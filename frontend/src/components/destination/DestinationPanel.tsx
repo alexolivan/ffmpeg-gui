@@ -3579,7 +3579,7 @@ const renderBroadcastRecipe = (type: string, t: any) => {
     icecast: {
       title: "Icecast2 (Audio Streaming)",
       video: "Ninguno (Solo Audio)",
-      audio: "MP3 / AAC / Opus",
+      audio: "MP3 / AAC / Opus / Vorbis",
       container: "ADTS / Ogg / MP3 Stream",
       details: "Destinado a radio por internet o streaming de audio puro. Permite ingesta remota hacia servidores Icecast2."
     },
