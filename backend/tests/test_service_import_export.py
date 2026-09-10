@@ -137,5 +137,90 @@ class TestServiceImportExport(unittest.TestCase):
         self.assertEqual(imported_data["output_config"]["type"], "srt")
 
 
+    def test_export_and_import_service_with_peer_flags_and_sanitization(self):
+        # Service with peer sharing and foreign peer references
+        svc = Service(
+            name="MediaMTX Master Hub Peer",
+            alias="MTX-PEER",
+            service_type="mediamtx_hub",
+            is_shared_with_peers=True,
+            allow_peer_lease=True,
+            config={
+                "output_config": {
+                    "type": "srt",
+                    "host": "10.0.0.99",
+                    "peer_node_id": 99999,
+                    "peer_service_id": 88888,
+                    "provider_service_id": 77777
+                }
+            }
+        )
+        self.db.add(svc)
+        self.db.commit()
+
+        res_exp = self.client.get(f"/processes/{svc.id}/export")
+        self.assertEqual(res_exp.status_code, 200)
+        exported = res_exp.json()
+        self.assertTrue(exported["profile"]["is_shared_with_peers"])
+        self.assertTrue(exported["profile"]["allow_peer_lease"])
+
+        # Import into DB
+        res_imp = self.client.post("/processes/import", json=exported)
+        self.assertEqual(res_imp.status_code, 200)
+        imported_data = res_imp.json()
+        self.assertTrue(imported_data["is_shared_with_peers"])
+        self.assertTrue(imported_data["allow_peer_lease"])
+        
+        # Foreign IDs 99999, 88888, 77777 do not exist in DB, so they must be sanitized out
+        out_cfg = imported_data["output_config"]
+        self.assertNotIn("peer_node_id", out_cfg)
+        self.assertNotIn("peer_service_id", out_cfg)
+        self.assertNotIn("provider_service_id", out_cfg)
+
+    def test_tasks_export_and_import(self):
+        from database.models import ScheduledTask
+        t = ScheduledTask(
+            name="Test Task 1",
+            schedule_type="manual",
+            is_active=False,
+            ffmpeg_build_id=99999, # Non-existent build ID
+            allow_auto_start_deps=True,
+            allow_auto_stop_deps=True,
+            input_config={"input1": {"type": "file", "path": "/tmp/test.mp4"}},
+            output_config={"type": "udp", "host": "127.0.0.1", "port": 5000},
+            codec_config={"vcodec": "copy"}
+        )
+        self.db.add(t)
+        self.db.commit()
+
+        # Export single
+        res_single = self.client.get(f"/tasks/{t.id}/export")
+        self.assertEqual(res_single.status_code, 200)
+        task_data = res_single.json()
+        self.assertTrue(task_data["task"]["allow_auto_start_deps"])
+        self.assertTrue(task_data["task"]["allow_auto_stop_deps"])
+
+        # Export all
+        res_all = self.client.get("/tasks/export")
+        self.assertEqual(res_all.status_code, 200)
+        all_data = res_all.json()
+        self.assertTrue(any(item["name"] == "Test Task 1" for item in all_data["tasks"]))
+
+        # Import task (should resolve missing build 99999 to default ffmpeg build)
+        res_imp = self.client.post("/tasks/import", json=task_data)
+        self.assertEqual(res_imp.status_code, 200)
+        
+        imported_task = self.db.query(ScheduledTask).filter(ScheduledTask.name == "Imported: Test Task 1").first()
+        self.assertIsNotNone(imported_task)
+        self.assertEqual(imported_task.ffmpeg_build_id, self.ffmpeg_build.id)
+        self.assertTrue(imported_task.allow_auto_start_deps)
+        self.assertTrue(imported_task.allow_auto_stop_deps)
+
+        self.db.delete(t)
+        self.db.delete(imported_task)
+        self.db.commit()
+
+
 if __name__ == "__main__":
     unittest.main()
+

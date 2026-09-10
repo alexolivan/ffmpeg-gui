@@ -20,6 +20,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
   const [exportStorageVolumes, setExportStorageVolumes] = useState(true);
   const [exportSoftwareEngines, setExportSoftwareEngines] = useState(true);
   const [exportNotifications, setExportNotifications] = useState(true);
+  const [exportPeerFederation, setExportPeerFederation] = useState(true);
 
   const [isExporting, setIsExporting] = useState(false);
 
@@ -42,6 +43,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
     setExportStorageVolumes(val);
     setExportSoftwareEngines(val);
     setExportNotifications(val);
+    setExportPeerFederation(val);
   };
 
   const handleExportBackup = async () => {
@@ -58,6 +60,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
         storage_volumes: exportStorageVolumes,
         software_engines: exportSoftwareEngines,
         notifications: exportNotifications,
+        peer_federation: exportPeerFederation,
       };
 
       const res = await fetch(`${API}/api/backup/export`, {
@@ -134,7 +137,8 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
       }
 
       const counts = result.imported || {};
-      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('nav.services', 'Services')}: ${counts.services || 0}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0}${counts.software_engines !== undefined ? `, ${t('settings.tabs.engines', 'Engines')}: ${counts.software_engines}` : ''})`;
+      const fedCounts = counts.peer_federation ? ((counts.peer_federation.inbound_keys || 0) + (counts.peer_federation.remote_nodes || 0)) : 0;
+      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('nav.services', 'Services')}: ${counts.services || 0}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0}${counts.software_engines !== undefined ? `, ${t('settings.tabs.engines', 'Engines')}: ${counts.software_engines}` : ''}${fedCounts > 0 ? `, ${t('settings.tabs.network', 'Peers')}: ${fedCounts}` : ''})`;
       setImportSuccess(summaryMsg);
       setImportFile(null);
       setImportData(null);
@@ -145,7 +149,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
     }
   };
 
-  const anyExportSelected = exportGuiGeneral || exportGuiNetworkSsl || exportLcdDisplay || exportLoggingRetention || exportWatchdogGrace || exportServices || exportTasks || exportStorageVolumes || exportSoftwareEngines || exportNotifications;
+  const anyExportSelected = exportGuiGeneral || exportGuiNetworkSsl || exportLcdDisplay || exportLoggingRetention || exportWatchdogGrace || exportServices || exportTasks || exportStorageVolumes || exportSoftwareEngines || exportNotifications || exportPeerFederation;
 
   return (
     <div className="space-y-6">
@@ -188,7 +192,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
             <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <GearIcon size={12} /> Panel Preferences & Branding
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
               <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
                 <input
                   type="checkbox"
@@ -225,6 +229,19 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 <div className="text-xs min-w-0">
                   <span className="font-bold text-[var(--text-primary)] block truncate">LCD Hardware & LEDs</span>
                   <span className="text-[10px] text-text-secondary truncate block">CrystalFontz LCD port, brightness & LED profiles</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportPeerFederation}
+                  onChange={(e) => setExportPeerFederation(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">{t('settings.backup.sectionFederationTitle', 'Peer Federation & Enlaces')}</span>
+                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionFederationDesc', 'Claves de enlace y nodos peers vinculados')}</span>
                 </div>
               </label>
             </div>
@@ -401,7 +418,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs font-mono">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-xs font-mono">
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">GUI General & Theme</span>
                   <strong className="text-[var(--text-primary)]">{importData.sections?.gui_general || importData.sections?.system_settings ? '✓ Present' : 'None'}</strong>
@@ -421,6 +438,12 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">Engines</span>
                   <strong className="text-[var(--text-primary)]">{importData.sections?.software_engines?.length || 0} entries</strong>
+                </div>
+                <div className="p-2 rounded bg-white/5 border border-white/5">
+                  <span className="text-[10px] text-text-secondary block">Peer Federation</span>
+                  <strong className="text-[var(--text-primary)]">
+                    {importData.sections?.peer_federation ? `${(importData.sections.peer_federation.inbound_keys?.length || 0) + (importData.sections.peer_federation.remote_nodes?.length || 0)} entries` : 'None'}
+                  </strong>
                 </div>
               </div>
 

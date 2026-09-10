@@ -367,6 +367,7 @@ class BackupExportRequest(BaseModel):
     storage_volumes: bool = True
     notifications: bool = True
     software_engines: bool = True
+    peer_federation: bool = True
 
 class BackupImportPayload(BaseModel):
     app: str
@@ -1506,6 +1507,9 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "software_version": p.software_version,
                 "ffmpeg_build_id": p.ffmpeg_build_id,
                 "software_build_id": p.software_build_id,
+                "is_shared_with_peers": getattr(p, "is_shared_with_peers", False),
+                "allow_peer_lease": getattr(p, "allow_peer_lease", False),
+                "log_storage_id": getattr(p, "log_storage_id", None),
             }
             for p in procs
         ]
@@ -1529,8 +1533,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
                 "is_active": t.is_active,
                 "retry_policy": t.retry_policy,
-                "allow_auto_start_deps": t.allow_auto_start_deps,
-                "allow_auto_stop_deps": t.allow_auto_stop_deps,
+                "allow_auto_start_deps": getattr(t, "allow_auto_start_deps", True),
+                "allow_auto_stop_deps": getattr(t, "allow_auto_stop_deps", True),
                 "alias": t.alias,
             }
             for t in tasks
@@ -1570,6 +1574,32 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for b in builds
         ]
 
+    # 11. Peer Federation & Enlaces
+    if getattr(req, "peer_federation", True):
+        from database.models import PeerInboundKey, PeerRemoteNode
+        inbound_keys = db.query(PeerInboundKey).all()
+        remote_nodes = db.query(PeerRemoteNode).all()
+        sections["peer_federation"] = {
+            "inbound_keys": [
+                {
+                    "alias": k.alias,
+                    "token_id": k.token_id,
+                    "secret_key": k.secret_key,
+                    "allowed_services": k.allowed_services,
+                    "status": k.status,
+                }
+                for k in inbound_keys
+            ],
+            "remote_nodes": [
+                {
+                    "name": n.name,
+                    "base_url": n.base_url,
+                    "token_id": n.token_id,
+                    "secret_key": n.secret_key,
+                }
+                for n in remote_nodes
+            ]
+        }
 
     return {
         "app": "ffmpeg-gui",
@@ -1594,6 +1624,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         "tasks": 0,
         "storage_volumes": 0,
         "software_engines": 0,
+        "peer_federation": {"inbound_keys": 0, "remote_nodes": 0},
         "notifications": False
     }
     sections = payload.sections or {}
@@ -1705,11 +1736,15 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     startup_delay=p_data.get("startup_delay", 0),
                     watchdog_enabled=p_data.get("watchdog_enabled", True),
                     watchdog_retries=p_data.get("watchdog_retries", 3),
+                    watchdog_circuit_breaker=p_data.get("watchdog_circuit_breaker", True),
                     watchdog_min_speed=p_data.get("watchdog_min_speed", 0.85),
                     watchdog_min_speed_duration=p_data.get("watchdog_min_speed_duration", 30),
                     alias=p_data.get("alias"),
                     network_timeout=p_data.get("network_timeout", 30),
                     debug_mode=p_data.get("debug_mode", False),
+                    log_storage_id=p_data.get("log_storage_id"),
+                    is_shared_with_peers=bool(p_data.get("is_shared_with_peers", False)),
+                    allow_peer_lease=bool(p_data.get("allow_peer_lease", False)),
                     allow_auto_start_deps=p_data.get("allow_auto_start_deps", True),
                     allow_auto_stop_deps=p_data.get("allow_auto_stop_deps", True),
                     software_type=p_data.get("software_type"),
@@ -1739,6 +1774,15 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                         dur_end = datetime.datetime.fromisoformat(t_data["duration_end_time"])
                     except Exception:
                         pass
+
+                build_id = t_data.get("ffmpeg_build_id")
+                if build_id:
+                    from database.models import SoftwareBuild
+                    b_exists = db.query(SoftwareBuild).filter(SoftwareBuild.id == build_id, SoftwareBuild.software_type == "ffmpeg").first()
+                    if not b_exists:
+                        def_b = db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready", SoftwareBuild.is_default == True).first() or db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready").first()
+                        build_id = def_b.id if def_b else None
+
                 task = ScheduledTask(
                     name=t_data.get("name"),
                     command="ffmpeg",
@@ -1746,7 +1790,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     output_config=t_data.get("output_config") or {},
                     codec_config=t_data.get("codec_config") or {},
                     filter_config=t_data.get("filter_config") or {},
-                    ffmpeg_build_id=t_data.get("ffmpeg_build_id"),
+                    ffmpeg_build_id=build_id,
                     schedule_type=t_data.get("schedule_type", "manual"),
                     schedule_cron=t_data.get("schedule_cron"),
                     schedule_datetime=sched_dt,
@@ -1786,6 +1830,36 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                 )
                 db.add(build)
                 imported_summary["software_engines"] += 1
+
+    # Restore Peer Federation
+    if "peer_federation" in sections and isinstance(sections["peer_federation"], dict):
+        from database.models import PeerInboundKey, PeerRemoteNode
+        fed_data = sections["peer_federation"]
+        for k_data in fed_data.get("inbound_keys", []):
+            tok = k_data.get("token_id")
+            if tok and not db.query(PeerInboundKey).filter(PeerInboundKey.token_id == tok).first():
+                new_key = PeerInboundKey(
+                    alias=k_data.get("alias", "Imported Key"),
+                    token_id=tok,
+                    secret_key=k_data.get("secret_key", ""),
+                    allowed_services=k_data.get("allowed_services"),
+                    status=k_data.get("status", "active")
+                )
+                db.add(new_key)
+                imported_summary["peer_federation"]["inbound_keys"] += 1
+
+        for n_data in fed_data.get("remote_nodes", []):
+            tok = n_data.get("token_id")
+            if tok and not db.query(PeerRemoteNode).filter(PeerRemoteNode.token_id == tok).first():
+                new_node = PeerRemoteNode(
+                    name=n_data.get("name", "Imported Peer"),
+                    base_url=n_data.get("base_url", ""),
+                    token_id=tok,
+                    secret_key=n_data.get("secret_key", ""),
+                    status="offline"
+                )
+                db.add(new_node)
+                imported_summary["peer_federation"]["remote_nodes"] += 1
 
 
     db.commit()
@@ -4966,6 +5040,29 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
         profile["alias"] = alias
     else:
         profile["alias"] = None
+
+    # 6. Sanitize peer federation & local provider references
+    from database.models import PeerRemoteNode, Service
+    for cfg_dict in [profile.get("input_config"), profile.get("output_config"), profile.get("config", {}).get("output_config"), profile.get("config", {}).get("input_config")]:
+        if isinstance(cfg_dict, dict):
+            p_node = cfg_dict.get("peer_node_id")
+            if p_node:
+                try:
+                    exists = db.query(PeerRemoteNode).filter(PeerRemoteNode.id == int(p_node)).first()
+                    if not exists:
+                        cfg_dict.pop("peer_node_id", None)
+                        cfg_dict.pop("peer_service_id", None)
+                except Exception:
+                    cfg_dict.pop("peer_node_id", None)
+                    cfg_dict.pop("peer_service_id", None)
+            prov_id = cfg_dict.get("provider_service_id")
+            if prov_id:
+                try:
+                    p_exists = db.query(Service).filter(Service.id == int(prov_id)).first()
+                    if not p_exists:
+                        cfg_dict.pop("provider_service_id", None)
+                except Exception:
+                    cfg_dict.pop("provider_service_id", None)
                     
     return profile
 
@@ -5005,6 +5102,8 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "network_timeout": getattr(proc, 'network_timeout', 15),
             "debug_mode": getattr(proc, 'debug_mode', False),
             "log_storage_id": getattr(proc, 'log_storage_id', None),
+            "is_shared_with_peers": getattr(proc, 'is_shared_with_peers', False),
+            "allow_peer_lease": getattr(proc, 'allow_peer_lease', False),
         }
     }
 
@@ -5042,6 +5141,8 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         network_timeout=profile.get('network_timeout', 15),
         debug_mode=profile.get('debug_mode', False),
         log_storage_id=profile.get('log_storage_id'),
+        is_shared_with_peers=bool(profile.get('is_shared_with_peers', False)),
+        allow_peer_lease=bool(profile.get('allow_peer_lease', False)),
     )
     db.add(db_proc)
     db.commit()
@@ -5777,6 +5878,8 @@ def export_tasks(db: Session = Depends(get_db)):
             "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
             "retry_policy": t.retry_policy,
             "alias": t.alias,
+            "allow_auto_start_deps": getattr(t, "allow_auto_start_deps", True),
+            "allow_auto_stop_deps": getattr(t, "allow_auto_stop_deps", True),
         })
     return {
         "version": 2,
@@ -5809,6 +5912,8 @@ def export_single_task(task_id: int, db: Session = Depends(get_db)):
             "duration_end_time": t.duration_end_time.isoformat() if t.duration_end_time else None,
             "retry_policy": t.retry_policy,
             "alias": t.alias,
+            "allow_auto_start_deps": getattr(t, "allow_auto_start_deps", True),
+            "allow_auto_stop_deps": getattr(t, "allow_auto_stop_deps", True),
         }
     }
 
@@ -5847,6 +5952,8 @@ def _serialize_service(p) -> dict:
         "network_timeout": p.network_timeout,
         "debug_mode": p.debug_mode,
         "log_storage_id": p.log_storage_id,
+        "is_shared_with_peers": getattr(p, 'is_shared_with_peers', False),
+        "allow_peer_lease": getattr(p, 'allow_peer_lease', False),
         "log_file_path": process_manager.get_process_log_path(p.id),
     }
 
@@ -5938,16 +6045,29 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
         elif stype == "one_shot" and td.get("schedule_datetime"):
             next_run = datetime.datetime.fromisoformat(td["schedule_datetime"])
 
+        build_id = td.get("ffmpeg_build_id")
+        if build_id:
+            from database.models import SoftwareBuild
+            b_exists = db.query(SoftwareBuild).filter(SoftwareBuild.id == build_id, SoftwareBuild.software_type == "ffmpeg").first()
+            if not b_exists:
+                def_b = db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready", SoftwareBuild.is_default == True).first() or db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready").first()
+                build_id = def_b.id if def_b else None
+
+        sanitized_cfg = migrate_and_validate_profile({
+            "input_config": td.get("input_config", {}),
+            "output_config": td.get("output_config", {})
+        }, db)
+
         db_task = ScheduledTask(
             name=f"Imported: {td.get('name', 'Untitled')}",
             is_system=False,
             command=None,
             is_active=td.get("is_active", False),
-            input_config=td.get("input_config", {}),
-            output_config=td.get("output_config", {}),
+            input_config=sanitized_cfg.get("input_config", {}),
+            output_config=sanitized_cfg.get("output_config", {}),
             codec_config=td.get("codec_config", {}),
             filter_config=td.get("filter_config"),
-            ffmpeg_build_id=td.get("ffmpeg_build_id"),
+            ffmpeg_build_id=build_id,
             schedule_type=stype,
             schedule_cron=td.get("schedule_cron"),
             schedule_datetime=datetime.datetime.fromisoformat(td["schedule_datetime"]) if td.get("schedule_datetime") else None,
@@ -5956,12 +6076,22 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
             duration_seconds=td.get("duration_seconds"),
             duration_end_time=datetime.datetime.fromisoformat(td["duration_end_time"]) if td.get("duration_end_time") else None,
             retry_policy=td.get("retry_policy"),
-            alias=td.get("alias")
+            alias=td.get("alias"),
+            allow_auto_start_deps=td.get("allow_auto_start_deps", True),
+            allow_auto_stop_deps=td.get("allow_auto_stop_deps", True)
         )
         db.add(db_task)
         imported.append(db_task)
         
     db.commit()
+
+    from core.dependency_manager import dependency_manager
+    for db_task in imported:
+        try:
+            dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
+        except Exception as e:
+            logger.warning(f"Error syncing auto dependencies for imported task {db_task.id}: {e}")
+
     return {"status": "success", "count": len(imported)}
 
 @app.get("/tasks/{task_id}")

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.17.0] - 2026-09-10
+
+### Added
+- **Global Backup & Restore Modernization with Peer Federation**:
+  - Full export and restore support for Peer Federation entities (`PeerInboundKey` and `PeerRemoteNode`), preserving cluster connectivity across nodes during migrations.
+  - Export and restore coverage for modern service attributes: `is_shared_with_peers`, `allow_peer_lease`, `watchdog_circuit_breaker`, and `log_storage_id`.
+  - Export and restore coverage for scheduled task auto-dependency flags (`allow_auto_start_deps`, `allow_auto_stop_deps`).
+  - Added dedicated "Peer Federation & Links" export selector card in `BackupRestoreCard.tsx` and updated backup metadata preview grid with entry counters.
+  - Multi-language localization for Peer Federation backup settings across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`) maintaining 100% key parity.
+
+### Changed
+- **Individual Service & Scheduled Task Import/Export Resilience**:
+  - Parity in single service export/import (`/processes/{id}/export` and `/processes/import`) with full retention of peer sharing flags (`is_shared_with_peers`, `allow_peer_lease`).
+  - Automatic foreign reference sanitization in `migrate_and_validate_profile`: strips foreign or non-existent `peer_node_id`, `peer_service_id`, and `provider_service_id` keys to prevent broken references or foreign key violations when transferring services or tasks between different nodes.
+  - Scheduled task export/import (`/tasks/export`, `/tasks/{id}/export`, `/tasks/import`) upgraded with dynamic `ffmpeg_build_id` fallback matching available ready builds in SQLite.
+  - Automatic task dependency graph synchronization (`sync_auto_dependencies`) triggered upon scheduled task import.
+
 ## [2.16.2] - 2026-09-10
 
 ### Fixed

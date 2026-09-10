@@ -537,6 +537,8 @@
       "sectionEnginesDesc": "Receptes de Forja, binaris del sistema i compilacions",
       "sectionNotificationsTitle": "Notificacions",
       "sectionNotificationsDesc": "Servidor de correu SMTP i alertes",
+      "sectionFederationTitle": "Federació de Peers i Enllaços",
+      "sectionFederationDesc": "Claus d'enllaç i nodes peers vinculats",
       "exporting": "GENERANT CÒPIA...",
       "exportBtn": "EXPORTAR CÒPIA DE SEGURETAT (.JSON)",
       "importTitle": "Restaurar Còpia de Seguretat",

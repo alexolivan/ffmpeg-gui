@@ -537,6 +537,8 @@
       "sectionEnginesDesc": "Recetas de Forja, binarios del sistema y compilaciones",
       "sectionNotificationsTitle": "Notificaciones",
       "sectionNotificationsDesc": "Servidor de correo SMTP y alertas",
+      "sectionFederationTitle": "Peer Federation & Enlaces",
+      "sectionFederationDesc": "Claves de enlace y nodos peers vinculados",
       "exporting": "GENERANDO COPIA...",
       "exportBtn": "EXPORTAR COPIA DE SEGURIDAD (.JSON)",
       "importTitle": "Restaurar Copia de Seguridad",

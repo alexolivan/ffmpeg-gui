@@ -537,6 +537,8 @@
       "sectionEnginesDesc": "Forge recipes, system binaries & engine builds",
       "sectionNotificationsTitle": "Notifications",
       "sectionNotificationsDesc": "SMTP email server & alert triggers",
+      "sectionFederationTitle": "Peer Federation & Links",
+      "sectionFederationDesc": "Inbound pairing keys and linked remote peer nodes",
       "exporting": "GENERATING BACKUP...",
       "exportBtn": "EXPORT BACKUP (.JSON)",
       "importTitle": "Restore System Backup",
