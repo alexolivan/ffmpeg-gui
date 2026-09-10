@@ -281,5 +281,57 @@ class TestPeerEndpoints(unittest.TestCase):
         res_del = self.client.delete(f"/api/services/{svc_id}")
         self.assertEqual(res_del.status_code, 200)
 
+    def test_processes_crud_federation_fields(self):
+        # 1. Create process with federation fields via /processes
+        payload = {
+            "name": "Process Test Federation",
+            "service_type": "mediamtx_hub",
+            "config": {
+                "mediamtx_config": {
+                    "rtmp_port": 19350,
+                    "rtsp_port": 18554,
+                    "hls_port": 18888,
+                    "webrtc_port": 18889,
+                    "srt_port": 18890
+                }
+            },
+            "is_shared_with_peers": True,
+            "allow_peer_lease": True
+        }
+        res = self.client.post("/processes", json=payload)
+        self.assertEqual(res.status_code, 200)
+        proc_data = res.json()
+        proc_id = proc_data["id"]
+        self.assertTrue(proc_data.get("is_shared_with_peers"))
+        self.assertTrue(proc_data.get("allow_peer_lease"))
+
+        # 2. List via GET /processes
+        res_list = self.client.get("/processes")
+        self.assertEqual(res_list.status_code, 200)
+        procs = res_list.json()
+        matching = [p for p in procs if p["id"] == proc_id]
+        self.assertEqual(len(matching), 1)
+        self.assertTrue(matching[0]["is_shared_with_peers"])
+        self.assertTrue(matching[0]["allow_peer_lease"])
+
+        # 3. Update via PUT /processes/{id}
+        update_payload = {
+            "is_shared_with_peers": True,
+            "allow_peer_lease": False
+        }
+        res_update = self.client.put(f"/processes/{proc_id}", json=update_payload)
+        self.assertEqual(res_update.status_code, 200)
+
+        # 4. Verify update persisted
+        res_list2 = self.client.get("/processes")
+        procs2 = res_list2.json()
+        matching2 = [p for p in procs2 if p["id"] == proc_id]
+        self.assertEqual(len(matching2), 1)
+        self.assertTrue(matching2[0]["is_shared_with_peers"])
+        self.assertFalse(matching2[0]["allow_peer_lease"])
+
+        # Cleanup
+        self.client.delete(f"/processes/{proc_id}")
+
 if __name__ == "__main__":
     unittest.main()

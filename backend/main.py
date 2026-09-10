@@ -240,6 +240,8 @@ class ProcessCreate(BaseModel):
     network_timeout: Optional[int] = 15
     debug_mode: Optional[bool] = False
     log_storage_id: Optional[int] = None
+    is_shared_with_peers: Optional[bool] = False
+    allow_peer_lease: Optional[bool] = False
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -276,6 +278,8 @@ class ProcessUpdate(BaseModel):
     network_timeout: Optional[int] = None
     debug_mode: Optional[bool] = None
     log_storage_id: Optional[int] = None
+    is_shared_with_peers: Optional[bool] = None
+    allow_peer_lease: Optional[bool] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -4029,6 +4033,8 @@ def list_processes(db: Session = Depends(get_db)):
             "log_storage_id": p.log_storage_id,
             "log_file_path": process_manager.get_process_log_path(p.id),
             "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
+            "is_shared_with_peers": bool(getattr(p, 'is_shared_with_peers', False)),
+            "allow_peer_lease": bool(getattr(p, 'allow_peer_lease', False)),
         } for p in processes
     ]
 
@@ -4103,6 +4109,8 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         network_timeout=proc_in.network_timeout if proc_in.network_timeout is not None else 15,
         debug_mode=proc_in.debug_mode if proc_in.debug_mode is not None else False,
         log_storage_id=proc_in.log_storage_id,
+        is_shared_with_peers=bool(proc_in.is_shared_with_peers),
+        allow_peer_lease=bool(proc_in.allow_peer_lease),
     )
     db.add(db_proc)
     db.commit()
@@ -4223,6 +4231,8 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     if proc_in.network_timeout is not None: db_proc.network_timeout = proc_in.network_timeout
     if proc_in.debug_mode is not None: db_proc.debug_mode = proc_in.debug_mode
     if proc_in.log_storage_id is not None: db_proc.log_storage_id = proc_in.log_storage_id
+    if proc_in.is_shared_with_peers is not None: db_proc.is_shared_with_peers = bool(proc_in.is_shared_with_peers)
+    if proc_in.allow_peer_lease is not None: db_proc.allow_peer_lease = bool(proc_in.allow_peer_lease)
 
     from utils.port_validator import validate_service_port_conflicts
     validate_service_port_conflicts(

@@ -1582,8 +1582,14 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             <input
               type="checkbox"
               checked={isSharedWithPeers}
-              onChange={(e) => setIsSharedWithPeers(e.target.checked)}
-              className="mt-0.5 rounded text-cyan-400"
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setIsSharedWithPeers(checked);
+                if (!checked) {
+                  setAllowPeerLease(false);
+                }
+              }}
+              className="mt-0.5 rounded text-cyan-400 cursor-pointer"
             />
             <div>
               <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
@@ -1595,12 +1601,17 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             </div>
           </label>
 
-          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+          <label
+            className={`flex items-start gap-2.5 select-none transition-opacity ${
+              !isSharedWithPeers ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+            }`}
+          >
             <input
               type="checkbox"
-              checked={allowPeerLease}
+              disabled={!isSharedWithPeers}
+              checked={isSharedWithPeers && allowPeerLease}
               onChange={(e) => setAllowPeerLease(e.target.checked)}
-              className="mt-0.5 rounded text-cyan-400"
+              className="mt-0.5 rounded text-cyan-400 disabled:cursor-not-allowed"
             />
             <div>
               <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
