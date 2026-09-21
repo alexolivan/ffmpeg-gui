@@ -33,7 +33,10 @@ class PeerManager:
         self.purge_expired_leases()
         return len(self._active_remote_leases.get(service_id, {}))
 
-    def purge_expired_leases(self, timeout_seconds: int = 90) -> None:
+    def purge_expired_leases(self, timeout_seconds: int = 90, db_session = None) -> None:
+        if not isinstance(timeout_seconds, (int, float)):
+            db_session = timeout_seconds
+            timeout_seconds = 90
         now = time.time()
         for svc_id in list(self._active_remote_leases.keys()):
             leases = self._active_remote_leases[svc_id]
@@ -290,6 +293,7 @@ class PeerManager:
                 ]
             else:
                 filtered_locks = all_locks
+            logger.info(f"[Inbound RPC] GET_RESOURCE_LOCKS: Returning {len(filtered_locks)} locks (filter service_id={raw_svc_id}) to token {token_id}")
             res_payload = {"status": "OK", "locks": filtered_locks}
 
         elif action == "ACQUIRE_LEASE":
@@ -529,8 +533,9 @@ class PeerManager:
         Queries a remote peer node for active publisher resource locks (mountpoints & stream paths).
         Marks `is_own_lease = True` if the lock is held by this node's token.
         """
-        node = db_session.query(PeerRemoteNode).get(node_id)
+        node = db_session.get(PeerRemoteNode, node_id) if hasattr(db_session, "get") else db_session.query(PeerRemoteNode).get(node_id)
         if not node:
+            logger.warning(f"[PeerManager] get_remote_resource_locks: Remote node ID {node_id} not found in DB")
             return []
 
         payload: Dict[str, Any] = {"action": "GET_RESOURCE_LOCKS"}
@@ -538,10 +543,15 @@ class PeerManager:
             payload["service_id"] = service_id
 
         success, res, err = self._send_rpc_to_node(db_session, node_id, payload)
-        if not success or not res or res.get("status") != "OK":
+        if not success:
+            logger.warning(f"[PeerManager] get_remote_resource_locks: RPC failed for node {node_id} ({node.name}): {err}")
+            return []
+        if not res or res.get("status") != "OK":
+            logger.warning(f"[PeerManager] get_remote_resource_locks: Node {node_id} ({node.name}) returned status: {res}")
             return []
 
         locks = res.get("locks", [])
+        logger.info(f"[PeerManager] get_remote_resource_locks: Node {node_id} ({node.name}) returned {len(locks)} active locks")
         enriched = []
         for l in locks:
             lock_copy = dict(l)
