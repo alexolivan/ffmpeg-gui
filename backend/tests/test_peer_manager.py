@@ -392,5 +392,48 @@ class TestPeerManager(unittest.TestCase):
         # Lock 2 is held by my_token_id -> is_own_lease is True
         self.assertTrue(res_locks[1]["is_own_lease"])
 
+    def test_heartbeat_auto_heals_peer_lock(self):
+        from core.resource_lock_manager import resource_lock_manager
+        from database.models import Service
+        resource_lock_manager.clear_all()
+
+        # Create shared Icecast service
+        svc = Service(
+            name="Hub Icecast Server",
+            service_type="icecast_server",
+            config={"port": 8000},
+            status="running",
+            is_shared_with_peers=True,
+            allow_peer_lease=True
+        )
+        self.session.add(svc)
+        self.session.commit()
+
+        # Simulate host wipe/restart where locks are empty
+        self.assertEqual(len(resource_lock_manager.get_active_locks()), 0)
+
+        # Inbound HEARTBEAT RPC carries resource_path="/live.mp3"
+        req = {
+            "action": "HEARTBEAT",
+            "service_id": svc.id,
+            "resource_path": "/live.mp3"
+        }
+        enc = PeerCrypto.encrypt_payload(req, self.secret_key)
+        code, resp = self.peer_mgr.handle_inbound_rpc(self.token_id, enc, self.session)
+        self.assertEqual(code, 200)
+        dec = PeerCrypto.decrypt_payload(resp, self.secret_key)
+        self.assertIn(dec.get("status"), ("LEASE_REACQUIRED", "HEARTBEAT_ACK"))
+
+        # Verify resource lock was automatically healed in memory
+        locks = resource_lock_manager.get_active_locks()
+        self.assertEqual(len(locks), 1)
+        self.assertEqual(locks[0]["resource_path"], "/live.mp3")
+        self.assertEqual(locks[0]["service_id"], svc.id)
+        self.assertEqual(locks[0]["owner_id"], self.token_id)
+        self.assertEqual(locks[0]["owner_type"], "remote_peer")
+
+        resource_lock_manager.clear_all()
+
 if __name__ == "__main__":
     unittest.main()
+

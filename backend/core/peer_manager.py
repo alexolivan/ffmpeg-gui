@@ -81,9 +81,11 @@ class PeerManager:
         """
         Sends HEARTBEAT RPC for all locally running services and tasks
         that lease auxiliary services on remote peer nodes.
+        Includes resource_path to auto-restore remote publisher locks.
         """
         from database.models import Service, ScheduledTask
-        active_pairs = set()
+        from core.resource_lock_manager import resource_lock_manager
+        active_leases = set()
 
         try:
             running_services = db_session.query(Service).filter(Service.status == "running").all()
@@ -95,7 +97,9 @@ class PeerManager:
                 p_svc = out_cfg.get("peer_service_id") or inp_cfg.get("peer_service_id")
                 if p_node and p_svc:
                     try:
-                        active_pairs.add((int(p_node), int(p_svc)))
+                        res_info = resource_lock_manager.extract_resource_info(out_cfg)
+                        res_path = res_info["resource_path"] if res_info else None
+                        active_leases.add((int(p_node), int(p_svc), res_path))
                     except (ValueError, TypeError):
                         pass
         except Exception as e:
@@ -110,17 +114,19 @@ class PeerManager:
                 p_svc = out_cfg.get("peer_service_id") or inp_cfg.get("peer_service_id")
                 if p_node and p_svc:
                     try:
-                        active_pairs.add((int(p_node), int(p_svc)))
+                        res_info = resource_lock_manager.extract_resource_info(out_cfg)
+                        res_path = res_info["resource_path"] if res_info else None
+                        active_leases.add((int(p_node), int(p_svc), res_path))
                     except (ValueError, TypeError):
                         pass
         except Exception as e:
             logger.debug(f"Failed to query running tasks for peer heartbeat: {e}")
 
-        for p_node, p_svc in active_pairs:
+        for p_node, p_svc, res_path in active_leases:
             try:
-                self.send_remote_heartbeat(db_session, p_node, p_svc)
+                self.send_remote_heartbeat(db_session, p_node, p_svc, resource_path=res_path)
             except Exception as err:
-                logger.warning(f"Failed to send remote heartbeat to peer {p_node} for service {p_svc}: {err}")
+                logger.warning(f"Failed to send remote heartbeat to peer {p_node} for service {p_svc} (path={res_path}): {err}")
 
     def _extract_service_protocols(self, svc: Service, is_legacy: bool = False, software_version: Optional[str] = None) -> Dict[str, Any]:
         cfg = svc.config or {}
@@ -356,23 +362,42 @@ class PeerManager:
 
         elif action == "HEARTBEAT":
             raw_svc_id = req.get("service_id")
+            resource_path = req.get("resource_path")
             try:
                 svc_id = int(raw_svc_id)
             except (ValueError, TypeError):
                 svc_id = raw_svc_id
-            if svc_id in self._active_remote_leases and token_id in self._active_remote_leases[svc_id]:
-                self._active_remote_leases[svc_id][token_id] = time.time()
-                res_payload = {"status": "HEARTBEAT_ACK"}
+
+            svc = db_session.get(Service, svc_id) if hasattr(db_session, "get") else db_session.query(Service).get(svc_id)
+            if not svc or not svc.is_shared_with_peers or not svc.allow_peer_lease:
+                res_payload = {"status": "LEASE_NOT_FOUND"}
             else:
-                svc = db_session.query(Service).get(svc_id)
-                if svc and svc.is_shared_with_peers and svc.allow_peer_lease:
-                    if svc_id not in self._active_remote_leases:
-                        self._active_remote_leases[svc_id] = {}
-                    self._active_remote_leases[svc_id][token_id] = time.time()
-                    logger.info(f"[Inbound RPC] HEARTBEAT: Auto-reacquired lease for service {svc_id} ({svc.name}) from token {token_id}")
+                is_reacquired = False
+                if svc_id not in self._active_remote_leases:
+                    self._active_remote_leases[svc_id] = {}
+                if token_id not in self._active_remote_leases[svc_id]:
+                    is_reacquired = True
+                self._active_remote_leases[svc_id][token_id] = time.time()
+
+                if resource_path:
+                    from core.resource_lock_manager import resource_lock_manager
+                    raw_type = getattr(svc, 'service_type', '')
+                    mapped_type = 'icecast' if raw_type == 'icecast_server' else ('mediamtx' if raw_type == 'mediamtx_hub' else 'generic')
+                    ok_lock, err_lock, lock_entry = resource_lock_manager.acquire_peer_lock(
+                        token_id=token_id,
+                        service_id=svc_id,
+                        service_type=mapped_type,
+                        resource_path=resource_path,
+                        peer_name=inbound_key.alias or f"Peer {token_id}"
+                    )
+                    if not ok_lock:
+                        logger.warning(f"[Inbound RPC] HEARTBEAT: Conflict refreshing lock on '{resource_path}' for token {token_id}: {err_lock}")
+
+                if is_reacquired:
+                    logger.info(f"[Inbound RPC] HEARTBEAT: Auto-reacquired lease for service {svc_id} ({svc.name}) from token {token_id} (path='{resource_path}')")
                     res_payload = {"status": "LEASE_REACQUIRED"}
                 else:
-                    res_payload = {"status": "LEASE_NOT_FOUND"}
+                    res_payload = {"status": "HEARTBEAT_ACK"}
 
         elif action == "RELEASE_LEASE":
             raw_svc_id = req.get("service_id")
@@ -507,11 +532,14 @@ class PeerManager:
             return False, res.get("detail", "Failed to acquire remote lease") if res else "Unknown error"
         return True, None
 
-    def send_remote_heartbeat(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:
-        success, res, err = self._send_rpc_to_node(db_session, node_id, {
+    def send_remote_heartbeat(self, db_session, node_id: int, service_id: int, resource_path: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        payload = {
             "action": "HEARTBEAT",
             "service_id": service_id
-        })
+        }
+        if resource_path:
+            payload["resource_path"] = resource_path
+        success, res, err = self._send_rpc_to_node(db_session, node_id, payload)
         if not success:
             return False, err
         return True, None
