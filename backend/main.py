@@ -3078,7 +3078,7 @@ async def telemetry_broadcast_loop():
 def _run_peer_sync_cycle():
     with SessionLocal() as db:
         peer_manager.sync_all_remote_nodes(db)
-        peer_manager.purge_expired_leases(db)
+        peer_manager.purge_expired_leases(timeout_seconds=90, db_session=db)
         peer_manager.send_all_active_remote_heartbeats(db)
 
 async def peer_federation_sync_loop():

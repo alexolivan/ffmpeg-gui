@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.2] - 2026-09-21
+
+### Fixed
+- **TypeError in Peer Federation Background Sync Loop**:
+  - Fixed parameter type mismatch in `PeerManager.purge_expired_leases` where `db_session` was received as positional `timeout_seconds`, eliminating the unhandled `TypeError: '>' not supported between instances of 'float' and 'Session'` exception.
+  - Added enhanced logging for inbound and outbound `GET_RESOURCE_LOCKS` RPC calls to aid live cross-node diagnostics.
+
 ## [2.19.1] - 2026-09-21
 
 ### Fixed
