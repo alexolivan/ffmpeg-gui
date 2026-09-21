@@ -275,6 +275,23 @@ class PeerManager:
                     "services": catalog
                 }
 
+        elif action == "GET_RESOURCE_LOCKS":
+            from core.resource_lock_manager import resource_lock_manager
+            raw_svc_id = req.get("service_id")
+            all_locks = resource_lock_manager.get_active_locks()
+            if raw_svc_id is not None:
+                try:
+                    s_id = int(raw_svc_id)
+                except (ValueError, TypeError):
+                    s_id = raw_svc_id
+                filtered_locks = [
+                    l for l in all_locks
+                    if str(l.get("target_id")) == str(s_id) or str(l.get("service_id")) == str(s_id)
+                ]
+            else:
+                filtered_locks = all_locks
+            res_payload = {"status": "OK", "locks": filtered_locks}
+
         elif action == "ACQUIRE_LEASE":
             raw_svc_id = req.get("service_id")
             resource_path = req.get("resource_path")
@@ -506,5 +523,35 @@ class PeerManager:
         if not success:
             return False, err
         return True, None
+
+    def get_remote_resource_locks(self, db_session, node_id: int, service_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Queries a remote peer node for active publisher resource locks (mountpoints & stream paths).
+        Marks `is_own_lease = True` if the lock is held by this node's token.
+        """
+        node = db_session.query(PeerRemoteNode).get(node_id)
+        if not node:
+            return []
+
+        payload: Dict[str, Any] = {"action": "GET_RESOURCE_LOCKS"}
+        if service_id is not None:
+            payload["service_id"] = service_id
+
+        success, res, err = self._send_rpc_to_node(db_session, node_id, payload)
+        if not success or not res or res.get("status") != "OK":
+            return []
+
+        locks = res.get("locks", [])
+        enriched = []
+        for l in locks:
+            lock_copy = dict(l)
+            is_own = (
+                lock_copy.get("owner_type") == "remote_peer" and
+                str(lock_copy.get("owner_id")) == str(node.token_id)
+            )
+            lock_copy["is_own_lease"] = is_own
+            lock_copy["peer_node_id"] = node_id
+            enriched.append(lock_copy)
+        return enriched
 
 peer_manager = PeerManager()

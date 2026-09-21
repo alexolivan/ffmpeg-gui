@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.1] - 2026-09-21
+
+### Fixed
+- **401 Unauthorized on `/api/resources/locks`**:
+  - Removed token authentication requirement from `GET /api/resources/locks`, aligning it with other unauthenticated status/telemetry inspection endpoints and eliminating continuous 401 polling errors in browser console.
+- **Federated Resource Lock Synchronization Across Peer Nodes**:
+  - Added inbound RPC handler `GET_RESOURCE_LOCKS` to `PeerManager` to return active locks held on remote peer services.
+  - Implemented client proxying in `GET /api/resources/locks?peer_node_id=<id>&service_id=<id>` allowing local nodes to inspect remote peer locks via encrypted RPC.
+  - Integrated `is_own_lease` identification so that leasing peer nodes mark their own remote locks as `🟢 [En uso (este proceso)]` while competing nodes recognize them as `🔴 [En uso por [Peer]]`.
+  - Updated `DestinationPanel.tsx` to automatically re-fetch resource locks when switching remote peer nodes or services and unified `service_id` / `target_id` property resolution.
+
 ## [2.19.0] - 2026-09-10
 
 ### Added

@@ -327,5 +327,70 @@ class TestPeerManager(unittest.TestCase):
         self.assertEqual(dec2_retry.get("status"), "LEASE_ACQUIRED")
         self.assertEqual(len(resource_lock_manager.get_active_locks()), 1)
 
+    @patch("requests.post")
+    def test_get_resource_locks_rpc_and_client(self, mock_post):
+        from core.resource_lock_manager import resource_lock_manager
+        resource_lock_manager.clear_all()
+
+        # 1. Test Inbound RPC GET_RESOURCE_LOCKS
+        resource_lock_manager.acquire_peer_lock(
+            token_id="peer_tok_test3",
+            service_id=1,
+            service_type="icecast",
+            resource_path="/live.mp3",
+            peer_name="Test Node 3"
+        )
+        req = {"action": "GET_RESOURCE_LOCKS", "service_id": 1}
+        enc = PeerCrypto.encrypt_payload(req, self.secret_key)
+        code, resp = self.peer_mgr.handle_inbound_rpc(self.token_id, enc, self.session)
+        self.assertEqual(code, 200)
+        dec = PeerCrypto.decrypt_payload(resp, self.secret_key)
+        self.assertEqual(dec.get("status"), "OK")
+        locks = dec.get("locks", [])
+        self.assertEqual(len(locks), 1)
+        self.assertEqual(locks[0]["resource_path"], "/live.mp3")
+
+        # 2. Test Outbound get_remote_resource_locks with own vs remote node
+        node = PeerRemoteNode(
+            name="VPS1",
+            base_url="https://vps1.example.com",
+            token_id="my_token_id",
+            secret_key=self.secret_key,
+            status="online"
+        )
+        self.session.add(node)
+        self.session.commit()
+
+        # Mock remote response with 2 locks: one from test3, one from this node
+        mock_locks = [
+            {
+                "resource_key": "service:1:icecast:/live.mp3",
+                "resource_path": "/live.mp3",
+                "service_type": "icecast",
+                "owner_type": "remote_peer",
+                "owner_id": "test3_token",
+                "owner_name": "Test Node 3"
+            },
+            {
+                "resource_key": "service:1:icecast:/rock.mp3",
+                "resource_path": "/rock.mp3",
+                "service_type": "icecast",
+                "owner_type": "remote_peer",
+                "owner_id": "my_token_id",
+                "owner_name": "My Node"
+            }
+        ]
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = PeerCrypto.encrypt_payload({"status": "OK", "locks": mock_locks}, self.secret_key)
+        mock_post.return_value = mock_resp
+
+        res_locks = self.peer_mgr.get_remote_resource_locks(self.session, node.id, service_id=1)
+        self.assertEqual(len(res_locks), 2)
+        # Lock 1 is held by test3 -> is_own_lease is False
+        self.assertFalse(res_locks[0]["is_own_lease"])
+        # Lock 2 is held by my_token_id -> is_own_lease is True
+        self.assertTrue(res_locks[1]["is_own_lease"])
+
 if __name__ == "__main__":
     unittest.main()

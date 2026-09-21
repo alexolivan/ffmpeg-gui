@@ -316,7 +316,15 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   React.useEffect(() => {
     let active = true;
     const fetchLocks = () => {
-      fetch('/api/resources/locks')
+      const params = new URLSearchParams();
+      if (config.peer_node_id) {
+        params.set('peer_node_id', String(config.peer_node_id));
+        if (config.peer_service_id) {
+          params.set('service_id', String(config.peer_service_id));
+        }
+      }
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      fetch(`/api/resources/locks${qs}`)
         .then(res => res.ok ? res.json() : { locks: [] })
         .then(data => {
           if (active) setResourceLocks(data.locks || []);
@@ -331,7 +339,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       active = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [config.peer_node_id, config.peer_service_id]);
 
   const getResourceLock = (serviceType: 'icecast' | 'mediamtx', pathOrMount: string) => {
     if (!pathOrMount) return null;
@@ -343,14 +351,24 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         (serviceType === 'icecast' && (lockPath === (cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`)));
       if (!pathMatch) return false;
 
-      // Match provider if set
-      if (config.provider_service_id && l.service_id) {
-        return l.service_id === config.provider_service_id;
+      const lockSvcId = l.service_id ?? l.target_id;
+      const lockKey = l.lock_key ?? l.resource_key ?? '';
+
+      // If peer destination is selected: match peer_service_id
+      if (config.peer_node_id && config.peer_service_id) {
+        if (lockSvcId !== undefined && lockSvcId !== null) {
+          return String(lockSvcId) === String(config.peer_service_id);
+        }
+        return true;
       }
-      if (config.peer_service_id && l.service_id) {
-        return l.service_id === config.peer_service_id;
+
+      // Match local provider if set
+      if (config.provider_service_id && lockSvcId !== undefined && lockSvcId !== null) {
+        return String(lockSvcId) === String(config.provider_service_id);
       }
-      if (config.host && l.lock_key && l.lock_key.includes(config.host)) {
+
+      // Match host endpoint if set
+      if (config.host && lockKey && lockKey.includes(config.host)) {
         return true;
       }
       return true;
@@ -358,7 +376,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   };
 
   const isLockHeldByCurrent = (lock: any) => {
-    if (!lock || !currentProcessId) return false;
+    if (!lock) return false;
+    if (lock.is_own_lease === true) return true;
+    if (!currentProcessId) return false;
     const expectedOwnerType = isTask ? 'task' : 'service';
     return lock.owner_type === expectedOwnerType && String(lock.owner_id) === String(currentProcessId);
   };
