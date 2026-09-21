@@ -2457,7 +2457,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <input 
                     type="password" 
                     autoComplete="new-password"
-                    placeholder={settings.gui_password ? t('settings.security.newPasswordPlaceholderKeep', 'Leave empty to keep current password') : t('settings.security.newPasswordPlaceholder', 'Enter new password')}
+                    placeholder={(settings.has_gui_password || settings.gui_password) ? t('settings.security.newPasswordPlaceholderKeep', 'Leave empty to keep current password') : t('settings.security.newPasswordPlaceholder', 'Enter new password')}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-red-500 text-[var(--text-primary)] transition-all"
                     value={newPassword}
                     onChange={e => { setNewPassword(e.target.value); setPasswordError(''); setPasswordSuccess('') }}
@@ -2478,7 +2478,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {passwordError && <p className="text-[10px] text-red-500 font-bold mt-1">{passwordError}</p>}
                 {passwordSuccess && <p className="text-[10px] text-brand-lime font-bold mt-1">{passwordSuccess}</p>}
 
-                {settings.gui_password && (
+                {(settings.has_gui_password || settings.gui_password) && (
                   <div className="pt-1">
                     <button
                       type="button"
