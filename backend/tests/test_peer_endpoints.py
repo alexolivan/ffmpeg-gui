@@ -66,13 +66,18 @@ class TestPeerEndpoints(unittest.TestCase):
             self.assertIn("url", cand)
 
     def test_candidate_endpoints_with_gui_password(self):
-        # Set a gui_password - route remains accessible to frontend session
+        # Set a gui_password - route remains accessible to authenticated frontend session
         settings = self.db.query(SystemSettings).first()
         settings.gui_password = "supersecretpass"
         self.db.commit()
 
+        from core.auth_manager import auth_manager
+        token = auth_manager.create_session("supersecretpass")
+        self.client.cookies.set("gui_session", token)
+
         res = self.client.get("/api/peers/candidate-endpoints")
         self.assertEqual(res.status_code, 200)
+        self.client.cookies.clear()
 
     def test_inbound_keys_crud(self):
         # 1. Create Inbound Key
@@ -347,6 +352,10 @@ class TestPeerEndpoints(unittest.TestCase):
             "provider_service_id": 99
         }
         resource_lock_manager.acquire_lock("task", 101, output_cfg, "Task 101")
+
+        from core.auth_manager import auth_manager
+        token = auth_manager.create_session("testpassword123")
+        self.client.cookies.set("gui_session", token)
 
         res = self.client.get("/api/resources/locks")
         self.assertEqual(res.status_code, 200)
