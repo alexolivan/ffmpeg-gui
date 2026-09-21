@@ -204,12 +204,31 @@ class ResourceLockManager:
                 return False, err_msg, existing
 
             # Grant lock
+            svc_id_val = None
+            peer_node_val = None
+            if info["target_type"] == "service":
+                try:
+                    svc_id_val = int(info["target_id"])
+                except (ValueError, TypeError):
+                    svc_id_val = info["target_id"]
+            elif info["target_type"] == "peer":
+                parts = str(info["target_id"]).split(":")
+                if len(parts) == 2:
+                    try:
+                        peer_node_val = int(parts[0])
+                        svc_id_val = int(parts[1])
+                    except (ValueError, TypeError):
+                        pass
+
             lock_entry = {
                 "resource_key": key,
+                "lock_key": key,
                 "service_type": info["service_type"],
                 "resource_path": info["resource_path"],
                 "target_type": info["target_type"],
                 "target_id": info["target_id"],
+                "service_id": svc_id_val,
+                "peer_node_id": peer_node_val,
                 "owner_type": owner_type,
                 "owner_id": owner_id,
                 "owner_name": owner_name or f"{owner_type}:{owner_id}",
@@ -261,10 +280,13 @@ class ResourceLockManager:
 
             lock_entry = {
                 "resource_key": key,
+                "lock_key": key,
                 "service_type": service_type.lower(),
                 "resource_path": clean_path,
                 "target_type": "service",
                 "target_id": service_id,
+                "service_id": service_id,
+                "peer_node_id": None,
                 "owner_type": "remote_peer",
                 "owner_id": token_id,
                 "owner_name": peer_name or f"Peer {token_id}",

@@ -7370,9 +7370,18 @@ def delete_peer_remote_node(node_id: int, db: Session = Depends(get_db)):
     return {"detail": "Remote node deleted"}
 # --- Resource Locks Endpoints ---
 @app.get("/api/resources/locks")
-def get_resource_locks_endpoint(user: str = Depends(verify_token)):
+def get_resource_locks_endpoint(
+    peer_node_id: Optional[int] = None,
+    service_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
     from core.resource_lock_manager import resource_lock_manager
-    return {"locks": resource_lock_manager.get_active_locks()}
+    local_locks = resource_lock_manager.get_active_locks()
+    if peer_node_id:
+        from core.peer_manager import peer_manager
+        remote_locks = peer_manager.get_remote_resource_locks(db, peer_node_id, service_id)
+        return {"locks": remote_locks}
+    return {"locks": local_locks}
 
 
 # Mounting static files and SPA fallback
