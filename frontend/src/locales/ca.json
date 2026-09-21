@@ -55,7 +55,10 @@
   "auth": {
     "accessRestricted": "Accés restringit. Introdueix la contrasenya del node.",
     "invalidPassword": "CONTRASENYA INVÀLIDA",
-    "unlockNode": "Desbloquejar Node"
+    "unlockNode": "Desbloquejar Node",
+    "lockNode": "Bloquejar Node",
+    "logout": "Tancar Sessió",
+    "checkingAuth": "Verificant credencials de seguretat..."
   },
   "services": {
     "title": "Serveis",

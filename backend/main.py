@@ -1,7 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, Query, Body, Header
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Request, Query, Body, Header, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import os
+import secrets
 import re
 import json
 import copy
@@ -28,6 +31,7 @@ from core.sdk_manager import SdkManager
 from core.patch_manager import PatchManager
 from core.notification_manager import NotificationManager
 notification_manager = NotificationManager()
+from core.auth_manager import auth_manager
 from core.alsa_manager import alsa_manager
 try:
     from core.decklink_manager import DecklinkManager
@@ -160,6 +164,53 @@ def set_reload_mode(val: bool = True):
     is_reload_mode = val
 
 app.add_middleware(NginxAccessLogMiddleware)
+
+class AuthBarrierMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # 1. Allow OPTIONS preflight for CORS
+        if request.method == "OPTIONS":
+            return await call_next(request)
+            
+        path = request.url.path
+        
+        # 2. Public Whitelist (no credentials required)
+        if (
+            path == "/"
+            or path.startswith("/assets/")
+            or path.startswith("/uploads/")
+            or path in ("/vite.svg", "/favicon.ico")
+            or path in ("/api/auth/status", "/auth/status")
+            or path in ("/login", "/api/auth/login")
+            or path in ("/logout", "/api/auth/logout")
+            or path == "/api/peers/rpc"
+            or path in ("/docs", "/openapi.json", "/redoc")
+        ):
+            return await call_next(request)
+            
+        # 3. Check if GUI password is set in database
+        with SessionLocal() as db:
+            from database.models import SystemSettings
+            settings = db.query(SystemSettings).first()
+            gui_password = settings.gui_password if settings else None
+            
+        if not gui_password:
+            return await call_next(request)
+            
+        # 4. Check session cookie or Authorization header or token query param
+        token = request.cookies.get(auth_manager.COOKIE_NAME)
+        if not token:
+            auth_hdr = request.headers.get("Authorization")
+            if auth_hdr:
+                token = auth_hdr.replace("Bearer ", "").strip()
+        if not token:
+            token = request.query_params.get("token")
+            
+        if token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)):
+            return await call_next(request)
+            
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+app.add_middleware(AuthBarrierMiddleware)
 
 # CORS
 app.add_middleware(
@@ -403,6 +454,7 @@ class WatchdogSettingsUpdate(BaseModel):
 class SettingsResponse(BaseModel):
     id: Optional[int] = None
     node_name: Optional[str] = None
+    has_gui_password: bool = False
     gui_password: Optional[str] = None
     logo_text: Optional[str] = None
     logo_path: Optional[str] = None
@@ -847,6 +899,8 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
         logger.error(f"Error checking active logging diff: {e}")
 
     res = {c.name: getattr(settings, c.name) for c in settings.__table__.columns}
+    res["has_gui_password"] = bool(settings.gui_password)
+    res["gui_password"] = None
     res["gui_port"] = gui_port
     res["restart_required"] = restart_required
     res["restart_reasons"] = restart_reasons
@@ -1968,15 +2022,65 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
     }
 
 
+@app.get("/api/auth/status")
+@app.get("/auth/status")
+def get_auth_status(request: Request, db: Session = Depends(get_db)):
+    from database.models import SystemSettings
+    from version import __version__ as ver
+    settings = db.query(SystemSettings).first()
+    if not settings:
+        return {
+            "password_required": False,
+            "authenticated": True,
+            "node_name": "FFMPEG-GUI Node",
+            "logo_path": None,
+            "logo_text": "FF",
+            "accent_color": "#FF6B00",
+            "version": ver
+        }
+    password_required = bool(settings.gui_password)
+    is_authenticated = True
+    if password_required:
+        token = request.cookies.get(auth_manager.COOKIE_NAME)
+        if not token:
+            auth_hdr = request.headers.get("Authorization")
+            if auth_hdr:
+                token = auth_hdr.replace("Bearer ", "").strip()
+        if not token:
+            token = request.query_params.get("token")
+        is_authenticated = bool(token and (auth_manager.validate_session(token, settings.gui_password) or secrets.compare_digest(token, settings.gui_password)))
+
+    return {
+        "password_required": password_required,
+        "authenticated": is_authenticated,
+        "node_name": settings.lcd_alias or settings.node_name or "FFMPEG-GUI Node",
+        "logo_path": settings.logo_path,
+        "logo_text": settings.logo_text or "FF",
+        "accent_color": settings.accent_color or "#FF6B00",
+        "version": ver
+    }
+
+
 @app.post("/login")
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+@app.post("/api/auth/login")
+def login(req: LoginRequest, response: Response, request: Request, db: Session = Depends(get_db)):
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()
     if not settings or not settings.gui_password:
-        return {"authenticated": True}
+        return {"authenticated": True, "token": None}
     if req.password == settings.gui_password:
-        return {"authenticated": True}
+        token = auth_manager.create_session(settings.gui_password)
+        is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+        auth_manager.set_session_cookie(response, token, is_https=is_https)
+        return {"authenticated": True, "token": token}
     raise HTTPException(status_code=401, detail="Invalid password")
+
+
+@app.post("/logout")
+@app.post("/api/auth/logout")
+def logout(response: Response):
+    auth_manager.clear_session_cookie(response)
+    return {"authenticated": False}
 
 @app.post("/settings/logo")
 @app.post("/api/settings/logo")
@@ -2844,6 +2948,23 @@ def get_federated_peer_dependency(conf_dict: dict, peer_nodes_map: dict) -> Opti
 
 @app.websocket("/ws/telemetry")
 async def websocket_telemetry(websocket: WebSocket):
+    token = websocket.cookies.get(auth_manager.COOKIE_NAME) or websocket.query_params.get("token")
+    if not token:
+        auth_hdr = websocket.headers.get("authorization")
+        if auth_hdr:
+            token = auth_hdr.replace("Bearer ", "").strip()
+            
+    with SessionLocal() as db:
+        from database.models import SystemSettings
+        settings = db.query(SystemSettings).first()
+        gui_password = settings.gui_password if settings else None
+        
+    if gui_password:
+        is_valid = bool(token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)))
+        if not is_valid:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
     await manager.connect(websocket)
     try:
         while True:
@@ -3518,6 +3639,23 @@ def notify_storage_alert(storage_id: int, storage_name: str, storage_path: str, 
 
 @app.websocket("/ws/build/{build_id}")
 async def websocket_build(websocket: WebSocket, build_id: int):
+    token = websocket.cookies.get(auth_manager.COOKIE_NAME) or websocket.query_params.get("token")
+    if not token:
+        auth_hdr = websocket.headers.get("authorization")
+        if auth_hdr:
+            token = auth_hdr.replace("Bearer ", "").strip()
+            
+    with SessionLocal() as db:
+        from database.models import SystemSettings
+        settings = db.query(SystemSettings).first()
+        gui_password = settings.gui_password if settings else None
+        
+    if gui_password:
+        is_valid = bool(token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)))
+        if not is_valid:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
     await websocket.accept()
     
     # Send existing logs from file if it exists

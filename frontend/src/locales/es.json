@@ -55,7 +55,10 @@
   "auth": {
     "accessRestricted": "Acceso restringido. Introduce la contraseña del nodo.",
     "invalidPassword": "CONTRASEÑA INVALIDA",
-    "unlockNode": "Desbloquear Nodo"
+    "unlockNode": "Desbloquear Nodo",
+    "lockNode": "Bloquear Nodo",
+    "logout": "Cerrar Sesión",
+    "checkingAuth": "Verificando credenciales de seguridad..."
   },
   "services": {
     "title": "Servicios",

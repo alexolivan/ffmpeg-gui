@@ -55,7 +55,10 @@
   "auth": {
     "accessRestricted": "Access restricted. Enter node password.",
     "invalidPassword": "INVALID PASSWORD",
-    "unlockNode": "Unlock Node"
+    "unlockNode": "Unlock Node",
+    "lockNode": "Lock Node",
+    "logout": "Logout",
+    "checkingAuth": "Verifying security credentials..."
   },
   "services": {
     "title": "Services",

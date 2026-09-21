@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.20.0] - 2026-09-21
+
+### Added
+- **Session-Based Authentication Barrier & Zero Pre-Login Data Leakage**:
+  - Implemented `AuthManager` with cryptographically signed, time-bound session tokens (`HttpOnly` cookie `gui_session` with `Authorization: Bearer <token>` fallback).
+  - Added `AuthBarrierMiddleware` in FastAPI, systematically intercepting all private REST API endpoints and rejecting unauthenticated requests with `HTTP 401 Unauthorized` when `gui_password` is configured.
+  - Enforced authentication on `/ws/telemetry` and `/ws/build/{build_id}` WebSockets, terminating unauthenticated connections with code `1008 Policy Violation`.
+  - Added minimal public status endpoint `GET /api/auth/status` providing node branding (name, logo, theme) without exposing system capabilities, builds, disks, or credentials.
+  - Refactored frontend architecture with an `<AuthenticatedDashboard />` boundary, ensuring background data hooks (`useBuilds`, `useProcesses`), telemetry WebSockets, and federated peer queries are never executed while unauthenticated.
+  - Added explicit node lock/logout support in UI with server-side cookie clearance.
+- **Auto-Healing & Resilient Resource Locks** (consolidated from 2.19.x):
+  - Automatic local resource lock reconstruction in `ProcessManager.reattach_process`, ensuring that running processes re-attached during service reload or server boot immediately re-acquire their publisher locks in `ResourceLockManager`.
+  - Extended federated inter-peer `HEARTBEAT` RPC to carry `resource_path`. When a host node restarts, incoming periodic heartbeats automatically restore remote peer leases and locks in memory without requiring remote emitters to restart.
+
+### Changed
+- **Sanitized System Settings API**:
+  - Removed plain-text `gui_password` exposure from `SettingsResponse`, replacing it with boolean flag `has_gui_password`.
+
+### Fixed
+- **TypeError in Peer Federation Sync Loop** (consolidated from 2.19.x):
+  - Fixed parameter type mismatch in `PeerManager.purge_expired_leases` where `db_session` was received as positional `timeout_seconds`, eliminating the unhandled `TypeError: '>' not supported between instances of 'float' and 'Session'` exception.
+- **Federated Resource Locks Synchronization** (consolidated from 2.19.x):
+  - Added inbound RPC handler `GET_RESOURCE_LOCKS` to `PeerManager` to return active locks held on remote peer services.
+  - Implemented client proxying in `GET /api/resources/locks?peer_node_id=<id>&service_id=<id>` allowing local nodes to inspect remote peer locks via encrypted RPC.
+
 ## [2.19.3] - 2026-09-21
 
 ### Added
