@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.19.3] - 2026-09-21
+
+### Added
+- **Auto-Healing & Resilient Resource Locks**:
+  - Implemented automatic local resource lock reconstruction in `ProcessManager.reattach_process`, ensuring that running processes re-attached during service reload or server boot immediately re-acquire their publisher locks in `ResourceLockManager`.
+  - Extended federated inter-peer `HEARTBEAT` RPC to carry `resource_path`. When a host node (such as VPS1) restarts, incoming periodic heartbeats automatically restore remote peer leases and locks in memory without requiring remote emitters to restart.
+
 ## [2.19.2] - 2026-09-21
 
 ### Fixed

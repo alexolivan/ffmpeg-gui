@@ -2039,12 +2039,14 @@ class ProcessManager:
     def reattach_process(self, process_id: int, pid: int):
         with self.db_session_factory() as session:
             from database.models import Service
-            media_proc = session.query(Service).get(process_id)
+            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
             if not media_proc:
                 self.logger.error(f"Cannot reattach service {process_id}: not found in DB")
                 return
             svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
             log_path = self.get_process_log_path(process_id, media_proc.log_storage_id, session=session)
+            out_cfg = (media_proc.config or {}).get("output_config") or media_proc.output_config
+            proc_name = media_proc.name
 
         self.processes[process_id] = None
         self.reattached_pids[process_id] = pid
@@ -2052,6 +2054,13 @@ class ProcessManager:
         if svc_type in ("mediamtx_hub", "icecast_server"):
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
+
+        # Re-acquire local publisher resource lock for the re-attached alive process
+        try:
+            from core.resource_lock_manager import resource_lock_manager
+            resource_lock_manager.acquire_lock("service", process_id, out_cfg, owner_name=proc_name)
+        except Exception as lock_err:
+            self.logger.warning(f"Failed to re-acquire resource lock on reattach for service {process_id}: {lock_err}")
 
     async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
         """Gracefully restarts any active/running services configured with TLS/SSL encryption."""
