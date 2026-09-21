@@ -178,7 +178,8 @@ class AuthBarrierMiddleware(BaseHTTPMiddleware):
             path == "/"
             or path.startswith("/assets/")
             or path.startswith("/uploads/")
-            or path in ("/vite.svg", "/favicon.ico")
+            or path.startswith("/favicon")
+            or path in ("/vite.svg", "/manifest.json", "/robots.txt")
             or path in ("/api/auth/status", "/auth/status")
             or path in ("/login", "/api/auth/login")
             or path in ("/logout", "/api/auth/logout")

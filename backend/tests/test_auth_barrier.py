@@ -58,6 +58,9 @@ def test_auth_barrier_enforcement(auth_client, db_session):
         assert data["authenticated"] is False
         assert "gui_password" not in data
 
+        # Public assets like favicon must not return 401
+        assert auth_client.get("/favicon.svg").status_code != 401
+
         # 2. Private endpoint without auth returns 401
         resp = auth_client.get("/settings")
         assert resp.status_code == 401
