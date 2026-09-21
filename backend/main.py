@@ -183,7 +183,7 @@ class AuthBarrierMiddleware(BaseHTTPMiddleware):
             or path in ("/api/auth/status", "/auth/status")
             or path in ("/login", "/api/auth/login")
             or path in ("/logout", "/api/auth/logout")
-            or path == "/api/peers/rpc"
+            or path in ("/api/peers/rpc", "/api/peer-federation/v1/rpc")
             or path in ("/docs", "/openapi.json", "/redoc")
         ):
             return await call_next(request)
