@@ -31,6 +31,7 @@ class ProcessManager:
         self.ffmpeg_path = self._detect_ffmpeg()
         self._spawn_lock: Optional[asyncio.Lock] = None
         self.ephemeral_configs: Dict[int, str] = {}
+        self.auxiliary_processes: Dict[int, List[asyncio.subprocess.Process]] = {}
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -262,6 +263,18 @@ class ProcessManager:
 
                 cmd, ephem_path = self._build_icecast_config_and_cmd(media_proc, icecast_bin, session, log_storage_path=logs_dir)
                 self.ephemeral_configs[process_id] = ephem_path
+            elif svc_type == "desktop":
+                if not shutil.which("Xvfb"):
+                    media_proc.status = 'error'
+                    session.commit()
+                    raise FileNotFoundError("Xvfb binary not found. Please install xvfb on the host system.")
+                if not shutil.which("x11vnc"):
+                    media_proc.status = 'error'
+                    session.commit()
+                    raise FileNotFoundError("x11vnc binary not found. Please install x11vnc on the host system.")
+
+                xvfb_cmd, xset_cmd, x11vnc_cmd, display_num, vnc_port = self._build_desktop_cmds(media_proc)
+                cmd = xvfb_cmd
             else:
                 # Determine which FFmpeg binary to use
                 ffmpeg_bin = self.ffmpeg_path  # Default fallback
@@ -353,6 +366,50 @@ class ProcessManager:
                     except Exception:
                         pass
                     self.processes[process_id] = proc
+                    asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                elif svc_type == "desktop":
+                    log_file_handle = open(log_path, "ab", buffering=0)
+                    desktop_sub_env = {**sub_env, "DISPLAY": f":{display_num}"}
+                    # 1. Spawn Xvfb
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=log_file_handle,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.DEVNULL,
+                        env=desktop_sub_env
+                    )
+                    self.processes[process_id] = proc
+
+                    # Wait briefly for Xvfb display socket to appear
+                    await asyncio.sleep(0.5)
+
+                    # 2. Disable screensaver via xset
+                    if shutil.which("xset"):
+                        try:
+                            xset_proc = await asyncio.create_subprocess_exec(
+                                *xset_cmd,
+                                stdout=asyncio.subprocess.DEVNULL,
+                                stderr=asyncio.subprocess.DEVNULL,
+                                env=desktop_sub_env
+                            )
+                            await asyncio.wait_for(xset_proc.wait(), timeout=2.0)
+                        except Exception as xset_err:
+                            self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
+
+                    # 3. Spawn x11vnc
+                    vnc_proc = await asyncio.create_subprocess_exec(
+                        *x11vnc_cmd,
+                        stdout=log_file_handle,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.DEVNULL,
+                        env=desktop_sub_env
+                    )
+                    self.auxiliary_processes[process_id] = [vnc_proc]
+
+                    try:
+                        log_file_handle.close()
+                    except Exception:
+                        pass
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 else:
                     proc = await asyncio.create_subprocess_exec(
@@ -498,6 +555,31 @@ class ProcessManager:
                 
                 if process_id in self.processes:
                     del self.processes[process_id]
+
+            # Terminate any auxiliary child processes (e.g. x11vnc for desktop services)
+            aux_procs = self.auxiliary_processes.pop(process_id, [])
+            for aux in aux_procs:
+                if aux and aux.returncode is None:
+                    try:
+                        if graceful:
+                            aux.terminate()
+                        else:
+                            aux.kill()
+                    except Exception:
+                        pass
+            if aux_procs:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*(aux.wait() for aux in aux_procs if aux and aux.returncode is None), return_exceptions=True),
+                        timeout=2.0
+                    )
+                except Exception:
+                    for aux in aux_procs:
+                        if aux and aux.returncode is None:
+                            try:
+                                aux.kill()
+                            except Exception:
+                                pass
 
             # Direct OS process termination for reattached processes or surviving PIDs
             if target_pid and psutil.pid_exists(target_pid):
@@ -1251,6 +1333,50 @@ class ProcessManager:
 
         return [icecast_bin, "-c", ephem_file], ephem_file
 
+    def _build_desktop_cmds(self, media_proc) -> Tuple[List[str], List[str], List[str], int, int]:
+        """
+        Builds command arguments for Xvfb, xset, and x11vnc for a virtual desktop service.
+        Returns (xvfb_cmd, xset_cmd, x11vnc_cmd, display_num, vnc_port).
+        """
+        cfg = media_proc.config or {}
+        desk_cfg = cfg.get("desktop_config", cfg)
+        display_num = int(desk_cfg.get("display_num", 99))
+        resolution = str(desk_cfg.get("resolution", "1920x1080"))
+        color_depth = int(desk_cfg.get("color_depth", 24))
+        vnc_port = int(desk_cfg.get("vnc_port", 5900 + display_num))
+
+        xvfb_bin = shutil.which("Xvfb") or "Xvfb"
+        xvfb_cmd = [
+            xvfb_bin,
+            f":{display_num}",
+            "-screen", "0", f"{resolution}x{color_depth}",
+            "-nocursor",
+            "-nolisten", "tcp",
+            "-s", "0",
+            "-dpms",
+        ]
+
+        xset_bin = shutil.which("xset") or "xset"
+        xset_cmd = [
+            xset_bin,
+            "s", "off",
+            "-dpms",
+            "s", "noblank",
+        ]
+
+        x11vnc_bin = shutil.which("x11vnc") or "x11vnc"
+        x11vnc_cmd = [
+            x11vnc_bin,
+            "-display", f":{display_num}",
+            "-rfbport", str(vnc_port),
+            "-localhost",
+            "-nopw",
+            "-forever",
+            "-shared",
+        ]
+
+        return xvfb_cmd, xset_cmd, x11vnc_cmd, display_num, vnc_port
+
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process, log_path: Optional[str] = None):
         import re
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
@@ -1525,6 +1651,12 @@ class ProcessManager:
                     running = psutil.pid_exists(pid)
 
                 if not running:
+                    break
+
+                # For services with auxiliary processes (e.g. x11vnc for desktop services), check their health
+                aux_procs = self.auxiliary_processes.get(process_id, [])
+                if any(aux and aux.returncode is not None for aux in aux_procs):
+                    self.logger.warning(f"Auxiliary process for service {process_id} terminated unexpectedly.")
                     break
 
                 # Get system metrics
@@ -2051,7 +2183,7 @@ class ProcessManager:
         self.processes[process_id] = None
         self.reattached_pids[process_id] = pid
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
-        if svc_type in ("mediamtx_hub", "icecast_server"):
+        if svc_type in ("mediamtx_hub", "icecast_server", "desktop"):
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
 

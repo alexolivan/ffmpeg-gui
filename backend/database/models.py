@@ -118,7 +118,7 @@ class Service(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    service_type = Column(String, nullable=False)  # 'ffmpeg_stream', 'kiosk_browser', 'icecast_server', 'mediamtx_hub'
+    service_type = Column(String, nullable=False)  # 'ffmpeg_stream', 'desktop', 'kiosk_browser', 'icecast_server', 'mediamtx_hub'
     config = Column(JSON, nullable=False)
     is_active = Column(Boolean, default=True)
 
