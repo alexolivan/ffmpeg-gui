@@ -78,28 +78,33 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
   const vncPort = deskCfg.vnc_port ?? 5900 + displayNum;
   const resolution = deskCfg.resolution || '1920x1080';
 
-  // Fetch daemon logs when on logs tab
+  // Fetch daemon logs
   useEffect(() => {
     let interval: any = null;
-    if (activeTab === 'logs') {
-      const fetchLogs = async () => {
-        try {
-          const res = await fetch(`${API}/api/services/${selectedProcess.id}/logs`);
-          if (res.ok) {
-            const data = await res.json();
-            setDaemonLogs(Array.isArray(data) ? data : []);
-          }
-        } catch {
-          // ignore log fetch failure
+    const fetchLogs = async () => {
+      try {
+        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
+        if (res.ok) {
+          const data = await res.json();
+          setDaemonLogs(Array.isArray(data) ? data : []);
         }
-      };
-      fetchLogs();
-      interval = setInterval(fetchLogs, 2000);
-    }
+      } catch {
+        // ignore log fetch failure
+      }
+    };
+    fetchLogs();
+    interval = setInterval(fetchLogs, 2000);
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [activeTab, API, selectedProcess.id]);
+  }, [API, currentProcess.id]);
+
+  // Auto-scroll logs when updated
+  useEffect(() => {
+    if (logsContainerRef.current && activeTab === 'logs') {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, [daemonLogs, externalLogs, activeTab]);
 
   // Connect RFB client when running and screen tab is active
   useEffect(() => {

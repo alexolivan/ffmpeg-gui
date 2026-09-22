@@ -136,9 +136,10 @@ class ProcessManager:
             svc_remote = session.get(Service, process_id)
             if svc_remote:
                 cfg_remote = svc_remote.config or {}
-                out_cfg_remote = cfg_remote.get("output_config") or svc_remote.output_config or {}
-                peer_node_id = out_cfg_remote.get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id")
-                peer_svc_id = out_cfg_remote.get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id")
+                out_cfg_remote = (cfg_remote.get("output_config") or svc_remote.output_config) or {}
+                in_cfg_remote = (cfg_remote.get("input_config") or svc_remote.input_config) or {}
+                peer_node_id = out_cfg_remote.get("peer_node_id") or in_cfg_remote.get("peer_node_id")
+                peer_svc_id = out_cfg_remote.get("peer_service_id") or in_cfg_remote.get("peer_service_id")
                 if peer_node_id and peer_svc_id:
                     from core.peer_manager import peer_manager
                     try:
@@ -653,8 +654,10 @@ class ProcessManager:
                     svc_remote = session.get(Service, process_id)
                     if svc_remote:
                         cfg_remote = svc_remote.config or {}
-                        peer_node_id = cfg_remote.get("output_config", {}).get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id") or (svc_remote.output_config or {}).get("peer_node_id")
-                        peer_svc_id = cfg_remote.get("output_config", {}).get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id") or (svc_remote.output_config or {}).get("peer_service_id")
+                        out_cfg_remote = (cfg_remote.get("output_config") or svc_remote.output_config) or {}
+                        in_cfg_remote = (cfg_remote.get("input_config") or svc_remote.input_config) or {}
+                        peer_node_id = out_cfg_remote.get("peer_node_id") or in_cfg_remote.get("peer_node_id")
+                        peer_svc_id = out_cfg_remote.get("peer_service_id") or in_cfg_remote.get("peer_service_id")
                         if peer_node_id and peer_svc_id:
                             from core.peer_manager import peer_manager
                             try:

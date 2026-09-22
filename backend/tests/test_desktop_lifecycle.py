@@ -157,6 +157,52 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(4, self.pm.processes)
             self.assertNotIn(4, self.pm.auxiliary_processes)
 
+    @patch("shutil.which", return_value="/usr/bin/mock")
+    @patch("asyncio.create_subprocess_exec")
+    async def test_desktop_start_with_explicit_none_io_configs(self, mock_exec, mock_which):
+        mock_xvfb = MagicMock()
+        mock_xvfb.pid = 33333
+        mock_xvfb.returncode = None
+        mock_xvfb.wait = AsyncMock(return_value=0)
+        mock_xvfb.terminate = MagicMock()
+
+        mock_xset = MagicMock()
+        mock_xset.wait = AsyncMock(return_value=0)
+
+        mock_x11vnc = MagicMock()
+        mock_x11vnc.pid = 44444
+        mock_x11vnc.returncode = None
+        mock_x11vnc.wait = AsyncMock(return_value=0)
+        mock_x11vnc.terminate = MagicMock()
+
+        mock_exec.side_effect = [mock_xvfb, mock_xset, mock_x11vnc]
+
+        with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
+             patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock):
+
+            with self.Session() as session:
+                svc = Service(
+                    id=5,
+                    name="Desktop None IO",
+                    service_type="desktop",
+                    status="stopped",
+                    config={
+                        "desktop_config": {"display_num": 99, "vnc_port": 5999},
+                        "input_config": None,
+                        "output_config": None,
+                    },
+                )
+                session.add(svc)
+                session.commit()
+
+            # Start process without raising AttributeError on NoneType configs
+            await self.pm.start_process(5)
+            self.assertIn(5, self.pm.processes)
+
+            await self.pm.stop_process(5, graceful=True)
+            self.assertNotIn(5, self.pm.processes)
+
 
 if __name__ == "__main__":
     unittest.main()
+
