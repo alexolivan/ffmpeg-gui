@@ -220,72 +220,98 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
       </div>
 
       {/* Right Iconic Action Button Bar */}
-      <div className="flex items-center gap-1.5 mt-3 lg:mt-0 shrink-0" onClick={(e) => e.stopPropagation()}>
-        {isRunning ? (
-          <>
-            <button
-              onClick={() => onRestartService(service.id, service.name)}
-              disabled={isPending}
-              className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition-all disabled:opacity-50 cursor-pointer"
-              title={t('common.restart', 'Restart')}
-            >
-              <RefreshIcon size={14} className={actionPending === 'restarting' ? 'animate-spin' : ''} />
-            </button>
-            <button
-              onClick={() => onStopService(service.id, service.name)}
-              disabled={isPending}
-              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition-all disabled:opacity-50 cursor-pointer"
-              title={t('common.stop', 'Stop')}
-            >
-              <StopIcon size={14} />
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={() => onStartService(service.id)}
-            disabled={isPending}
-            className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all disabled:opacity-50 cursor-pointer"
-            title={t('common.start', 'Start')}
-          >
-            <PlayIcon size={14} />
-          </button>
-        )}
-
+      <div className="flex items-center gap-1.5 mt-3 lg:mt-0 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+        {/* Edit Button */}
         <button
+          disabled={isPending}
           onClick={() => onEditProcess(service)}
-          className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--glass-border)] transition-all cursor-pointer"
-          title={t('common.edit', 'Edit')}
+          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 cursor-pointer"
+          title={t('common.edit', 'Edit Service Settings')}
         >
-          <PencilIcon size={14} />
+          <PencilIcon size={16} />
         </button>
 
+        {/* Clone Service Button */}
         {onCloneProcess && (
           <button
+            disabled={isPending}
             onClick={() => onCloneProcess(service)}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--glass-border)] transition-all cursor-pointer"
-            title={t('common.copy', 'Clone')}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 cursor-pointer"
+            title={t('services.cloneService', 'Clone Service')}
           >
-            <ClipboardIcon size={14} />
+            <ClipboardIcon size={16} />
           </button>
         )}
 
+        {/* Export Button */}
         {onExportProcess && (
           <button
+            disabled={isPending}
             onClick={() => onExportProcess(service)}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--glass-border)] transition-all cursor-pointer"
-            title={t('common.export', 'Export JSON')}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 cursor-pointer"
+            title={t('services.exportProfile', 'Export Profile')}
           >
-            <ExportIcon size={14} />
+            <ExportIcon size={16} />
           </button>
         )}
 
+        {/* Restart Button */}
+        {isRunning && (
+          <button
+            disabled={isPending}
+            onClick={() => onRestartService(service.id, service.name)}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 disabled:opacity-50 cursor-pointer ${
+              service.pending_changes
+                ? 'bg-brand-orange text-black border-brand-orange/40 animate-pulse shadow-lg shadow-brand-orange/20'
+                : 'bg-white/5 hover:bg-white/10 border-white/10 text-cyan-400'
+            }`}
+            title={t('services.restartService', 'Restart Service')}
+          >
+            {actionPending === 'restarting' ? (
+              <span className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin inline-block" />
+            ) : (
+              <RefreshIcon size={16} />
+            )}
+          </button>
+        )}
+
+        {/* Start / Stop Action Controls */}
+        {isRunning || isRetrying ? (
+          <button
+            disabled={actionPending === 'stopping'}
+            onClick={() => onStopService(service.id, service.name)}
+            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50 cursor-pointer"
+            title={t('services.stopService', 'Stop Service')}
+          >
+            {actionPending === 'stopping' ? (
+              <span className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" />
+            ) : (
+              <StopIcon size={16} />
+            )}
+          </button>
+        ) : (
+          <button
+            disabled={actionPending === 'starting'}
+            onClick={() => onStartService(service.id)}
+            className="w-9 h-9 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50 cursor-pointer"
+            title={t('services.startService', 'Start Service')}
+          >
+            {actionPending === 'starting' ? (
+              <span className="w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin inline-block" />
+            ) : (
+              <PlayIcon size={16} />
+            )}
+          </button>
+        )}
+
+        {/* Delete Service */}
         <button
+          disabled={isPending || isRunning || isRetrying}
           onClick={() => onDeleteProcess(service)}
-          disabled={isRunning || isPending}
-          className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-[var(--text-secondary)] hover:text-red-400 border border-[var(--glass-border)] hover:border-red-500/30 transition-all disabled:opacity-30 cursor-pointer"
-          title={t('common.delete', 'Delete')}
+          className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/15 text-red-400/80 hover:text-red-400 border border-red-500/10 hover:border-red-500/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-30 disabled:hover:scale-100 cursor-pointer"
+          title={isRunning || isRetrying ? t('services.cannotDeleteRunning', 'Stop service before deleting') : t('services.deleteService', 'Delete Service')}
         >
-          <TrashIcon size={14} />
+          <TrashIcon size={16} />
         </button>
       </div>
     </div>
