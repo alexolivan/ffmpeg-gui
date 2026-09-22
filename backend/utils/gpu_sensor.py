@@ -14,6 +14,7 @@ class GPUSensor:
         self.vendor = self._detect_vendor()
         self._cached_stats = None
         self._last_query_time = 0.0
+        self._intel_smoothed_util: Optional[float] = None
 
     def _detect_vendor(self) -> str:
         # Check for nvidia-smi command first
@@ -109,11 +110,11 @@ class GPUSensor:
         return stats
 
     def _sample_intel_gpu_top(self) -> Optional[Dict[str, Any]]:
-        """Run intel_gpu_top with -J and parse the first valid JSON sample block."""
+        """Run intel_gpu_top with -J and parse a representative sample block (>= 100ms window)."""
         if not shutil.which("intel_gpu_top"):
             return None
 
-        cmd = ["intel_gpu_top", "-J", "-s", "250", "-o", "-"]
+        cmd = ["intel_gpu_top", "-J", "-s", "500", "-o", "-"]
         proc = None
         try:
             proc = subprocess.Popen(
@@ -130,11 +131,12 @@ class GPUSensor:
         in_object = False
         brace_depth = 0
         parsed_sample = None
+        last_valid_sample = None
         start_time = time.time()
 
         try:
-            # Enforce strict deadline (1.5s) to avoid hanging
-            while time.time() - start_time < 1.5:
+            # Enforce strict deadline (2.0s) to allow 500ms sampling window
+            while time.time() - start_time < 2.0:
                 line = proc.stdout.readline()
                 if not line:
                     if proc.poll() is not None:
@@ -150,8 +152,18 @@ class GPUSensor:
                         brace_depth = line.count("{") - line.count("}")
                         if brace_depth == 0:
                             try:
-                                parsed_sample = json.loads("".join(json_buf))
-                                break
+                                raw_sample = json.loads("".join(json_buf))
+                                period = raw_sample.get("period", {})
+                                duration_val = float(period.get("duration", 0.0))
+                                unit_val = period.get("unit", "ms")
+                                duration_ms = duration_val * 1000.0 if unit_val == "s" else duration_val
+                                if duration_ms >= 100.0:
+                                    parsed_sample = raw_sample
+                                    break
+                                else:
+                                    last_valid_sample = raw_sample
+                                    in_object = False
+                                    json_buf = []
                             except Exception:
                                 in_object = False
                                 json_buf = []
@@ -161,8 +173,20 @@ class GPUSensor:
                     if brace_depth <= 0:
                         try:
                             raw_json = "".join(json_buf).rstrip(", \r\n")
-                            parsed_sample = json.loads(raw_json)
-                            break
+                            raw_sample = json.loads(raw_json)
+                            period = raw_sample.get("period", {})
+                            duration_val = float(period.get("duration", 0.0))
+                            unit_val = period.get("unit", "ms")
+                            duration_ms = duration_val * 1000.0 if unit_val == "s" else duration_val
+                            if duration_ms >= 100.0:
+                                parsed_sample = raw_sample
+                                break
+                            else:
+                                # Transient startup snapshot (<100ms), store as fallback and continue
+                                last_valid_sample = raw_sample
+                                in_object = False
+                                json_buf = []
+                                brace_depth = 0
                         except Exception as e:
                             logger.debug(f"Failed parsing intel_gpu_top JSON block: {e}")
                             in_object = False
@@ -181,7 +205,7 @@ class GPUSensor:
                     except Exception:
                         pass
 
-        return parsed_sample
+        return parsed_sample or last_valid_sample
 
     def _get_intel_stats(self) -> dict:
         """Parse Intel GPU statistics from intel_gpu_top or fallback safely."""
@@ -269,7 +293,14 @@ class GPUSensor:
         if vram_used_mb > vram_total_mb:
             vram_total_mb = vram_used_mb
 
-        stats["utilization"] = min(100, max(0, int(round(peak_busy))))
+        raw_util = min(100, max(0, int(round(peak_busy))))
+        if self._intel_smoothed_util is None:
+            self._intel_smoothed_util = float(raw_util)
+        else:
+            # 70% weight on current window, 30% historical smoothing
+            self._intel_smoothed_util = (0.7 * float(raw_util)) + (0.3 * self._intel_smoothed_util)
+
+        stats["utilization"] = min(100, max(0, int(round(self._intel_smoothed_util))))
         stats["vram_used"] = vram_used_mb
         stats["vram_total"] = vram_total_mb
         return stats

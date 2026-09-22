@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.1] - 2026-09-22
+
+### Changed
+- **Intel GPU Telemetry Stabilization & Smoothing**:
+  - Filtered transient startup samples (`duration < 100ms`) in `_sample_intel_gpu_top` to capture a representative 500ms integration window across multiple video frames.
+  - Implemented Exponential Moving Average (EMA) smoothing (`util = 0.7 * current + 0.3 * history`) in `GPUSensor` to eliminate erratic spikes and valleys caused by bursty hardware ring buffer flushes.
+
 ## [2.21.0] - 2026-09-22
 
 ### Added
