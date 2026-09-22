@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.0] - 2026-09-22
+
+### Added
+- **Intel GPU Telemetry (VAAPI / QSV / i915)**:
+  - Integrated real-time hardware engine utilization and GPU memory telemetry in `GPUSensor` using `intel_gpu_top` (`intel-gpu-tools`).
+  - Added extraction of peak engine load across hardware blocks (`Video`, `Render/3D`, `VideoEnhance`, `Blitter`) to accurately reflect hardware transcoding activity in the Dashboard.
+  - Implemented active GPU client memory aggregation (`resident` system and local VRAM) with dynamic shared aperture memory detection via `psutil`.
+  - Added unit test coverage for Intel GPU metrics parsing and stream processing in `test_gpu_sensor.py`.
+- **Centralized System Capabilities Configuration**:
+  - Created `scripts/setup-system-capabilities.sh` to configure all unprivileged execution permissions in a single script:
+    - Network port binding (`CAP_NET_BIND_SERVICE` for ports 80/443).
+    - Hardware PMU performance monitoring (`CAP_PERFMON` and `CAP_SYS_ADMIN` for `intel_gpu_top`).
+    - Extended `CapabilityBoundingSet` in `ffmpeg-gui.service` to preserve capabilities under systemd.
+- **Multi-Distribution Installer Support**:
+  - Added `intel-gpu-tools` across Debian/Ubuntu (`apt-get`), RHEL/Fedora/CentOS (`dnf`), and added native Arch Linux (`pacman`) dependency installation in `install.sh`.
+
+### Changed
+- **Capability Script Migration**:
+  - Deprecated `scripts/setup-port-capabilities.sh` in favor of `scripts/setup-system-capabilities.sh`, preserving full backward compatibility via transparent script delegation.
+  - Updated `update.sh` to automatically audit and apply system capabilities on upgrade.
+
 ## [2.20.0] - 2026-09-21
 
 ### Added

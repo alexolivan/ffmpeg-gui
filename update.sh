@@ -101,17 +101,15 @@ if [ -f "$SYSTEM_SERVICE" ]; then
         fi
     fi
     
-    # Ensure CAP_NET_BIND_SERVICE capabilities
-    if ! grep -q "AmbientCapabilities=CAP_NET_BIND_SERVICE" "$SYSTEM_SERVICE"; then
-        echo "--> Ensuring systemd service capabilities (CAP_NET_BIND_SERVICE)..."
-        if [ "$EUID" -eq 0 ]; then
-            if [ -f "$PROJ_DIR/scripts/setup-port-capabilities.sh" ]; then
-                bash "$PROJ_DIR/scripts/setup-port-capabilities.sh" || true
-            fi
-        else
-            if [ -f "$PROJ_DIR/scripts/setup-port-capabilities.sh" ]; then
-                sudo bash "$PROJ_DIR/scripts/setup-port-capabilities.sh" || true
-            fi
+    # Ensure system capabilities (network ports & Intel GPU telemetry)
+    echo "--> Verifying and applying system capabilities..."
+    if [ "$EUID" -eq 0 ]; then
+        if [ -f "$PROJ_DIR/scripts/setup-system-capabilities.sh" ]; then
+            bash "$PROJ_DIR/scripts/setup-system-capabilities.sh" || true
+        fi
+    else
+        if [ -f "$PROJ_DIR/scripts/setup-system-capabilities.sh" ]; then
+            sudo bash "$PROJ_DIR/scripts/setup-system-capabilities.sh" || true
         fi
     fi
 

@@ -87,7 +87,8 @@ install_debian_deps() {
                        libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev \
                        libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
                        libavahi-client-dev libavahi-common-dev libasound2-dev \
-                       libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev
+                       libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
+                       intel-gpu-tools
 }
 
 # Paquetes a instalar en RedHat/Fedora/CentOS
@@ -97,7 +98,18 @@ install_rhel_deps() {
     dnf install -y python3-devel nodejs npm cmake git pkgconfig yasm nasm \
                    x264-devel x265-devel openssl-devel libva-devel libdrm-devel \
                    lame-devel libvorbis-devel opus-devel libvpx-devel \
-                   avahi-devel alsa-lib-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel
+                   avahi-devel alsa-lib-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel \
+                   intel-gpu-tools
+}
+
+# Paquetes a instalar en Arch Linux
+install_arch_deps() {
+    echo "--> Installing system dependencies via pacman..."
+    pacman -S --needed --noconfirm base-devel cmake git pkgconf yasm nasm \
+                                 x264 x265 openssl libva libdrm \
+                                 lame libvorbis opus libvpx \
+                                 avahi alsa-lib freetype2 harfbuzz fontconfig fribidi \
+                                 intel-gpu-tools python nodejs npm
 }
 
 # ---------------------------------------------------------
@@ -116,8 +128,10 @@ if [ "$MODE" = "system" ]; then
         install_debian_deps
     elif command -v dnf &>/dev/null; then
         install_rhel_deps
+    elif command -v pacman &>/dev/null; then
+        install_arch_deps
     else
-        echo "Warning: Unsupported package manager. Please ensure development tools and libraries (x264, x265, openssl, libva, libdrm, avahi) are installed manually."
+        echo "Warning: Unsupported package manager. Please ensure development tools and libraries (x264, x265, openssl, libva, libdrm, avahi, intel-gpu-tools) are installed manually."
     fi
 
     # Verificar herramientas indispensables después de la instalación
@@ -289,7 +303,7 @@ ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=2
 KillMode=process
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_PERFMON CAP_SYS_ADMIN
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 
 [Install]
@@ -297,8 +311,8 @@ WantedBy=multi-user.target
 EOF
 
     systemctl daemon-reload
-    if [ -f "$PROJ_DIR/scripts/setup-port-capabilities.sh" ]; then
-        bash "$PROJ_DIR/scripts/setup-port-capabilities.sh" || true
+    if [ -f "$PROJ_DIR/scripts/setup-system-capabilities.sh" ]; then
+        bash "$PROJ_DIR/scripts/setup-system-capabilities.sh" || true
     fi
 else
     mkdir -p "$HOME/.config/systemd/user"
