@@ -4504,6 +4504,13 @@ def get_icecast_next_available_ports_endpoint(db: Session = Depends(get_db)):
     from utils.port_validator import get_next_available_icecast_ports
     return get_next_available_icecast_ports(db)
 
+@app.get("/api/services/desktop/next-available-ports")
+@app.get("/services/desktop/next-available-ports")
+@app.get("/api/services/next-desktop-ports")
+def get_desktop_next_available_ports(exclude_service_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    from utils.port_validator import get_next_available_desktop_display_and_vnc_port
+    return get_next_available_desktop_display_and_vnc_port(db, exclude_service_id=exclude_service_id)
+
 @app.post("/processes/preview-cmd")
 def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
     # Sanitize configs for preview
@@ -7038,6 +7045,104 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
         logger.info(f"WebSocket client disconnected from ALSA meters card {card_index}")
     except Exception as e:
         logger.error(f"WebSocket ALSA meters error: {e}")
+
+
+@app.websocket("/ws/desktop/{service_id}/vnc")
+async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
+    # 1. Authenticate WebSocket connection
+    token = websocket.cookies.get(auth_manager.COOKIE_NAME) or websocket.query_params.get("token")
+    if not token:
+        auth_hdr = websocket.headers.get("authorization")
+        if auth_hdr:
+            token = auth_hdr.replace("Bearer ", "").strip()
+
+    with SessionLocal() as db:
+        from database.models import SystemSettings, Service
+        settings = db.query(SystemSettings).first()
+        gui_password = settings.gui_password if settings else None
+
+        if gui_password:
+            is_valid = bool(token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)))
+            if not is_valid:
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+
+        svc = db.get(Service, service_id) if hasattr(db, "get") else db.query(Service).get(service_id)
+        if not svc or svc.service_type != "desktop":
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        cfg = svc.config or {}
+        desk_cfg = cfg.get("desktop_config", cfg)
+        vnc_port = int(desk_cfg.get("vnc_port", 5900 + int(desk_cfg.get("display_num", 99))))
+
+    # 2. Open TCP connection to local x11vnc server
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", vnc_port)
+    except Exception as e:
+        logger.error(f"[Desktop VNC Proxy] Failed to connect to 127.0.0.1:{vnc_port} for service {service_id}: {e}")
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        return
+
+    # 3. Accept WebSocket (negotiate 'binary' subprotocol for noVNC)
+    subprotocol = "binary" if "binary" in websocket.headers.get("sec-websocket-protocol", "") else None
+    await websocket.accept(subprotocol=subprotocol)
+
+    # 4. Bidirectional bridging
+    async def ws_to_tcp():
+        try:
+            while True:
+                msg = await websocket.receive()
+                if msg.get("type") == "websocket.disconnect":
+                    break
+                raw_bytes = msg.get("bytes")
+                if not raw_bytes and msg.get("text"):
+                    raw_bytes = msg["text"].encode("utf-8")
+                if raw_bytes:
+                    writer.write(raw_bytes)
+                    await writer.drain()
+        except Exception:
+            pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+    async def tcp_to_ws():
+        try:
+            while True:
+                chunk = await reader.read(65536)
+                if not chunk:
+                    break
+                await websocket.send_bytes(chunk)
+        except Exception:
+            pass
+        finally:
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+
+    t_ws = asyncio.create_task(ws_to_tcp())
+    t_tcp = asyncio.create_task(tcp_to_ws())
+    try:
+        done, pending = await asyncio.wait([t_ws, t_tcp], return_when=asyncio.FIRST_COMPLETED)
+        for t in pending:
+            t.cancel()
+    except Exception:
+        pass
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 # ── Blackmagic DeckLink Settings Endpoints ───────────────────────────
