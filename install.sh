@@ -88,7 +88,7 @@ install_debian_deps() {
                        libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
                        libavahi-client-dev libavahi-common-dev libasound2-dev \
                        libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
-                       intel-gpu-tools
+                       intel-gpu-tools xvfb x11vnc x11-xserver-utils
 }
 
 # Paquetes a instalar en RedHat/Fedora/CentOS
@@ -99,7 +99,7 @@ install_rhel_deps() {
                    x264-devel x265-devel openssl-devel libva-devel libdrm-devel \
                    lame-devel libvorbis-devel opus-devel libvpx-devel \
                    avahi-devel alsa-lib-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel \
-                   intel-gpu-tools
+                   intel-gpu-tools xorg-x11-server-Xvfb x11vnc xorg-x11-server-utils
 }
 
 # Paquetes a instalar en Arch Linux
@@ -109,7 +109,7 @@ install_arch_deps() {
                                  x264 x265 openssl libva libdrm \
                                  lame libvorbis opus libvpx \
                                  avahi alsa-lib freetype2 harfbuzz fontconfig fribidi \
-                                 intel-gpu-tools python nodejs npm
+                                 intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm
 }
 
 # ---------------------------------------------------------
