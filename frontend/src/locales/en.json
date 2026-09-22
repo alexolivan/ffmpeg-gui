@@ -1531,5 +1531,26 @@
       "disabledDesc": "The secondary monitor is disabled to maximize CPU performance and prevent real-time capture dropouts.",
       "enableInSettings": "You can enable it in Service Settings → Filters → Advanced Flags."
     }
+  },
+  "desktop": {
+    "service_name": "Virtual Desktop Server (X11 / VNC)",
+    "service_description": "Headless X11 virtual display server (Xvfb) with real-time interactive HTML5 VNC remote access.",
+    "general_settings": "Virtual Desktop Configuration",
+    "name_label": "Service Name",
+    "alias_label": "Custom Alias (Optional)",
+    "display_parameters": "X11 Display & Remote VNC Settings",
+    "auto_assign": "Auto-Assign Free Ports",
+    "display_num_label": "X11 Display Number (:N)",
+    "display_num_help": "Internal Xvfb display socket. Default :99.",
+    "vnc_port_label": "Local VNC Port (TCP)",
+    "vnc_port_help": "Bound to 127.0.0.1. Remote clients connect securely through WebSocket proxy.",
+    "resolution_label": "Canvas Resolution",
+    "framerate_label": "Target Framerate",
+    "color_depth_label": "Color Depth",
+    "lifecycle_watchdog": "Service Lifecycle & Reliability Watchdog",
+    "tab_screen": "Remote Display (noVNC)",
+    "tab_logs": "Service Logs",
+    "service_stopped_title": "Virtual Desktop is Stopped",
+    "service_stopped_desc": "Start the virtual desktop service to initialize the Xvfb X11 screen and connect via interactive HTML5 VNC."
   }
 }

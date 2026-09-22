@@ -39,6 +39,11 @@ const SERVICE_TYPE_DEFINITIONS: Record<string, { service_type: string; category:
     category: 'DISPLAY KIOSK',
     defaultDesc: 'Wayland/X11 web kiosk display browser for video feeds, overlays, and graphics.',
   },
+  desktop: {
+    service_type: 'desktop',
+    category: 'VIRTUAL DESKTOP',
+    defaultDesc: 'Headless X11 virtual display server (Xvfb) with real-time interactive HTML5 VNC remote access.',
+  },
 };
 
 export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
@@ -75,6 +80,16 @@ export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
           }
         });
 
+        // Always append Virtual Desktop Server (Xvfb + x11vnc)
+        available.push({
+          key: 'desktop',
+          service_type: 'desktop',
+          name: t('desktop.service_name', 'Virtual Desktop Server (X11 / VNC)'),
+          category: 'VIRTUAL DESKTOP',
+          description: t('desktop.service_description', 'Headless X11 virtual display server (Xvfb) with real-time interactive HTML5 VNC remote access.'),
+          is_enabled: true,
+        });
+
         // Ensure fallback to ffmpeg if none
         if (available.length === 0) {
           available.push({
@@ -98,6 +113,14 @@ export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
             name: 'FFmpeg Stream',
             category: 'TRANSCODER & STREAMING',
             description: SERVICE_TYPE_DEFINITIONS.ffmpeg.defaultDesc,
+            is_enabled: true,
+          },
+          {
+            key: 'desktop',
+            service_type: 'desktop',
+            name: t('desktop.service_name', 'Virtual Desktop Server (X11 / VNC)'),
+            category: 'VIRTUAL DESKTOP',
+            description: t('desktop.service_description', 'Headless X11 virtual display server (Xvfb) with real-time interactive HTML5 VNC remote access.'),
             is_enabled: true,
           },
         ]);

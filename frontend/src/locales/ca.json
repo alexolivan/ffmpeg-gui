@@ -1531,5 +1531,26 @@
       "disabledDesc": "El monitor secundari es troba desactivat per maximitzar el rendiment de la CPU i evitar caigudes en la captura en temps real.",
       "enableInSettings": "Podeu reactivar-lo a Configuració del Servei → Filtres → Ajustos Avançats."
     }
+  },
+  "desktop": {
+    "service_name": "Servidor d'Escriptori Virtual (X11 / VNC)",
+    "service_description": "Servidor de pantalla virtual X11 headless (Xvfb) amb accés remot interactiu HTML5 VNC en temps real.",
+    "general_settings": "Configuració d'Escriptori Virtual",
+    "name_label": "Nom del Servei",
+    "alias_label": "Àlies Personalitzat (Opcional)",
+    "display_parameters": "Ajustos de Pantalla X11 i VNC Remot",
+    "auto_assign": "Autoassignar Ports Lliures",
+    "display_num_label": "Número de Display X11 (:N)",
+    "display_num_help": "Sòcol intern de display Xvfb. Per defecte :99.",
+    "vnc_port_label": "Port VNC Local (TCP)",
+    "vnc_port_help": "Enllaçat a 127.0.0.1. Clients remots es connecten de manera segura mitjançant servidor intermediari WebSocket.",
+    "resolution_label": "Resolució del Canvas",
+    "framerate_label": "Fotogrames per Segon (FPS)",
+    "color_depth_label": "Profunditat de Color",
+    "lifecycle_watchdog": "Cicle de Vida i Watchdog de Fiabilitat",
+    "tab_screen": "Pantalla Remota (noVNC)",
+    "tab_logs": "Registres del Servei",
+    "service_stopped_title": "L'Escriptori Virtual està Aturat",
+    "service_stopped_desc": "Inicia el servei d'escriptori virtual per inicialitzar la pantalla X11 Xvfb i connectar mitjançant VNC interactiu HTML5."
   }
 }

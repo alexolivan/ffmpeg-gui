@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FfmpegLogoIcon, ServerIcon } from '../Icons';
+import { FfmpegLogoIcon, ServerIcon, MonitorIcon } from '../Icons';
 
 interface EngineLogoProps {
   softwareType?: string;
@@ -38,11 +38,13 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
     normalizedType = 'kiosk_cog';
   } else if (normalizedType.includes('decklink') || normalizedType === 'decklink_tools') {
     normalizedType = 'decklink_tools';
+  } else if (normalizedType === 'desktop') {
+    normalizedType = 'desktop';
   }
 
   const iconUrl = `${API}/api/settings/software/${normalizedType}/icon?t=${timestamp}`;
 
-  if (!hasError) {
+  if (!hasError && normalizedType !== 'desktop') {
     return (
       <img
         key={`${normalizedType}-${timestamp}`}
@@ -57,6 +59,10 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
 
   if (normalizedType === 'ffmpeg') {
     return <FfmpegLogoIcon size={size} className={className} />;
+  }
+
+  if (normalizedType === 'desktop') {
+    return <MonitorIcon size={size} className={className} />;
   }
 
   if (normalizedType === 'decklink_tools') {

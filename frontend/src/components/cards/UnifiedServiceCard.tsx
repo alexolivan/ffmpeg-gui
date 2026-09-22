@@ -194,6 +194,8 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' 
               : serviceType === 'kiosk_browser' 
               ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' 
+              : serviceType === 'desktop'
+              ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
               : 'bg-purple-500/10 text-purple-400 border-purple-500/30'
           }`}>
             <EngineLogo softwareType={serviceType} size={12} API={API} />
@@ -205,6 +207,8 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               ? 'Icecast' 
               : serviceType === 'kiosk_browser' 
               ? 'Kiosk' 
+              : serviceType === 'desktop'
+              ? 'Desktop'
               : 'Service'}
           </span>
 
@@ -270,15 +274,23 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
 
         {/* I/O Description Details */}
         <div className="text-xs text-[var(--text-secondary)] space-y-0.5 font-mono truncate">
-          {inputCfg && (
+          {serviceType === 'desktop' ? (
             <p className="truncate">
-              In: <code className="text-[var(--text-primary)]">{formatInputDesc(inputCfg)}</code>
+              Display: <code className="text-[var(--text-primary)]">:{service.config?.desktop_config?.display_num ?? 99}</code> • Resolution: <code className="text-[var(--text-primary)]">{service.config?.desktop_config?.resolution ?? '1920x1080'}</code> • VNC: <code className="text-[var(--text-primary)]">:{service.config?.desktop_config?.vnc_port ?? 5999}</code>
             </p>
-          )}
-          {outputCfg && (
-            <p className="truncate">
-              Out: <code className="text-[var(--text-primary)]">{formatOutputDesc(outputCfg)}</code>
-            </p>
+          ) : (
+            <>
+              {inputCfg && (
+                <p className="truncate">
+                  In: <code className="text-[var(--text-primary)]">{formatInputDesc(inputCfg)}</code>
+                </p>
+              )}
+              {outputCfg && (
+                <p className="truncate">
+                  Out: <code className="text-[var(--text-primary)]">{formatOutputDesc(outputCfg)}</code>
+                </p>
+              )}
+            </>
           )}
         </div>
 

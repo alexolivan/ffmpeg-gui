@@ -533,7 +533,26 @@ export const FfmpegLogoIcon: React.FC<IconProps> = ({ size = 16, className = '',
   >
     <path d="M4 4h16v3H8v3h10v3H8v7H4V4z" fill="#00B00F" stroke="none" />
     <path d="M9 10h11v3H9v-3z" fill="#007808" stroke="none" />
+    <path d="M4 4h4v7H4V4z" fill="#008000" stroke="none" />
+    <path d="M4 14h4v7H4v-7z" fill="#006400" stroke="none" />
   </svg>
 );
 
-
+export const MonitorIcon: React.FC<IconProps> = ({ size = 18, className = '', ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    {...props}
+  >
+    <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+    <line x1="8" y1="21" x2="16" y2="21" />
+    <line x1="12" y1="17" x2="12" y2="21" />
+  </svg>
+);

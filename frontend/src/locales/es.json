@@ -1531,5 +1531,26 @@
       "disabledDesc": "El monitor secundario se encuentra desactivado para maximizar el rendimiento de la CPU y evitar caídas en la captura en tiempo real.",
       "enableInSettings": "Puedes reactivarlo en Configuración del Servicio → Filtros → Ajustes Avanzados."
     }
+  },
+  "desktop": {
+    "service_name": "Servidor de Escritorio Virtual (X11 / VNC)",
+    "service_description": "Servidor de pantalla virtual X11 headless (Xvfb) con acceso remoto interactivo HTML5 VNC en tiempo real.",
+    "general_settings": "Configuración de Escritorio Virtual",
+    "name_label": "Nombre del Servicio",
+    "alias_label": "Alias Personalizado (Opcional)",
+    "display_parameters": "Ajustes de Pantalla X11 y VNC Remoto",
+    "auto_assign": "Auto-asignar Puertos Libres",
+    "display_num_label": "Número de Display X11 (:N)",
+    "display_num_help": "Socket interno de display Xvfb. Por defecto :99.",
+    "vnc_port_label": "Puerto VNC Local (TCP)",
+    "vnc_port_help": "Enlazado a 127.0.0.1. Clientes remotos se conectan de forma segura vía proxy WebSocket.",
+    "resolution_label": "Resolución del Canvas",
+    "framerate_label": "Fotogramas por Segundo (FPS)",
+    "color_depth_label": "Profundidad de Color",
+    "lifecycle_watchdog": "Ciclo de Vida y Watchdog de Fiabilidad",
+    "tab_screen": "Pantalla Remota (noVNC)",
+    "tab_logs": "Registros del Servicio",
+    "service_stopped_title": "El Escritorio Virtual está Detenido",
+    "service_stopped_desc": "Inicia el servicio de escritorio virtual para inicializar la pantalla X11 Xvfb y conectar vía VNC interactivo HTML5."
   }
 }
