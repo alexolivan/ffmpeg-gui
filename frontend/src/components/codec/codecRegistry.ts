@@ -69,7 +69,7 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   },
   file: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'prores_ks', 'dnxhd', 'rawvideo', 'v210', 'copy'],
-    audio: ['aac', 'libmp3lame', 'libopus', 'pcm_s16le', 'pcm_s24le', 'copy']
+    audio: ['aac', 'libmp3lame', 'libopus', 'libvorbis', 'pcm_s16le', 'pcm_s24le', 'copy']
   },
   rtp: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'copy'],
@@ -81,7 +81,7 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   },
   icecast: {
     video: [],
-    audio: ['aac', 'libmp3lame', 'libopus']
+    audio: ['aac', 'libmp3lame', 'libopus', 'libvorbis']
   },
   alsa: {
     video: [],
@@ -728,6 +728,35 @@ export const AUDIO_CODECS: CodecDefinition[] = [
           { value: 'constrained', label: 'Constrained' },
         ],
         default: 'on',
+      },
+      {
+        key: 'ac', label: 'Channels', type: 'select',
+        options: [
+          { value: '1', label: 'Mono' },
+          { value: '2', label: 'Stereo' },
+        ],
+        default: '2',
+      },
+    ],
+  },
+  {
+    id: 'libvorbis',
+    label: 'Vorbis (Ogg Vorbis)',
+    type: 'audio',
+    category: 'software',
+    params: [
+      {
+        key: 'b:a', label: 'Bitrate', type: 'select',
+        options: [
+          { value: '64k', label: '64 kbps' },
+          { value: '96k', label: '96 kbps' },
+          { value: '128k', label: '128 kbps' },
+          { value: '160k', label: '160 kbps' },
+          { value: '192k', label: '192 kbps' },
+          { value: '256k', label: '256 kbps' },
+          { value: '320k', label: '320 kbps' },
+        ],
+        default: '128k',
       },
       {
         key: 'ac', label: 'Channels', type: 'select',

@@ -33,7 +33,10 @@ class PeerManager:
         self.purge_expired_leases()
         return len(self._active_remote_leases.get(service_id, {}))
 
-    def purge_expired_leases(self, timeout_seconds: int = 90) -> None:
+    def purge_expired_leases(self, timeout_seconds: int = 90, db_session = None) -> None:
+        if not isinstance(timeout_seconds, (int, float)):
+            db_session = timeout_seconds
+            timeout_seconds = 90
         now = time.time()
         for svc_id in list(self._active_remote_leases.keys()):
             leases = self._active_remote_leases[svc_id]
@@ -41,6 +44,11 @@ class PeerManager:
                 if now - leases[tok] > timeout_seconds:
                     logger.info(f"Peer lease expired for service {svc_id} from token {tok}")
                     del leases[tok]
+                    try:
+                        from core.resource_lock_manager import resource_lock_manager
+                        resource_lock_manager.release_peer_locks(tok, service_id=svc_id)
+                    except Exception as err:
+                        logger.warning(f"Failed to release peer locks on lease expiry: {err}")
             if not leases:
                 del self._active_remote_leases[svc_id]
 
@@ -73,9 +81,11 @@ class PeerManager:
         """
         Sends HEARTBEAT RPC for all locally running services and tasks
         that lease auxiliary services on remote peer nodes.
+        Includes resource_path to auto-restore remote publisher locks.
         """
         from database.models import Service, ScheduledTask
-        active_pairs = set()
+        from core.resource_lock_manager import resource_lock_manager
+        active_leases = set()
 
         try:
             running_services = db_session.query(Service).filter(Service.status == "running").all()
@@ -87,7 +97,9 @@ class PeerManager:
                 p_svc = out_cfg.get("peer_service_id") or inp_cfg.get("peer_service_id")
                 if p_node and p_svc:
                     try:
-                        active_pairs.add((int(p_node), int(p_svc)))
+                        res_info = resource_lock_manager.extract_resource_info(out_cfg)
+                        res_path = res_info["resource_path"] if res_info else None
+                        active_leases.add((int(p_node), int(p_svc), res_path))
                     except (ValueError, TypeError):
                         pass
         except Exception as e:
@@ -102,19 +114,21 @@ class PeerManager:
                 p_svc = out_cfg.get("peer_service_id") or inp_cfg.get("peer_service_id")
                 if p_node and p_svc:
                     try:
-                        active_pairs.add((int(p_node), int(p_svc)))
+                        res_info = resource_lock_manager.extract_resource_info(out_cfg)
+                        res_path = res_info["resource_path"] if res_info else None
+                        active_leases.add((int(p_node), int(p_svc), res_path))
                     except (ValueError, TypeError):
                         pass
         except Exception as e:
             logger.debug(f"Failed to query running tasks for peer heartbeat: {e}")
 
-        for p_node, p_svc in active_pairs:
+        for p_node, p_svc, res_path in active_leases:
             try:
-                self.send_remote_heartbeat(db_session, p_node, p_svc)
+                self.send_remote_heartbeat(db_session, p_node, p_svc, resource_path=res_path)
             except Exception as err:
-                logger.warning(f"Failed to send remote heartbeat to peer {p_node} for service {p_svc}: {err}")
+                logger.warning(f"Failed to send remote heartbeat to peer {p_node} for service {p_svc} (path={res_path}): {err}")
 
-    def _extract_service_protocols(self, svc: Service) -> Dict[str, Any]:
+    def _extract_service_protocols(self, svc: Service, is_legacy: bool = False, software_version: Optional[str] = None) -> Dict[str, Any]:
         cfg = svc.config or {}
         protocols = {}
         if svc.service_type == "mediamtx_hub":
@@ -138,24 +152,68 @@ class PeerManager:
             protocols["ssl_enabled"] = bool(ice.get("ssl_enabled", False))
             protocols["mounts"] = ice.get("mounts", [])
             protocols["source_password"] = ice.get("source_password", "")
+            protocols["is_legacy"] = is_legacy
+            if software_version:
+                protocols["software_version"] = software_version
         return protocols
 
     def get_shared_catalog(self, db_session, allowed_service_ids: Optional[List[int]] = None) -> List[Dict[str, Any]]:
+        from database.models import SoftwareBuild
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+
         query = db_session.query(Service).filter(Service.is_shared_with_peers == True)
         services = query.all()
         catalog = []
         for svc in services:
             if allowed_service_ids and svc.id not in allowed_service_ids:
                 continue
-            catalog.append({
+
+            cfg = svc.config or {}
+            is_legacy = False
+            software_version = None
+
+            if svc.service_type == "icecast_server":
+                build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or getattr(svc, 'ffmpeg_build_id', None)
+                build = None
+                if build_id:
+                    build = db_session.query(SoftwareBuild).get(build_id)
+                if not build:
+                    build = db_session.query(SoftwareBuild).filter(
+                        SoftwareBuild.software_type == 'icecast2',
+                        SoftwareBuild.status == 'ready',
+                        SoftwareBuild.is_default == True
+                    ).first() or db_session.query(SoftwareBuild).filter(
+                        SoftwareBuild.software_type == 'icecast2',
+                        SoftwareBuild.status == 'ready'
+                    ).first()
+                if build:
+                    software_version = build.version_tag or build.name
+                    is_legacy = FFmpegCommandBuilder._is_legacy_icecast(software_version)
+                if not is_legacy:
+                    is_legacy = (
+                        FFmpegCommandBuilder._is_legacy_icecast(svc.name or '')
+                        or FFmpegCommandBuilder._is_legacy_icecast(svc.alias or '')
+                        or bool(cfg.get("icecast_config", {}).get("is_legacy", False))
+                        or bool(cfg.get("is_legacy", False))
+                    )
+
+            protocols = self._extract_service_protocols(svc, is_legacy=is_legacy, software_version=software_version)
+
+            entry = {
                 "id": svc.id,
                 "name": svc.name,
                 "alias": svc.alias,
                 "service_type": svc.service_type,
                 "status": svc.status,
                 "allow_peer_lease": bool(svc.allow_peer_lease),
-                "protocols": self._extract_service_protocols(svc)
-            })
+                "protocols": protocols,
+            }
+            if svc.service_type == "icecast_server":
+                entry["is_legacy"] = is_legacy
+                if software_version:
+                    entry["software_version"] = software_version
+
+            catalog.append(entry)
         return catalog
 
     def get_catalog_version_and_hash(self, db_session) -> Tuple[int, str]:
@@ -226,8 +284,27 @@ class PeerManager:
                     "services": catalog
                 }
 
+        elif action == "GET_RESOURCE_LOCKS":
+            from core.resource_lock_manager import resource_lock_manager
+            raw_svc_id = req.get("service_id")
+            all_locks = resource_lock_manager.get_active_locks()
+            if raw_svc_id is not None:
+                try:
+                    s_id = int(raw_svc_id)
+                except (ValueError, TypeError):
+                    s_id = raw_svc_id
+                filtered_locks = [
+                    l for l in all_locks
+                    if str(l.get("target_id")) == str(s_id) or str(l.get("service_id")) == str(s_id)
+                ]
+            else:
+                filtered_locks = all_locks
+            logger.info(f"[Inbound RPC] GET_RESOURCE_LOCKS: Returning {len(filtered_locks)} locks (filter service_id={raw_svc_id}) to token {token_id}")
+            res_payload = {"status": "OK", "locks": filtered_locks}
+
         elif action == "ACQUIRE_LEASE":
             raw_svc_id = req.get("service_id")
+            resource_path = req.get("resource_path")
             try:
                 svc_id = int(raw_svc_id)
             except (ValueError, TypeError):
@@ -243,47 +320,84 @@ class PeerManager:
                 logger.warning(f"[Inbound RPC] ACQUIRE_LEASE: Service {svc_id} ({svc.name}) does not allow peer lease")
                 res_payload = {"status": "ERROR", "detail": f"Service {svc_id} does not allow peer lease"}
             else:
-                if svc_id not in self._active_remote_leases:
-                    self._active_remote_leases[svc_id] = {}
-                self._active_remote_leases[svc_id][token_id] = time.time()
-                logger.info(f"[Inbound RPC] ACQUIRE_LEASE: Acquired lease on service {svc_id} ({svc.name}) for token {token_id}. Total leases: {len(self._active_remote_leases[svc_id])}")
-                
-                # Auto-start service if stopped and process_manager available
-                if svc.status != "running" and process_manager:
-                    try:
-                        import asyncio
-                        # Trigger background start if async event loop active
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.create_task(process_manager.start_process(svc_id))
-                    except Exception as err:
-                        logger.warning(f"Failed to auto-start leased service {svc_id}: {err}")
+                conflict_err = None
+                if resource_path:
+                    from core.resource_lock_manager import resource_lock_manager
+                    raw_type = getattr(svc, 'service_type', '')
+                    mapped_type = 'icecast' if raw_type == 'icecast_server' else ('mediamtx' if raw_type == 'mediamtx_hub' else 'generic')
+                    ok_lock, err_lock, lock_entry = resource_lock_manager.acquire_peer_lock(
+                        token_id=token_id,
+                        service_id=svc_id,
+                        service_type=mapped_type,
+                        resource_path=resource_path,
+                        peer_name=inbound_key.alias or f"Peer {token_id}"
+                    )
+                    if not ok_lock:
+                        conflict_err = err_lock
 
-                res_payload = {
-                    "status": "LEASE_ACQUIRED",
-                    "service_status": svc.status,
-                    "lease_count": len(self._active_remote_leases[svc_id])
-                }
+                if conflict_err:
+                    res_payload = {"status": "CONFLICT", "detail": conflict_err}
+                else:
+                    if svc_id not in self._active_remote_leases:
+                        self._active_remote_leases[svc_id] = {}
+                    self._active_remote_leases[svc_id][token_id] = time.time()
+                    logger.info(f"[Inbound RPC] ACQUIRE_LEASE: Acquired lease on service {svc_id} ({svc.name}) for token {token_id}. Total leases: {len(self._active_remote_leases[svc_id])}")
+                    
+                    # Auto-start service if stopped and process_manager available
+                    if svc.status != "running" and process_manager:
+                        try:
+                            import asyncio
+                            # Trigger background start if async event loop active
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                asyncio.create_task(process_manager.start_process(svc_id))
+                        except Exception as err:
+                            logger.warning(f"Failed to auto-start leased service {svc_id}: {err}")
+
+                    res_payload = {
+                        "status": "LEASE_ACQUIRED",
+                        "service_status": svc.status,
+                        "lease_count": len(self._active_remote_leases[svc_id])
+                    }
 
         elif action == "HEARTBEAT":
             raw_svc_id = req.get("service_id")
+            resource_path = req.get("resource_path")
             try:
                 svc_id = int(raw_svc_id)
             except (ValueError, TypeError):
                 svc_id = raw_svc_id
-            if svc_id in self._active_remote_leases and token_id in self._active_remote_leases[svc_id]:
-                self._active_remote_leases[svc_id][token_id] = time.time()
-                res_payload = {"status": "HEARTBEAT_ACK"}
+
+            svc = db_session.get(Service, svc_id) if hasattr(db_session, "get") else db_session.query(Service).get(svc_id)
+            if not svc or not svc.is_shared_with_peers or not svc.allow_peer_lease:
+                res_payload = {"status": "LEASE_NOT_FOUND"}
             else:
-                svc = db_session.query(Service).get(svc_id)
-                if svc and svc.is_shared_with_peers and svc.allow_peer_lease:
-                    if svc_id not in self._active_remote_leases:
-                        self._active_remote_leases[svc_id] = {}
-                    self._active_remote_leases[svc_id][token_id] = time.time()
-                    logger.info(f"[Inbound RPC] HEARTBEAT: Auto-reacquired lease for service {svc_id} ({svc.name}) from token {token_id}")
+                is_reacquired = False
+                if svc_id not in self._active_remote_leases:
+                    self._active_remote_leases[svc_id] = {}
+                if token_id not in self._active_remote_leases[svc_id]:
+                    is_reacquired = True
+                self._active_remote_leases[svc_id][token_id] = time.time()
+
+                if resource_path:
+                    from core.resource_lock_manager import resource_lock_manager
+                    raw_type = getattr(svc, 'service_type', '')
+                    mapped_type = 'icecast' if raw_type == 'icecast_server' else ('mediamtx' if raw_type == 'mediamtx_hub' else 'generic')
+                    ok_lock, err_lock, lock_entry = resource_lock_manager.acquire_peer_lock(
+                        token_id=token_id,
+                        service_id=svc_id,
+                        service_type=mapped_type,
+                        resource_path=resource_path,
+                        peer_name=inbound_key.alias or f"Peer {token_id}"
+                    )
+                    if not ok_lock:
+                        logger.warning(f"[Inbound RPC] HEARTBEAT: Conflict refreshing lock on '{resource_path}' for token {token_id}: {err_lock}")
+
+                if is_reacquired:
+                    logger.info(f"[Inbound RPC] HEARTBEAT: Auto-reacquired lease for service {svc_id} ({svc.name}) from token {token_id} (path='{resource_path}')")
                     res_payload = {"status": "LEASE_REACQUIRED"}
                 else:
-                    res_payload = {"status": "LEASE_NOT_FOUND"}
+                    res_payload = {"status": "HEARTBEAT_ACK"}
 
         elif action == "RELEASE_LEASE":
             raw_svc_id = req.get("service_id")
@@ -295,6 +409,11 @@ class PeerManager:
                 self._active_remote_leases[svc_id].pop(token_id, None)
                 if not self._active_remote_leases[svc_id]:
                     del self._active_remote_leases[svc_id]
+            try:
+                from core.resource_lock_manager import resource_lock_manager
+                resource_lock_manager.release_peer_locks(token_id, service_id=svc_id, resource_path=req.get("resource_path"))
+            except Exception as err:
+                logger.warning(f"Failed to release peer locks on RELEASE_LEASE: {err}")
             res_payload = {"status": "LEASE_RELEASED"}
 
         else:
@@ -392,40 +511,85 @@ class PeerManager:
                 resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5)
             except requests.exceptions.SSLError:
                 resp = requests.post(endpoint, json=enc_pkg, headers=headers, timeout=5, verify=False)
-            if resp.status_code != 200:
+            if resp.status_code not in (200, 409):
                 return False, None, f"HTTP {resp.status_code}: {resp.text[:100]}"
             dec_res = PeerCrypto.decrypt_payload(resp.json(), node.secret_key)
             return True, dec_res, None
         except Exception as e:
             return False, None, str(e)
 
-    def acquire_remote_lease(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:
-        success, res, err = self._send_rpc_to_node(db_session, node_id, {
+    def acquire_remote_lease(self, db_session, node_id: int, service_id: int, resource_path: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        payload = {
             "action": "ACQUIRE_LEASE",
             "service_id": service_id
-        })
+        }
+        if resource_path:
+            payload["resource_path"] = resource_path
+        success, res, err = self._send_rpc_to_node(db_session, node_id, payload)
         if not success:
             return False, err
-        if not res or res.get("status") == "ERROR":
+        if not res or res.get("status") in ("ERROR", "CONFLICT"):
             return False, res.get("detail", "Failed to acquire remote lease") if res else "Unknown error"
         return True, None
 
-    def send_remote_heartbeat(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:
-        success, res, err = self._send_rpc_to_node(db_session, node_id, {
+    def send_remote_heartbeat(self, db_session, node_id: int, service_id: int, resource_path: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        payload = {
             "action": "HEARTBEAT",
             "service_id": service_id
-        })
+        }
+        if resource_path:
+            payload["resource_path"] = resource_path
+        success, res, err = self._send_rpc_to_node(db_session, node_id, payload)
         if not success:
             return False, err
         return True, None
 
-    def release_remote_lease(self, db_session, node_id: int, service_id: int) -> Tuple[bool, Optional[str]]:
-        success, res, err = self._send_rpc_to_node(db_session, node_id, {
+    def release_remote_lease(self, db_session, node_id: int, service_id: int, resource_path: Optional[str] = None) -> Tuple[bool, Optional[str]]:
+        payload = {
             "action": "RELEASE_LEASE",
             "service_id": service_id
-        })
+        }
+        if resource_path:
+            payload["resource_path"] = resource_path
+        success, res, err = self._send_rpc_to_node(db_session, node_id, payload)
         if not success:
             return False, err
         return True, None
+
+    def get_remote_resource_locks(self, db_session, node_id: int, service_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Queries a remote peer node for active publisher resource locks (mountpoints & stream paths).
+        Marks `is_own_lease = True` if the lock is held by this node's token.
+        """
+        node = db_session.get(PeerRemoteNode, node_id) if hasattr(db_session, "get") else db_session.query(PeerRemoteNode).get(node_id)
+        if not node:
+            logger.warning(f"[PeerManager] get_remote_resource_locks: Remote node ID {node_id} not found in DB")
+            return []
+
+        payload: Dict[str, Any] = {"action": "GET_RESOURCE_LOCKS"}
+        if service_id is not None:
+            payload["service_id"] = service_id
+
+        success, res, err = self._send_rpc_to_node(db_session, node_id, payload)
+        if not success:
+            logger.warning(f"[PeerManager] get_remote_resource_locks: RPC failed for node {node_id} ({node.name}): {err}")
+            return []
+        if not res or res.get("status") != "OK":
+            logger.warning(f"[PeerManager] get_remote_resource_locks: Node {node_id} ({node.name}) returned status: {res}")
+            return []
+
+        locks = res.get("locks", [])
+        logger.info(f"[PeerManager] get_remote_resource_locks: Node {node_id} ({node.name}) returned {len(locks)} active locks")
+        enriched = []
+        for l in locks:
+            lock_copy = dict(l)
+            is_own = (
+                lock_copy.get("owner_type") == "remote_peer" and
+                str(lock_copy.get("owner_id")) == str(node.token_id)
+            )
+            lock_copy["is_own_lease"] = is_own
+            lock_copy["peer_node_id"] = node_id
+            enriched.append(lock_copy)
+        return enriched
 
 peer_manager = PeerManager()

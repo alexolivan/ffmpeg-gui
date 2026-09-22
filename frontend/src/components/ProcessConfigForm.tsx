@@ -1545,6 +1545,8 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                   acodec: config.audio_codec_id,
                   audio_params: config.audio_codec_params,
                 }}
+                currentProcessId={initialConfig?.id}
+                isTask={isTask}
               />
             </div>
           </div>

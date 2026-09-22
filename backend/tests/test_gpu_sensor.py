@@ -102,3 +102,128 @@ class TestGPUSensor(unittest.TestCase):
         self.assertEqual(stats3["utilization"], 50) # Should query and get new stats 50
         self.assertEqual(mock_run.call_count, 2) # Call count should increase to 2
 
+    @patch("shutil.which")
+    @patch("os.path.exists")
+    def test_vendor_detection_intel(self, mock_exists, mock_which):
+        mock_which.return_value = None
+        mock_exists.side_effect = lambda p: p == "/sys/class/drm/card0/device/vendor"
+        
+        with patch("builtins.open", mock_open(read_data="0x8086\n")):
+            sensor = GPUSensor()
+            self.assertEqual(sensor.vendor, "intel")
+
+    @patch("shutil.which")
+    @patch("os.path.exists")
+    def test_get_stats_intel_with_sample(self, mock_exists, mock_which):
+        mock_which.return_value = None
+        mock_exists.side_effect = lambda p: p == "/sys/class/drm/card0/device/vendor"
+        
+        with patch("builtins.open", mock_open(read_data="0x8086\n")):
+            sensor = GPUSensor()
+            self.assertEqual(sensor.vendor, "intel")
+
+        sample_data = {
+            "period": {"duration": 12.16, "unit": "ms"},
+            "engines": {
+                "Render/3D": {"busy": 0.0, "unit": "%"},
+                "Video": {"busy": 68.0, "unit": "%"},
+                "Blitter": {"busy": 2.0, "unit": "%"}
+            },
+            "clients": {
+                "4294966506": {
+                    "name": "ffmpeg",
+                    "pid": "790",
+                    "memory": {
+                        "system": {
+                            "total": "84860928",
+                            "resident": "78188544"
+                        }
+                    }
+                }
+            }
+        }
+
+        with patch.object(sensor, "_sample_intel_gpu_top", return_value=sample_data):
+            stats = sensor.get_stats()
+            self.assertEqual(stats["vendor"], "intel")
+            self.assertEqual(stats["utilization"], 68)
+            # 78188544 / 1048576 = 74.56 MB -> round(74.56) = 75 MB
+            self.assertEqual(stats["vram_used"], 75)
+            self.assertGreater(stats["vram_total"], 0)
+
+    @patch("shutil.which")
+    @patch("os.path.exists")
+    def test_get_stats_intel_missing_tool(self, mock_exists, mock_which):
+        mock_which.return_value = None
+        mock_exists.side_effect = lambda p: p == "/sys/class/drm/card0/device/vendor"
+        
+        with patch("builtins.open", mock_open(read_data="0x8086\n")):
+            sensor = GPUSensor()
+
+        with patch.object(sensor, "_sample_intel_gpu_top", return_value=None):
+            stats = sensor.get_stats()
+            self.assertEqual(stats["vendor"], "intel")
+            self.assertEqual(stats["utilization"], 0)
+            self.assertEqual(stats["vram_used"], 0)
+            self.assertGreater(stats["vram_total"], 0)
+
+    @patch("shutil.which")
+    @patch("subprocess.Popen")
+    def test_sample_intel_gpu_top_stream(self, mock_popen, mock_which):
+        mock_which.return_value = "/usr/bin/intel_gpu_top"
+        
+        # Simulate intel_gpu_top streaming JSON lines:
+        # Sample 1: startup snapshot (15ms duration)
+        # Sample 2: full window snapshot (500ms duration)
+        stream_lines = [
+            "[\n",
+            "\n",
+            "{\n",
+            '  "period": {"duration": 15.0, "unit": "ms"},\n',
+            '  "engines": {"Video": {"busy": 10.0}},\n',
+            '  "clients": {}\n',
+            "}\n",
+            ",\n",
+            "{\n",
+            '  "period": {"duration": 500.0, "unit": "ms"},\n',
+            '  "engines": {"Video": {"busy": 65.0}},\n',
+            '  "clients": {}\n',
+            "}\n"
+        ]
+        mock_proc = MagicMock()
+        mock_proc.stdout.readline.side_effect = stream_lines
+        mock_proc.poll.return_value = None
+        mock_popen.return_value = mock_proc
+
+        sensor = GPUSensor()
+        sample = sensor._sample_intel_gpu_top()
+
+        self.assertIsNotNone(sample)
+        # Should pick the 500ms representative sample instead of the 15ms transient
+        self.assertEqual(sample["engines"]["Video"]["busy"], 65.0)
+        mock_proc.terminate.assert_called_once()
+
+    @patch("shutil.which")
+    @patch("os.path.exists")
+    @patch("time.time")
+    def test_get_stats_intel_ema_smoothing(self, mock_time, mock_exists, mock_which):
+        mock_which.return_value = None
+        mock_exists.side_effect = lambda p: p == "/sys/class/drm/card0/device/vendor"
+        
+        with patch("builtins.open", mock_open(read_data="0x8086\n")):
+            sensor = GPUSensor()
+
+        mock_time.return_value = 1000.0
+        sample_high = {"engines": {"Video": {"busy": 100.0}}, "clients": {}}
+        with patch.object(sensor, "_sample_intel_gpu_top", return_value=sample_high):
+            stats1 = sensor.get_stats()
+            self.assertEqual(stats1["utilization"], 100)
+
+        # After 6s, raw reading drops to 0 (pause between frames)
+        mock_time.return_value = 1006.0
+        sample_low = {"engines": {"Video": {"busy": 0.0}}, "clients": {}}
+        with patch.object(sensor, "_sample_intel_gpu_top", return_value=sample_low):
+            stats2 = sensor.get_stats()
+            # EMA: 0.7 * 0 + 0.3 * 100 = 30% smoothed instead of plunging to 0%
+            self.assertEqual(stats2["utilization"], 30)
+

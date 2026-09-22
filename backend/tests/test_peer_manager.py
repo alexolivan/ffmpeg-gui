@@ -242,5 +242,198 @@ class TestPeerManager(unittest.TestCase):
         self.peer_mgr.send_all_active_remote_heartbeats(self.session)
         mock_post.assert_called()
 
+    def test_shared_catalog_icecast_legacy_export(self):
+        # Add a shared Icecast 2.3.3 server
+        ice_legacy = Service(
+            name="Icecast 2.3.3 Server",
+            alias="Legacy Radio",
+            service_type="icecast_server",
+            config={
+                "icecast_config": {
+                    "port": 8000,
+                    "ssl_enabled": False,
+                    "mounts": [{"mount_name": "/live.mp3"}],
+                    "source_password": "pass"
+                }
+            },
+            is_shared_with_peers=True,
+            allow_peer_lease=True,
+            status="running"
+        )
+        self.session.add(ice_legacy)
+        self.session.commit()
+
+        catalog = self.peer_mgr.get_shared_catalog(self.session)
+        ice_entry = next((s for s in catalog if s["id"] == ice_legacy.id), None)
+        self.assertIsNotNone(ice_entry)
+        self.assertTrue(ice_entry["is_legacy"])
+        self.assertTrue(ice_entry["protocols"]["is_legacy"])
+        self.assertFalse(ice_entry["protocols"]["ssl_enabled"])
+        self.assertEqual(ice_entry["protocols"]["port"], 8000)
+
+    def test_inbound_lease_resource_locks(self):
+        from core.resource_lock_manager import resource_lock_manager
+        resource_lock_manager.clear_all()
+
+        # Shared service
+        svc = Service(
+            name="Shared Hub",
+            service_type="mediamtx_hub",
+            status="running",
+            config={"mediamtx_config": {}},
+            is_shared_with_peers=True,
+            allow_peer_lease=True
+        )
+        self.session.add(svc)
+        self.session.commit()
+        self.session.refresh(svc)
+
+        # 1. First peer acquires lease on path 'cam1'
+        req1 = {"action": "ACQUIRE_LEASE", "service_id": svc.id, "resource_path": "cam1"}
+        enc1 = PeerCrypto.encrypt_payload(req1, self.secret_key)
+        code1, resp1 = self.peer_mgr.handle_inbound_rpc(self.token_id, enc1, self.session)
+        self.assertEqual(code1, 200)
+        dec1 = PeerCrypto.decrypt_payload(resp1, self.secret_key)
+        self.assertEqual(dec1.get("status"), "LEASE_ACQUIRED")
+        self.assertEqual(len(resource_lock_manager.get_active_locks()), 1)
+
+        # 2. Second peer (different key) tries to acquire same path 'cam1' -> CONFLICT
+        token2, sec2 = PeerCrypto.generate_keypair()
+        key2 = PeerInboundKey(alias="client-beta", token_id=token2, secret_key=sec2)
+        self.session.add(key2)
+        self.session.commit()
+
+        req2 = {"action": "ACQUIRE_LEASE", "service_id": svc.id, "resource_path": "cam1"}
+        enc2 = PeerCrypto.encrypt_payload(req2, sec2)
+        code2, resp2 = self.peer_mgr.handle_inbound_rpc(token2, enc2, self.session)
+        self.assertEqual(code2, 200)
+        dec2 = PeerCrypto.decrypt_payload(resp2, sec2)
+        self.assertEqual(dec2.get("status"), "CONFLICT")
+        self.assertIn("ya está siendo emitido", dec2.get("detail", ""))
+
+        # 3. First peer releases lease
+        req_rel = {"action": "RELEASE_LEASE", "service_id": svc.id, "resource_path": "cam1"}
+        enc_rel = PeerCrypto.encrypt_payload(req_rel, self.secret_key)
+        code_rel, resp_rel = self.peer_mgr.handle_inbound_rpc(self.token_id, enc_rel, self.session)
+        self.assertEqual(code_rel, 200)
+        dec_rel = PeerCrypto.decrypt_payload(resp_rel, self.secret_key)
+        self.assertEqual(dec_rel.get("status"), "LEASE_RELEASED")
+        self.assertEqual(len(resource_lock_manager.get_active_locks()), 0)
+
+        # 4. Now second peer can acquire it
+        code2_retry, resp2_retry = self.peer_mgr.handle_inbound_rpc(token2, enc2, self.session)
+        self.assertEqual(code2_retry, 200)
+        dec2_retry = PeerCrypto.decrypt_payload(resp2_retry, sec2)
+        self.assertEqual(dec2_retry.get("status"), "LEASE_ACQUIRED")
+        self.assertEqual(len(resource_lock_manager.get_active_locks()), 1)
+
+    @patch("requests.post")
+    def test_get_resource_locks_rpc_and_client(self, mock_post):
+        from core.resource_lock_manager import resource_lock_manager
+        resource_lock_manager.clear_all()
+
+        # 1. Test Inbound RPC GET_RESOURCE_LOCKS
+        resource_lock_manager.acquire_peer_lock(
+            token_id="peer_tok_test3",
+            service_id=1,
+            service_type="icecast",
+            resource_path="/live.mp3",
+            peer_name="Test Node 3"
+        )
+        req = {"action": "GET_RESOURCE_LOCKS", "service_id": 1}
+        enc = PeerCrypto.encrypt_payload(req, self.secret_key)
+        code, resp = self.peer_mgr.handle_inbound_rpc(self.token_id, enc, self.session)
+        self.assertEqual(code, 200)
+        dec = PeerCrypto.decrypt_payload(resp, self.secret_key)
+        self.assertEqual(dec.get("status"), "OK")
+        locks = dec.get("locks", [])
+        self.assertEqual(len(locks), 1)
+        self.assertEqual(locks[0]["resource_path"], "/live.mp3")
+
+        # 2. Test Outbound get_remote_resource_locks with own vs remote node
+        node = PeerRemoteNode(
+            name="VPS1",
+            base_url="https://vps1.example.com",
+            token_id="my_token_id",
+            secret_key=self.secret_key,
+            status="online"
+        )
+        self.session.add(node)
+        self.session.commit()
+
+        # Mock remote response with 2 locks: one from test3, one from this node
+        mock_locks = [
+            {
+                "resource_key": "service:1:icecast:/live.mp3",
+                "resource_path": "/live.mp3",
+                "service_type": "icecast",
+                "owner_type": "remote_peer",
+                "owner_id": "test3_token",
+                "owner_name": "Test Node 3"
+            },
+            {
+                "resource_key": "service:1:icecast:/rock.mp3",
+                "resource_path": "/rock.mp3",
+                "service_type": "icecast",
+                "owner_type": "remote_peer",
+                "owner_id": "my_token_id",
+                "owner_name": "My Node"
+            }
+        ]
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = PeerCrypto.encrypt_payload({"status": "OK", "locks": mock_locks}, self.secret_key)
+        mock_post.return_value = mock_resp
+
+        res_locks = self.peer_mgr.get_remote_resource_locks(self.session, node.id, service_id=1)
+        self.assertEqual(len(res_locks), 2)
+        # Lock 1 is held by test3 -> is_own_lease is False
+        self.assertFalse(res_locks[0]["is_own_lease"])
+        # Lock 2 is held by my_token_id -> is_own_lease is True
+        self.assertTrue(res_locks[1]["is_own_lease"])
+
+    def test_heartbeat_auto_heals_peer_lock(self):
+        from core.resource_lock_manager import resource_lock_manager
+        from database.models import Service
+        resource_lock_manager.clear_all()
+
+        # Create shared Icecast service
+        svc = Service(
+            name="Hub Icecast Server",
+            service_type="icecast_server",
+            config={"port": 8000},
+            status="running",
+            is_shared_with_peers=True,
+            allow_peer_lease=True
+        )
+        self.session.add(svc)
+        self.session.commit()
+
+        # Simulate host wipe/restart where locks are empty
+        self.assertEqual(len(resource_lock_manager.get_active_locks()), 0)
+
+        # Inbound HEARTBEAT RPC carries resource_path="/live.mp3"
+        req = {
+            "action": "HEARTBEAT",
+            "service_id": svc.id,
+            "resource_path": "/live.mp3"
+        }
+        enc = PeerCrypto.encrypt_payload(req, self.secret_key)
+        code, resp = self.peer_mgr.handle_inbound_rpc(self.token_id, enc, self.session)
+        self.assertEqual(code, 200)
+        dec = PeerCrypto.decrypt_payload(resp, self.secret_key)
+        self.assertIn(dec.get("status"), ("LEASE_REACQUIRED", "HEARTBEAT_ACK"))
+
+        # Verify resource lock was automatically healed in memory
+        locks = resource_lock_manager.get_active_locks()
+        self.assertEqual(len(locks), 1)
+        self.assertEqual(locks[0]["resource_path"], "/live.mp3")
+        self.assertEqual(locks[0]["service_id"], svc.id)
+        self.assertEqual(locks[0]["owner_id"], self.token_id)
+        self.assertEqual(locks[0]["owner_type"], "remote_peer")
+
+        resource_lock_manager.clear_all()
+
 if __name__ == "__main__":
     unittest.main()
+

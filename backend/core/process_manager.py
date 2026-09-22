@@ -108,18 +108,57 @@ class ProcessManager:
         # Start auto-managed dependencies first
         await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
 
+        # Check and acquire exclusive resource lock for publisher outputs
+        from core.resource_lock_manager import resource_lock_manager
+        with self.db_session_factory() as session:
+            from database.models import Service
+            media_proc_chk = session.get(Service, process_id)
+            if media_proc_chk:
+                out_cfg_chk = (media_proc_chk.config or {}).get("output_config") or media_proc_chk.output_config
+                ok_lock, err_lock, lock_info = resource_lock_manager.acquire_lock(
+                    owner_type="service",
+                    owner_id=process_id,
+                    output_config=out_cfg_chk,
+                    owner_name=media_proc_chk.name
+                )
+                if not ok_lock:
+                    self.logger.error(f"Cannot start service {process_id}: {err_lock}")
+                    media_proc_chk.status = "error"
+                    media_proc_chk.error_message = err_lock
+                    session.commit()
+                    await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+                    return
+
         # Acquire remote peer lease if configured
         with self.db_session_factory() as session:
             from database.models import Service
             svc_remote = session.get(Service, process_id)
             if svc_remote:
                 cfg_remote = svc_remote.config or {}
-                peer_node_id = cfg_remote.get("output_config", {}).get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id") or (svc_remote.output_config or {}).get("peer_node_id")
-                peer_svc_id = cfg_remote.get("output_config", {}).get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id") or (svc_remote.output_config or {}).get("peer_service_id")
+                out_cfg_remote = cfg_remote.get("output_config") or svc_remote.output_config or {}
+                peer_node_id = out_cfg_remote.get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id")
+                peer_svc_id = out_cfg_remote.get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id")
                 if peer_node_id and peer_svc_id:
                     from core.peer_manager import peer_manager
                     try:
-                        await asyncio.to_thread(peer_manager.acquire_remote_lease, session, int(peer_node_id), int(peer_svc_id))
+                        res_info = resource_lock_manager.extract_resource_info(out_cfg_remote)
+                        res_path = res_info["resource_path"] if res_info else None
+                        ok_peer, peer_err = await asyncio.to_thread(
+                            peer_manager.acquire_remote_lease,
+                            session,
+                            int(peer_node_id),
+                            int(peer_svc_id),
+                            resource_path=res_path
+                        )
+                        if not ok_peer:
+                            err_msg = peer_err or f"Failed to acquire remote lease on peer node {peer_node_id}"
+                            self.logger.error(f"Cannot start service {process_id}: {err_msg}")
+                            svc_remote.status = "error"
+                            svc_remote.error_message = err_msg
+                            session.commit()
+                            resource_lock_manager.release_lock("service", process_id)
+                            await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+                            return
                     except Exception as e:
                         self.logger.warning(f"Failed to acquire remote lease on peer node {peer_node_id}: {e}")
         
@@ -540,6 +579,10 @@ class ProcessManager:
                                 await asyncio.to_thread(peer_manager.release_remote_lease, session, int(peer_node_id), int(peer_svc_id))
                             except Exception as e:
                                 self.logger.warning(f"Failed to release remote lease on peer node {peer_node_id}: {e}")
+
+                # Release exclusive resource lock
+                from core.resource_lock_manager import resource_lock_manager
+                resource_lock_manager.release_lock("service", process_id)
         finally:
             self.stopping_processes.discard(process_id)
 
@@ -1564,28 +1607,56 @@ class ProcessManager:
                                     data = fetch_icecast_telemetry(h_port, admin_user, admin_password, has_status_json=has_status_json, is_legacy=is_legacy, use_ssl=use_ssl)
                                     if data:
                                         icestats = data.get("icestats", {})
-                                        g_listeners = icestats.get("listeners", 0)
                                         sources = icestats.get("source", [])
                                         if isinstance(sources, dict):
                                             sources = [sources]
-                                        max_peak = 0
+                                        elif not isinstance(sources, list):
+                                            sources = []
+
+                                        raw_listeners = icestats.get("listeners")
+                                        if raw_listeners is not None:
+                                            try:
+                                                g_listeners = int(raw_listeners)
+                                            except (ValueError, TypeError):
+                                                g_listeners = 0
+                                        else:
+                                            g_listeners = sum(int(s.get("listeners", 0) or 0) for s in sources if isinstance(s, dict))
+
+                                        prev_stats = (media_proc.config or {}).get("icecast_stats", {})
+                                        prev_peak = int(prev_stats.get("listener_peak", 0) or 0)
+
                                         active_mounts = len(sources)
                                         sources_list = []
+                                        source_peaks = []
                                         for s in sources:
-                                            peak = s.get("listener_peak", s.get("peak", 0))
-                                            if isinstance(peak, int) and peak > max_peak:
-                                                max_peak = peak
+                                            if not isinstance(s, dict):
+                                                continue
+                                            raw_p = s.get("listener_peak", s.get("peak", 0))
+                                            try:
+                                                peak = int(raw_p or 0)
+                                            except (ValueError, TypeError):
+                                                peak = 0
+                                            source_peaks.append(peak)
+
                                             mount_path = s.get("mount")
                                             if not mount_path:
                                                 listen_url = s.get("listenurl", "")
                                                 mount_path = listen_url.split(f":{h_port}")[-1] if f":{h_port}" in listen_url else listen_url
+
+                                            try:
+                                                curr_listeners = int(s.get("listeners", 0) or 0)
+                                            except (ValueError, TypeError):
+                                                curr_listeners = 0
+
                                             sources_list.append({
                                                 "mount": mount_path,
-                                                "listeners": s.get("listeners", 0),
+                                                "listeners": curr_listeners,
                                                 "peak": peak,
                                                 "bitrate": s.get("bitrate", 0),
                                                 "title": s.get("title") or s.get("stream_name", "")
                                             })
+
+                                        max_peak = max([prev_peak] + source_peaks)
                                         new_cfg = dict(media_proc.config)
                                         new_cfg["icecast_stats"] = {
                                             "listeners": g_listeners,
@@ -1878,6 +1949,8 @@ class ProcessManager:
                             media_proc.status = 'error'
                             media_proc.restart_count = 0
                             self.restart_counts.pop(process_id, None)
+                            from core.resource_lock_manager import resource_lock_manager
+                            resource_lock_manager.release_lock("service", process_id)
 
                         session.commit()
 
@@ -1945,6 +2018,8 @@ class ProcessManager:
                                 media_proc.bitrate = "0 kb/s"
                                 media_proc.speed = "0x"
                                 self.restart_counts.pop(process_id, None)
+                                from core.resource_lock_manager import resource_lock_manager
+                                resource_lock_manager.release_lock("service", process_id)
                                 session.commit()
                                 # Notify finite retry exhaustion (1 single email when max retries reached!)
                                 self.notify_service_exhausted(process_id, media_proc.name, retries=retries)
@@ -1964,12 +2039,14 @@ class ProcessManager:
     def reattach_process(self, process_id: int, pid: int):
         with self.db_session_factory() as session:
             from database.models import Service
-            media_proc = session.query(Service).get(process_id)
+            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
             if not media_proc:
                 self.logger.error(f"Cannot reattach service {process_id}: not found in DB")
                 return
             svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
             log_path = self.get_process_log_path(process_id, media_proc.log_storage_id, session=session)
+            out_cfg = (media_proc.config or {}).get("output_config") or media_proc.output_config
+            proc_name = media_proc.name
 
         self.processes[process_id] = None
         self.reattached_pids[process_id] = pid
@@ -1977,6 +2054,13 @@ class ProcessManager:
         if svc_type in ("mediamtx_hub", "icecast_server"):
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
+
+        # Re-acquire local publisher resource lock for the re-attached alive process
+        try:
+            from core.resource_lock_manager import resource_lock_manager
+            resource_lock_manager.acquire_lock("service", process_id, out_cfg, owner_name=proc_name)
+        except Exception as lock_err:
+            self.logger.warning(f"Failed to re-acquire resource lock on reattach for service {process_id}: {lock_err}")
 
     async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
         """Gracefully restarts any active/running services configured with TLS/SSL encryption."""

@@ -558,7 +558,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         // Resolve active icecast configuration (Local vs Peer)
         let availableMounts: any[] = [];
         let activeTls = false;
-        let activePort = '7000';
+        let activePort = '8000';
         let currentHost = '127.0.0.1';
 
         if (config.peer_node_id) {
@@ -568,7 +568,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           const protos = svc?.protocols || {};
           availableMounts = Array.isArray(protos.mounts) ? protos.mounts : [];
           activeTls = Boolean(protos.ssl_enabled);
-          activePort = String(config.tls ? (protos.ssl_port || 7443) : (protos.port || 7000));
+          activePort = String(config.tls ? (protos.ssl_port || 8443) : (protos.port || 8000));
           try {
             currentHost = peer ? new URL(peer.base_url).hostname : '127.0.0.1';
           } catch {
@@ -614,7 +614,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           });
         };
 
-        const handleSelectRemotePeer = (peerId: number, svcId: number) => {
+        const handleSelectRemotePeer = (peerId: number, svcId: number, isTls?: boolean) => {
           const peer = remotePeers.find(p => p.id === peerId);
           if (!peer) return;
           const services = peer.cached_services || peer.cached_services_json || [];
@@ -634,8 +634,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             ? (typeof pMounts[0] === 'string' ? pMounts[0] : pMounts[0].mount_name)
             : (config.icecast_mount || '/live.mp3');
 
-          const useTls = Boolean(protos.ssl_enabled && config.tls);
-          const port = useTls ? (protos.ssl_port || 7443) : (protos.port || 7000);
+          const useTls = isTls !== undefined ? isTls : Boolean(protos.ssl_enabled);
+          const port = useTls ? (protos.ssl_port || 8443) : (protos.port || 8000);
           const scheme = useTls ? 'https' : 'http';
           const rUser = config.read_user || config.auth_user || '';
           const rPass = config.read_pass || config.auth_pass || '';
@@ -848,7 +848,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                               const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
                               const svc = services.find((s: any) => s.id === config.peer_service_id);
                               const protos = svc?.protocols || {};
-                              const port = useTls ? (protos.ssl_port || 7443) : (protos.port || 7000);
+                              const port = useTls ? (protos.ssl_port || 8443) : (protos.port || 8000);
                               const scheme = useTls ? 'https' : 'http';
                               const rUser = config.read_user || config.auth_user || '';
                               const rPass = config.read_pass || config.auth_pass || '';

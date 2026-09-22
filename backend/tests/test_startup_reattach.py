@@ -132,3 +132,34 @@ class TestStartupReattach(unittest.IsolatedAsyncioTestCase):
             # Debug process should be marked as stopped
             self.assertEqual(debug_proc.status, "stopped")
             self.assertIsNone(debug_proc.pid)
+
+    @patch("asyncio.create_task")
+    def test_reattach_process_restores_resource_lock(self, mock_create_task):
+        from core.resource_lock_manager import resource_lock_manager
+        resource_lock_manager.clear_all()
+
+        pub_proc = MediaProcess(
+            name="Icecast Radio Stream",
+            type="service",
+            input_config={"type": "alsa", "device": "hw:0,0"},
+            output_config={"type": "icecast", "icecast_mount": "/radio.mp3", "provider_service_id": 7},
+            codec_config={},
+            status="running",
+            pid=54321
+        )
+        self.db.add(pub_proc)
+        self.db.commit()
+        self.db.refresh(pub_proc)
+
+        # Reattach process via process_manager
+        main.process_manager.reattach_process(pub_proc.id, 54321)
+
+        # Verify resource lock was acquired for /radio.mp3
+        locks = resource_lock_manager.get_active_locks()
+        self.assertEqual(len(locks), 1)
+        self.assertEqual(locks[0]["resource_path"], "/radio.mp3")
+        self.assertEqual(locks[0]["owner_id"], pub_proc.id)
+        self.assertEqual(locks[0]["owner_type"], "service")
+
+        resource_lock_manager.clear_all()
+

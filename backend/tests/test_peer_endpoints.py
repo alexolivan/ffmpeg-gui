@@ -66,13 +66,18 @@ class TestPeerEndpoints(unittest.TestCase):
             self.assertIn("url", cand)
 
     def test_candidate_endpoints_with_gui_password(self):
-        # Set a gui_password - route remains accessible to frontend session
+        # Set a gui_password - route remains accessible to authenticated frontend session
         settings = self.db.query(SystemSettings).first()
         settings.gui_password = "supersecretpass"
         self.db.commit()
 
+        from core.auth_manager import auth_manager
+        token = auth_manager.create_session("supersecretpass")
+        self.client.cookies.set("gui_session", token)
+
         res = self.client.get("/api/peers/candidate-endpoints")
         self.assertEqual(res.status_code, 200)
+        self.client.cookies.clear()
 
     def test_inbound_keys_crud(self):
         # 1. Create Inbound Key
@@ -332,6 +337,58 @@ class TestPeerEndpoints(unittest.TestCase):
 
         # Cleanup
         self.client.delete(f"/processes/{proc_id}")
+
+    def test_resource_locks_endpoint(self):
+        # 1. Verify open access to local locks (even with gui_password set)
+        settings = self.db.query(SystemSettings).first()
+        settings.gui_password = "testpassword123"
+        self.db.commit()
+
+        from core.resource_lock_manager import resource_lock_manager
+        resource_lock_manager.clear_all()
+        output_cfg = {
+            "type": "icecast",
+            "icecast_mount": "/live.mp3",
+            "provider_service_id": 99
+        }
+        resource_lock_manager.acquire_lock("task", 101, output_cfg, "Task 101")
+
+        from core.auth_manager import auth_manager
+        token = auth_manager.create_session("testpassword123")
+        self.client.cookies.set("gui_session", token)
+
+        res = self.client.get("/api/resources/locks")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("locks", data)
+        self.assertEqual(len(data["locks"]), 1)
+        self.assertEqual(data["locks"][0]["resource_path"], "/live.mp3")
+
+        # 2. Verify proxying to remote peer when peer_node_id is provided
+        with patch("core.peer_manager.peer_manager.get_remote_resource_locks") as mock_get_remote:
+            mock_get_remote.return_value = [
+                {
+                    "resource_key": "service:5:icecast:/remote.mp3",
+                    "lock_key": "service:5:icecast:/remote.mp3",
+                    "resource_path": "/remote.mp3",
+                    "service_type": "icecast",
+                    "target_id": 5,
+                    "service_id": 5,
+                    "owner_type": "remote_peer",
+                    "owner_id": "peer_tok_test",
+                    "owner_name": "Test Node 2",
+                    "is_own_lease": False
+                }
+            ]
+            res_remote = self.client.get("/api/resources/locks?peer_node_id=1&service_id=5")
+            self.assertEqual(res_remote.status_code, 200)
+            remote_data = res_remote.json()
+            self.assertIn("locks", remote_data)
+            self.assertEqual(len(remote_data["locks"]), 1)
+            self.assertEqual(remote_data["locks"][0]["resource_path"], "/remote.mp3")
+            mock_get_remote.assert_called_once_with(unittest.mock.ANY, 1, 5)
+
+        resource_lock_manager.clear_all()
 
 if __name__ == "__main__":
     unittest.main()

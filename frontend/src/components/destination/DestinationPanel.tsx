@@ -63,6 +63,19 @@ export interface OutputConfig {
   tls?: boolean;
 }
 
+export const isLegacyIcecastStr = (versionStr?: string | null): boolean => {
+  if (!versionStr) return false;
+  const m = String(versionStr).match(/(\d+)\.(\d+)/);
+  if (m) {
+    const major = parseInt(m[1], 10);
+    const minor = parseInt(m[2], 10);
+    if (major < 2 || (major === 2 && minor < 4)) {
+      return true;
+    }
+  }
+  return String(versionStr).toLowerCase().includes('legacy');
+};
+
 interface DestinationPanelProps {
   config: OutputConfig;
   hasVideo: boolean;
@@ -73,6 +86,8 @@ interface DestinationPanelProps {
   validationWarnings?: Record<string, string>;
   storages?: any[];
   codecConfig?: any;
+  currentProcessId?: number | string | null;
+  isTask?: boolean;
 }
 
 const OUTPUT_TYPES = [
@@ -116,6 +131,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   validationWarnings,
   storages = [],
   codecConfig,
+  currentProcessId,
+  isTask = false,
 }) => {
   const { t } = useTranslation();
   const decklinkAvailable = systemCapabilities?.decklink?.available ?? true;
@@ -292,6 +309,111 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
     return () => { active = false; };
   }, []);
+
+  // Resource collision locks tracking
+  const [resourceLocks, setResourceLocks] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    let active = true;
+    const fetchLocks = () => {
+      const params = new URLSearchParams();
+      if (config.peer_node_id) {
+        params.set('peer_node_id', String(config.peer_node_id));
+        if (config.peer_service_id) {
+          params.set('service_id', String(config.peer_service_id));
+        }
+      }
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      fetch(`/api/resources/locks${qs}`)
+        .then(res => res.ok ? res.json() : { locks: [] })
+        .then(data => {
+          if (active) setResourceLocks(data.locks || []);
+        })
+        .catch(() => {
+          if (active) setResourceLocks([]);
+        });
+    };
+    fetchLocks();
+    const timer = setInterval(fetchLocks, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [config.peer_node_id, config.peer_service_id]);
+
+  const getResourceLock = (serviceType: 'icecast' | 'mediamtx', pathOrMount: string) => {
+    if (!pathOrMount) return null;
+    const cleanPath = pathOrMount.trim();
+    return resourceLocks.find(l => {
+      if (l.service_type !== serviceType && l.service_type !== 'generic') return false;
+      const lockPath = l.resource_path;
+      const pathMatch = lockPath === cleanPath ||
+        (serviceType === 'icecast' && (lockPath === (cleanPath.startsWith('/') ? cleanPath : `/${cleanPath}`)));
+      if (!pathMatch) return false;
+
+      const lockSvcId = l.service_id ?? l.target_id;
+      const lockKey = l.lock_key ?? l.resource_key ?? '';
+
+      // If peer destination is selected: match peer_service_id
+      if (config.peer_node_id && config.peer_service_id) {
+        if (lockSvcId !== undefined && lockSvcId !== null) {
+          return String(lockSvcId) === String(config.peer_service_id);
+        }
+        return true;
+      }
+
+      // Match local provider if set
+      if (config.provider_service_id && lockSvcId !== undefined && lockSvcId !== null) {
+        return String(lockSvcId) === String(config.provider_service_id);
+      }
+
+      // Match host endpoint if set
+      if (config.host && lockKey && lockKey.includes(config.host)) {
+        return true;
+      }
+      return true;
+    });
+  };
+
+  const isLockHeldByCurrent = (lock: any) => {
+    if (!lock) return false;
+    if (lock.is_own_lease === true) return true;
+    if (!currentProcessId) return false;
+    const expectedOwnerType = isTask ? 'task' : 'service';
+    return lock.owner_type === expectedOwnerType && String(lock.owner_id) === String(currentProcessId);
+  };
+
+  const getOptionLockStatus = (serviceType: 'icecast' | 'mediamtx', pathOrMount: string) => {
+    const lock = getResourceLock(serviceType, pathOrMount);
+    if (!lock) {
+      return ` · 🟢 [${t('destinations.resourceLocks.available', 'Disponible')}]`;
+    }
+    if (isLockHeldByCurrent(lock)) {
+      return ` · 🟢 [${t('destinations.resourceLocks.inUseCurrent', 'En uso (este proceso)')}]`;
+    }
+    return ` · 🔴 [${t('destinations.resourceLocks.inUseBy', 'En uso por')} ${lock.owner_name || lock.owner_type}]`;
+  };
+
+  const renderCollisionWarning = (lock: any, resourceLabel: string) => {
+    if (!lock || isLockHeldByCurrent(lock)) return null;
+    const ownerDesc = lock.owner_name ? `${lock.owner_name} (${lock.owner_type})` : lock.owner_type;
+    return (
+      <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs my-2">
+        <span className="text-sm">⚠️</span>
+        <div className="space-y-0.5">
+          <div className="font-semibold text-amber-200">
+            {t('destinations.resourceLocks.warningTitle', 'Recurso en uso')}
+          </div>
+          <div className="text-[11px] opacity-90">
+            {t('destinations.resourceLocks.warningDesc', 'Este punto de emisión ({{resource}}) ya está siendo utilizado activamente por "{{owner}}". Puedes guardar la configuración, pero el arranque concurrente será bloqueado.', {
+              resource: resourceLabel,
+              owner: ownerDesc
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Deterministic port and provider synchronization on mount or provider resolution
   React.useEffect(() => {
@@ -972,7 +1094,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         >
                           {configuredPaths.map(pKey => (
                             <option key={pKey} value={pKey}>
-                              /{pKey} {activePathsDict[pKey]?.mode ? `(${activePathsDict[pKey].mode})` : ''}
+                              /{pKey} {activePathsDict[pKey]?.mode ? `(${activePathsDict[pKey].mode})` : ''} {getOptionLockStatus('mediamtx', pKey)}
                             </option>
                           ))}
                           <option value="__custom__">{t('destinations.srtCustomPath', '✏️ Custom Path Slug...')}</option>
@@ -1018,6 +1140,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         <span>{authHint}</span>
                       </div>
                     )}
+
+                    {/* Resource collision warning banner */}
+                    {renderCollisionWarning(getResourceLock('mediamtx', config.path_id || ''), config.path_id || '')}
 
                     {/* Stream ID Preview */}
                     <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2">
@@ -1661,7 +1786,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                           onChange={e => handleSelectPath(e.target.value)}
                         >
                           {configuredPaths.map(pName => (
-                            <option key={pName} value={pName}>/{pName}</option>
+                            <option key={pName} value={pName}>/{pName} {getOptionLockStatus('mediamtx', pName)}</option>
                           ))}
                           <option value="__custom__">✎ {t('destinations.customPathPrompt', 'Custom Path...')}</option>
                         </select>
@@ -1718,6 +1843,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         />
                       </div>
                     )}
+
+                    {/* Resource collision warning banner */}
+                    {renderCollisionWarning(getResourceLock('mediamtx', config.path_id || ''), config.path_id || '')}
 
                     {/* Generated URL & Auto-computed field */}
                     <div>
@@ -2158,7 +2286,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           availableMounts = Array.isArray(protos.mounts) ? protos.mounts : [];
           activePass = protos.source_password || 'hackme';
           activeTls = Boolean(protos.ssl_enabled);
-          activeLegacy = Boolean(svc?.is_legacy);
+          activeLegacy = Boolean(
+            svc?.is_legacy ??
+            protos.is_legacy ??
+            isLegacyIcecastStr(svc?.software_version) ??
+            isLegacyIcecastStr(protos.software_version) ??
+            isLegacyIcecastStr(svc?.name) ??
+            isLegacyIcecastStr(svc?.alias)
+          );
           activePort = String(activeTls ? (protos.ssl_port || 8443) : (protos.port || 8000));
           try {
             currentHost = peer ? new URL(peer.base_url).hostname : '127.0.0.1';
@@ -2171,7 +2306,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           availableMounts = Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [];
           activePass = iceCfg.source_password || 'hackme';
           activeTls = Boolean(iceCfg.ssl_enabled);
-          activeLegacy = Boolean(selectedProvider.is_legacy ?? iceCfg.is_legacy);
+          activeLegacy = Boolean(
+            selectedProvider.is_legacy ??
+            iceCfg.is_legacy ??
+            isLegacyIcecastStr(selectedProvider.software_version) ??
+            isLegacyIcecastStr(iceCfg.software_version) ??
+            isLegacyIcecastStr(selectedProvider.name) ??
+            isLegacyIcecastStr(selectedProvider.alias)
+          );
           activePort = String(activeTls ? (iceCfg.ssl_port || 7443) : (iceCfg.port || 7000));
           statusBadge = selectedProvider.status || 'stopped';
         }
@@ -2186,7 +2328,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           const firstMountObj = pMounts.find((m: any) => m.mount_name === firstMount);
           const pass = firstMountObj?.source_password || pCfg.source_password || 'hackme';
           const isTls = pCfg.ssl_enabled === true;
-          const isLegacy = Boolean(prov.is_legacy ?? pCfg.is_legacy);
+          const isLegacy = Boolean(
+            prov.is_legacy ??
+            pCfg.is_legacy ??
+            isLegacyIcecastStr(prov.software_version) ??
+            isLegacyIcecastStr(pCfg.software_version) ??
+            isLegacyIcecastStr(prov.name) ??
+            isLegacyIcecastStr(prov.alias)
+          );
 
           update({
             provider_service_id: prov.id,
@@ -2222,7 +2371,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           const firstMountObj = pMounts.find((m: any) => m.mount_name === firstMount);
           const pass = firstMountObj?.source_password || protos.source_password || 'hackme';
           const isTls = protos.ssl_enabled === true;
-          const isLegacy = Boolean(svc.is_legacy);
+          const isLegacy = Boolean(
+            svc.is_legacy ??
+            protos.is_legacy ??
+            isLegacyIcecastStr(svc.software_version) ??
+            isLegacyIcecastStr(protos.software_version) ??
+            isLegacyIcecastStr(svc.name) ??
+            isLegacyIcecastStr(svc.alias)
+          );
 
           update({
             peer_node_id: peer.id,
@@ -2342,7 +2498,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       >
                         {mountNames.map((m: string) => (
                           <option key={m} value={m}>
-                            {m}
+                            {m} {getOptionLockStatus('icecast', m)}
                           </option>
                         ))}
                         <option value="__custom__">✎ {t('destinations.icecast.customMount', 'Personalizado...')}</option>
@@ -2366,6 +2522,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     />
                   </div>
                 )}
+
+                {/* Resource collision warning banner */}
+                {renderCollisionWarning(getResourceLock('icecast', config.icecast_mount || ''), config.icecast_mount || '')}
 
                 {/* Auto-managed Protocol & TLS notices */}
                 {activeLegacy && (
@@ -2459,6 +2618,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   {validationErrors?.icecast_mount && (
                     <span className="text-[10px] text-red-400 block mt-1">{validationErrors.icecast_mount}</span>
                   )}
+                  {renderCollisionWarning(getResourceLock('icecast', config.icecast_mount || ''), config.icecast_mount || '')}
                 </div>
 
                 <div>
@@ -2530,52 +2690,74 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               </div>
             </details>
 
-            {/* Protocol & Compatibility Options: Legacy SOURCE method (< v2.4) & TLS - Only displayed in Remote / Manual Server mode */}
-            {!isManagedMode && (
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col pr-2">
-                    <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
-                      <span>⚡</span>
-                      <span>{t('destinations.icecast.legacyIcecast', 'Modo Servidor Legacy (Icecast < v2.4)')}</span>
-                    </span>
-                    <span className="text-[10px] text-[var(--text-secondary)]">
-                      {t('destinations.icecast.legacyIcecastDesc', 'Activa el método HTTP SOURCE (en lugar de HTTP PUT). Imprescindible para servidores Icecast 2.3.x o anteriores.')}
-                    </span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(config.legacy_icecast)}
-                      onChange={(e) => update({ legacy_icecast: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime peer-checked:after:border-black peer-checked:after:bg-black"></div>
-                  </label>
+            {/* Protocol & Compatibility Options: Legacy SOURCE method (< v2.4) & TLS */}
+            <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col pr-2">
+                  <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <span>⚡</span>
+                    <span>{t('destinations.icecast.legacyIcecast', 'Modo Servidor Legacy (Icecast < v2.4)')}</span>
+                    {isManagedMode && Boolean(config.legacy_icecast) && (
+                      <span className="text-[10px] text-brand-lime bg-brand-lime/10 px-1.5 py-0.5 rounded border border-brand-lime/20 font-normal">
+                        {t('destinations.icecast.legacyAutoManaged', 'Detectado automáticamente (< 2.4)')}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-[var(--text-secondary)]">
+                    {t('destinations.icecast.legacyIcecastDesc', 'Activa el método HTTP SOURCE (en lugar de HTTP PUT). Imprescindible para servidores Icecast 2.3.x o anteriores.')}
+                  </span>
                 </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-[var(--glass-border)]">
-                  <div className="flex flex-col pr-2">
-                    <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
-                      <ShieldIcon size={12} />
-                      <span>{t('destinations.icecast.tls', 'Conexión Cifrada TLS / SSL')}</span>
-                    </span>
-                    <span className="text-[10px] text-[var(--text-secondary)]">
-                      {t('destinations.icecast.tlsDesc', 'Fuerza transmisión cifrada TLS (-tls 1) para conectar con puertos seguros HTTPS/TLS de Icecast.')}
-                    </span>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(config.tls)}
-                      onChange={(e) => update({ tls: e.target.checked })}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:border-black peer-checked:after:bg-black"></div>
-                  </label>
-                </div>
+                <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.legacy_icecast)}
+                    onChange={(e) => update({ legacy_icecast: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime peer-checked:after:border-black peer-checked:after:bg-black"></div>
+                </label>
               </div>
-            )}
+
+              <div className="flex items-center justify-between pt-2 border-t border-[var(--glass-border)]">
+                <div className="flex flex-col pr-2">
+                  <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <ShieldIcon size={12} />
+                    <span>{t('destinations.icecast.tls', 'Conexión Cifrada TLS / SSL')}</span>
+                    {isManagedMode && Boolean(config.tls) && (
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 font-normal">
+                        {t('destinations.icecast.tlsAutoManaged', 'Auto-configurado (SSL activo)')}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-[var(--text-secondary)]">
+                    {t('destinations.icecast.tlsDesc', 'Fuerza transmisión cifrada TLS (-tls 1) para conectar con puertos seguros HTTPS/TLS de Icecast.')}
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.tls)}
+                    onChange={(e) => {
+                      const isTls = e.target.checked;
+                      let newPort = config.port;
+                      if (config.peer_node_id) {
+                        const peer = remotePeers.find(p => p.id === config.peer_node_id);
+                        const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
+                        const svc = services.find((s: any) => s.id === config.peer_service_id);
+                        const protos = svc?.protocols || {};
+                        newPort = String(isTls ? (protos.ssl_port || 8443) : (protos.port || 8000));
+                      } else if (selectedProvider) {
+                        const pCfg = selectedProvider.config || {};
+                        newPort = String(isTls ? (pCfg.ssl_port || 7443) : (pCfg.port || 7000));
+                      }
+                      update({ tls: isTls, port: newPort });
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 peer-checked:after:border-black peer-checked:after:bg-black"></div>
+                </label>
+              </div>
+            </div>
 
             {/* Auto-negotiated Codec Notice */}
             <div className="bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-2.5 text-[11px] text-text-secondary flex items-start gap-2">
@@ -3216,7 +3398,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         >
                           {configuredPaths.map(pName => (
                             <option key={pName} value={pName}>
-                              /{pName} {activePathsDict[pName]?.mode === 'open' ? '(LAN Open)' : ''}
+                              /{pName} {activePathsDict[pName]?.mode === 'open' ? '(LAN Open)' : ''} {getOptionLockStatus('mediamtx', pName)}
                             </option>
                           ))}
                           <option value="__custom__">{t('destinations.customPathOption', '+ Custom Path Slug...')}</option>
@@ -3274,6 +3456,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         />
                       </div>
                     )}
+
+                    {/* Resource collision warning banner */}
+                    {renderCollisionWarning(getResourceLock('mediamtx', config.path_id || ''), config.path_id || '')}
 
                     {/* Generated URL & Auto-computed field */}
                     <div>
@@ -3516,7 +3701,7 @@ const renderBroadcastRecipe = (type: string, t: any) => {
     icecast: {
       title: "Icecast2 (Audio Streaming)",
       video: "Ninguno (Solo Audio)",
-      audio: "MP3 / AAC / Opus",
+      audio: "MP3 / AAC / Opus / Vorbis",
       container: "ADTS / Ogg / MP3 Stream",
       details: "Destinado a radio por internet o streaming de audio puro. Permite ingesta remota hacia servidores Icecast2."
     },

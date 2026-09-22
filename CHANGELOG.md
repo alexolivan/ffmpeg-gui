@@ -5,6 +5,121 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.1] - 2026-09-22
+
+### Changed
+- **Intel GPU Telemetry Stabilization & Smoothing**:
+  - Filtered transient startup samples (`duration < 100ms`) in `_sample_intel_gpu_top` to capture a representative 500ms integration window across multiple video frames.
+  - Implemented Exponential Moving Average (EMA) smoothing (`util = 0.7 * current + 0.3 * history`) in `GPUSensor` to eliminate erratic spikes and valleys caused by bursty hardware ring buffer flushes.
+
+## [2.21.0] - 2026-09-22
+
+### Added
+- **Intel GPU Telemetry (VAAPI / QSV / i915)**:
+  - Integrated real-time hardware engine utilization and GPU memory telemetry in `GPUSensor` using `intel_gpu_top` (`intel-gpu-tools`).
+  - Added extraction of peak engine load across hardware blocks (`Video`, `Render/3D`, `VideoEnhance`, `Blitter`) to accurately reflect hardware transcoding activity in the Dashboard.
+  - Implemented active GPU client memory aggregation (`resident` system and local VRAM) with dynamic shared aperture memory detection via `psutil`.
+  - Added unit test coverage for Intel GPU metrics parsing and stream processing in `test_gpu_sensor.py`.
+- **Centralized System Capabilities Configuration**:
+  - Created `scripts/setup-system-capabilities.sh` to configure all unprivileged execution permissions in a single script:
+    - Network port binding (`CAP_NET_BIND_SERVICE` for ports 80/443).
+    - Hardware PMU performance monitoring (`CAP_PERFMON` and `CAP_SYS_ADMIN` for `intel_gpu_top`).
+    - Extended `CapabilityBoundingSet` in `ffmpeg-gui.service` to preserve capabilities under systemd.
+- **Multi-Distribution Installer Support**:
+  - Added `intel-gpu-tools` across Debian/Ubuntu (`apt-get`), RHEL/Fedora/CentOS (`dnf`), and added native Arch Linux (`pacman`) dependency installation in `install.sh`.
+
+### Changed
+- **Capability Script Migration**:
+  - Deprecated `scripts/setup-port-capabilities.sh` in favor of `scripts/setup-system-capabilities.sh`, preserving full backward compatibility via transparent script delegation.
+  - Updated `update.sh` to automatically audit and apply system capabilities on upgrade.
+
+## [2.20.0] - 2026-09-21
+
+### Added
+- **Session-Based Authentication Barrier & Zero Pre-Login Data Leakage**:
+  - Implemented `AuthManager` with cryptographically signed, time-bound session tokens (`HttpOnly` cookie `gui_session` with `Authorization: Bearer <token>` fallback).
+  - Added `AuthBarrierMiddleware` in FastAPI, systematically intercepting all private REST API endpoints and rejecting unauthenticated requests with `HTTP 401 Unauthorized` when `gui_password` is configured.
+  - Enforced authentication on `/ws/telemetry` and `/ws/build/{build_id}` WebSockets, terminating unauthenticated connections with code `1008 Policy Violation`.
+  - Added minimal public status endpoint `GET /api/auth/status` providing node branding (name, logo, theme) without exposing system capabilities, builds, disks, or credentials.
+  - Refactored frontend architecture with an `<AuthenticatedDashboard />` boundary, ensuring background data hooks (`useBuilds`, `useProcesses`), telemetry WebSockets, and federated peer queries are never executed while unauthenticated.
+  - Added explicit node lock/logout support in UI with server-side cookie clearance.
+- **Auto-Healing & Resilient Resource Locks** (consolidated from 2.19.x):
+  - Automatic local resource lock reconstruction in `ProcessManager.reattach_process`, ensuring that running processes re-attached during service reload or server boot immediately re-acquire their publisher locks in `ResourceLockManager`.
+  - Extended federated inter-peer `HEARTBEAT` RPC to carry `resource_path`. When a host node restarts, incoming periodic heartbeats automatically restore remote peer leases and locks in memory without requiring remote emitters to restart.
+
+### Changed
+- **Sanitized System Settings API**:
+  - Removed plain-text `gui_password` exposure from `SettingsResponse`, replacing it with boolean flag `has_gui_password`.
+
+### Fixed
+- **TypeError in Peer Federation Sync Loop** (consolidated from 2.19.x):
+  - Fixed parameter type mismatch in `PeerManager.purge_expired_leases` where `db_session` was received as positional `timeout_seconds`, eliminating the unhandled `TypeError: '>' not supported between instances of 'float' and 'Session'` exception.
+- **Federated Resource Locks Synchronization** (consolidated from 2.19.x):
+  - Added inbound RPC handler `GET_RESOURCE_LOCKS` to `PeerManager` to return active locks held on remote peer services.
+  - Implemented client proxying in `GET /api/resources/locks?peer_node_id=<id>&service_id=<id>` allowing local nodes to inspect remote peer locks via encrypted RPC.
+
+## [2.19.3] - 2026-09-21
+
+### Added
+- **Auto-Healing & Resilient Resource Locks**:
+  - Implemented automatic local resource lock reconstruction in `ProcessManager.reattach_process`, ensuring that running processes re-attached during service reload or server boot immediately re-acquire their publisher locks in `ResourceLockManager`.
+  - Extended federated inter-peer `HEARTBEAT` RPC to carry `resource_path`. When a host node (such as VPS1) restarts, incoming periodic heartbeats automatically restore remote peer leases and locks in memory without requiring remote emitters to restart.
+
+## [2.19.2] - 2026-09-21
+
+### Fixed
+- **TypeError in Peer Federation Background Sync Loop**:
+  - Fixed parameter type mismatch in `PeerManager.purge_expired_leases` where `db_session` was received as positional `timeout_seconds`, eliminating the unhandled `TypeError: '>' not supported between instances of 'float' and 'Session'` exception.
+  - Added enhanced logging for inbound and outbound `GET_RESOURCE_LOCKS` RPC calls to aid live cross-node diagnostics.
+
+## [2.19.1] - 2026-09-21
+
+### Fixed
+- **401 Unauthorized on `/api/resources/locks`**:
+  - Removed token authentication requirement from `GET /api/resources/locks`, aligning it with other unauthenticated status/telemetry inspection endpoints and eliminating continuous 401 polling errors in browser console.
+- **Federated Resource Lock Synchronization Across Peer Nodes**:
+  - Added inbound RPC handler `GET_RESOURCE_LOCKS` to `PeerManager` to return active locks held on remote peer services.
+  - Implemented client proxying in `GET /api/resources/locks?peer_node_id=<id>&service_id=<id>` allowing local nodes to inspect remote peer locks via encrypted RPC.
+  - Integrated `is_own_lease` identification so that leasing peer nodes mark their own remote locks as `🟢 [En uso (este proceso)]` while competing nodes recognize them as `🔴 [En uso por [Peer]]`.
+  - Updated `DestinationPanel.tsx` to automatically re-fetch resource locks when switching remote peer nodes or services and unified `service_id` / `target_id` property resolution.
+
+## [2.19.0] - 2026-09-10
+
+### Added
+- **Granular Resource Collision Prevention (Mountpoints & Stream Paths)**:
+  - Implemented thread-safe `ResourceLockManager` singleton managing exclusive write/publish locks on Icecast mountpoints (`/live.mp3`) and MediaMTX stream paths (`cam1`).
+  - Added publisher-only acquisition interlock in `ProcessManager.start_process` and `TaskManager.start_execution`, preventing conflicting FFmpeg processes from hijacking or colliding on identical broadcast paths.
+  - Implemented first-wins startup arbitration: subsequent conflicting processes abort immediately with descriptive error messages before spawning the subprocess, cleanly releasing dependencies.
+  - Extended Peer Federation RPC (`ACQUIRE_LEASE` & `RELEASE_LEASE`) to negotiate `resource_path`, returning `409 Conflict` if an auxiliary service mount or path is held by another local process or federated peer.
+  - Added `resource_locks` to WebSocket telemetry broadcasts and implemented REST endpoint `GET /api/resources/locks`.
+  - Added live collision awareness in `DestinationPanel.tsx`: status pills in path/mount selectors (🟢 Disponible / 🔴 En uso por [owner]) and informative alert banners warning operators before concurrent execution.
+  - Added comprehensive automated unit and integration tests (`test_resource_locks.py`, `test_collision_interlock.py`, `test_peer_manager.py`).
+
+## [2.18.0] - 2026-09-10
+
+### Added
+- **Ogg Vorbis (`libvorbis`) Codec Support for Icecast & File Outputs**:
+  - Registered `libvorbis` in `codecRegistry.ts` under `OUTPUT_COMPATIBLE_CODECS` for `icecast` and `file` outputs.
+  - Configured bitrate range options (64 kbps to 320 kbps, default 128 kbps) and channel modes (Mono / Stereo) for `libvorbis`.
+  - Updated audio format hints across destination panels and verified automatic CLI argument generation (`-c:a libvorbis -f ogg -content_type application/ogg`).
+
+### Fixed
+- **Icecast 2.5 Telemetry & Listener Peak Preservation**:
+  - Fixed `Listeners: 0` reporting on Icecast 2.5 service cards by adding source mount listener summation fallback in both `fetch_icecast_telemetry` and `ProcessManager` when root `listeners` is omitted by `/status-json.xsl`.
+  - Fixed `listener_peak` resetting to 0 when streams reconnect or source counts change by preserving the historical session high-water mark.
+  - Added automated unit tests covering Icecast 2.5 telemetry normalization, peak retention, and `libvorbis` FFmpeg CLI command generation.
+
+## [2.17.4] - 2026-09-10
+
+### Fixed
+- **Legacy Icecast (< v2.4) & Input TLS Auto-Resolution in Federated Services**:
+  - Enhanced `get_shared_catalog` and `_extract_service_protocols` in `backend/core/peer_manager.py` to inspect `SoftwareBuild`, service alias/name, and configuration to reliably detect and export `is_legacy` and `software_version` for shared Icecast servers.
+  - Extended `FFmpegCommandBuilder` in `backend/core/builders/ffmpeg_builder.py` to auto-resolve `legacy_icecast` and `tls` for destinations referencing federated peers (`peer_node_id` & `peer_service_id`) using `PeerRemoteNode.cached_services_json`.
+  - Added resilient regex-based version analysis helper (`isLegacyIcecastStr`) in `DestinationPanel.tsx` to automatically infer legacy Icecast versions from service name or version tag even against older host peers.
+  - Made Protocol & Compatibility Options (Legacy Icecast & TLS) permanently visible in `DestinationPanel.tsx` across all modes, displaying auto-detection badges in managed/peer mode while preserving user manual override capabilities.
+  - Fixed TLS auto-detection logic in `InputSourcePanel.tsx` for remote peer Icecast streams, preventing accidental plaintext fallback and standardizing default port fallbacks to 8000 / 8443.
+  - Added unit test cases for federated peer Icecast command generation in `test_command_generator.py` and catalog export verification in `test_peer_manager.py`.
+
 ## [2.17.3] - 2026-09-10
 
 ### Fixed

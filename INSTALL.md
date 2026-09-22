@@ -13,7 +13,7 @@ This guide details the installation, dependency setup, and upgrade workflow for 
 - **Optional System Packages**: Standard `icecast2` package (`sudo apt install icecast2`) can be installed directly from Debian/Ubuntu repositories if source compilation via Forge is not desired.
 - **Optional Hardware Tools**:
   - NVIDIA GPU with proprietary drivers & CUDA toolkit (optional for hardware acceleration; system compiles and runs on CPU-only hosts without NVIDIA drivers).
-  - Intel graphics processors with QSV / VAAPI media drivers (e.g., `intel-media-driver` for low-overhead hardware transcoding).
+  - Intel graphics processors with QSV / VAAPI media drivers (e.g., `intel-media-driver` for low-overhead hardware transcoding) and `intel-gpu-tools` for real-time engine and VRAM telemetry.
   - Blackmagic DeckLink PCIe cards (requires `desktopvideo` Linux drivers and DeckLink SDK uploaded in the Forge).
   - Magewell capture devices (HDMI/SDI capture routed via V4L2).
   - AudioScience professional soundcards (ALSA audio matrix and topology controls).
@@ -33,7 +33,7 @@ chmod +x install.sh
 
 ### Option A: System-wide Service (Production Deployment)
 - **Target Location**: `/etc/systemd/system/ffmpeg-gui.service`
-- **Port Privilege Helper**: Grants `CAP_NET_BIND_SERVICE` capability to the virtual environment's python binary. This allows binding to privileged HTTP/HTTPS ports (80/443) without executing the backend process as root.
+- **Privilege & Telemetry Capabilities**: Grants `CAP_NET_BIND_SERVICE` to allow binding to privileged HTTP/HTTPS ports (80/443), and `CAP_PERFMON` / `CAP_SYS_ADMIN` to `intel_gpu_top` (from `intel-gpu-tools`) for non-root GPU hardware monitoring.
 - **Dedicated User**: Spawns a dedicated system user/group `ffmpeg-gui:ffmpeg-gui` to run the daemon in isolation.
 - **NVIDIA GPU Support**: The installer automatically detects if an NVIDIA GPU is present. If found, it installs `nvidia-uvm-init.service` to initialize Unified Memory device nodes at boot, resolving CUDA driver binding delays before the orchestrator launches. If no NVIDIA GPU is present, this unit is skipped, and the orchestrator runs on CPU.
 
@@ -44,21 +44,22 @@ chmod +x install.sh
 
 ---
 
-## 2. Capability Configuration (Privileged Ports)
+## 2. Capability Configuration (Privileged Ports & Hardware Telemetry)
 
-To allow the Python application to bind to port 80/443 without root:
-1. The installer attempts to set capabilities on the Python binary in the virtual environment:
+To allow the Python application to bind to port 80/443 and monitor Intel GPU metrics without running as root:
+1. The installer sets capabilities on the Python binary and `intel_gpu_top`:
    ```bash
    sudo setcap cap_net_bind_service=+ep $(readlink -f venv/bin/python3)
+   sudo setcap cap_perfmon,cap_sys_admin=+ep $(which intel_gpu_top)
    ```
 2. The systemd service unit includes:
    ```ini
-   CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+   CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_PERFMON CAP_SYS_ADMIN
    AmbientCapabilities=CAP_NET_BIND_SERVICE
    ```
-3. If capabilities are modified or python packages are updated, capabilities can be re-applied using:
+3. If capabilities are modified or python packages are updated, capabilities can be verified and re-applied using:
    ```bash
-   sudo bash scripts/setup-port-capabilities.sh
+   sudo bash scripts/setup-system-capabilities.sh
    ```
 
 ---
