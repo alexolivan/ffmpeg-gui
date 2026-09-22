@@ -1,5 +1,6 @@
 import os
 import configparser
+import socket
 from typing import Dict, List, Optional, Set, Tuple
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -160,6 +161,23 @@ def extract_ports_from_service(
                 except (ValueError, TypeError):
                     pass
 
+    elif s_type == "desktop":
+        desk = cfg.get("desktop_config", cfg)
+        vnc_p = desk.get("vnc_port")
+        disp_num = desk.get("display_num")
+        if vnc_p is not None:
+            try:
+                ports.append((int(vnc_p), "VNC (Desktop)", service_name, service_id, "tcp"))
+            except (ValueError, TypeError):
+                pass
+        elif disp_num is not None:
+            try:
+                ports.append((5900 + int(disp_num), "VNC (Desktop)", service_name, service_id, "tcp"))
+            except (ValueError, TypeError):
+                pass
+        else:
+            ports.append((5999, "VNC (Desktop Default)", service_name, service_id, "tcp"))
+
     return ports
 
 def validate_service_port_conflicts(
@@ -230,6 +248,29 @@ def validate_service_port_conflicts(
                             f"service '{other_name}' (ID: {other_id}, {other_label} [{other_proto.upper()}])."
                         )
                     )
+
+    # Check display collision for desktop services
+    if service_type == "desktop":
+        target_cfg = config or {}
+        target_desk = target_cfg.get("desktop_config", target_cfg)
+        target_disp = target_desk.get("display_num", 99)
+        try:
+            target_disp_int = int(target_disp)
+            for other in other_services:
+                if getattr(other, "service_type", None) == "desktop":
+                    other_cfg = other.config or {}
+                    other_desk = other_cfg.get("desktop_config", other_cfg)
+                    other_disp = other_desk.get("display_num", 99)
+                    if other_disp is not None and int(other_disp) == target_disp_int:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f"Display collision: Display :{target_disp_int} is already assigned to "
+                                f"service '{other.name}' (ID: {other.id})."
+                            )
+                        )
+        except (ValueError, TypeError):
+            pass
 
 def get_next_available_mediamtx_ports(db: Session, exclude_service_id: Optional[int] = None) -> Dict[str, int]:
     """
@@ -413,4 +454,92 @@ def validate_icecast_ports(
                         status_code=400,
                         detail=f"Port collision on {pp}/{pproto.upper()} ({plabel}): already in use by service '{esvc_name}' ({elabel})."
                     )
+
+
+def is_port_in_use_os(port: int, host: str = "127.0.0.1") -> bool:
+    """Checks if a TCP port is currently open and accepting connections on the host OS."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.1)
+            return s.connect_ex((host, port)) == 0
+    except Exception:
+        return False
+
+
+def is_display_in_use_os(display_num: int) -> bool:
+    """Checks if an X11 display socket or lock file already exists on the host OS."""
+    x_socket = f"/tmp/.X11-unix/X{display_num}"
+    x_lock = f"/tmp/.X{display_num}-lock"
+    return os.path.exists(x_socket) or os.path.exists(x_lock)
+
+
+def get_next_available_desktop_display_and_vnc_port(
+    db: Session,
+    exclude_service_id: Optional[int] = None,
+    check_os: bool = True
+) -> Dict[str, int]:
+    """
+    Computes a clean, non-conflicting display number and VNC port for a Desktop service.
+    Scans existing services in DB, GUI reserved ports, and optionally host OS sockets/X11 locks.
+    Starts search from Display 99 (VNC Port 5999), incrementing upwards (99, 100, 101, ...).
+    Returns dict: {"display_num": int, "vnc_port": int}.
+    """
+    gui_reserved_tcp = get_gui_reserved_ports()
+    other_services = (
+        db.query(Service).filter(Service.id != exclude_service_id).all()
+        if exclude_service_id
+        else db.query(Service).all()
+    )
+
+    occupied_ports = set((p, "tcp") for p in gui_reserved_tcp)
+    occupied_displays = set()
+
+    for other in other_services:
+        for p, _, _, _, proto in extract_ports_from_service(
+            service_id=other.id,
+            service_name=other.name,
+            service_type=getattr(other, "service_type", "ffmpeg_stream"),
+            config=other.config,
+            input_config=other.input_config,
+            output_config=other.output_config,
+        ):
+            occupied_ports.add((p, proto))
+
+        if getattr(other, "service_type", None) == "desktop":
+            cfg = other.config or {}
+            desk = cfg.get("desktop_config", cfg)
+            disp = desk.get("display_num")
+            if disp is not None:
+                try:
+                    occupied_displays.add(int(disp))
+                except (ValueError, TypeError):
+                    pass
+
+    base_display = 99
+    for offset in range(100):
+        cand_display = base_display + offset
+        cand_vnc_port = 5900 + cand_display
+
+        if cand_display in occupied_displays:
+            continue
+        if (cand_vnc_port, "tcp") in occupied_ports or (cand_vnc_port, "any") in occupied_ports:
+            continue
+
+        if check_os:
+            if is_display_in_use_os(cand_display):
+                continue
+            if is_port_in_use_os(cand_vnc_port):
+                continue
+
+        return {
+            "display_num": cand_display,
+            "vnc_port": cand_vnc_port,
+        }
+
+    # Fallback if 100 slots exhausted
+    return {
+        "display_num": 199,
+        "vnc_port": 6099,
+    }
+
 
