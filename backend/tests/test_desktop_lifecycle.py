@@ -68,6 +68,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIn("-shared", x11vnc_cmd)
         self.assertIn("-cursor", x11vnc_cmd)
         self.assertIn("arrow", x11vnc_cmd)
+        self.assertIn("-nocursorshape", x11vnc_cmd)
         self.assertNotIn("-bg", x11vnc_cmd)
 
     def test_build_desktop_cmds_custom_values(self):
@@ -100,6 +101,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIn("6005", x11vnc_cmd)
         self.assertIn("-cursor", x11vnc_cmd)
         self.assertIn("arrow", x11vnc_cmd)
+        self.assertIn("-nocursorshape", x11vnc_cmd)
 
     @patch("shutil.which")
     async def test_desktop_service_missing_xvfb_raises(self, mock_which):
@@ -134,11 +136,11 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         mock_xvfb.kill = MagicMock(side_effect=lambda: setattr(mock_xvfb, "returncode", -9))
         mock_xvfb.stdin = None
 
-        mock_xset = MagicMock()
-        mock_xset.wait = AsyncMock(return_value=0)
-
         mock_xsetroot = MagicMock()
         mock_xsetroot.wait = AsyncMock(return_value=0)
+
+        mock_xset = MagicMock()
+        mock_xset.wait = AsyncMock(return_value=0)
 
         mock_x11vnc = MagicMock()
         mock_x11vnc.pid = 22222
@@ -148,7 +150,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         mock_x11vnc.kill = MagicMock(side_effect=lambda: setattr(mock_x11vnc, "returncode", -9))
         mock_x11vnc.stdin = None
 
-        mock_exec.side_effect = [mock_xvfb, mock_xset, mock_xsetroot, mock_x11vnc]
+        mock_exec.side_effect = [mock_xvfb, mock_xsetroot, mock_xset, mock_x11vnc]
 
         with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
              patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock):
@@ -194,11 +196,11 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         mock_xvfb.wait = AsyncMock(return_value=0)
         mock_xvfb.terminate = MagicMock()
 
-        mock_xset = MagicMock()
-        mock_xset.wait = AsyncMock(return_value=0)
-
         mock_xsetroot = MagicMock()
         mock_xsetroot.wait = AsyncMock(return_value=0)
+
+        mock_xset = MagicMock()
+        mock_xset.wait = AsyncMock(return_value=0)
 
         mock_x11vnc = MagicMock()
         mock_x11vnc.pid = 44444
@@ -206,7 +208,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         mock_x11vnc.wait = AsyncMock(return_value=0)
         mock_x11vnc.terminate = MagicMock()
 
-        mock_exec.side_effect = [mock_xvfb, mock_xset, mock_xsetroot, mock_x11vnc]
+        mock_exec.side_effect = [mock_xvfb, mock_xsetroot, mock_xset, mock_x11vnc]
 
         with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
              patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock):

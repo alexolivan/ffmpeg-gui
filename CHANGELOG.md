@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Homogenized `DesktopServiceCard` header row to match MediaMTX and Icecast2 cards, relocating display and VNC details into semantic engine badges (`Xvfb :99 1920x1080@30fps, 24bpp` and `x11vnc :5999 127.0.0.1 • WS RFB`).
 
 ### Fixed
+- **Virtual Desktop Readiness Handshake & Cursor Stabilization**:
+  - Implemented active polling retry loop (up to 3.0s) for `xsetroot` to account for Xvfb initializing its internal event loop after socket inode creation, guaranteeing reliable slate canvas application.
+  - Added `-nocursorshape` to `x11vnc` and `[&_canvas]:!cursor-default` to frontend `DesktopPreviewModal` to prevent the browser arrow cursor from reverting to legacy X11 'X' font cursor.
 - **Multi-Process Desktop Lifecycle & Warm-Reload Resilience**:
   - Prevented premature termination of `x11vnc` during `systemctl reload ffmpeg-gui` by discovering and including all auxiliary child process PIDs in `active_pids` before executing `cleanup_rogue_processes`.
   - Added recursive child process protection in `backend/main.py` startup routine to prevent orphan cleanup sweeps from killing legitimate auxiliary processes.

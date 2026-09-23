@@ -393,7 +393,27 @@ class ProcessManager:
                             break
                         await asyncio.sleep(0.1)
 
-                    # 2. Disable screensaver via xset
+                    # 2. Configure root cursor and background canvas via xsetroot with active polling
+                    # Xvfb creates the socket file before it is ready to accept client connections.
+                    # We poll with xsetroot until Xvfb finishes handshake and returns code 0.
+                    if shutil.which("xsetroot"):
+                        for attempt in range(30):
+                            try:
+                                xsetroot_proc = await asyncio.create_subprocess_exec(
+                                    *xsetroot_cmd,
+                                    stdout=asyncio.subprocess.DEVNULL,
+                                    stderr=asyncio.subprocess.DEVNULL,
+                                    env=desktop_sub_env
+                                )
+                                code = await asyncio.wait_for(xsetroot_proc.wait(), timeout=1.0)
+                                if code == 0:
+                                    self.logger.info(f"xsetroot canvas/cursor applied to display :{display_num} (attempt {attempt + 1})")
+                                    break
+                            except Exception as xr_err:
+                                self.logger.debug(f"xsetroot attempt {attempt + 1} notice: {xr_err}")
+                            await asyncio.sleep(0.1)
+
+                    # 3. Disable screensaver via xset
                     if shutil.which("xset"):
                         try:
                             xset_proc = await asyncio.create_subprocess_exec(
@@ -405,19 +425,6 @@ class ProcessManager:
                             await asyncio.wait_for(xset_proc.wait(), timeout=2.0)
                         except Exception as xset_err:
                             self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
-
-                    # 3. Configure root cursor and background canvas via xsetroot
-                    if shutil.which("xsetroot"):
-                        try:
-                            xsetroot_proc = await asyncio.create_subprocess_exec(
-                                *xsetroot_cmd,
-                                stdout=asyncio.subprocess.DEVNULL,
-                                stderr=asyncio.subprocess.DEVNULL,
-                                env=desktop_sub_env
-                            )
-                            await asyncio.wait_for(xsetroot_proc.wait(), timeout=2.0)
-                        except Exception as xr_err:
-                            self.logger.warning(f"xsetroot canvas notice for display :{display_num}: {xr_err}")
 
                     # 4. Spawn x11vnc
                     await self._spawn_x11vnc(
@@ -1427,6 +1434,7 @@ class ProcessManager:
             "-forever",
             "-shared",
             "-cursor", "arrow",
+            "-nocursorshape",
         ]
 
         return xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port
@@ -1454,6 +1462,7 @@ class ProcessManager:
             "-forever",
             "-shared",
             "-cursor", "arrow",
+            "-nocursorshape",
         ]
         base_env = sub_env or os.environ
         vnc_env = {

@@ -420,7 +420,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
             isRunning ? (
               <div
                 ref={canvasContainerRef}
-                className="w-full h-full flex items-center justify-center overflow-hidden relative cursor-default"
+                className="w-full h-full flex items-center justify-center overflow-hidden relative cursor-default [&_canvas]:!cursor-default"
                 tabIndex={0}
               />
             ) : (
