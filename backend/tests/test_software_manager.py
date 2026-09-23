@@ -118,6 +118,91 @@ class TestSoftwareManager(unittest.TestCase):
         self.assertTrue(build.is_managed)
         self.assertEqual(build.name, "MediaMTX v1.9.3 (Official)")
 
+    @patch("os.path.isfile", return_value=True)
+    @patch("shutil.which")
+    @patch("subprocess.run")
+    def test_audit_browser_binaries(self, mock_run, mock_which, mock_isfile):
+        # Test Chromium audit
+        mock_which.side_effect = lambda cmd: "/usr/bin/chromium" if cmd == "chromium" else None
+        mock_proc = MagicMock()
+        mock_proc.stdout = "Chromium 130.0.6723.69 built on Debian 12\n"
+        mock_proc.stderr = ""
+        mock_run.return_value = mock_proc
+
+        res_chrome = software_manager.audit_system_binary("chromium")
+        self.assertTrue(res_chrome["found"])
+        self.assertEqual(res_chrome["path"], "/usr/bin/chromium")
+        self.assertEqual(res_chrome["version"], "130.0.6723.69")
+
+        # Test Firefox audit
+        mock_which.side_effect = lambda cmd: "/usr/bin/firefox-esr" if cmd == "firefox-esr" else None
+        mock_proc.stdout = "Mozilla Firefox 128.3.0esr\n"
+        res_ff = software_manager.audit_system_binary("firefox")
+        self.assertTrue(res_ff["found"])
+        self.assertEqual(res_ff["path"], "/usr/bin/firefox-esr")
+        self.assertEqual(res_ff["version"], "128.3.0esr")
+
+    @patch("urllib.request.urlretrieve")
+    @patch("zipfile.ZipFile")
+    @patch("subprocess.run")
+    def test_provision_chromium_release(self, mock_run, mock_zipfile, mock_urlretrieve):
+        mock_proc = MagicMock()
+        mock_proc.stdout = "Google Chrome for Testing 130.0.6723.69\n"
+        mock_proc.stderr = ""
+        mock_run.return_value = mock_proc
+
+        def fake_extractall(path):
+            nested_dir = os.path.join(path, "chrome-linux64")
+            os.makedirs(nested_dir, exist_ok=True)
+            bin_file = os.path.join(nested_dir, "chrome")
+            with open(bin_file, "w") as f:
+                f.write("#!/bin/sh\necho Google Chrome for Testing 130.0.6723.69\n")
+
+        mock_zip = MagicMock()
+        mock_zip.extractall = fake_extractall
+        mock_zipfile.return_value.__enter__.return_value = mock_zip
+
+        res = software_manager.provision_engine_release("chromium", "130.0.6723.69", self.db, self.temp_dir)
+        self.assertTrue(res["success"])
+        self.assertEqual(res["version"], "130.0.6723.69")
+
+        build = self.db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "chromium").first()
+        self.assertIsNotNone(build)
+        self.assertEqual(build.source_type, "precompiled")
+        self.assertTrue(build.is_managed)
+        self.assertEqual(build.name, "Chromium v130.0.6723.69 (Official)")
+
+    @patch("urllib.request.urlretrieve")
+    @patch("tarfile.open")
+    @patch("subprocess.run")
+    def test_provision_firefox_release(self, mock_run, mock_tar_open, mock_urlretrieve):
+        mock_proc = MagicMock()
+        mock_proc.stdout = "Mozilla Firefox 130.0\n"
+        mock_proc.stderr = ""
+        mock_run.return_value = mock_proc
+
+        def fake_extractall(path):
+            nested_dir = os.path.join(path, "firefox")
+            os.makedirs(nested_dir, exist_ok=True)
+            bin_file = os.path.join(nested_dir, "firefox")
+            with open(bin_file, "w") as f:
+                f.write("#!/bin/sh\necho Mozilla Firefox 130.0\n")
+
+        mock_tar = MagicMock()
+        mock_tar.extractall = fake_extractall
+        mock_tar_open.return_value.__enter__.return_value = mock_tar
+
+        res = software_manager.provision_engine_release("firefox", "130.0", self.db, self.temp_dir)
+        self.assertTrue(res["success"])
+        self.assertEqual(res["version"], "130.0")
+
+        build = self.db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "firefox").first()
+        self.assertIsNotNone(build)
+        self.assertEqual(build.source_type, "precompiled")
+        self.assertTrue(build.is_managed)
+        self.assertEqual(build.name, "Firefox v130.0 (Official)")
+
 
 if __name__ == "__main__":
     unittest.main()
+
