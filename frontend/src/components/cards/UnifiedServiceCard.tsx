@@ -193,12 +193,20 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               : serviceType === 'icecast_server' 
               ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' 
               : serviceType === 'kiosk_browser' 
-              ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30' 
+              ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' 
               : serviceType === 'desktop'
               ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
               : 'bg-purple-500/10 text-purple-400 border-purple-500/30'
           }`}>
-            <EngineLogo softwareType={serviceType} size={12} API={API} />
+            <EngineLogo
+              softwareType={
+                serviceType === 'kiosk_browser'
+                  ? (service.config?.kiosk_config?.engine_id || 'chromium')
+                  : serviceType
+              }
+              size={12}
+              API={API}
+            />
             {serviceType === 'ffmpeg_stream' 
               ? 'FFmpeg' 
               : serviceType === 'mediamtx_hub'
@@ -206,7 +214,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               : serviceType === 'icecast_server' 
               ? 'Icecast' 
               : serviceType === 'kiosk_browser' 
-              ? 'Kiosk' 
+              ? ((service.config?.kiosk_config?.engine_id || 'chromium') === 'firefox' ? 'Firefox Kiosk' : 'Chrome Kiosk')
               : serviceType === 'desktop'
               ? 'Desktop'
               : 'Service'}
@@ -277,6 +285,10 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           {serviceType === 'desktop' ? (
             <p className="truncate">
               Display: <code className="text-[var(--text-primary)]">:{service.config?.desktop_config?.display_num ?? 99}</code> • Resolution: <code className="text-[var(--text-primary)]">{service.config?.desktop_config?.resolution ?? '1920x1080'}</code> • VNC: <code className="text-[var(--text-primary)]">:{service.config?.desktop_config?.vnc_port ?? 5999}</code>
+            </p>
+          ) : serviceType === 'kiosk_browser' ? (
+            <p className="truncate">
+              URL: <code className="text-[var(--text-primary)]">{service.config?.kiosk_config?.target_source || 'about:blank'}</code> • Desktop: <code className="text-cyan-400">#{service.config?.kiosk_config?.desktop_service_id || '?'}</code> • Engine: <code className="text-amber-400 capitalize">{service.config?.kiosk_config?.engine_id || 'chromium'}</code>
             </p>
           ) : (
             <>

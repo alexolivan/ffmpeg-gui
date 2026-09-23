@@ -63,8 +63,8 @@ export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
         const available: ServiceTypeOption[] = [];
 
         Object.values(data).forEach((eng: any) => {
-          // Exclude internal helpers like decklink_tools
-          if (eng.key === 'decklink_tools') return;
+          // Exclude internal helpers like decklink_tools and browser engines handled collectively
+          if (eng.key === 'decklink_tools' || eng.key === 'chromium' || eng.key === 'firefox' || eng.key === 'kiosk_cog') return;
           if (!eng.is_enabled && !eng.always_enabled) return;
 
           const def = SERVICE_TYPE_DEFINITIONS[eng.key];
@@ -79,6 +79,26 @@ export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
             });
           }
         });
+
+        // Append Web Kiosk Display if Chromium or Firefox is available
+        const hasKioskEngine = Object.values(data).some(
+          (eng: any) =>
+            (eng.key === 'chromium' || eng.key === 'firefox' || eng.key === 'kiosk_cog') &&
+            (eng.is_enabled || eng.always_enabled)
+        );
+        if (hasKioskEngine) {
+          available.push({
+            key: 'chromium',
+            service_type: 'kiosk_browser',
+            name: t('kiosk.service_name', 'Web Kiosk Display'),
+            category: 'DISPLAY KIOSK',
+            description: t(
+              'kiosk.service_description',
+              'Full-screen unattended web kiosk browser (Chromium / Firefox) with hardware acceleration, profile isolation, and flash protection.'
+            ),
+            is_enabled: true,
+          });
+        }
 
         // Always append Virtual Desktop Server (Xvfb + x11vnc)
         available.push({
@@ -121,6 +141,17 @@ export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
             name: t('desktop.service_name', 'Virtual Desktop Server (X11 / VNC)'),
             category: 'VIRTUAL DESKTOP',
             description: t('desktop.service_description', 'Headless X11 virtual display server (Xvfb) with real-time interactive HTML5 VNC remote access.'),
+            is_enabled: true,
+          },
+          {
+            key: 'chromium',
+            service_type: 'kiosk_browser',
+            name: t('kiosk.service_name', 'Web Kiosk Display'),
+            category: 'DISPLAY KIOSK',
+            description: t(
+              'kiosk.service_description',
+              'Full-screen unattended web kiosk browser (Chromium / Firefox) with hardware acceleration, profile isolation, and flash protection.'
+            ),
             is_enabled: true,
           },
         ]);
