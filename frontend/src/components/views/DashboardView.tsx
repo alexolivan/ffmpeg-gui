@@ -128,7 +128,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Partition hardware capabilities into active and unavailable
   const capabilitiesList = Object.entries(systemTelemetry.capabilities || {})
-    .filter(([key]) => key !== 'ffmpeg' && key !== 'avahi');
+    .filter(([key]) => key !== 'ffmpeg' && key !== 'avahi' && key !== 'lcd');
 
   const activeCapabilities = capabilitiesList.filter(
     ([, value]: [string, any]) => value.available || value.status === 'SETUP_REQUIRED'

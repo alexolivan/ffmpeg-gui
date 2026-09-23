@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented dynamic COM port discovery in capabilities scanning using `serial.tools.list_ports.comports()`, verifying Crystalfontz USB Vendor ID (`0x223B`), descriptor strings, active manager port binding, and fallback packet ping probing.
   - Enhanced `/settings/lcd/probe` to auto-detect and populate USB Crystalfontz displays (e.g., CFA735-USB) even prior to ping response.
   - Made Settings LCD tab visibility resilient during capabilities load cycle in `SettingsView.tsx`.
+  - Excluded `lcd` from generic capabilities iteration in `DashboardView.tsx` to prevent duplicate display cards alongside the dedicated active LCD panel card.
 
 ## [2.22.0] - 2026-09-23
 
