@@ -103,30 +103,19 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
             }`}
           />
 
-          <h4 className="font-bold text-sm text-[var(--text-primary)] truncate tracking-wide">
-            {service.name}
+          <h4 className="font-bold text-sm text-[var(--text-primary)] group-hover:text-cyan-400 transition-colors truncate tracking-wide">
+            {service.alias || service.name}
+            {service.alias && (
+              <span className="text-xs font-normal text-[var(--text-secondary)] ml-1.5 opacity-80" title={`Original Name: ${service.name}`}>
+                [{service.name}]
+              </span>
+            )}
           </h4>
-
-          {service.alias && (
-            <span className="text-[10px] bg-white/5 text-[var(--text-secondary)] border border-[var(--glass-border)] px-1.5 py-0.5 rounded font-mono">
-              {service.alias}
-            </span>
-          )}
 
           {/* Service Engine Type Badge */}
           <span className="text-[9px] px-2 py-0.5 rounded font-black tracking-wider uppercase flex items-center gap-1 border bg-cyan-500/10 text-cyan-400 border-cyan-500/30">
             <EngineLogo softwareType="desktop" size={12} API={API} />
             Desktop Server
-          </span>
-
-          {/* Screen Resolution & Display Badge */}
-          <span className="text-[9px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 px-2 py-0.5 rounded font-mono font-bold flex items-center gap-1">
-            🖥️ :{displayNum} ({resolution} @ {framerate}fps, {colorDepth}bpp)
-          </span>
-
-          {/* Local VNC Port Badge */}
-          <span className="text-[9px] bg-sky-500/10 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
-            🔑 VNC :{vncPort} (127.0.0.1)
           </span>
 
           {/* Autostart on Boot */}
@@ -185,11 +174,11 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
         {/* Desktop Specifications Strip */}
         <div className="text-xs text-[var(--text-secondary)] font-mono flex items-center gap-2 flex-wrap">
           <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider">Engine:</span>
-          <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px]">
-            Xvfb Display :{displayNum} ({resolution})
+          <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold flex items-center gap-1">
+            🖥️ Xvfb :{displayNum} ({resolution} @ {framerate}fps, {colorDepth}bpp)
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20 text-[10px]">
-            x11vnc TCP :{vncPort} (WS RFB)
+          <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30 text-[10px] font-mono font-semibold flex items-center gap-1">
+            🔑 x11vnc :{vncPort} (127.0.0.1 • WS RFB)
           </span>
         </div>
 
