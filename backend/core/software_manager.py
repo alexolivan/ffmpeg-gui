@@ -7,6 +7,7 @@ import subprocess
 import tarfile
 import zipfile
 import urllib.request
+import urllib.error
 import json
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
@@ -696,20 +697,43 @@ class SoftwareManager:
         else:
             ff_arch = "linux-x86_64"
 
-        tar_filename = f"firefox-{clean_ver}.tar.bz2"
-        download_url = f"https://archive.mozilla.org/pub/firefox/releases/{clean_ver}/{ff_arch}/en-US/{tar_filename}"
-
         dest_dir = os.path.join(builds_storage_dir, "firefox", f"v{clean_ver}")
         bin_dest_dir = os.path.join(dest_dir, "bin")
         os.makedirs(bin_dest_dir, exist_ok=True)
 
-        tar_path = os.path.join(dest_dir, tar_filename)
+        download_candidates = [
+            f"https://archive.mozilla.org/pub/firefox/releases/{clean_ver}/{ff_arch}/en-US/firefox-{clean_ver}.tar.xz",
+            f"https://archive.mozilla.org/pub/firefox/releases/{clean_ver}/{ff_arch}/en-US/firefox-{clean_ver}.tar.bz2",
+        ]
 
+        tar_path = None
+        last_error = None
         try:
-            logger.info(f"Downloading Firefox v{clean_ver} from {download_url}...")
-            urllib.request.urlretrieve(download_url, tar_path)
+            for download_url in download_candidates:
+                ext = "tar.xz" if download_url.endswith(".tar.xz") else "tar.bz2"
+                candidate_path = os.path.join(dest_dir, f"firefox-{clean_ver}.{ext}")
+                try:
+                    logger.info(f"Downloading Firefox v{clean_ver} from {download_url}...")
+                    urllib.request.urlretrieve(download_url, candidate_path)
+                    tar_path = candidate_path
+                    break
+                except urllib.error.HTTPError as he:
+                    last_error = he
+                    if os.path.exists(candidate_path):
+                        os.remove(candidate_path)
+                    if he.code == 404:
+                        continue
+                    raise
+                except Exception as e:
+                    last_error = e
+                    if os.path.exists(candidate_path):
+                        os.remove(candidate_path)
+                    raise
 
-            with tarfile.open(tar_path, "r:bz2") as tar:
+            if not tar_path:
+                raise last_error or RuntimeError(f"Could not download Firefox v{clean_ver} from official releases")
+
+            with tarfile.open(tar_path, "r:*") as tar:
                 tar.extractall(path=bin_dest_dir)
 
             if os.path.exists(tar_path):
