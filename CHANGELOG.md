@@ -40,7 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Resolved Chromium missing shared libraries on headless Linux installations by adding browser runtime dependencies (`libnss3`, `libnspr4`, `libatk`, `libcups2`, `libdrm2`, `libxkbcommon`, `libgbm`, `libpango`, `libcairo`, `libasound2`) to `install.sh`.
   - Added `--no-sandbox` fallback and `--disable-dev-shm-usage` for Chromium processes running under root/containerized systemd environments.
   - Ensured automatic engine synchronization in `ProcessManager._build_kiosk_cmds` when a custom software build is selected.
-  - Corrected `KioskConfigForm.tsx` to dynamically query host system binary presence from `/settings/software`, hiding/disabling "Host System Binary (PATH)" when not installed, auto-selecting the best provisioned release, and displaying an informative warning banner preventing submission if no valid binaries exist.
+  - Enforced exact full-screen geometry on bare X11 virtual desktops lacking a window manager by injecting target display resolution into browser launch flags (`--window-position=0,0`, `--window-size=W,H`, `--start-maximized` for Chromium, and `-width W`, `-height H`, `browser.window.width/height` for Firefox).
+  - Suppressed Chrome for Testing "Google Chrome for Testing is only for automated testing" notification banner via `--disable-infobars`, `--test-type`, and `--disable-blink-features=AutomationControlled`.
+  - Suppressed DBus connection and keyring errors by unsetting invalid `DBUS_SESSION_BUS_ADDRESS`, adding `GTK_A11Y=none`, and passing `--password-store=basic` and `--use-mock-keychain` to Chromium.
+  - Implemented asynchronous window-snap enforcer (`ProcessManager._ensure_kiosk_fullscreen`) using `xdotool` to guarantee active browser windows cover 100% of the display coordinates, and added `xdotool` to `install.sh`.
 
 ## [2.22.0] - 2026-09-23
 

@@ -453,14 +453,17 @@ class ProcessManager:
                     os.makedirs(config_dir, exist_ok=True)
                     os.makedirs(data_dir, exist_ok=True)
 
+                    cleaned_env = {k: v for k, v in sub_env.items() if k != "DBUS_SESSION_BUS_ADDRESS"}
+
                     kiosk_sub_env = {
-                        **sub_env,
+                        **cleaned_env,
                         "DISPLAY": f":{display_num}",
                         "HOME": kiosk_profile,
                         "XDG_CACHE_HOME": cache_dir,
                         "XDG_CONFIG_HOME": config_dir,
                         "XDG_DATA_HOME": data_dir,
                         "NO_AT_BRIDGE": "1",
+                        "GTK_A11Y": "none",
                         "MOZ_NO_REMOTE": "1",
                     }
                     proc = await asyncio.create_subprocess_exec(
@@ -476,6 +479,7 @@ class ProcessManager:
                     except Exception:
                         pass
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                    asyncio.create_task(self._ensure_kiosk_fullscreen(display_num))
                 else:
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
@@ -1505,6 +1509,16 @@ class ProcessManager:
 
         d_cfg = (desktop_svc.config or {}).get("desktop_config", desktop_svc.config or {})
         display_num = int(d_cfg.get("display_num", 99))
+        resolution = str(d_cfg.get("resolution", "1920x1080")).lower()
+        if "x" in resolution:
+            parts = resolution.split("x", 1)
+            try:
+                desk_width = int(parts[0].strip())
+                desk_height = int(parts[1].strip())
+            except ValueError:
+                desk_width, desk_height = 1920, 1080
+        else:
+            desk_width, desk_height = 1920, 1080
 
         # 2. Resolve browser engine and binary
         engine_id = str(k_cfg.get("engine_id", "chromium")).lower()
@@ -1562,14 +1576,23 @@ class ProcessManager:
                 "--noerrdialogs",
                 "--disable-session-crashed-bubble",
                 "--disable-translate",
-                "--disable-features=TranslateUI",
+                "--disable-features=TranslateUI,BlinkGenPropertyTrees",
                 "--autoplay-policy=no-user-gesture-required",
                 "--disable-dev-shm-usage",
                 "--disable-crash-reporter",
                 "--no-crashpad",
                 "--disable-breakpad",
-                "--kiosk",
+                "--disable-infobars",
+                "--test-type",
+                "--no-default-browser-check",
+                "--password-store=basic",
+                "--use-mock-keychain",
+                "--disable-blink-features=AutomationControlled",
+                "--window-position=0,0",
+                f"--window-size={desk_width},{desk_height}",
                 "--start-fullscreen",
+                "--start-maximized",
+                "--kiosk",
             ]
 
             if os.geteuid() == 0 or os.environ.get("FFMPEG_GUI_CONTAINER"):
@@ -1620,6 +1643,9 @@ class ProcessManager:
                 'user_pref("browser.discovery.enabled", false);',
                 'user_pref("extensions.pocket.enabled", false);',
                 'user_pref("network.captive-portal-service.enabled", false);',
+                f'user_pref("browser.window.width", {desk_width});',
+                f'user_pref("browser.window.height", {desk_height});',
+                'user_pref("privacy.resistFingerprinting", false);',
             ]
 
             if disk_cache_disabled:
@@ -1647,6 +1673,8 @@ class ProcessManager:
                 browser_bin,
                 "--kiosk",
                 "--no-remote",
+                "-width", str(desk_width),
+                "-height", str(desk_height),
                 "-profile", profile_dir
             ]
             if custom_flags:
@@ -1670,6 +1698,60 @@ class ProcessManager:
             pass
 
         return cmd, display_num, ephemeral_profile_dir
+
+    async def _ensure_kiosk_fullscreen(self, display_num: int):
+        """Asynchronously snaps and resizes kiosk browser windows to full screen if xdotool is present."""
+        xdotool_bin = shutil.which("xdotool")
+        if not xdotool_bin:
+            return
+
+        env = {**os.environ, "DISPLAY": f":{display_num}"}
+        # Check at 1s, 2.5s, 5s after launch to catch the window once it is mapped on X11
+        for delay in (1.0, 1.5, 2.5):
+            await asyncio.sleep(delay)
+            try:
+                geom_proc = await asyncio.create_subprocess_exec(
+                    xdotool_bin, "getdisplaygeometry",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=env
+                )
+                stdout, _ = await asyncio.wait_for(geom_proc.communicate(), timeout=1.0)
+                parts = stdout.decode("utf-8").strip().split()
+                if len(parts) >= 2:
+                    w, h = parts[0], parts[1]
+                else:
+                    w, h = "1920", "1080"
+
+                search_proc = await asyncio.create_subprocess_exec(
+                    xdotool_bin, "search", "--onlyvisible", "--name", ".*",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=env
+                )
+                stdout, _ = await asyncio.wait_for(search_proc.communicate(), timeout=2.0)
+                wids = [wid.strip() for wid in stdout.decode("utf-8").splitlines() if wid.strip()]
+                for wid in wids:
+                    await asyncio.create_subprocess_exec(
+                        xdotool_bin, "windowmove", wid, "0", "0",
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=env
+                    )
+                    await asyncio.create_subprocess_exec(
+                        xdotool_bin, "windowsize", wid, w, h,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=env
+                    )
+                    await asyncio.create_subprocess_exec(
+                        xdotool_bin, "windowraise", wid,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=env
+                    )
+            except Exception as e:
+                self.logger.debug(f"xdotool kiosk window sizing notice for display :{display_num}: {e}")
 
     async def _spawn_x11vnc(
         self,

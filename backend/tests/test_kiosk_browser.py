@@ -76,6 +76,9 @@ class TestKioskBrowser(unittest.TestCase):
         self.assertEqual(cmd[0], real_sh)
         self.assertIn("--kiosk", cmd)
         self.assertIn("--start-fullscreen", cmd)
+        self.assertIn("--window-position=0,0", cmd)
+        self.assertIn("--window-size=1920,1080", cmd)
+        self.assertIn("--disable-infobars", cmd)
         self.assertIn(f"--user-data-dir=/tmp/kiosk_cr_{kiosk.id}", cmd)
         self.assertIn("--hide-scrollbars", cmd)
         self.assertIn("--disk-cache-dir=/dev/null", cmd)
@@ -114,6 +117,10 @@ class TestKioskBrowser(unittest.TestCase):
         self.assertEqual(display_num, 99)
         self.assertEqual(cmd[0], real_sh)
         self.assertIn("--kiosk", cmd)
+        self.assertIn("-width", cmd)
+        self.assertIn("1920", cmd)
+        self.assertIn("-height", cmd)
+        self.assertIn("1080", cmd)
         self.assertIn("-profile", cmd)
         self.assertIn(f"/tmp/kiosk_ff_{kiosk.id}", cmd)
         self.assertIn("--devtools", cmd)
@@ -127,6 +134,7 @@ class TestKioskBrowser(unittest.TestCase):
             self.assertIn('media.autoplay.default', content)
             self.assertIn('browser.cache.disk.enable", false', content)
             self.assertIn('layers.acceleration.force-enabled", true', content)
+            self.assertIn('browser.window.width", 1920', content)
 
         # Verify userChrome.css scrollbar collapse
         css_path = os.path.join(profile_dir, "chrome", "userChrome.css")
