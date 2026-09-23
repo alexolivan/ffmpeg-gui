@@ -3458,8 +3458,12 @@ async def startup_event():
                         p.speed = "0x"
                     else:
                         logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is alive with PID {p.pid}. Re-attaching watchdog.")
-                        process_manager.reattach_process(p.id, p.pid)
-                        active_pids.add(p.pid)
+                        reattached_pids = process_manager.reattach_process(p.id, p.pid)
+                        if isinstance(reattached_pids, (list, set, tuple)):
+                            for r_pid in reattached_pids:
+                                active_pids.add(r_pid)
+                        else:
+                            active_pids.add(p.pid)
                 else:
                     logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is NOT alive in OS (status was {p.status}). Cleaning up.")
                     p.status = "stopped"
@@ -3495,6 +3499,14 @@ async def startup_event():
         logger.error(f"Failed to clean up stale builds/processes/tasks on startup: {e}")
 
     try:
+        # Protect all active processes and their direct OS child processes from cleanup sweep
+        for active_pid in list(active_pids):
+            try:
+                proc = psutil.Process(active_pid)
+                for child in proc.children(recursive=True):
+                    active_pids.add(child.pid)
+            except Exception:
+                pass
         cleanup_rogue_processes(active_pids=active_pids)
     except Exception as e:
         logger.error(f"Failed to clean up rogue processes on startup: {e}")

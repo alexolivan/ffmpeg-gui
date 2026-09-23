@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Multi-Process Desktop Lifecycle & Warm-Reload Resilience**:
+  - Prevented premature termination of `x11vnc` during `systemctl reload ffmpeg-gui` by discovering and including all auxiliary child process PIDs in `active_pids` before executing `cleanup_rogue_processes`.
+  - Added recursive child process protection in `backend/main.py` startup routine to prevent orphan cleanup sweeps from killing legitimate auxiliary processes.
+  - Implemented automatic auxiliary process discovery in `ProcessManager.find_auxiliary_pids` and `ProcessManager.reattach_process`.
+  - Added self-healing recovery in `ProcessManager._watchdog`: if `x11vnc` terminates unexpectedly while `Xvfb` remains healthy, the watchdog automatically respawns `x11vnc` on the target display without disrupting the virtual desktop session or terminating user applications.
+  - Replaced static sleep timeout during `Xvfb` launch with active Unix socket readiness polling on `/tmp/.X11-unix/X{display_num}` (up to 5s) before binding `xset` and `x11vnc`.
+  - Ensured `ProcessManager.stop_process` terminates both primary and auxiliary PIDs (`self.auxiliary_pids`).
+
 ## [2.21.1] - 2026-09-22
 
 ### Changed

@@ -32,6 +32,7 @@ class ProcessManager:
         self._spawn_lock: Optional[asyncio.Lock] = None
         self.ephemeral_configs: Dict[int, str] = {}
         self.auxiliary_processes: Dict[int, List[asyncio.subprocess.Process]] = {}
+        self.auxiliary_pids: Dict[int, List[int]] = {}
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -380,9 +381,17 @@ class ProcessManager:
                         env=desktop_sub_env
                     )
                     self.processes[process_id] = proc
+                    try:
+                        log_file_handle.close()
+                    except Exception:
+                        pass
 
-                    # Wait briefly for Xvfb display socket to appear
-                    await asyncio.sleep(0.5)
+                    # Wait for Xvfb display socket to appear (up to 5s)
+                    display_socket = f"/tmp/.X11-unix/X{display_num}"
+                    for _ in range(50):
+                        if os.path.exists(display_socket):
+                            break
+                        await asyncio.sleep(0.1)
 
                     # 2. Disable screensaver via xset
                     if shutil.which("xset"):
@@ -398,19 +407,14 @@ class ProcessManager:
                             self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
 
                     # 3. Spawn x11vnc
-                    vnc_proc = await asyncio.create_subprocess_exec(
-                        *x11vnc_cmd,
-                        stdout=log_file_handle,
-                        stderr=asyncio.subprocess.STDOUT,
-                        stdin=asyncio.subprocess.DEVNULL,
-                        env=desktop_sub_env
+                    await self._spawn_x11vnc(
+                        process_id=process_id,
+                        display_num=display_num,
+                        vnc_port=vnc_port,
+                        log_path=log_path,
+                        sub_env=desktop_sub_env
                     )
-                    self.auxiliary_processes[process_id] = [vnc_proc]
 
-                    try:
-                        log_file_handle.close()
-                    except Exception:
-                        pass
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 else:
                     proc = await asyncio.create_subprocess_exec(
@@ -581,6 +585,29 @@ class ProcessManager:
                                 aux.kill()
                             except Exception:
                                 pass
+
+            # Also terminate any auxiliary PIDs tracked by PID (e.g. reattached x11vnc)
+            aux_pids = self.auxiliary_pids.pop(process_id, [])
+            for aux_pid in aux_pids:
+                if psutil.pid_exists(aux_pid):
+                    try:
+                        ap = psutil.Process(aux_pid)
+                        if graceful:
+                            ap.terminate()
+                        else:
+                            ap.kill()
+                    except Exception:
+                        pass
+            if aux_pids:
+                try:
+                    alive_aux = [psutil.Process(p) for p in aux_pids if psutil.pid_exists(p)]
+                    if alive_aux:
+                        _, still_alive = psutil.wait_procs(alive_aux, timeout=1.0)
+                        for ap in still_alive:
+                            try: ap.kill()
+                            except Exception: pass
+                except Exception:
+                    pass
 
             # Direct OS process termination for reattached processes or surviving PIDs
             if target_pid and psutil.pid_exists(target_pid):
@@ -1380,6 +1407,154 @@ class ProcessManager:
 
         return xvfb_cmd, xset_cmd, x11vnc_cmd, display_num, vnc_port
 
+    async def _spawn_x11vnc(
+        self,
+        process_id: int,
+        display_num: int,
+        vnc_port: int,
+        log_path: str,
+        sub_env: Optional[dict] = None
+    ) -> Optional[asyncio.subprocess.Process]:
+        """Spawns an x11vnc subprocess for the specified virtual desktop display."""
+        x11vnc_bin = shutil.which("x11vnc")
+        if not x11vnc_bin:
+            self.logger.error("x11vnc binary not found on host system.")
+            return None
+
+        x11vnc_cmd = [
+            x11vnc_bin,
+            "-display", f":{display_num}",
+            "-rfbport", str(vnc_port),
+            "-localhost",
+            "-nopw",
+            "-forever",
+            "-shared",
+        ]
+        base_env = sub_env or os.environ
+        vnc_env = {
+            **base_env,
+            "FFMPEG_GUI_PROCESS_ID": str(process_id),
+            "DISPLAY": f":{display_num}"
+        }
+
+        try:
+            log_handle = open(log_path, "ab", buffering=0)
+            vnc_proc = await asyncio.create_subprocess_exec(
+                *x11vnc_cmd,
+                stdout=log_handle,
+                stderr=asyncio.subprocess.STDOUT,
+                stdin=asyncio.subprocess.DEVNULL,
+                env=vnc_env
+            )
+            try:
+                log_handle.close()
+            except Exception:
+                pass
+
+            if process_id not in self.auxiliary_processes:
+                self.auxiliary_processes[process_id] = []
+            self.auxiliary_processes[process_id].append(vnc_proc)
+
+            if process_id not in self.auxiliary_pids:
+                self.auxiliary_pids[process_id] = []
+            if vnc_proc.pid not in self.auxiliary_pids[process_id]:
+                self.auxiliary_pids[process_id].append(vnc_proc.pid)
+
+            self.logger.info(f"Spawned x11vnc for desktop service {process_id} (PID: {vnc_proc.pid}, port: {vnc_port}, display: :{display_num})")
+            return vnc_proc
+        except Exception as e:
+            self.logger.error(f"Failed to spawn x11vnc for service {process_id}: {e}")
+            return None
+
+    def find_auxiliary_pids(self, process_id: int, svc_type: str = "desktop") -> List[int]:
+        """
+        Discovers active auxiliary OS processes associated with this service ID (e.g. x11vnc, browser).
+        """
+        aux_pids = []
+        str_proc_id = str(process_id)
+        main_pid = self.reattached_pids.get(process_id) or (self.processes.get(process_id).pid if self.processes.get(process_id) else None)
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                pid = proc.info['pid']
+                if main_pid is not None and pid == main_pid:
+                    continue
+
+                name = (proc.info['name'] or '').lower()
+                is_target = any(bin_name in name for bin_name in ['x11vnc', 'xvfb', 'chromium', 'firefox', 'cog'])
+                if not is_target:
+                    continue
+
+                matches = False
+                try:
+                    env = proc.environ()
+                    if env.get("FFMPEG_GUI_PROCESS_ID") == str_proc_id:
+                        matches = True
+                except Exception:
+                    pass
+
+                if not matches:
+                    try:
+                        cmdline = " ".join(proc.cmdline())
+                        with self.db_session_factory() as session:
+                            from database.models import Service
+                            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                            if media_proc:
+                                desk_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
+                                disp_str = f":{desk_cfg.get('display_num', 99)}"
+                                if disp_str in cmdline:
+                                    matches = True
+                    except Exception:
+                        pass
+
+                if matches and pid not in aux_pids:
+                    aux_pids.append(pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+        return aux_pids
+
+    async def _ensure_desktop_vnc(self, process_id: int, log_path: Optional[str] = None):
+        """Ensures that x11vnc is running for a desktop service whose Xvfb is alive."""
+        with self.db_session_factory() as session:
+            from database.models import Service
+            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+            if not media_proc or getattr(media_proc, "service_type", None) != "desktop":
+                return
+            desk_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
+            display_num = int(desk_cfg.get("display_num", 99))
+            vnc_port = int(desk_cfg.get("vnc_port", 5900 + display_num))
+            if not log_path:
+                log_path = self.get_process_log_path(process_id, media_proc.log_storage_id, session=session)
+
+        # Check if an x11vnc process is already alive in tracked auxiliary PIDs
+        existing_pids = list(self.auxiliary_pids.get(process_id, []))
+        for apid in existing_pids:
+            try:
+                p = psutil.Process(apid)
+                if "x11vnc" in (p.name() or "").lower() and p.is_running():
+                    return
+            except Exception:
+                pass
+
+        # Also search OS in case it was already running untracked
+        found_pids = self.find_auxiliary_pids(process_id, svc_type="desktop")
+        for fpid in found_pids:
+            try:
+                p = psutil.Process(fpid)
+                if "x11vnc" in (p.name() or "").lower() and p.is_running():
+                    if fpid not in self.auxiliary_pids.setdefault(process_id, []):
+                        self.auxiliary_pids[process_id].append(fpid)
+                    return
+            except Exception:
+                pass
+
+        # Spawn x11vnc
+        await self._spawn_x11vnc(
+            process_id=process_id,
+            display_num=display_num,
+            vnc_port=vnc_port,
+            log_path=log_path
+        )
+
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process, log_path: Optional[str] = None):
         import re
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
@@ -1657,10 +1832,32 @@ class ProcessManager:
                     break
 
                 # For services with auxiliary processes (e.g. x11vnc for desktop services), check their health
-                aux_procs = self.auxiliary_processes.get(process_id, [])
-                if any(aux and aux.returncode is not None for aux in aux_procs):
-                    self.logger.warning(f"Auxiliary process for service {process_id} terminated unexpectedly.")
-                    break
+                aux_pids = list(self.auxiliary_pids.get(process_id, []))
+                for aux in self.auxiliary_processes.get(process_id, []):
+                    if aux and aux.pid and aux.pid not in aux_pids:
+                        aux_pids.append(aux.pid)
+
+                aux_dead = False
+                for aux_pid in aux_pids:
+                    if not psutil.pid_exists(aux_pid):
+                        aux_dead = True
+                        break
+
+                if aux_dead:
+                    # Detect svc_type for appropriate recovery
+                    with self.db_session_factory() as session:
+                        from database.models import Service
+                        _proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                        _svc_type = getattr(_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream" if _proc else "ffmpeg_stream"
+
+                    if _svc_type == "desktop":
+                        self.logger.warning(f"Auxiliary process for desktop service {process_id} terminated. Attempting self-healing respawn...")
+                        self.auxiliary_pids[process_id] = [ap for ap in self.auxiliary_pids.get(process_id, []) if psutil.pid_exists(ap)]
+                        self.auxiliary_processes[process_id] = [ap for ap in self.auxiliary_processes.get(process_id, []) if ap.returncode is None and psutil.pid_exists(ap.pid)]
+                        await self._ensure_desktop_vnc(process_id)
+                    else:
+                        self.logger.warning(f"Auxiliary process for service {process_id} terminated unexpectedly.")
+                        break
 
                 # Get system metrics
                 cpu = 0
@@ -2171,13 +2368,13 @@ class ProcessManager:
             if process_id in self.processes:
                 del self.processes[process_id]
 
-    def reattach_process(self, process_id: int, pid: int):
+    def reattach_process(self, process_id: int, pid: int) -> List[int]:
         with self.db_session_factory() as session:
             from database.models import Service
             media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
             if not media_proc:
                 self.logger.error(f"Cannot reattach service {process_id}: not found in DB")
-                return
+                return [pid]
             svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
             log_path = self.get_process_log_path(process_id, media_proc.log_storage_id, session=session)
             out_cfg = (media_proc.config or {}).get("output_config") or media_proc.output_config
@@ -2186,6 +2383,24 @@ class ProcessManager:
         self.processes[process_id] = None
         self.reattached_pids[process_id] = pid
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
+
+        # Discover and register auxiliary processes (e.g. x11vnc, browser)
+        found_aux = self.find_auxiliary_pids(process_id, svc_type=svc_type)
+        self.auxiliary_pids[process_id] = list(found_aux)
+
+        if svc_type == "desktop":
+            has_x11vnc = False
+            for apid in found_aux:
+                try:
+                    if "x11vnc" in (psutil.Process(apid).name() or "").lower():
+                        has_x11vnc = True
+                        break
+                except Exception:
+                    pass
+            if not has_x11vnc:
+                self.logger.warning(f"Reattached desktop service {process_id} is missing x11vnc. Scheduling auto-spawn.")
+                asyncio.create_task(self._ensure_desktop_vnc(process_id, log_path))
+
         if svc_type in ("mediamtx_hub", "icecast_server", "desktop"):
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
@@ -2196,6 +2411,8 @@ class ProcessManager:
             resource_lock_manager.acquire_lock("service", process_id, out_cfg, owner_name=proc_name)
         except Exception as lock_err:
             self.logger.warning(f"Failed to re-acquire resource lock on reattach for service {process_id}: {lock_err}")
+
+        return [pid] + list(self.auxiliary_pids.get(process_id, []))
 
     async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
         """Gracefully restarts any active/running services configured with TLS/SSL encryption."""

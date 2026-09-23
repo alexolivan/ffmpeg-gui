@@ -1,11 +1,14 @@
 import os
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
+import psutil
+import signal
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from database.models import Base, Service
 from core.process_manager import ProcessManager
+from utils.process_utils import cleanup_rogue_processes
 
 
 class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
@@ -52,7 +55,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIn("-nopw", x11vnc_cmd)
         self.assertIn("-forever", x11vnc_cmd)
         self.assertIn("-shared", x11vnc_cmd)
-        self.assertNotIn("-bg", x11vnc_cmd)  # Must NOT fork into background
+        self.assertNotIn("-bg", x11vnc_cmd)
 
     def test_build_desktop_cmds_custom_values(self):
         svc = Service(
@@ -144,9 +147,10 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
             self.assertIn(4, self.pm.processes)
             self.assertEqual(self.pm.processes[4], mock_xvfb)
 
-            # Verify x11vnc was stored in auxiliary_processes
+            # Verify x11vnc was stored in auxiliary_processes and auxiliary_pids
             self.assertIn(4, self.pm.auxiliary_processes)
             self.assertEqual(self.pm.auxiliary_processes[4], [mock_x11vnc])
+            self.assertEqual(self.pm.auxiliary_pids[4], [22222])
 
             # Stop process
             await self.pm.stop_process(4, graceful=True)
@@ -195,14 +199,123 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
                 session.add(svc)
                 session.commit()
 
-            # Start process without raising AttributeError on NoneType configs
             await self.pm.start_process(5)
             self.assertIn(5, self.pm.processes)
 
             await self.pm.stop_process(5, graceful=True)
             self.assertNotIn(5, self.pm.processes)
 
+    @patch("psutil.process_iter")
+    def test_find_auxiliary_pids(self, mock_iter):
+        proc_vnc = MagicMock()
+        proc_vnc.info = {"pid": 1798, "name": "x11vnc"}
+        proc_vnc.environ.return_value = {"FFMPEG_GUI_PROCESS_ID": "10"}
+
+        proc_other = MagicMock()
+        proc_other.info = {"pid": 2000, "name": "ffmpeg"}
+        proc_other.environ.return_value = {"FFMPEG_GUI_PROCESS_ID": "1"}
+
+        mock_iter.return_value = [proc_vnc, proc_other]
+
+        aux_pids = self.pm.find_auxiliary_pids(process_id=10, svc_type="desktop")
+        self.assertEqual(aux_pids, [1798])
+
+    @patch("core.process_manager.ProcessManager.find_auxiliary_pids")
+    async def test_reattach_process_returns_all_pids(self, mock_find_aux):
+        mock_find_aux.return_value = [1798]
+
+        with self.Session() as session:
+            desk_svc = Service(
+                id=10,
+                name="Test Desktop",
+                service_type="desktop",
+                config={
+                    "desktop_config": {
+                        "display_num": 99,
+                        "resolution": "1920x1080",
+                        "color_depth": 24,
+                        "vnc_port": 5999,
+                    }
+                },
+                status="running",
+                pid=1791,
+            )
+            session.add(desk_svc)
+            session.commit()
+
+        with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
+             patch.object(self.pm, "_ensure_desktop_vnc", new_callable=AsyncMock), \
+             patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock):
+            all_pids = self.pm.reattach_process(10, pid=1791)
+            self.assertEqual(all_pids, [1791, 1798])
+            self.assertEqual(self.pm.auxiliary_pids[10], [1798])
+
+    @patch("psutil.process_iter")
+    def test_cleanup_rogue_processes_preserves_desktop_and_vnc(self, mock_iter):
+        proc_xvfb = MagicMock()
+        proc_xvfb.info = {"pid": 1791, "name": "Xvfb"}
+        proc_xvfb.environ.return_value = {"FFMPEG_GUI_PROCESS_ID": "10"}
+
+        proc_vnc = MagicMock()
+        proc_vnc.info = {"pid": 1798, "name": "x11vnc"}
+        proc_vnc.environ.return_value = {"FFMPEG_GUI_PROCESS_ID": "10"}
+
+        proc_stale = MagicMock()
+        proc_stale.info = {"pid": 9999, "name": "x11vnc"}
+        proc_stale.environ.return_value = {"FFMPEG_GUI_PROCESS_ID": "99"}
+
+        mock_iter.return_value = [proc_xvfb, proc_vnc, proc_stale]
+
+        # Active PIDs contains both Xvfb (1791) and x11vnc (1798)
+        cleanup_rogue_processes(active_pids={1791, 1798})
+
+        # Neither Xvfb nor x11vnc should be killed
+        proc_xvfb.send_signal.assert_not_called()
+        proc_vnc.send_signal.assert_not_called()
+
+        # The stale one should be killed
+        proc_stale.send_signal.assert_called_once_with(signal.SIGKILL)
+
+    @patch("psutil.pid_exists")
+    async def test_watchdog_respawns_dead_auxiliary_vnc(self, mock_pid_exists):
+        with self.Session() as session:
+            desk_svc = Service(
+                id=20,
+                name="Test Desktop Watchdog",
+                service_type="desktop",
+                config={
+                    "desktop_config": {
+                        "display_num": 99,
+                        "resolution": "1920x1080",
+                        "color_depth": 24,
+                        "vnc_port": 5999,
+                    }
+                },
+                status="running",
+                pid=1791,
+            )
+            session.add(desk_svc)
+            session.commit()
+
+        self.pm.auxiliary_pids[20] = [1798]
+
+        iteration = 0
+        def side_effect(pid):
+            nonlocal iteration
+            if pid == 1791:
+                iteration += 1
+                return iteration <= 2
+            if pid == 1798:
+                return False
+            return False
+
+        mock_pid_exists.side_effect = side_effect
+
+        with patch.object(self.pm, "_ensure_desktop_vnc", new_callable=AsyncMock) as mock_ensure:
+            with patch("asyncio.sleep", new_callable=AsyncMock):
+                await self.pm._watchdog(20, pid=1791)
+                mock_ensure.assert_called_once_with(20)
+
 
 if __name__ == "__main__":
     unittest.main()
-
