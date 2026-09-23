@@ -207,6 +207,18 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
 
     @patch("psutil.process_iter")
     def test_find_auxiliary_pids(self, mock_iter):
+        with self.Session() as session:
+            desk_svc = Service(
+                id=10,
+                name="Test Desktop",
+                service_type="desktop",
+                config={"desktop_config": {"display_num": 99}},
+                status="running",
+                pid=1791,
+            )
+            session.add(desk_svc)
+            session.commit()
+
         proc_vnc = MagicMock()
         proc_vnc.info = {"pid": 1798, "name": "x11vnc"}
         proc_vnc.environ.return_value = {"FFMPEG_GUI_PROCESS_ID": "10"}
@@ -219,6 +231,10 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
 
         aux_pids = self.pm.find_auxiliary_pids(process_id=10, svc_type="desktop")
         self.assertEqual(aux_pids, [1798])
+
+    def test_find_auxiliary_pids_ignores_non_desktop_services(self):
+        aux_pids = self.pm.find_auxiliary_pids(process_id=1, svc_type="ffmpeg_stream")
+        self.assertEqual(aux_pids, [])
 
     @patch("core.process_manager.ProcessManager.find_auxiliary_pids")
     async def test_reattach_process_returns_all_pids(self, mock_find_aux):

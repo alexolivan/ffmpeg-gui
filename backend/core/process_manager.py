@@ -1469,10 +1469,23 @@ class ProcessManager:
     def find_auxiliary_pids(self, process_id: int, svc_type: str = "desktop") -> List[int]:
         """
         Discovers active auxiliary OS processes associated with this service ID (e.g. x11vnc, browser).
+        Only applicable to multi-process services (e.g. desktop).
         """
+        if svc_type != "desktop":
+            return []
+
+        with self.db_session_factory() as session:
+            from database.models import Service
+            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+            if not media_proc or getattr(media_proc, "service_type", None) != "desktop":
+                return []
+            desk_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
+            target_display = int(desk_cfg.get("display_num", 99))
+
         aux_pids = []
         str_proc_id = str(process_id)
         main_pid = self.reattached_pids.get(process_id) or (self.processes.get(process_id).pid if self.processes.get(process_id) else None)
+
         for proc in psutil.process_iter(['pid', 'name']):
             try:
                 pid = proc.info['pid']
@@ -1480,7 +1493,8 @@ class ProcessManager:
                     continue
 
                 name = (proc.info['name'] or '').lower()
-                is_target = any(bin_name in name for bin_name in ['x11vnc', 'xvfb', 'chromium', 'firefox', 'cog'])
+                # Auxiliary binaries for desktop (Xvfb is the main process, never an auxiliary)
+                is_target = any(bin_name in name for bin_name in ['x11vnc', 'chromium', 'chrome', 'firefox', 'cog'])
                 if not is_target:
                     continue
 
@@ -1495,14 +1509,9 @@ class ProcessManager:
                 if not matches:
                     try:
                         cmdline = " ".join(proc.cmdline())
-                        with self.db_session_factory() as session:
-                            from database.models import Service
-                            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
-                            if media_proc:
-                                desk_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
-                                disp_str = f":{desk_cfg.get('display_num', 99)}"
-                                if disp_str in cmdline:
-                                    matches = True
+                        disp_str = f":{target_display}"
+                        if disp_str in cmdline:
+                            matches = True
                     except Exception:
                         pass
 
@@ -2385,10 +2394,10 @@ class ProcessManager:
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
 
         # Discover and register auxiliary processes (e.g. x11vnc, browser)
-        found_aux = self.find_auxiliary_pids(process_id, svc_type=svc_type)
-        self.auxiliary_pids[process_id] = list(found_aux)
-
         if svc_type == "desktop":
+            found_aux = self.find_auxiliary_pids(process_id, svc_type=svc_type)
+            self.auxiliary_pids[process_id] = list(found_aux)
+
             has_x11vnc = False
             for apid in found_aux:
                 try:
@@ -2400,6 +2409,8 @@ class ProcessManager:
             if not has_x11vnc:
                 self.logger.warning(f"Reattached desktop service {process_id} is missing x11vnc. Scheduling auto-spawn.")
                 asyncio.create_task(self._ensure_desktop_vnc(process_id, log_path))
+        else:
+            self.auxiliary_pids[process_id] = []
 
         if svc_type in ("mediamtx_hub", "icecast_server", "desktop"):
             self.log_buffers[process_id] = collections.deque(maxlen=100)
