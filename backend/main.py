@@ -7236,8 +7236,11 @@ class ToggleInstalledSoftwareRequest(BaseModel):
     alias: Optional[str] = None
 
 
-class DownloadMediaMtxReleaseRequest(BaseModel):
+class DownloadSoftwareReleaseRequest(BaseModel):
     version: str
+
+
+DownloadMediaMtxReleaseRequest = DownloadSoftwareReleaseRequest
 
 
 @app.get("/api/settings/software")
@@ -7305,32 +7308,57 @@ def toggle_installed_software(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/api/settings/software/mediamtx/releases")
-def get_mediamtx_releases():
-    """Retorna la lista de releases oficiales de MediaMTX en GitHub."""
-    return software_manager.get_mediamtx_releases()
+@app.get("/api/settings/software/{software_type}/releases")
+def get_software_engine_releases(software_type: str):
+    """Retorna la lista de releases oficiales para un motor de software (mediamtx, chromium, firefox)."""
+    try:
+        return software_manager.get_engine_releases(software_type)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error fetching releases for {software_type}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error obteniendo releases de {software_type}: {e}")
 
 
-@app.post("/api/settings/software/mediamtx/download")
-def download_mediamtx_release(
-    payload: DownloadMediaMtxReleaseRequest,
+@app.post("/api/settings/software/{software_type}/download")
+def download_software_engine_release(
+    software_type: str,
+    payload: DownloadSoftwareReleaseRequest,
     db: Session = Depends(get_db)
 ):
-    """Descarga, valida y aprovisiona una release precompilada de MediaMTX."""
+    """Descarga, valida y aprovisiona una release precompilada para un motor (mediamtx, chromium, firefox)."""
     from database.models import Storage
     build_storage = db.query(Storage).filter(Storage.type.in_(["build", "builds"])).first()
     storage_path = build_storage.path if build_storage else os.path.abspath("data/builds")
 
     try:
-        res = software_manager.provision_mediamtx_release(
+        res = software_manager.provision_engine_release(
+            software_type=software_type,
             version_tag=payload.version,
             db_session=db,
             builds_storage_dir=storage_path
         )
         return res
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        logger.error(f"Error aprovisionando MediaMTX: {e}")
-        raise HTTPException(status_code=500, detail=f"Fallo al descargar o validar MediaMTX: {e}")
+        logger.error(f"Error aprovisionando {software_type}: {e}")
+        raise HTTPException(status_code=500, detail=f"Fallo al descargar o validar {software_type}: {e}")
+
+
+@app.get("/api/settings/software/mediamtx/releases")
+def get_mediamtx_releases():
+    """Retorna la lista de releases oficiales de MediaMTX (alias retrocompatible)."""
+    return get_software_engine_releases("mediamtx")
+
+
+@app.post("/api/settings/software/mediamtx/download")
+def download_mediamtx_release(
+    payload: DownloadSoftwareReleaseRequest,
+    db: Session = Depends(get_db)
+):
+    """Descarga, valida y aprovisiona una release precompilada de MediaMTX (alias retrocompatible)."""
+    return download_software_engine_release("mediamtx", payload, db)
 
 
 @app.post("/api/settings/software/{software_type}/icon")
