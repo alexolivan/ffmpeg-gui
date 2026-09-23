@@ -34,10 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Browser Kiosk Runtime & Multi-Process Stability**:
+  - Resolved Chromium crashpad `posix_spawn` Permission Denied (13) by ensuring all extracted helper binaries (`chrome_crashpad_handler`, `chrome-sandbox`, etc.) are granted `0o755` permissions during provisioning and runtime launch, and passing `--disable-crash-reporter`, `--no-crashpad`, and `--disable-breakpad`.
+  - Resolved daemon environment permission denied errors (`.cache/dconf`, fontconfig cache, and dbus-launch warnings) by isolating `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, and `XDG_DATA_HOME` per kiosk instance, setting `NO_AT_BRIDGE=1`, and disabling accessibility subsystems in Firefox `user.js`.
   - Resolved Firefox "profile cannot be loaded or is in use" error by passing `--no-remote`, disabling crash resume prompts in `user.js`, and automatically purging stale `.parentlock`/`lock` files from ephemeral profile folders prior to launch.
   - Resolved Chromium missing shared libraries on headless Linux installations by adding browser runtime dependencies (`libnss3`, `libnspr4`, `libatk`, `libcups2`, `libdrm2`, `libxkbcommon`, `libgbm`, `libpango`, `libcairo`, `libasound2`) to `install.sh`.
   - Added `--no-sandbox` fallback and `--disable-dev-shm-usage` for Chromium processes running under root/containerized systemd environments.
   - Ensured automatic engine synchronization in `ProcessManager._build_kiosk_cmds` when a custom software build is selected.
+  - Corrected `KioskConfigForm.tsx` to dynamically query host system binary presence from `/settings/software`, hiding/disabling "Host System Binary (PATH)" when not installed, auto-selecting the best provisioned release, and displaying an informative warning banner preventing submission if no valid binaries exist.
 
 ## [2.22.0] - 2026-09-23
 

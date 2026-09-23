@@ -445,7 +445,24 @@ class ProcessManager:
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 elif svc_type == "kiosk_browser":
                     log_file_handle = open(log_path, "ab", buffering=0)
-                    kiosk_sub_env = {**sub_env, "DISPLAY": f":{display_num}"}
+                    kiosk_profile = self.ephemeral_configs.get(process_id) or f"/tmp/kiosk_{process_id}"
+                    cache_dir = os.path.join(kiosk_profile, "cache")
+                    config_dir = os.path.join(kiosk_profile, "config")
+                    data_dir = os.path.join(kiosk_profile, "data")
+                    os.makedirs(cache_dir, exist_ok=True)
+                    os.makedirs(config_dir, exist_ok=True)
+                    os.makedirs(data_dir, exist_ok=True)
+
+                    kiosk_sub_env = {
+                        **sub_env,
+                        "DISPLAY": f":{display_num}",
+                        "HOME": kiosk_profile,
+                        "XDG_CACHE_HOME": cache_dir,
+                        "XDG_CONFIG_HOME": config_dir,
+                        "XDG_DATA_HOME": data_dir,
+                        "NO_AT_BRIDGE": "1",
+                        "MOZ_NO_REMOTE": "1",
+                    }
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
                         stdout=log_file_handle,
@@ -1548,6 +1565,9 @@ class ProcessManager:
                 "--disable-features=TranslateUI",
                 "--autoplay-policy=no-user-gesture-required",
                 "--disable-dev-shm-usage",
+                "--disable-crash-reporter",
+                "--no-crashpad",
+                "--disable-breakpad",
                 "--kiosk",
                 "--start-fullscreen",
             ]
@@ -1594,6 +1614,12 @@ class ProcessManager:
                 'user_pref("media.autoplay.blocking_policy", 0);',
                 'user_pref("toolkit.telemetry.enabled", false);',
                 'user_pref("datareporting.healthreport.uploadEnabled", false);',
+                'user_pref("accessibility.force_disabled", 1);',
+                'user_pref("app.normandy.enabled", false);',
+                'user_pref("app.shield.optoutstudies.enabled", false);',
+                'user_pref("browser.discovery.enabled", false);',
+                'user_pref("extensions.pocket.enabled", false);',
+                'user_pref("network.captive-portal-service.enabled", false);',
             ]
 
             if disk_cache_disabled:
@@ -1627,6 +1653,21 @@ class ProcessManager:
                 cmd.extend(shlex.split(custom_flags))
 
             cmd.append(target_source)
+
+        # Ensure executable permissions on browser binary and any sibling helpers
+        bin_dir = os.path.dirname(browser_bin)
+        if os.path.isdir(bin_dir):
+            for helper in ("chrome_crashpad_handler", "chrome-sandbox", "crashreporter", "glxtest", "vaapitest"):
+                h_path = os.path.join(bin_dir, helper)
+                if os.path.exists(h_path):
+                    try:
+                        os.chmod(h_path, 0o755)
+                    except Exception:
+                        pass
+        try:
+            os.chmod(browser_bin, 0o755)
+        except Exception:
+            pass
 
         return cmd, display_num, ephemeral_profile_dir
 

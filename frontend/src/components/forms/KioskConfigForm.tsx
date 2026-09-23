@@ -35,9 +35,10 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
     kCfg.engine_id === 'firefox' ? 'firefox' : 'chromium'
   );
   const [buildId, setBuildId] = useState<number | string>(
-    kCfg.build_id || initialConfig?.config?.software_build_id || 'system'
+    kCfg.build_id || initialConfig?.ffmpeg_build_id || initialConfig?.config?.software_build_id || ''
   );
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
+  const [systemBinaryStatus, setSystemBinaryStatus] = useState<Record<string, { found: boolean; path?: string; version?: string }>>({});
 
   // Target Source
   const [targetSource, setTargetSource] = useState<string>(
@@ -93,9 +94,28 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
       .finally(() => setIsLoadingDesktops(false));
   }, [API]);
 
+  // Fetch system software capabilities and binary presence
+  useEffect(() => {
+    fetch(`${API}/settings/software`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.engines) {
+          const statusMap: Record<string, { found: boolean; path?: string; version?: string }> = {};
+          for (const [key, val] of Object.entries(data.engines as Record<string, any>)) {
+            statusMap[key] = {
+              found: Boolean(val?.system_binary?.found),
+              path: val?.system_binary?.path,
+              version: val?.system_binary?.version
+            };
+          }
+          setSystemBinaryStatus(statusMap);
+        }
+      })
+      .catch((err) => console.error('Error fetching software status for kiosk:', err));
+  }, [API]);
+
   const handleEngineChange = (newEngine: 'chromium' | 'firefox') => {
     setEngineId(newEngine);
-    setBuildId('system');
   };
 
   // Fetch builds for selected engine
@@ -117,10 +137,33 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
       .catch((err) => console.error('Error fetching engine builds:', err));
   }, [API, engineId]);
 
+  const hasSystemBinary = Boolean(systemBinaryStatus[engineId]?.found);
+  const systemPath = systemBinaryStatus[engineId]?.path;
+
+  // Synchronize and validate buildId when engine, available builds, or software status changes
+  useEffect(() => {
+    const isBuildValid = availableBuilds.some((b) => String(b.id) === String(buildId));
+    const isSystemValid = buildId === 'system' && hasSystemBinary;
+
+    if (!isBuildValid && !isSystemValid) {
+      if (availableBuilds.length > 0) {
+        setBuildId(String(availableBuilds[0].id));
+      } else if (hasSystemBinary) {
+        setBuildId('system');
+      } else {
+        setBuildId('');
+      }
+    }
+  }, [availableBuilds, hasSystemBinary, buildId, engineId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!desktopServiceId) {
       alert(t('kiosk.no_desktop_warning', 'Please select or create a Virtual Desktop Server first.'));
+      return;
+    }
+    if (!buildId || (buildId === 'system' && !hasSystemBinary)) {
+      alert(t('kiosk.invalid_binary_warning', 'Please select a valid browser binary or install one in Settings → Software.'));
       return;
     }
 
@@ -311,15 +354,34 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
               onChange={(e) => setBuildId(e.target.value)}
               className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none"
             >
-              <option value="system">
-                {t('kiosk.build_system', 'Host System Binary (PATH audit)')}
-              </option>
+              {hasSystemBinary && (
+                <option value="system">
+                  {t('kiosk.build_system', 'Host System Binary (PATH audit)')} ({systemPath || 'PATH'})
+                </option>
+              )}
               {availableBuilds.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name || `${b.software_type} v${b.version}`} ({b.binary_path || 'Precompiled'})
+                  {b.name || `${b.software_type} v${b.version_tag || b.version}`} ({b.binary_path || 'Precompiled'})
                 </option>
               ))}
+              {!hasSystemBinary && availableBuilds.length === 0 && (
+                <option value="" disabled>
+                  {t('kiosk.no_binaries_available', 'No binary available (System or Downloaded)')}
+                </option>
+              )}
             </select>
+
+            {!hasSystemBinary && availableBuilds.length === 0 && (
+              <div className="mt-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs flex items-center gap-2">
+                <span>⚠️</span>
+                <span>
+                  {t(
+                    'kiosk.no_browser_binary_warning',
+                    'No executable binary found for this engine. Please install it on the host or provision an official release in Settings → Software.'
+                  )}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -541,7 +603,7 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isSubmitting || !desktopServiceId}
+          disabled={isSubmitting || !desktopServiceId || !buildId || (!hasSystemBinary && availableBuilds.length === 0)}
           className="px-5 py-2 rounded-xl text-xs font-bold bg-brand-lime text-black hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-50"
         >
           {isSubmitting

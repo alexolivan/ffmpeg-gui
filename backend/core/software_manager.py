@@ -571,16 +571,23 @@ class SoftwareManager:
             bin_path = None
             for root, _, files in os.walk(bin_dest_dir):
                 for f in files:
+                    fp = os.path.join(root, f)
                     if f == "chrome":
-                        bin_path = os.path.join(root, f)
-                        break
-                if bin_path:
-                    break
+                        bin_path = fp
+                    # Grant execute permissions to binaries and helper executables
+                    if not f.endswith(('.pak', '.bin', '.dat', '.json', '.png', '.html', '.txt')):
+                        try:
+                            os.chmod(fp, 0o755)
+                        except Exception:
+                            pass
 
             if not bin_path or not os.path.exists(bin_path):
                 raise FileNotFoundError(f"Binary 'chrome' was not found in extracted files at {bin_dest_dir}")
 
-            os.chmod(bin_path, 0o755)
+            try:
+                os.chmod(bin_path, 0o755)
+            except Exception:
+                pass
 
             v_res = subprocess.run([bin_path, "--version"], capture_output=True, text=True, timeout=3)
             ver_out = (v_res.stdout or "") + (v_res.stderr or "")
@@ -742,16 +749,22 @@ class SoftwareManager:
             bin_path = None
             for root, _, files in os.walk(bin_dest_dir):
                 for f in files:
+                    fp = os.path.join(root, f)
                     if f == "firefox":
-                        bin_path = os.path.join(root, f)
-                        break
-                if bin_path:
-                    break
+                        bin_path = fp
+                    if not f.endswith(('.xpi', '.so', '.bin', '.dat', '.json', '.png', '.html', '.txt')):
+                        try:
+                            os.chmod(fp, 0o755)
+                        except Exception:
+                            pass
 
             if not bin_path or not os.path.exists(bin_path):
                 raise FileNotFoundError(f"Binary 'firefox' was not found in extracted files at {bin_dest_dir}")
 
-            os.chmod(bin_path, 0o755)
+            try:
+                os.chmod(bin_path, 0o755)
+            except Exception:
+                pass
 
             v_res = subprocess.run([bin_path, "--version"], capture_output=True, text=True, timeout=3)
             ver_out = (v_res.stdout or "") + (v_res.stderr or "")

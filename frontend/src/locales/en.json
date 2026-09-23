@@ -1586,6 +1586,9 @@
     "preview_title": "Web Kiosk Preview",
     "preview_desktop_link": "Displaying on Desktop #{id}",
     "service_stopped_title": "Web Kiosk Display is Stopped",
-    "service_stopped_desc": "Start the kiosk service to launch the browser and view the screen."
+    "service_stopped_desc": "Start the kiosk service to launch the browser and view the screen.",
+    "no_binaries_available": "No binary available (System or Downloaded)",
+    "no_browser_binary_warning": "No executable binary found for this engine. Please install it on the host or provision an official release in Settings → Software.",
+    "invalid_binary_warning": "Please select a valid browser binary or install one in Settings → Software."
   }
 }

@@ -1586,6 +1586,9 @@
     "preview_title": "Vista Previa de Kiosk Web",
     "preview_desktop_link": "Mostrando en Escritorio #{id}",
     "service_stopped_title": "El Visualizador Kiosk Web está Detenido",
-    "service_stopped_desc": "Inicia el servicio de kiosk para arrancar el navegador y visualizar la pantalla."
+    "service_stopped_desc": "Inicia el servicio de kiosk para arrancar el navegador y visualizar la pantalla.",
+    "no_binaries_available": "Sin binario disponible (Sistema o Descargado)",
+    "no_browser_binary_warning": "No se encontró ningún ejecutable para este motor. Instálalo en el host o descarga una versión en Ajustes → Software.",
+    "invalid_binary_warning": "Selecciona un binario válido de navegador o descarga uno en Ajustes → Software."
   }
 }
