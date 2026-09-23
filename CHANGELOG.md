@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.22.0] - 2026-09-23
+
 ### Added
 - **Virtual Desktop Root Cursor & Background Canvas Initialization**:
   - Automatically initialize distinct dark slate canvas (`#1e293b`, Slate-800) with explicit `-display` targeting via `xsetroot` on virtual desktop launch, providing immediate visual confirmation of an active session.
