@@ -60,6 +60,18 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
   const isRunning = currentProcess.status === 'running';
 
+  const isKiosk = selectedProcess.service_type === 'kiosk_browser';
+  const kioskCfg = isKiosk ? (currentProcess.config?.kiosk_config || currentProcess.config || {}) : null;
+  const targetDesktopId = isKiosk ? kioskCfg?.desktop_service_id : selectedProcess.id;
+  const targetDesktopProcess = isKiosk ? telemetry.find((p) => p.id === targetDesktopId) : null;
+  const deskCfg = isKiosk
+    ? (targetDesktopProcess?.config?.desktop_config || targetDesktopProcess?.desktop_config || {})
+    : (currentProcess.config?.desktop_config || currentProcess.desktop_config || currentProcess.config || {});
+
+  const displayNum = deskCfg.display_num ?? 99;
+  const vncPort = deskCfg.vnc_port ?? 5900 + displayNum;
+  const resolution = deskCfg.resolution || '1920x1080';
+
   const [activeTab, setActiveTab] = useState<'screen' | 'logs'>('screen');
   const [connectionStatus, setConnectionStatus] = useState<
     'connecting' | 'connected' | 'disconnected' | 'failed'
@@ -72,11 +84,6 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
   const canvasContainerRef = useRef<HTMLDivElement | null>(null);
   const rfbRef = useRef<any>(null);
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
-
-  const deskCfg = currentProcess.config?.desktop_config || currentProcess.config || {};
-  const displayNum = deskCfg.display_num ?? 99;
-  const vncPort = deskCfg.vnc_port ?? 5900 + displayNum;
-  const resolution = deskCfg.resolution || '1920x1080';
 
   // Fetch daemon logs
   useEffect(() => {
@@ -108,7 +115,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
 
   // Connect RFB client when running and screen tab is active
   useEffect(() => {
-    if (!isRunning || activeTab !== 'screen' || !canvasContainerRef.current) {
+    if (!isRunning || activeTab !== 'screen' || !canvasContainerRef.current || !targetDesktopId) {
       if (rfbRef.current) {
         try {
           rfbRef.current.disconnect();
@@ -127,7 +134,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/desktop/${selectedProcess.id}/vnc`;
+    const wsUrl = `${protocol}//${host}/ws/desktop/${targetDesktopId}/vnc`;
 
     setConnectionStatus('connecting');
 
@@ -161,7 +168,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
         rfbRef.current = null;
       }
     };
-  }, [isRunning, activeTab, selectedProcess.id, scaleViewport]);
+  }, [isRunning, activeTab, targetDesktopId, scaleViewport]);
 
   const handleReconnect = () => {
     if (rfbRef.current) {
@@ -173,14 +180,14 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
     setConnectionStatus('connecting');
     // Force effect re-run by toggling briefly
     setTimeout(() => {
-      if (canvasContainerRef.current && isRunning) {
+      if (canvasContainerRef.current && isRunning && targetDesktopId) {
         const container = canvasContainerRef.current;
         while (container.firstChild) {
           container.removeChild(container.firstChild);
         }
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
-        const wsUrl = `${protocol}//${host}/ws/desktop/${selectedProcess.id}/vnc`;
+        const wsUrl = `${protocol}//${host}/ws/desktop/${targetDesktopId}/vnc`;
         try {
           const rfb = new RFB(container, wsUrl, { shared: true });
           rfb.scaleViewport = scaleViewport;
@@ -228,7 +235,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
               }`}
             />
 
-            <EngineLogo softwareType="desktop" size={18} API={API} />
+            <EngineLogo softwareType={isKiosk ? (kioskCfg?.engine_id || 'chromium') : 'desktop'} size={18} API={API} />
 
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -240,8 +247,12 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
                     [{currentProcess.name}]
                   </span>
                 )}
-                <span className="text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded">
-                  Display :{displayNum} • {resolution}
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                  isKiosk 
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' 
+                    : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                }`}>
+                  {isKiosk ? `Kiosk (${kioskCfg?.engine_id || 'chromium'}) • Display :${displayNum}` : `Display :${displayNum} • ${resolution}`}
                 </span>
               </div>
 
@@ -249,8 +260,19 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
                 <span>PID: <strong className="text-[var(--text-primary)]">{currentProcess.pid || 'OFFLINE'}</strong></span>
                 <span>•</span>
                 <span>Uptime: <strong className="text-[var(--text-primary)]">{formatUptime(currentProcess.last_start, isRunning)}</strong></span>
-                <span>•</span>
-                <span>VNC: <strong className="text-cyan-400">127.0.0.1:{vncPort}</strong></span>
+                {isKiosk ? (
+                  <>
+                    <span>•</span>
+                    <span>URL: <strong className="text-[var(--text-primary)] truncate max-w-xs inline-block align-bottom">{kioskCfg?.target_source || 'about:blank'}</strong></span>
+                    <span>•</span>
+                    <span>Desktop: <strong className="text-cyan-400">#{targetDesktopId}</strong></span>
+                  </>
+                ) : (
+                  <>
+                    <span>•</span>
+                    <span>VNC: <strong className="text-cyan-400">127.0.0.1:{vncPort}</strong></span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -425,12 +447,16 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
               />
             ) : (
               <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
-                <span className="text-4xl">🖥️</span>
+                <span className="text-4xl">{isKiosk ? '🌐' : '🖥️'}</span>
                 <h3 className="text-base font-bold text-[var(--text-primary)]">
-                  {t('desktop.service_stopped_title', 'Virtual Desktop is Stopped')}
+                  {isKiosk
+                    ? t('kiosk.service_stopped_title', 'Web Kiosk Display is Stopped')
+                    : t('desktop.service_stopped_title', 'Virtual Desktop is Stopped')}
                 </h3>
                 <p className="text-xs text-[var(--text-secondary)] max-w-md">
-                  {t('desktop.service_stopped_desc', 'Start the virtual desktop service to initialize the Xvfb X11 screen and connect via interactive HTML5 VNC.')}
+                  {isKiosk
+                    ? t('kiosk.service_stopped_desc', 'Start the kiosk service to launch the browser and view the screen.')
+                    : t('desktop.service_stopped_desc', 'Start the virtual desktop service to initialize the Xvfb X11 screen and connect via interactive HTML5 VNC.')}
                 </p>
                 <button
                   onClick={() => onStartService(selectedProcess.id)}
@@ -438,7 +464,9 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
                   className="mt-2 px-5 py-2 rounded-xl text-xs font-bold bg-brand-lime text-black hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <PlayIcon size={14} />
-                  {t('common.start_service', 'Start Virtual Desktop')}
+                  {isKiosk
+                    ? t('common.start_service', 'Start Kiosk Display')
+                    : t('common.start_service', 'Start Virtual Desktop')}
                 </button>
               </div>
             )

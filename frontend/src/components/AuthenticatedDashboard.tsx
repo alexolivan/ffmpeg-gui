@@ -17,6 +17,7 @@ import { ServiceTypePickerModal } from './modals/ServiceTypePickerModal';
 import { MediaMtxConfigForm } from './forms/MediaMtxConfigForm';
 import { IcecastConfigForm } from './forms/IcecastConfigForm';
 import { DesktopConfigForm } from './forms/DesktopConfigForm';
+import { KioskConfigForm } from './forms/KioskConfigForm';
 
 const API = '';
 
@@ -53,7 +54,9 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
   const [activeView, setActiveView] = useState('dashboard');
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [selectedLinuxDistro, setSelectedLinuxDistro] = useState<'debian' | 'fedora' | 'arch'>('debian');
-  const [creationServiceType, setCreationServiceType] = useState<'ffmpeg_stream' | 'mediamtx_hub' | 'icecast_server' | 'desktop'>('ffmpeg_stream');
+  const [creationServiceType, setCreationServiceType] = useState<
+    'ffmpeg_stream' | 'mediamtx_hub' | 'icecast_server' | 'desktop' | 'kiosk_browser'
+  >('ffmpeg_stream');
   const [creationStep, setCreationStep] = useState<'picker' | 'form'>('picker');
 
   const {
@@ -256,7 +259,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
                 </button>
                 <span className="text-[var(--glass-border)]">|</span>
                 <h3 className="text-base font-bold tracking-wide uppercase">
-                  {t('services.addNewService')}: {creationServiceType === 'mediamtx_hub' ? 'MediaMTX Hub' : creationServiceType === 'icecast_server' ? 'Icecast2 Server' : creationServiceType === 'desktop' ? 'Virtual Desktop' : 'FFmpeg Stream'}
+                  {t('services.addNewService')}: {creationServiceType === 'mediamtx_hub' ? 'MediaMTX Hub' : creationServiceType === 'icecast_server' ? 'Icecast2 Server' : creationServiceType === 'desktop' ? 'Virtual Desktop' : creationServiceType === 'kiosk_browser' ? 'Web Kiosk Display' : 'FFmpeg Stream'}
                 </h3>
               </div>
             </div>
@@ -333,6 +336,32 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
                     } else {
                       const errData = await res.json();
                       alert(`Error creating Virtual Desktop service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error: ${err.message || err}`);
+                  }
+                }}
+              />
+            ) : creationServiceType === 'kiosk_browser' ? (
+              <KioskConfigForm
+                API={API}
+                onCancel={() => {
+                  setShowAddModal(false);
+                  setCreationStep('picker');
+                }}
+                onSubmit={async (payload) => {
+                  try {
+                    const res = await fetch(`${API}/processes`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                      setShowAddModal(false);
+                      setCreationStep('picker');
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error creating Kiosk service: ${errData.detail || 'Unknown error'}`);
                     }
                   } catch (err: any) {
                     alert(`Network error: ${err.message || err}`);
@@ -472,6 +501,29 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
                   }
                 }}
               />
+            ) : editingProcess.service_type === 'kiosk_browser' ? (
+              <KioskConfigForm
+                API={API}
+                initialConfig={editingProcess}
+                onCancel={() => setEditingProcess(null)}
+                onSubmit={async (payload) => {
+                  try {
+                    const res = await fetch(`${API}/processes/${editingProcess.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                      setEditingProcess(null);
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error updating Kiosk service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error updating service: ${err.message || err}`);
+                  }
+                }}
+              />
             ) : (
               <ProcessConfigForm
                 initialConfig={editingProcess}
@@ -565,7 +617,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onRestartService={handleRestartService}
             API={API}
           />
-        ) : selectedProcess.service_type === 'desktop' ? (
+        ) : (selectedProcess.service_type === 'desktop' || selectedProcess.service_type === 'kiosk_browser') ? (
           <DesktopPreviewModal
             selectedProcess={selectedProcess}
             telemetry={telemetry}

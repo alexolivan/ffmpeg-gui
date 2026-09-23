@@ -15,6 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Made Settings LCD tab visibility resilient during capabilities load cycle in `SettingsView.tsx`.
   - Excluded `lcd` from generic capabilities iteration in `DashboardView.tsx` to prevent duplicate display cards alongside the dedicated active LCD panel card.
 
+## [2.23.0] - 2026-09-23
+
+### Added
+- **Web Kiosk Display Subsystem (Chromium & Firefox Launcher Strategy)**:
+  - Implemented `kiosk_browser` service orchestration in `ProcessManager` using the Launcher Strategy pattern with feature parity across Chromium and Mozilla Firefox.
+  - Implemented ephemeral profile isolation (`/tmp/kiosk_cr_{id}` and `/tmp/kiosk_ff_{id}` with injected `user.js` and `userChrome.css` for clean scrollbar suppression).
+  - Added SATADOM flash storage protection via `--disk-cache-dir=/dev/null` (Chromium) and `browser.cache.disk.enable = false` (Firefox).
+  - Enforced unattended autoplay policy and suppressed first-run wizards, translation popups, and crash recovery bubbles.
+  - Added auto-dependency management in `DependencyManager.sync_auto_dependencies` binding `kiosk_browser` to its parent `desktop` service (`desktop_service_id`).
+  - Added `KioskConfigForm.tsx` supporting engine selection, desktop target binding, flash protection, GPU acceleration modes, and custom operator flags.
+  - Updated `ServiceTypePickerModal.tsx` to enable Web Kiosk Display creation when browser engines are present.
+  - Updated `UnifiedServiceCard.tsx` with dynamic browser engine branding (`EngineLogo`), target URL, desktop reference, and engine label while preserving unified design tokens.
+  - Enhanced `DesktopPreviewModal.tsx` to support real-time interactive HTML5 noVNC preview of the running kiosk display on its target virtual desktop.
+  - Added internationalization keys to `en.json`, `es.json`, and `ca.json`.
+  - Added automated test coverage in `backend/tests/test_kiosk_browser.py`.
+
 ## [2.22.0] - 2026-09-23
 
 ### Added
