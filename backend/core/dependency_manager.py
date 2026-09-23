@@ -301,6 +301,19 @@ class DependencyManager:
                 if k_pid:
                     detected_provider_ids.add(k_pid)
 
+        # Check kiosk_config for desktop_service_id
+        if consumer_type == 'service':
+            from database.models import Service
+            consumer_svc = db_session.get(Service, consumer_id)
+            if consumer_svc and getattr(consumer_svc, 'service_type', None) == 'kiosk_browser':
+                k_cfg = (consumer_svc.config or {}).get("kiosk_config", {})
+                d_id = k_cfg.get("desktop_service_id")
+                if d_id:
+                    try:
+                        detected_provider_ids.add(int(d_id))
+                    except (ValueError, TypeError):
+                        pass
+
         # Never allow self-dependency
         if consumer_type == 'service':
             detected_provider_ids.discard(consumer_id)
