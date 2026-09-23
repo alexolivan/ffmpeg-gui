@@ -202,6 +202,38 @@ class TestSoftwareManager(unittest.TestCase):
         self.assertTrue(build.is_managed)
         self.assertEqual(build.name, "Firefox v130.0 (Official)")
 
+    @patch("urllib.request.urlretrieve")
+    @patch("tarfile.open")
+    @patch("subprocess.run")
+    def test_provision_firefox_release_404_fallback(self, mock_run, mock_tar_open, mock_urlretrieve):
+        import urllib.error
+        mock_proc = MagicMock()
+        mock_proc.stdout = "Mozilla Firefox 130.0\n"
+        mock_proc.stderr = ""
+        mock_run.return_value = mock_proc
+
+        # First call (.tar.xz) raises 404, second call (.tar.bz2) succeeds
+        mock_urlretrieve.side_effect = [
+            urllib.error.HTTPError("https://...", 404, "Not Found", {}, None),
+            None
+        ]
+
+        def fake_extractall(path):
+            nested_dir = os.path.join(path, "firefox")
+            os.makedirs(nested_dir, exist_ok=True)
+            bin_file = os.path.join(nested_dir, "firefox")
+            with open(bin_file, "w") as f:
+                f.write("#!/bin/sh\necho Mozilla Firefox 130.0\n")
+
+        mock_tar = MagicMock()
+        mock_tar.extractall = fake_extractall
+        mock_tar_open.return_value.__enter__.return_value = mock_tar
+
+        res = software_manager.provision_engine_release("firefox", "130.0", self.db, self.temp_dir)
+        self.assertTrue(res["success"])
+        self.assertEqual(mock_urlretrieve.call_count, 2)
+
+
 
 if __name__ == "__main__":
     unittest.main()
