@@ -393,11 +393,22 @@ class ProcessManager:
                             break
                         await asyncio.sleep(0.1)
 
-                    # 2. Configure root cursor and background canvas via xsetroot with active polling
-                    # Xvfb creates the socket file before it is ready to accept client connections.
-                    # We poll with xsetroot until Xvfb finishes handshake and returns code 0.
+                    # 1. Spawn x11vnc as permanent X11 client
+                    await self._spawn_x11vnc(
+                        process_id=process_id,
+                        display_num=display_num,
+                        vnc_port=vnc_port,
+                        log_path=log_path,
+                        sub_env=desktop_sub_env
+                    )
+
+                    # 2. Allow deliberate settling window (1.5s) for slow/industrial systems
+                    # and ensuring x11vnc has fully attached its RFB frame monitoring on the X server
+                    await asyncio.sleep(1.5)
+
+                    # 3. Configure root cursor and background canvas via xsetroot with active polling
                     if shutil.which("xsetroot"):
-                        for attempt in range(30):
+                        for attempt in range(10):
                             try:
                                 xsetroot_proc = await asyncio.create_subprocess_exec(
                                     *xsetroot_cmd,
@@ -411,9 +422,9 @@ class ProcessManager:
                                     break
                             except Exception as xr_err:
                                 self.logger.debug(f"xsetroot attempt {attempt + 1} notice: {xr_err}")
-                            await asyncio.sleep(0.1)
+                            await asyncio.sleep(0.2)
 
-                    # 3. Disable screensaver via xset
+                    # 4. Disable screensaver via xset
                     if shutil.which("xset"):
                         try:
                             xset_proc = await asyncio.create_subprocess_exec(
@@ -425,15 +436,6 @@ class ProcessManager:
                             await asyncio.wait_for(xset_proc.wait(), timeout=2.0)
                         except Exception as xset_err:
                             self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
-
-                    # 4. Spawn x11vnc
-                    await self._spawn_x11vnc(
-                        process_id=process_id,
-                        display_num=display_num,
-                        vnc_port=vnc_port,
-                        log_path=log_path,
-                        sub_env=desktop_sub_env
-                    )
 
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 else:
@@ -1401,6 +1403,7 @@ class ProcessManager:
             f":{display_num}",
             "-screen", "0", f"{resolution}x{color_depth}",
             "-nocursor",
+            "-noreset",
             "-nolisten", "tcp",
             "-s", "0",
             "-dpms",

@@ -35,6 +35,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIn(":99", xvfb_cmd)
         self.assertIn("1920x1080x24", xvfb_cmd)
         self.assertIn("-nocursor", xvfb_cmd)
+        self.assertIn("-noreset", xvfb_cmd)
         self.assertIn("-nolisten", xvfb_cmd)
         self.assertIn("tcp", xvfb_cmd)
         self.assertIn("-s", xvfb_cmd)
@@ -150,7 +151,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         mock_x11vnc.kill = MagicMock(side_effect=lambda: setattr(mock_x11vnc, "returncode", -9))
         mock_x11vnc.stdin = None
 
-        mock_exec.side_effect = [mock_xvfb, mock_xsetroot, mock_xset, mock_x11vnc]
+        mock_exec.side_effect = [mock_xvfb, mock_x11vnc, mock_xsetroot, mock_xset]
 
         with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
              patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock):
@@ -208,7 +209,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         mock_x11vnc.wait = AsyncMock(return_value=0)
         mock_x11vnc.terminate = MagicMock()
 
-        mock_exec.side_effect = [mock_xvfb, mock_xsetroot, mock_xset, mock_x11vnc]
+        mock_exec.side_effect = [mock_xvfb, mock_x11vnc, mock_xsetroot, mock_xset]
 
         with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
              patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock):
