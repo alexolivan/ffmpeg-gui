@@ -93,11 +93,22 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
       .finally(() => setIsLoadingDesktops(false));
   }, [API]);
 
+  const handleEngineChange = (newEngine: 'chromium' | 'firefox') => {
+    setEngineId(newEngine);
+    setBuildId('system');
+  };
+
   // Fetch builds for selected engine
   useEffect(() => {
     fetch(`${API}/builds`)
       .then((r) => (r.ok ? r.json() : []))
       .then((builds: any[]) => {
+        if (initialConfig?.ffmpeg_build_id && !kCfg.engine_id) {
+          const matched = builds.find((b: any) => b.id === initialConfig.ffmpeg_build_id);
+          if (matched && (matched.software_type === 'firefox' || matched.software_type === 'chromium')) {
+            setEngineId(matched.software_type);
+          }
+        }
         const engineBuilds = builds.filter(
           (b) => b.software_type === engineId && b.status === 'ready'
         );
@@ -120,6 +131,7 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
         name: name.trim() || 'Web Kiosk Display',
         alias: alias.trim() || null,
         service_type: 'kiosk_browser',
+        ffmpeg_build_id: parsedBuildId,
         config: {
           kiosk_config: {
             desktop_service_id: Number(desktopServiceId),
@@ -247,7 +259,7 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
           {/* Engine Choice Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div
-              onClick={() => setEngineId('chromium')}
+              onClick={() => handleEngineChange('chromium')}
               className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${
                 engineId === 'chromium'
                   ? 'bg-brand-lime/10 border-brand-lime shadow-sm ring-1 ring-brand-lime/30'
@@ -268,7 +280,7 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
             </div>
 
             <div
-              onClick={() => setEngineId('firefox')}
+              onClick={() => handleEngineChange('firefox')}
               className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${
                 engineId === 'firefox'
                   ? 'bg-brand-lime/10 border-brand-lime shadow-sm ring-1 ring-brand-lime/30'

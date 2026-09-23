@@ -27,9 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `KioskConfigForm.tsx` supporting engine selection, desktop target binding, flash protection, GPU acceleration modes, and custom operator flags.
   - Updated `ServiceTypePickerModal.tsx` to enable Web Kiosk Display creation when browser engines are present.
   - Updated `UnifiedServiceCard.tsx` with dynamic browser engine branding (`EngineLogo`), target URL, desktop reference, and engine label while preserving unified design tokens.
-  - Enhanced `DesktopPreviewModal.tsx` to support real-time interactive HTML5 noVNC preview of the running kiosk display on its target virtual desktop.
-  - Added internationalization keys to `en.json`, `es.json`, and `ca.json`.
+  - Added dedicated `KioskServiceCard.tsx` with unified look & feel, displaying URL destination, parent desktop reference, engine identity badge, flash protection indicator, and telemetry.
+  - Added dedicated `KioskPreviewModal.tsx` focusing on real-time stdout/stderr console diagnostics and hardware telemetry instead of duplicating the parent desktop VNC viewer.
+  - Added dynamic browser engine reactivity to `EngineLogo.tsx` and synchronized `ffmpeg_build_id` selection in `KioskConfigForm.tsx`.
   - Added automated test coverage in `backend/tests/test_kiosk_browser.py`.
+
+### Fixed
+- **Browser Kiosk Runtime & Multi-Process Stability**:
+  - Resolved Firefox "profile cannot be loaded or is in use" error by passing `--no-remote`, disabling crash resume prompts in `user.js`, and automatically purging stale `.parentlock`/`lock` files from ephemeral profile folders prior to launch.
+  - Resolved Chromium missing shared libraries on headless Linux installations by adding browser runtime dependencies (`libnss3`, `libnspr4`, `libatk`, `libcups2`, `libdrm2`, `libxkbcommon`, `libgbm`, `libpango`, `libcairo`, `libasound2`) to `install.sh`.
+  - Added `--no-sandbox` fallback and `--disable-dev-shm-usage` for Chromium processes running under root/containerized systemd environments.
+  - Ensured automatic engine synchronization in `ProcessManager._build_kiosk_cmds` when a custom software build is selected.
 
 ## [2.22.0] - 2026-09-23
 

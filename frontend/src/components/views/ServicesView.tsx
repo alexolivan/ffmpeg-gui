@@ -8,6 +8,7 @@ import { FfmpegServiceCard } from '../cards/FfmpegServiceCard';
 import { MediaMtxServiceCard } from '../cards/MediaMtxServiceCard';
 import { IcecastServiceCard } from '../cards/IcecastServiceCard';
 import { DesktopServiceCard } from '../cards/DesktopServiceCard';
+import { KioskServiceCard } from '../cards/KioskServiceCard';
 import { hasVideo, type ServiceItem } from '../cards/UnifiedServiceCard';
 
 export { hasVideo };
@@ -121,6 +122,25 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
     if (proc.service_type === 'desktop') {
       return (
         <DesktopServiceCard
+          key={proc.id}
+          service={proc as ServiceItem}
+          telemetryItem={proc}
+          actionPending={actionPending[proc.id]}
+          onStartService={onStartService}
+          onStopService={onStopService}
+          onRestartService={onRestartService}
+          onEditProcess={onEditProcess}
+          onCloneProcess={onCloneProcess}
+          onDeleteProcess={onDeleteProcess}
+          onSelectedProcess={onSelectedProcess}
+          onExportProcess={handleExport}
+          API={API}
+        />
+      );
+    }
+    if (proc.service_type === 'kiosk_browser') {
+      return (
+        <KioskServiceCard
           key={proc.id}
           service={proc as ServiceItem}
           telemetryItem={proc}

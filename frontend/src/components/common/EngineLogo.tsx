@@ -26,6 +26,10 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
     return () => window.removeEventListener('engine_icons_updated', handleIconUpdate);
   }, []);
 
+  useEffect(() => {
+    setHasError(false);
+  }, [softwareType]);
+
   // Normalize softwareType
   let normalizedType = (softwareType || 'ffmpeg').toLowerCase();
   if (normalizedType.includes('ffmpeg') || normalizedType === 'ffmpeg_stream') {
