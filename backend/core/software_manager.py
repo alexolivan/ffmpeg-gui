@@ -5,6 +5,7 @@ import logging
 import platform
 import subprocess
 import tarfile
+import zipfile
 import urllib.request
 import json
 from typing import Dict, Any, List, Optional
@@ -54,13 +55,23 @@ SUPPORTED_ENGINES: Dict[str, Dict[str, Any]] = {
         "always_enabled": False,
         "version_cmd": ["-v"],
     },
-    "kiosk_cog": {
-        "name": "Kiosk Browser (Cog)",
-        "description": "Wayland/X11 web kiosk display browser for video feeds and graphics.",
-        "default_binary": "cog",
-        "supports_forge": True,
+    "chromium": {
+        "name": "Chromium / Google Chrome",
+        "description": "High-performance Chromium browser engine for web kiosks, WebGL graphics, and live video overlays.",
+        "default_binary": "chromium",
+        "supports_forge": False,
         "supports_installed": True,
-        "supports_precompiled": False,
+        "supports_precompiled": True,
+        "always_enabled": False,
+        "version_cmd": ["--version"],
+    },
+    "firefox": {
+        "name": "Mozilla Firefox",
+        "description": "Gecko-based web kiosk browser engine with customizable isolated profiles and hardware acceleration.",
+        "default_binary": "firefox",
+        "supports_forge": False,
+        "supports_installed": True,
+        "supports_precompiled": True,
         "always_enabled": False,
         "version_cmd": ["--version"],
     },
@@ -90,12 +101,15 @@ class SoftwareManager:
             "icecast2_enabled": True,
             "icecast2_installed_enabled": True,
             "icecast2_forge_enabled": True,
-            "kiosk_cog_enabled": False,
-            "kiosk_cog_installed_enabled": False,
-            "kiosk_cog_forge_enabled": False,
+            "chromium_enabled": True,
+            "chromium_installed_enabled": True,
+            "chromium_precompiled_enabled": True,
+            "firefox_enabled": True,
+            "firefox_installed_enabled": True,
+            "firefox_precompiled_enabled": True,
         }
         self._cached_releases: Dict[str, Any] = {}
-        self._cached_releases_time: float = 0.0
+        self._cached_releases_time: Dict[str, float] = {}
 
     def load_config(self, section: Optional[Dict[str, Any]] = None):
         """Loads engine configuration from the [software_engines] config section."""
@@ -135,6 +149,10 @@ class SoftwareManager:
         if not bin_path or not os.path.isfile(bin_path):
             if software_type == "icecast2":
                 bin_path = shutil.which("icecast") or shutil.which("icecast2")
+            elif software_type == "chromium":
+                bin_path = shutil.which("chromium") or shutil.which("google-chrome") or shutil.which("chromium-browser")
+            elif software_type == "firefox":
+                bin_path = shutil.which("firefox") or shutil.which("firefox-esr")
             if not bin_path or not os.path.isfile(bin_path):
                 return {"found": False, "path": None, "version": None}
 
@@ -145,8 +163,8 @@ class SoftwareManager:
             raw_out = (res.stdout or "") + "\n" + (res.stderr or "")
             first_line = raw_out.strip().splitlines()[0] if raw_out.strip() else ""
             
-            # Extract clean semver/version pattern
-            v_match = re.search(r"(?:version\s*|v)?(\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9.]+)?|n\d+\.\d+)", first_line, re.IGNORECASE)
+            # Extract clean semver/version pattern (handles 3 or 4 segments like 130.0.6723.91, and suffixes like -esr / esr)
+            v_match = re.search(r"(?:version\s*|v)?(\d+(?:\.\d+)+(?:-[a-zA-Z0-9.]+|esr)?|n\d+\.\d+)", first_line, re.IGNORECASE)
             if v_match:
                 version_str = v_match.group(1)
             else:
@@ -331,7 +349,7 @@ class SoftwareManager:
         """
         import time
         now = time.time()
-        if self._cached_releases.get("mediamtx") and (now - self._cached_releases_time < 300):
+        if self._cached_releases.get("mediamtx") and (now - self._cached_releases_time.get("mediamtx", 0) < 300):
             return self._cached_releases["mediamtx"]
 
         releases = []
@@ -362,7 +380,7 @@ class SoftwareManager:
             ]
 
         self._cached_releases["mediamtx"] = releases
-        self._cached_releases_time = now
+        self._cached_releases_time["mediamtx"] = now
         return releases
 
     def provision_mediamtx_release(self, version_tag: str, db_session: Session, builds_storage_dir: str) -> Dict[str, Any]:
@@ -473,6 +491,322 @@ class SoftwareManager:
             if os.path.exists(dest_dir):
                 shutil.rmtree(dest_dir, ignore_errors=True)
             raise
+
+    def get_chromium_releases(self) -> List[Dict[str, str]]:
+        """
+        Fetches official stable and release channel versions for Chromium
+        from Google's Chrome for Testing API.
+        """
+        import time
+        now = time.time()
+        if self._cached_releases.get("chromium") and (now - self._cached_releases_time.get("chromium", 0) < 300):
+            return self._cached_releases["chromium"]
+
+        releases = []
+        try:
+            req = urllib.request.Request(
+                "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json",
+                headers={"User-Agent": "ffmpeg-gui-orchestrator"}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode("utf-8"))
+                    channels = data.get("channels", {})
+                    for ch_name, ch_data in channels.items():
+                        ver = ch_data.get("version")
+                        if ver:
+                            downloads = ch_data.get("downloads", {}).get("chrome", [])
+                            has_linux = any("linux" in d.get("platform", "") for d in downloads)
+                            if has_linux:
+                                releases.append({
+                                    "tag": ver,
+                                    "name": f"Chromium {ch_name} (v{ver})",
+                                    "published_at": ch_data.get("revision", "")
+                                })
+        except Exception as e:
+            logger.warning(f"Error fetching Chromium releases from Chrome for Testing API: {e}")
+            releases = [
+                {"tag": "130.0.6723.69", "name": "Chromium Stable (v130.0.6723.69)", "published_at": "130"},
+                {"tag": "129.0.6668.100", "name": "Chromium Previous Stable (v129.0.6668.100)", "published_at": "129"},
+            ]
+
+        self._cached_releases["chromium"] = releases
+        self._cached_releases_time["chromium"] = now
+        return releases
+
+    def provision_chromium_release(self, version_tag: str, db_session: Session, builds_storage_dir: str) -> Dict[str, Any]:
+        """
+        Downloads, extracts, validates, and registers a standalone Chromium (Chrome for Testing) precompiled binary.
+        """
+        from database.models import SoftwareBuild, Storage
+
+        clean_ver = version_tag.lstrip("v").strip()
+        arch = platform.machine().lower()
+        if arch in ("aarch64", "arm64", "armv8"):
+            cf_platform = "linux-arm64"
+            zip_arch = "linux-arm64"
+        else:
+            cf_platform = "linux64"
+            zip_arch = "linux64"
+
+        download_url = f"https://storage.googleapis.com/chrome-for-testing-public/{clean_ver}/{cf_platform}/chrome-{zip_arch}.zip"
+
+        dest_dir = os.path.join(builds_storage_dir, "chromium", f"v{clean_ver}")
+        bin_dest_dir = os.path.join(dest_dir, "bin")
+        os.makedirs(bin_dest_dir, exist_ok=True)
+
+        zip_path = os.path.join(dest_dir, f"chrome-{zip_arch}.zip")
+
+        try:
+            logger.info(f"Downloading Chromium v{clean_ver} from {download_url}...")
+            urllib.request.urlretrieve(download_url, zip_path)
+
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(path=bin_dest_dir)
+
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+
+            bin_path = None
+            for root, _, files in os.walk(bin_dest_dir):
+                for f in files:
+                    if f == "chrome":
+                        bin_path = os.path.join(root, f)
+                        break
+                if bin_path:
+                    break
+
+            if not bin_path or not os.path.exists(bin_path):
+                raise FileNotFoundError(f"Binary 'chrome' was not found in extracted files at {bin_dest_dir}")
+
+            os.chmod(bin_path, 0o755)
+
+            v_res = subprocess.run([bin_path, "--version"], capture_output=True, text=True, timeout=3)
+            ver_out = (v_res.stdout or "") + (v_res.stderr or "")
+
+            total_size_mb = 0.0
+            for dirpath, _, filenames in os.walk(dest_dir):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    if os.path.isfile(fp):
+                        total_size_mb += os.path.getsize(fp) / (1024 * 1024)
+
+            default_storage = db_session.query(Storage).filter(Storage.type.in_(["build", "builds"])).first()
+            storage_id = default_storage.id if default_storage else None
+
+            existing = db_session.query(SoftwareBuild).filter(
+                SoftwareBuild.software_type == "chromium",
+                SoftwareBuild.version_tag == clean_ver
+            ).first()
+
+            build_name = f"Chromium v{clean_ver} (Official)"
+            if existing:
+                existing.name = build_name
+                existing.binary_path = bin_path
+                existing.install_path = dest_dir
+                existing.status = "ready"
+                existing.source_type = "precompiled"
+                existing.is_managed = True
+                existing.disk_usage_mb = round(total_size_mb, 2)
+                existing.version_output = ver_out
+            else:
+                new_build = SoftwareBuild(
+                    name=build_name,
+                    software_type="chromium",
+                    source_type="precompiled",
+                    version_tag=clean_ver,
+                    binary_path=bin_path,
+                    install_path=dest_dir,
+                    build_options={"download_url": download_url, "platform": cf_platform},
+                    is_managed=True,
+                    status="ready",
+                    is_default=False,
+                    disk_usage_mb=round(total_size_mb, 2),
+                    version_output=ver_out,
+                    storage_id=storage_id
+                )
+                db_session.add(new_build)
+
+            db_session.commit()
+            return {
+                "success": True,
+                "version": clean_ver,
+                "binary_path": bin_path,
+                "disk_usage_mb": round(total_size_mb, 2)
+            }
+        except Exception as e:
+            logger.error(f"Failed to provision Chromium v{clean_ver}: {e}")
+            if os.path.exists(dest_dir):
+                shutil.rmtree(dest_dir, ignore_errors=True)
+            raise
+
+    def get_firefox_releases(self) -> List[Dict[str, str]]:
+        """
+        Fetches official stable and ESR release versions for Mozilla Firefox.
+        """
+        import time
+        now = time.time()
+        if self._cached_releases.get("firefox") and (now - self._cached_releases_time.get("firefox", 0) < 300):
+            return self._cached_releases["firefox"]
+
+        releases = []
+        try:
+            req = urllib.request.Request(
+                "https://product-details.mozilla.org/1.0/firefox_versions.json",
+                headers={"User-Agent": "ffmpeg-gui-orchestrator"}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode("utf-8"))
+                    stable_ver = data.get("LATEST_FIREFOX_VERSION")
+                    esr_ver = data.get("FIREFOX_ESR")
+                    if stable_ver:
+                        releases.append({
+                            "tag": stable_ver,
+                            "name": f"Firefox Stable (v{stable_ver})",
+                            "published_at": data.get("LAST_RELEASE_DATE", "")
+                        })
+                    if esr_ver and esr_ver != stable_ver:
+                        releases.append({
+                            "tag": esr_ver,
+                            "name": f"Firefox ESR (v{esr_ver})",
+                            "published_at": data.get("LAST_RELEASE_DATE", "")
+                        })
+        except Exception as e:
+            logger.warning(f"Error fetching Firefox releases from Mozilla API: {e}")
+            releases = [
+                {"tag": "132.0", "name": "Firefox Stable (v132.0)", "published_at": "2024-10-29"},
+                {"tag": "128.4.0esr", "name": "Firefox ESR (v128.4.0esr)", "published_at": "2024-10-29"},
+            ]
+
+        self._cached_releases["firefox"] = releases
+        self._cached_releases_time["firefox"] = now
+        return releases
+
+    def provision_firefox_release(self, version_tag: str, db_session: Session, builds_storage_dir: str) -> Dict[str, Any]:
+        """
+        Downloads, extracts, validates, and registers a standalone Mozilla Firefox precompiled binary.
+        """
+        from database.models import SoftwareBuild, Storage
+
+        clean_ver = version_tag.lstrip("v").strip()
+        arch = platform.machine().lower()
+        if arch in ("aarch64", "arm64", "armv8"):
+            ff_arch = "linux-aarch64"
+        else:
+            ff_arch = "linux-x86_64"
+
+        tar_filename = f"firefox-{clean_ver}.tar.bz2"
+        download_url = f"https://archive.mozilla.org/pub/firefox/releases/{clean_ver}/{ff_arch}/en-US/{tar_filename}"
+
+        dest_dir = os.path.join(builds_storage_dir, "firefox", f"v{clean_ver}")
+        bin_dest_dir = os.path.join(dest_dir, "bin")
+        os.makedirs(bin_dest_dir, exist_ok=True)
+
+        tar_path = os.path.join(dest_dir, tar_filename)
+
+        try:
+            logger.info(f"Downloading Firefox v{clean_ver} from {download_url}...")
+            urllib.request.urlretrieve(download_url, tar_path)
+
+            with tarfile.open(tar_path, "r:bz2") as tar:
+                tar.extractall(path=bin_dest_dir)
+
+            if os.path.exists(tar_path):
+                os.remove(tar_path)
+
+            bin_path = None
+            for root, _, files in os.walk(bin_dest_dir):
+                for f in files:
+                    if f == "firefox":
+                        bin_path = os.path.join(root, f)
+                        break
+                if bin_path:
+                    break
+
+            if not bin_path or not os.path.exists(bin_path):
+                raise FileNotFoundError(f"Binary 'firefox' was not found in extracted files at {bin_dest_dir}")
+
+            os.chmod(bin_path, 0o755)
+
+            v_res = subprocess.run([bin_path, "--version"], capture_output=True, text=True, timeout=3)
+            ver_out = (v_res.stdout or "") + (v_res.stderr or "")
+
+            total_size_mb = 0.0
+            for dirpath, _, filenames in os.walk(dest_dir):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    if os.path.isfile(fp):
+                        total_size_mb += os.path.getsize(fp) / (1024 * 1024)
+
+            default_storage = db_session.query(Storage).filter(Storage.type.in_(["build", "builds"])).first()
+            storage_id = default_storage.id if default_storage else None
+
+            existing = db_session.query(SoftwareBuild).filter(
+                SoftwareBuild.software_type == "firefox",
+                SoftwareBuild.version_tag == clean_ver
+            ).first()
+
+            build_name = f"Firefox v{clean_ver} (Official)"
+            if existing:
+                existing.name = build_name
+                existing.binary_path = bin_path
+                existing.install_path = dest_dir
+                existing.status = "ready"
+                existing.source_type = "precompiled"
+                existing.is_managed = True
+                existing.disk_usage_mb = round(total_size_mb, 2)
+                existing.version_output = ver_out
+            else:
+                new_build = SoftwareBuild(
+                    name=build_name,
+                    software_type="firefox",
+                    source_type="precompiled",
+                    version_tag=clean_ver,
+                    binary_path=bin_path,
+                    install_path=dest_dir,
+                    build_options={"download_url": download_url, "arch": ff_arch},
+                    is_managed=True,
+                    status="ready",
+                    is_default=False,
+                    disk_usage_mb=round(total_size_mb, 2),
+                    version_output=ver_out,
+                    storage_id=storage_id
+                )
+                db_session.add(new_build)
+
+            db_session.commit()
+            return {
+                "success": True,
+                "version": clean_ver,
+                "binary_path": bin_path,
+                "disk_usage_mb": round(total_size_mb, 2)
+            }
+        except Exception as e:
+            logger.error(f"Failed to provision Firefox v{clean_ver}: {e}")
+            if os.path.exists(dest_dir):
+                shutil.rmtree(dest_dir, ignore_errors=True)
+            raise
+
+    def get_engine_releases(self, software_type: str) -> List[Dict[str, str]]:
+        """Generic dispatcher for fetching precompiled releases for any supported engine."""
+        if software_type == "mediamtx":
+            return self.get_mediamtx_releases()
+        elif software_type == "chromium":
+            return self.get_chromium_releases()
+        elif software_type == "firefox":
+            return self.get_firefox_releases()
+        return []
+
+    def provision_engine_release(self, software_type: str, version_tag: str, db_session: Session, builds_storage_dir: str) -> Dict[str, Any]:
+        """Generic dispatcher for downloading and provisioning precompiled releases."""
+        if software_type == "mediamtx":
+            return self.provision_mediamtx_release(version_tag, db_session, builds_storage_dir)
+        elif software_type == "chromium":
+            return self.provision_chromium_release(version_tag, db_session, builds_storage_dir)
+        elif software_type == "firefox":
+            return self.provision_firefox_release(version_tag, db_session, builds_storage_dir)
+        raise ValueError(f"Precompiled provisioning is not supported for engine '{software_type}'")
 
     def save_engine_icon(self, software_type: str, image_bytes: bytes, filename: str, storage_base_dir: str) -> str:
         """Saves a custom branding icon for the given software type."""

@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ServerIcon, PencilIcon, TrashIcon } from '../../Icons';
+import { PencilIcon, TrashIcon } from '../../Icons';
+import { EngineLogo } from '../../common/EngineLogo';
 
 export interface SoftwareEngineBuild {
   id: number;
@@ -71,7 +72,6 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
   const [isDownloadingRelease, setIsDownloadingRelease] = useState(false);
 
   // Icon preview
-  const [iconTimestamp, setIconTimestamp] = useState(Date.now());
   const [hasCustomIcon, setHasCustomIcon] = useState(true);
 
   const showNotification = (msg: string, isError = false) => {
@@ -205,7 +205,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
       }
 
       await onRefresh();
-      showNotification(t('settings.software.downloadSuccess', 'MediaMTX release provisioned successfully!'));
+      showNotification(t('settings.software.downloadSuccess', '{{name}} release provisioned successfully!', { name: engine.name }));
     } catch (err: any) {
       showNotification(err.message, true);
     } finally {
@@ -231,7 +231,6 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
       }
 
       setHasCustomIcon(true);
-      setIconTimestamp(Date.now());
       window.dispatchEvent(new Event('engine_icons_updated'));
       showNotification(t('settings.software.iconUploadSuccess', 'Custom icon uploaded successfully.'));
     } catch (err: any) {
@@ -246,7 +245,6 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
       });
       if (res.ok) {
         setHasCustomIcon(false);
-        setIconTimestamp(Date.now());
         window.dispatchEvent(new Event('engine_icons_updated'));
         showNotification(t('settings.software.iconResetSuccess', 'Reverted to default icon.'));
       }
@@ -254,8 +252,6 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
       showNotification(err.message, true);
     }
   };
-
-  const iconUrl = `${API}/api/settings/software/${engine.key}/icon?t=${iconTimestamp}`;
 
   return (
     <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-3.5 shadow-sm flex flex-col gap-2.5 relative overflow-hidden">
@@ -279,16 +275,12 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
           {/* Engine Logo / Icon & Upload Controls */}
           <div className="flex items-center gap-1.5 shrink-0">
             <div className="w-9 h-9 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] flex items-center justify-center overflow-hidden p-1 shadow-inner">
-              {hasCustomIcon ? (
-                <img
-                  src={iconUrl}
-                  alt={engine.name}
-                  className="w-full h-full object-contain"
-                  onError={() => setHasCustomIcon(false)}
-                />
-              ) : (
-                <ServerIcon size={18} className="text-brand-lime/70" />
-              )}
+              <EngineLogo
+                softwareType={engine.key}
+                size={22}
+                className="w-full h-full object-contain"
+                API={API}
+              />
             </div>
 
             <div className="flex items-center gap-1">
@@ -503,7 +495,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-primary)]">
-                    {t('settings.software.precompiledReleases', 'Pre-compiled Official Releases (GitHub)')}
+                    {t('settings.software.precompiledReleases', 'Pre-compiled Official Releases')}
                   </span>
                 </div>
                 <p className="text-[11px] text-[var(--text-secondary)] mb-2">
@@ -517,7 +509,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                     onClick={handleFetchReleases}
                     className="bg-[var(--bg-card)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[11px] px-2.5 py-1 rounded text-[var(--text-primary)] font-semibold cursor-pointer"
                   >
-                    {isFetchingReleases ? t('common.loading', 'Loading...') : t('settings.software.fetchReleases', 'Check GitHub Releases')}
+                    {isFetchingReleases ? t('common.loading', 'Loading...') : t('settings.software.fetchReleases', 'Check Official Releases')}
                   </button>
 
                   {releases.length > 0 && (
@@ -529,7 +521,7 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                       >
                         {releases.map((r) => (
                           <option key={r.tag} value={r.tag}>
-                            v{r.tag}
+                            {r.name || (r.tag.startsWith('v') ? r.tag : `v${r.tag}`)}
                           </option>
                         ))}
                       </select>

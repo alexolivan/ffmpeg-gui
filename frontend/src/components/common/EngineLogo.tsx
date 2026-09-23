@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FfmpegLogoIcon, ServerIcon, MonitorIcon } from '../Icons';
+import { FfmpegLogoIcon, ServerIcon, MonitorIcon, ChromiumLogoIcon, FirefoxLogoIcon } from '../Icons';
 
 interface EngineLogoProps {
   softwareType?: string;
@@ -34,8 +34,12 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
     normalizedType = 'mediamtx';
   } else if (normalizedType.includes('icecast') || normalizedType === 'icecast_server') {
     normalizedType = 'icecast2';
+  } else if (normalizedType.includes('chromium') || normalizedType.includes('chrome')) {
+    normalizedType = 'chromium';
+  } else if (normalizedType.includes('firefox')) {
+    normalizedType = 'firefox';
   } else if (normalizedType.includes('kiosk') || normalizedType.includes('cog') || normalizedType === 'kiosk_browser') {
-    normalizedType = 'kiosk_cog';
+    normalizedType = 'chromium';
   } else if (normalizedType.includes('decklink') || normalizedType === 'decklink_tools') {
     normalizedType = 'decklink_tools';
   } else if (normalizedType === 'desktop') {
@@ -61,6 +65,14 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
     return <FfmpegLogoIcon size={size} className={className} />;
   }
 
+  if (normalizedType === 'chromium') {
+    return <ChromiumLogoIcon size={size} className={className} />;
+  }
+
+  if (normalizedType === 'firefox') {
+    return <FirefoxLogoIcon size={size} className={className} />;
+  }
+
   if (normalizedType === 'desktop') {
     return <MonitorIcon size={size} className={className} />;
   }
@@ -71,3 +83,4 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
 
   return <ServerIcon size={size} className={className} />;
 };
+
