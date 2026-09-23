@@ -25,7 +25,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
             service_type="desktop",
             config={"desktop_config": {}},
         )
-        xvfb_cmd, xset_cmd, x11vnc_cmd, display_num, vnc_port = self.pm._build_desktop_cmds(svc)
+        xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port = self.pm._build_desktop_cmds(svc)
 
         self.assertEqual(display_num, 99)
         self.assertEqual(vnc_port, 5999)
@@ -44,6 +44,13 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         # xset anti-screensaver hardening command validation
         self.assertTrue(any("xset" in arg for arg in xset_cmd))
         self.assertEqual(xset_cmd[1:], ["s", "off", "-dpms", "s", "noblank"])
+
+        # xsetroot cursor & canvas hardening command validation
+        self.assertTrue(any("xsetroot" in arg for arg in xsetroot_cmd))
+        self.assertIn("-cursor_name", xsetroot_cmd)
+        self.assertIn("left_ptr", xsetroot_cmd)
+        self.assertIn("-solid", xsetroot_cmd)
+        self.assertIn("#111827", xsetroot_cmd)
 
         # x11vnc command validation
         self.assertTrue(any("x11vnc" in arg for arg in x11vnc_cmd))
@@ -71,12 +78,14 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
                 }
             },
         )
-        xvfb_cmd, xset_cmd, x11vnc_cmd, display_num, vnc_port = self.pm._build_desktop_cmds(svc)
+        xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port = self.pm._build_desktop_cmds(svc)
 
         self.assertEqual(display_num, 105)
         self.assertEqual(vnc_port, 6005)
         self.assertIn(":105", xvfb_cmd)
         self.assertIn("1280x720x16", xvfb_cmd)
+        self.assertIn("-solid", xsetroot_cmd)
+        self.assertIn("#111827", xsetroot_cmd)
         self.assertIn(":105", x11vnc_cmd)
         self.assertIn("6005", x11vnc_cmd)
 
@@ -116,6 +125,9 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         mock_xset = MagicMock()
         mock_xset.wait = AsyncMock(return_value=0)
 
+        mock_xsetroot = MagicMock()
+        mock_xsetroot.wait = AsyncMock(return_value=0)
+
         mock_x11vnc = MagicMock()
         mock_x11vnc.pid = 22222
         mock_x11vnc.returncode = None
@@ -124,7 +136,7 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         mock_x11vnc.kill = MagicMock(side_effect=lambda: setattr(mock_x11vnc, "returncode", -9))
         mock_x11vnc.stdin = None
 
-        mock_exec.side_effect = [mock_xvfb, mock_xset, mock_x11vnc]
+        mock_exec.side_effect = [mock_xvfb, mock_xset, mock_xsetroot, mock_x11vnc]
 
         with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
              patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock):
@@ -173,13 +185,16 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         mock_xset = MagicMock()
         mock_xset.wait = AsyncMock(return_value=0)
 
+        mock_xsetroot = MagicMock()
+        mock_xsetroot.wait = AsyncMock(return_value=0)
+
         mock_x11vnc = MagicMock()
         mock_x11vnc.pid = 44444
         mock_x11vnc.returncode = None
         mock_x11vnc.wait = AsyncMock(return_value=0)
         mock_x11vnc.terminate = MagicMock()
 
-        mock_exec.side_effect = [mock_xvfb, mock_xset, mock_x11vnc]
+        mock_exec.side_effect = [mock_xvfb, mock_xset, mock_xsetroot, mock_x11vnc]
 
         with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
              patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock):

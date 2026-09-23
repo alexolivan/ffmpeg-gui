@@ -275,7 +275,7 @@ class ProcessManager:
                     session.commit()
                     raise FileNotFoundError("x11vnc binary not found. Please install x11vnc on the host system.")
 
-                xvfb_cmd, xset_cmd, x11vnc_cmd, display_num, vnc_port = self._build_desktop_cmds(media_proc)
+                xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port = self._build_desktop_cmds(media_proc)
                 cmd = xvfb_cmd
             else:
                 # Determine which FFmpeg binary to use
@@ -406,7 +406,20 @@ class ProcessManager:
                         except Exception as xset_err:
                             self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
 
-                    # 3. Spawn x11vnc
+                    # 3. Configure root cursor and background canvas via xsetroot
+                    if shutil.which("xsetroot"):
+                        try:
+                            xsetroot_proc = await asyncio.create_subprocess_exec(
+                                *xsetroot_cmd,
+                                stdout=asyncio.subprocess.DEVNULL,
+                                stderr=asyncio.subprocess.DEVNULL,
+                                env=desktop_sub_env
+                            )
+                            await asyncio.wait_for(xsetroot_proc.wait(), timeout=2.0)
+                        except Exception as xr_err:
+                            self.logger.warning(f"xsetroot canvas notice for display :{display_num}: {xr_err}")
+
+                    # 4. Spawn x11vnc
                     await self._spawn_x11vnc(
                         process_id=process_id,
                         display_num=display_num,
@@ -1394,6 +1407,14 @@ class ProcessManager:
             "s", "noblank",
         ]
 
+        xsetroot_bin = shutil.which("xsetroot") or "xsetroot"
+        bg_color = str(desk_cfg.get("bg_color", "#111827"))
+        xsetroot_cmd = [
+            xsetroot_bin,
+            "-cursor_name", "left_ptr",
+            "-solid", bg_color,
+        ]
+
         x11vnc_bin = shutil.which("x11vnc") or "x11vnc"
         x11vnc_cmd = [
             x11vnc_bin,
@@ -1405,7 +1426,7 @@ class ProcessManager:
             "-shared",
         ]
 
-        return xvfb_cmd, xset_cmd, x11vnc_cmd, display_num, vnc_port
+        return xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port
 
     async def _spawn_x11vnc(
         self,

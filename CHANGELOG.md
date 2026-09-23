@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Virtual Desktop Root Cursor & Background Canvas Initialization**:
+  - Automatically initialize modern arrow cursor (`left_ptr`) and dark slate canvas (`#111827`) via `xsetroot` on virtual desktop launch, eliminating the legacy X11 'X' font cursor and providing visual confirmation of an active session.
+
+### Changed
+- **Virtual Desktop UI/UX Card Homogenization**:
+  - Homogenized `DesktopServiceCard` header row to match MediaMTX and Icecast2 cards, relocating display and VNC details into semantic engine badges (`Xvfb :99 1920x1080@30fps, 24bpp` and `x11vnc :5999 127.0.0.1 • WS RFB`).
+
 ### Fixed
 - **Multi-Process Desktop Lifecycle & Warm-Reload Resilience**:
   - Prevented premature termination of `x11vnc` during `systemctl reload ffmpeg-gui` by discovering and including all auxiliary child process PIDs in `active_pids` before executing `cleanup_rogue_processes`.
