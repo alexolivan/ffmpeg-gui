@@ -43,14 +43,18 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
 
         # xset anti-screensaver hardening command validation
         self.assertTrue(any("xset" in arg for arg in xset_cmd))
-        self.assertEqual(xset_cmd[1:], ["s", "off", "-dpms", "s", "noblank"])
+        self.assertIn("-display", xset_cmd)
+        self.assertIn(":99", xset_cmd)
+        self.assertEqual(xset_cmd[3:], ["s", "off", "-dpms", "s", "noblank"])
 
         # xsetroot cursor & canvas hardening command validation
         self.assertTrue(any("xsetroot" in arg for arg in xsetroot_cmd))
+        self.assertIn("-display", xsetroot_cmd)
+        self.assertIn(":99", xsetroot_cmd)
         self.assertIn("-cursor_name", xsetroot_cmd)
         self.assertIn("left_ptr", xsetroot_cmd)
         self.assertIn("-solid", xsetroot_cmd)
-        self.assertIn("#111827", xsetroot_cmd)
+        self.assertIn("#1e293b", xsetroot_cmd)
 
         # x11vnc command validation
         self.assertTrue(any("x11vnc" in arg for arg in x11vnc_cmd))
@@ -62,6 +66,8 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIn("-nopw", x11vnc_cmd)
         self.assertIn("-forever", x11vnc_cmd)
         self.assertIn("-shared", x11vnc_cmd)
+        self.assertIn("-cursor", x11vnc_cmd)
+        self.assertIn("arrow", x11vnc_cmd)
         self.assertNotIn("-bg", x11vnc_cmd)
 
     def test_build_desktop_cmds_custom_values(self):
@@ -84,10 +90,16 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(vnc_port, 6005)
         self.assertIn(":105", xvfb_cmd)
         self.assertIn("1280x720x16", xvfb_cmd)
+        self.assertIn("-display", xset_cmd)
+        self.assertIn(":105", xset_cmd)
+        self.assertIn("-display", xsetroot_cmd)
+        self.assertIn(":105", xsetroot_cmd)
         self.assertIn("-solid", xsetroot_cmd)
-        self.assertIn("#111827", xsetroot_cmd)
+        self.assertIn("#1e293b", xsetroot_cmd)
         self.assertIn(":105", x11vnc_cmd)
         self.assertIn("6005", x11vnc_cmd)
+        self.assertIn("-cursor", x11vnc_cmd)
+        self.assertIn("arrow", x11vnc_cmd)
 
     @patch("shutil.which")
     async def test_desktop_service_missing_xvfb_raises(self, mock_which):

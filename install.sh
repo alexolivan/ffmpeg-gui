@@ -88,7 +88,7 @@ install_debian_deps() {
                        libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
                        libavahi-client-dev libavahi-common-dev libasound2-dev \
                        libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
-                       intel-gpu-tools xvfb x11vnc x11-xserver-utils
+                       intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base
 }
 
 # Paquetes a instalar en RedHat/Fedora/CentOS

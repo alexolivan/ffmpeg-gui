@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Virtual Desktop Root Cursor & Background Canvas Initialization**:
-  - Automatically initialize modern arrow cursor (`left_ptr`) and dark slate canvas (`#111827`) via `xsetroot` on virtual desktop launch, eliminating the legacy X11 'X' font cursor and providing visual confirmation of an active session.
+  - Automatically initialize distinct dark slate canvas (`#1e293b`, Slate-800) with explicit `-display` targeting via `xsetroot` on virtual desktop launch, providing immediate visual confirmation of an active session.
+  - Enforced persistent client-side arrow cursor in `x11vnc` via `-cursor arrow`, eliminating fallback to legacy X11 'X' font cursor on minimal server hosts without desktop font packages.
+  - Added `xfonts-base` to Debian/Ubuntu system packages in `install.sh`.
 
 ### Changed
 - **Virtual Desktop UI/UX Card Homogenization**:

@@ -1402,15 +1402,17 @@ class ProcessManager:
         xset_bin = shutil.which("xset") or "xset"
         xset_cmd = [
             xset_bin,
+            "-display", f":{display_num}",
             "s", "off",
             "-dpms",
             "s", "noblank",
         ]
 
         xsetroot_bin = shutil.which("xsetroot") or "xsetroot"
-        bg_color = str(desk_cfg.get("bg_color", "#111827"))
+        bg_color = str(desk_cfg.get("bg_color", "#1e293b"))
         xsetroot_cmd = [
             xsetroot_bin,
+            "-display", f":{display_num}",
             "-cursor_name", "left_ptr",
             "-solid", bg_color,
         ]
@@ -1424,6 +1426,7 @@ class ProcessManager:
             "-nopw",
             "-forever",
             "-shared",
+            "-cursor", "arrow",
         ]
 
         return xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port
@@ -1450,6 +1453,7 @@ class ProcessManager:
             "-nopw",
             "-forever",
             "-shared",
+            "-cursor", "arrow",
         ]
         base_env = sub_env or os.environ
         vnc_env = {
