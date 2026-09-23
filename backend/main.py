@@ -2463,12 +2463,28 @@ def get_system_capabilities():
     # LCD Display Hardware
     lcd_available = False
     lcd_details = "No compatible Crystalfontz LCD detected"
+    detected_lcd_ports = []
     try:
-        from core.lcd.driver_cfa635 import CFA635Driver
-        detected_lcds = CFA635Driver.find_devices()
-        lcd_available = len(detected_lcds) > 0
-        if lcd_available:
-            lcd_details = f"Detected LCD display device(s): {', '.join([d.get('port', '') for d in detected_lcds if d.get('port')])}"
+        import serial.tools.list_ports
+        from core.lcd.drivers.cfa635 import Cfa635Driver
+
+        for port_info in serial.tools.list_ports.comports():
+            # Check by USB Vendor ID (Crystalfontz America: 0x223B) or manufacturer/description string
+            vid = getattr(port_info, 'vid', None)
+            is_cf_vid = (vid == 0x223B)
+            desc = (port_info.description or "").lower()
+            mfg = (getattr(port_info, 'manufacturer', '') or "").lower()
+            is_cf_desc = "crystalfontz" in desc or "crystalfontz" in mfg or "cfa" in desc or "cfa" in mfg
+            
+            # If LCD manager is actively running on this port
+            if lcd_manager and lcd_manager._running and lcd_manager.port == port_info.device:
+                detected_lcd_ports.append(f"{port_info.device} (Active)")
+            elif is_cf_vid or is_cf_desc or Cfa635Driver.probe(port_info.device):
+                detected_lcd_ports.append(port_info.device)
+
+        if detected_lcd_ports:
+            lcd_available = True
+            lcd_details = f"Detected LCD display device(s): {', '.join(detected_lcd_ports)}"
         elif settings.lcd_enabled:
             lcd_available = True
             lcd_details = f"LCD enabled on configured port: {settings.lcd_port}"
@@ -2570,7 +2586,7 @@ def get_system_capabilities():
             "cards": magewell_cards,
             "driver_version": magewell_driver_ver
         },
-        "lcd": {"available": lcd_available, "details": lcd_details},
+        "lcd": {"available": lcd_available, "details": lcd_details, "ports": detected_lcd_ports},
         "avahi": {"available": avahi_available, "details": avahi_details},
         "ffmpeg": {
             "filters": supported_filters,
@@ -3740,8 +3756,13 @@ def probe_lcd_ports():
             })
             continue
             
+        is_cf_vid = (getattr(port_info, 'vid', None) == 0x223B)
+        desc = (port_info.description or "").lower()
+        mfg = (getattr(port_info, 'manufacturer', '') or "").lower()
+        is_cf_desc = "crystalfontz" in desc or "crystalfontz" in mfg or "cfa" in desc or "cfa" in mfg
+
         for driver in drivers:
-            if driver.probe(port_device):
+            if is_cf_vid or is_cf_desc or driver.probe(port_device):
                 detected_ports.append({
                     "port": port_device,
                     "driver": driver.__name__,

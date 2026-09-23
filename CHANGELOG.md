@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Crystalfontz LCD Hardware Probing and Capabilities Detection**:
+  - Corrected module import path and driver class reference in `get_system_capabilities()` (`core.lcd.drivers.cfa635.Cfa635Driver`).
+  - Implemented dynamic COM port discovery in capabilities scanning using `serial.tools.list_ports.comports()`, verifying Crystalfontz USB Vendor ID (`0x223B`), descriptor strings, active manager port binding, and fallback packet ping probing.
+  - Enhanced `/settings/lcd/probe` to auto-detect and populate USB Crystalfontz displays (e.g., CFA735-USB) even prior to ping response.
+  - Made Settings LCD tab visibility resilient during capabilities load cycle in `SettingsView.tsx`.
+
 ## [2.22.0] - 2026-09-23
 
 ### Added

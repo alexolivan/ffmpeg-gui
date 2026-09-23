@@ -141,11 +141,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const hasLcdHardware = !!(
+  const hasLcdHardware = capabilities ? !!(
     capabilities?.lcd?.available ||
     systemTelemetry?.lcd?.connected ||
     settings?.lcd_enabled
-  );
+  ) : true;
   const hasAlsaHardware = capabilities ? !!capabilities?.alsa?.available : true;
   const hasDecklinkHardware = capabilities ? !!capabilities?.decklink?.available : true;
   const hasMagewellHardware = capabilities ? (!!capabilities?.magewell?.available || capabilities?.magewell?.status === 'SETUP_REQUIRED' || capabilities?.magewell?.status === 'READY') : true;
