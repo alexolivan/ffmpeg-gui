@@ -277,6 +277,11 @@ class ProcessManager:
 
                 xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port = self._build_desktop_cmds(media_proc)
                 cmd = xvfb_cmd
+            elif svc_type == "kiosk_browser":
+                kiosk_cmd, display_num, ephemeral_profile_dir = self._build_kiosk_cmds(media_proc, session)
+                cmd = kiosk_cmd
+                if ephemeral_profile_dir:
+                    self.ephemeral_configs[process_id] = ephemeral_profile_dir
             else:
                 # Determine which FFmpeg binary to use
                 ffmpeg_bin = self.ffmpeg_path  # Default fallback
@@ -437,6 +442,22 @@ class ProcessManager:
                         except Exception as xset_err:
                             self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
 
+                    asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                elif svc_type == "kiosk_browser":
+                    log_file_handle = open(log_path, "ab", buffering=0)
+                    kiosk_sub_env = {**sub_env, "DISPLAY": f":{display_num}"}
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=log_file_handle,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.DEVNULL,
+                        env=kiosk_sub_env
+                    )
+                    self.processes[process_id] = proc
+                    try:
+                        log_file_handle.close()
+                    except Exception:
+                        pass
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 else:
                     proc = await asyncio.create_subprocess_exec(
@@ -661,11 +682,14 @@ class ProcessManager:
                     except Exception:
                         pass
 
-            # Clean up ephemeral RAM configuration file if present
+            # Clean up ephemeral RAM configuration file or browser profile directory if present
             ephem = self.ephemeral_configs.pop(process_id, None)
             if ephem and os.path.exists(ephem):
                 try:
-                    os.remove(ephem)
+                    if os.path.isdir(ephem):
+                        shutil.rmtree(ephem, ignore_errors=True)
+                    else:
+                        os.remove(ephem)
                 except Exception:
                     pass
 
@@ -1441,6 +1465,152 @@ class ProcessManager:
         ]
 
         return xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port
+
+    def _build_kiosk_cmds(self, media_proc, session) -> Tuple[List[str], int, Optional[str]]:
+        """
+        Builds the CLI launch arguments for a kiosk_browser service using the Launcher Strategy Pattern.
+        Returns: (cmd, display_num, ephemeral_profile_dir)
+        """
+        from database.models import Service, FfmpegBuild
+        from core.software_manager import software_manager
+
+        cfg = media_proc.config or {}
+        k_cfg = cfg.get("kiosk_config", cfg)
+
+        # 1. Resolve target Virtual Desktop and DISPLAY
+        desktop_id = k_cfg.get("desktop_service_id")
+        if not desktop_id:
+            raise ValueError(f"Kiosk service '{media_proc.name}' requires a linked Virtual Desktop (desktop_service_id).")
+
+        desktop_svc = session.get(Service, int(desktop_id)) if hasattr(session, "get") else session.query(Service).get(int(desktop_id))
+        if not desktop_svc:
+            raise ValueError(f"Target Virtual Desktop service #{desktop_id} was not found.")
+
+        d_cfg = (desktop_svc.config or {}).get("desktop_config", desktop_svc.config or {})
+        display_num = int(d_cfg.get("display_num", 99))
+
+        # 2. Resolve browser engine and binary
+        engine_id = str(k_cfg.get("engine_id", "chromium")).lower()
+        if engine_id not in ("chromium", "firefox"):
+            engine_id = "chromium"
+
+        build_id = k_cfg.get("build_id") or cfg.get("software_build_id") or cfg.get("ffmpeg_build_id")
+        browser_bin = None
+
+        if build_id and str(build_id).lower() != "system":
+            build = session.get(FfmpegBuild, int(build_id)) if hasattr(session, "get") else session.query(FfmpegBuild).get(int(build_id))
+            if build and build.binary_path and os.path.exists(build.binary_path):
+                browser_bin = build.binary_path
+
+        if not browser_bin:
+            # Fallback to system audit or PATH
+            audit_res = software_manager.audit_system_binary(engine_id)
+            if audit_res.get("found") and audit_res.get("path"):
+                browser_bin = audit_res["path"]
+            elif engine_id == "chromium":
+                browser_bin = shutil.which("chromium") or shutil.which("google-chrome") or shutil.which("chromium-browser")
+            elif engine_id == "firefox":
+                browser_bin = shutil.which("firefox") or shutil.which("firefox-esr")
+
+        if not browser_bin or not os.path.exists(browser_bin):
+            raise FileNotFoundError(
+                f"No executable binary found for browser engine '{engine_id}'. "
+                f"Please install {engine_id} on the host system or provision an official release in Settings → Software."
+            )
+
+        # 3. Kiosk options
+        target_source = str(k_cfg.get("target_source", "https://google.com")).strip()
+        if not target_source:
+            target_source = "about:blank"
+
+        hide_scrollbars = bool(k_cfg.get("hide_scrollbars", True))
+        disk_cache_disabled = bool(k_cfg.get("disk_cache_disabled", True))
+        gpu_accel = str(k_cfg.get("gpu_acceleration", "auto")).lower()
+        custom_flags = str(k_cfg.get("custom_flags", "")).strip()
+
+        ephemeral_profile_dir = None
+
+        # 4. Launcher Strategy implementation
+        if engine_id == "chromium":
+            profile_dir = f"/tmp/kiosk_cr_{media_proc.id}"
+            os.makedirs(profile_dir, exist_ok=True)
+            ephemeral_profile_dir = profile_dir
+
+            cmd = [
+                browser_bin,
+                f"--user-data-dir={profile_dir}",
+                "--no-first-run",
+                "--noerrdialogs",
+                "--disable-session-crashed-bubble",
+                "--disable-translate",
+                "--disable-features=TranslateUI",
+                "--autoplay-policy=no-user-gesture-required",
+                "--kiosk",
+                "--start-fullscreen",
+            ]
+
+            if hide_scrollbars:
+                cmd.extend(["--hide-scrollbars", "--disable-overlay-scrollbar"])
+            if disk_cache_disabled:
+                cmd.append("--disk-cache-dir=/dev/null")
+            if gpu_accel == "enabled":
+                cmd.extend(["--enable-gpu-rasterization", "--ignore-gpu-blocklist"])
+            elif gpu_accel == "disabled":
+                cmd.append("--disable-gpu")
+            if custom_flags:
+                cmd.extend(shlex.split(custom_flags))
+
+            cmd.append(target_source)
+
+        else:  # firefox
+            profile_dir = f"/tmp/kiosk_ff_{media_proc.id}"
+            os.makedirs(profile_dir, exist_ok=True)
+            ephemeral_profile_dir = profile_dir
+
+            user_js_lines = [
+                '// Auto-generated by ffmpeg-gui for Kiosk Service',
+                'user_pref("browser.shell.checkDefaultBrowser", false);',
+                'user_pref("browser.startup.page", 0);',
+                'user_pref("browser.translations.enable", false);',
+                'user_pref("browser.sessionstore.resume_from_crash", false);',
+                'user_pref("media.autoplay.default", 0);',
+                'user_pref("media.autoplay.blocking_policy", 0);',
+                'user_pref("toolkit.telemetry.enabled", false);',
+                'user_pref("datareporting.healthreport.uploadEnabled", false);',
+            ]
+
+            if disk_cache_disabled:
+                user_js_lines.extend([
+                    'user_pref("browser.cache.disk.enable", false);',
+                    'user_pref("browser.cache.memory.enable", true);',
+                ])
+
+            if gpu_accel == "enabled":
+                user_js_lines.append('user_pref("layers.acceleration.force-enabled", true);')
+
+            if hide_scrollbars:
+                user_js_lines.append('user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);')
+                chrome_dir = os.path.join(profile_dir, "chrome")
+                os.makedirs(chrome_dir, exist_ok=True)
+                css_path = os.path.join(chrome_dir, "userChrome.css")
+                with open(css_path, "w", encoding="utf-8") as f:
+                    f.write("/* Hide scrollbars for unattended kiosk display */\n* { scrollbar-width: none !important; }\n")
+
+            user_js_path = os.path.join(profile_dir, "user.js")
+            with open(user_js_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(user_js_lines) + "\n")
+
+            cmd = [
+                browser_bin,
+                "--kiosk",
+                "-profile", profile_dir
+            ]
+            if custom_flags:
+                cmd.extend(shlex.split(custom_flags))
+
+            cmd.append(target_source)
+
+        return cmd, display_num, ephemeral_profile_dir
 
     async def _spawn_x11vnc(
         self,

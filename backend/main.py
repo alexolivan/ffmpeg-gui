@@ -4470,6 +4470,15 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         ).first()
         if ice_build:
             build_id = ice_build.id
+    elif build_id is None and svc_type == "kiosk_browser":
+        k_cfg = (proc_in.config or {}).get("kiosk_config", {})
+        eng_id = k_cfg.get("engine_id", "chromium")
+        browser_build = db.query(FfmpegBuild).filter(
+            FfmpegBuild.software_type == eng_id,
+            FfmpegBuild.status == 'ready'
+        ).first()
+        if browser_build:
+            build_id = browser_build.id
 
     input_cfg = dict(proc_in.input_config) if proc_in.input_config is not None else None
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else None
@@ -4861,6 +4870,15 @@ def clone_process(process_id: int, db: Session = Depends(get_db)):
             ).first()
             if ice_build:
                 build_id = ice_build.id
+        elif svc_type == "kiosk_browser":
+            k_cfg = (new_config or {}).get("kiosk_config", {})
+            eng_id = k_cfg.get("engine_id", "chromium")
+            browser_build = db.query(FfmpegBuild).filter(
+                FfmpegBuild.software_type == eng_id,
+                FfmpegBuild.status == 'ready'
+            ).first()
+            if browser_build:
+                build_id = browser_build.id
 
     # 6. Validate ports
     validate_service_port_conflicts(
