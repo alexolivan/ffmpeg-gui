@@ -556,3 +556,45 @@ export const MonitorIcon: React.FC<IconProps> = ({ size = 18, className = '', ..
     <line x1="12" y1="17" x2="12" y2="21" />
   </svg>
 );
+
+export const ChromiumLogoIcon: React.FC<IconProps> = ({ size = 18, className = '', ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <circle cx="12" cy="12" r="4.5" fill="#4285F4" />
+    <circle cx="12" cy="12" r="5" stroke="#FFFFFF" strokeWidth="1" />
+    <path d="M12 2C8.5 2 5.5 3.8 3.8 6.5L7.7 13.2A5 5 0 0 1 12 7h9.5A10 10 0 0 0 12 2z" fill="#EA4335" />
+    <path d="M21.5 7H12a5 5 0 0 0-4.3 2.5L3.8 16A10 10 0 0 0 20.2 18.2L16.3 11.5A5 5 0 0 1 21.5 7z" fill="#34A853" />
+    <path d="M12 22a10 10 0 0 0 8.2-3.8l-3.9-6.7A5 5 0 0 1 12 17a5 5 0 0 1-4.3-2.5L3.8 16A10 10 0 0 0 12 22z" fill="#FBBC05" />
+  </svg>
+);
+
+export const FirefoxLogoIcon: React.FC<IconProps> = ({ size = 18, className = '', ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <circle cx="12" cy="12" r="10" fill="#20123A" />
+    <circle cx="12" cy="12" r="7" fill="#00539F" opacity="0.8" />
+    <path
+      d="M12 2C6.48 2 2 6.48 2 12c0 2.2.71 4.24 1.92 5.9C3.31 16.4 3 14.75 3 13c0-4.42 3.13-8.1 7.34-8.88C9.5 4.7 9 5.8 9 7c0 1.66 1.34 3 3 3 1.1 0 2.05-.6 2.57-1.48.55 1.1 1.43 2.03 2.53 2.63C16.4 12.1 16 13.5 16 15c0 2.21-1.79 4-4 4-.7 0-1.35-.18-1.92-.5 1.05.9 2.42 1.5 3.92 1.5 3.87 0 7-3.13 7-7 0-5.52-4.48-10-10-10z"
+      fill="#FF7139"
+    />
+    <path
+      d="M19 12c0 3.87-3.13 7-7 7-1.5 0-2.87-.6-3.92-1.5C9.4 17.65 10.6 18 12 18c3.31 0 6-2.69 6-6 0-1.25-.38-2.41-1.03-3.38C18.23 9.68 19 10.76 19 12z"
+      fill="#FF9400"
+    />
+  </svg>
+);
+
