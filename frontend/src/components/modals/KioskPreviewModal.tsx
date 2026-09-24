@@ -8,6 +8,7 @@ import {
   PencilIcon,
   ClipboardIcon,
   CheckIcon,
+  TrashIcon,
 } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 
@@ -62,13 +63,41 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
 
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copiedLogs, setCopiedLogs] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [cacheClearMessage, setCacheClearMessage] = useState<string | null>(null);
 
   const kCfg = currentProcess.config?.kiosk_config || currentProcess.kiosk_config || {};
   const engineId = (kCfg.engine_id || 'chromium').toLowerCase();
   const targetUrl = kCfg.target_source || 'about:blank';
   const desktopId = kCfg.desktop_service_id ?? '?';
-  const diskCacheDisabled = kCfg.disk_cache_disabled !== false;
+  const profileMode = kCfg.profile_mode === 'persistent' ? 'persistent' : 'ephemeral';
+  const cacheMode = kCfg.cache_mode || (kCfg.disk_cache_disabled === true ? 'disabled' : 'ram');
   const gpuAccel = kCfg.gpu_acceleration || 'auto';
+
+  const handleClearCache = async () => {
+    if (isRunning) return;
+    setClearingCache(true);
+    setCacheClearMessage(null);
+    try {
+      const res = await fetch(`${API}/processes/${currentProcess.id}/kiosk/clear-cache`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const freedMB = ((data.freed_bytes || 0) / (1024 * 1024)).toFixed(1);
+        setCacheClearMessage(t('kiosk.clear_cache_success', { bytes: `${freedMB} MB`, defaultValue: `Caché vaciada (${freedMB} MB liberados)` }));
+        setTimeout(() => setCacheClearMessage(null), 4000);
+      } else {
+        setCacheClearMessage(data.detail || t('kiosk.clear_cache_failed', 'Error al limpiar la caché'));
+        setTimeout(() => setCacheClearMessage(null), 4000);
+      }
+    } catch (err: any) {
+      setCacheClearMessage(err.message || t('kiosk.clear_cache_failed', 'Error al limpiar la caché'));
+      setTimeout(() => setCacheClearMessage(null), 4000);
+    } finally {
+      setClearingCache(false);
+    }
+  };
 
   const cpu = currentProcess.cpu_usage ?? currentProcess.cpu ?? 0;
   const ram = currentProcess.ram_usage ?? currentProcess.ram ?? 0;
@@ -267,14 +296,39 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
             <div className="h-6 w-px bg-[var(--glass-border)]" />
 
             <div>
-              <span className="text-[10px] text-[var(--text-secondary)] uppercase block">Flash Protection</span>
-              <span className={diskCacheDisabled ? 'text-emerald-400 font-semibold' : 'text-zinc-400'}>
-                {diskCacheDisabled ? 'Active (/dev/null)' : 'Disabled'}
+              <span className="text-[10px] text-[var(--text-secondary)] uppercase block">Profile</span>
+              <span className={profileMode === 'persistent' ? 'text-purple-400 font-semibold' : 'text-zinc-400'}>
+                {profileMode === 'persistent' ? t('kiosk.badge_profile_persistent', 'Persistent') : t('kiosk.badge_profile_ephemeral', 'Ephemeral')}
+              </span>
+            </div>
+
+            <div className="h-6 w-px bg-[var(--glass-border)]" />
+
+            <div>
+              <span className="text-[10px] text-[var(--text-secondary)] uppercase block">Cache</span>
+              <span className={cacheMode === 'ram' ? 'text-emerald-400 font-semibold' : cacheMode === 'disabled' ? 'text-cyan-400 font-semibold' : 'text-blue-400 font-semibold'}>
+                {cacheMode === 'ram' ? 'RAM (/dev/shm)' : cacheMode === 'disabled' ? 'Disabled (/dev/null)' : 'Storage'}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {cacheClearMessage && (
+              <span className="text-[11px] font-medium text-brand-lime px-2 py-0.5 rounded bg-brand-lime/10 border border-brand-lime/30 animate-fade-in">
+                {cacheClearMessage}
+              </span>
+            )}
+
+            <button
+              onClick={handleClearCache}
+              disabled={isRunning || clearingCache}
+              title={isRunning ? t('kiosk.clear_cache_tooltip_running', 'Stop the kiosk service to safely clear browser cache') : t('kiosk.clear_cache_tooltip_ready', 'Purge all cached web data and release memory/disk space')}
+              className="text-xs bg-white/5 hover:bg-red-500/20 text-[var(--text-secondary)] hover:text-red-300 border border-[var(--glass-border)] hover:border-red-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <TrashIcon size={12} className={clearingCache ? 'animate-spin' : ''} />
+              {clearingCache ? t('common.clearing', 'Clearing...') : t('kiosk.clear_cache_button', 'Clear Cache')}
+            </button>
+
             <button
               onClick={handleCopyLogs}
               className="text-xs bg-white/5 hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--glass-border)] px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer"

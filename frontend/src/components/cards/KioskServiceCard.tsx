@@ -78,7 +78,8 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
   const engineId = (kCfg.engine_id || 'chromium').toLowerCase();
   const targetUrl = kCfg.target_source || 'about:blank';
   const desktopId = kCfg.desktop_service_id ?? '?';
-  const diskCacheDisabled = kCfg.disk_cache_disabled !== false;
+  const profileMode = kCfg.profile_mode === 'persistent' ? 'persistent' : 'ephemeral';
+  const cacheMode = kCfg.cache_mode || (kCfg.disk_cache_disabled === true ? 'disabled' : 'ram');
 
   return (
     <div
@@ -129,6 +130,18 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
             🖥️ Desktop #{desktopId}
           </span>
 
+          {/* Profile Mode Badge */}
+          <span
+            className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold flex items-center gap-1 border ${
+              profileMode === 'persistent'
+                ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
+                : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30'
+            }`}
+            title={profileMode === 'persistent' ? 'Perfil Persistente en disco' : 'Perfil Efímero temporal'}
+          >
+            💾 {profileMode === 'persistent' ? t('kiosk.badge_profile_persistent', 'Profile: Persistent') : t('kiosk.badge_profile_ephemeral', 'Profile: Ephemeral')}
+          </span>
+
           {/* Autostart on Boot */}
           {service.auto_start && (
             <span
@@ -171,9 +184,19 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
           <span className="px-2 py-0.5 rounded bg-[var(--input-bg)] text-[var(--text-primary)] border border-[var(--glass-border)] text-[10px] font-mono font-bold truncate max-w-md">
             🔗 {targetUrl}
           </span>
-          {diskCacheDisabled && (
-            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-semibold" title="SATADOM flash protection active">
-              🛡️ Flash-Safe
+          {cacheMode === 'ram' && (
+            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-semibold" title="Caché en RAM (/dev/shm)">
+              🛡️ RAM Cache
+            </span>
+          )}
+          {cacheMode === 'disabled' && (
+            <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-[10px] font-mono font-semibold" title="Caché deshabilitada (/dev/null)">
+              🛡️ No Cache
+            </span>
+          )}
+          {cacheMode === 'custom' && (
+            <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/30 text-[10px] font-mono font-semibold" title="Caché en Storage Persistente">
+              📁 Storage Cache
             </span>
           )}
         </div>
