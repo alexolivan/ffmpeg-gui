@@ -517,7 +517,7 @@ class Storage(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     path = Column(String, nullable=False)
-    type = Column(String, nullable=False)  # 'build', 'media', 'hls', 'logs', 'sdk', 'preview'
+    type = Column(String, nullable=False)  # 'build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'
     is_default = Column(Boolean, default=False)
     route_path = Column(String, nullable=True)  # Optional HTTP route path for HLS serving
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

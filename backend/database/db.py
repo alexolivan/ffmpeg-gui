@@ -291,6 +291,12 @@ def init_db():
                         path=os.path.abspath("data/logs"),
                         type="logs",
                         is_default=True
+                    ),
+                    Storage(
+                        name="Default Cache Storage",
+                        path="/dev/shm/ffmpeg-gui-cache" if os.path.exists("/dev/shm") else os.path.abspath("data/cache"),
+                        type="cache",
+                        is_default=True
                     )
                 ]
                 db.add_all(default_storages)
@@ -302,6 +308,21 @@ def init_db():
                         name="Default Logs Storage",
                         path=os.path.abspath("data/logs"),
                         type="logs",
+                        is_default=True
+                    ))
+                    db.commit()
+
+                # Ensure Default Cache Storage is seeded if cache type storages are missing
+                if db.query(Storage).filter(Storage.type == "cache").count() == 0:
+                    cache_dir = "/dev/shm/ffmpeg-gui-cache" if os.path.exists("/dev/shm") else os.path.abspath("data/cache")
+                    try:
+                        os.makedirs(cache_dir, exist_ok=True)
+                    except Exception:
+                        pass
+                    db.add(Storage(
+                        name="Default Cache Storage",
+                        path=cache_dir,
+                        type="cache",
                         is_default=True
                     ))
                     db.commit()
