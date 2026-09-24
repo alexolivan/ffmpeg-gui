@@ -42,7 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ensured automatic engine synchronization in `ProcessManager._build_kiosk_cmds` when a custom software build is selected.
   - Enforced exact full-screen geometry on bare X11 virtual desktops lacking a window manager by injecting target display resolution into browser launch flags (`--window-position=0,0`, `--window-size=W,H`, `--start-maximized` for Chromium, and `-width W`, `-height H`, `browser.window.width/height` for Firefox).
   - Suppressed Chrome for Testing "Google Chrome for Testing is only for automated testing" notification banner via `--disable-infobars`, `--test-type`, and `--disable-blink-features=AutomationControlled`.
-  - Suppressed DBus connection and keyring errors by unsetting invalid `DBUS_SESSION_BUS_ADDRESS`, adding `GTK_A11Y=none`, and passing `--password-store=basic` and `--use-mock-keychain` to Chromium.
+  - Suppressed DBus connection and keyring errors by setting `DBUS_SESSION_BUS_ADDRESS="disabled:"`, `AT_SPI_BUS_ADDRESS="disabled:"`, adding `GTK_A11Y="none"`, and passing `--password-store=basic` and `--use-mock-keychain` to Chromium.
+  - Silenced D-Bus autolaunch noise and Google Cloud Messaging endpoint warnings in Chromium by passing `--log-level=3`, `--disable-sync`, `--disable-background-networking`, and `--disable-component-update`.
+  - Prevented Firefox AT-SPI `dbus-launch` missing warnings in console diagnostics by deploying an ephemeral `dbus-launch` stub executable in the profile `bin/` directory and adding `dbus-x11` to `install.sh`.
   - Implemented asynchronous window-snap enforcer (`ProcessManager._ensure_kiosk_fullscreen`) using `xdotool` to guarantee active browser windows cover 100% of the display coordinates, and added `xdotool` to `install.sh`.
 
 ## [2.22.0] - 2026-09-23

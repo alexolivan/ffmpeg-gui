@@ -453,17 +453,22 @@ class ProcessManager:
                     os.makedirs(config_dir, exist_ok=True)
                     os.makedirs(data_dir, exist_ok=True)
 
-                    cleaned_env = {k: v for k, v in sub_env.items() if k != "DBUS_SESSION_BUS_ADDRESS"}
+                    profile_bin_dir = os.path.join(kiosk_profile, "bin")
+                    orig_path = sub_env.get("PATH", os.environ.get("PATH", ""))
 
                     kiosk_sub_env = {
-                        **cleaned_env,
+                        **sub_env,
                         "DISPLAY": f":{display_num}",
                         "HOME": kiosk_profile,
                         "XDG_CACHE_HOME": cache_dir,
                         "XDG_CONFIG_HOME": config_dir,
                         "XDG_DATA_HOME": data_dir,
+                        "PATH": f"{profile_bin_dir}:{orig_path}",
+                        "DBUS_SESSION_BUS_ADDRESS": "disabled:",
                         "NO_AT_BRIDGE": "1",
                         "GTK_A11Y": "none",
+                        "GTK_MODULES": "",
+                        "AT_SPI_BUS_ADDRESS": "disabled:",
                         "MOZ_NO_REMOTE": "1",
                     }
                     proc = await asyncio.create_subprocess_exec(
@@ -1588,6 +1593,14 @@ class ProcessManager:
                 "--password-store=basic",
                 "--use-mock-keychain",
                 "--disable-blink-features=AutomationControlled",
+                "--disable-sync",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-domain-reliability",
+                "--disable-client-side-phishing-detection",
+                "--disable-default-apps",
+                "--log-level=3",
+                "--silent-debugger-extension-api",
                 "--window-position=0,0",
                 f"--window-size={desk_width},{desk_height}",
                 "--start-fullscreen",
@@ -1615,6 +1628,18 @@ class ProcessManager:
             profile_dir = f"/tmp/kiosk_ff_{media_proc.id}"
             os.makedirs(profile_dir, exist_ok=True)
             ephemeral_profile_dir = profile_dir
+
+            # Create a dbus-launch stub in the profile's bin directory to prevent AT-SPI/GLib warning
+            dummy_bin_dir = os.path.join(profile_dir, "bin")
+            os.makedirs(dummy_bin_dir, exist_ok=True)
+            dbus_stub = os.path.join(dummy_bin_dir, "dbus-launch")
+            if not os.path.exists(dbus_stub):
+                try:
+                    with open(dbus_stub, "w", encoding="utf-8") as f:
+                        f.write("#!/bin/sh\nexit 1\n")
+                    os.chmod(dbus_stub, 0o755)
+                except Exception:
+                    pass
 
             # Clean stale lock files from previous runs to prevent "profile cannot be loaded or is in use"
             for lock_name in ("lock", ".parentlock", "parent.lock"):
