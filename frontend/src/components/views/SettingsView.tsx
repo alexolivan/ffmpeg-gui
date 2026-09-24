@@ -10,7 +10,7 @@ import { SoftwareEngineCard, type SoftwareEngineData } from './settings/Software
 import { InboundKeysCard } from './settings/InboundKeysCard';
 import { RemotePeersCard } from './settings/RemotePeersCard';
 
-const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
+const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'] as const;
 
 const THEME_OPTIONS = [
   {
@@ -1794,6 +1794,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <option value="logs" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">logs (FFmpeg/System Logs)</option>
                       <option value="sdk" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">sdk (DeckLink/NDI SDKs)</option>
                       <option value="preview" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">preview (Snapshot Thumbnails)</option>
+                      <option value="cache" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">cache (Kiosk Browser / RAM Cache)</option>
                     </select>
                   </div>
                   <div className="space-y-1">
