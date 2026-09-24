@@ -346,13 +346,19 @@ class ProcessManager:
                         now_str += "Z"
 
                 if is_restart:
+                    header_text = f"\n--- PROCESS RESTART AT {now_str} (Attempt {self.restart_counts.get(process_id, 1)}) ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n"
                     with open(log_path, "ab") as f:
-                        header = f"\n--- PROCESS RESTART AT {now_str} (Attempt {self.restart_counts.get(process_id, 1)}) ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
-                        f.write(header)
+                        f.write(header_text.encode("utf-8"))
+                    for h_line in header_text.strip().splitlines():
+                        if h_line.strip():
+                            self._handle_log_msg(process_id, h_line.strip(), status_re=None)
                 else:
+                    header_text = f"--- PROCESS LAUNCH AT {now_str} ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n"
                     with open(log_path, "wb") as f:
-                        header = f"--- PROCESS LAUNCH AT {now_str} ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
-                        f.write(header)
+                        f.write(header_text.encode("utf-8"))
+                    for h_line in header_text.strip().splitlines():
+                        if h_line.strip():
+                            self._handle_log_msg(process_id, h_line.strip(), status_re=None)
             except Exception as file_err:
                 self.logger.error(f"Failed to prepare log file: {file_err}")
                 
@@ -472,9 +478,8 @@ class ProcessManager:
                         # Chromium natively supports "disabled:" to suppress D-Bus autolaunch without error
                         kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
                     else:
-                        # For Firefox/Gecko, ensure invalid D-Bus addresses are purged so dbus-launch (dbus-x11) can autolaunch cleanly
-                        if kiosk_sub_env.get("DBUS_SESSION_BUS_ADDRESS") in ("disabled:", ""):
-                            kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
+                        # For Firefox/Gecko, ensure any DBus session or AT-SPI addresses are purged so dbus-launch (dbus-x11) can autolaunch cleanly
+                        kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
                         kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
