@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-09-24
+
+### Added
+- **Kiosk Cache Storage Decoupling & Persistent User Profiles**:
+  - Implemented dual-layer storage architecture for unattended Web Kiosk displays, separating user profile storage (cookies, sessions, site preferences, consent prompts) from browser web cache.
+  - Added dedicated `'cache'` storage type in `backend/database/models.py` and auto-seeded a default fast cache storage pointing to `/dev/shm/ffmpeg-gui-cache` (RAM memory disk) with automatic fallback to `data/cache`.
+  - Added support for ephemeral (`/tmp/kiosk_{prefix}_{id}`) vs. persistent (`data/kiosk_profiles/{id}`) profile modes in `ProcessManager`.
+  - Added three cache modes for Chromium and Firefox: RAM Memory (`ram`, default, `/dev/shm`), Disabled (`disabled`, `/dev/null`), and Persistent Storage (`custom`, routed to configured `cache` storages).
+  - Enforced deterministic cache size caps across browsers: `--disk-cache-size=104857600 --media-cache-size=52428800` (Chromium) and `browser.cache.disk.capacity = 102400` (Firefox).
+  - Added cache purge endpoint `POST /api/processes/{id}/kiosk/clear-cache` with safety guard blocking execution when kiosk process is running (HTTP 409 Conflict).
+  - Added storage type selector option `'cache'` in `SettingsView.tsx`.
+  - Added Profile Mode (`ephemeral` vs `persistent`) and Cache Mode (`ram` vs `disabled` vs `custom`) selectors in `KioskConfigForm.tsx`, conditioning persistent cache selection on existing cache storages.
+  - Added "Limpiar Caché" action in `KioskPreviewModal.tsx`, active only when the service is stopped, with real-time feedback of freed disk/memory space.
+  - Added Profile Mode badge and Cache Mode indicators in `KioskServiceCard.tsx` and `KioskPreviewModal.tsx`.
+  - Comprehensive automated test coverage in `backend/tests/test_storage_cache.py` and `backend/tests/test_kiosk_browser.py`.
+
 ### Fixed
+- **Chromium Unattended Translation Banner Suppression**:
+  - Completely suppressed the "Translate this page" banner in Chrome/Chromium by combining `--disable-features=Translate,TranslateUI` with injected user profile preferences (`"translate": {"enabled": false}, "translate_blocked_languages": ["all"]`).
 - **Crystalfontz LCD Hardware Probing and Capabilities Detection**:
   - Corrected module import path and driver class reference in `get_system_capabilities()` (`core.lcd.drivers.cfa635.Cfa635Driver`).
   - Implemented dynamic COM port discovery in capabilities scanning using `serial.tools.list_ports.comports()`, verifying Crystalfontz USB Vendor ID (`0x223B`), descriptor strings, active manager port binding, and fallback packet ping probing.
