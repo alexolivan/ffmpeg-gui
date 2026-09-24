@@ -278,10 +278,11 @@ class ProcessManager:
                 xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port = self._build_desktop_cmds(media_proc)
                 cmd = xvfb_cmd
             elif svc_type == "kiosk_browser":
-                kiosk_cmd, display_num, ephemeral_profile_dir = self._build_kiosk_cmds(media_proc, session)
+                kiosk_cmd, display_num, kiosk_profile_dir = self._build_kiosk_cmds(media_proc, session)
                 cmd = kiosk_cmd
-                if ephemeral_profile_dir:
-                    self.ephemeral_configs[process_id] = ephemeral_profile_dir
+                k_mode = str((media_proc.config or {}).get("kiosk_config", {}).get("profile_mode", "ephemeral")).lower()
+                if k_mode != "persistent" and kiosk_profile_dir:
+                    self.ephemeral_configs[process_id] = kiosk_profile_dir
             else:
                 # Determine which FFmpeg binary to use
                 ffmpeg_bin = self.ffmpeg_path  # Default fallback
@@ -451,7 +452,16 @@ class ProcessManager:
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 elif svc_type == "kiosk_browser":
                     log_file_handle = open(log_path, "ab", buffering=0)
-                    kiosk_profile = self.ephemeral_configs.get(process_id) or f"/tmp/kiosk_{process_id}"
+                    with self.db_session_factory() as session:
+                        from database.models import Service
+                        s_obj = session.get(Service, int(process_id)) if hasattr(session, "get") else session.query(Service).get(int(process_id))
+                        p_mode = str((s_obj.config or {}).get("kiosk_config", {}).get("profile_mode", "ephemeral")).lower() if s_obj else "ephemeral"
+                    
+                    if p_mode == "persistent":
+                        kiosk_profile = os.path.abspath(f"data/kiosk_profiles/{process_id}")
+                    else:
+                        kiosk_profile = self.ephemeral_configs.get(process_id) or f"/tmp/kiosk_{process_id}"
+
                     cache_dir = os.path.join(kiosk_profile, "cache")
                     config_dir = os.path.join(kiosk_profile, "config")
                     data_dir = os.path.join(kiosk_profile, "data")
@@ -1572,18 +1582,36 @@ class ProcessManager:
             target_source = "about:blank"
 
         hide_scrollbars = bool(k_cfg.get("hide_scrollbars", True))
-        disk_cache_disabled = bool(k_cfg.get("disk_cache_disabled", True))
         gpu_accel = str(k_cfg.get("gpu_acceleration", "auto")).lower()
         custom_flags = str(k_cfg.get("custom_flags", "")).strip()
 
-        ephemeral_profile_dir = None
+        # Resolve Profile Mode: 'ephemeral' vs 'persistent'
+        profile_mode = str(k_cfg.get("profile_mode", "ephemeral")).lower()
+        if profile_mode == "persistent":
+            persistent_base = os.path.abspath("data/kiosk_profiles")
+            os.makedirs(persistent_base, exist_ok=True)
+            profile_dir = os.path.join(persistent_base, str(media_proc.id))
+            ephemeral_profile_dir = None
+        else:
+            prefix = "cr" if engine_id == "chromium" else "ff"
+            profile_dir = f"/tmp/kiosk_{prefix}_{media_proc.id}"
+            ephemeral_profile_dir = profile_dir
+        os.makedirs(profile_dir, exist_ok=True)
+
+        # Resolve Cache Mode: 'ram', 'disabled', or 'custom'
+        # Backwards compatibility: disk_cache_disabled maps to cache_mode='disabled'
+        if "cache_mode" in k_cfg:
+            cache_mode = str(k_cfg.get("cache_mode", "ram")).lower()
+        else:
+            cache_mode = "disabled" if k_cfg.get("disk_cache_disabled") is True else "ram"
+
+        cache_dir = None
+        if cache_mode != "disabled":
+            cache_dir = self.get_kiosk_cache_dir(media_proc.id, session=session)
+            os.makedirs(cache_dir, exist_ok=True)
 
         # 4. Launcher Strategy implementation
         if engine_id == "chromium":
-            profile_dir = f"/tmp/kiosk_cr_{media_proc.id}"
-            os.makedirs(profile_dir, exist_ok=True)
-            ephemeral_profile_dir = profile_dir
-
             cmd = [
                 browser_bin,
                 f"--user-data-dir={profile_dir}",
@@ -1591,7 +1619,7 @@ class ProcessManager:
                 "--noerrdialogs",
                 "--disable-session-crashed-bubble",
                 "--disable-translate",
-                "--disable-features=TranslateUI,BlinkGenPropertyTrees",
+                "--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees",
                 "--autoplay-policy=no-user-gesture-required",
                 "--disable-dev-shm-usage",
                 "--disable-crash-reporter",
@@ -1618,13 +1646,37 @@ class ProcessManager:
                 "--kiosk",
             ]
 
+            # In Chromium profile: write Preferences to disable translate popup
+            default_pref_dir = os.path.join(profile_dir, "Default")
+            os.makedirs(default_pref_dir, exist_ok=True)
+            pref_file = os.path.join(default_pref_dir, "Preferences")
+            try:
+                import json
+                existing_prefs = {}
+                if os.path.exists(pref_file):
+                    with open(pref_file, "r", encoding="utf-8") as pf:
+                        existing_prefs = json.load(pf)
+                existing_prefs["translate"] = {"enabled": False}
+                existing_prefs["translate_blocked_languages"] = ["all"]
+                with open(pref_file, "w", encoding="utf-8") as pf:
+                    json.dump(existing_prefs, pf, indent=2)
+            except Exception as pref_err:
+                self.logger.debug(f"Failed to inject Chromium preferences: {pref_err}")
+
             if os.geteuid() == 0 or os.environ.get("FFMPEG_GUI_CONTAINER"):
                 cmd.append("--no-sandbox")
 
             if hide_scrollbars:
                 cmd.extend(["--hide-scrollbars", "--disable-overlay-scrollbar"])
-            if disk_cache_disabled:
-                cmd.append("--disk-cache-dir=/dev/null")
+            if cache_mode == "disabled":
+                cmd.extend(["--disk-cache-dir=/dev/null", "--media-cache-size=1", "--disk-cache-size=1"])
+            else:
+                cmd.extend([
+                    f"--disk-cache-dir={cache_dir}",
+                    f"--shader-cache-dir={os.path.join(cache_dir, 'shaders')}",
+                    "--disk-cache-size=104857600",
+                    "--media-cache-size=52428800"
+                ])
             if gpu_accel == "enabled":
                 cmd.extend(["--enable-gpu-rasterization", "--ignore-gpu-blocklist"])
             elif gpu_accel == "disabled":
@@ -1635,10 +1687,6 @@ class ProcessManager:
             cmd.append(target_source)
 
         else:  # firefox
-            profile_dir = f"/tmp/kiosk_ff_{media_proc.id}"
-            os.makedirs(profile_dir, exist_ok=True)
-            ephemeral_profile_dir = profile_dir
-
             # Clean stale lock files from previous runs to prevent "profile cannot be loaded or is in use"
             for lock_name in ("lock", ".parentlock", "parent.lock"):
                 lock_path = os.path.join(profile_dir, lock_name)
@@ -1671,10 +1719,16 @@ class ProcessManager:
                 'user_pref("privacy.resistFingerprinting", false);',
             ]
 
-            if disk_cache_disabled:
+            if cache_mode == "disabled":
                 user_js_lines.extend([
                     'user_pref("browser.cache.disk.enable", false);',
                     'user_pref("browser.cache.memory.enable", true);',
+                ])
+            else:
+                user_js_lines.extend([
+                    'user_pref("browser.cache.disk.enable", true);',
+                    f'user_pref("browser.cache.disk.parent_directory", "{cache_dir}");',
+                    'user_pref("browser.cache.disk.capacity", 102400);',
                 ])
 
             if gpu_accel == "enabled":
@@ -1720,7 +1774,7 @@ class ProcessManager:
         except Exception:
             pass
 
-        return cmd, display_num, ephemeral_profile_dir
+        return cmd, display_num, profile_dir
 
     async def _ensure_kiosk_fullscreen(self, display_num: int):
         """Asynchronously snaps and resizes kiosk browser windows to full screen if xdotool is present."""

@@ -41,7 +41,7 @@ class TestKioskBrowser(unittest.TestCase):
     def tearDown(self):
         self.db.close()
         # Clean up any test profile dirs
-        for d in ("/tmp/kiosk_cr_2", "/tmp/kiosk_ff_3"):
+        for d in ("/tmp/kiosk_cr_2", "/tmp/kiosk_ff_3", "data/kiosk_profiles"):
             if os.path.exists(d):
                 shutil.rmtree(d, ignore_errors=True)
 
@@ -190,6 +190,81 @@ class TestKioskBrowser(unittest.TestCase):
         self.assertIsNotNone(dep)
         self.assertTrue(dep.is_auto_managed)
 
+    @patch("shutil.which")
+    def test_chromium_persistent_profile_and_ram_cache(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_which.return_value = real_sh
+
+        kiosk = Service(
+            name="Kiosk Chrome Persistent",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com",
+                    "profile_mode": "persistent",
+                    "cache_mode": "ram"
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertIn("data/kiosk_profiles", profile_dir)
+        self.assertIn(f"--user-data-dir={profile_dir}", cmd)
+        self.assertTrue(any("--disk-cache-dir=" in arg and "/cr_" in arg for arg in cmd))
+        self.assertIn("--disk-cache-size=104857600", cmd)
+        self.assertIn("--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees", cmd)
+
+        pref_path = os.path.join(profile_dir, "Default", "Preferences")
+        self.assertTrue(os.path.exists(pref_path))
+        with open(pref_path, "r", encoding="utf-8") as f:
+            import json
+            prefs = json.load(f)
+            self.assertEqual(prefs.get("translate", {}).get("enabled"), False)
+
+    @patch("shutil.which")
+    def test_firefox_persistent_profile_and_ram_cache(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_which.return_value = real_sh
+
+        kiosk = Service(
+            name="Kiosk Firefox Persistent",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "firefox",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com",
+                    "profile_mode": "persistent",
+                    "cache_mode": "ram"
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertIn("data/kiosk_profiles", profile_dir)
+        self.assertIn("-profile", cmd)
+        self.assertIn(profile_dir, cmd)
+
+        user_js_path = os.path.join(profile_dir, "user.js")
+        self.assertTrue(os.path.exists(user_js_path))
+        with open(user_js_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            self.assertIn('browser.cache.disk.parent_directory', content)
+            self.assertIn('browser.cache.disk.capacity", 102400', content)
+
 
 if __name__ == "__main__":
     unittest.main()
+
