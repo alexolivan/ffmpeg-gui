@@ -5213,6 +5213,23 @@ def get_mediamtx_live_paths(process_id: int, db: Session = Depends(get_db)):
     return {"items": []}
 
 
+@app.post("/processes/{process_id}/kiosk/clear-cache")
+@app.post("/api/processes/{process_id}/kiosk/clear-cache")
+def clear_kiosk_cache_endpoint(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if getattr(db_proc, "service_type", "") != "kiosk_browser":
+        raise HTTPException(status_code=400, detail="Service is not a Web Kiosk")
+    if db_proc.status == "running" or process_id in process_manager.processes:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot clear cache while service is running. Stop the service first."
+        )
+    freed = process_manager.clear_kiosk_cache(process_id, session=db)
+    return {"success": True, "freed_bytes": freed, "service_id": process_id}
+
+
 @app.post("/processes/{process_id}/start")
 async def start_process(process_id: int):
     await process_manager.start_process(process_id)

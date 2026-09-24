@@ -1776,6 +1776,60 @@ class ProcessManager:
             except Exception as e:
                 self.logger.debug(f"xdotool kiosk window sizing notice for display :{display_num}: {e}")
 
+    def get_kiosk_cache_dir(self, service_id: int, session=None) -> str:
+        """Resolves the designated cache directory path for a kiosk_browser service."""
+        from database.models import Service, Storage
+        close_session = False
+        if session is None:
+            session = self.db_session_factory()
+            close_session = True
+        try:
+            svc = session.get(Service, int(service_id)) if hasattr(session, "get") else session.query(Service).get(int(service_id))
+            engine_id = "chromium"
+            cache_storage_id = None
+            if svc and svc.config:
+                k_cfg = svc.config.get("kiosk_config", svc.config)
+                engine_id = str(k_cfg.get("engine_id", "chromium")).lower()
+                cache_storage_id = k_cfg.get("cache_storage_id")
+
+            base_cache_path = None
+            if cache_storage_id:
+                st = session.get(Storage, int(cache_storage_id)) if hasattr(session, "get") else session.query(Storage).get(int(cache_storage_id))
+                if st and st.path:
+                    base_cache_path = st.path
+
+            if not base_cache_path:
+                def_st = session.query(Storage).filter(Storage.type == "cache", Storage.is_default == True).first()
+                if def_st and def_st.path:
+                    base_cache_path = def_st.path
+                else:
+                    base_cache_path = "/dev/shm/ffmpeg-gui-cache" if os.path.exists("/dev/shm") else os.path.abspath("data/cache")
+
+            prefix = "cr" if "chrome" in engine_id or "chromium" in engine_id else "ff"
+            return os.path.join(base_cache_path, f"{prefix}_{service_id}")
+        finally:
+            if close_session:
+                session.close()
+
+    def clear_kiosk_cache(self, service_id: int, session=None) -> int:
+        """Purges the kiosk browser cache directory on disk/RAM and returns the freed bytes."""
+        cache_dir = self.get_kiosk_cache_dir(service_id, session=session)
+        freed_bytes = 0
+        if os.path.exists(cache_dir):
+            for root, dirs, files in os.walk(cache_dir):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    try:
+                        freed_bytes += os.path.getsize(fp)
+                    except OSError:
+                        pass
+            try:
+                shutil.rmtree(cache_dir, ignore_errors=True)
+                os.makedirs(cache_dir, exist_ok=True)
+            except Exception as e:
+                self.logger.warning(f"Error purging kiosk cache {cache_dir}: {e}")
+        return freed_bytes
+
     async def _spawn_x11vnc(
         self,
         process_id: int,
