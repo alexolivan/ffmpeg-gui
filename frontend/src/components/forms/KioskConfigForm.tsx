@@ -49,9 +49,16 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
   const [hideScrollbars, setHideScrollbars] = useState<boolean>(
     kCfg.hide_scrollbars !== undefined ? Boolean(kCfg.hide_scrollbars) : true
   );
-  const [diskCacheDisabled, setDiskCacheDisabled] = useState<boolean>(
-    kCfg.disk_cache_disabled !== undefined ? Boolean(kCfg.disk_cache_disabled) : true
+  const [profileMode, setProfileMode] = useState<'ephemeral' | 'persistent'>(
+    kCfg.profile_mode === 'persistent' ? 'persistent' : 'ephemeral'
   );
+  const [cacheMode, setCacheMode] = useState<'ram' | 'disabled' | 'custom'>(
+    kCfg.cache_mode || (kCfg.disk_cache_disabled === true ? 'disabled' : 'ram')
+  );
+  const [cacheStorageId, setCacheStorageId] = useState<number | ''>(
+    kCfg.cache_storage_id ? Number(kCfg.cache_storage_id) : ''
+  );
+  const [availableCacheStorages, setAvailableCacheStorages] = useState<any[]>([]);
   const [gpuAcceleration, setGpuAcceleration] = useState<'auto' | 'enabled' | 'disabled'>(
     kCfg.gpu_acceleration || 'auto'
   );
@@ -118,6 +125,23 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
     setEngineId(newEngine);
   };
 
+  // Fetch storages to populate custom cache storage options
+  useEffect(() => {
+    fetch(`${API}/settings/storages`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((storages: any[]) => {
+        const cacheOnly = (storages || []).filter((s: any) => s.type === 'cache');
+        setAvailableCacheStorages(cacheOnly);
+        if (cacheOnly.length > 0 && !cacheStorageId) {
+          const defaultCache = cacheOnly.find((s: any) => s.is_default);
+          if (defaultCache) {
+            setCacheStorageId(defaultCache.id);
+          }
+        }
+      })
+      .catch((err) => console.error('Error fetching cache storages:', err));
+  }, [API]);
+
   // Fetch builds for selected engine
   useEffect(() => {
     fetch(`${API}/builds`)
@@ -182,7 +206,10 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
             build_id: parsedBuildId,
             target_source: targetSource.trim() || 'about:blank',
             hide_scrollbars: hideScrollbars,
-            disk_cache_disabled: diskCacheDisabled,
+            profile_mode: profileMode,
+            cache_mode: cacheMode,
+            cache_storage_id: cacheMode === 'custom' && cacheStorageId ? Number(cacheStorageId) : null,
+            disk_cache_disabled: cacheMode === 'disabled',
             gpu_acceleration: gpuAcceleration,
             custom_flags: customFlags.trim(),
           },
@@ -432,23 +459,91 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
             />
           </div>
 
-          {/* SATADOM Flash Storage Protection */}
-          <div className="flex items-center justify-between p-3 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+          {/* User Profile & Session Storage */}
+          <div className="space-y-1.5 p-3 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+            <label className="block text-xs font-bold text-[var(--text-primary)]">
+              {t('kiosk.profile_mode_label', 'User Profile & Session Storage')}
+            </label>
+            <p className="text-[11px] text-[var(--text-secondary)]">
+              {t('kiosk.profile_mode_help', 'Ephemeral protects flash and discards state; Persistent preserves site cookies and logins across reboots.')}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+              <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${profileMode === 'ephemeral' ? 'bg-brand-lime/10 border-brand-lime/40 text-[var(--text-primary)]' : 'bg-[var(--bg-card)] border-[var(--glass-border)] text-[var(--text-secondary)]'}`}>
+                <input
+                  type="radio"
+                  name="profileMode"
+                  value="ephemeral"
+                  checked={profileMode === 'ephemeral'}
+                  onChange={() => setProfileMode('ephemeral')}
+                  className="w-4 h-4 accent-brand-lime"
+                />
+                <span className="text-xs font-medium">
+                  {t('kiosk.profile_mode_ephemeral', 'Ephemeral (/tmp, freshly created on restart)')}
+                </span>
+              </label>
+
+              <label className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${profileMode === 'persistent' ? 'bg-brand-lime/10 border-brand-lime/40 text-[var(--text-primary)]' : 'bg-[var(--bg-card)] border-[var(--glass-border)] text-[var(--text-secondary)]'}`}>
+                <input
+                  type="radio"
+                  name="profileMode"
+                  value="persistent"
+                  checked={profileMode === 'persistent'}
+                  onChange={() => setProfileMode('persistent')}
+                  className="w-4 h-4 accent-brand-lime"
+                />
+                <span className="text-xs font-medium">
+                  {t('kiosk.profile_mode_persistent', 'Persistent (Saves cookies & logins)')}
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {/* Web Browser Cache Destination */}
+          <div className="space-y-2 p-3 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
             <div>
-              <p className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
-                <span>🛡️</span>
-                {t('kiosk.disk_cache_disabled', 'SATADOM / Flash Storage Protection')}
-              </p>
+              <label className="block text-xs font-bold text-[var(--text-primary)]">
+                {t('kiosk.cache_mode_label', 'Web Browser Cache Destination')}
+              </label>
               <p className="text-[11px] text-[var(--text-secondary)]">
-                {t('kiosk.disk_cache_disabled_desc', 'Disable on-disk browser caching (/dev/null) to extend flash media lifespan.')}
+                {t('kiosk.cache_storage_help', 'Browser cache will be directed to this dedicated cache storage.')}
               </p>
             </div>
-            <input
-              type="checkbox"
-              checked={diskCacheDisabled}
-              onChange={(e) => setDiskCacheDisabled(e.target.checked)}
-              className="w-4 h-4 accent-brand-lime cursor-pointer"
-            />
+
+            <select
+              value={cacheMode}
+              onChange={(e) => setCacheMode(e.target.value as any)}
+              className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none"
+            >
+              <option value="ram">{t('kiosk.cache_mode_ram', 'RAM Memory (/dev/shm - Recommended / Flash Safe)')}</option>
+              <option value="disabled">{t('kiosk.cache_mode_disabled', 'Disabled (/dev/null - Maximum Flash Protection)')}</option>
+              <option value="custom" disabled={availableCacheStorages.length === 0}>
+                {availableCacheStorages.length > 0
+                  ? t('kiosk.cache_mode_custom', "Persistent Storage (Requires 'cache' storage)")
+                  : t('kiosk.cache_mode_custom_disabled', "Persistent Storage (No 'cache' storage configured)")}
+              </option>
+            </select>
+
+            {cacheMode === 'custom' && (
+              <div className="pt-1">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  {t('kiosk.cache_storage_select', 'Target Cache Storage')}
+                </label>
+                <select
+                  value={cacheStorageId}
+                  onChange={(e) => setCacheStorageId(e.target.value ? Number(e.target.value) : '')}
+                  className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none"
+                >
+                  <option value="" disabled>
+                    {t('kiosk.cache_storage_none', 'Select a cache storage...')}
+                  </option>
+                  {availableCacheStorages.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.path}) {s.is_default ? '★' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* GPU Acceleration */}
