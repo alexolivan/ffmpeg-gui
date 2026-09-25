@@ -14,17 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented thread-safe `SecurityGuard` in `backend/core/security_guard.py` tracking failed login attempts and temporary lockouts in RAM without SQLite queries during attacks.
   - Implemented RFC 6585 compliant HTTP 429 response (`Too Many Requests`) with `Retry-After` header and immediate rejection in RAM for locked-out IP addresses.
   - Hardcoded permanent loopback immunity (`127.0.0.1`, `::1`, `localhost`) to guarantee local administrative tunnels and services can never be locked out.
-  - Added support for custom whitelist IPs and CIDR blocks (e.g. `192.168.1.0/24`).
+  - Added support for custom whitelist IPs and CIDR blocks (e.g. `192.168.1.0/24`) with strict Pydantic and regex validation in backend and frontend.
   - Added database persistence columns (`brute_force_enabled`, `brute_force_max_attempts`, `brute_force_window_seconds`, `brute_force_lockout_seconds`, `brute_force_whitelist`) in `SystemSettings` with automatic dynamic migrations in `backend/database/db.py` (schema v2.4.0).
   - Added administrative inspection endpoints `GET /api/settings/security/status` and `POST /api/settings/security/unblock` protected behind session authentication.
-- **Fail2ban-Ready Standardized Security Logging**:
+- **Fail2ban Packaging & Standardized Security Logging**:
   - Emitted structured `WARNING [security] Failed GUI login attempt from <client_ip> (attempt <n>)` in `ffmpeg-gui.log`.
   - Updated `NginxAccessLogMiddleware` to resolve real client IP addresses via `X-Forwarded-For` and `X-Real-IP` headers when deployed behind reverse proxies.
+  - Packaged ready-to-copy configurations under `packaging/fail2ban/` (`filter.d/ffmpeg-gui.conf`, `jail.d/ffmpeg-gui.local`, `README.md`) for quick 1-line sysadmin deployment.
 - **Frontend Security Management (Settings ➔ Security)**:
-  - Added dedicated `BruteForceProtectionCard.tsx` in Settings with master toggle, max attempts, observation window, lockout duration, and whitelist inputs.
+  - Added dedicated `BruteForceProtectionCard.tsx` in Settings integrated into global settings dirty-state tracking and save action.
+  - Added real-time IP/CIDR syntax validation warning and dynamic duration formatting (`1d`, `2h`, `15m`, `45s`).
   - Added real-time Active IP Lockouts list displaying banned IPs, remaining lockout duration, and manual 1-click unblock action.
   - Added multilingual translation support in English, Spanish, and Catalan.
-  - Added Fail2ban filter and jail configuration instructions in `README.md`.
+  - Updated `README.md` with Fail2ban installation commands referencing repository packaged rules.
 
 ## [2.24.0] - 2026-09-24
 
