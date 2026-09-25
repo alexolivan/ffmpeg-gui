@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.25.1] - 2026-09-25
+
+### Fixed
+- **System Installer ALSA Dependencies (`install.sh`)**:
+  - Added `alsa-utils` and `libasound2-plugins` to Debian/Ubuntu system dependency installation.
+  - Added `alsa-utils` to RHEL/Fedora and Arch Linux system dependency installation.
+  - Ensures the `amixer` command is present on fresh/virgin Linux installations, allowing `AlsaManager` to properly discover hardware soundcard controls and apply volume matrix adjustments without missing binary errors.
+  - Updated `INSTALL.md` with explicit ALSA system requirements and soundcard utility guidance.
+
 ## [2.25.0] - 2026-09-25
 
 ### Added

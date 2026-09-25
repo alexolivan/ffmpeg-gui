@@ -86,7 +86,7 @@ install_debian_deps() {
                        build-essential cmake git pkg-config yasm nasm \
                        libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev \
                        libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
-                       libavahi-client-dev libavahi-common-dev libasound2-dev \
+                       libavahi-client-dev libavahi-common-dev libasound2-dev alsa-utils libasound2-plugins \
                        libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
                        intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base xdotool dbus-x11 \
                        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
@@ -104,7 +104,7 @@ install_rhel_deps() {
                    avahi-devel alsa-lib-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel \
                    intel-gpu-tools xorg-x11-server-Xvfb x11vnc xorg-x11-server-utils xdotool dbus-x11 \
                    nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon \
-                   libXcomposite libXdamage libXfixes libXrandr mesa-libgbm pango cairo alsa-lib
+                   libXcomposite libXdamage libXfixes libXrandr mesa-libgbm pango cairo alsa-lib alsa-utils
 }
 
 # Paquetes a instalar en Arch Linux
@@ -116,7 +116,7 @@ install_arch_deps() {
                                  avahi alsa-lib freetype2 harfbuzz fontconfig fribidi \
                                  intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm xdotool \
                                  nss nspr atk at-spi2-atk cups libdrm libxkbcommon \
-                                 libxcomposite libxdamage libxfixes libxrandr mesa pango cairo alsa-lib
+                                 libxcomposite libxdamage libxfixes libxrandr mesa pango cairo alsa-lib alsa-utils
 }
 
 # ---------------------------------------------------------
