@@ -223,6 +223,16 @@ def init_db():
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN lcd_led3_profile TEXT DEFAULT 'alert'"))
             if "auto_reload_ssl_services" not in settings_columns:
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN auto_reload_ssl_services BOOLEAN DEFAULT 1"))
+            if "brute_force_enabled" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN brute_force_enabled BOOLEAN DEFAULT 1"))
+            if "brute_force_max_attempts" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN brute_force_max_attempts INTEGER DEFAULT 5"))
+            if "brute_force_window_seconds" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN brute_force_window_seconds INTEGER DEFAULT 300"))
+            if "brute_force_lockout_seconds" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN brute_force_lockout_seconds INTEGER DEFAULT 900"))
+            if "brute_force_whitelist" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN brute_force_whitelist TEXT DEFAULT NULL"))
 
             # Storages table migrations
             res_storage = conn.execute(text("PRAGMA table_info(storages)"))

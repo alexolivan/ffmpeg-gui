@@ -9,6 +9,7 @@ import { BackupRestoreCard } from './settings/BackupRestoreCard';
 import { SoftwareEngineCard, type SoftwareEngineData } from './settings/SoftwareEngineCard';
 import { InboundKeysCard } from './settings/InboundKeysCard';
 import { RemotePeersCard } from './settings/RemotePeersCard';
+import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'] as const;
 
@@ -2508,6 +2509,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </p>
               </div>
             </div>
+
+            {/* CARD 2: BRUTE-FORCE PROTECTION */}
+            <BruteForceProtectionCard
+              API={API}
+              settings={settings}
+              onUpdateSettings={onUpdateSettings}
+            />
 
             {/* CARD 3: SSL / TLS CERTIFICATES */}
             <div className="glass-card p-5 !rounded-2xl space-y-5">

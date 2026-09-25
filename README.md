@@ -140,6 +140,28 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Warm Paper Theme in Task Scheduling](docs/assets/screenshot12.png)
 
+### 🛡️ 15. Brute-Force Protection & Security Logging (Fail2ban Ready)
+- **In-Memory IP Lockout**: Built-in guard tracks failed login attempts in RAM and temporarily bans abusive clients (`HTTP 429 Too Many Requests` / `Retry-After`) with zero SQLite overhead during attacks.
+- **Permanent Loopback Immunity**: Localhost and loopback interfaces (`127.0.0.1`, `::1`) are hardcoded as immune to prevent locking out local SSH tunnels or reverse proxies, alongside custom CIDR/IP whitelisting.
+- **Standardized Logs for External IDS/IPS**: Standardized warning events emitted in `ffmpeg-gui.log` and Nginx-format HTTP lines in `access.log` with real client IP resolution via `X-Forwarded-For` and `X-Real-IP`.
+
+```ini
+# /etc/fail2ban/filter.d/ffmpeg-gui.conf
+[Definition]
+failregex = ^.*\[security\] Failed GUI login attempt from <HOST>
+ignoreregex =
+
+# /etc/fail2ban/jail.d/ffmpeg-gui.local
+[ffmpeg-gui]
+enabled = true
+port = 8000,8080,8443
+filter = ffmpeg-gui
+logpath = /var/log/ffmpeg-gui/ffmpeg-gui.log
+maxretry = 5
+findtime = 300
+bantime = 900
+```
+
 ---
 
 ## Architecture

@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, BigInteger, String, DateTime, JSON, ForeignKey, Boolean, Float, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, JSON, ForeignKey, Boolean, Float, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 class Base(DeclarativeBase):
@@ -432,6 +432,13 @@ class SystemSettings(Base):
     lcd_led1_profile = Column(String, default="streams")
     lcd_led2_profile = Column(String, default="tasks")
     lcd_led3_profile = Column(String, default="alert")
+
+    # Brute-force & Security Settings
+    brute_force_enabled = Column(Boolean, default=True)
+    brute_force_max_attempts = Column(Integer, default=5)
+    brute_force_window_seconds = Column(Integer, default=300)
+    brute_force_lockout_seconds = Column(Integer, default=900)
+    brute_force_whitelist = Column(Text, nullable=True)
 
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
