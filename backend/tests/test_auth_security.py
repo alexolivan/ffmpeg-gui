@@ -13,6 +13,13 @@ def auth_test_client():
         if not settings:
             settings = SystemSettings()
             db.add(settings)
+        old_password = settings.gui_password
+        old_bf_enabled = settings.brute_force_enabled
+        old_bf_max = settings.brute_force_max_attempts
+        old_bf_window = settings.brute_force_window_seconds
+        old_bf_lockout = settings.brute_force_lockout_seconds
+        old_bf_whitelist = settings.brute_force_whitelist
+
         settings.gui_password = "supersecretpassword123"
         settings.brute_force_enabled = True
         settings.brute_force_max_attempts = 3
@@ -36,7 +43,29 @@ def auth_test_client():
         security_guard._failed_attempts.clear()
 
     client = TestClient(app)
-    return client
+    try:
+        yield client
+    finally:
+        with SessionLocal() as db:
+            settings = db.query(SystemSettings).first()
+            if settings:
+                settings.gui_password = old_password
+                settings.brute_force_enabled = old_bf_enabled
+                settings.brute_force_max_attempts = old_bf_max
+                settings.brute_force_window_seconds = old_bf_window
+                settings.brute_force_lockout_seconds = old_bf_lockout
+                settings.brute_force_whitelist = old_bf_whitelist
+                db.commit()
+            security_guard.configure(
+                enabled=old_bf_enabled if old_bf_enabled is not None else True,
+                max_attempts=old_bf_max or 5,
+                window_seconds=old_bf_window or 300,
+                lockout_seconds=old_bf_lockout or 900,
+                whitelist=old_bf_whitelist or ""
+            )
+        with security_guard._lock:
+            security_guard._locked_out.clear()
+            security_guard._failed_attempts.clear()
 
 
 def test_failed_login_and_lockout(auth_test_client):
