@@ -7,41 +7,78 @@ interface LockedIP {
   expires_at: string;
 }
 
+export const formatDuration = (seconds: number): string => {
+  if (!seconds || seconds <= 0) return '0s';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 && days === 0) parts.push(`${minutes}m`);
+  if (secs > 0 && days === 0 && hours === 0) parts.push(`${secs}s`);
+
+  return parts.length > 0 ? parts.join(' ') : `${seconds}s`;
+};
+
+export const validateIpOrCidr = (entry: string): boolean => {
+  const clean = entry.trim().toLowerCase();
+  if (!clean) return true;
+  if (['localhost', '127.0.0.1', '::1', '0.0.0.0', 'testclient'].includes(clean)) return true;
+
+  // Check IPv4 (optional CIDR /0 to /32)
+  const ipv4WithCidr = /^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/([0-9]|[12][0-9]|3[0-2]))?$/;
+  if (ipv4WithCidr.test(clean)) return true;
+
+  // Check IPv6 (optional CIDR /0 to /128)
+  const ipv6WithCidr = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}(\/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$/;
+  const ipv6Compressed = /^(([0-9a-fA-F]{1,4}:){1,7}|:):([0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}(\/([0-9]|[1-9][0-9]|1[01][0-9]|12[0-8]))?$/;
+  if (ipv6WithCidr.test(clean) || ipv6Compressed.test(clean)) return true;
+
+  return false;
+};
+
 interface BruteForceProtectionCardProps {
   API: string;
-  settings: any;
-  onUpdateSettings: (newSettings: any) => Promise<void>;
+  enabled: boolean;
+  setEnabled: (val: boolean) => void;
+  maxAttempts: number;
+  setMaxAttempts: (val: number) => void;
+  windowSeconds: number;
+  setWindowSeconds: (val: number) => void;
+  lockoutSeconds: number;
+  setLockoutSeconds: (val: number) => void;
+  whitelist: string;
+  setWhitelist: (val: string) => void;
 }
 
 export const BruteForceProtectionCard: React.FC<BruteForceProtectionCardProps> = ({
   API,
-  settings,
-  onUpdateSettings,
+  enabled,
+  setEnabled,
+  maxAttempts,
+  setMaxAttempts,
+  windowSeconds,
+  setWindowSeconds,
+  lockoutSeconds,
+  setLockoutSeconds,
+  whitelist,
+  setWhitelist,
 }) => {
   const { t } = useTranslation();
-
-  const [enabled, setEnabled] = useState<boolean>(settings.brute_force_enabled ?? true);
-  const [maxAttempts, setMaxAttempts] = useState<number>(settings.brute_force_max_attempts ?? 5);
-  const [windowSeconds, setWindowSeconds] = useState<number>(settings.brute_force_window_seconds ?? 300);
-  const [lockoutSeconds, setLockoutSeconds] = useState<number>(settings.brute_force_lockout_seconds ?? 900);
-  const [whitelist, setWhitelist] = useState<string>(settings.brute_force_whitelist ?? '');
-
-  const [saving, setSaving] = useState<boolean>(false);
-  const [saveSuccess, setSaveSuccess] = useState<string>('');
-  const [saveError, setSaveError] = useState<string>('');
 
   const [lockedIPs, setLockedIPs] = useState<LockedIP[]>([]);
   const [loadingStatus, setLoadingStatus] = useState<boolean>(false);
   const [unblockingIp, setUnblockingIp] = useState<string | null>(null);
 
-  // Synchronize state if external settings change
-  useEffect(() => {
-    setEnabled(settings.brute_force_enabled ?? true);
-    setMaxAttempts(settings.brute_force_max_attempts ?? 5);
-    setWindowSeconds(settings.brute_force_window_seconds ?? 300);
-    setLockoutSeconds(settings.brute_force_lockout_seconds ?? 900);
-    setWhitelist(settings.brute_force_whitelist ?? '');
-  }, [settings]);
+  // Validate whitelist entries in real-time
+  const invalidWhitelistEntries = (whitelist || '')
+    .replace(/\n/g, ',')
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => s.length > 0 && !validateIpOrCidr(s));
 
   const fetchSecurityStatus = async () => {
     setLoadingStatus(true);
@@ -54,7 +91,7 @@ export const BruteForceProtectionCard: React.FC<BruteForceProtectionCardProps> =
         setLockedIPs(data.active_lockouts || []);
       }
     } catch {
-      // Ignore network noise
+      // Ignore network errors silently
     } finally {
       setLoadingStatus(false);
     }
@@ -65,28 +102,6 @@ export const BruteForceProtectionCard: React.FC<BruteForceProtectionCardProps> =
     const interval = setInterval(fetchSecurityStatus, 10000);
     return () => clearInterval(interval);
   }, [API]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    setSaveError('');
-    setSaveSuccess('');
-    try {
-      await onUpdateSettings({
-        brute_force_enabled: enabled,
-        brute_force_max_attempts: maxAttempts,
-        brute_force_window_seconds: windowSeconds,
-        brute_force_lockout_seconds: lockoutSeconds,
-        brute_force_whitelist: whitelist,
-      });
-      setSaveSuccess(t('settings.security.bruteForce.savedSuccess', 'Brute-force protection settings saved.'));
-      setTimeout(() => setSaveSuccess(''), 4000);
-      fetchSecurityStatus();
-    } catch (err: any) {
-      setSaveError(err.message || t('settings.security.bruteForce.saveError', 'Failed to save settings.'));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleUnblock = async (ip: string) => {
     setUnblockingIp(ip);
@@ -176,8 +191,8 @@ export const BruteForceProtectionCard: React.FC<BruteForceProtectionCardProps> =
             onChange={e => setWindowSeconds(Math.max(10, parseInt(e.target.value) || 10))}
             className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono disabled:opacity-40"
           />
-          <span className="text-[9px] text-text-secondary block">
-            {Math.round(windowSeconds / 60)} {t('common.minutes', 'min')}
+          <span className="text-[9px] text-text-secondary font-mono block">
+            ⏳ {formatDuration(windowSeconds)}
           </span>
         </div>
 
@@ -196,8 +211,8 @@ export const BruteForceProtectionCard: React.FC<BruteForceProtectionCardProps> =
             onChange={e => setLockoutSeconds(Math.max(30, parseInt(e.target.value) || 30))}
             className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono disabled:opacity-40"
           />
-          <span className="text-[9px] text-text-secondary block">
-            {Math.round(lockoutSeconds / 60)} {t('common.minutes', 'min')}
+          <span className="text-[9px] text-text-secondary font-mono block">
+            ⏱️ {formatDuration(lockoutSeconds)}
           </span>
         </div>
       </div>
@@ -213,8 +228,24 @@ export const BruteForceProtectionCard: React.FC<BruteForceProtectionCardProps> =
           placeholder="192.168.1.50, 10.0.0.0/24"
           value={whitelist}
           onChange={e => setWhitelist(e.target.value)}
-          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono resize-y disabled:opacity-40"
+          className={`w-full bg-[var(--input-bg)] border rounded-lg p-2 text-xs outline-none text-[var(--text-primary)] font-mono resize-y disabled:opacity-40 transition-colors ${
+            invalidWhitelistEntries.length > 0
+              ? 'border-red-500 focus:border-red-400 bg-red-500/5'
+              : 'border-[var(--glass-border)] focus:border-brand-lime'
+          }`}
         />
+
+        {/* Whitelist Validation Feedback */}
+        {invalidWhitelistEntries.length > 0 && (
+          <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-[10px] text-red-400 font-mono flex items-center gap-1.5 animate-in fade-in duration-200">
+            <span>⚠️</span>
+            <span>
+              {t('settings.security.bruteForce.invalidWhitelistEntries', 'Invalid IP address or CIDR format:')}{' '}
+              <strong className="text-red-300">{invalidWhitelistEntries.join(', ')}</strong>
+            </span>
+          </div>
+        )}
+
         <div className="flex items-center gap-1.5 text-[9px] text-text-secondary">
           <span className="text-brand-lime">✓</span>
           <span>
@@ -224,31 +255,6 @@ export const BruteForceProtectionCard: React.FC<BruteForceProtectionCardProps> =
             )}
           </span>
         </div>
-      </div>
-
-      {/* FEEDBACK MESSAGES */}
-      {saveSuccess && (
-        <p className="text-xs text-brand-lime font-bold animate-in fade-in duration-300">
-          ✓ {saveSuccess}
-        </p>
-      )}
-      {saveError && (
-        <p className="text-xs text-red-500 font-bold animate-in fade-in duration-300">
-          ⚠️ {saveError}
-        </p>
-      )}
-
-      {/* ACTION BUTTON */}
-      <div className="flex justify-end pt-1">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="px-4 py-2 bg-brand-lime/15 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/30 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          <span>💾</span>
-          <span>{saving ? t('common.saving', 'Saving...') : t('settings.security.bruteForce.saveBtn', 'Save Security Settings')}</span>
-        </button>
       </div>
 
       {/* ACTIVE LOCKOUTS SECTION */}
@@ -290,7 +296,8 @@ export const BruteForceProtectionCard: React.FC<BruteForceProtectionCardProps> =
                 <div className="flex items-center gap-3">
                   <span className="text-red-400 font-bold">{item.ip}</span>
                   <span className="text-[10px] text-text-secondary">
-                    {item.remaining_seconds}s {t('settings.security.bruteForce.remaining', 'remaining')}
+                    {formatDuration(item.remaining_seconds)}{' '}
+                    {t('settings.security.bruteForce.remaining', 'remaining')}
                   </span>
                 </div>
 

@@ -499,7 +499,8 @@
         "activeLockoutsTitle": "IPs Bloquejades Actives (RAM)",
         "noLockouts": "No hi ha adreces IP bloquejades actualment.",
         "remaining": "restants",
-        "unblockBtn": "Desbloquejar"
+        "unblockBtn": "Desbloquejar",
+        "invalidWhitelistEntries": "Format d'IP o CIDR invàlid:"
       }
     },
     "ssl": {

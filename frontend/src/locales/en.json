@@ -499,7 +499,8 @@
         "activeLockoutsTitle": "Active IP Lockouts (RAM)",
         "noLockouts": "No IP addresses currently locked out.",
         "remaining": "remaining",
-        "unblockBtn": "Unblock"
+        "unblockBtn": "Unblock",
+        "invalidWhitelistEntries": "Invalid IP address or CIDR format:"
       }
     },
     "ssl": {
