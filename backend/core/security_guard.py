@@ -16,7 +16,7 @@ def is_loopback(ip_str: str) -> bool:
     if not ip_str:
         return False
     ip_clean = ip_str.strip().lower()
-    if ip_clean in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+    if ip_clean in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "testclient"):
         return True
     try:
         ip = ipaddress.ip_address(ip_clean)

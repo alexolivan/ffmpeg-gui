@@ -47,6 +47,10 @@ try:
     from core.software_manager import software_manager
 except ImportError:
     from backend.core.software_manager import software_manager
+try:
+    from core.security_guard import security_guard
+except ImportError:
+    from backend.core.security_guard import security_guard
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -117,6 +121,24 @@ class NginxAccessLogMiddleware:
             client_host = client[0] if client else "-"
             remote_user = "-"
             
+            headers = scope.get("headers", [])
+            referer = "-"
+            user_agent = "-"
+            for key, val in headers:
+                key_lower = key.lower()
+                if key_lower == b"referer":
+                    referer = val.decode("utf-8", errors="ignore")
+                elif key_lower == b"user-agent":
+                    user_agent = val.decode("utf-8", errors="ignore")
+                elif key_lower == b"x-forwarded-for":
+                    xff_val = val.decode("utf-8", errors="ignore").strip()
+                    if xff_val:
+                        client_host = xff_val.split(",")[0].strip()
+                elif key_lower == b"x-real-ip" and client_host in ("-", "127.0.0.1", "::1", "localhost"):
+                    x_real_val = val.decode("utf-8", errors="ignore").strip()
+                    if x_real_val:
+                        client_host = x_real_val
+
             now = datetime.datetime.now(datetime.timezone.utc)
             time_local = now.strftime("%d/%b/%Y:%H:%M:%S +0000")
             
@@ -130,15 +152,6 @@ class NginxAccessLogMiddleware:
             http_version = scope.get("http_version", "1.1")
             request_line = f"{method} {full_path} HTTP/{http_version}"
             
-            headers = scope.get("headers", [])
-            referer = "-"
-            user_agent = "-"
-            for key, val in headers:
-                if key.lower() == b"referer":
-                    referer = val.decode("utf-8")
-                elif key.lower() == b"user-agent":
-                    user_agent = val.decode("utf-8")
-            
             access_log_path = os.getenv("ACCESS_LOG_PATH")
             if access_log_path:
                 try:
@@ -150,6 +163,27 @@ class NginxAccessLogMiddleware:
             else:
                 console_msg = f'HTTP {request_line} -> {status_code[0]} ({client_host})'
                 logger.info(console_msg)
+
+
+def get_real_client_ip(request: Request) -> str:
+    """
+    Extracts the client IP from FastAPI Request, taking into account
+    X-Forwarded-For and X-Real-IP headers when deployed behind reverse proxies.
+    """
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        first_ip = xff.split(",")[0].strip()
+        if first_ip:
+            return first_ip
+    x_real = request.headers.get("x-real-ip")
+    if x_real:
+        ip = x_real.strip()
+        if ip:
+            return ip
+    if request.client and request.client.host:
+        return request.client.host
+    return "127.0.0.1"
+
 
 app = FastAPI(title="FFMPEG Orchestrator API")
 
@@ -224,6 +258,21 @@ app.add_middleware(
 
 # Initialize DB
 init_db()
+
+try:
+    with SessionLocal() as _db_init:
+        from database.models import SystemSettings
+        _s = _db_init.query(SystemSettings).first()
+        if _s:
+            security_guard.configure(
+                enabled=_s.brute_force_enabled,
+                max_attempts=_s.brute_force_max_attempts,
+                window_seconds=_s.brute_force_window_seconds,
+                lockout_seconds=_s.brute_force_lockout_seconds,
+                whitelist=_s.brute_force_whitelist or ""
+            )
+except Exception as _e:
+    logger.warning(f"Initial SecurityGuard configuration skipped: {_e}")
 
 UPLOAD_DIR = "data/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -501,6 +550,11 @@ class SettingsResponse(BaseModel):
     auto_reload_ssl_services: Optional[bool] = True
     notifications: NotificationSettings = NotificationSettings()
     watchdog: WatchdogSettings = WatchdogSettings()
+    brute_force_enabled: Optional[bool] = True
+    brute_force_max_attempts: Optional[int] = 5
+    brute_force_window_seconds: Optional[int] = 300
+    brute_force_lockout_seconds: Optional[int] = 900
+    brute_force_whitelist: Optional[str] = None
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -539,6 +593,11 @@ class SettingsUpdate(BaseModel):
     access_log_ignore_media: Optional[bool] = None
     notifications: Optional[NotificationSettingsUpdate] = None
     watchdog: Optional[WatchdogSettingsUpdate] = None
+    brute_force_enabled: Optional[bool] = None
+    brute_force_max_attempts: Optional[int] = None
+    brute_force_window_seconds: Optional[int] = None
+    brute_force_lockout_seconds: Optional[int] = None
+    brute_force_whitelist: Optional[str] = None
 
     @validator('lcd_alias')
     def validate_lcd_alias(cls, v):
@@ -1396,8 +1455,22 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.lcd_led2_profile is not None: settings.lcd_led2_profile = settings_in.lcd_led2_profile
     if settings_in.lcd_led3_profile is not None: settings.lcd_led3_profile = settings_in.lcd_led3_profile
 
+    if settings_in.brute_force_enabled is not None: settings.brute_force_enabled = settings_in.brute_force_enabled
+    if settings_in.brute_force_max_attempts is not None: settings.brute_force_max_attempts = settings_in.brute_force_max_attempts
+    if settings_in.brute_force_window_seconds is not None: settings.brute_force_window_seconds = settings_in.brute_force_window_seconds
+    if settings_in.brute_force_lockout_seconds is not None: settings.brute_force_lockout_seconds = settings_in.brute_force_lockout_seconds
+    if settings_in.brute_force_whitelist is not None: settings.brute_force_whitelist = settings_in.brute_force_whitelist
+
     db.commit()
     db.refresh(settings)
+
+    security_guard.configure(
+        enabled=settings.brute_force_enabled,
+        max_attempts=settings.brute_force_max_attempts,
+        window_seconds=settings.brute_force_window_seconds,
+        lockout_seconds=settings.brute_force_lockout_seconds,
+        whitelist=settings.brute_force_whitelist or ""
+    )
 
     global lcd_manager
     if lcd_core_changed:
@@ -2065,15 +2138,41 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
 @app.post("/login")
 @app.post("/api/auth/login")
 def login(req: LoginRequest, response: Response, request: Request, db: Session = Depends(get_db)):
+    client_ip = get_real_client_ip(request)
+
+    # 1. Fast in-memory check if IP is currently locked out
+    blocked, remaining = security_guard.is_blocked(client_ip)
+    if blocked:
+        logger.warning(f"[security] Blocked login attempt from banned IP {client_ip} ({remaining}s remaining)")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. IP temporarily locked out for {remaining} seconds.",
+            headers={"Retry-After": str(remaining)}
+        )
+
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()
     if not settings or not settings.gui_password:
         return {"authenticated": True, "token": None}
+
     if req.password == settings.gui_password:
+        security_guard.record_success(client_ip)
         token = auth_manager.create_session(settings.gui_password)
         is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
         auth_manager.set_session_cookie(response, token, is_https=is_https)
         return {"authenticated": True, "token": token}
+
+    # Record failed attempt in RAM
+    is_now_blocked, attempt_count, lockout_sec = security_guard.record_failure(client_ip)
+    logger.warning(f"[security] Failed GUI login attempt from {client_ip} (attempt {attempt_count})")
+    if is_now_blocked:
+        logger.warning(f"[security] IP {client_ip} has been locked out for {lockout_sec}s due to repeated failed logins")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. IP temporarily locked out for {lockout_sec} seconds.",
+            headers={"Retry-After": str(lockout_sec)}
+        )
+
     raise HTTPException(status_code=401, detail="Invalid password")
 
 
@@ -2082,6 +2181,32 @@ def login(req: LoginRequest, response: Response, request: Request, db: Session =
 def logout(response: Response):
     auth_manager.clear_session_cookie(response)
     return {"authenticated": False}
+
+
+class UnblockIPRequest(BaseModel):
+    ip: str
+
+
+@app.get("/api/settings/security/status")
+def get_security_status():
+    """
+    Returns active brute-force protection status, configuration, and list of locked-out IPs.
+    Protected behind session authentication by AuthBarrierMiddleware.
+    """
+    return security_guard.get_status()
+
+
+@app.post("/api/settings/security/unblock")
+def unblock_security_ip(req: UnblockIPRequest):
+    """
+    Manually removes an IP from the active lockout list in RAM.
+    Protected behind session authentication by AuthBarrierMiddleware.
+    """
+    cleaned_ip = req.ip.strip()
+    unblocked = security_guard.unblock(cleaned_ip)
+    logger.info(f"[security] IP {cleaned_ip} manually unblocked via settings GUI (was_locked={unblocked})")
+    return {"success": True, "ip": cleaned_ip, "unblocked": unblocked}
+
 
 @app.post("/settings/logo")
 @app.post("/api/settings/logo")
