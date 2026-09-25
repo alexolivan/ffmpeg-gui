@@ -483,7 +483,24 @@
       "passwordRemoved": "Password protection removed successfully",
       "passwordError": "Failed to remove password",
       "saveSettingsError": "Error saving settings",
-      "passwordTitle": "Authentication & Password Management"
+      "passwordTitle": "Authentication & Password Management",
+      "bruteForce": {
+        "title": "Brute-Force & Login Protection",
+        "description": "Tracks failed login attempts in fast in-memory RAM and temporarily locks out malicious IP addresses. Compatible with Fail2ban and external IDS/IPS via standardized security logs.",
+        "maxAttempts": "Max Failed Attempts",
+        "maxAttemptsHelp": "Attempts before lockout",
+        "windowSeconds": "Observation Window (sec)",
+        "lockoutSeconds": "Lockout Duration (sec)",
+        "whitelist": "IP Whitelist (Immune to lockout)",
+        "loopbackNotice": "Localhost (127.0.0.1, ::1) is permanently whitelisted by kernel and application code.",
+        "saveBtn": "Save Security Settings",
+        "savedSuccess": "Brute-force protection settings saved.",
+        "saveError": "Failed to save settings.",
+        "activeLockoutsTitle": "Active IP Lockouts (RAM)",
+        "noLockouts": "No IP addresses currently locked out.",
+        "remaining": "remaining",
+        "unblockBtn": "Unblock"
+      }
     },
     "ssl": {
       "title": "SSL / TLS Certificate Management",

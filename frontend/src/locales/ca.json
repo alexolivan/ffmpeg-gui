@@ -483,7 +483,24 @@
       "passwordRemoved": "Protecció per contrasenya eliminada amb èxit",
       "passwordError": "Error en eliminar la contrasenya",
       "saveSettingsError": "Error en desar la configuració",
-      "passwordTitle": "Gestió d'Autenticació i Contrasenyes"
+      "passwordTitle": "Gestió d'Autenticació i Contrasenyes",
+      "bruteForce": {
+        "title": "Protecció contra Força Bruta i Inicis de Sessió",
+        "description": "Rastreja intents fallits d'inici de sessió en memòria RAM i bloqueja temporalment adreces IP malicioses. Compatible amb Fail2ban i IDS/IPS externs mitjançant registres estandarditzats.",
+        "maxAttempts": "Intents Fallits Màxims",
+        "maxAttemptsHelp": "Intents abans del bloqueig",
+        "windowSeconds": "Finestra d'Observació (seg)",
+        "lockoutSeconds": "Durada del Bloqueig (seg)",
+        "whitelist": "Llista Blanca d'IPs (Immunes al bloqueig)",
+        "loopbackNotice": "Localhost (127.0.0.1, ::1) compta amb immunitat permanent per codi de kernel i aplicació.",
+        "saveBtn": "Desar Paràmetres de Seguretat",
+        "savedSuccess": "Paràmetres de protecció contra força bruta desats.",
+        "saveError": "Error en desar la configuració.",
+        "activeLockoutsTitle": "IPs Bloquejades Actives (RAM)",
+        "noLockouts": "No hi ha adreces IP bloquejades actualment.",
+        "remaining": "restants",
+        "unblockBtn": "Desbloquejar"
+      }
     },
     "ssl": {
       "title": "Gestió de Certificats SSL / TLS",

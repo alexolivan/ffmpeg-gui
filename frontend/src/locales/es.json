@@ -483,7 +483,24 @@
       "passwordRemoved": "Protección por contraseña eliminada con éxito",
       "passwordError": "Error al eliminar la contraseña",
       "saveSettingsError": "Error al guardar la configuración",
-      "passwordTitle": "Gestión de Autenticación y Contraseñas"
+      "passwordTitle": "Gestión de Autenticación y Contraseñas",
+      "bruteForce": {
+        "title": "Protección contra Fuerza Bruta e Inicios de Sesión",
+        "description": "Rastrea intentos fallidos de inicio de sesión en memoria RAM y bloquea temporalmente direcciones IP maliciosas. Compatible con Fail2ban e IDS/IPS externos mediante logs estandarizados.",
+        "maxAttempts": "Intentos Fallidos Máximos",
+        "maxAttemptsHelp": "Intentos antes del bloqueo",
+        "windowSeconds": "Ventana de Observación (seg)",
+        "lockoutSeconds": "Duración del Bloqueo (seg)",
+        "whitelist": "Lista Blanca de IPs (Inmunes a bloqueo)",
+        "loopbackNotice": "Localhost (127.0.0.1, ::1) cuenta con inmunidad permanente por código de kernel y aplicación.",
+        "saveBtn": "Guardar Ajustes de Seguridad",
+        "savedSuccess": "Ajustes de protección contra fuerza bruta guardados.",
+        "saveError": "Error al guardar la configuración.",
+        "activeLockoutsTitle": "IPs Bloqueadas Activas (RAM)",
+        "noLockouts": "No hay direcciones IP bloqueadas actualmente.",
+        "remaining": "restantes",
+        "unblockBtn": "Desbloquear"
+      }
     },
     "ssl": {
       "title": "Gestión de Certificados SSL / TLS",
