@@ -60,6 +60,30 @@ def is_whitelisted(ip_str: str, whitelist_entries: List[str]) -> bool:
     return False
 
 
+def validate_whitelist_entries(whitelist_raw: str) -> List[str]:
+    """
+    Validates a raw string of comma- or newline-separated IP/CIDR entries.
+    Returns a list of invalid entry strings, or an empty list if all are valid.
+    """
+    if not whitelist_raw or not whitelist_raw.strip():
+        return []
+    invalid_entries: List[str] = []
+    for chunk in whitelist_raw.replace("\n", ",").split(","):
+        entry = chunk.strip()
+        if not entry:
+            continue
+        if is_loopback(entry):
+            continue
+        try:
+            if "/" in entry:
+                ipaddress.ip_network(entry, strict=False)
+            else:
+                ipaddress.ip_address(entry)
+        except ValueError:
+            invalid_entries.append(entry)
+    return invalid_entries
+
+
 class SecurityGuard:
     """
     In-memory, thread-safe brute-force protection guard.

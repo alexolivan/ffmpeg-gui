@@ -599,6 +599,19 @@ class SettingsUpdate(BaseModel):
     brute_force_lockout_seconds: Optional[int] = None
     brute_force_whitelist: Optional[str] = None
 
+    @validator('brute_force_whitelist')
+    def validate_brute_force_whitelist(cls, v):
+        if v is None:
+            return v
+        try:
+            from core.security_guard import validate_whitelist_entries
+        except ImportError:
+            from backend.core.security_guard import validate_whitelist_entries
+        invalid = validate_whitelist_entries(v)
+        if invalid:
+            raise ValueError(f"Invalid IP address or CIDR network in whitelist: {', '.join(invalid)}")
+        return v
+
     @validator('lcd_alias')
     def validate_lcd_alias(cls, v):
         if v is None:

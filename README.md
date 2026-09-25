@@ -144,22 +144,15 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **In-Memory IP Lockout**: Built-in guard tracks failed login attempts in RAM and temporarily bans abusive clients (`HTTP 429 Too Many Requests` / `Retry-After`) with zero SQLite overhead during attacks.
 - **Permanent Loopback Immunity**: Localhost and loopback interfaces (`127.0.0.1`, `::1`) are hardcoded as immune to prevent locking out local SSH tunnels or reverse proxies, alongside custom CIDR/IP whitelisting.
 - **Standardized Logs for External IDS/IPS**: Standardized warning events emitted in `ffmpeg-gui.log` and Nginx-format HTTP lines in `access.log` with real client IP resolution via `X-Forwarded-For` and `X-Real-IP`.
+- **Ready-to-use Fail2ban Rules**: Pre-configured filter and jail definitions are included in the repository under [`packaging/fail2ban/`](packaging/fail2ban/):
+  - `packaging/fail2ban/filter.d/ffmpeg-gui.conf` $\rightarrow$ copy to `/etc/fail2ban/filter.d/`
+  - `packaging/fail2ban/jail.d/ffmpeg-gui.local` $\rightarrow$ copy to `/etc/fail2ban/jail.d/`
 
-```ini
-# /etc/fail2ban/filter.d/ffmpeg-gui.conf
-[Definition]
-failregex = ^.*\[security\] Failed GUI login attempt from <HOST>
-ignoreregex =
-
-# /etc/fail2ban/jail.d/ffmpeg-gui.local
-[ffmpeg-gui]
-enabled = true
-port = 8000,8080,8443
-filter = ffmpeg-gui
-logpath = /var/log/ffmpeg-gui/ffmpeg-gui.log
-maxretry = 5
-findtime = 300
-bantime = 900
+```bash
+# 1-step installation
+sudo cp packaging/fail2ban/filter.d/ffmpeg-gui.conf /etc/fail2ban/filter.d/
+sudo cp packaging/fail2ban/jail.d/ffmpeg-gui.local /etc/fail2ban/jail.d/
+sudo fail2ban-client reload
 ```
 
 ---

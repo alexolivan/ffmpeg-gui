@@ -161,3 +161,18 @@ def test_update_settings_brute_force_config(auth_test_client):
     assert security_guard.window_seconds == 600
     assert security_guard.lockout_seconds == 1800
     assert "10.0.0.1" in security_guard._whitelist_entries
+
+
+def test_update_settings_invalid_whitelist(auth_test_client):
+    client = auth_test_client
+    admin_login = client.post("/api/auth/login", json={"password": "supersecretpassword123"}, headers={"X-Forwarded-For": "127.0.0.1"})
+    token = admin_login.json()["token"]
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    # Pass typo in IP
+    payload = {"brute_force_whitelist": "192,168.0.0/24, invalid-ip-format"}
+    resp = client.post("/api/settings", json=payload, headers=auth_headers)
+    assert resp.status_code == 422  # Pydantic validation error
+    error_detail = str(resp.json())
+    assert "Invalid IP address or CIDR network" in error_detail
+
