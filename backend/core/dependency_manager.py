@@ -250,10 +250,12 @@ class DependencyManager:
         def extract_provider_id(conf: dict, is_output: bool = False) -> Optional[int]:
             if not conf or not isinstance(conf, dict):
                 return None
+            cfg_type = conf.get("type")
             val = conf.get("provider_service_id")
+            if val is None and cfg_type in ('desktop', 'x11grab'):
+                val = conf.get("desktop_service_id")
             if val is None:
                 return None
-            cfg_type = conf.get("type")
             if is_output:
                 # Non-auxiliary output destinations (hls, file, udp, rtp, decklink, ndi, alsa) NEVER depend on auxiliary services
                 if cfg_type in ('srt', 'rtmp', 'whip'):
@@ -271,6 +273,8 @@ class DependencyManager:
                 elif cfg_type == 'icecast':
                     if conf.get('icecast_mode') == 'remote':
                         return None
+                elif cfg_type in ('desktop', 'x11grab'):
+                    pass
                 else:
                     return None
             try:

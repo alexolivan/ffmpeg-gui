@@ -604,5 +604,121 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-c:v:0 h264_nvenc -rc:v:0 cbr -b:v:0 4500k -preset:v:0 p4", cmd_str)
         self.assertIn("-c:v:1 h264_nvenc -rc:v:1 cbr -b:v:1 2500k -preset:v:1 p4", cmd_str)
 
+    def test_desktop_x11grab_input_default(self):
+        proc = MagicMock()
+        proc.id = 60
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'desktop',
+            'display_num': 99,
+            'framerate': 30,
+            'video_size': '1920x1080',
+            'draw_mouse': 0,
+            'has_video': True,
+            'has_audio': False
+        }
+        proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'none',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'file',
+            'path': '/tmp/test_desktop.mp4'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f x11grab", cmd_str)
+        self.assertIn("-draw_mouse 0", cmd_str)
+        self.assertIn("-framerate 30", cmd_str)
+        self.assertIn("-video_size 1920x1080", cmd_str)
+        self.assertIn("-i :99.0", cmd_str)
+
+    def test_desktop_x11grab_custom_fps_size_mouse(self):
+        proc = MagicMock()
+        proc.id = 61
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'x11grab',
+            'display': ':98',
+            'framerate': 60,
+            'size': '1280x720',
+            'draw_mouse': 1,
+            'offset_x': 100,
+            'offset_y': 50,
+            'has_video': True,
+            'has_audio': False
+        }
+        proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'none',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'file',
+            'path': '/tmp/test_desktop_custom.mp4'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f x11grab", cmd_str)
+        self.assertIn("-draw_mouse 1", cmd_str)
+        self.assertIn("-framerate 60", cmd_str)
+        self.assertIn("-video_size 1280x720", cmd_str)
+        self.assertIn("-i :98.0+100,50", cmd_str)
+
+    def test_desktop_input_with_provider_auto_resolution(self):
+        prov_desktop = MagicMock()
+        prov_desktop.id = 15
+        prov_desktop.config = {
+            'desktop_config': {
+                'display_num': 95,
+                'resolution': '1920x1080',
+                'framerate': 25
+            }
+        }
+
+        mock_session = MagicMock()
+        mock_session.__enter__.return_value = mock_session
+        mock_session.query.return_value.get.return_value = prov_desktop
+        self.mock_session_factory.return_value = mock_session
+
+        proc = MagicMock()
+        proc.id = 62
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'desktop',
+            'provider_service_id': 15,
+            'has_video': True,
+            'has_audio': False
+        }
+        proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'none',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'file',
+            'path': '/tmp/test_desktop_auto.mp4'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f x11grab", cmd_str)
+        self.assertIn("-draw_mouse 0", cmd_str)
+        self.assertIn("-framerate 25", cmd_str)
+        self.assertIn("-video_size 1920x1080", cmd_str)
+        self.assertIn("-i :95.0", cmd_str)
+
 if __name__ == '__main__':
     unittest.main()

@@ -21,6 +21,26 @@ class FFmpegCommandBuilder:
 
     @classmethod
     def _resolve_config_paths(cls, input_cfg: dict, output_cfg: dict, filter_cfg: dict, db_session_factory=None):
+        def _resolve_desktop_input(inp_dict):
+            if isinstance(inp_dict, dict) and inp_dict.get('type') in ('desktop', 'x11grab'):
+                prov_id = inp_dict.get('provider_service_id')
+                if prov_id and db_session_factory:
+                    try:
+                        with db_session_factory() as session:
+                            from database.models import Service
+                            prov = session.query(Service).get(prov_id)
+                            if prov:
+                                p_cfg = prov.config or {}
+                                desk_cfg = p_cfg.get('desktop_config', {})
+                                if not inp_dict.get('display_num') and not inp_dict.get('display'):
+                                    inp_dict['display_num'] = desk_cfg.get('display_num', 99)
+                                if not inp_dict.get('video_size') and not inp_dict.get('size'):
+                                    inp_dict['video_size'] = desk_cfg.get('resolution', '1920x1080')
+                                if not inp_dict.get('framerate'):
+                                    inp_dict['framerate'] = desk_cfg.get('framerate', 30)
+                    except Exception:
+                        pass
+
         if 'input1' in input_cfg:
             for key in ['input1', 'input2']:
                 if key in input_cfg and isinstance(input_cfg[key], dict):
@@ -29,11 +49,13 @@ class FFmpegCommandBuilder:
                         resolved = cls._resolve_storage_path(inp.get('storage_id'), inp.get('relative_path'), db_session_factory)
                         if resolved:
                             inp['path'] = resolved
+                    _resolve_desktop_input(inp)
         else:
             if input_cfg.get('storage_id'):
                 resolved = cls._resolve_storage_path(input_cfg.get('storage_id'), input_cfg.get('relative_path'), db_session_factory)
                 if resolved:
                     input_cfg['path'] = resolved
+            _resolve_desktop_input(input_cfg)
 
         if output_cfg.get('storage_id'):
             resolved = cls._resolve_storage_path(output_cfg.get('storage_id'), output_cfg.get('relative_path'), db_session_factory)
@@ -265,7 +287,7 @@ class FFmpegCommandBuilder:
     def _append_input(cls, cmd: list, input_cfg: dict, ffmpeg_bin: str = "ffmpeg"):
         input_type = input_cfg.get('type')
         
-        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
         hwaccel = 'none'
         if input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
             hwaccel = input_cfg.get('hwaccel', 'none')
@@ -342,6 +364,33 @@ class FFmpegCommandBuilder:
             if size:
                 cmd += ["-video_size", size]
             cmd += ["-f", "v4l2", "-i", device]
+        elif input_type in ('desktop', 'x11grab'):
+            display_val = str(input_cfg.get('display_num') or input_cfg.get('display') or '99').strip()
+            if not display_val.startswith(':'):
+                display_val = f":{display_val}"
+            if '.' not in display_val:
+                display_val = f"{display_val}.0"
+
+            draw_mouse = input_cfg.get('draw_mouse', 0)
+            if isinstance(draw_mouse, bool):
+                draw_mouse = 1 if draw_mouse else 0
+
+            framerate = str(input_cfg.get('framerate') or '30').strip()
+            video_size = str(input_cfg.get('video_size') or input_cfg.get('size') or '1920x1080').strip()
+            offset_x = input_cfg.get('offset_x')
+            offset_y = input_cfg.get('offset_y')
+
+            cmd += ["-f", "x11grab", "-draw_mouse", str(draw_mouse)]
+            if framerate:
+                cmd += ["-framerate", framerate]
+            if video_size:
+                cmd += ["-video_size", video_size]
+
+            input_target = display_val
+            if offset_x is not None and offset_y is not None:
+                input_target = f"{display_val}+{offset_x},{offset_y}"
+
+            cmd += ["-i", input_target]
         elif input_type in ('http_audio', 'rtmp', 'rtsp', 'hls', 'http'):
             cmd += ["-i", input_cfg.get('path', '')]
         elif input_type == 'lavfi':
@@ -836,7 +885,7 @@ class FFmpegCommandBuilder:
             if "-vaapi_device" not in cmd:
                 cmd += ["-vaapi_device", vaapi_dev]
 
-        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
         is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
         has_input_level_hwdec = False
@@ -899,7 +948,7 @@ class FFmpegCommandBuilder:
         if is_abr:
             from core.filter_graph import FilterGraphBuilder
 
-            _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+            _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
             is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
             frames_destination = 'cpu'
@@ -1074,7 +1123,7 @@ class FFmpegCommandBuilder:
             else:
                 from core.filter_graph import FilterGraphBuilder
                 
-                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa'}
+                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
                 is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
                 frames_destination = 'cpu'
