@@ -281,46 +281,74 @@ def main():
         signal.signal(signal.SIGUSR1, handle_reload_signal)
 
     if ssl_enabled and ssl_keyfile and ssl_certfile:
-        import threading
-        print(f"Starting FFMPEG-GUI HTTPS Server on https://{host}:{https_port}...")
-        if port != https_port:
-            https_config = uvicorn.Config(
-                "main:app",
-                host=host,
-                port=https_port,
-                ssl_keyfile=ssl_keyfile,
-                ssl_certfile=ssl_certfile,
-                log_config=log_config,
-                access_log=False
-            )
-            https_server = uvicorn.Server(https_config)
-            active_servers.append(https_server)
-            threading.Thread(target=https_server.run, daemon=True).start()
+        print(f"Configuring FFMPEG-GUI HTTPS Server on https://{host}:{https_port}...")
+        https_config = uvicorn.Config(
+            "main:app",
+            host=host,
+            port=https_port,
+            ssl_keyfile=ssl_keyfile,
+            ssl_certfile=ssl_certfile,
+            log_config=log_config,
+            access_log=False
+        )
+        https_server = uvicorn.Server(https_config)
+        active_servers.append(https_server)
 
-            print(f"Starting FFMPEG-GUI HTTP Server on http://{host}:{port}...")
+        if port != https_port:
+            print(f"Configuring FFMPEG-GUI HTTP Server on http://{host}:{port}...")
             http_config = uvicorn.Config("main:app", host=host, port=port, log_config=log_config, access_log=False)
             http_server = uvicorn.Server(http_config)
             active_servers.append(http_server)
-            http_server.run()
-        else:
-            https_config = uvicorn.Config(
-                "main:app",
-                host=host,
-                port=https_port,
-                ssl_keyfile=ssl_keyfile,
-                ssl_certfile=ssl_certfile,
-                log_config=log_config,
-                access_log=False
-            )
-            https_server = uvicorn.Server(https_config)
-            active_servers.append(https_server)
-            https_server.run()
     else:
-        print(f"Starting FFMPEG-GUI HTTP Server on http://{host}:{port}...")
+        print(f"Configuring FFMPEG-GUI HTTP Server on http://{host}:{port}...")
         http_config = uvicorn.Config("main:app", host=host, port=port, log_config=log_config, access_log=False)
         http_server = uvicorn.Server(http_config)
         active_servers.append(http_server)
-        http_server.run()
+
+    if len(active_servers) > 1:
+        # Dual-server mode (e.g. HTTP + HTTPS): Run BOTH servers on the SAME asyncio event loop
+        # to ensure all shared async state, subprocesses, and tasks run in a single unified loop.
+        import asyncio
+
+        async def _serve_all():
+            loop = asyncio.get_running_loop()
+
+            def _handle_reload(signum):
+                sig_name = "SIGHUP" if signum == signal.SIGHUP else ("SIGUSR1" if hasattr(signal, 'SIGUSR1') and signum == signal.SIGUSR1 else str(signum))
+                print(f"\n[FFMPEG-GUI] Received {sig_name} signal -> Initiating Warm Reload (preserving stream processes)...")
+                set_reload_mode(True)
+                for s in active_servers:
+                    s.should_exit = True
+
+            def _handle_exit(signum):
+                sig_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+                print(f"\n[FFMPEG-GUI] Received {sig_name} signal -> Initiating Clean Shutdown...")
+                set_reload_mode(False)
+                for s in active_servers:
+                    s.should_exit = True
+
+            for sig in (signal.SIGHUP, getattr(signal, "SIGUSR1", None)):
+                if sig is not None:
+                    try:
+                        loop.add_signal_handler(sig, lambda s=sig: _handle_reload(s))
+                    except (ValueError, RuntimeError, AttributeError):
+                        pass
+
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                try:
+                    loop.add_signal_handler(sig, lambda s=sig: _handle_exit(s))
+                except (ValueError, RuntimeError, AttributeError):
+                    pass
+
+            for s in active_servers:
+                s.install_signal_handlers = lambda: None
+
+            print(f"Starting FFMPEG-GUI unified dual-server runtime on single event loop...")
+            await asyncio.gather(*(s.serve() for s in active_servers))
+
+        asyncio.run(_serve_all())
+    elif active_servers:
+        active_servers[0].run()
 
 if __name__ == "__main__":
     main()

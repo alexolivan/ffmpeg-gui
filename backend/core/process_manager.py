@@ -622,34 +622,79 @@ class ProcessManager:
             self.restart_counts.pop(process_id, None)
             
             if proc:
+                is_same_loop = getattr(proc, '_loop', None) is asyncio.get_running_loop()
                 if graceful:
-                    if proc.stdin:
+                    if proc.stdin and is_same_loop:
                         try:
                             proc.stdin.write(b'q')
                             await proc.stdin.drain()
                         except Exception:
                             pass
                     
-                    try:
-                        await asyncio.wait_for(proc.wait(), timeout=1.5)
-                    except asyncio.TimeoutError:
-                        pass
+                    if is_same_loop:
+                        try:
+                            await asyncio.wait_for(proc.wait(), timeout=1.5)
+                        except (asyncio.TimeoutError, RuntimeError, Exception):
+                            pass
+                    else:
+                        if target_pid and psutil.pid_exists(target_pid):
+                            try:
+                                p = psutil.Process(target_pid)
+                                await asyncio.to_thread(p.wait, timeout=1.5)
+                            except Exception:
+                                pass
                 
-                if proc.returncode is None:
+                is_alive = psutil.pid_exists(target_pid) if target_pid else (proc.returncode is None)
+                if is_alive:
                     try:
                         proc.terminate()
-                        await asyncio.wait_for(proc.wait(), timeout=2.0)
-                    except asyncio.TimeoutError:
-                        self.logger.warning(f"Process {process_id} ignored SIGTERM. Escalating to SIGKILL.")
-                    except Exception as e:
-                        self.logger.warning(f"Error terminating process {process_id}: {e}")
+                    except Exception:
+                        if target_pid:
+                            try:
+                                import signal
+                                os.kill(target_pid, signal.SIGTERM)
+                            except Exception:
+                                pass
+                    
+                    if is_same_loop:
+                        try:
+                            await asyncio.wait_for(proc.wait(), timeout=2.0)
+                        except (asyncio.TimeoutError, RuntimeError, Exception):
+                            self.logger.warning(f"Process {process_id} ignored SIGTERM or cross-loop wait failed. Escalating to SIGKILL.")
+                        except Exception as e:
+                            self.logger.warning(f"Error terminating process {process_id}: {e}")
+                    else:
+                        if target_pid and psutil.pid_exists(target_pid):
+                            try:
+                                p = psutil.Process(target_pid)
+                                await asyncio.to_thread(p.wait, timeout=2.0)
+                            except Exception:
+                                pass
                 
-                if proc.returncode is None:
+                is_alive = psutil.pid_exists(target_pid) if target_pid else (proc.returncode is None)
+                if is_alive:
                     try:
                         proc.kill()
-                        await asyncio.wait_for(proc.wait(), timeout=2.0)
-                    except Exception as e:
-                        self.logger.error(f"Failed to kill process {process_id}: {e}")
+                    except Exception:
+                        if target_pid:
+                            try:
+                                import signal
+                                os.kill(target_pid, signal.SIGKILL)
+                            except Exception:
+                                pass
+                    
+                    if is_same_loop:
+                        try:
+                            await asyncio.wait_for(proc.wait(), timeout=2.0)
+                        except Exception as e:
+                            self.logger.error(f"Failed to kill process {process_id}: {e}")
+                    else:
+                        if target_pid and psutil.pid_exists(target_pid):
+                            try:
+                                p = psutil.Process(target_pid)
+                                await asyncio.to_thread(p.wait, timeout=2.0)
+                            except Exception:
+                                pass
                 
                 if process_id in self.processes:
                     del self.processes[process_id]
@@ -667,17 +712,23 @@ class ProcessManager:
                         pass
             if aux_procs:
                 try:
-                    await asyncio.wait_for(
-                        asyncio.gather(*(aux.wait() for aux in aux_procs if aux and aux.returncode is None), return_exceptions=True),
-                        timeout=2.0
-                    )
+                    same_loop_aux = [
+                        aux for aux in aux_procs 
+                        if aux and aux.returncode is None and getattr(aux, '_loop', None) is asyncio.get_running_loop()
+                    ]
+                    if same_loop_aux:
+                        await asyncio.wait_for(
+                            asyncio.gather(*(aux.wait() for aux in same_loop_aux), return_exceptions=True),
+                            timeout=2.0
+                        )
                 except Exception:
-                    for aux in aux_procs:
-                        if aux and aux.returncode is None:
-                            try:
-                                aux.kill()
-                            except Exception:
-                                pass
+                    pass
+                for aux in aux_procs:
+                    if aux and aux.returncode is None:
+                        try:
+                            aux.kill()
+                        except Exception:
+                            pass
 
             # Also terminate any auxiliary PIDs tracked by PID (e.g. reattached x11vnc)
             aux_pids = self.auxiliary_pids.pop(process_id, [])
@@ -2663,8 +2714,20 @@ class ProcessManager:
                 return
 
             if proc is not None:
-                await proc.wait()
-                exit_code = proc.returncode
+                if getattr(proc, '_loop', None) is asyncio.get_running_loop():
+                    try:
+                        await proc.wait()
+                        exit_code = proc.returncode
+                    except Exception:
+                        exit_code = 0
+                else:
+                    if pid and psutil.pid_exists(pid):
+                        try:
+                            p = psutil.Process(pid)
+                            await asyncio.to_thread(p.wait, timeout=2.0)
+                        except Exception:
+                            pass
+                    exit_code = getattr(proc, 'returncode', 0) or 0
             else:
                 exit_code = 0
 

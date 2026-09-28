@@ -8,9 +8,10 @@ def test_environment_injection():
     # Setup mock sys.argv
     test_argv = ["run_server.py", "--port", "9000", "--config", "backend/tests/scratch_config.conf"]
     
-    # Mock uvicorn.run and configparser
+    # Mock uvicorn.run, uvicorn.Server and configparser
     with patch("sys.argv", test_argv), \
          patch("uvicorn.run") as mock_run, \
+         patch("uvicorn.Server") as mock_srv, \
          patch("os.path.exists", return_value=True):
         
         # Import and run main

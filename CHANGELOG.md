@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.26.2] - 2026-09-28
+
+### Fixed
+- **ProcessManager Cross-Loop Process Lifecycle & Termination**:
+  - Fixed an unhandled `RuntimeError: Task got Future attached to a different loop` inside `ProcessManager.stop_process` and `_watchdog` that prevented stopping or restarting services (such as MediaMTX Hubs or streams) and flooded ASGI server logs.
+  - Implemented event loop affinity detection (`proc._loop is asyncio.get_running_loop()`) before awaiting `proc.wait()` or draining `proc.stdin`.
+  - Added non-blocking OS/psutil fallbacks (`psutil.Process(pid).wait` via `asyncio.to_thread` and direct `os.kill`) ensuring process termination and resource cleanup succeed even when an active process was spawned in a different event loop or thread.
+  - Added unit test `test_stop_process_with_cross_loop_subprocess_does_not_crash` in `backend/tests/test_lifecycle_reload_stop.py`.
+- **Unified Single-Loop Dual HTTP/HTTPS Server Runtime**:
+  - Refactored `backend/run_server.py` to run dual-port HTTP and HTTPS Uvicorn instances concurrently on the **same asyncio event loop** using `asyncio.gather(*(s.serve() for s in active_servers))` instead of spawning a separate thread with an isolated event loop for HTTPS.
+  - Unified signal handling for `SIGHUP`, `SIGUSR1`, `SIGTERM`, and `SIGINT` across all active servers.
+
 ## [2.26.1] - 2026-09-28
 
 ### Fixed

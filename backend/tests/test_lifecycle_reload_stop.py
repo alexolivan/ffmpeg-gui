@@ -87,6 +87,36 @@ class TestLifecycleReloadStop(unittest.IsolatedAsyncioTestCase):
             mock_p_inst.terminate.assert_called_once()
             self.assertIn(99999, self.pm.stopped_pids)
 
+    async def test_stop_process_with_cross_loop_subprocess_does_not_crash(self):
+        s = Service(name="MediaMTX CrossLoop", service_type="mediamtx_hub", status="running", pid=88888, config={})
+        self.db.add(s)
+        self.db.commit()
+
+        # Create a mock subprocess object attached to a DIFFERENT event loop
+        different_loop = MagicMock()
+        mock_proc = MagicMock()
+        mock_proc.pid = 88888
+        mock_proc.returncode = None
+        mock_proc._loop = different_loop
+        # If proc.wait() were awaited across loops, it would raise RuntimeError
+        mock_proc.wait = MagicMock(side_effect=RuntimeError("Task got Future attached to a different loop"))
+
+        self.pm.processes[s.id] = mock_proc
+
+        with patch("psutil.pid_exists", return_value=True), \
+             patch("psutil.Process") as mock_proc_cls:
+            mock_p_inst = MagicMock()
+            mock_p_inst.children.return_value = []
+            mock_proc_cls.return_value = mock_p_inst
+
+            with patch("psutil.wait_procs", return_value=([], [])):
+                # Must complete without raising RuntimeError!
+                await self.pm.stop_process(s.id, graceful=True)
+
+            mock_proc.terminate.assert_called_once()
+            self.assertNotIn(s.id, self.pm.processes)
+            self.assertIn(88888, self.pm.stopped_pids)
+
 
 if __name__ == "__main__":
     unittest.main()
