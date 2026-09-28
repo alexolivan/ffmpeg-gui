@@ -87,50 +87,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
 
   const isEditing = editBuild !== null
 
-  // Auto-fill version tags
-  useEffect(() => {
-    const fetchTags = async () => {
-      try {
-        if (softwareType === 'ffmpeg') {
-          const res = await fetch(`${API_BASE}/builds/tags/ffmpeg`)
-          if (res.ok) {
-            const data = await res.json()
-            const tagList = Array.isArray(data) ? data : (Array.isArray(data?.tags) ? data.tags : [])
-            setSoftwareTags(tagList)
-            if (!ffmpegVersion && tagList.length > 0) {
-              setFfmpegVersion(tagList[0])
-            }
-          }
-          const srtRes = await fetch(`${API_BASE}/builds/tags/srt`)
-          if (srtRes.ok) {
-            const data = await srtRes.json()
-            const srtTagList = Array.isArray(data) ? data : (Array.isArray(data?.tags) ? data.tags : [])
-            setSrtTags(srtTagList)
-            if (!srtVersion && srtTagList.length > 0) {
-              setSrtVersion(srtTagList[0])
-            }
-          }
-        } else if (softwareType === 'decklink_tools') {
-          setSoftwareTags([])
-          if (!ffmpegVersion) setFfmpegVersion('1.0.1')
-        } else {
-          const res = await fetch(`${API_BASE}/builds/tags/${softwareType}`)
-          if (res.ok) {
-            const data = await res.json()
-            const tagList = Array.isArray(data) ? data : (Array.isArray(data?.tags) ? data.tags : [])
-            setSoftwareTags(tagList)
-            if (!ffmpegVersion && tagList.length > 0) {
-              setFfmpegVersion(tagList[0])
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch tags:", err)
-      }
-    }
-    fetchTags()
-  }, [softwareType])
-
   const decklinkSdks = installedSdks.filter((s: any) => s.sdk_type === 'decklink')
   const ndiSdks = installedSdks.filter((s: any) => s.sdk_type === 'ndi')
 
@@ -633,6 +589,9 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                           setOptions(prev => ({ ...prev, srt_version: newVer }))
                         }}
                       >
+                        {srtVersion && !srtTags.includes(srtVersion) && (
+                          <option value={srtVersion}>{srtVersion}</option>
+                        )}
                         {srtTags.map(tag => (
                           <option key={tag} value={tag}>{tag}</option>
                         ))}
