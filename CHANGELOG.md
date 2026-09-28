@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.26.0] - 2026-09-28
+
+### Added
+- **FFmpeg Virtual Desktop Video Ingest (`x11grab`)**:
+  - Implemented uncompressed video ingest from X11 Virtual Desktops (`type: 'desktop'` or `type: 'x11grab'`) into FFmpeg pipelines in `backend/core/builders/ffmpeg_builder.py`.
+  - Added CLI generator support for `-f x11grab -draw_mouse {draw_mouse} -framerate {framerate} -video_size {video_size} -i :{display_num}.0[+{offset_x},{offset_y}]`.
+  - Added hardware decoding sanitization in `_HWACCEL_UNSUPPORTED_INPUT_TYPES` ensuring raw X11 shared memory frames bypass input hardware decoders while maintaining downstream GPU encoding acceleration (NVENC, VAAPI).
+- **Intelligent Framerate & Resolution Synchronization Assistant**:
+  - Added dedicated Virtual Desktop Ingest configuration panel in `InputSourcePanel.tsx` with automatic desktop provider detection and auto-adoption of display geometry (`resolution`, `framerate`, `display_num`).
+  - Added real-time Synchronization Assistant banner with 1:1 match indicator (`✓ Sincronizado`) and temporal judder warning when capturing at mismatched framerates or resolutions.
+  - Added 1-click `[Alinear con Desktop]` quick action to auto-align capture framerate and geometry with the target Virtual Desktop.
+  - Added mouse cursor capture toggle (`draw_mouse`, default disabled for clean broadcast feeds) and optional window coordinate offsets.
+- **Process Dependency Auto-Linking for Virtual Desktops**:
+  - Extended `DependencyManager` in `backend/core/dependency_manager.py` to recognize `desktop` / `x11grab` input sources and automatically register the parent Virtual Desktop service as a required dependency.
+  - Included `desktop` services in `/api/dependencies/providers` and added `desktop` to `VIDEO_ALLOWED_TYPES` in `ProcessConfigForm.tsx`.
+- **ALSA Loopback (`snd-aloop`) 4-Quadrant Topology & Labeling**:
+  - Implemented 4-quadrant topology representation for `snd-aloop` virtual sound cards in `backend/core/alsa_manager.py`:
+    - Top-Left (`virtual_playout`): Device 0 Playout for web browsers & desktop audio (`hw:Loopback,0,X`).
+    - Bottom-Left (`virtual_capture`): Device 1 Capture for FFmpeg pipelines (`hw:Loopback,1,X`).
+    - Top-Right (`hardware_outputs`): Digital loopback cable bridge (`Playback 0,X -> Capture 1,X`).
+    - Bottom-Right (`hardware_inputs`): Bidirectional loopback route (`Capture 1,X <- Playback 0,X`).
+  - Enhanced PCM device naming in `backend/utils/alsa_v4l2_helper.py` to clearly disambiguate direction: `ALSA Loopback - Playback Subdevice X` vs. `ALSA Loopback - Capture Subdevice X`.
+  - Added comprehensive test coverage in `backend/tests/test_command_generator.py`, `backend/tests/test_alsa_manager.py`, and `backend/tests/test_alsa_v4l2.py`.
+
 ## [2.25.1] - 2026-09-25
 
 ### Fixed
