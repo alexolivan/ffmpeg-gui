@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated `update_build` and `create_build` endpoints in `backend/main.py` to synchronize `build_options['srt_version']` with `srt_version`, preventing stale options dictionaries from clobbering updated versions.
   - Updated `SoftwareBuild.srt_version` setter in `backend/database/models.py` to reassign the dictionary and mark `build_options` as modified for reliable SQLite persistence.
   - Added comprehensive automated test suite `backend/tests/test_forge_profile_updates.py`.
+- **Default Storage Directories Provisioning**:
+  - Fixed clean installations missing essential storage directories (`backend/data/logs`, `data/sdks`, `data/cache`, `data/uploads`, `ffmpeg_builds`) by provisioning them via `mkdir -p` in `install.sh`.
+  - Added defensive directory creation in `backend/database/db.py` during `init_db()` and in `backend/core/process_manager.py` when resolving process log storage paths.
 
 ## [2.26.0] - 2026-09-28
 
