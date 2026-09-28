@@ -224,5 +224,65 @@ class TestAlsaManager(unittest.TestCase):
         self.assertIn("numid=17", cmd_args)
         self.assertIn("on", cmd_args)
 
+    def test_classify_loopback_controls(self):
+        res_dev0 = self.mgr._classify_control(
+            name="PCM Rate Shift 100000",
+            iface=1,
+            elem_type=2,
+            access_flags="rw------",
+            items=[],
+            is_loopback=True,
+            device=0
+        )
+        self.assertEqual(res_dev0["category"], "virtual_playout")
+        self.assertIn("Device 0", res_dev0["group"])
+
+        res_dev1 = self.mgr._classify_control(
+            name="PCM Notify Switch",
+            iface=2,
+            elem_type=1,
+            access_flags="rw------",
+            items=[],
+            is_loopback=True,
+            device=1
+        )
+        self.assertEqual(res_dev1["category"], "virtual_capture")
+        self.assertIn("Device 1", res_dev1["group"])
+
+    @patch.object(AlsaManager, "get_cards")
+    @patch("subprocess.run")
+    def test_loopback_4_quadrant_topology(self, mock_run, mock_get_cards):
+        mock_get_cards.return_value = [
+            {"card_index": 3, "card_id": "Loopback", "name": "Loopback - Loopback", "driver": "Loopback"}
+        ]
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = """numid=1,iface=PCM,name='PCM Rate Shift 100000',device=0
+  ; type=INTEGER,access=rw------,values=1,min=80000,max=120000,step=1
+  : values=100000
+numid=2,iface=PCM,name='PCM Rate Shift 100000',device=1
+  ; type=INTEGER,access=rw------,values=1,min=80000,max=120000,step=1
+  : values=100000
+"""
+        mock_run.return_value = mock_proc
+
+        topo = self.mgr.get_card_topology(card_idx=3)
+        self.assertTrue(topo.get("is_loopback"))
+        self.assertEqual(topo["card_index"], 3)
+        # Check 4 quadrants
+        self.assertTrue(len(topo["virtual_playout"]) > 0)
+        self.assertEqual(topo["virtual_playout"][0]["pcm_device"], "hw:3,0,0")
+        self.assertIn("Device 0", topo["virtual_playout"][0]["name"])
+
+        self.assertTrue(len(topo["virtual_capture"]) > 0)
+        self.assertEqual(topo["virtual_capture"][0]["pcm_device"], "hw:3,1,0")
+        self.assertIn("Device 1", topo["virtual_capture"][0]["name"])
+
+        self.assertTrue(len(topo["hardware_outputs"]) > 0)
+        self.assertIn("Dev 0 -> Dev 1", topo["hardware_outputs"][0]["name"])
+
+        self.assertTrue(len(topo["hardware_inputs"]) > 0)
+        self.assertIn("Dev 1 <- Dev 0", topo["hardware_inputs"][0]["name"])
+
 if __name__ == "__main__":
     unittest.main()
