@@ -35,14 +35,14 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     defaultSoftwareType === 'decklink_tools' ? '1.0.0' :
     defaultSoftwareType === 'icecast2' ? '2.4.4' : ''
   ))
-  const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || '')
+  const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || (editBuild?.build_options as any)?.srt_version || '')
   const [autoClean, setAutoClean] = useState(editBuild?.auto_clean || false)
   const [activeTab, setActiveTab] = useState<'general' | 'gpu' | 'sdks'>('general')
   const [storages, setStorages] = useState<{ id: number; name: string; path: string; type: string }[]>([])
   const [storageId, setStorageId] = useState<number | null>(editBuild?.storage_id || null)
   const [softwareTags, setSoftwareTags] = useState<string[]>([])
 
-  const [options, setOptions] = useState(editBuild?.build_options || { 
+  const [options, setOptions] = useState<Record<string, any>>(editBuild?.build_options || { 
     libsrt: true, 
     vaapi: false, 
     ndi: false,
@@ -301,11 +301,21 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
       }
     }
 
+    const finalOptions: Record<string, any> = softwareType === 'ffmpeg' ? { ...options } : {}
+    const targetSrtVersion = softwareType === 'ffmpeg' && options.libsrt ? srtVersion || null : null
+    if (softwareType === 'ffmpeg') {
+      if (options.libsrt && targetSrtVersion) {
+        finalOptions.srt_version = targetSrtVersion
+      } else {
+        delete finalOptions.srt_version
+      }
+    }
+
     await onSubmit({
       name: name.trim(),
       ffmpeg_version: ffmpegVersion,
-      srt_version: softwareType === 'ffmpeg' && options.libsrt ? srtVersion || null : null,
-      build_options: softwareType === 'ffmpeg' ? options : {},
+      srt_version: targetSrtVersion,
+      build_options: finalOptions,
       sdk_paths: finalSdkPaths,
       auto_clean: autoClean,
       storage_id: storageId,
@@ -594,14 +604,34 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                 <div className={`p-2.5 bg-white/5 rounded-lg border ${options.libsrt ? 'border-brand-orange/40' : 'border-white/5'} transition-all`}>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-xs font-bold">{t('forge.libsrtSupport', 'LibSRT Support')}</span>
-                    <input type="checkbox" className="w-3.5 h-3.5 accent-brand-orange" checked={options.libsrt} onChange={e => setOptions({...options, libsrt: e.target.checked})} />
+                    <input
+                      type="checkbox"
+                      className="w-3.5 h-3.5 accent-brand-orange"
+                      checked={options.libsrt}
+                      onChange={e => {
+                        const isChecked = e.target.checked
+                        setOptions(prev => {
+                          const next: Record<string, any> = { ...prev, libsrt: isChecked }
+                          if (!isChecked) {
+                            delete next.srt_version
+                          } else if (srtVersion) {
+                            next.srt_version = srtVersion
+                          }
+                          return next
+                        })
+                      }}
+                    />
                   </div>
                   {options.libsrt && (
                     <div className="space-y-1.5">
                       <select
                         className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none animate-in fade-in duration-300"
                         value={srtVersion || ''}
-                        onChange={e => setSrtVersion(e.target.value)}
+                        onChange={e => {
+                          const newVer = e.target.value
+                          setSrtVersion(newVer)
+                          setOptions(prev => ({ ...prev, srt_version: newVer }))
+                        }}
                       >
                         {srtTags.map(tag => (
                           <option key={tag} value={tag}>{tag}</option>

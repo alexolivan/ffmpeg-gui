@@ -4146,11 +4146,17 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         if not storage or storage.type != "build":
             raise HTTPException(status_code=400, detail="Invalid storage selected for build")
 
+    opts = dict(data.build_options or {})
+    if software_type == "ffmpeg":
+        if data.srt_version:
+            opts["srt_version"] = data.srt_version
+        elif not opts.get("libsrt"):
+            opts.pop("srt_version", None)
+
     build = FfmpegBuild(
         name=data.name,
         ffmpeg_version=data.ffmpeg_version,
-        srt_version=data.srt_version,
-        build_options=data.build_options,
+        build_options=opts,
         sdk_paths=data.sdk_paths,
         auto_clean=data.auto_clean or False,
         install_path="",  # Will be set after we have the ID
@@ -4215,10 +4221,30 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
         build.name = data.name
     if data.ffmpeg_version is not None:
         build.ffmpeg_version = data.ffmpeg_version
-    if data.srt_version is not None:
-        build.srt_version = data.srt_version
+    fields_set = getattr(data, "model_fields_set", getattr(data, "__fields_set__", set()))
+
     if data.build_options is not None:
-        build.build_options = data.build_options
+        opts = dict(data.build_options)
+        if "srt_version" in fields_set:
+            if data.srt_version:
+                opts["srt_version"] = data.srt_version
+            else:
+                opts.pop("srt_version", None)
+        elif not opts.get("libsrt"):
+            opts.pop("srt_version", None)
+        build.build_options = opts
+        try:
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(build, "build_options")
+        except Exception:
+            pass
+    elif "srt_version" in fields_set:
+        build.srt_version = data.srt_version
+        try:
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(build, "build_options")
+        except Exception:
+            pass
     if data.sdk_paths is not None:
         build.sdk_paths = data.sdk_paths
     if data.auto_clean is not None:
@@ -5692,12 +5718,19 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
         or ("6.0" if software_type == "ffmpeg" else "latest")
     )
 
+    recipe_srt_version = recipe.get("srt_version") if software_type == "ffmpeg" else None
+    opts = dict(build_options)
+    if software_type == "ffmpeg":
+        if recipe_srt_version:
+            opts["srt_version"] = recipe_srt_version
+        elif not opts.get("libsrt"):
+            opts.pop("srt_version", None)
+
     db_build = FfmpegBuild(
         name=name,
         software_type=software_type,
         version_tag=version_tag,
-        srt_version=recipe.get("srt_version") if software_type == "ffmpeg" else None,
-        build_options=build_options,
+        build_options=opts,
         sdk_paths=sdk_paths,
         auto_clean=recipe.get("auto_clean", False),
         status="pending",

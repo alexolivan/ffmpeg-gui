@@ -105,9 +105,17 @@ class SoftwareBuild(Base):
 
     @srt_version.setter
     def srt_version(self, val):
-        if not isinstance(self.build_options, dict):
-            self.build_options = {}
-        self.build_options['srt_version'] = val
+        opts = dict(self.build_options or {})
+        if val is None:
+            opts.pop('srt_version', None)
+        else:
+            opts['srt_version'] = val
+        self.build_options = opts
+        try:
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(self, "build_options")
+        except Exception:
+            pass
 
 
 FfmpegBuild = SoftwareBuild

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.26.1] - 2026-09-28
+
+### Fixed
+- **Forge Build Profile LibSRT Version Synchronization**:
+  - Fixed an issue where editing an existing or imported build profile with LibSRT enabled would not update `srt_version` (or clear it when LibSRT was unchecked) due to state desynchronization between `srtVersion` and `build_options` in `BuildFormModal.tsx`.
+  - Updated `update_build` and `create_build` endpoints in `backend/main.py` to synchronize `build_options['srt_version']` with `srt_version`, preventing stale options dictionaries from clobbering updated versions.
+  - Updated `SoftwareBuild.srt_version` setter in `backend/database/models.py` to reassign the dictionary and mark `build_options` as modified for reliable SQLite persistence.
+  - Added comprehensive automated test suite `backend/tests/test_forge_profile_updates.py`.
+
 ## [2.26.0] - 2026-09-28
 
 ### Added
