@@ -17,7 +17,7 @@ import AdvancedFlagsFormSection from './form/AdvancedFlagsFormSection';
 import PreviewCmdModal from './modals/PreviewCmdModal';
 import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
 
-const VIDEO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
+const VIDEO_ALLOWED_TYPES = ['file', 'desktop', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
 const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls'];
 
 interface ProcessConfig {
