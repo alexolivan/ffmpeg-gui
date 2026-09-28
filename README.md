@@ -31,7 +31,8 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ![Icecast2 Forge Recipes & Build Profiles](docs/assets/screenshot17.png)
 
 ### 📺 2. Media Services & Daemon Streams
-- **Persistent Pipelines**: Run RTMP, SRT (listener/caller), HLS, NDI, UDP, or ALSA audio streams as persistent background daemons.
+- **Persistent Pipelines**: Run RTMP, SRT (listener/caller), HLS, NDI, UDP, X11 Virtual Desktop (`x11grab`), or ALSA audio streams as persistent background daemons.
+- **Virtual Desktop Ingest & Intelligent FPS Sync**: Ingest uncompressed video from X11 Virtual Desktops with automatic geometry adoption and 1-click framerate alignment to prevent temporal judder and redundant CPU overhead.
 - **Boot Sequence Hierarchies**: Configure specific startup ordering and delay gaps to synchronize cross-dependent streams (e.g., waiting for an input stream to initialize before starting a transcoder).
 - **GPU/CPU Pipeline Diagramming**: An interactive resource pipeline diagram in the GUI that visually tracks GPU decoding, filtering, encoding, and CPU multiplexing flow.
 - **Live Stream Previews**: Embedded native HLS live video & audio player for HLS broadcast services, plus configurable periodic frame snapshots (MJPEG) with performance toggles for other streaming outputs.
@@ -80,6 +81,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
 - **Magewell Capture Cards**: Hardware telemetry and routing for Pro Capture / Eco Capture / USB Capture devices (`mwcap-info` / `mwcap-control`), live FPGA temperature monitoring, connector switching, and V4L2/ALSA stream integration.
 - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping and crosspoint volume matrix routing.
+- **ALSA Loopback (`snd-aloop`) Routing**: Native 4-quadrant topology in the ALSA mixer and clear bidirectional PCM device labeling distinguishing browser playout (`hw:Loopback,0,X`) from broadcast capture (`hw:Loopback,1,X`).
 - **Graphical Overlay Studio**: Fully graphical editor to place, scale, and preview graphic overlays on top of video streams.
 - **Audio Dynamics & Filters**: Dynamic range compressors, multi-band graphic equalizers, and ALSA loopback routing.
 
