@@ -86,6 +86,10 @@ class ProcessManager:
 
         if not log_storage_path:
             log_storage_path = os.path.abspath("data/logs")
+        try:
+            os.makedirs(log_storage_path, exist_ok=True)
+        except Exception:
+            pass
         return log_storage_path
 
     def get_process_log_path(self, process_id: int, log_storage_id: Optional[int] = None, session: Optional[Any] = None) -> str:

@@ -226,6 +226,11 @@ if [ "$MODE" = "system" ]; then
     mkdir -p /etc/ffmpeg-gui
     mkdir -p /var/lib/ffmpeg-gui
     mkdir -p /var/log/ffmpeg-gui
+    mkdir -p "$PROJ_DIR/backend/data/logs"
+    mkdir -p "$PROJ_DIR/backend/data/sdks"
+    mkdir -p "$PROJ_DIR/backend/data/cache"
+    mkdir -p "$PROJ_DIR/backend/data/uploads"
+    mkdir -p "$PROJ_DIR/backend/ffmpeg_builds"
 
     # Configuración INI por defecto
     CONF_FILE="/etc/ffmpeg-gui/ffmpeg-gui.conf"
@@ -249,6 +254,11 @@ else
     # Crear directorios de usuario
     mkdir -p "$HOME/.config/ffmpeg-gui"
     mkdir -p "$HOME/.local/share/ffmpeg-gui"
+    mkdir -p "$PROJ_DIR/backend/data/logs"
+    mkdir -p "$PROJ_DIR/backend/data/sdks"
+    mkdir -p "$PROJ_DIR/backend/data/cache"
+    mkdir -p "$PROJ_DIR/backend/data/uploads"
+    mkdir -p "$PROJ_DIR/backend/ffmpeg_builds"
 
     # Configuración INI por defecto
     CONF_FILE="$HOME/.config/ffmpeg-gui/ffmpeg-gui.conf"

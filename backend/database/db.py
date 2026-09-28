@@ -309,14 +309,24 @@ def init_db():
                         is_default=True
                     )
                 ]
+                for st in default_storages:
+                    try:
+                        os.makedirs(st.path, exist_ok=True)
+                    except Exception:
+                        pass
                 db.add_all(default_storages)
                 db.commit()
             else:
                 # Ensure Default Logs Storage is seeded if logs type storages are missing
                 if db.query(Storage).filter(Storage.type == "logs").count() == 0:
+                    logs_dir = os.path.abspath("data/logs")
+                    try:
+                        os.makedirs(logs_dir, exist_ok=True)
+                    except Exception:
+                        pass
                     db.add(Storage(
                         name="Default Logs Storage",
-                        path=os.path.abspath("data/logs"),
+                        path=logs_dir,
                         type="logs",
                         is_default=True
                     ))
@@ -336,6 +346,13 @@ def init_db():
                         is_default=True
                     ))
                     db.commit()
+
+            # Ensure essential data directories exist on disk regardless of DB state
+            for dir_to_ensure in ["data/logs", "data/sdks", "data/cache", "data/uploads", "ffmpeg_builds"]:
+                try:
+                    os.makedirs(os.path.abspath(dir_to_ensure), exist_ok=True)
+                except Exception:
+                    pass
 
             # Seed system log rotation task if missing
             from database.models import ScheduledTask
