@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.27.0] - 2026-09-29
+
+### Added
+- **ALSA Loopback (`snd-aloop`) Subdevice Topology & Clean Audio Routing**:
+  - Implemented clean 8-subdevice virtual topology in `AlsaManager` (`virtual_playout` on `hw:Loopback,0,0..7` and `virtual_capture` on `hw:Loopback,1,0..7`).
+  - Filtered phantom analog mixer controls (`PCM Rate Shift 100000`, `PCM Slave Rate`, etc.) into system clock telemetry to eliminate spurious volume faders and phantom crossovers.
+  - Kept right column quadrants (`hardware_outputs` and `hardware_inputs`) completely empty for Loopback cards in `AlsaAudioSettingsCard.tsx` to communicate a purely virtual closed loop between playout and capture through the audio bus.
+  - Added fixed routing badge (`◄ PCM X Playback`) on capture lanes and live process badges for active Kiosk browsers (`Kiosk:`) and FFmpeg services (`FFmpeg:`).
+- **Virtual Desktop & Kiosk Browser Audio Sandboxing**:
+  - Sandboxed browser audio playback to dedicated ALSA loopback subdevices (`display_num % 8` or manual selection) via dynamic `asound.conf` generation (`ALSA_CONFIG_PATH`) and `--alsa-output-device=hw:Loopback,0,X` for Chromium in `process_manager.py`.
+  - Added ALSA Loopback Subdevice selector in `DesktopConfigForm.tsx` with automatic detection of the `snd-aloop` kernel module and helper warning banners.
+- **1-Click Desktop Virtual Audio Pairing & Crash Prevention**:
+  - Enhanced `InputSourcePanel.tsx` with 1-click `[🔗 Vincular Audio de este Desktop]` assistant, automatically activating secondary input on `hw:Loopback,1,X`.
+  - Sanitized CLI generator in `backend/core/builders/ffmpeg_builder.py` to prevent FFmpeg crashes (`Stream map '0:a' matches no streams`) when `x11grab` is captured without a secondary audio source by suppressing `-map 0:a` and applying `-an`.
+- **System Installer & Kernel Module Persistence**:
+  - Added `configure_alsa_loopback` in `install.sh` to load `snd-aloop`, write `/etc/modules-load.d/snd-aloop.conf`, and configure `options snd-aloop index=-2 enable=1 pcm_substreams=8` in `/etc/modprobe.d/snd-aloop.conf`.
+  - Documented kernel module requirements, manual verification, and substream scaling in `INSTALL.md` and `README.md`.
+
 ## [2.26.2] - 2026-09-28
 
 ### Fixed
