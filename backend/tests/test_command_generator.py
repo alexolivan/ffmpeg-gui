@@ -720,5 +720,85 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-video_size 1920x1080", cmd_str)
         self.assertIn("-i :95.0", cmd_str)
 
+    def test_desktop_audio_mapping_and_pairing(self):
+        # Case 1: Desktop with has_audio=True and NO secondary input
+        proc_single = MagicMock()
+        proc_single.id = 81
+        proc_single.type = "service"
+        proc_single.input_config = {
+            'type': 'desktop',
+            'display_num': 99,
+            'video_size': '1920x1080',
+            'framerate': 30,
+            'has_video': True,
+            'has_audio': True
+        }
+        proc_single.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'aac',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc_single.filter_config = {}
+        proc_single.output_config = {
+            'type': 'udp',
+            'host': '239.0.0.1',
+            'port': 1234
+        }
+
+        cmd_single = self.pm._build_ffmpeg_cmd(proc_single, "ffmpeg")
+        cmd_str_single = " ".join(cmd_single)
+
+        # Must NOT map nonexistent audio from stream 0 (0:a)
+        self.assertNotIn("-map 0:a", cmd_str_single)
+        # Should cleanly mute/disable audio with -an
+        self.assertIn("-an", cmd_str_single)
+
+        # Case 2: Desktop with paired secondary input (ALSA Loopback hw:Loopback,1,3)
+        proc_paired = MagicMock()
+        proc_paired.id = 82
+        proc_paired.type = "service"
+        proc_paired.input_config = {
+            'use_secondary_input': True,
+            'input1': {
+                'type': 'desktop',
+                'display_num': 99,
+                'video_size': '1920x1080',
+                'framerate': 30,
+                'has_video': True,
+                'has_audio': False
+            },
+            'input2': {
+                'type': 'alsa',
+                'device': 'hw:Loopback,1,3',
+                'has_video': False,
+                'has_audio': True
+            }
+        }
+        proc_paired.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'aac',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc_paired.filter_config = {}
+        proc_paired.output_config = {
+            'type': 'udp',
+            'host': '239.0.0.1',
+            'port': 1234
+        }
+
+        cmd_paired = self.pm._build_ffmpeg_cmd(proc_paired, "ffmpeg")
+        cmd_str_paired = " ".join(cmd_paired)
+
+        # Both inputs must be present
+        self.assertIn("-f x11grab", cmd_str_paired)
+        self.assertIn("-f alsa -i hw:Loopback,1,3", cmd_str_paired)
+        # Maps video from input 0 and audio from input 1
+        self.assertIn("-map 0:v", cmd_str_paired)
+        self.assertIn("-map 1:a", cmd_str_paired)
+
+
 if __name__ == '__main__':
     unittest.main()
+

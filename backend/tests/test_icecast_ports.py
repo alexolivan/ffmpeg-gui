@@ -87,5 +87,73 @@ class TestIcecastPorts(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("already in use by service 'ExistingIcecast'", ctx.exception.detail)
 
+    def test_ffmpeg_service_reading_from_icecast_does_not_collide(self):
+        db = MagicMock()
+        existing_svc = Service(
+            id=1,
+            name="Icecast Server",
+            service_type="icecast_server",
+            config={"icecast_config": {"port": 7000, "http_enabled": True, "ssl_enabled": False}},
+        )
+        db.query.return_value.all.return_value = [existing_svc]
+
+        # An FFmpeg stream pulling from local Icecast on port 7000 and pushing to remote Icecast on 8000
+        # should NOT be registered as a local listening port on 7000 or 8000
+        input_cfg = {
+            "input1": {
+                "type": "http_audio",
+                "host": "127.0.0.1",
+                "port": "7000",
+                "mode": "listener",  # even if legacy or dirty mode is present
+            }
+        }
+        output_cfg = {
+            "type": "icecast",
+            "host": "remote.icecast.com",
+            "port": "8000",
+        }
+
+        # Should not raise any HTTPException
+        validate_service_port_conflicts(
+            db=db,
+            service_id=None,
+            service_name="FFmpeg Transcoder",
+            service_type="ffmpeg_stream",
+            config={},
+            input_config=input_cfg,
+            output_config=output_cfg,
+        )
+
+    def test_ffmpeg_srt_caller_input_does_not_collide(self):
+        db = MagicMock()
+        existing_svc = Service(
+            id=1,
+            name="SRT Listener Server",
+            service_type="ffmpeg_stream",
+            config={},
+            input_config={"input1": {"type": "srt", "port": "9000", "mode": "listener"}},
+        )
+        db.query.return_value.all.return_value = [existing_svc]
+
+        # An FFmpeg stream acting as SRT caller connecting to port 9000 should NOT collide
+        input_cfg = {
+            "input1": {
+                "type": "srt",
+                "host": "127.0.0.1",
+                "port": "9000",
+                "mode": "caller",
+            }
+        }
+        # Should not raise any HTTPException
+        validate_service_port_conflicts(
+            db=db,
+            service_id=None,
+            service_name="FFmpeg Caller",
+            service_type="ffmpeg_stream",
+            config={},
+            input_config=input_cfg,
+            output_config={},
+        )
+
 if __name__ == "__main__":
     unittest.main()

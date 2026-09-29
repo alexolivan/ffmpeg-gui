@@ -94,7 +94,7 @@ class AlsaManager:
 
         return cards
 
-    def _classify_control(self, name: str, iface: int, elem_type: int, access_flags: str, items: List[str], index: int = 0, is_loopback: bool = False, device: int = 0) -> Dict[str, Any]:
+    def _classify_control(self, name: str, iface: int, elem_type: int, access_flags: str, items: List[str], index: int = 0, is_loopback: bool = False, device: int = 0, subdevice: int = 0) -> Dict[str, Any]:
         """Classify raw ALSA control into semantic type and category."""
         is_readonly = "r" in access_flags and "w" not in access_flags
         is_meter = is_readonly and ("meter" in name.lower() or "peak" in name.lower() or "level" in name.lower())
@@ -105,29 +105,46 @@ class AlsaManager:
         is_enum = elem_type == SND_CTL_ELEM_TYPE_ENUMERATED or elem_str == "ENUMERATED"
 
         if is_loopback:
-            # Dedicated 4-quadrant routing for snd-aloop devices
-            dev_idx = device
-            if dev_idx == 0 or "device 0" in name.lower() or "playback" in name.lower():
-                if "capture" in name.lower() and dev_idx == 1:
-                    category = "virtual_capture"
-                    group = f"Loopback Capture (Device {dev_idx})"
-                else:
-                    category = "virtual_playout"
-                    group = f"Loopback Playback (Device {dev_idx})"
-            elif dev_idx == 1 or "device 1" in name.lower() or "capture" in name.lower():
-                category = "virtual_capture"
-                group = f"Loopback Capture (Device {dev_idx})"
-            else:
-                category = "global_controls"
-                group = "Loopback Settings"
+            # Dedicated classification for snd-aloop devices
+            name_lower = name.lower()
+            if "notify" in name_lower:
+                return {
+                    "type": "ignored",
+                    "group": "Ignored",
+                    "category": "ignored",
+                    "is_meter": False,
+                    "matrix_source": None
+                }
 
-            ctrl_type = "switch" if is_bool else "volume" if is_int else "pcm_capability" if (str(iface).upper() == "PCM" or str(iface) == "1") else "other"
+            if "rate shift" in name_lower:
+                return {
+                    "type": "integer",
+                    "group": f"Rate Shift (Dev {device}, Sub {subdevice})",
+                    "category": "system_clock",
+                    "is_meter": False,
+                    "matrix_source": None
+                }
+
+            category = "virtual_capture" if device == 1 or "capture" in name_lower else "virtual_playout"
+            group = f"Loopback Capture (Subdevice {subdevice})" if category == "virtual_capture" else f"Loopback Playout (Subdevice {subdevice})"
+            matrix_src = f"PCM {subdevice} Playback" if category == "virtual_capture" else None
+
+            if any(k in name_lower for k in ["slave active", "slave rate", "slave channels", "slave format", "slave access"]) or is_readonly:
+                return {
+                    "type": "telemetry",
+                    "group": group,
+                    "category": category,
+                    "is_meter": True,
+                    "matrix_source": matrix_src
+                }
+
+            ctrl_type = "switch" if is_bool else "integer" if is_int else "enum" if is_enum else "other"
             return {
                 "type": ctrl_type,
                 "group": group,
                 "category": category,
                 "is_meter": False,
-                "matrix_source": None
+                "matrix_source": matrix_src
             }
 
         # Ignore redundant internal monitoring crossover mode enums (e.g. 'Line 0 Line 0 Monitor Playback Mode')
@@ -336,7 +353,8 @@ class AlsaManager:
                     items=ctrl.get("items", []),
                     index=ctrl.get("index", 0),
                     is_loopback=is_loopback,
-                    device=ctrl.get("device", 0)
+                    device=ctrl.get("device", 0),
+                    subdevice=ctrl.get("subdevice", 0)
                 )
 
                 if meta.get("category") == "ignored" or meta.get("type") == "ignored":
@@ -352,14 +370,16 @@ class AlsaManager:
                         "meters": []
                     }
                     if is_loopback:
+                        sub = ctrl.get("subdevice", 0)
                         if meta["category"] == "virtual_playout":
-                            dev = ctrl.get("device", 0)
-                            grp_data["pcm_device"] = f"hw:{card_idx},{dev},0"
-                            grp_data["description"] = "Virtual Playout endpoint for applications & browsers (Chrome, Kiosk)"
+                            grp_data["pcm_device"] = f"hw:{card_idx},0,{sub}"
+                            grp_data["subdevice_index"] = sub
+                            grp_data["description"] = f"Virtual Playout Subdevice {sub} for Desktop / Kiosk"
                         elif meta["category"] == "virtual_capture":
-                            dev = ctrl.get("device", 1)
-                            grp_data["pcm_device"] = f"hw:{card_idx},{dev},0"
-                            grp_data["description"] = "Virtual Capture endpoint for FFmpeg ingest & stream encoding"
+                            grp_data["pcm_device"] = f"hw:{card_idx},1,{sub}"
+                            grp_data["subdevice_index"] = sub
+                            grp_data["description"] = f"Virtual Capture Subdevice {sub} for FFmpeg Ingest"
+                            grp_data["matrix_source"] = f"PCM {sub} Playback"
                     groups[grp_key] = grp_data
 
                 ctrl["ctrl_type"] = meta["type"]
@@ -380,61 +400,57 @@ class AlsaManager:
                     topology["global_controls"].append(group)
 
             if is_loopback:
-                for g in topology["virtual_playout"]:
-                    if "pcm_device" not in g:
-                        g["pcm_device"] = f"hw:{card_idx},0,0"
-                for g in topology["virtual_capture"]:
-                    if "pcm_device" not in g:
-                        g["pcm_device"] = f"hw:{card_idx},1,0"
+                # Loopback has NO physical inputs or outputs
+                topology["hardware_outputs"] = []
+                topology["hardware_inputs"] = []
 
-                # 4-quadrant topology representation for ALSA Loopback (snd-aloop)
-                # 1. Top-Left: Virtual Playout (Device 0)
-                if not any("Loopback Playback" in g["name"] for g in topology["virtual_playout"]):
-                    topology["virtual_playout"].insert(0, {
-                        "id": f"virtual_playout_loopback_{card_idx}_dev0",
-                        "name": "Loopback Playback (Device 0)",
-                        "category": "virtual_playout",
-                        "pcm_device": f"hw:{card_idx},0,0",
-                        "controls": [],
-                        "meters": [],
-                        "description": "Virtual Playout endpoint for applications & browsers (Chrome, Kiosk)"
-                    })
+                # Ensure all 8 subdevices (0 through 7) exist in virtual_playout
+                existing_playouts = {g.get("pcm_device"): g for g in topology["virtual_playout"]}
+                new_playout = []
+                for sub in range(8):
+                    pcm_dev = f"hw:{card_idx},0,{sub}"
+                    if pcm_dev in existing_playouts:
+                        g = existing_playouts[pcm_dev]
+                        g["name"] = f"Loopback Playout (Subdevice {sub})"
+                        g["subdevice_index"] = sub
+                        new_playout.append(g)
+                    else:
+                        new_playout.append({
+                            "id": f"virtual_playout_loopback_{card_idx}_sub{sub}",
+                            "name": f"Loopback Playout (Subdevice {sub})",
+                            "category": "virtual_playout",
+                            "pcm_device": pcm_dev,
+                            "subdevice_index": sub,
+                            "controls": [],
+                            "meters": [],
+                            "description": f"Virtual Playout endpoint for Desktop / Kiosk {sub}"
+                        })
+                topology["virtual_playout"] = new_playout
 
-                # 2. Bottom-Left: Virtual Capture (Device 1)
-                if not any("Loopback Capture" in g["name"] for g in topology["virtual_capture"]):
-                    topology["virtual_capture"].insert(0, {
-                        "id": f"virtual_capture_loopback_{card_idx}_dev1",
-                        "name": "Loopback Capture (Device 1)",
-                        "category": "virtual_capture",
-                        "pcm_device": f"hw:{card_idx},1,0",
-                        "controls": [],
-                        "meters": [],
-                        "description": "Virtual Capture endpoint for FFmpeg ingest & stream encoding"
-                    })
-
-                # 3. Top-Right: Loopback Playout Bridge
-                if not any("Loopback Cable" in g["name"] for g in topology["hardware_outputs"]):
-                    topology["hardware_outputs"].append({
-                        "id": f"hardware_outputs_loopback_bridge_{card_idx}",
-                        "name": "Loopback Cable (Dev 0 -> Dev 1)",
-                        "category": "hardware_outputs",
-                        "matrix_source": "Playback 0,X -> Capture 1,X (Digital Cable)",
-                        "controls": [],
-                        "meters": [],
-                        "description": "Digital loopback bridge routing Playout (Dev 0) directly to Capture (Dev 1)"
-                    })
-
-                # 4. Bottom-Right: Loopback Capture Route
-                if not any("Digital Route" in g["name"] for g in topology["hardware_inputs"]):
-                    topology["hardware_inputs"].append({
-                        "id": f"hardware_inputs_loopback_route_{card_idx}",
-                        "name": "Digital Route (Dev 1 <- Dev 0)",
-                        "category": "hardware_inputs",
-                        "matrix_source": "Capture 1,X <- Playback 0,X (Digital Cable)",
-                        "controls": [],
-                        "meters": [],
-                        "description": "Bidirectional cross-cable loopback route (Zero-loss digital PCM link)"
-                    })
+                # Ensure all 8 subdevices (0 through 7) exist in virtual_capture
+                existing_captures = {g.get("pcm_device"): g for g in topology["virtual_capture"]}
+                new_capture = []
+                for sub in range(8):
+                    pcm_dev = f"hw:{card_idx},1,{sub}"
+                    if pcm_dev in existing_captures:
+                        g = existing_captures[pcm_dev]
+                        g["name"] = f"Loopback Capture (Subdevice {sub})"
+                        g["subdevice_index"] = sub
+                        g["matrix_source"] = f"PCM {sub} Playback"
+                        new_capture.append(g)
+                    else:
+                        new_capture.append({
+                            "id": f"virtual_capture_loopback_{card_idx}_sub{sub}",
+                            "name": f"Loopback Capture (Subdevice {sub})",
+                            "category": "virtual_capture",
+                            "pcm_device": pcm_dev,
+                            "subdevice_index": sub,
+                            "matrix_source": f"PCM {sub} Playback",
+                            "controls": [],
+                            "meters": [],
+                            "description": f"Virtual Capture endpoint for FFmpeg Ingest (Subdevice {sub})"
+                        })
+                topology["virtual_capture"] = new_capture
             else:
                 # Ensure virtual_playout contains a virtual PCM stream node (Master / PCM 0) for software process binding (FFmpeg: foo)
                 if not topology["virtual_playout"]:

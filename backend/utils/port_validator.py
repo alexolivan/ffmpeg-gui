@@ -123,7 +123,12 @@ def extract_ports_from_service(
             except (ValueError, TypeError): pass
 
     elif s_type == "ffmpeg_stream":
-        # Check inputs that are listeners (e.g. SRT listener, UDP listener, TCP listener)
+        # Check inputs that ACTUALLY bind a local listening port:
+        # - SRT in listener mode (binds local UDP socket)
+        # - UDP / RTP inputs (binds local UDP socket to receive datagrams)
+        # - TCP in listener mode (binds local TCP socket)
+        # Client protocols (HTTP, HTTPS, HTTP_AUDIO, RTMP, RTSP, HLS, ALSA, DeckLink, NDI, File, etc.)
+        # connect outwards to an external or local server; they NEVER bind a listening port!
         inputs = []
         if isinstance(input_config, dict):
             for k in ["input1", "input2"]:
@@ -133,19 +138,26 @@ def extract_ports_from_service(
                 inputs.append(input_config)
 
         for inp in inputs:
-            mode = inp.get("mode")
+            mode = str(inp.get("mode", "")).lower()
             inp_type = str(inp.get("type", "")).lower()
             port = inp.get("port")
             if port:
                 try:
                     p_num = int(port)
-                    proto = "udp" if inp_type in ["udp", "rtp", "srt"] else ("tcp" if inp_type in ["tcp", "http", "https"] else "any")
-                    if mode == "listener" or inp_type in ["udp", "rtp", "tcp", "http"]:
-                        ports.append((p_num, f"FFmpeg In ({inp_type.upper()})", service_name, service_id, proto))
+                    if inp_type == "srt" and mode not in ["caller"]:
+                        ports.append((p_num, "FFmpeg In Listener (SRT)", service_name, service_id, "udp"))
+                    elif inp_type in ["udp", "rtp"]:
+                        ports.append((p_num, f"FFmpeg In ({inp_type.upper()})", service_name, service_id, "udp"))
+                    elif inp_type == "tcp" and mode in ["listener", "listen"]:
+                        ports.append((p_num, "FFmpeg In Listener (TCP)", service_name, service_id, "tcp"))
                 except (ValueError, TypeError):
                     pass
 
-        # Check outputs that might be listeners (e.g. SRT listener output)
+        # Check outputs that ACTUALLY bind a local listening port:
+        # - SRT in listener mode (binds local UDP socket)
+        # - TCP in listener mode (binds local TCP socket)
+        # All other outputs (UDP egress, RTMP push, Icecast push, HLS/file write, WHIP push)
+        # push outwards or write to storage; they NEVER bind a listening port!
         outputs = []
         if isinstance(output_config, list):
             outputs.extend(output_config)
@@ -153,11 +165,15 @@ def extract_ports_from_service(
             outputs.append(output_config)
 
         for out in outputs:
-            if isinstance(out, dict) and out.get("mode") == "listener" and out.get("port"):
+            if isinstance(out, dict) and out.get("port"):
                 out_type = str(out.get("type", "")).lower()
-                proto = "udp" if out_type in ["udp", "rtp", "srt"] else ("tcp" if out_type in ["tcp", "http", "https"] else "any")
+                mode = str(out.get("mode", "")).lower()
                 try:
-                    ports.append((int(out["port"]), f"FFmpeg Out Listener ({out_type.upper()})", service_name, service_id, proto))
+                    p_num = int(out["port"])
+                    if out_type == "srt" and mode in ["listener", "listen"]:
+                        ports.append((p_num, "FFmpeg Out Listener (SRT)", service_name, service_id, "udp"))
+                    elif out_type == "tcp" and mode in ["listener", "listen"]:
+                        ports.append((p_num, "FFmpeg Out Listener (TCP)", service_name, service_id, "tcp"))
                 except (ValueError, TypeError):
                     pass
 

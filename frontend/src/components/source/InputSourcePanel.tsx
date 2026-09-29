@@ -151,6 +151,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   const [desktops, setDesktops] = React.useState<any[]>([]);
   const [loadingDesktops, setLoadingDesktops] = React.useState(false);
   const [manualDesktopMode, setManualDesktopMode] = React.useState(false);
+  const [pairedAlsaDevice, setPairedAlsaDevice] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -525,7 +526,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           const defaultDeskCfg = defaultDesk?.config?.desktop_config || defaultDesk?.config || {};
           update({
             type: newType,
-            path: '', host: '', port: '', mode: 'listener', device: '', name: '',
+            path: '', host: '', port: '', mode: ['srt', 'tcp'].includes(newType) ? 'listener' : undefined, device: '', name: '',
             pattern: newType === 'lavfi_video' ? 'testsrc' : newType === 'lavfi_audio' ? 'sine' : '',
             size: newType === 'lavfi_video' ? '1920x1080' : undefined,
             rate: newType === 'lavfi_video' ? '25' : undefined,
@@ -643,6 +644,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           }
         };
 
+        const deskCfg = selectedDesktop?.config?.desktop_config || selectedDesktop?.config || {};
+        const deskDispNum = Number(deskCfg.display_num ?? currentDisplay ?? 99) || 0;
+        const alsaSub = deskCfg.alsa_subdevice !== undefined && deskCfg.alsa_subdevice !== null
+          ? Number(deskCfg.alsa_subdevice)
+          : (deskDispNum % 8);
+        const loopbackCaptureDev = `hw:Loopback,1,${alsaSub}`;
+
         return (
           <div className="space-y-3 p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl">
             {/* Header */}
@@ -751,6 +759,45 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Desktop Virtual Audio Pairing Assistant (ALSA Loopback) */}
+            {onSyncAlsaAudio && (
+              <div className="p-2.5 rounded-lg border border-brand-lime/20 bg-brand-lime/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 transition-all">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs">🔊</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-brand-lime">
+                      {t('sources.desktop.audioLoopbackTitle', 'Virtual Audio Capture')}
+                    </span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20">
+                      {loopbackCaptureDev}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    {pairedAlsaDevice === loopbackCaptureDev
+                      ? t('sources.desktop.audioPairedNotice', '✓ Audio paired with {{device}} as secondary input source.', { device: loopbackCaptureDev })
+                      : t('sources.desktop.audioPairingTip', 'x11grab only provides video. Pair the desktop ALSA loopback channel to broadcast audio.')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSyncAlsaAudio(loopbackCaptureDev);
+                    setPairedAlsaDevice(loopbackCaptureDev);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer whitespace-nowrap self-end sm:self-center ${
+                    pairedAlsaDevice === loopbackCaptureDev
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-brand-lime hover:bg-brand-lime/90 text-black'
+                  }`}
+                >
+                  <span>🔗</span>
+                  {pairedAlsaDevice === loopbackCaptureDev
+                    ? t('sources.desktop.audioPairedButton', 'Audio Paired (hw:Loopback,1,{{sub}})', { sub: alsaSub })
+                    : t('sources.desktop.pairAudioButton', 'Pair Desktop Audio (hw:Loopback,1,{{sub}})', { sub: alsaSub })}
+                </button>
               </div>
             )}
 

@@ -1032,7 +1032,12 @@
       "alignButton": "Alinear con Desktop",
       "advancedOffsets": "Desplazamientos de Ventana (Opcional)",
       "offsetX": "Desplazamiento X (px)",
-      "offsetY": "Desplazamiento Y (px)"
+      "offsetY": "Desplazamiento Y (px)",
+      "audioLoopbackTitle": "Captura de Audio Virtual",
+      "audioPairingTip": "x11grab solo proporciona vídeo. Vincula el canal de audio ALSA loopback del escritorio para emitir sonido.",
+      "audioPairedNotice": "✓ Audio vinculado con {{device}} como fuente de entrada secundaria.",
+      "pairAudioButton": "Vincular Audio de este Desktop (hw:Loopback,1,{{sub}})",
+      "audioPairedButton": "Audio Vinculado (hw:Loopback,1,{{sub}})"
     },
     "hardwareDecoding": "Aceleración de Decodificación por Hardware",
     "hardwareDecodingDesc": "Utiliza la aceleración de la GPU para decodificar vídeo y reducir la carga de la CPU.",
@@ -1591,7 +1596,13 @@
     "tab_screen": "Pantalla Remota (noVNC)",
     "tab_logs": "Registros del Servicio",
     "service_stopped_title": "El Escritorio Virtual está Detenido",
-    "service_stopped_desc": "Inicia el servicio de escritorio virtual para inicializar la pantalla X11 Xvfb y conectar vía VNC interactivo HTML5."
+    "service_stopped_desc": "Inicia el servicio de escritorio virtual para inicializar la pantalla X11 Xvfb y conectar vía VNC interactivo HTML5.",
+    "audio_settings": "Audio Virtual y Aislamiento ALSA Loopback",
+    "loopback_missing_title": "Módulo ALSA Loopback (snd-aloop) no detectado",
+    "loopback_missing_desc": "La salida de audio virtual no estará aislada hasta que se cargue el módulo de kernel snd-aloop en el sistema anfitrión (sudo modprobe snd-aloop).",
+    "alsa_subdevice_label": "Subdispositivo ALSA (Reproducción Loopback)",
+    "alsa_subdevice_auto": "Asignación Automática (:N % 8 = Subdispositivo {{sub}})",
+    "alsa_subdevice_help": "Designa el subdispositivo de reproducción virtual snd-aloop donde los navegadores Kiosk emitirán sonido."
   },
   "kiosk": {
     "service_name": "Visualizador Kiosk Web",

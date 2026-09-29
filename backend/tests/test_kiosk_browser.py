@@ -264,7 +264,92 @@ class TestKioskBrowser(unittest.TestCase):
             self.assertIn('browser.cache.disk.parent_directory', content)
             self.assertIn('browser.cache.disk.capacity", 102400', content)
 
+    @patch("shutil.which")
+    def test_kiosk_browser_alsa_loopback_sandbox(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_which.return_value = real_sh
+
+        # Desktop with explicit alsa_subdevice = 5
+        self.desktop.config = {
+            "desktop_config": {
+                "display_num": 99,
+                "resolution": "1920x1080",
+                "vnc_port": 5999,
+                "alsa_subdevice": 5
+            }
+        }
+        self.db.commit()
+
+        kiosk = Service(
+            name="Kiosk Audio Test",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertIn("--alsa-output-device=hw:Loopback,0,5", cmd)
+
+        asound_path = os.path.join(profile_dir, "asound.conf")
+        self.assertTrue(os.path.exists(asound_path))
+        with open(asound_path, "r", encoding="utf-8") as f:
+            asound_content = f.read()
+            self.assertIn('slave.pcm "hw:Loopback,0,5"', asound_content)
+            self.assertIn('card "Loopback"', asound_content)
+
+    @patch("shutil.which")
+    def test_kiosk_browser_alsa_loopback_auto_subdevice(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_which.return_value = real_sh
+
+        # Reset desktop to no explicit alsa_subdevice -> display 99 % 8 = 3
+        self.desktop.config = {
+            "desktop_config": {
+                "display_num": 99,
+                "resolution": "1920x1080",
+                "vnc_port": 5999
+            }
+        }
+        self.db.commit()
+
+        kiosk = Service(
+            name="Kiosk Auto Audio Test",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertIn("--alsa-output-device=hw:Loopback,0,3", cmd)
+        asound_path = os.path.join(profile_dir, "asound.conf")
+        self.assertTrue(os.path.exists(asound_path))
+        with open(asound_path, "r", encoding="utf-8") as f:
+            asound_content = f.read()
+            self.assertIn('slave.pcm "hw:Loopback,0,3"', asound_content)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
 

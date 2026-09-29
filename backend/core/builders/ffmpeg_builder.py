@@ -1,5 +1,8 @@
 import os
 import copy
+import logging
+
+logger = logging.getLogger(__name__)
 
 class FFmpegCommandBuilder:
     """Single Source of Truth (SSOT) for FFmpeg CLI command generation.
@@ -937,10 +940,19 @@ class FFmpegCommandBuilder:
                     cmd += ["-thread_queue_size", str(int(tqs))]
                 cls._append_input(cmd, input_cfg['input2'], ffmpeg_bin)
         else:
-            has_video = True
-            has_audio = True
+            has_video = input_cfg.get('has_video', True)
+            has_audio = input_cfg.get('has_audio', True)
             use_secondary = False
             cls._append_input(cmd, input_cfg, ffmpeg_bin)
+
+        # Protect against desktop / x11grab input without secondary audio source
+        if primary_input_type in ('desktop', 'x11grab') and not (is_new_format and use_secondary and 'input2' in input_cfg):
+            if has_audio:
+                logger.warning(
+                    f"Process '{getattr(media_proc, 'name', 'unnamed')}' has desktop/x11grab input without secondary audio source. "
+                    "x11grab provides video-only; suppressing audio stream map and setting -an to prevent FFmpeg crash."
+                )
+                has_audio = False
 
         variants = output_cfg.get('variants', [])
         is_abr = output_cfg.get('type') == 'hls' and len(variants) > 0

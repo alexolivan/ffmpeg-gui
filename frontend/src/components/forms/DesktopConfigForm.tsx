@@ -32,6 +32,12 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
   // Auto-allocate ports
   const [isAllocating, setIsAllocating] = useState(false);
 
+  // ALSA Loopback audio subdevice & detection
+  const [alsaSubdevice, setAlsaSubdevice] = useState<number | ''>(
+    deskCfg.alsa_subdevice !== undefined && deskCfg.alsa_subdevice !== null ? deskCfg.alsa_subdevice : ''
+  );
+  const [hasLoopback, setHasLoopback] = useState<boolean | null>(null);
+
   // Auto-start & Lifecycle
   const [autoStart, setAutoStart] = useState<boolean>(
     initialConfig?.auto_start ?? initialConfig?.config?.auto_start ?? false
@@ -70,6 +76,22 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
     }
   }, [API, initialConfig?.id]);
 
+  // Check ALSA Loopback card availability
+  useEffect(() => {
+    fetch(`${API}/api/settings/alsa/cards`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((cards: any[]) => {
+        const found = Array.isArray(cards) && cards.some(
+          (c) =>
+            (c.card_id && String(c.card_id).toLowerCase().includes('loopback')) ||
+            (c.name && String(c.name).toLowerCase().includes('loopback')) ||
+            (c.driver && String(c.driver).toLowerCase().includes('loopback'))
+        );
+        setHasLoopback(found);
+      })
+      .catch(() => setHasLoopback(null));
+  }, [API]);
+
   const handleAutoAssign = () => {
     setIsAllocating(true);
     const excludeId = initialConfig?.id ? `?exclude_service_id=${initialConfig.id}` : '';
@@ -102,6 +124,7 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
             resolution,
             framerate: Number(framerate),
             color_depth: Number(colorDepth),
+            alsa_subdevice: alsaSubdevice === '' ? null : Number(alsaSubdevice),
           },
           auto_start: autoStart,
           startup_order: Number(startupOrder),
@@ -270,6 +293,59 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
                 <option value={16}>16-bit HighColor (RGB565)</option>
               </select>
             </div>
+          </div>
+        </div>
+
+        {/* Audio Isolation (ALSA Loopback) Section */}
+        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-4">
+          <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <span>🔊</span>
+            {t('desktop.audio_settings', 'Virtual Audio & ALSA Loopback Isolation')}
+          </h3>
+
+          {hasLoopback === false && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-300">
+              <span className="text-base leading-none">⚠️</span>
+              <div>
+                <p className="font-semibold">
+                  {t('desktop.loopback_missing_title', 'ALSA Loopback module (snd-aloop) not detected')}
+                </p>
+                <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                  {t(
+                    'desktop.loopback_missing_desc',
+                    'Virtual audio output will not be isolated until the snd-aloop kernel module is loaded on the host (sudo modprobe snd-aloop).'
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+              {t('desktop.alsa_subdevice_label', 'ALSA Subdevice (Loopback Playout)')}
+            </label>
+            <select
+              value={alsaSubdevice}
+              onChange={(e) => setAlsaSubdevice(e.target.value === '' ? '' : Number(e.target.value))}
+              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none font-mono"
+            >
+              <option value="">
+                {t('desktop.alsa_subdevice_auto', 'Auto-Assign (:N % 8 = Subdevice {{sub}})', {
+                  sub: (Number(displayNum) || 0) % 8,
+                })}
+              </option>
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((s) => (
+                <option key={s} value={s}>
+                  Subdevice {s} (hw:Loopback,0,{s})
+                </option>
+              ))}
+            </select>
+            <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
+              {t(
+                'desktop.alsa_subdevice_help',
+                'Designates the snd-aloop virtual audio playback subdevice where Kiosk browsers will stream sound.'
+              )}
+            </span>
           </div>
         </div>
 
