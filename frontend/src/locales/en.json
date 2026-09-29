@@ -1437,7 +1437,8 @@
     "videoCodecOutput": "Video Codec (Output)",
     "audioCodec": "Audio Codec",
     "softwareCpu": "Software Codecs (CPU)",
-    "hardwareGpu": "Hardware Codecs (GPU)"
+    "hardwareGpu": "Hardware Codecs (GPU)",
+    "incompatibleWithHeV2": "(Incompatible with HE-AAC v2)"
   },
   "lifecycle": {
     "title": "Process Lifecycle Settings",

@@ -574,6 +574,77 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-f ogg -content_type audio/ogg", cmd_ogg_str)
         self.assertIn("icecast://source:hackme@127.0.0.1:7000/master.ogg", cmd_ogg_str)
 
+    def test_libfdk_aac_and_he_v2_generation(self):
+        # Case 1: libfdk_aac with HE-AAC v2 and CBR 48k (forces -ac 2 even if ac: 1)
+        proc = MagicMock()
+        proc.id = 603
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'http_audio',
+            'url': 'http://127.0.0.1:7000/master.ogg',
+            'has_video': False,
+            'has_audio': True
+        }
+        proc.codec_config = {
+            'vcodec': 'none',
+            'acodec': 'libfdk_aac',
+            'audio_params': {
+                'profile:a': 'aac_he_v2',
+                'rate_control': 'cbr',
+                'b:a': '48k',
+                'ac': '1',  # Incompatible with HE-AAC v2, builder must force 2
+                'afterburner': '1'
+            }
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'icecast',
+            'host': 'ingest.example.com',
+            'port': '8000',
+            'icecast_mount': '/stream.aac',
+            'icecast_username': 'source',
+            'icecast_password': 'secret'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-c:a libfdk_aac", cmd_str)
+        self.assertIn("-b:a 48k", cmd_str)
+        self.assertIn("-profile:a aac_he_v2", cmd_str)
+        self.assertIn("-ac 2", cmd_str)
+        self.assertIn("-afterburner 1", cmd_str)
+        self.assertIn("-f adts -content_type audio/aac", cmd_str)
+        self.assertIn("icecast://source:secret@ingest.example.com:8000/stream.aac", cmd_str)
+
+        # Case 2: libfdk_aac with VBR quality 3 (omits -b:a, outputs -vbr 3)
+        proc.codec_config['audio_params'] = {
+            'profile:a': 'aac_low',
+            'rate_control': 'vbr',
+            'vbr': '3',
+            'ac': '2',
+            'afterburner': '1'
+        }
+        cmd_vbr = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_vbr_str = " ".join(cmd_vbr)
+        self.assertIn("-c:a libfdk_aac", cmd_vbr_str)
+        self.assertIn("-vbr 3", cmd_vbr_str)
+        self.assertNotIn("-b:a", cmd_vbr_str)
+        self.assertIn("-profile:a aac_low", cmd_vbr_str)
+
+        # Case 3: Native aac with illegal aac_he_v2 profile gracefully falls back to aac_low
+        proc.codec_config['acodec'] = 'aac'
+        proc.codec_config['audio_params'] = {
+            'profile:a': 'aac_he_v2',
+            'b:a': '64k',
+            'ac': '2'
+        }
+        cmd_native = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_native_str = " ".join(cmd_native)
+        self.assertIn("-c:a aac", cmd_native_str)
+        self.assertIn("-profile:a aac_low", cmd_native_str)
+        self.assertNotIn("aac_he_v2", cmd_native_str)
+
     def test_hls_abr_vaapi_cqp_command(self):
         proc = MagicMock()
         proc.id = 50

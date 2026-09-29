@@ -45,15 +45,15 @@ export interface CodecDefinition {
 export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: string[] }> = {
   udp: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
-    audio: ['aac', 'libmp3lame', 'libopus', 'mp2', 'copy']
+    audio: ['aac', 'libfdk_aac', 'libmp3lame', 'libopus', 'mp2', 'copy']
   },
   srt: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
-    audio: ['aac', 'libmp3lame', 'libopus', 'mp2', 'copy']
+    audio: ['aac', 'libfdk_aac', 'libmp3lame', 'libopus', 'mp2', 'copy']
   },
   rtmp: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'copy'],
-    audio: ['aac', 'libmp3lame', 'copy']
+    audio: ['aac', 'libfdk_aac', 'libmp3lame', 'copy']
   },
   whip: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'copy'],
@@ -69,19 +69,19 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   },
   file: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'prores_ks', 'dnxhd', 'rawvideo', 'v210', 'copy'],
-    audio: ['aac', 'libmp3lame', 'libopus', 'libvorbis', 'flac', 'pcm_s16le', 'pcm_s24le', 'copy']
+    audio: ['aac', 'libfdk_aac', 'libmp3lame', 'libopus', 'libvorbis', 'flac', 'pcm_s16le', 'pcm_s24le', 'copy']
   },
   rtp: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'copy'],
-    audio: ['aac', 'libmp3lame', 'libopus', 'pcm_s16le', 'pcm_s24le', 'copy']
+    audio: ['aac', 'libfdk_aac', 'libmp3lame', 'libopus', 'pcm_s16le', 'pcm_s24le', 'copy']
   },
   hls: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
-    audio: ['aac', 'libmp3lame', 'libopus', 'copy']
+    audio: ['aac', 'libfdk_aac', 'libmp3lame', 'libopus', 'copy']
   },
   icecast: {
     video: [],
-    audio: ['aac', 'libmp3lame', 'libopus', 'libvorbis', 'flac']
+    audio: ['aac', 'libfdk_aac', 'libmp3lame', 'libopus', 'libvorbis', 'flac']
   },
   alsa: {
     video: [],
@@ -629,7 +629,7 @@ export const VIDEO_CODECS: CodecDefinition[] = [
 export const AUDIO_CODECS: CodecDefinition[] = [
   {
     id: 'aac',
-    label: 'AAC',
+    label: 'AAC (Native)',
     type: 'audio',
     category: 'software',
     params: [
@@ -638,10 +638,10 @@ export const AUDIO_CODECS: CodecDefinition[] = [
         options: [
           { value: '64k', label: '64 kbps' },
           { value: '96k', label: '96 kbps' },
-          { value: '128k', label: '128 kbps' },
+          { value: '128k', label: '128 kbps (Standard)' },
           { value: '192k', label: '192 kbps' },
           { value: '256k', label: '256 kbps' },
-          { value: '320k', label: '320 kbps' },
+          { value: '320k', label: '320 kbps (High Fidelity)' },
         ],
         default: '128k',
       },
@@ -649,8 +649,6 @@ export const AUDIO_CODECS: CodecDefinition[] = [
         key: 'profile:a', label: 'AAC Profile', type: 'select',
         options: [
           { value: 'aac_low', label: 'AAC-LC (Low Complexity)' },
-          { value: 'aac_he', label: 'HE-AAC v1' },
-          { value: 'aac_he_v2', label: 'HE-AAC v2' },
         ],
         default: 'aac_low',
       },
@@ -662,6 +660,79 @@ export const AUDIO_CODECS: CodecDefinition[] = [
           { value: '6', label: '5.1 Surround' },
         ],
         default: '2',
+      },
+    ],
+  },
+  {
+    id: 'libfdk_aac',
+    label: 'Fraunhofer FDK AAC',
+    type: 'audio',
+    category: 'software',
+    requiresBuildOption: 'libfdk_aac',
+    params: [
+      {
+        key: 'profile:a', label: 'AAC Profile', type: 'select',
+        options: [
+          { value: 'aac_low', label: 'AAC-LC (Standard)' },
+          { value: 'aac_he', label: 'HE-AAC v1 (SBR)' },
+          { value: 'aac_he_v2', label: 'HE-AAC v2 (Parametric Stereo)' },
+          { value: 'aac_ld', label: 'AAC-LD (Low Delay)' },
+          { value: 'aac_eld', label: 'AAC-ELD (Enhanced Low Delay)' },
+        ],
+        default: 'aac_low',
+      },
+      {
+        key: 'rate_control', label: 'Rate Control', type: 'select',
+        options: [
+          { value: 'cbr', label: 'CBR (Constant Bitrate)' },
+          { value: 'vbr', label: 'VBR (Variable Bitrate Quality)' },
+        ],
+        default: 'cbr',
+      },
+      {
+        key: 'b:a', label: 'Bitrate', type: 'select',
+        showWhen: { param: 'rate_control', value: 'cbr' },
+        options: [
+          { value: '24k', label: '24 kbps (HE-AAC v2)' },
+          { value: '32k', label: '32 kbps (HE-AAC v2 / Eld)' },
+          { value: '48k', label: '48 kbps (HE-AAC v1/v2)' },
+          { value: '64k', label: '64 kbps (HE-AAC v1 Sweet Spot)' },
+          { value: '96k', label: '96 kbps (HE-AAC v1 / LC)' },
+          { value: '128k', label: '128 kbps (Standard LC)' },
+          { value: '192k', label: '192 kbps (High Fidelity LC)' },
+          { value: '256k', label: '256 kbps (High Fidelity LC)' },
+          { value: '320k', label: '320 kbps (Maximum LC)' },
+        ],
+        default: '64k',
+      },
+      {
+        key: 'vbr', label: 'VBR Quality Level', type: 'select',
+        showWhen: { param: 'rate_control', value: 'vbr' },
+        options: [
+          { value: '1', label: 'VBR 1 (~32 kbps/ch, Very Low)' },
+          { value: '2', label: 'VBR 2 (~40 kbps/ch, Low)' },
+          { value: '3', label: 'VBR 3 (~48-56 kbps/ch, Target)' },
+          { value: '4', label: 'VBR 4 (~64-72 kbps/ch, High)' },
+          { value: '5', label: 'VBR 5 (~96-112 kbps/ch, Very High)' },
+        ],
+        default: '3',
+      },
+      {
+        key: 'ac', label: 'Channels', type: 'select',
+        options: [
+          { value: '1', label: 'Mono (Not with HE-AAC v2)' },
+          { value: '2', label: 'Stereo' },
+          { value: '6', label: '5.1 Surround (LC Only)' },
+        ],
+        default: '2',
+      },
+      {
+        key: 'afterburner', label: 'Afterburner (Quality Boost)', type: 'select',
+        options: [
+          { value: '1', label: 'Enabled (Recommended)' },
+          { value: '0', label: 'Disabled' },
+        ],
+        default: '1',
       },
     ],
   },
@@ -970,7 +1041,8 @@ export function getAvailableVideoCodecs(
 
 export function getAvailableAudioCodecs(
   buildOptions?: Record<string, boolean>,
-  outputType?: string
+  outputType?: string,
+  systemCapabilities?: SystemCapabilities
 ): CodecDefinition[] {
   let codecs = AUDIO_CODECS;
   
@@ -979,6 +1051,19 @@ export function getAvailableAudioCodecs(
       if (!c.requiresBuildOption) return true;
       return buildOptions[c.requiresBuildOption] === true;
     });
+  }
+
+  // Filter based on active binary encoders if introspected by systemCapabilities
+  if (systemCapabilities?.ffmpeg?.encoders && systemCapabilities.ffmpeg.encoders.length > 0) {
+    codecs = codecs.filter(c => {
+      if (c.id === 'libfdk_aac') {
+        return systemCapabilities.ffmpeg!.encoders.includes('libfdk_aac');
+      }
+      return true;
+    });
+  } else if (!buildOptions?.libfdk_aac && !systemCapabilities?.ffmpeg) {
+    // If no introspected capabilities and no explicit build option, hide external nonfree libfdk_aac
+    codecs = codecs.filter(c => c.id !== 'libfdk_aac');
   }
 
   if (outputType && OUTPUT_COMPATIBLE_CODECS[outputType]) {

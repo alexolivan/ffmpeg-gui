@@ -49,7 +49,8 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libfribidi": "libfribidi-dev",
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "nvidia-cuda-dev",
-    "clang": "clang"
+    "clang": "clang",
+    "libfdk_aac": "libfdk-aac-dev"
   },
   fedora: {
     "cmake": "cmake",
@@ -82,7 +83,8 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libfribidi": "fribidi-devel",
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "cuda-toolkit",
-    "clang": "clang"
+    "clang": "clang",
+    "libfdk_aac": "fdk-aac-free-devel"
   },
   arch: {
     "cmake": "cmake",
@@ -115,7 +117,8 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "libfribidi": "fribidi",
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "cuda",
-    "clang": "clang"
+    "clang": "clang",
+    "libfdk_aac": "libfdk-aac"
   }
 };
 
