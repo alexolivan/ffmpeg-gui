@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.28.1] - 2026-09-29
+
+### Fixed
+- **Icecast FLAC Container Format Auto-Detection (Ogg vs Raw FLAC)**:
+  - Fixed downstream FFmpeg input failure (`cannot find sync word`, `Invalid data found when processing input`) when pulling from an Icecast stream with `.ogg` mountpoint delivering FLAC audio.
+  - Added smart container and content-type detection in `FfmpegCommandBuilder` (`backend/core/builders/ffmpeg_builder.py`) for FLAC Icecast outputs:
+    - If the mountpoint ends with `.ogg` or `.oga` (or `container` is explicitly configured as `ogg`), FFmpeg muxes as Ogg FLAC encapsulation (`-f ogg -content_type audio/ogg`).
+    - If the mountpoint ends with `.flac` or other, FFmpeg muxes as Raw FLAC bitstream (`-f flac -content_type audio/flac`).
+  - Added unit test coverage for both `.ogg` and `.flac` mountpoint extension muxing in `backend/tests/test_command_generator.py`.
+
 ## [2.28.0] - 2026-09-29
 
 ### Added
