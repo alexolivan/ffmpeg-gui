@@ -557,7 +557,7 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-ac 2", cmd_str)
         self.assertIn("-ar 48000", cmd_str)
         self.assertNotIn("-b:a", cmd_str)
-        # 5. Container & Content Type
+        # 5. Container & Content Type (default / .flac extension -> raw flac)
         self.assertIn("-f flac -content_type audio/flac", cmd_str)
         # 6. Metadata
         self.assertIn("-ice_name Lossless Studio Audio", cmd_str)
@@ -565,6 +565,14 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-ice_public 0", cmd_str)
         # 7. Output URL
         self.assertIn("icecast://source:hackme@127.0.0.1:7000/lossless.flac", cmd_str)
+
+        # Case 2: FLAC with .ogg mountpoint auto-detects Ogg FLAC encapsulation (-f ogg -content_type audio/ogg)
+        proc.output_config['icecast_mount'] = '/master.ogg'
+        cmd_ogg = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_ogg_str = " ".join(cmd_ogg)
+        self.assertIn("-c:a flac", cmd_ogg_str)
+        self.assertIn("-f ogg -content_type audio/ogg", cmd_ogg_str)
+        self.assertIn("icecast://source:hackme@127.0.0.1:7000/master.ogg", cmd_ogg_str)
 
     def test_hls_abr_vaapi_cqp_command(self):
         proc = MagicMock()

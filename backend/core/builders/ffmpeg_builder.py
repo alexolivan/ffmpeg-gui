@@ -758,8 +758,13 @@ class FFmpegCommandBuilder:
                 fmt = 'ogg'
                 c_type = 'application/ogg'
             elif acodec in ('flac',):
-                fmt = 'flac'
-                c_type = 'audio/flac'
+                mount_clean = mount.split('?')[0].lower()
+                if mount_clean.endswith(('.ogg', '.oga')) or output_cfg.get('container') == 'ogg':
+                    fmt = 'ogg'
+                    c_type = 'audio/ogg'
+                else:
+                    fmt = 'flac'
+                    c_type = 'audio/flac'
             elif acodec in ('aac', 'libfdk_aac'):
                 fmt = 'adts'
                 c_type = 'audio/aac'
