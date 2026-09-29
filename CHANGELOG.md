@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.28.0] - 2026-09-29
+
+### Added
+- **Icecast Stream URL & Public YP Directory Metadata**:
+  - Added `-ice_url` parameter support in `FfmpegCommandBuilder` (`backend/core/builders/ffmpeg_builder.py`) to broadcast the radio station website URL directly to Icecast servers.
+  - Added `ice_url` text input and `ice_public` toggle switch in `DestinationPanel.tsx` under stream metadata, with full i18n support across English, Spanish, and Catalan.
+  - Verified end-to-end data persistence and lifecycle across UI state, JSON payloads, Pydantic endpoints, and database models.
+- **Lossless FLAC Audio Codec & Audio-Only Ingest Safeguards**:
+  - Registered `flac` (Free Lossless Audio Codec) in `AUDIO_CODECS` with customizable `compression_level` (0-12, default 5), sample rate, and channel options in `frontend/src/components/codec/codecRegistry.ts`.
+  - Added `flac` to the compatibility whitelist for `icecast` and `file` destinations (`OUTPUT_COMPATIBLE_CODECS`).
+  - Added audio codec parameter builder support for FLAC compression level while omitting meaningless target bitrates (`-b:a`).
+  - Added automatic audio-only safeguards in `FfmpegCommandBuilder` to suppress video mapping (`-vn`) when capturing from audio-only hardware/generators (`alsa`, `lavfi_audio`, `http_audio`) or pushing to audio-only destinations (`icecast`, `alsa`), preventing FFmpeg aborts (`Stream map '0:v' matches no streams`).
+  - Added unit test `test_alsa_to_icecast_flac_command_generation` in `backend/tests/test_command_generator.py`.
+
 ## [2.27.1] - 2026-09-29
 
 ### Fixed

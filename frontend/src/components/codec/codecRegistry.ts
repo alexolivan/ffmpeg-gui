@@ -69,7 +69,7 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   },
   file: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'prores_ks', 'dnxhd', 'rawvideo', 'v210', 'copy'],
-    audio: ['aac', 'libmp3lame', 'libopus', 'libvorbis', 'pcm_s16le', 'pcm_s24le', 'copy']
+    audio: ['aac', 'libmp3lame', 'libopus', 'libvorbis', 'flac', 'pcm_s16le', 'pcm_s24le', 'copy']
   },
   rtp: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'libvpx', 'vp8_vaapi', 'libvpx-vp9', 'vp9_vaapi', 'copy'],
@@ -81,7 +81,7 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   },
   icecast: {
     video: [],
-    audio: ['aac', 'libmp3lame', 'libopus', 'libvorbis']
+    audio: ['aac', 'libmp3lame', 'libopus', 'libvorbis', 'flac']
   },
   alsa: {
     video: [],
@@ -785,6 +785,57 @@ export const AUDIO_CODECS: CodecDefinition[] = [
         default: '192k'
       }
     ]
+  },
+  {
+    id: 'flac',
+    label: 'FLAC (Free Lossless Audio Codec)',
+    type: 'audio',
+    category: 'software',
+    params: [
+      {
+        key: 'compression_level',
+        label: 'Nivel de Compresión',
+        type: 'select',
+        options: [
+          { value: '0', label: '0 (Rápido / Menor compresión)' },
+          { value: '1', label: '1' },
+          { value: '2', label: '2' },
+          { value: '3', label: '3' },
+          { value: '4', label: '4' },
+          { value: '5', label: '5 (Recomendado / Balance por defecto)' },
+          { value: '6', label: '6' },
+          { value: '7', label: '7' },
+          { value: '8', label: '8 (Alta compresión)' },
+          { value: '12', label: '12 (Máxima compresión / Alto CPU)' },
+        ],
+        default: '5',
+        hint: 'Compresión lossless sin pérdida: 0 es el más rápido de codificar, 5 es el estándar recomendado y 12 reduce al máximo el tamaño con mayor uso de CPU.'
+      },
+      {
+        key: 'ar',
+        label: 'Sample Rate',
+        type: 'select',
+        options: [
+          { value: '', label: 'Original (Automático)' },
+          { value: '44100', label: '44.1 kHz (CD Quality)' },
+          { value: '48000', label: '48 kHz (Broadcast Standard)' },
+          { value: '96000', label: '96 kHz (Hi-Res Audio)' },
+          { value: '192000', label: '192 kHz (Studio Master)' },
+        ],
+        default: '',
+      },
+      {
+        key: 'ac',
+        label: 'Canales',
+        type: 'select',
+        options: [
+          { value: '1', label: 'Mono' },
+          { value: '2', label: 'Estéreo' },
+          { value: '6', label: '5.1 Surround' },
+        ],
+        default: '2',
+      },
+    ],
   },
   {
     id: 'pcm_s16le',
