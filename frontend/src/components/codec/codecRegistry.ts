@@ -668,7 +668,6 @@ export const AUDIO_CODECS: CodecDefinition[] = [
     label: 'Fraunhofer FDK AAC',
     type: 'audio',
     category: 'software',
-    requiresBuildOption: 'libfdk_aac',
     params: [
       {
         key: 'profile:a', label: 'AAC Profile', type: 'select',
@@ -1053,18 +1052,18 @@ export function getAvailableAudioCodecs(
     });
   }
 
-  // Filter based on active binary encoders if introspected by systemCapabilities
-  if (systemCapabilities?.ffmpeg?.encoders && systemCapabilities.ffmpeg.encoders.length > 0) {
-    codecs = codecs.filter(c => {
-      if (c.id === 'libfdk_aac') {
-        return systemCapabilities.ffmpeg!.encoders.includes('libfdk_aac');
+  // Filter libfdk_aac based on selected build options or introspected system capabilities
+  codecs = codecs.filter(c => {
+    if (c.id === 'libfdk_aac') {
+      if (buildOptions?.libfdk_aac === true) return true;
+      if (buildOptions?.libfdk_aac === false) return false;
+      if (systemCapabilities?.ffmpeg?.encoders && systemCapabilities.ffmpeg.encoders.length > 0) {
+        return systemCapabilities.ffmpeg.encoders.includes('libfdk_aac');
       }
-      return true;
-    });
-  } else if (!buildOptions?.libfdk_aac && !systemCapabilities?.ffmpeg) {
-    // If no introspected capabilities and no explicit build option, hide external nonfree libfdk_aac
-    codecs = codecs.filter(c => c.id !== 'libfdk_aac');
-  }
+      return false;
+    }
+    return true;
+  });
 
   if (outputType && OUTPUT_COMPATIBLE_CODECS[outputType]) {
     const allowed = OUTPUT_COMPATIBLE_CODECS[outputType].audio;
