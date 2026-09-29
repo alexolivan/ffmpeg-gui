@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.27.1] - 2026-09-29
+
+### Fixed
+- **Port Collision Validation for Client / Outbound FFmpeg Streams**:
+  - Fixed false-positive port collision errors (`Port collision: Port X/ANY is already in use by service...`) when configuring FFmpeg streams to capture from or push to network services (such as pulling audio from a local Icecast server on port 7000 or pushing to remote Icecast / RTMP / HLS / UDP destinations).
+  - Clarified port registration in `backend/utils/port_validator.py` (`extract_ports_from_service`) to only bind host listening ports for inputs that truly open a local server socket (`srt` in listener mode, `udp`/`rtp` inbound sockets, and `tcp` in listener mode) and outputs in listener mode.
+  - Sanitized `InputSourcePanel.tsx` to avoid resetting `mode: 'listener'` indiscriminately for protocols that do not support listener sockets (e.g., `http_audio`, `icecast`, `hls`, `rtmp`).
+  - Added regression test `test_ffmpeg_service_reading_from_icecast_does_not_collide` and `test_ffmpeg_srt_caller_input_does_not_collide` in `backend/tests/test_icecast_ports.py`.
+
 ## [2.27.0] - 2026-09-29
 
 ### Added

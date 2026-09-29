@@ -526,7 +526,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           const defaultDeskCfg = defaultDesk?.config?.desktop_config || defaultDesk?.config || {};
           update({
             type: newType,
-            path: '', host: '', port: '', mode: 'listener', device: '', name: '',
+            path: '', host: '', port: '', mode: ['srt', 'tcp'].includes(newType) ? 'listener' : undefined, device: '', name: '',
             pattern: newType === 'lavfi_video' ? 'testsrc' : newType === 'lavfi_audio' ? 'sine' : '',
             size: newType === 'lavfi_video' ? '1920x1080' : undefined,
             rate: newType === 'lavfi_video' ? '25' : undefined,
