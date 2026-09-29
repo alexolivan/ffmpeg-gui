@@ -489,7 +489,6 @@ class ProcessManager:
                         "MOZ_NO_REMOTE": "1",
                     }
                     if os.path.exists(asound_cfg_file):
-                        kiosk_sub_env["ALSA_CONFIG_PATH"] = asound_cfg_file
                         asoundrc_file = os.path.join(kiosk_profile, ".asoundrc")
                         if not os.path.exists(asoundrc_file):
                             try:
@@ -1674,9 +1673,8 @@ class ProcessManager:
         else:
             alsa_subdevice = int(display_num) % 8
 
-        # Generate sandboxed asound.conf pointing to hw:Loopback,0,<subdevice>
+        # Generate sandboxed asound.conf and .asoundrc pointing to hw:Loopback,0,<subdevice>
         asound_content = (
-            f"<confdir:alsa.conf>\n\n"
             f"pcm.!default {{\n"
             f"    type plug\n"
             f"    slave.pcm \"hw:Loopback,0,{alsa_subdevice}\"\n"

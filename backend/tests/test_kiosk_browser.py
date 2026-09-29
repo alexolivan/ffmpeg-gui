@@ -306,7 +306,6 @@ class TestKioskBrowser(unittest.TestCase):
         self.assertTrue(os.path.exists(asoundrc_path))
         with open(asound_path, "r", encoding="utf-8") as f:
             asound_content = f.read()
-            self.assertIn("<confdir:alsa.conf>", asound_content)
             self.assertIn('slave.pcm "hw:Loopback,0,5"', asound_content)
             self.assertIn('card "Loopback"', asound_content)
 
@@ -350,7 +349,6 @@ class TestKioskBrowser(unittest.TestCase):
         self.assertTrue(os.path.exists(asoundrc_path))
         with open(asound_path, "r", encoding="utf-8") as f:
             asound_content = f.read()
-            self.assertIn("<confdir:alsa.conf>", asound_content)
             self.assertIn('slave.pcm "hw:Loopback,0,3"', asound_content)
 
 

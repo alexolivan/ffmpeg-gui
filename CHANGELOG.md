@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.4] - 2026-09-29
+
+### Fixed
+- **Clean `.asoundrc` Structure & Elimination of Circular ALSA Inclusion**:
+  - Removed recursive `<confdir:alsa.conf>` from `.asoundrc` template that triggered `ALSA lib conf.c:1245:(parse_value) default is not a string` when parsed by system ALSA hooks.
+  - Eliminated overriding `ALSA_CONFIG_PATH` environment variable in kiosk launchers, allowing ALSA to naturally load system definitions followed by `$HOME/.asoundrc`.
+
 ## [2.29.3] - 2026-09-29
 
 ### Fixed
