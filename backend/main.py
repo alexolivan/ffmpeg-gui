@@ -4366,6 +4366,10 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                         db_build.disk_usage_mb = result.get("disk_usage_mb")
                         db_build.built_at = datetime.datetime.utcnow()
                         db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
+                        if result.get("build_options"):
+                            from sqlalchemy.orm.attributes import flag_modified
+                            db_build.build_options = result.get("build_options")
+                            flag_modified(db_build, "build_options")
                         if result.get("sdk_paths"):
                             # SQLAlchemy flag mutation for JSON fields
                             from sqlalchemy.orm.attributes import flag_modified

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.1] - 2026-09-29
+
+### Fixed
+- **Fraunhofer FDK AAC Visibility in Audio Codec Selector**:
+  - Fixed an issue where `Fraunhofer FDK AAC` was filtered out from the audio codec dropdown even when compiled into the active/selected FFmpeg binary.
+  - Removed restrictive `requiresBuildOption: 'libfdk_aac'` filter in `codecRegistry.ts` that evaluated to false for builds without static checkbox keys.
+  - Implemented multi-tiered detection in `getAvailableAudioCodecs` checking explicit build options, binary `--version` configuration flags (`--enable-libfdk-aac`), and introspected active encoders (`/system/capabilities`).
+  - Added `resolveBuildOptions` in `ProcessConfigForm.tsx` to automatically parse auto-detected Forge libraries (such as `libfdk_aac` and `libvpx`) from `version_output` or `build_log_summary`.
+  - Updated `FfmpegRecipe` and `main.py` build completion handlers to persist auto-detected `libfdk_aac` in `build_options` in the database.
+
 ## [2.29.0] - 2026-09-29
 
 ### Added
