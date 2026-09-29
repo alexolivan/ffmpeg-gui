@@ -119,6 +119,26 @@ install_arch_deps() {
                                  libxcomposite libxdamage libxfixes libxrandr mesa pango cairo alsa-lib alsa-utils
 }
 
+# Configuración y persistencia del módulo de kernel ALSA Loopback
+configure_alsa_loopback() {
+    echo "--> Configuring ALSA Loopback kernel module (snd-aloop)..."
+    if command -v modprobe &>/dev/null; then
+        modprobe snd-aloop 2>/dev/null || echo "    Note: modprobe snd-aloop returned non-zero. If running in a container, ensure the host loads snd-aloop."
+
+        # Configurar persistencia tras reinicio
+        if [ -d /etc/modules-load.d ]; then
+            echo "snd-aloop" > /etc/modules-load.d/snd-aloop.conf
+        elif [ -f /etc/modules ]; then
+            grep -qxF "snd-aloop" /etc/modules || echo "snd-aloop" >> /etc/modules
+        fi
+
+        # Asignar index=-2 para evitar conflictos con tarjetas físicas primarias y fijar 8 subdispositivos
+        if [ -d /etc/modprobe.d ]; then
+            echo "options snd-aloop index=-2 enable=1 pcm_substreams=8" > /etc/modprobe.d/snd-aloop.conf
+        fi
+    fi
+}
+
 # ---------------------------------------------------------
 # [PHASE 1/5] Verifying and Installing System Dependencies
 # ---------------------------------------------------------
@@ -141,9 +161,18 @@ if [ "$MODE" = "system" ]; then
         echo "Warning: Unsupported package manager. Please ensure development tools and libraries (x264, x265, openssl, libva, libdrm, avahi, intel-gpu-tools) are installed manually."
     fi
 
+    # Configurar y persistir el módulo ALSA Loopback (snd-aloop) para audio de escritorios virtuales
+    configure_alsa_loopback
+
     # Verificar herramientas indispensables después de la instalación
     verify_installer_tools
 else
+    # Modo de espacio de usuario: verificar si snd-aloop está activo
+    if ! lsmod 2>/dev/null | grep -q "snd_aloop"; then
+        echo "--> Notice: ALSA Loopback kernel module (snd-aloop) is not loaded."
+        echo "    Virtual Desktop & Kiosk audio capture in FFmpeg requires: sudo modprobe snd-aloop"
+    fi
+
     # Modo de espacio de usuario: verificar primero ya que no podemos autoinstalar
     verify_installer_tools
     # Modo de espacio de usuario: solo alertar dependencias faltantes
