@@ -475,6 +475,7 @@ class ProcessManager:
 
                     is_chromium = any(c in os.path.basename(cmd[0]).lower() for c in ("chrome", "chromium"))
 
+                    asound_cfg_file = os.path.join(kiosk_profile, "asound.conf")
                     kiosk_sub_env = {
                         **sub_env,
                         "DISPLAY": f":{display_num}",
@@ -487,6 +488,9 @@ class ProcessManager:
                         "GTK_MODULES": "",
                         "MOZ_NO_REMOTE": "1",
                     }
+                    if os.path.exists(asound_cfg_file):
+                        kiosk_sub_env["ALSA_CONFIG_PATH"] = asound_cfg_file
+
 
                     if is_chromium:
                         # Chromium natively supports "disabled:" to suppress D-Bus autolaunch without error
@@ -1653,6 +1657,34 @@ class ProcessManager:
             ephemeral_profile_dir = profile_dir
         os.makedirs(profile_dir, exist_ok=True)
 
+        # Resolve ALSA Loopback Subdevice for browser audio isolation
+        raw_sub = d_cfg.get("alsa_subdevice")
+        if raw_sub is not None:
+            try:
+                alsa_subdevice = int(raw_sub)
+            except (ValueError, TypeError):
+                alsa_subdevice = int(display_num) % 8
+        else:
+            alsa_subdevice = int(display_num) % 8
+
+        # Generate sandboxed asound.conf pointing to hw:Loopback,0,<subdevice>
+        asound_conf_path = os.path.join(profile_dir, "asound.conf")
+        asound_content = (
+            f"pcm.!default {{\n"
+            f"    type plug\n"
+            f"    slave.pcm \"hw:Loopback,0,{alsa_subdevice}\"\n"
+            f"}}\n"
+            f"ctl.!default {{\n"
+            f"    type hw\n"
+            f"    card \"Loopback\"\n"
+            f"}}\n"
+        )
+        try:
+            with open(asound_conf_path, "w", encoding="utf-8") as af:
+                af.write(asound_content)
+        except Exception as a_err:
+            self.logger.warning(f"Failed to write ALSA sandbox config in {profile_dir}: {a_err}")
+
         # Resolve Cache Mode: 'ram', 'disabled', or 'custom'
         # Backwards compatibility: disk_cache_disabled maps to cache_mode='disabled'
         if "cache_mode" in k_cfg:
@@ -1670,6 +1702,7 @@ class ProcessManager:
             cmd = [
                 browser_bin,
                 f"--user-data-dir={profile_dir}",
+                f"--alsa-output-device=hw:Loopback,0,{alsa_subdevice}",
                 "--no-first-run",
                 "--noerrdialogs",
                 "--disable-session-crashed-bubble",

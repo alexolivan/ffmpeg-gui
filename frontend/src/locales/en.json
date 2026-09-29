@@ -1591,7 +1591,13 @@
     "tab_screen": "Remote Display (noVNC)",
     "tab_logs": "Service Logs",
     "service_stopped_title": "Virtual Desktop is Stopped",
-    "service_stopped_desc": "Start the virtual desktop service to initialize the Xvfb X11 screen and connect via interactive HTML5 VNC."
+    "service_stopped_desc": "Start the virtual desktop service to initialize the Xvfb X11 screen and connect via interactive HTML5 VNC.",
+    "audio_settings": "Virtual Audio & ALSA Loopback Isolation",
+    "loopback_missing_title": "ALSA Loopback module (snd-aloop) not detected",
+    "loopback_missing_desc": "Virtual audio output will not be isolated until the snd-aloop kernel module is loaded on the host (sudo modprobe snd-aloop).",
+    "alsa_subdevice_label": "ALSA Subdevice (Loopback Playout)",
+    "alsa_subdevice_auto": "Auto-Assign (:N % 8 = Subdevice {{sub}})",
+    "alsa_subdevice_help": "Designates the snd-aloop virtual audio playback subdevice where Kiosk browsers will stream sound."
   },
   "kiosk": {
     "service_name": "Web Kiosk Display",
