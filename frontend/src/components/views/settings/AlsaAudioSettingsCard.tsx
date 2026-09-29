@@ -1114,7 +1114,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-stretch relative">
         
         {/* TOP-LEFT: VIRTUAL PLAYOUT */}
-        <div className="lg:col-span-5 space-y-2">
+        <div className="lg:col-span-5 lg:col-start-1 space-y-2">
           <div className="space-y-2">
             {topology?.virtual_playout?.map((group) => (
               <AlsaSkewerChannelStrip
@@ -1137,7 +1137,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* CENTRAL AUDIO BUS COLUMN */}
-        <div className="lg:col-span-1 lg:row-span-3 hidden lg:flex flex-col items-center justify-between py-2 self-stretch">
+        <div className="lg:col-span-1 lg:col-start-6 lg:row-span-3 hidden lg:flex flex-col items-center justify-between py-2 self-stretch">
           <div className="w-1.5 h-full bg-gradient-to-b from-brand-lime via-indigo-500 to-red-500 rounded-full opacity-60" />
           <div className="my-3 px-1 py-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded text-[10px] font-mono font-bold text-text-secondary uppercase tracking-widest text-center rotate-180 [writing-mode:vertical-lr]">
             AUDIO BUS
@@ -1146,7 +1146,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* TOP-RIGHT: HARDWARE OUTPUTS */}
-        <div className="lg:col-span-5 space-y-3">
+        <div className="lg:col-span-5 lg:col-start-7 space-y-3">
           <div className="space-y-3">
             {groupedHardwareNodes.map((node) => (
               <div 
@@ -1229,11 +1229,11 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* ROW SEPARATOR HORIZONTAL GAP */}
-        <div className="lg:col-span-5 h-1 my-0.5 border-b border-[var(--glass-border)]/40" />
+        <div className="lg:col-span-5 lg:col-start-1 h-1 my-0.5 border-b border-[var(--glass-border)]/40" />
         {!topology?.is_loopback && <div className="lg:col-span-5 h-1 my-0.5 border-b border-[var(--glass-border)]/40 lg:col-start-7" />}
 
         {/* BOTTOM-LEFT: VIRTUAL CAPTURE */}
-        <div className="lg:col-span-5 space-y-2">
+        <div className="lg:col-span-5 lg:col-start-1 space-y-2">
           <div className="space-y-2">
             {topology?.virtual_capture?.map((group) => (
               <AlsaSkewerChannelStrip
@@ -2355,6 +2355,13 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
           {isVirtualPlayout && (
             <span className="text-brand-lime font-bold text-xs" title="Into Audio Bus">
               ►
+            </span>
+          )}
+
+          {/* Virtual Capture Origin: Left arrow pointing OUT of Audio Bus */}
+          {isVirtualCapture && (
+            <span className="text-indigo-400 font-bold text-xs" title="From Audio Bus">
+              ◄
             </span>
           )}
 
