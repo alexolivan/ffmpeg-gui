@@ -923,7 +923,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
 
     // Check codec compatibility
     const availableVideo = getAvailableVideoCodecs(selectedBuildOptions, systemCapabilities, newType);
-    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType);
+    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType, systemCapabilities || undefined);
 
     const videoIncompatible = finalHasVideo && !availableVideo.some(c => c.id === config.video_codec_id);
     const audioIncompatible = finalHasAudio && !availableAudio.some(c => c.id === config.audio_codec_id);
@@ -1484,6 +1484,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                   params={config.audio_codec_params}
                   buildOptions={selectedBuildOptions}
                   outputType={config.output.type}
+                  systemCapabilities={systemCapabilities || undefined}
                   onChange={handleAudioCodecChange}
                 />
               </div>

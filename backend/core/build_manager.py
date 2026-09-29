@@ -107,7 +107,8 @@ class BuildManager:
             "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)", "engines": ["ffmpeg"]},
             "libharfbuzz": {"pkg": "harfbuzz", "type": "optional", "description": "Motor de formateo y modelado de texto (libharfbuzz-dev, requerido por drawtext en FFmpeg 6.1+)", "engines": ["ffmpeg"]},
             "libfontconfig": {"pkg": "fontconfig", "type": "optional", "description": "Gestión y selección de fuentes del sistema (libfontconfig1-dev)", "engines": ["ffmpeg"]},
-            "libfribidi": {"pkg": "fribidi", "type": "optional", "description": "Biblioteca para algoritmos bidireccionales de texto (libfribidi-dev)", "engines": ["ffmpeg"]}
+            "libfribidi": {"pkg": "fribidi", "type": "optional", "description": "Biblioteca para algoritmos bidireccionales de texto (libfribidi-dev)", "engines": ["ffmpeg"]},
+            "libfdk_aac": {"pkg": "fdk-aac", "type": "optional", "description": "Biblioteca Fraunhofer FDK AAC para HE-AAC v1/v2 (libfdk-aac-dev)", "engines": ["ffmpeg"]}
         }
 
         has_pkg_config = results.get("pkg-config", {}).get("installed", False) or (shutil.which("pkg-config") is not None)

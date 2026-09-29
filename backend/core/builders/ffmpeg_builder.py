@@ -519,14 +519,46 @@ class FFmpegCommandBuilder:
 
     @classmethod
     def _append_audio_codec_params(cls, cmd: list, acodec: str, params: dict):
+        if acodec == 'libfdk_aac':
+            rate_control = params.get('rate_control', 'cbr')
+            if rate_control == 'vbr' or (params.get('vbr') and not params.get('b:a')):
+                vbr_val = str(params.get('vbr', '3'))
+                cmd += ["-vbr", vbr_val]
+            elif params.get('b:a'):
+                cmd += ["-b:a", str(params['b:a'])]
+
+            profile = params.get('profile:a', 'aac_low')
+            if profile:
+                cmd += ["-profile:a", profile]
+
+            # Parametric Stereo in HE-AAC v2 REQUIRES stereo (2 channels)
+            if profile == 'aac_he_v2':
+                cmd += ["-ac", "2"]
+            elif params.get('ac'):
+                cmd += ["-ac", str(params['ac'])]
+
+            if params.get('ar'):
+                cmd += ["-ar", str(params['ar'])]
+
+            afterburner = params.get('afterburner', '1')
+            if str(afterburner) in ('1', 'true', 'True'):
+                cmd += ["-afterburner", "1"]
+            return
+
         if acodec != 'flac' and params.get('b:a'):
             cmd += ["-b:a", params['b:a']]
         if params.get('ac'):
             cmd += ["-ac", str(params['ac'])]
         if params.get('ar'):
             cmd += ["-ar", str(params['ar'])]
+
         if acodec == 'aac' and params.get('profile:a'):
-            cmd += ["-profile:a", params['profile:a']]
+            profile = params['profile:a']
+            if profile in ('aac_he', 'aac_he_v2'):
+                logger.warning("Native FFmpeg 'aac' encoder does not support HE-AAC profiles. Falling back to 'aac_low'.")
+                cmd += ["-profile:a", "aac_low"]
+            else:
+                cmd += ["-profile:a", profile]
         elif acodec == 'libopus':
             if params.get('application'):
                 cmd += ["-application:a", params['application']]
@@ -613,13 +645,43 @@ class FFmpegCommandBuilder:
 
     @classmethod
     def _append_audio_codec_params_indexed(cls, cmd: list, acodec: str, params: dict, idx: int, bitrate: str):
+        if acodec == 'libfdk_aac':
+            rate_control = params.get('rate_control', 'cbr')
+            if rate_control == 'vbr' or (params.get('vbr') and not bitrate):
+                vbr_val = str(params.get('vbr', '3'))
+                cmd += [f"-vbr:a:{idx}", vbr_val]
+            else:
+                cmd += [f"-b:a:{idx}", bitrate]
+
+            profile = params.get('profile:a', 'aac_low')
+            if profile:
+                cmd += [f"-profile:a:{idx}", profile]
+
+            if profile == 'aac_he_v2':
+                cmd += [f"-ac:a:{idx}", "2"]
+            elif params.get('ac'):
+                cmd += [f"-ac:a:{idx}", str(params['ac'])]
+
+            if params.get('ar'):
+                cmd += [f"-ar:a:{idx}", str(params['ar'])]
+
+            afterburner = params.get('afterburner', '1')
+            if str(afterburner) in ('1', 'true', 'True'):
+                cmd += [f"-afterburner:a:{idx}", "1"]
+            return
+
         cmd += [f"-b:a:{idx}", bitrate]
         if params.get('ac'):
             cmd += [f"-ac:a:{idx}", str(params['ac'])]
         if params.get('ar'):
             cmd += [f"-ar:a:{idx}", str(params['ar'])]
         if acodec == 'aac' and params.get('profile:a'):
-            cmd += [f"-profile:a:{idx}", params['profile:a']]
+            profile = params['profile:a']
+            if profile in ('aac_he', 'aac_he_v2'):
+                logger.warning("Native FFmpeg 'aac' encoder does not support HE-AAC profiles. Falling back to 'aac_low'.")
+                cmd += [f"-profile:a:{idx}", "aac_low"]
+            else:
+                cmd += [f"-profile:a:{idx}", profile]
         elif acodec == 'libopus':
             if params.get('application'):
                 cmd += [f"-application:a:{idx}", params['application']]

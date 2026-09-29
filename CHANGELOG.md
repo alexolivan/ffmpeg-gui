@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.0] - 2026-09-29
+
+### Added
+- **Fraunhofer FDK AAC (`libfdk_aac`) Integration in Forge & Codec Registry**:
+  - Registered `libfdk_aac` in `BuildManager.check_dependencies` with package mapping across Debian/Ubuntu (`libfdk-aac-dev`), Fedora (`fdk-aac-free-devel`), and Arch Linux (`libfdk-aac`).
+  - Added auto-detection flag `--enable-libfdk-aac` in `FfmpegRecipe` when `libfdk-aac-dev` is installed on the host system.
+  - Added `libfdk_aac` to `AUDIO_CODECS` with full profile support: `aac_low` (LC), `aac_he` (HE-AAC v1 SBR), `aac_he_v2` (HE-AAC v2 Parametric Stereo), `aac_ld` (Low Delay), and `aac_eld` (Enhanced Low Delay).
+  - Added smart guidance for bitrate selection with recommended per-profile ranges and optional VBR mode (qualities 1-5).
+  - Enabled dynamic introspective filtering in `getAvailableAudioCodecs` and `AudioCodecPanel` based on active build encoders from `/system/capabilities`, ensuring `libfdk_aac` only appears when supported by the active FFmpeg binary.
+  - Added smart UI validation in `AudioCodecPanel` to disallow mono audio when using HE-AAC v2 (Parametric Stereo).
+  - Added defensive safeguards in `FfmpegCommandBuilder` (`_append_audio_codec_params` and `_append_audio_codec_params_indexed`) to enforce `-ac 2` for `aac_he_v2` and gracefully fall back to `aac_low` when native `aac` is invoked with unsupported HE-AAC profiles.
+  - Added unit test cases in `backend/tests/test_command_generator.py`.
+
 ## [2.28.1] - 2026-09-29
 
 ### Fixed

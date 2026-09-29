@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import type { CodecParam } from './codecRegistry';
+import type { CodecParam, SystemCapabilities } from './codecRegistry';
 import {
   getAvailableAudioCodecs,
   getDefaultParams,
@@ -12,6 +12,7 @@ interface AudioCodecPanelProps {
   params: Record<string, string | number | boolean>;
   buildOptions?: Record<string, boolean>;
   outputType?: string;
+  systemCapabilities?: SystemCapabilities;
   onChange: (codecId: string, params: Record<string, string | number | boolean>) => void;
 }
 
@@ -20,12 +21,13 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
   params,
   buildOptions,
   outputType,
+  systemCapabilities,
   onChange,
 }) => {
   const { t } = useTranslation();
   const available = React.useMemo(() => {
-    return getAvailableAudioCodecs(buildOptions, outputType);
-  }, [buildOptions, outputType]);
+    return getAvailableAudioCodecs(buildOptions, outputType, systemCapabilities);
+  }, [buildOptions, outputType, systemCapabilities]);
   const selected = available.find(c => c.id === codecId) || available[0];
 
   const handleCodecChange = (newCodecId: string) => {
@@ -36,7 +38,29 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
   };
 
   const handleParamChange = (key: string, value: string | number | boolean) => {
-    onChange(codecId, { ...params, [key]: value });
+    const updated = { ...params, [key]: value };
+
+    // Smart validation & guidance for Fraunhofer FDK AAC
+    if (selected.id === 'libfdk_aac') {
+      // 1. Parametric Stereo in HE-AAC v2 requires 2 channels (Stereo)
+      if (key === 'profile:a' && value === 'aac_he_v2' && String(params.ac) === '1') {
+        updated.ac = '2';
+      } else if (key === 'ac' && value === '1' && String(params['profile:a']) === 'aac_he_v2') {
+        // If user switches to Mono while on HE-AAC v2, fall back to HE-AAC v1
+        updated['profile:a'] = 'aac_he';
+      }
+
+      // 2. If rate control switches to VBR, ensure a default vbr value is set
+      if (key === 'rate_control' && value === 'vbr' && !params.vbr) {
+        updated.vbr = '3';
+      }
+      // 3. If rate control switches to CBR, ensure a default bitrate is set
+      if (key === 'rate_control' && value === 'cbr' && !params['b:a']) {
+        updated['b:a'] = '64k';
+      }
+    }
+
+    onChange(codecId, updated);
   };
 
   return (
@@ -66,6 +90,8 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
                 key={param.key}
                 param={param}
                 value={params[param.key] ?? param.default}
+                selectedCodecId={selected.id}
+                currentProfile={String(params['profile:a'] || '')}
                 onChange={v => handleParamChange(param.key, v)}
               />
             ) : null,
@@ -81,10 +107,19 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
 interface AudioParamControlProps {
   param: CodecParam;
   value: string | number | boolean;
+  selectedCodecId?: string;
+  currentProfile?: string;
   onChange: (value: string | number | boolean) => void;
 }
 
-const AudioParamControl: React.FC<AudioParamControlProps> = ({ param, value, onChange }) => {
+const AudioParamControl: React.FC<AudioParamControlProps> = ({
+  param,
+  value,
+  selectedCodecId,
+  currentProfile,
+  onChange,
+}) => {
+  const { t } = useTranslation();
   const labelEl = (
     <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">
       {param.label}
@@ -103,9 +138,14 @@ const AudioParamControl: React.FC<AudioParamControlProps> = ({ param, value, onC
           value={String(value)}
           onChange={e => onChange(e.target.value)}
         >
-          {param.options.map(opt => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
+          {param.options.map(opt => {
+            const isHeV2Mono = selectedCodecId === 'libfdk_aac' && currentProfile === 'aac_he_v2' && param.key === 'ac' && opt.value === '1';
+            return (
+              <option key={opt.value} value={opt.value} disabled={isHeV2Mono}>
+                {opt.label} {isHeV2Mono ? t('codecs.incompatibleWithHeV2', '(Incompatible with HE-AAC v2)') : ''}
+              </option>
+            );
+          })}
         </select>
       </div>
     );

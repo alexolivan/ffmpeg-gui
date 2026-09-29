@@ -85,7 +85,7 @@ install_debian_deps() {
     apt-get install -y python3-venv python3-pip python3-dev nodejs npm \
                        build-essential cmake git pkg-config yasm nasm \
                        libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev \
-                       libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
+                       libfdk-aac-dev libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
                        libavahi-client-dev libavahi-common-dev libasound2-dev alsa-utils libasound2-plugins \
                        libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
                        intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base xdotool dbus-x11 \
@@ -100,7 +100,7 @@ install_rhel_deps() {
     dnf groupinstall -y "Development Tools"
     dnf install -y python3-devel nodejs npm cmake git pkgconfig yasm nasm \
                    x264-devel x265-devel openssl-devel libva-devel libdrm-devel \
-                   lame-devel libvorbis-devel opus-devel libvpx-devel \
+                   fdk-aac-free-devel lame-devel libvorbis-devel opus-devel libvpx-devel \
                    avahi-devel alsa-lib-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel \
                    intel-gpu-tools xorg-x11-server-Xvfb x11vnc xorg-x11-server-utils xdotool dbus-x11 \
                    nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon \
@@ -112,7 +112,7 @@ install_arch_deps() {
     echo "--> Installing system dependencies via pacman..."
     pacman -S --needed --noconfirm base-devel cmake git pkgconf yasm nasm \
                                  x264 x265 openssl libva libdrm \
-                                 lame libvorbis opus libvpx \
+                                 libfdk-aac lame libvorbis opus libvpx \
                                  avahi alsa-lib freetype2 harfbuzz fontconfig fribidi \
                                  intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm xdotool \
                                  nss nspr atk at-spi2-atk cups libdrm libxkbcommon \

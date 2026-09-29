@@ -1437,7 +1437,8 @@
     "videoCodecOutput": "Còdec de Vídeo (Eixida)",
     "audioCodec": "Còdec d'Àudio",
     "softwareCpu": "Còdecs per Programari (CPU)",
-    "hardwareGpu": "Còdecs per Maquinari (GPU)"
+    "hardwareGpu": "Còdecs per Maquinari (GPU)",
+    "incompatibleWithHeV2": "(Incompatible amb HE-AAC v2)"
   },
   "lifecycle": {
     "title": "Ajustos del Cicle de Vida del Procés",
