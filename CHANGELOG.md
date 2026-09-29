@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.2] - 2026-09-29
+
+### Fixed
+- **ALSA Loopback Virtual Capture Quadrant Layout & Bus Exit Indicator**:
+  - Enforced explicit `lg:col-start-1` and `lg:col-start-7` CSS Grid column coordinates in `AlsaAudioSettingsCard.tsx` across all four quadrants and row dividers.
+  - Fixed an issue where the 8 Virtual Capture PCM lanes were pushed into the bottom-right hardware quadrant due to CSS Grid auto-placement after omitting the right divider for Loopback devices.
+  - Added visual flow exit arrow (`◄`) at the right endpoint of virtual capture strips adjacent to the central Audio Bus to indicate audio emerging from the central bus into capture/ingest.
+
 ## [2.29.1] - 2026-09-29
 
 ### Fixed
