@@ -389,7 +389,9 @@ class TestCommandGenerator(unittest.TestCase):
             'icecast_username': 'source',
             'icecast_password': 'mypassword',
             'ice_name': 'My Station',
-            'ice_genre': 'Rock'
+            'ice_genre': 'Rock',
+            'ice_url': 'https://mystation.org',
+            'ice_public': True
         }
 
         cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
@@ -397,6 +399,8 @@ class TestCommandGenerator(unittest.TestCase):
 
         self.assertIn("-f mp3 -content_type audio/mpeg", cmd_str)
         self.assertIn("-ice_name My Station -ice_genre Rock", cmd_str)
+        self.assertIn("-ice_url https://mystation.org", cmd_str)
+        self.assertIn("-ice_public 1", cmd_str)
         self.assertNotIn("-legacy_icecast", cmd_str)
         self.assertNotIn("-tls", cmd_str)
         self.assertIn("icecast://source:mypassword@127.0.0.1:7000/radio.mp3", cmd_str)
@@ -508,6 +512,59 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-ac 2", cmd_vorbis_str)
         self.assertIn("-f ogg -content_type application/ogg", cmd_vorbis_str)
         self.assertIn("icecast://source:hackme@127.0.0.1:8000/stream.ogg", cmd_vorbis_str)
+
+    def test_alsa_to_icecast_flac_command_generation(self):
+        proc = MagicMock()
+        proc.id = 602
+        proc.type = "service"
+        # ALSA input: even if has_video was mistakenly left True, builder must suppress it with -vn
+        proc.input_config = {
+            'input1': {'type': 'alsa', 'device': 'hw:Loopback,1,0'},
+            'has_video': True,
+            'has_audio': True
+        }
+        proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'flac',
+            'audio_params': {'compression_level': '7', 'ac': '2', 'ar': '48000'}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'icecast',
+            'host': '127.0.0.1',
+            'port': '7000',
+            'icecast_mount': '/lossless.flac',
+            'icecast_username': 'source',
+            'icecast_password': 'hackme',
+            'ice_name': 'Lossless Studio Audio',
+            'ice_url': 'https://studio.local',
+            'ice_public': False,
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        # 1. ALSA input
+        self.assertIn("-f alsa -i hw:Loopback,1,0", cmd_str)
+        # 2. Audio-only suppression of video mapping (-vn)
+        self.assertIn("-vn", cmd_str)
+        self.assertNotIn("-map 0:v", cmd_str)
+        # 3. Audio mapping
+        self.assertIn("-map 0:a", cmd_str)
+        # 4. FLAC codec and parameters (no -b:a)
+        self.assertIn("-c:a flac", cmd_str)
+        self.assertIn("-compression_level 7", cmd_str)
+        self.assertIn("-ac 2", cmd_str)
+        self.assertIn("-ar 48000", cmd_str)
+        self.assertNotIn("-b:a", cmd_str)
+        # 5. Container & Content Type
+        self.assertIn("-f flac -content_type audio/flac", cmd_str)
+        # 6. Metadata
+        self.assertIn("-ice_name Lossless Studio Audio", cmd_str)
+        self.assertIn("-ice_url https://studio.local", cmd_str)
+        self.assertIn("-ice_public 0", cmd_str)
+        # 7. Output URL
+        self.assertIn("icecast://source:hackme@127.0.0.1:7000/lossless.flac", cmd_str)
 
     def test_hls_abr_vaapi_cqp_command(self):
         proc = MagicMock()

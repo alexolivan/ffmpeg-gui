@@ -519,7 +519,7 @@ class FFmpegCommandBuilder:
 
     @classmethod
     def _append_audio_codec_params(cls, cmd: list, acodec: str, params: dict):
-        if params.get('b:a'):
+        if acodec != 'flac' and params.get('b:a'):
             cmd += ["-b:a", params['b:a']]
         if params.get('ac'):
             cmd += ["-ac", str(params['ac'])]
@@ -532,6 +532,9 @@ class FFmpegCommandBuilder:
                 cmd += ["-application:a", params['application']]
             if params.get('vbr'):
                 cmd += ["-vbr:a", params['vbr']]
+        elif acodec == 'flac':
+            if params.get('compression_level') is not None:
+                cmd += ["-compression_level", str(params['compression_level'])]
 
     @classmethod
     def _append_video_codec_params_indexed(cls, cmd: list, vcodec: str, params: dict, idx: int, bitrate: str):
@@ -779,7 +782,9 @@ class FFmpegCommandBuilder:
                 cmd += ["-ice_description", str(output_cfg['ice_description'])]
             if output_cfg.get('ice_genre'):
                 cmd += ["-ice_genre", str(output_cfg['ice_genre'])]
-            if 'ice_public' in output_cfg:
+            if output_cfg.get('ice_url'):
+                cmd += ["-ice_url", str(output_cfg['ice_url'])]
+            if 'ice_public' in output_cfg and output_cfg['ice_public'] is not None:
                 cmd += ["-ice_public", "1" if output_cfg['ice_public'] else "0"]
 
             # Legacy Icecast server support (< v2.4, uses SOURCE method instead of PUT)
@@ -953,6 +958,20 @@ class FFmpegCommandBuilder:
                     "x11grab provides video-only; suppressing audio stream map and setting -an to prevent FFmpeg crash."
                 )
                 has_audio = False
+
+        # Protect against audio-only primary inputs without secondary video source
+        if primary_input_type in ('alsa', 'lavfi_audio', 'http_audio') and not (is_new_format and use_secondary and 'input2' in input_cfg):
+            if has_video:
+                logger.info(
+                    f"Process '{getattr(media_proc, 'name', 'unnamed')}' has audio-only input ({primary_input_type}) without secondary video source. "
+                    "Suppressing video stream map and setting -vn to prevent FFmpeg crash."
+                )
+                has_video = False
+
+        # Protect against audio-only destinations (e.g. Icecast, ALSA output)
+        output_type = output_cfg.get('type')
+        if output_type in ('icecast', 'alsa') and has_video:
+            has_video = False
 
         variants = output_cfg.get('variants', [])
         is_abr = output_cfg.get('type') == 'hls' and len(variants) > 0
