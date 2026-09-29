@@ -7087,7 +7087,7 @@ def analyze_alsa_process_info(cmd_str: str, config_json_str: str) -> Dict[str, A
 
     direction = "both" if (has_input and has_output) else ("capture" if has_input else "playout")
 
-    match = re.search(r'(?:hw|plughw|dsnoop|dmix):(?:card=)?(\d+)(?:,(\d+))?(?:,(\d+))?', cmd_lower)
+    match = re.search(r'(?:hw|plughw|dsnoop|dmix):(?:card=)?([a-zA-Z0-9_\-]+)(?:,(\d+))?(?:,(\d+))?', cmd_lower)
     device_target = ""
     pcm_index = None
     subdev_index = None
@@ -7240,8 +7240,43 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
                     })
         except Exception as task_err:
             logger.warning(f"Error matching active tasks to ALSA card {card_index}: {task_err}")
-        except Exception as task_err:
-            logger.warning(f"Error matching active tasks to ALSA card {card_index}: {task_err}")
+
+        # 3. Active Kiosk Browser Services (targeting virtual_playout on ALSA Loopback)
+        if topology.get("is_loopback"):
+            try:
+                active_kiosks = db.query(MediaProcess).filter(
+                    MediaProcess.service_type == "kiosk_browser",
+                    MediaProcess.status.in_(["running", "active", "starting"])
+                ).all()
+                for kp in active_kiosks:
+                    k_cfg = (kp.config or {}).get("kiosk_config", kp.config or {})
+                    desk_id = k_cfg.get("desktop_service_id")
+                    if desk_id:
+                        desk = db.query(MediaProcess).get(int(desk_id))
+                        if desk:
+                            d_cfg = (desk.config or {}).get("desktop_config", desk.config or {})
+                            raw_sub = d_cfg.get("alsa_subdevice")
+                            if raw_sub is not None:
+                                try:
+                                    k_sub = int(raw_sub)
+                                except (ValueError, TypeError):
+                                    k_sub = int(d_cfg.get("display_num", 99)) % 8
+                            else:
+                                k_sub = int(d_cfg.get("display_num", 99)) % 8
+
+                            alsa_badges.append({
+                                "process_id": kp.id,
+                                "alias": kp.alias or kp.name or f"Kiosk #{kp.id}",
+                                "status": kp.status,
+                                "type": "kiosk_browser",
+                                "direction": "playout",
+                                "device_target": f"hw:Loopback,0,{k_sub}",
+                                "pcm_index": 0,
+                                "subdevice_index": k_sub,
+                                "cmd": f"kiosk -> hw:Loopback,0,{k_sub}"
+                            })
+            except Exception as k_err:
+                logger.warning(f"Error matching active kiosk browsers to loopback card: {k_err}")
 
         topology["active_processes"] = alsa_badges
         return topology
