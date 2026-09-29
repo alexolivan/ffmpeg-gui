@@ -1032,7 +1032,12 @@
       "alignButton": "Align with Desktop",
       "advancedOffsets": "Custom Window Offsets (Optional)",
       "offsetX": "Offset X (px)",
-      "offsetY": "Offset Y (px)"
+      "offsetY": "Offset Y (px)",
+      "audioLoopbackTitle": "Virtual Audio Capture",
+      "audioPairingTip": "x11grab only provides video. Pair the desktop ALSA loopback channel to broadcast audio.",
+      "audioPairedNotice": "✓ Audio paired with {{device}} as secondary input source.",
+      "pairAudioButton": "Pair Desktop Audio (hw:Loopback,1,{{sub}})",
+      "audioPairedButton": "Audio Paired (hw:Loopback,1,{{sub}})"
     },
     "hardwareDecoding": "Hardware Decoding Acceleration",
     "hardwareDecodingDesc": "Utilize GPU hardware acceleration for video decoding to reduce CPU load.",

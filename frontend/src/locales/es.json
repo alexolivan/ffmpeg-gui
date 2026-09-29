@@ -1032,7 +1032,12 @@
       "alignButton": "Alinear con Desktop",
       "advancedOffsets": "Desplazamientos de Ventana (Opcional)",
       "offsetX": "Desplazamiento X (px)",
-      "offsetY": "Desplazamiento Y (px)"
+      "offsetY": "Desplazamiento Y (px)",
+      "audioLoopbackTitle": "Captura de Audio Virtual",
+      "audioPairingTip": "x11grab solo proporciona vídeo. Vincula el canal de audio ALSA loopback del escritorio para emitir sonido.",
+      "audioPairedNotice": "✓ Audio vinculado con {{device}} como fuente de entrada secundaria.",
+      "pairAudioButton": "Vincular Audio de este Desktop (hw:Loopback,1,{{sub}})",
+      "audioPairedButton": "Audio Vinculado (hw:Loopback,1,{{sub}})"
     },
     "hardwareDecoding": "Aceleración de Decodificación por Hardware",
     "hardwareDecodingDesc": "Utiliza la aceleración de la GPU para decodificar vídeo y reducir la carga de la CPU.",
