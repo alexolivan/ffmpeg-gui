@@ -118,9 +118,9 @@ class AlsaManager:
 
             if "rate shift" in name_lower:
                 return {
-                    "type": "integer",
-                    "group": f"Rate Shift (Dev {device}, Sub {subdevice})",
-                    "category": "system_clock",
+                    "type": "ignored",
+                    "group": "Ignored",
+                    "category": "ignored",
                     "is_meter": False,
                     "matrix_source": None
                 }

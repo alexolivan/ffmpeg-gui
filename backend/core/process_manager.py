@@ -490,6 +490,13 @@ class ProcessManager:
                     }
                     if os.path.exists(asound_cfg_file):
                         kiosk_sub_env["ALSA_CONFIG_PATH"] = asound_cfg_file
+                        asoundrc_file = os.path.join(kiosk_profile, ".asoundrc")
+                        if not os.path.exists(asoundrc_file):
+                            try:
+                                import shutil
+                                shutil.copy2(asound_cfg_file, asoundrc_file)
+                            except Exception:
+                                pass
 
 
                     if is_chromium:
@@ -1668,8 +1675,8 @@ class ProcessManager:
             alsa_subdevice = int(display_num) % 8
 
         # Generate sandboxed asound.conf pointing to hw:Loopback,0,<subdevice>
-        asound_conf_path = os.path.join(profile_dir, "asound.conf")
         asound_content = (
+            f"<confdir:alsa.conf>\n\n"
             f"pcm.!default {{\n"
             f"    type plug\n"
             f"    slave.pcm \"hw:Loopback,0,{alsa_subdevice}\"\n"
@@ -1679,11 +1686,13 @@ class ProcessManager:
             f"    card \"Loopback\"\n"
             f"}}\n"
         )
-        try:
-            with open(asound_conf_path, "w", encoding="utf-8") as af:
-                af.write(asound_content)
-        except Exception as a_err:
-            self.logger.warning(f"Failed to write ALSA sandbox config in {profile_dir}: {a_err}")
+        for fname in ("asound.conf", ".asoundrc"):
+            fpath = os.path.join(profile_dir, fname)
+            try:
+                with open(fpath, "w", encoding="utf-8") as af:
+                    af.write(asound_content)
+            except Exception as a_err:
+                self.logger.warning(f"Failed to write ALSA sandbox config {fname} in {profile_dir}: {a_err}")
 
         # Resolve Cache Mode: 'ram', 'disabled', or 'custom'
         # Backwards compatibility: disk_cache_disabled maps to cache_mode='disabled'
@@ -1702,7 +1711,7 @@ class ProcessManager:
             cmd = [
                 browser_bin,
                 f"--user-data-dir={profile_dir}",
-                f"--alsa-output-device=hw:Loopback,0,{alsa_subdevice}",
+                f"--alsa-output-device=plughw:Loopback,0,{alsa_subdevice}",
                 "--no-first-run",
                 "--noerrdialogs",
                 "--disable-session-crashed-bubble",

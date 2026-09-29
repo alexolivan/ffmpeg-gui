@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.3] - 2026-09-29
+
+### Fixed
+- **Kiosk Browser Audio Isolation via ALSA `plughw` & `<confdir:alsa.conf>` Include**:
+  - Prefixed sandboxed `asound.conf` and `~/.asoundrc` with `<confdir:alsa.conf>` to ensure system ALSA plugin definitions (`type plug`) load correctly when `ALSA_CONFIG_PATH` is set.
+  - Concurrently wrote `.asoundrc` inside the kiosk profile directory (`$HOME/.asoundrc`) to ensure Chromium child processes and zygotes inherit the ALSA configuration even if environment variables are dropped.
+  - Updated Chromium launch parameters to `--alsa-output-device=plughw:Loopback,0,<subdevice>`, allowing ALSA's `plug` layer to convert Chromium's internal `float32` audio streams to hardware PCM formats without rejected opens.
+  - Filtered out `PCM Rate Shift 100000` controls for Loopback cards in `AlsaManager._classify_control` to eliminate 16 redundant sliders and suppress the useless system clock panel on virtual loopback devices.
+
 ## [2.29.2] - 2026-09-29
 
 ### Fixed

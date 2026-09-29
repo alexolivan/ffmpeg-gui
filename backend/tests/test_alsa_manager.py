@@ -225,7 +225,7 @@ class TestAlsaManager(unittest.TestCase):
         self.assertIn("on", cmd_args)
 
     def test_classify_loopback_controls(self):
-        # PCM Rate Shift should be categorized as clock / ppm drift control, NOT volume
+        # PCM Rate Shift should be ignored on loopback to avoid GUI clutter
         res_shift = self.mgr._classify_control(
             name="PCM Rate Shift 100000",
             iface=1,
@@ -235,8 +235,8 @@ class TestAlsaManager(unittest.TestCase):
             is_loopback=True,
             device=0
         )
-        self.assertEqual(res_shift["category"], "system_clock")
-        self.assertNotEqual(res_shift["type"], "volume")
+        self.assertEqual(res_shift["category"], "ignored")
+        self.assertEqual(res_shift["type"], "ignored")
 
         # PCM Notify should be ignored
         res_notify = self.mgr._classify_control(
@@ -312,8 +312,8 @@ numid=59,iface=PCM,name='PCM Slave Active',device=1
         self.assertEqual(topo["hardware_outputs"], [])
         self.assertEqual(topo["hardware_inputs"], [])
 
-        # Clock / global controls should house rate shift
-        self.assertTrue(len(topo["system_clock"]) > 0 or len(topo["global_controls"]) > 0)
+        # Clock / global controls should NOT house useless rate shift controls on loopback
+        self.assertEqual(topo["system_clock"], [])
 
 if __name__ == "__main__":
     unittest.main()

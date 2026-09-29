@@ -298,12 +298,15 @@ class TestKioskBrowser(unittest.TestCase):
 
         cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
 
-        self.assertIn("--alsa-output-device=hw:Loopback,0,5", cmd)
+        self.assertIn("--alsa-output-device=plughw:Loopback,0,5", cmd)
 
         asound_path = os.path.join(profile_dir, "asound.conf")
+        asoundrc_path = os.path.join(profile_dir, ".asoundrc")
         self.assertTrue(os.path.exists(asound_path))
+        self.assertTrue(os.path.exists(asoundrc_path))
         with open(asound_path, "r", encoding="utf-8") as f:
             asound_content = f.read()
+            self.assertIn("<confdir:alsa.conf>", asound_content)
             self.assertIn('slave.pcm "hw:Loopback,0,5"', asound_content)
             self.assertIn('card "Loopback"', asound_content)
 
@@ -340,11 +343,14 @@ class TestKioskBrowser(unittest.TestCase):
 
         cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
 
-        self.assertIn("--alsa-output-device=hw:Loopback,0,3", cmd)
+        self.assertIn("--alsa-output-device=plughw:Loopback,0,3", cmd)
         asound_path = os.path.join(profile_dir, "asound.conf")
+        asoundrc_path = os.path.join(profile_dir, ".asoundrc")
         self.assertTrue(os.path.exists(asound_path))
+        self.assertTrue(os.path.exists(asoundrc_path))
         with open(asound_path, "r", encoding="utf-8") as f:
             asound_content = f.read()
+            self.assertIn("<confdir:alsa.conf>", asound_content)
             self.assertIn('slave.pcm "hw:Loopback,0,3"', asound_content)
 
 
