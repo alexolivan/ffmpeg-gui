@@ -171,6 +171,28 @@ class TestDesktopPorts(unittest.TestCase):
         self.assertEqual(res["display_num"], 99)
         self.assertEqual(res["vnc_port"], 5999)
 
+    def test_subdevice_allocation_and_occupancy(self):
+        # Empty DB: next_available_subdevice is 0, occupied is empty
+        res = get_next_available_desktop_display_and_vnc_port(self.db, check_os=False)
+        self.assertEqual(res["next_available_subdevice"], 0)
+        self.assertEqual(res["occupied_subdevices"], {})
+
+        # Add Desktop using subdevice 0
+        s1 = Service(
+            name="Studio 1",
+            service_type="desktop",
+            status="stopped",
+            type="service",
+            config={"desktop_config": {"display_num": 99, "vnc_port": 5999, "alsa_subdevice": 0}},
+        )
+        self.db.add(s1)
+        self.db.commit()
+
+        res2 = get_next_available_desktop_display_and_vnc_port(self.db, check_os=False)
+        self.assertEqual(res2["next_available_subdevice"], 1)
+        self.assertIn(0, res2["occupied_subdevices"])
+        self.assertEqual(res2["occupied_subdevices"][0], "Studio 1")
+
 
 if __name__ == "__main__":
     unittest.main()

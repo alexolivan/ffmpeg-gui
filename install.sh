@@ -88,7 +88,7 @@ install_debian_deps() {
                        libfdk-aac-dev libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
                        libavahi-client-dev libavahi-common-dev libasound2-dev alsa-utils libasound2-plugins \
                        libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
-                       intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base xdotool dbus-x11 \
+                       intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base xdotool dbus-x11 apulse \
                        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
                        libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
                        libgbm1 libpango-1.0-0 libcairo2 libasound2
@@ -114,7 +114,7 @@ install_arch_deps() {
                                  x264 x265 openssl libva libdrm \
                                  libfdk-aac lame libvorbis opus libvpx \
                                  avahi alsa-lib freetype2 harfbuzz fontconfig fribidi \
-                                 intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm xdotool \
+                                 intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm xdotool apulse \
                                  nss nspr atk at-spi2-atk cups libdrm libxkbcommon \
                                  libxcomposite libxdamage libxfixes libxrandr mesa pango cairo alsa-lib alsa-utils
 }

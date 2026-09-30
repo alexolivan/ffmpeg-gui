@@ -1606,8 +1606,11 @@
     "loopback_missing_title": "Módulo ALSA Loopback (snd-aloop) no detectado",
     "loopback_missing_desc": "La salida de audio virtual no estará aislada hasta que se cargue el módulo de kernel snd-aloop en el sistema anfitrión (sudo modprobe snd-aloop).",
     "alsa_subdevice_label": "Subdispositivo ALSA (Reproducción Loopback)",
-    "alsa_subdevice_auto": "Asignación Automática (:N % 8 = Subdispositivo {{sub}})",
-    "alsa_subdevice_help": "Designa el subdispositivo de reproducción virtual snd-aloop donde los navegadores Kiosk emitirán sonido."
+    "alsa_subdevice_auto": "Auto-asignar: Subdispositivo {{sub}} [Disponible]",
+    "alsa_subdevice_help": "Designa el subdispositivo de reproducción virtual snd-aloop donde los navegadores Kiosk emitirán sonido.",
+    "subdevice_available": "Disponible",
+    "subdevice_in_use": "En uso",
+    "subdevice_current": "Actual"
   },
   "kiosk": {
     "service_name": "Visualizador Kiosk Web",

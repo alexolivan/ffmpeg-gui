@@ -509,6 +509,7 @@ def get_next_available_desktop_display_and_vnc_port(
 
     occupied_ports = set((p, "tcp") for p in gui_reserved_tcp)
     occupied_displays = set()
+    occupied_subdevices: Dict[int, str] = {}
 
     for other in other_services:
         for p, _, _, _, proto in extract_ports_from_service(
@@ -525,11 +526,34 @@ def get_next_available_desktop_display_and_vnc_port(
             cfg = other.config or {}
             desk = cfg.get("desktop_config", cfg)
             disp = desk.get("display_num")
+            sub = desk.get("alsa_subdevice")
+            desk_label = getattr(other, "alias", None) or getattr(other, "name", None) or f"Desktop #{other.id}"
             if disp is not None:
                 try:
                     occupied_displays.add(int(disp))
                 except (ValueError, TypeError):
                     pass
+            if sub is not None:
+                try:
+                    sub_idx = int(sub)
+                    if 0 <= sub_idx < 8:
+                        occupied_subdevices[sub_idx] = desk_label
+                except (ValueError, TypeError):
+                    pass
+            elif disp is not None:
+                try:
+                    disp_idx = int(disp) % 8
+                    if disp_idx not in occupied_subdevices:
+                        occupied_subdevices[disp_idx] = desk_label
+                except (ValueError, TypeError):
+                    pass
+
+    # Find the first available ALSA subdevice (0 through 7)
+    next_subdevice = 0
+    for s in range(8):
+        if s not in occupied_subdevices:
+            next_subdevice = s
+            break
 
     base_display = 99
     for offset in range(100):
@@ -550,12 +574,16 @@ def get_next_available_desktop_display_and_vnc_port(
         return {
             "display_num": cand_display,
             "vnc_port": cand_vnc_port,
+            "next_available_subdevice": next_subdevice,
+            "occupied_subdevices": occupied_subdevices,
         }
 
     # Fallback if 100 slots exhausted
     return {
         "display_num": 199,
         "vnc_port": 6099,
+        "next_available_subdevice": next_subdevice,
+        "occupied_subdevices": occupied_subdevices,
     }
 
 

@@ -36,6 +36,8 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
   const [alsaSubdevice, setAlsaSubdevice] = useState<number | ''>(
     deskCfg.alsa_subdevice !== undefined && deskCfg.alsa_subdevice !== null ? deskCfg.alsa_subdevice : ''
   );
+  const [occupiedSubdevices, setOccupiedSubdevices] = useState<Record<number, string>>({});
+  const [nextAvailableSubdevice, setNextAvailableSubdevice] = useState<number>(0);
   const [hasLoopback, setHasLoopback] = useState<boolean | null>(null);
 
   // Auto-start & Lifecycle
@@ -59,21 +61,27 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch clean candidate ports if creating new service
+  // Fetch clean candidate ports & ALSA loopback subdevices
   useEffect(() => {
-    if (!initialConfig?.id) {
-      setIsAllocating(true);
-      fetch(`${API}/api/services/desktop/next-available-ports`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (data) {
+    setIsAllocating(true);
+    const excludeId = initialConfig?.id ? `?exclude_service_id=${initialConfig.id}` : '';
+    fetch(`${API}/api/services/desktop/next-available-ports${excludeId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) {
+          if (!initialConfig?.id) {
             if (data.display_num !== undefined) setDisplayNum(data.display_num);
             if (data.vnc_port !== undefined) setVncPort(data.vnc_port);
+            if (data.next_available_subdevice !== undefined && (alsaSubdevice === '' || alsaSubdevice === undefined)) {
+              setAlsaSubdevice(data.next_available_subdevice);
+            }
           }
-        })
-        .catch(() => {})
-        .finally(() => setIsAllocating(false));
-    }
+          if (data.occupied_subdevices) setOccupiedSubdevices(data.occupied_subdevices);
+          if (data.next_available_subdevice !== undefined) setNextAvailableSubdevice(data.next_available_subdevice);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsAllocating(false));
   }, [API, initialConfig?.id]);
 
   // Check ALSA Loopback card availability
@@ -101,6 +109,11 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
         if (data) {
           if (data.display_num !== undefined) setDisplayNum(data.display_num);
           if (data.vnc_port !== undefined) setVncPort(data.vnc_port);
+          if (data.occupied_subdevices) setOccupiedSubdevices(data.occupied_subdevices);
+          if (data.next_available_subdevice !== undefined) {
+            setNextAvailableSubdevice(data.next_available_subdevice);
+            setAlsaSubdevice(data.next_available_subdevice);
+          }
         }
       })
       .catch((err) => {
@@ -124,7 +137,7 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
             resolution,
             framerate: Number(framerate),
             color_depth: Number(colorDepth),
-            alsa_subdevice: alsaSubdevice === '' ? null : Number(alsaSubdevice),
+            alsa_subdevice: alsaSubdevice === '' ? nextAvailableSubdevice : Number(alsaSubdevice),
           },
           auto_start: autoStart,
           startup_order: Number(startupOrder),
@@ -327,18 +340,29 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
             <select
               value={alsaSubdevice}
               onChange={(e) => setAlsaSubdevice(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none font-mono"
+              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none font-mono cursor-pointer"
             >
               <option value="">
-                {t('desktop.alsa_subdevice_auto', 'Auto-Assign (:N % 8 = Subdevice {{sub}})', {
-                  sub: (Number(displayNum) || 0) % 8,
+                {t('desktop.alsa_subdevice_auto', 'Auto-Assign: Subdevice {{sub}} [Available]', {
+                  sub: nextAvailableSubdevice,
                 })}
               </option>
-              {[0, 1, 2, 3, 4, 5, 6, 7].map((s) => (
-                <option key={s} value={s}>
-                  Subdevice {s} (hw:Loopback,0,{s})
-                </option>
-              ))}
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((s) => {
+                const isOccupied = occupiedSubdevices[s] !== undefined;
+                const occupantName = occupiedSubdevices[s];
+                const isCurrent = initialConfig?.id && deskCfg.alsa_subdevice === s;
+                let statusBadge = `[${t('desktop.subdevice_available', 'Available')}]`;
+                if (isCurrent) {
+                  statusBadge = `[${t('desktop.subdevice_current', 'Current')}]`;
+                } else if (isOccupied) {
+                  statusBadge = `[${t('desktop.subdevice_in_use', 'In Use')}: ${occupantName}]`;
+                }
+                return (
+                  <option key={s} value={s}>
+                    Subdevice {s} — {statusBadge} (hw:Loopback,0,{s})
+                  </option>
+                );
+              })}
             </select>
             <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
               {t(

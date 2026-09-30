@@ -250,7 +250,7 @@ class TestAlsaManager(unittest.TestCase):
         )
         self.assertEqual(res_notify["type"], "ignored")
 
-        # PCM Slave Active should be classified as telemetry/meter
+        # PCM Slave Active is internal kernel sync state on Loopback and should be ignored (no fake VU meters)
         res_active = self.mgr._classify_control(
             name="PCM Slave Active",
             iface=1,
@@ -260,7 +260,8 @@ class TestAlsaManager(unittest.TestCase):
             is_loopback=True,
             device=0
         )
-        self.assertEqual(res_active["type"], "telemetry")
+        self.assertEqual(res_active["type"], "ignored")
+        self.assertFalse(res_active["is_meter"])
 
     @patch.object(AlsaManager, "get_cards")
     @patch("subprocess.run")
@@ -314,6 +315,9 @@ numid=59,iface=PCM,name='PCM Slave Active',device=1
 
         # Clock / global controls should NOT house useless rate shift controls on loopback
         self.assertEqual(topo["system_clock"], [])
+
+        # Loopback read_meters must return empty dictionary (no hardware meters, 0 polling overhead)
+        self.assertEqual(self.mgr.read_meters(card_idx=3), {})
 
 if __name__ == "__main__":
     unittest.main()

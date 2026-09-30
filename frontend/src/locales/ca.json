@@ -1606,8 +1606,11 @@
     "loopback_missing_title": "Mòdul ALSA Loopback (snd-aloop) no detectat",
     "loopback_missing_desc": "La sortida d'àudio virtual no estarà aïllada fins que es carregui el mòdul de kernel snd-aloop al sistema amfitrió (sudo modprobe snd-aloop).",
     "alsa_subdevice_label": "Subdispositiu ALSA (Reproducció Loopback)",
-    "alsa_subdevice_auto": "Assignació Automàtica (:N % 8 = Subdispositiu {{sub}})",
-    "alsa_subdevice_help": "Designa el subdispositiu de reproducció virtual snd-aloop on els navegadors Kiosk emetran so."
+    "alsa_subdevice_auto": "Auto-assignar: Subdispositiu {{sub}} [Disponible]",
+    "alsa_subdevice_help": "Designa el subdispositiu de reproducció virtual snd-aloop on els navegadors Kiosk emetran so.",
+    "subdevice_available": "Disponible",
+    "subdevice_in_use": "En ús",
+    "subdevice_current": "Actual"
   },
   "kiosk": {
     "service_name": "Visualitzador Kiosk Web",
