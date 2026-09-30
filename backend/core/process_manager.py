@@ -103,227 +103,261 @@ class ProcessManager:
         if not is_restart and not is_on_demand:
             dependency_manager.mark_pinned(process_id)
 
-        # Get service config to check dependency permissions
-        allow_start_deps = True
+        # 0. Early log and service resolution for diagnostics
+        logs_dir = None
+        log_path = None
+        svc_name = f"Service #{process_id}"
         with self.db_session_factory() as session:
             from database.models import Service
             svc = session.get(Service, process_id)
             if svc:
-                allow_start_deps = getattr(svc, 'allow_auto_start_deps', True)
+                svc_name = svc.name
+                log_storage_id = (svc.config or {}).get("log_storage_id")
+                logs_dir = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
+                log_path = os.path.join(logs_dir, f"process_{process_id}.log")
 
-        # Start auto-managed dependencies first
-        await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
+        if not is_restart:
+            self.log_buffers[process_id] = collections.deque(maxlen=100)
+        elif process_id not in self.log_buffers:
+            self.log_buffers[process_id] = collections.deque(maxlen=100)
 
-        # Check and acquire exclusive resource lock for publisher outputs
-        from core.resource_lock_manager import resource_lock_manager
-        with self.db_session_factory() as session:
-            from database.models import Service
-            media_proc_chk = session.get(Service, process_id)
-            if media_proc_chk:
-                out_cfg_chk = (media_proc_chk.config or {}).get("output_config") or media_proc_chk.output_config
-                ok_lock, err_lock, lock_info = resource_lock_manager.acquire_lock(
-                    owner_type="service",
-                    owner_id=process_id,
-                    output_config=out_cfg_chk,
-                    owner_name=media_proc_chk.name
-                )
-                if not ok_lock:
-                    self.logger.error(f"Cannot start service {process_id}: {err_lock}")
-                    media_proc_chk.status = "error"
-                    media_proc_chk.error_message = err_lock
-                    session.commit()
-                    await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+        def _record_startup_error(error_msg: str):
+            self.logger.error(f"Cannot start service {process_id} ({svc_name}): {error_msg}")
+            from datetime import timezone
+            now_iso = datetime.now(timezone.utc).isoformat()
+            if not now_iso.endswith("Z") and "+" not in now_iso:
+                now_iso += "Z"
+
+            err_banner = f"\n--- PROCESS START ERROR AT {now_iso} ---\nERROR: {error_msg}\n"
+            if log_path:
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    write_mode = "ab" if is_restart else "wb"
+                    with open(log_path, write_mode) as f:
+                        f.write(err_banner.encode("utf-8"))
+                except Exception as f_err:
+                    self.logger.error(f"Failed writing startup error to {log_path}: {f_err}")
+
+            for line in err_banner.strip().splitlines():
+                if line.strip():
+                    self._handle_log_msg(process_id, line.strip(), status_re=None)
+
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service, ServiceLog
+                    sp = session.get(Service, process_id)
+                    if sp:
+                        sp.status = 'error'
+                        sp.last_error = error_msg
+                        session.add(ServiceLog(service_id=process_id, level="ERROR", message=f"Startup Error: {error_msg}"))
+                        session.commit()
+            except Exception as db_err:
+                self.logger.error(f"Failed persisting service error in DB: {db_err}")
+
+        try:
+            # Get service config to check dependency permissions
+            allow_start_deps = True
+            with self.db_session_factory() as session:
+                from database.models import Service
+                svc = session.get(Service, process_id)
+                if svc:
+                    allow_start_deps = getattr(svc, 'allow_auto_start_deps', True)
+
+            # Start auto-managed dependencies first
+            await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
+
+            # Check and acquire exclusive resource lock for publisher outputs
+            from core.resource_lock_manager import resource_lock_manager
+            with self.db_session_factory() as session:
+                from database.models import Service
+                media_proc_chk = session.get(Service, process_id)
+                if media_proc_chk:
+                    out_cfg_chk = (media_proc_chk.config or {}).get("output_config") or media_proc_chk.output_config
+                    ok_lock, err_lock, lock_info = resource_lock_manager.acquire_lock(
+                        owner_type="service",
+                        owner_id=process_id,
+                        output_config=out_cfg_chk,
+                        owner_name=media_proc_chk.name
+                    )
+                    if not ok_lock:
+                        _record_startup_error(err_lock)
+                        await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+                        return
+
+            # Acquire remote peer lease if configured
+            with self.db_session_factory() as session:
+                from database.models import Service
+                svc_remote = session.get(Service, process_id)
+                if svc_remote:
+                    cfg_remote = svc_remote.config or {}
+                    out_cfg_remote = (cfg_remote.get("output_config") or svc_remote.output_config) or {}
+                    in_cfg_remote = (cfg_remote.get("input_config") or svc_remote.input_config) or {}
+                    peer_node_id = out_cfg_remote.get("peer_node_id") or in_cfg_remote.get("peer_node_id")
+                    peer_svc_id = out_cfg_remote.get("peer_service_id") or in_cfg_remote.get("peer_service_id")
+                    if peer_node_id and peer_svc_id:
+                        from core.peer_manager import peer_manager
+                        try:
+                            res_info = resource_lock_manager.extract_resource_info(out_cfg_remote)
+                            res_path = res_info["resource_path"] if res_info else None
+                            ok_peer, peer_err = await asyncio.to_thread(
+                                peer_manager.acquire_remote_lease,
+                                session,
+                                int(peer_node_id),
+                                int(peer_svc_id),
+                                resource_path=res_path
+                            )
+                            if not ok_peer:
+                                err_msg = peer_err or f"Failed to acquire remote lease on peer node {peer_node_id}"
+                                _record_startup_error(err_msg)
+                                resource_lock_manager.release_lock("service", process_id)
+                                await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+                                return
+                        except Exception as e:
+                            self.logger.warning(f"Failed to acquire remote lease on peer node {peer_node_id}: {e}")
+            
+            debug_mode = False
+            
+            # 1. Fetch config and prepare snap in a quick database transaction
+            with self.db_session_factory() as session:
+                from database.models import Service, FfmpegBuild, ServiceLog, Storage
+                media_proc = session.query(Service).get(process_id)
+                if not media_proc:
+                    _record_startup_error(f"Service {process_id} not found in DB")
                     return
 
-        # Acquire remote peer lease if configured
-        with self.db_session_factory() as session:
-            from database.models import Service
-            svc_remote = session.get(Service, process_id)
-            if svc_remote:
-                cfg_remote = svc_remote.config or {}
-                out_cfg_remote = (cfg_remote.get("output_config") or svc_remote.output_config) or {}
-                in_cfg_remote = (cfg_remote.get("input_config") or svc_remote.input_config) or {}
-                peer_node_id = out_cfg_remote.get("peer_node_id") or in_cfg_remote.get("peer_node_id")
-                peer_svc_id = out_cfg_remote.get("peer_service_id") or in_cfg_remote.get("peer_service_id")
-                if peer_node_id and peer_svc_id:
-                    from core.peer_manager import peer_manager
-                    try:
-                        res_info = resource_lock_manager.extract_resource_info(out_cfg_remote)
-                        res_path = res_info["resource_path"] if res_info else None
-                        ok_peer, peer_err = await asyncio.to_thread(
-                            peer_manager.acquire_remote_lease,
-                            session,
-                            int(peer_node_id),
-                            int(peer_svc_id),
-                            resource_path=res_path
-                        )
-                        if not ok_peer:
-                            err_msg = peer_err or f"Failed to acquire remote lease on peer node {peer_node_id}"
-                            self.logger.error(f"Cannot start service {process_id}: {err_msg}")
-                            svc_remote.status = "error"
-                            svc_remote.error_message = err_msg
-                            session.commit()
-                            resource_lock_manager.release_lock("service", process_id)
-                            await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
-                            return
-                    except Exception as e:
-                        self.logger.warning(f"Failed to acquire remote lease on peer node {peer_node_id}: {e}")
-        
-        logs_dir = None
-        debug_mode = False
-        
-        # 1. Fetch config and prepare snap in a quick database transaction
-        with self.db_session_factory() as session:
-            from database.models import Service, FfmpegBuild, ServiceLog, Storage
-            media_proc = session.query(Service).get(process_id)
-            if not media_proc:
-                self.logger.error(f"Service {process_id} not found in DB")
-                return
+                # Clear old logs from DB to prevent mixing previous execution output
+                session.query(ServiceLog).filter(ServiceLog.service_id == process_id).delete()
 
-            # Clear old logs from DB to prevent mixing previous execution output
-            session.query(ServiceLog).filter(ServiceLog.service_id == process_id).delete()
-
-            # Save configuration snapshot at launch
-            media_proc.last_started_config = {
-                "name": media_proc.name,
-                "config": media_proc.config
-            }
-            if not is_restart:
-                self.restart_counts.pop(process_id, None)
-                media_proc.restart_count = 0
-            self.srt_has_had_activity[process_id] = False
-            
-            pending = self.pending_restarts.pop(process_id, None)
-            if pending and pending != asyncio.current_task():
-                pending.cancel()
-
-            cfg = media_proc.config or {}
-
-            # Resolve log_storage
-            log_storage_id = cfg.get("log_storage_id")
-            log_storage_path = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
-            logs_dir = log_storage_path
-            debug_mode = cfg.get("debug_mode", False)
-            svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
-
-            if svc_type == "mediamtx_hub":
-                mediamtx_bin = "mediamtx"
-                build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
-                build = None
-                if build_id:
-                    build = session.query(FfmpegBuild).get(build_id)
+                # Save configuration snapshot at launch
+                media_proc.last_started_config = {
+                    "name": media_proc.name,
+                    "config": media_proc.config
+                }
+                if not is_restart:
+                    self.restart_counts.pop(process_id, None)
+                    media_proc.restart_count = 0
+                self.srt_has_had_activity[process_id] = False
                 
-                if not (build and build.binary_path and os.path.exists(build.binary_path)):
-                    # Fallback to default or any ready MediaMTX build in database
-                    build = session.query(FfmpegBuild).filter(
-                        FfmpegBuild.software_type == 'mediamtx',
-                        FfmpegBuild.status == 'ready',
-                        FfmpegBuild.is_default == True
-                    ).first() or session.query(FfmpegBuild).filter(
-                        FfmpegBuild.software_type == 'mediamtx',
-                        FfmpegBuild.status == 'ready'
-                    ).first()
+                pending = self.pending_restarts.pop(process_id, None)
+                if pending and pending != asyncio.current_task():
+                    pending.cancel()
 
-                if build and build.binary_path and os.path.exists(build.binary_path):
-                    mediamtx_bin = build.binary_path
-                    if not cfg.get("software_build_id"):
-                        cfg["software_build_id"] = build.id
-                        cfg["ffmpeg_build_id"] = build.id
-                        media_proc.config = cfg
-                elif shutil.which("mediamtx"):
-                    mediamtx_bin = shutil.which("mediamtx")
+                cfg = media_proc.config or {}
+
+                # Resolve log_storage
+                log_storage_id = cfg.get("log_storage_id")
+                log_storage_path = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
+                logs_dir = log_storage_path
+                debug_mode = cfg.get("debug_mode", False)
+                svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
+
+                if svc_type == "mediamtx_hub":
+                    mediamtx_bin = "mediamtx"
+                    build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    build = None
+                    if build_id:
+                        build = session.query(FfmpegBuild).get(build_id)
+                    
+                    if not (build and build.binary_path and os.path.exists(build.binary_path)):
+                        # Fallback to default or any ready MediaMTX build in database
+                        build = session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == 'mediamtx',
+                            FfmpegBuild.status == 'ready',
+                            FfmpegBuild.is_default == True
+                        ).first() or session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == 'mediamtx',
+                            FfmpegBuild.status == 'ready'
+                        ).first()
+
+                    if build and build.binary_path and os.path.exists(build.binary_path):
+                        mediamtx_bin = build.binary_path
+                        if not cfg.get("software_build_id"):
+                            cfg["software_build_id"] = build.id
+                            cfg["ffmpeg_build_id"] = build.id
+                            media_proc.config = cfg
+                    elif shutil.which("mediamtx"):
+                        mediamtx_bin = shutil.which("mediamtx")
+                    else:
+                        raise FileNotFoundError("MediaMTX binary not found. Please install MediaMTX in Settings → Software Engine.")
+
+                    cmd, ephem_path = self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session)
+                    self.ephemeral_configs[process_id] = ephem_path
+                elif svc_type == "icecast_server":
+                    icecast_bin = "icecast2"
+                    build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    build = None
+                    if build_id:
+                        build = session.query(FfmpegBuild).get(build_id)
+
+                    if not (build and build.binary_path and os.path.exists(build.binary_path)):
+                        build = session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == 'icecast2',
+                            FfmpegBuild.status == 'ready',
+                            FfmpegBuild.is_default == True
+                        ).first() or session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == 'icecast2',
+                            FfmpegBuild.status == 'ready'
+                        ).first()
+
+                    if build and build.binary_path and os.path.exists(build.binary_path):
+                        icecast_bin = build.binary_path
+                        if not cfg.get("software_build_id"):
+                            cfg["software_build_id"] = build.id
+                            cfg["ffmpeg_build_id"] = build.id
+                            media_proc.config = cfg
+                    elif shutil.which("icecast2"):
+                        icecast_bin = shutil.which("icecast2")
+                    elif shutil.which("icecast"):
+                        icecast_bin = shutil.which("icecast")
+                    else:
+                        raise FileNotFoundError("Icecast2 binary not found. Please install Icecast2 ('sudo apt install icecast2') or compile it in Settings → Software Engine.")
+
+                    cmd, ephem_path = self._build_icecast_config_and_cmd(media_proc, icecast_bin, session, log_storage_path=logs_dir)
+                    self.ephemeral_configs[process_id] = ephem_path
+                elif svc_type == "desktop":
+                    if not shutil.which("Xvfb"):
+                        raise FileNotFoundError("Xvfb binary not found. Please install xvfb on the host system.")
+                    if not shutil.which("x11vnc"):
+                        raise FileNotFoundError("x11vnc binary not found. Please install x11vnc on the host system.")
+
+                    xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port = self._build_desktop_cmds(media_proc)
+                    cmd = xvfb_cmd
+                elif svc_type == "kiosk_browser":
+                    kiosk_cmd, display_num, kiosk_profile_dir = self._build_kiosk_cmds(media_proc, session)
+                    cmd = kiosk_cmd
+                    k_mode = str((media_proc.config or {}).get("kiosk_config", {}).get("profile_mode", "ephemeral")).lower()
+                    if k_mode != "persistent" and kiosk_profile_dir:
+                        self.ephemeral_configs[process_id] = kiosk_profile_dir
                 else:
-                    raise FileNotFoundError("MediaMTX binary not found. Please install MediaMTX in Settings → Software Engine.")
+                    # Determine which FFmpeg binary to use
+                    ffmpeg_bin = self.ffmpeg_path  # Default fallback
+                    ffmpeg_build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    if ffmpeg_build_id:
+                        build = session.query(FfmpegBuild).get(ffmpeg_build_id)
+                        if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+                            ffmpeg_bin = build.ffmpeg_binary
+                            self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
 
-                cmd, ephem_path = self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session)
-                self.ephemeral_configs[process_id] = ephem_path
-            elif svc_type == "icecast_server":
-                icecast_bin = "icecast2"
-                build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
-                build = None
-                if build_id:
-                    build = session.query(FfmpegBuild).get(build_id)
-
-                if not (build and build.binary_path and os.path.exists(build.binary_path)):
-                    build = session.query(FfmpegBuild).filter(
-                        FfmpegBuild.software_type == 'icecast2',
-                        FfmpegBuild.status == 'ready',
-                        FfmpegBuild.is_default == True
-                    ).first() or session.query(FfmpegBuild).filter(
-                        FfmpegBuild.software_type == 'icecast2',
-                        FfmpegBuild.status == 'ready'
-                    ).first()
-
-                if build and build.binary_path and os.path.exists(build.binary_path):
-                    icecast_bin = build.binary_path
-                    if not cfg.get("software_build_id"):
-                        cfg["software_build_id"] = build.id
-                        cfg["ffmpeg_build_id"] = build.id
-                        media_proc.config = cfg
-                elif shutil.which("icecast2"):
-                    icecast_bin = shutil.which("icecast2")
-                elif shutil.which("icecast"):
-                    icecast_bin = shutil.which("icecast")
-                else:
-                    raise FileNotFoundError("Icecast2 binary not found. Please install Icecast2 ('sudo apt install icecast2') or compile it in Settings → Software Engine.")
-
-                cmd, ephem_path = self._build_icecast_config_and_cmd(media_proc, icecast_bin, session, log_storage_path=logs_dir)
-                self.ephemeral_configs[process_id] = ephem_path
-            elif svc_type == "desktop":
-                if not shutil.which("Xvfb"):
-                    media_proc.status = 'error'
-                    session.commit()
-                    raise FileNotFoundError("Xvfb binary not found. Please install xvfb on the host system.")
-                if not shutil.which("x11vnc"):
-                    media_proc.status = 'error'
-                    session.commit()
-                    raise FileNotFoundError("x11vnc binary not found. Please install x11vnc on the host system.")
-
-                xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port = self._build_desktop_cmds(media_proc)
-                cmd = xvfb_cmd
-            elif svc_type == "kiosk_browser":
-                kiosk_cmd, display_num, kiosk_profile_dir = self._build_kiosk_cmds(media_proc, session)
-                cmd = kiosk_cmd
-                k_mode = str((media_proc.config or {}).get("kiosk_config", {}).get("profile_mode", "ephemeral")).lower()
-                if k_mode != "persistent" and kiosk_profile_dir:
-                    self.ephemeral_configs[process_id] = kiosk_profile_dir
-            else:
-                # Determine which FFmpeg binary to use
-                ffmpeg_bin = self.ffmpeg_path  # Default fallback
-                ffmpeg_build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
-                if ffmpeg_build_id:
-                    build = session.query(FfmpegBuild).get(ffmpeg_build_id)
-                    if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
-                        ffmpeg_bin = build.ffmpeg_binary
-                        self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
-
-                # Resolve and validate paths before starting
-                import copy
-                val_input = copy.deepcopy(cfg.get("input_config", {}))
-                val_output = copy.deepcopy(cfg.get("output_config", {}))
-                val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
-                self._resolve_config_paths(val_input, val_output, val_filter)
-                try:
+                    # Resolve and validate paths before starting
+                    import copy
+                    val_input = copy.deepcopy(cfg.get("input_config", {}))
+                    val_output = copy.deepcopy(cfg.get("output_config", {}))
+                    val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
+                    self._resolve_config_paths(val_input, val_output, val_filter)
                     self._validate_paths(val_input, val_output, val_filter)
-                except Exception as val_err:
-                    media_proc.status = 'error'
-                    session.commit()
-                    raise val_err
 
-                cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
+                    cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
 
-            proc_name = media_proc.name
-            session.commit()  # Save changes and release write lock immediately!
-            
-        # Ensure log directory exists and prepare file permissions for progress/preview files
-        os.makedirs(logs_dir, exist_ok=True)
-        log_path = os.path.join(logs_dir, f"process_{process_id}.log")
-        prepare_process_file_permissions(process_id=process_id, logger=self.logger)
+                proc_name = media_proc.name
+                session.commit()  # Save changes and release write lock immediately!
+                
+            # Ensure log directory exists and prepare file permissions for progress/preview files
+            os.makedirs(logs_dir, exist_ok=True)
+            log_path = os.path.join(logs_dir, f"process_{process_id}.log")
+            prepare_process_file_permissions(process_id=process_id, logger=self.logger)
 
-        # 2. Spawn subprocess (outside of any database session locks)
-        self.logger.info(f"Starting service '{proc_name}' ({svc_type}): {shlex.join(cmd)}")
-        try:
-            self.log_buffers[process_id] = collections.deque(maxlen=100)
+            # 2. Spawn subprocess (outside of any database session locks)
+            self.logger.info(f"Starting service '{proc_name}' ({svc_type}): {shlex.join(cmd)}")
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
             
             try:
@@ -492,7 +526,6 @@ class ProcessManager:
                         asoundrc_file = os.path.join(kiosk_profile, ".asoundrc")
                         if not os.path.exists(asoundrc_file):
                             try:
-                                import shutil
                                 shutil.copy2(asound_cfg_file, asoundrc_file)
                             except Exception:
                                 pass
@@ -541,6 +574,7 @@ class ProcessManager:
                 if media_proc:
                     media_proc.pid = proc.pid
                     media_proc.status = 'running'
+                    media_proc.last_error = None
                     media_proc.last_start = datetime.utcnow()
                     media_proc.fps = "0"
                     media_proc.bitrate = "0 kb/s"
@@ -553,13 +587,12 @@ class ProcessManager:
             self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, proc))
             
         except Exception as e:
-            self.logger.exception(f"Failed to start process {process_id}")
-            with self.db_session_factory() as session:
-                from database.models import Service
-                media_proc = session.query(Service).get(process_id)
-                if media_proc:
-                    media_proc.status = 'error'
-                    session.commit()
+            self.logger.exception(f"Failed to start process {process_id} ({svc_name})")
+            _record_startup_error(str(e))
+            from core.resource_lock_manager import resource_lock_manager
+            resource_lock_manager.release_lock("service", process_id)
+            await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+            raise
 
     def notify_service_crash(self, process_id: int, process_name: str, exit_code: int = 1, is_initial_crash: bool = True):
         from core.notification_manager import NotificationManager
@@ -654,7 +687,7 @@ class ProcessManager:
                             except Exception:
                                 pass
                 
-                is_alive = psutil.pid_exists(target_pid) if target_pid else (proc.returncode is None)
+                is_alive = (proc.returncode is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
                 if is_alive:
                     try:
                         proc.terminate()
@@ -681,7 +714,7 @@ class ProcessManager:
                             except Exception:
                                 pass
                 
-                is_alive = psutil.pid_exists(target_pid) if target_pid else (proc.returncode is None)
+                is_alive = (proc.returncode is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
                 if is_alive:
                     try:
                         proc.kill()

@@ -356,6 +356,22 @@ class Service(Base):
         self._set_config_key('software_build_id', val)
 
     @property
+    def last_error(self):
+        return self.config.get('last_error') if self.config else None
+
+    @last_error.setter
+    def last_error(self, val):
+        self._set_config_key('last_error', val)
+
+    @property
+    def error_message(self):
+        return self.last_error
+
+    @error_message.setter
+    def error_message(self, val):
+        self.last_error = val
+
+    @property
     def pending_changes(self) -> bool:
         if self.status != 'running' or not self.last_started_config:
             return False
