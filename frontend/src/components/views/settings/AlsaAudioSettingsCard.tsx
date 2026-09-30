@@ -807,11 +807,25 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   useEffect(() => {
     if (cards.length === 0) return;
     fetchTopology(selectedCardIdx);
-    connectMeterWebSocket(selectedCardIdx);
+
+    const selectedCard = cards.find(c => c.card_index === selectedCardIdx);
+    const isLoopbackCard = selectedCard && (
+      (selectedCard.card_id && selectedCard.card_id.toLowerCase().includes('loopback')) ||
+      (selectedCard.name && selectedCard.name.toLowerCase().includes('loopback')) ||
+      (selectedCard.driver && selectedCard.driver.toLowerCase().includes('loopback'))
+    );
+
+    if (!isLoopbackCard) {
+      connectMeterWebSocket(selectedCardIdx);
+    } else if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
   }, [selectedCardIdx, cards]);

@@ -105,46 +105,15 @@ class AlsaManager:
         is_enum = elem_type == SND_CTL_ELEM_TYPE_ENUMERATED or elem_str == "ENUMERATED"
 
         if is_loopback:
-            # Dedicated classification for snd-aloop devices
-            name_lower = name.lower()
-            if "notify" in name_lower:
-                return {
-                    "type": "ignored",
-                    "group": "Ignored",
-                    "category": "ignored",
-                    "is_meter": False,
-                    "matrix_source": None
-                }
-
-            if "rate shift" in name_lower:
-                return {
-                    "type": "ignored",
-                    "group": "Ignored",
-                    "category": "ignored",
-                    "is_meter": False,
-                    "matrix_source": None
-                }
-
-            category = "virtual_capture" if device == 1 or "capture" in name_lower else "virtual_playout"
-            group = f"Loopback Capture (Subdevice {subdevice})" if category == "virtual_capture" else f"Loopback Playout (Subdevice {subdevice})"
-            matrix_src = f"PCM {subdevice} Playback" if category == "virtual_capture" else None
-
-            if any(k in name_lower for k in ["slave active", "slave rate", "slave channels", "slave format", "slave access"]) or is_readonly:
-                return {
-                    "type": "telemetry",
-                    "group": group,
-                    "category": category,
-                    "is_meter": True,
-                    "matrix_source": matrix_src
-                }
-
-            ctrl_type = "switch" if is_bool else "integer" if is_int else "enum" if is_enum else "other"
+            # Dedicated classification for snd-aloop devices:
+            # snd-aloop exposes internal kernel sync controls (Slave Active, Slave Rate, Notify, Rate Shift)
+            # that are not audio controls or peak meters. Ignore them so Loopback strips remain clean.
             return {
-                "type": ctrl_type,
-                "group": group,
-                "category": category,
+                "type": "ignored",
+                "group": "Ignored",
+                "category": "ignored",
                 "is_meter": False,
-                "matrix_source": matrix_src
+                "matrix_source": None
             }
 
         # Ignore redundant internal monitoring crossover mode enums (e.g. 'Line 0 Line 0 Monitor Playback Mode')
@@ -637,6 +606,14 @@ class AlsaManager:
 
     def read_meters(self, card_idx: int) -> Dict[int, List[int]]:
         """Fast-path reading for Vumeters (numids with meter type)."""
+        card_info = next((c for c in self.get_cards() if str(c.get("card_index")) == str(card_idx)), None)
+        if card_info:
+            c_name = f"{card_info.get('card_id', '')} {card_info.get('name', '')} {card_info.get('driver', '')}".lower()
+            if "loopback" in c_name:
+                return {}
+        elif str(card_idx).lower() == "loopback":
+            return {}
+
         topology = self.get_card_topology(card_idx)
         meters_data = {}
 
