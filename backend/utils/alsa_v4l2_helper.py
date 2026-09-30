@@ -125,6 +125,22 @@ def build_alsa_devices(dev_info: dict, subs: list) -> List[dict]:
     if " [" in card_name:
         card_name = card_name.split(" [")[0]
 
+    is_loopback = "loopback" in card_name.lower() or "loopback" in device_name.lower()
+
+    if is_loopback:
+        # snd-aloop topology:
+        # Device 0 is designated for Playout (Browser / App output)
+        # Device 1 is designated for Capture (FFmpeg / Ingest input)
+        side_label = "Playback" if str(device) == "0" else "Capture"
+        sub_list = subs if len(subs) > 0 else ["0"]
+        return [
+            {
+                "device": f"hw:{card},{device},{sub}",
+                "name": f"ALSA Loopback - {side_label} Subdevice {sub} (hw:{card},{device},{sub})"
+            }
+            for sub in sub_list
+        ]
+
     friendly_name = f"{card_name} - {device_name}"
 
     if len(subs) > 1:

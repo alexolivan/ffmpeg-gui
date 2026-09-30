@@ -3,6 +3,7 @@ import subprocess
 import psutil
 import logging
 import os
+import re
 import shlex
 import shutil
 from datetime import datetime
@@ -31,6 +32,8 @@ class ProcessManager:
         self.ffmpeg_path = self._detect_ffmpeg()
         self._spawn_lock: Optional[asyncio.Lock] = None
         self.ephemeral_configs: Dict[int, str] = {}
+        self.auxiliary_processes: Dict[int, List[asyncio.subprocess.Process]] = {}
+        self.auxiliary_pids: Dict[int, List[int]] = {}
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -84,6 +87,10 @@ class ProcessManager:
 
         if not log_storage_path:
             log_storage_path = os.path.abspath("data/logs")
+        try:
+            os.makedirs(log_storage_path, exist_ok=True)
+        except Exception:
+            pass
         return log_storage_path
 
     def get_process_log_path(self, process_id: int, log_storage_id: Optional[int] = None, session: Optional[Any] = None) -> str:
@@ -97,208 +104,261 @@ class ProcessManager:
         if not is_restart and not is_on_demand:
             dependency_manager.mark_pinned(process_id)
 
-        # Get service config to check dependency permissions
-        allow_start_deps = True
+        # 0. Early log and service resolution for diagnostics
+        logs_dir = None
+        log_path = None
+        svc_name = f"Service #{process_id}"
         with self.db_session_factory() as session:
             from database.models import Service
             svc = session.get(Service, process_id)
             if svc:
-                allow_start_deps = getattr(svc, 'allow_auto_start_deps', True)
+                svc_name = svc.name
+                log_storage_id = (svc.config or {}).get("log_storage_id")
+                logs_dir = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
+                log_path = os.path.join(logs_dir, f"process_{process_id}.log")
 
-        # Start auto-managed dependencies first
-        await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
+        if not is_restart:
+            self.log_buffers[process_id] = collections.deque(maxlen=100)
+        elif process_id not in self.log_buffers:
+            self.log_buffers[process_id] = collections.deque(maxlen=100)
 
-        # Check and acquire exclusive resource lock for publisher outputs
-        from core.resource_lock_manager import resource_lock_manager
-        with self.db_session_factory() as session:
-            from database.models import Service
-            media_proc_chk = session.get(Service, process_id)
-            if media_proc_chk:
-                out_cfg_chk = (media_proc_chk.config or {}).get("output_config") or media_proc_chk.output_config
-                ok_lock, err_lock, lock_info = resource_lock_manager.acquire_lock(
-                    owner_type="service",
-                    owner_id=process_id,
-                    output_config=out_cfg_chk,
-                    owner_name=media_proc_chk.name
-                )
-                if not ok_lock:
-                    self.logger.error(f"Cannot start service {process_id}: {err_lock}")
-                    media_proc_chk.status = "error"
-                    media_proc_chk.error_message = err_lock
-                    session.commit()
-                    await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+        def _record_startup_error(error_msg: str):
+            self.logger.error(f"Cannot start service {process_id} ({svc_name}): {error_msg}")
+            from datetime import timezone
+            now_iso = datetime.now(timezone.utc).isoformat()
+            if not now_iso.endswith("Z") and "+" not in now_iso:
+                now_iso += "Z"
+
+            err_banner = f"\n--- PROCESS START ERROR AT {now_iso} ---\nERROR: {error_msg}\n"
+            if log_path:
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    write_mode = "ab" if is_restart else "wb"
+                    with open(log_path, write_mode) as f:
+                        f.write(err_banner.encode("utf-8"))
+                except Exception as f_err:
+                    self.logger.error(f"Failed writing startup error to {log_path}: {f_err}")
+
+            for line in err_banner.strip().splitlines():
+                if line.strip():
+                    self._handle_log_msg(process_id, line.strip(), status_re=None)
+
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service, ServiceLog
+                    sp = session.get(Service, process_id)
+                    if sp:
+                        sp.status = 'error'
+                        sp.last_error = error_msg
+                        session.add(ServiceLog(service_id=process_id, level="ERROR", message=f"Startup Error: {error_msg}"))
+                        session.commit()
+            except Exception as db_err:
+                self.logger.error(f"Failed persisting service error in DB: {db_err}")
+
+        try:
+            # Get service config to check dependency permissions
+            allow_start_deps = True
+            with self.db_session_factory() as session:
+                from database.models import Service
+                svc = session.get(Service, process_id)
+                if svc:
+                    allow_start_deps = getattr(svc, 'allow_auto_start_deps', True)
+
+            # Start auto-managed dependencies first
+            await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
+
+            # Check and acquire exclusive resource lock for publisher outputs
+            from core.resource_lock_manager import resource_lock_manager
+            with self.db_session_factory() as session:
+                from database.models import Service
+                media_proc_chk = session.get(Service, process_id)
+                if media_proc_chk:
+                    out_cfg_chk = (media_proc_chk.config or {}).get("output_config") or media_proc_chk.output_config
+                    ok_lock, err_lock, lock_info = resource_lock_manager.acquire_lock(
+                        owner_type="service",
+                        owner_id=process_id,
+                        output_config=out_cfg_chk,
+                        owner_name=media_proc_chk.name
+                    )
+                    if not ok_lock:
+                        _record_startup_error(err_lock)
+                        await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+                        return
+
+            # Acquire remote peer lease if configured
+            with self.db_session_factory() as session:
+                from database.models import Service
+                svc_remote = session.get(Service, process_id)
+                if svc_remote:
+                    cfg_remote = svc_remote.config or {}
+                    out_cfg_remote = (cfg_remote.get("output_config") or svc_remote.output_config) or {}
+                    in_cfg_remote = (cfg_remote.get("input_config") or svc_remote.input_config) or {}
+                    peer_node_id = out_cfg_remote.get("peer_node_id") or in_cfg_remote.get("peer_node_id")
+                    peer_svc_id = out_cfg_remote.get("peer_service_id") or in_cfg_remote.get("peer_service_id")
+                    if peer_node_id and peer_svc_id:
+                        from core.peer_manager import peer_manager
+                        try:
+                            res_info = resource_lock_manager.extract_resource_info(out_cfg_remote)
+                            res_path = res_info["resource_path"] if res_info else None
+                            ok_peer, peer_err = await asyncio.to_thread(
+                                peer_manager.acquire_remote_lease,
+                                session,
+                                int(peer_node_id),
+                                int(peer_svc_id),
+                                resource_path=res_path
+                            )
+                            if not ok_peer:
+                                err_msg = peer_err or f"Failed to acquire remote lease on peer node {peer_node_id}"
+                                _record_startup_error(err_msg)
+                                resource_lock_manager.release_lock("service", process_id)
+                                await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+                                return
+                        except Exception as e:
+                            self.logger.warning(f"Failed to acquire remote lease on peer node {peer_node_id}: {e}")
+            
+            debug_mode = False
+            
+            # 1. Fetch config and prepare snap in a quick database transaction
+            with self.db_session_factory() as session:
+                from database.models import Service, FfmpegBuild, ServiceLog, Storage
+                media_proc = session.query(Service).get(process_id)
+                if not media_proc:
+                    _record_startup_error(f"Service {process_id} not found in DB")
                     return
 
-        # Acquire remote peer lease if configured
-        with self.db_session_factory() as session:
-            from database.models import Service
-            svc_remote = session.get(Service, process_id)
-            if svc_remote:
-                cfg_remote = svc_remote.config or {}
-                out_cfg_remote = cfg_remote.get("output_config") or svc_remote.output_config or {}
-                peer_node_id = out_cfg_remote.get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id")
-                peer_svc_id = out_cfg_remote.get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id")
-                if peer_node_id and peer_svc_id:
-                    from core.peer_manager import peer_manager
-                    try:
-                        res_info = resource_lock_manager.extract_resource_info(out_cfg_remote)
-                        res_path = res_info["resource_path"] if res_info else None
-                        ok_peer, peer_err = await asyncio.to_thread(
-                            peer_manager.acquire_remote_lease,
-                            session,
-                            int(peer_node_id),
-                            int(peer_svc_id),
-                            resource_path=res_path
-                        )
-                        if not ok_peer:
-                            err_msg = peer_err or f"Failed to acquire remote lease on peer node {peer_node_id}"
-                            self.logger.error(f"Cannot start service {process_id}: {err_msg}")
-                            svc_remote.status = "error"
-                            svc_remote.error_message = err_msg
-                            session.commit()
-                            resource_lock_manager.release_lock("service", process_id)
-                            await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
-                            return
-                    except Exception as e:
-                        self.logger.warning(f"Failed to acquire remote lease on peer node {peer_node_id}: {e}")
-        
-        logs_dir = None
-        debug_mode = False
-        
-        # 1. Fetch config and prepare snap in a quick database transaction
-        with self.db_session_factory() as session:
-            from database.models import Service, FfmpegBuild, ServiceLog, Storage
-            media_proc = session.query(Service).get(process_id)
-            if not media_proc:
-                self.logger.error(f"Service {process_id} not found in DB")
-                return
+                # Clear old logs from DB to prevent mixing previous execution output
+                session.query(ServiceLog).filter(ServiceLog.service_id == process_id).delete()
 
-            # Clear old logs from DB to prevent mixing previous execution output
-            session.query(ServiceLog).filter(ServiceLog.service_id == process_id).delete()
-
-            # Save configuration snapshot at launch
-            media_proc.last_started_config = {
-                "name": media_proc.name,
-                "config": media_proc.config
-            }
-            if not is_restart:
-                self.restart_counts.pop(process_id, None)
-                media_proc.restart_count = 0
-            self.srt_has_had_activity[process_id] = False
-            
-            pending = self.pending_restarts.pop(process_id, None)
-            if pending and pending != asyncio.current_task():
-                pending.cancel()
-
-            cfg = media_proc.config or {}
-
-            # Resolve log_storage
-            log_storage_id = cfg.get("log_storage_id")
-            log_storage_path = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
-            logs_dir = log_storage_path
-            debug_mode = cfg.get("debug_mode", False)
-            svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
-
-            if svc_type == "mediamtx_hub":
-                mediamtx_bin = "mediamtx"
-                build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
-                build = None
-                if build_id:
-                    build = session.query(FfmpegBuild).get(build_id)
+                # Save configuration snapshot at launch
+                media_proc.last_started_config = {
+                    "name": media_proc.name,
+                    "config": media_proc.config
+                }
+                if not is_restart:
+                    self.restart_counts.pop(process_id, None)
+                    media_proc.restart_count = 0
+                self.srt_has_had_activity[process_id] = False
                 
-                if not (build and build.binary_path and os.path.exists(build.binary_path)):
-                    # Fallback to default or any ready MediaMTX build in database
-                    build = session.query(FfmpegBuild).filter(
-                        FfmpegBuild.software_type == 'mediamtx',
-                        FfmpegBuild.status == 'ready',
-                        FfmpegBuild.is_default == True
-                    ).first() or session.query(FfmpegBuild).filter(
-                        FfmpegBuild.software_type == 'mediamtx',
-                        FfmpegBuild.status == 'ready'
-                    ).first()
+                pending = self.pending_restarts.pop(process_id, None)
+                if pending and pending != asyncio.current_task():
+                    pending.cancel()
 
-                if build and build.binary_path and os.path.exists(build.binary_path):
-                    mediamtx_bin = build.binary_path
-                    if not cfg.get("software_build_id"):
-                        cfg["software_build_id"] = build.id
-                        cfg["ffmpeg_build_id"] = build.id
-                        media_proc.config = cfg
-                elif shutil.which("mediamtx"):
-                    mediamtx_bin = shutil.which("mediamtx")
+                cfg = media_proc.config or {}
+
+                # Resolve log_storage
+                log_storage_id = cfg.get("log_storage_id")
+                log_storage_path = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
+                logs_dir = log_storage_path
+                debug_mode = cfg.get("debug_mode", False)
+                svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
+
+                if svc_type == "mediamtx_hub":
+                    mediamtx_bin = "mediamtx"
+                    build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    build = None
+                    if build_id:
+                        build = session.query(FfmpegBuild).get(build_id)
+                    
+                    if not (build and build.binary_path and os.path.exists(build.binary_path)):
+                        # Fallback to default or any ready MediaMTX build in database
+                        build = session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == 'mediamtx',
+                            FfmpegBuild.status == 'ready',
+                            FfmpegBuild.is_default == True
+                        ).first() or session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == 'mediamtx',
+                            FfmpegBuild.status == 'ready'
+                        ).first()
+
+                    if build and build.binary_path and os.path.exists(build.binary_path):
+                        mediamtx_bin = build.binary_path
+                        if not cfg.get("software_build_id"):
+                            cfg["software_build_id"] = build.id
+                            cfg["ffmpeg_build_id"] = build.id
+                            media_proc.config = cfg
+                    elif shutil.which("mediamtx"):
+                        mediamtx_bin = shutil.which("mediamtx")
+                    else:
+                        raise FileNotFoundError("MediaMTX binary not found. Please install MediaMTX in Settings → Software Engine.")
+
+                    cmd, ephem_path = self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session)
+                    self.ephemeral_configs[process_id] = ephem_path
+                elif svc_type == "icecast_server":
+                    icecast_bin = "icecast2"
+                    build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    build = None
+                    if build_id:
+                        build = session.query(FfmpegBuild).get(build_id)
+
+                    if not (build and build.binary_path and os.path.exists(build.binary_path)):
+                        build = session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == 'icecast2',
+                            FfmpegBuild.status == 'ready',
+                            FfmpegBuild.is_default == True
+                        ).first() or session.query(FfmpegBuild).filter(
+                            FfmpegBuild.software_type == 'icecast2',
+                            FfmpegBuild.status == 'ready'
+                        ).first()
+
+                    if build and build.binary_path and os.path.exists(build.binary_path):
+                        icecast_bin = build.binary_path
+                        if not cfg.get("software_build_id"):
+                            cfg["software_build_id"] = build.id
+                            cfg["ffmpeg_build_id"] = build.id
+                            media_proc.config = cfg
+                    elif shutil.which("icecast2"):
+                        icecast_bin = shutil.which("icecast2")
+                    elif shutil.which("icecast"):
+                        icecast_bin = shutil.which("icecast")
+                    else:
+                        raise FileNotFoundError("Icecast2 binary not found. Please install Icecast2 ('sudo apt install icecast2') or compile it in Settings → Software Engine.")
+
+                    cmd, ephem_path = self._build_icecast_config_and_cmd(media_proc, icecast_bin, session, log_storage_path=logs_dir)
+                    self.ephemeral_configs[process_id] = ephem_path
+                elif svc_type == "desktop":
+                    if not shutil.which("Xvfb"):
+                        raise FileNotFoundError("Xvfb binary not found. Please install xvfb on the host system.")
+                    if not shutil.which("x11vnc"):
+                        raise FileNotFoundError("x11vnc binary not found. Please install x11vnc on the host system.")
+
+                    xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port = self._build_desktop_cmds(media_proc)
+                    cmd = xvfb_cmd
+                elif svc_type == "kiosk_browser":
+                    kiosk_cmd, display_num, kiosk_profile_dir = self._build_kiosk_cmds(media_proc, session)
+                    cmd = kiosk_cmd
+                    k_mode = str((media_proc.config or {}).get("kiosk_config", {}).get("profile_mode", "ephemeral")).lower()
+                    if k_mode != "persistent" and kiosk_profile_dir:
+                        self.ephemeral_configs[process_id] = kiosk_profile_dir
                 else:
-                    raise FileNotFoundError("MediaMTX binary not found. Please install MediaMTX in Settings → Software Engine.")
+                    # Determine which FFmpeg binary to use
+                    ffmpeg_bin = self.ffmpeg_path  # Default fallback
+                    ffmpeg_build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    if ffmpeg_build_id:
+                        build = session.query(FfmpegBuild).get(ffmpeg_build_id)
+                        if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
+                            ffmpeg_bin = build.ffmpeg_binary
+                            self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
 
-                cmd, ephem_path = self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session)
-                self.ephemeral_configs[process_id] = ephem_path
-            elif svc_type == "icecast_server":
-                icecast_bin = "icecast2"
-                build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
-                build = None
-                if build_id:
-                    build = session.query(FfmpegBuild).get(build_id)
-
-                if not (build and build.binary_path and os.path.exists(build.binary_path)):
-                    build = session.query(FfmpegBuild).filter(
-                        FfmpegBuild.software_type == 'icecast2',
-                        FfmpegBuild.status == 'ready',
-                        FfmpegBuild.is_default == True
-                    ).first() or session.query(FfmpegBuild).filter(
-                        FfmpegBuild.software_type == 'icecast2',
-                        FfmpegBuild.status == 'ready'
-                    ).first()
-
-                if build and build.binary_path and os.path.exists(build.binary_path):
-                    icecast_bin = build.binary_path
-                    if not cfg.get("software_build_id"):
-                        cfg["software_build_id"] = build.id
-                        cfg["ffmpeg_build_id"] = build.id
-                        media_proc.config = cfg
-                elif shutil.which("icecast2"):
-                    icecast_bin = shutil.which("icecast2")
-                elif shutil.which("icecast"):
-                    icecast_bin = shutil.which("icecast")
-                else:
-                    raise FileNotFoundError("Icecast2 binary not found. Please install Icecast2 ('sudo apt install icecast2') or compile it in Settings → Software Engine.")
-
-                cmd, ephem_path = self._build_icecast_config_and_cmd(media_proc, icecast_bin, session, log_storage_path=logs_dir)
-                self.ephemeral_configs[process_id] = ephem_path
-            else:
-                # Determine which FFmpeg binary to use
-                ffmpeg_bin = self.ffmpeg_path  # Default fallback
-                ffmpeg_build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
-                if ffmpeg_build_id:
-                    build = session.query(FfmpegBuild).get(ffmpeg_build_id)
-                    if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
-                        ffmpeg_bin = build.ffmpeg_binary
-                        self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
-
-                # Resolve and validate paths before starting
-                import copy
-                val_input = copy.deepcopy(cfg.get("input_config", {}))
-                val_output = copy.deepcopy(cfg.get("output_config", {}))
-                val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
-                self._resolve_config_paths(val_input, val_output, val_filter)
-                try:
+                    # Resolve and validate paths before starting
+                    import copy
+                    val_input = copy.deepcopy(cfg.get("input_config", {}))
+                    val_output = copy.deepcopy(cfg.get("output_config", {}))
+                    val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
+                    self._resolve_config_paths(val_input, val_output, val_filter)
                     self._validate_paths(val_input, val_output, val_filter)
-                except Exception as val_err:
-                    media_proc.status = 'error'
-                    session.commit()
-                    raise val_err
 
-                cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
+                    cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
 
-            proc_name = media_proc.name
-            session.commit()  # Save changes and release write lock immediately!
-            
-        # Ensure log directory exists and prepare file permissions for progress/preview files
-        os.makedirs(logs_dir, exist_ok=True)
-        log_path = os.path.join(logs_dir, f"process_{process_id}.log")
-        prepare_process_file_permissions(process_id=process_id, logger=self.logger)
+                proc_name = media_proc.name
+                session.commit()  # Save changes and release write lock immediately!
+                
+            # Ensure log directory exists and prepare file permissions for progress/preview files
+            os.makedirs(logs_dir, exist_ok=True)
+            log_path = os.path.join(logs_dir, f"process_{process_id}.log")
+            prepare_process_file_permissions(process_id=process_id, logger=self.logger)
 
-        # 2. Spawn subprocess (outside of any database session locks)
-        self.logger.info(f"Starting service '{proc_name}' ({svc_type}): {shlex.join(cmd)}")
-        try:
-            self.log_buffers[process_id] = collections.deque(maxlen=100)
+            # 2. Spawn subprocess (outside of any database session locks)
+            self.logger.info(f"Starting service '{proc_name}' ({svc_type}): {shlex.join(cmd)}")
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
             
             try:
@@ -326,13 +386,19 @@ class ProcessManager:
                         now_str += "Z"
 
                 if is_restart:
+                    header_text = f"\n--- PROCESS RESTART AT {now_str} (Attempt {self.restart_counts.get(process_id, 1)}) ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n"
                     with open(log_path, "ab") as f:
-                        header = f"\n--- PROCESS RESTART AT {now_str} (Attempt {self.restart_counts.get(process_id, 1)}) ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
-                        f.write(header)
+                        f.write(header_text.encode("utf-8"))
+                    for h_line in header_text.strip().splitlines():
+                        if h_line.strip():
+                            self._handle_log_msg(process_id, h_line.strip(), status_re=None)
                 else:
+                    header_text = f"--- PROCESS LAUNCH AT {now_str} ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n"
                     with open(log_path, "wb") as f:
-                        header = f"--- PROCESS LAUNCH AT {now_str} ---\nEXACT CLI COMMAND:\n{raw_cmd_str}\n\n".encode("utf-8")
-                        f.write(header)
+                        f.write(header_text.encode("utf-8"))
+                    for h_line in header_text.strip().splitlines():
+                        if h_line.strip():
+                            self._handle_log_msg(process_id, h_line.strip(), status_re=None)
             except Exception as file_err:
                 self.logger.error(f"Failed to prepare log file: {file_err}")
                 
@@ -354,6 +420,178 @@ class ProcessManager:
                         pass
                     self.processes[process_id] = proc
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                elif svc_type == "desktop":
+                    log_file_handle = open(log_path, "ab", buffering=0)
+                    desktop_sub_env = {**sub_env, "DISPLAY": f":{display_num}"}
+                    # 1. Spawn Xvfb
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=log_file_handle,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.DEVNULL,
+                        env=desktop_sub_env
+                    )
+                    self.processes[process_id] = proc
+                    try:
+                        log_file_handle.close()
+                    except Exception:
+                        pass
+
+                    # Wait for Xvfb display socket to appear (up to 5s)
+                    display_socket = f"/tmp/.X11-unix/X{display_num}"
+                    for _ in range(50):
+                        if os.path.exists(display_socket):
+                            break
+                        await asyncio.sleep(0.1)
+
+                    # 1. Spawn x11vnc as permanent X11 client
+                    await self._spawn_x11vnc(
+                        process_id=process_id,
+                        display_num=display_num,
+                        vnc_port=vnc_port,
+                        log_path=log_path,
+                        sub_env=desktop_sub_env
+                    )
+
+                    # 2. Allow deliberate settling window (1.5s) for slow/industrial systems
+                    # and ensuring x11vnc has fully attached its RFB frame monitoring on the X server
+                    await asyncio.sleep(1.5)
+
+                    # 3. Configure root cursor and background canvas via xsetroot with active polling
+                    if shutil.which("xsetroot"):
+                        for attempt in range(10):
+                            try:
+                                xsetroot_proc = await asyncio.create_subprocess_exec(
+                                    *xsetroot_cmd,
+                                    stdout=asyncio.subprocess.DEVNULL,
+                                    stderr=asyncio.subprocess.DEVNULL,
+                                    env=desktop_sub_env
+                                )
+                                code = await asyncio.wait_for(xsetroot_proc.wait(), timeout=1.0)
+                                if code == 0:
+                                    self.logger.info(f"xsetroot canvas/cursor applied to display :{display_num} (attempt {attempt + 1})")
+                                    break
+                            except Exception as xr_err:
+                                self.logger.debug(f"xsetroot attempt {attempt + 1} notice: {xr_err}")
+                            await asyncio.sleep(0.2)
+
+                    # 4. Disable screensaver via xset
+                    if shutil.which("xset"):
+                        try:
+                            xset_proc = await asyncio.create_subprocess_exec(
+                                *xset_cmd,
+                                stdout=asyncio.subprocess.DEVNULL,
+                                stderr=asyncio.subprocess.DEVNULL,
+                                env=desktop_sub_env
+                            )
+                            await asyncio.wait_for(xset_proc.wait(), timeout=2.0)
+                        except Exception as xset_err:
+                            self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
+
+                    asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                elif svc_type == "kiosk_browser":
+                    log_file_handle = open(log_path, "ab", buffering=0)
+                    target_desk_subdevice = None
+                    with self.db_session_factory() as session:
+                        from database.models import Service
+                        s_obj = session.get(Service, int(process_id)) if hasattr(session, "get") else session.query(Service).get(int(process_id))
+                        k_cfg = (s_obj.config or {}).get("kiosk_config", {}) if s_obj else {}
+                        p_mode = str(k_cfg.get("profile_mode", "ephemeral")).lower()
+                        desk_id = k_cfg.get("target_desktop_service_id")
+                        if desk_id:
+                            desk_obj = session.get(Service, int(desk_id)) if hasattr(session, "get") else session.query(Service).get(int(desk_id))
+                            if desk_obj:
+                                d_cfg = (desk_obj.config or {}).get("desktop_config", desk_obj.config or {})
+                                if d_cfg.get("alsa_subdevice") is not None:
+                                    try:
+                                        target_desk_subdevice = int(d_cfg.get("alsa_subdevice"))
+                                    except (ValueError, TypeError):
+                                        pass
+                    
+                    if p_mode == "persistent":
+                        kiosk_profile = os.path.abspath(f"data/kiosk_profiles/{process_id}")
+                    else:
+                        kiosk_profile = self.ephemeral_configs.get(process_id) or f"/tmp/kiosk_{process_id}"
+
+                    cache_dir = os.path.join(kiosk_profile, "cache")
+                    config_dir = os.path.join(kiosk_profile, "config")
+                    data_dir = os.path.join(kiosk_profile, "data")
+                    os.makedirs(cache_dir, exist_ok=True)
+                    os.makedirs(config_dir, exist_ok=True)
+                    os.makedirs(data_dir, exist_ok=True)
+
+                    is_chromium = any(c in " ".join(cmd[:2]).lower() for c in ("chrome", "chromium"))
+
+                    asound_cfg_file = os.path.join(kiosk_profile, "asound.conf")
+                    kiosk_sub_env = {
+                        **sub_env,
+                        "DISPLAY": f":{display_num}",
+                        "HOME": kiosk_profile,
+                        "XDG_CACHE_HOME": cache_dir,
+                        "XDG_CONFIG_HOME": config_dir,
+                        "XDG_DATA_HOME": data_dir,
+                        "NO_AT_BRIDGE": "1",
+                        "GTK_A11Y": "none",
+                        "GTK_MODULES": "",
+                        "MOZ_NO_REMOTE": "1",
+                    }
+                    if os.path.exists(asound_cfg_file):
+                        asoundrc_file = os.path.join(kiosk_profile, ".asoundrc")
+                        if not os.path.exists(asoundrc_file):
+                            try:
+                                shutil.copy2(asound_cfg_file, asoundrc_file)
+                            except Exception:
+                                pass
+
+                    if is_chromium:
+                        # Chromium natively supports "disabled:" to suppress D-Bus autolaunch without error
+                        kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
+                    else:
+                        # For Firefox/Gecko, ensure any DBus session or AT-SPI addresses are purged so dbus-launch (dbus-x11) can autolaunch cleanly
+                        kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
+                        kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
+
+                        # Configure apulse audio routing to isolated ALSA Loopback subdevice
+                        if target_desk_subdevice is not None:
+                            alsa_subdevice = target_desk_subdevice
+                        elif os.path.exists(asound_cfg_file):
+                            try:
+                                with open(asound_cfg_file, "r", encoding="utf-8") as acf:
+                                    sub_match = re.search(r"hw:Loopback,0,(\d+)", acf.read())
+                                    alsa_subdevice = int(sub_match.group(1)) if sub_match else (int(display_num) % 8)
+                            except Exception:
+                                alsa_subdevice = int(display_num) % 8
+                        else:
+                            alsa_subdevice = int(display_num) % 8
+
+                        kiosk_sub_env["APULSE_PLAYBACK_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+                        kiosk_sub_env["APULSE_CAPTURE_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+
+                        # Ensure LD_LIBRARY_PATH includes apulse multiarch libraries if present
+                        apulse_lib_dirs = [
+                            "/usr/lib/x86_64-linux-gnu/apulse",
+                            "/usr/lib/aarch64-linux-gnu/apulse",
+                            "/usr/lib/apulse",
+                            "/usr/local/lib/apulse",
+                        ]
+                        found_apulse_lib = next((p for p in apulse_lib_dirs if os.path.isdir(p)), None)
+                        if found_apulse_lib:
+                            existing_ld = kiosk_sub_env.get("LD_LIBRARY_PATH", "")
+                            kiosk_sub_env["LD_LIBRARY_PATH"] = f"{found_apulse_lib}:{existing_ld}".rstrip(":")
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=log_file_handle,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.DEVNULL,
+                        env=kiosk_sub_env
+                    )
+                    self.processes[process_id] = proc
+                    try:
+                        log_file_handle.close()
+                    except Exception:
+                        pass
+                    asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                    asyncio.create_task(self._ensure_kiosk_fullscreen(display_num))
                 else:
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
@@ -376,6 +614,7 @@ class ProcessManager:
                 if media_proc:
                     media_proc.pid = proc.pid
                     media_proc.status = 'running'
+                    media_proc.last_error = None
                     media_proc.last_start = datetime.utcnow()
                     media_proc.fps = "0"
                     media_proc.bitrate = "0 kb/s"
@@ -388,13 +627,12 @@ class ProcessManager:
             self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, proc))
             
         except Exception as e:
-            self.logger.exception(f"Failed to start process {process_id}")
-            with self.db_session_factory() as session:
-                from database.models import Service
-                media_proc = session.query(Service).get(process_id)
-                if media_proc:
-                    media_proc.status = 'error'
-                    session.commit()
+            self.logger.exception(f"Failed to start process {process_id} ({svc_name})")
+            _record_startup_error(str(e))
+            from core.resource_lock_manager import resource_lock_manager
+            resource_lock_manager.release_lock("service", process_id)
+            await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+            raise
 
     def notify_service_crash(self, process_id: int, process_name: str, exit_code: int = 1, is_initial_crash: bool = True):
         from core.notification_manager import NotificationManager
@@ -467,37 +705,136 @@ class ProcessManager:
             self.restart_counts.pop(process_id, None)
             
             if proc:
+                is_same_loop = getattr(proc, '_loop', None) is asyncio.get_running_loop()
                 if graceful:
-                    if proc.stdin:
+                    if proc.stdin and is_same_loop:
                         try:
                             proc.stdin.write(b'q')
                             await proc.stdin.drain()
                         except Exception:
                             pass
                     
-                    try:
-                        await asyncio.wait_for(proc.wait(), timeout=1.5)
-                    except asyncio.TimeoutError:
-                        pass
+                    if is_same_loop:
+                        try:
+                            await asyncio.wait_for(proc.wait(), timeout=1.5)
+                        except (asyncio.TimeoutError, RuntimeError, Exception):
+                            pass
+                    else:
+                        if target_pid and psutil.pid_exists(target_pid):
+                            try:
+                                p = psutil.Process(target_pid)
+                                await asyncio.to_thread(p.wait, timeout=1.5)
+                            except Exception:
+                                pass
                 
-                if proc.returncode is None:
+                is_alive = (proc.returncode is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
+                if is_alive:
                     try:
                         proc.terminate()
-                        await asyncio.wait_for(proc.wait(), timeout=2.0)
-                    except asyncio.TimeoutError:
-                        self.logger.warning(f"Process {process_id} ignored SIGTERM. Escalating to SIGKILL.")
-                    except Exception as e:
-                        self.logger.warning(f"Error terminating process {process_id}: {e}")
+                    except Exception:
+                        if target_pid:
+                            try:
+                                import signal
+                                os.kill(target_pid, signal.SIGTERM)
+                            except Exception:
+                                pass
+                    
+                    if is_same_loop:
+                        try:
+                            await asyncio.wait_for(proc.wait(), timeout=2.0)
+                        except (asyncio.TimeoutError, RuntimeError, Exception):
+                            self.logger.warning(f"Process {process_id} ignored SIGTERM or cross-loop wait failed. Escalating to SIGKILL.")
+                        except Exception as e:
+                            self.logger.warning(f"Error terminating process {process_id}: {e}")
+                    else:
+                        if target_pid and psutil.pid_exists(target_pid):
+                            try:
+                                p = psutil.Process(target_pid)
+                                await asyncio.to_thread(p.wait, timeout=2.0)
+                            except Exception:
+                                pass
                 
-                if proc.returncode is None:
+                is_alive = (proc.returncode is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
+                if is_alive:
                     try:
                         proc.kill()
-                        await asyncio.wait_for(proc.wait(), timeout=2.0)
-                    except Exception as e:
-                        self.logger.error(f"Failed to kill process {process_id}: {e}")
+                    except Exception:
+                        if target_pid:
+                            try:
+                                import signal
+                                os.kill(target_pid, signal.SIGKILL)
+                            except Exception:
+                                pass
+                    
+                    if is_same_loop:
+                        try:
+                            await asyncio.wait_for(proc.wait(), timeout=2.0)
+                        except Exception as e:
+                            self.logger.error(f"Failed to kill process {process_id}: {e}")
+                    else:
+                        if target_pid and psutil.pid_exists(target_pid):
+                            try:
+                                p = psutil.Process(target_pid)
+                                await asyncio.to_thread(p.wait, timeout=2.0)
+                            except Exception:
+                                pass
                 
                 if process_id in self.processes:
                     del self.processes[process_id]
+
+            # Terminate any auxiliary child processes (e.g. x11vnc for desktop services)
+            aux_procs = self.auxiliary_processes.pop(process_id, [])
+            for aux in aux_procs:
+                if aux and aux.returncode is None:
+                    try:
+                        if graceful:
+                            aux.terminate()
+                        else:
+                            aux.kill()
+                    except Exception:
+                        pass
+            if aux_procs:
+                try:
+                    same_loop_aux = [
+                        aux for aux in aux_procs 
+                        if aux and aux.returncode is None and getattr(aux, '_loop', None) is asyncio.get_running_loop()
+                    ]
+                    if same_loop_aux:
+                        await asyncio.wait_for(
+                            asyncio.gather(*(aux.wait() for aux in same_loop_aux), return_exceptions=True),
+                            timeout=2.0
+                        )
+                except Exception:
+                    pass
+                for aux in aux_procs:
+                    if aux and aux.returncode is None:
+                        try:
+                            aux.kill()
+                        except Exception:
+                            pass
+
+            # Also terminate any auxiliary PIDs tracked by PID (e.g. reattached x11vnc)
+            aux_pids = self.auxiliary_pids.pop(process_id, [])
+            for aux_pid in aux_pids:
+                if psutil.pid_exists(aux_pid):
+                    try:
+                        ap = psutil.Process(aux_pid)
+                        if graceful:
+                            ap.terminate()
+                        else:
+                            ap.kill()
+                    except Exception:
+                        pass
+            if aux_pids:
+                try:
+                    alive_aux = [psutil.Process(p) for p in aux_pids if psutil.pid_exists(p)]
+                    if alive_aux:
+                        _, still_alive = psutil.wait_procs(alive_aux, timeout=1.0)
+                        for ap in still_alive:
+                            try: ap.kill()
+                            except Exception: pass
+                except Exception:
+                    pass
 
             # Direct OS process termination for reattached processes or surviving PIDs
             if target_pid and psutil.pid_exists(target_pid):
@@ -529,11 +866,14 @@ class ProcessManager:
                     except Exception:
                         pass
 
-            # Clean up ephemeral RAM configuration file if present
+            # Clean up ephemeral RAM configuration file or browser profile directory if present
             ephem = self.ephemeral_configs.pop(process_id, None)
             if ephem and os.path.exists(ephem):
                 try:
-                    os.remove(ephem)
+                    if os.path.isdir(ephem):
+                        shutil.rmtree(ephem, ignore_errors=True)
+                    else:
+                        os.remove(ephem)
                 except Exception:
                     pass
 
@@ -571,8 +911,10 @@ class ProcessManager:
                     svc_remote = session.get(Service, process_id)
                     if svc_remote:
                         cfg_remote = svc_remote.config or {}
-                        peer_node_id = cfg_remote.get("output_config", {}).get("peer_node_id") or cfg_remote.get("input_config", {}).get("peer_node_id") or (svc_remote.output_config or {}).get("peer_node_id")
-                        peer_svc_id = cfg_remote.get("output_config", {}).get("peer_service_id") or cfg_remote.get("input_config", {}).get("peer_service_id") or (svc_remote.output_config or {}).get("peer_service_id")
+                        out_cfg_remote = (cfg_remote.get("output_config") or svc_remote.output_config) or {}
+                        in_cfg_remote = (cfg_remote.get("input_config") or svc_remote.input_config) or {}
+                        peer_node_id = out_cfg_remote.get("peer_node_id") or in_cfg_remote.get("peer_node_id")
+                        peer_svc_id = out_cfg_remote.get("peer_service_id") or in_cfg_remote.get("peer_service_id")
                         if peer_node_id and peer_svc_id:
                             from core.peer_manager import peer_manager
                             try:
@@ -1251,6 +1593,657 @@ class ProcessManager:
 
         return [icecast_bin, "-c", ephem_file], ephem_file
 
+    def _build_desktop_cmds(self, media_proc) -> Tuple[List[str], List[str], List[str], int, int]:
+        """
+        Builds command arguments for Xvfb, xset, and x11vnc for a virtual desktop service.
+        Returns (xvfb_cmd, xset_cmd, x11vnc_cmd, display_num, vnc_port).
+        """
+        cfg = media_proc.config or {}
+        desk_cfg = cfg.get("desktop_config", cfg)
+        display_num = int(desk_cfg.get("display_num", 99))
+        resolution = str(desk_cfg.get("resolution", "1920x1080"))
+        color_depth = int(desk_cfg.get("color_depth", 24))
+        vnc_port = int(desk_cfg.get("vnc_port", 5900 + display_num))
+
+        xvfb_bin = shutil.which("Xvfb") or "Xvfb"
+        xvfb_cmd = [
+            xvfb_bin,
+            f":{display_num}",
+            "-screen", "0", f"{resolution}x{color_depth}",
+            "-nocursor",
+            "-noreset",
+            "-nolisten", "tcp",
+            "-s", "0",
+            "-dpms",
+        ]
+
+        xset_bin = shutil.which("xset") or "xset"
+        xset_cmd = [
+            xset_bin,
+            "-display", f":{display_num}",
+            "s", "off",
+            "-dpms",
+            "s", "noblank",
+        ]
+
+        xsetroot_bin = shutil.which("xsetroot") or "xsetroot"
+        bg_color = str(desk_cfg.get("bg_color", "#1e293b"))
+        xsetroot_cmd = [
+            xsetroot_bin,
+            "-display", f":{display_num}",
+            "-cursor_name", "left_ptr",
+            "-solid", bg_color,
+        ]
+
+        x11vnc_bin = shutil.which("x11vnc") or "x11vnc"
+        x11vnc_cmd = [
+            x11vnc_bin,
+            "-display", f":{display_num}",
+            "-rfbport", str(vnc_port),
+            "-localhost",
+            "-nopw",
+            "-forever",
+            "-shared",
+            "-cursor", "arrow",
+            "-nocursorshape",
+        ]
+
+        return xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port
+
+    @staticmethod
+    def _is_sound_server_available() -> bool:
+        """Checks if a local PulseAudio or PipeWire daemon socket is available."""
+        if os.environ.get("PULSE_SERVER"):
+            return True
+        uid = os.geteuid() if hasattr(os, "geteuid") else 1000
+        for sock in (f"/run/user/{uid}/pulse/native", f"/run/user/{uid}/pipewire-0", "/var/run/pulse/native"):
+            if os.path.exists(sock):
+                return True
+        return False
+
+    def _build_kiosk_cmds(self, media_proc, session) -> Tuple[List[str], int, Optional[str]]:
+        """
+        Builds the CLI launch arguments for a kiosk_browser service using the Launcher Strategy Pattern.
+        Returns: (cmd, display_num, ephemeral_profile_dir)
+        """
+        from database.models import Service, FfmpegBuild
+        from core.software_manager import software_manager
+
+        cfg = media_proc.config or {}
+        k_cfg = cfg.get("kiosk_config", cfg)
+
+        # 1. Resolve target Virtual Desktop and DISPLAY
+        desktop_id = k_cfg.get("desktop_service_id")
+        if not desktop_id:
+            raise ValueError(f"Kiosk service '{media_proc.name}' requires a linked Virtual Desktop (desktop_service_id).")
+
+        desktop_svc = session.get(Service, int(desktop_id)) if hasattr(session, "get") else session.query(Service).get(int(desktop_id))
+        if not desktop_svc:
+            raise ValueError(f"Target Virtual Desktop service #{desktop_id} was not found.")
+
+        d_cfg = (desktop_svc.config or {}).get("desktop_config", desktop_svc.config or {})
+        display_num = int(d_cfg.get("display_num", 99))
+        resolution = str(d_cfg.get("resolution", "1920x1080")).lower()
+        if "x" in resolution:
+            parts = resolution.split("x", 1)
+            try:
+                desk_width = int(parts[0].strip())
+                desk_height = int(parts[1].strip())
+            except ValueError:
+                desk_width, desk_height = 1920, 1080
+        else:
+            desk_width, desk_height = 1920, 1080
+
+        # 2. Resolve browser engine and binary
+        engine_id = str(k_cfg.get("engine_id", "chromium")).lower()
+        if engine_id not in ("chromium", "firefox"):
+            engine_id = "chromium"
+
+        build_id = k_cfg.get("build_id") or cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or getattr(media_proc, "ffmpeg_build_id", None)
+        browser_bin = None
+
+        if build_id and str(build_id).lower() != "system":
+            build = session.get(FfmpegBuild, int(build_id)) if hasattr(session, "get") else session.query(FfmpegBuild).get(int(build_id))
+            if build and build.binary_path and os.path.exists(build.binary_path):
+                browser_bin = build.binary_path
+                if build.software_type in ("chromium", "firefox"):
+                    engine_id = build.software_type
+
+        if not browser_bin:
+            # Fallback to system audit or PATH
+            audit_res = software_manager.audit_system_binary(engine_id)
+            if audit_res.get("found") and audit_res.get("path"):
+                browser_bin = audit_res["path"]
+            elif engine_id == "chromium":
+                browser_bin = shutil.which("chromium") or shutil.which("google-chrome") or shutil.which("chromium-browser")
+            elif engine_id == "firefox":
+                browser_bin = shutil.which("firefox") or shutil.which("firefox-esr")
+
+        if not browser_bin or not os.path.exists(browser_bin):
+            raise FileNotFoundError(
+                f"No executable binary found for browser engine '{engine_id}'. "
+                f"Please install {engine_id} on the host system or provision an official release in Settings → Software."
+            )
+
+        apulse_bin = None
+        if engine_id == "firefox":
+            apulse_bin = shutil.which("apulse")
+            if not apulse_bin:
+                if not self._is_sound_server_available():
+                    raise FileNotFoundError(
+                        "Firefox audio on raw ALSA systems requires 'apulse'. "
+                        "Please install apulse on the host system ('sudo apt update && sudo apt install -y apulse')."
+                    )
+                self.logger.warning(
+                    "apulse not found on host; Firefox will attempt to use system PulseAudio/PipeWire "
+                    "which may not route audio to the isolated ALSA Loopback device."
+                )
+
+        # 3. Kiosk options
+        target_source = str(k_cfg.get("target_source", "https://google.com")).strip()
+        if not target_source:
+            target_source = "about:blank"
+
+        hide_scrollbars = bool(k_cfg.get("hide_scrollbars", True))
+        gpu_accel = str(k_cfg.get("gpu_acceleration", "auto")).lower()
+        custom_flags = str(k_cfg.get("custom_flags", "")).strip()
+
+        # Resolve Profile Mode: 'ephemeral' vs 'persistent'
+        profile_mode = str(k_cfg.get("profile_mode", "ephemeral")).lower()
+        if profile_mode == "persistent":
+            persistent_base = os.path.abspath("data/kiosk_profiles")
+            os.makedirs(persistent_base, exist_ok=True)
+            profile_dir = os.path.join(persistent_base, str(media_proc.id))
+            ephemeral_profile_dir = None
+        else:
+            prefix = "cr" if engine_id == "chromium" else "ff"
+            profile_dir = f"/tmp/kiosk_{prefix}_{media_proc.id}"
+            ephemeral_profile_dir = profile_dir
+        os.makedirs(profile_dir, exist_ok=True)
+
+        # Resolve ALSA Loopback Subdevice for browser audio isolation
+        raw_sub = d_cfg.get("alsa_subdevice")
+        if raw_sub is not None:
+            try:
+                alsa_subdevice = int(raw_sub)
+            except (ValueError, TypeError):
+                alsa_subdevice = int(display_num) % 8
+        else:
+            alsa_subdevice = int(display_num) % 8
+
+        # Generate sandboxed asound.conf and .asoundrc pointing to hw:Loopback,0,<subdevice>
+        asound_content = (
+            f"pcm.!default {{\n"
+            f"    type plug\n"
+            f"    slave.pcm \"hw:Loopback,0,{alsa_subdevice}\"\n"
+            f"}}\n"
+            f"ctl.!default {{\n"
+            f"    type hw\n"
+            f"    card \"Loopback\"\n"
+            f"}}\n"
+        )
+        for fname in ("asound.conf", ".asoundrc"):
+            fpath = os.path.join(profile_dir, fname)
+            try:
+                with open(fpath, "w", encoding="utf-8") as af:
+                    af.write(asound_content)
+            except Exception as a_err:
+                self.logger.warning(f"Failed to write ALSA sandbox config {fname} in {profile_dir}: {a_err}")
+
+        # Resolve Cache Mode: 'ram', 'disabled', or 'custom'
+        # Backwards compatibility: disk_cache_disabled maps to cache_mode='disabled'
+        if "cache_mode" in k_cfg:
+            cache_mode = str(k_cfg.get("cache_mode", "ram")).lower()
+        else:
+            cache_mode = "disabled" if k_cfg.get("disk_cache_disabled") is True else "ram"
+
+        cache_dir = None
+        if cache_mode != "disabled":
+            cache_dir = self.get_kiosk_cache_dir(media_proc.id, session=session)
+            os.makedirs(cache_dir, exist_ok=True)
+
+        # 4. Launcher Strategy implementation
+        if engine_id == "chromium":
+            cmd = [
+                browser_bin,
+                f"--user-data-dir={profile_dir}",
+                f"--alsa-output-device=plughw:Loopback,0,{alsa_subdevice}",
+                "--no-first-run",
+                "--noerrdialogs",
+                "--disable-session-crashed-bubble",
+                "--disable-translate",
+                "--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees",
+                "--autoplay-policy=no-user-gesture-required",
+                "--disable-dev-shm-usage",
+                "--disable-crash-reporter",
+                "--no-crashpad",
+                "--disable-breakpad",
+                "--disable-infobars",
+                "--test-type",
+                "--no-default-browser-check",
+                "--password-store=basic",
+                "--use-mock-keychain",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-sync",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-domain-reliability",
+                "--disable-client-side-phishing-detection",
+                "--disable-default-apps",
+                "--log-level=3",
+                "--silent-debugger-extension-api",
+                "--window-position=0,0",
+                f"--window-size={desk_width},{desk_height}",
+                "--start-fullscreen",
+                "--start-maximized",
+                "--kiosk",
+            ]
+
+            # In Chromium profile: write Preferences to disable translate popup
+            default_pref_dir = os.path.join(profile_dir, "Default")
+            os.makedirs(default_pref_dir, exist_ok=True)
+            pref_file = os.path.join(default_pref_dir, "Preferences")
+            try:
+                import json
+                existing_prefs = {}
+                if os.path.exists(pref_file):
+                    with open(pref_file, "r", encoding="utf-8") as pf:
+                        existing_prefs = json.load(pf)
+                existing_prefs["translate"] = {"enabled": False}
+                existing_prefs["translate_blocked_languages"] = ["all"]
+                with open(pref_file, "w", encoding="utf-8") as pf:
+                    json.dump(existing_prefs, pf, indent=2)
+            except Exception as pref_err:
+                self.logger.debug(f"Failed to inject Chromium preferences: {pref_err}")
+
+            if os.geteuid() == 0 or os.environ.get("FFMPEG_GUI_CONTAINER"):
+                cmd.append("--no-sandbox")
+
+            if hide_scrollbars:
+                cmd.extend(["--hide-scrollbars", "--disable-overlay-scrollbar"])
+            if cache_mode == "disabled":
+                cmd.extend(["--disk-cache-dir=/dev/null", "--media-cache-size=1", "--disk-cache-size=1"])
+            else:
+                cmd.extend([
+                    f"--disk-cache-dir={cache_dir}",
+                    f"--shader-cache-dir={os.path.join(cache_dir, 'shaders')}",
+                    "--disk-cache-size=104857600",
+                    "--media-cache-size=52428800"
+                ])
+            if gpu_accel == "enabled":
+                cmd.extend(["--enable-gpu-rasterization", "--ignore-gpu-blocklist"])
+            elif gpu_accel == "disabled":
+                cmd.append("--disable-gpu")
+            if custom_flags:
+                cmd.extend(shlex.split(custom_flags))
+
+            cmd.append(target_source)
+
+        else:  # firefox
+            # Clean stale lock files from previous runs to prevent "profile cannot be loaded or is in use"
+            for lock_name in ("lock", ".parentlock", "parent.lock"):
+                lock_path = os.path.join(profile_dir, lock_name)
+                if os.path.islink(lock_path) or os.path.exists(lock_path):
+                    try:
+                        os.unlink(lock_path)
+                    except OSError:
+                        pass
+
+            user_js_lines = [
+                '// Auto-generated by ffmpeg-gui for Kiosk Service',
+                'user_pref("browser.shell.checkDefaultBrowser", false);',
+                'user_pref("browser.startup.page", 0);',
+                'user_pref("browser.translations.enable", false);',
+                'user_pref("browser.sessionstore.resume_from_crash", false);',
+                'user_pref("browser.sessionstore.max_resumed_crashes", -1);',
+                'user_pref("toolkit.startup.max_resumed_crashes", -1);',
+                'user_pref("media.autoplay.default", 0);',
+                'user_pref("media.autoplay.blocking_policy", 0);',
+                'user_pref("media.cubeb.backend", "pulse");',
+                'user_pref("media.cubeb.sandbox", false);',
+                'user_pref("security.sandbox.content.level", 0);',
+                'user_pref("security.sandbox.content.write_path_whitelist", "/dev/snd/");',
+                'user_pref("security.sandbox.content.read_path_whitelist", "/dev/snd/,/sys/devices/");',
+                'user_pref("toolkit.telemetry.enabled", false);',
+                'user_pref("datareporting.healthreport.uploadEnabled", false);',
+                'user_pref("accessibility.force_disabled", 1);',
+                'user_pref("app.normandy.enabled", false);',
+                'user_pref("app.shield.optoutstudies.enabled", false);',
+                'user_pref("browser.discovery.enabled", false);',
+                'user_pref("extensions.pocket.enabled", false);',
+                'user_pref("network.captive-portal-service.enabled", false);',
+                f'user_pref("browser.window.width", {desk_width});',
+                f'user_pref("browser.window.height", {desk_height});',
+                'user_pref("privacy.resistFingerprinting", false);',
+            ]
+
+            if cache_mode == "disabled":
+                user_js_lines.extend([
+                    'user_pref("browser.cache.disk.enable", false);',
+                    'user_pref("browser.cache.memory.enable", true);',
+                ])
+            else:
+                user_js_lines.extend([
+                    'user_pref("browser.cache.disk.enable", true);',
+                    f'user_pref("browser.cache.disk.parent_directory", "{cache_dir}");',
+                    'user_pref("browser.cache.disk.capacity", 102400);',
+                ])
+
+            if gpu_accel == "enabled":
+                user_js_lines.append('user_pref("layers.acceleration.force-enabled", true);')
+
+            if hide_scrollbars:
+                user_js_lines.append('user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);')
+                chrome_dir = os.path.join(profile_dir, "chrome")
+                os.makedirs(chrome_dir, exist_ok=True)
+                css_path = os.path.join(chrome_dir, "userChrome.css")
+                with open(css_path, "w", encoding="utf-8") as f:
+                    f.write("/* Hide scrollbars for unattended kiosk display */\n* { scrollbar-width: none !important; }\n")
+
+            user_js_path = os.path.join(profile_dir, "user.js")
+            with open(user_js_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(user_js_lines) + "\n")
+
+            cmd = [
+                browser_bin,
+                "--kiosk",
+                "--no-remote",
+                "-width", str(desk_width),
+                "-height", str(desk_height),
+                "-profile", profile_dir
+            ]
+            if custom_flags:
+                cmd.extend(shlex.split(custom_flags))
+
+            cmd.append(target_source)
+
+            if apulse_bin:
+                cmd.insert(0, apulse_bin)
+
+        # Ensure executable permissions on browser binary and any sibling helpers
+        bin_dir = os.path.dirname(browser_bin)
+        if os.path.isdir(bin_dir):
+            for helper in ("chrome_crashpad_handler", "chrome-sandbox", "crashreporter", "glxtest", "vaapitest"):
+                h_path = os.path.join(bin_dir, helper)
+                if os.path.exists(h_path):
+                    try:
+                        os.chmod(h_path, 0o755)
+                    except Exception:
+                        pass
+        try:
+            os.chmod(browser_bin, 0o755)
+        except Exception:
+            pass
+
+        return cmd, display_num, profile_dir
+
+    async def _ensure_kiosk_fullscreen(self, display_num: int):
+        """Asynchronously snaps and resizes kiosk browser windows to full screen if xdotool is present."""
+        xdotool_bin = shutil.which("xdotool")
+        if not xdotool_bin:
+            return
+
+        env = {**os.environ, "DISPLAY": f":{display_num}"}
+        # Check at 1s, 2.5s, 5s after launch to catch the window once it is mapped on X11
+        for delay in (1.0, 1.5, 2.5):
+            await asyncio.sleep(delay)
+            try:
+                geom_proc = await asyncio.create_subprocess_exec(
+                    xdotool_bin, "getdisplaygeometry",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=env
+                )
+                stdout, _ = await asyncio.wait_for(geom_proc.communicate(), timeout=1.0)
+                parts = stdout.decode("utf-8").strip().split()
+                if len(parts) >= 2:
+                    w, h = parts[0], parts[1]
+                else:
+                    w, h = "1920", "1080"
+
+                search_proc = await asyncio.create_subprocess_exec(
+                    xdotool_bin, "search", "--onlyvisible", "--name", ".*",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=env
+                )
+                stdout, _ = await asyncio.wait_for(search_proc.communicate(), timeout=2.0)
+                wids = [wid.strip() for wid in stdout.decode("utf-8").splitlines() if wid.strip()]
+                for wid in wids:
+                    await asyncio.create_subprocess_exec(
+                        xdotool_bin, "windowmove", wid, "0", "0",
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=env
+                    )
+                    await asyncio.create_subprocess_exec(
+                        xdotool_bin, "windowsize", wid, w, h,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=env
+                    )
+                    await asyncio.create_subprocess_exec(
+                        xdotool_bin, "windowraise", wid,
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.DEVNULL,
+                        env=env
+                    )
+            except Exception as e:
+                self.logger.debug(f"xdotool kiosk window sizing notice for display :{display_num}: {e}")
+
+    def get_kiosk_cache_dir(self, service_id: int, session=None) -> str:
+        """Resolves the designated cache directory path for a kiosk_browser service."""
+        from database.models import Service, Storage
+        close_session = False
+        if session is None:
+            session = self.db_session_factory()
+            close_session = True
+        try:
+            svc = session.get(Service, int(service_id)) if hasattr(session, "get") else session.query(Service).get(int(service_id))
+            engine_id = "chromium"
+            cache_storage_id = None
+            if svc and svc.config:
+                k_cfg = svc.config.get("kiosk_config", svc.config)
+                engine_id = str(k_cfg.get("engine_id", "chromium")).lower()
+                cache_storage_id = k_cfg.get("cache_storage_id")
+
+            base_cache_path = None
+            if cache_storage_id:
+                st = session.get(Storage, int(cache_storage_id)) if hasattr(session, "get") else session.query(Storage).get(int(cache_storage_id))
+                if st and st.path:
+                    base_cache_path = st.path
+
+            if not base_cache_path:
+                def_st = session.query(Storage).filter(Storage.type == "cache", Storage.is_default == True).first()
+                if def_st and def_st.path:
+                    base_cache_path = def_st.path
+                else:
+                    base_cache_path = "/dev/shm/ffmpeg-gui-cache" if os.path.exists("/dev/shm") else os.path.abspath("data/cache")
+
+            prefix = "cr" if "chrome" in engine_id or "chromium" in engine_id else "ff"
+            return os.path.join(base_cache_path, f"{prefix}_{service_id}")
+        finally:
+            if close_session:
+                session.close()
+
+    def clear_kiosk_cache(self, service_id: int, session=None) -> int:
+        """Purges the kiosk browser cache directory on disk/RAM and returns the freed bytes."""
+        cache_dir = self.get_kiosk_cache_dir(service_id, session=session)
+        freed_bytes = 0
+        if os.path.exists(cache_dir):
+            for root, dirs, files in os.walk(cache_dir):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    try:
+                        freed_bytes += os.path.getsize(fp)
+                    except OSError:
+                        pass
+            try:
+                shutil.rmtree(cache_dir, ignore_errors=True)
+                os.makedirs(cache_dir, exist_ok=True)
+            except Exception as e:
+                self.logger.warning(f"Error purging kiosk cache {cache_dir}: {e}")
+        return freed_bytes
+
+    async def _spawn_x11vnc(
+        self,
+        process_id: int,
+        display_num: int,
+        vnc_port: int,
+        log_path: str,
+        sub_env: Optional[dict] = None
+    ) -> Optional[asyncio.subprocess.Process]:
+        """Spawns an x11vnc subprocess for the specified virtual desktop display."""
+        x11vnc_bin = shutil.which("x11vnc")
+        if not x11vnc_bin:
+            self.logger.error("x11vnc binary not found on host system.")
+            return None
+
+        x11vnc_cmd = [
+            x11vnc_bin,
+            "-display", f":{display_num}",
+            "-rfbport", str(vnc_port),
+            "-localhost",
+            "-nopw",
+            "-forever",
+            "-shared",
+            "-cursor", "arrow",
+            "-nocursorshape",
+        ]
+        base_env = sub_env or os.environ
+        vnc_env = {
+            **base_env,
+            "FFMPEG_GUI_PROCESS_ID": str(process_id),
+            "DISPLAY": f":{display_num}"
+        }
+
+        try:
+            log_handle = open(log_path, "ab", buffering=0)
+            vnc_proc = await asyncio.create_subprocess_exec(
+                *x11vnc_cmd,
+                stdout=log_handle,
+                stderr=asyncio.subprocess.STDOUT,
+                stdin=asyncio.subprocess.DEVNULL,
+                env=vnc_env
+            )
+            try:
+                log_handle.close()
+            except Exception:
+                pass
+
+            if process_id not in self.auxiliary_processes:
+                self.auxiliary_processes[process_id] = []
+            self.auxiliary_processes[process_id].append(vnc_proc)
+
+            if process_id not in self.auxiliary_pids:
+                self.auxiliary_pids[process_id] = []
+            if vnc_proc.pid not in self.auxiliary_pids[process_id]:
+                self.auxiliary_pids[process_id].append(vnc_proc.pid)
+
+            self.logger.info(f"Spawned x11vnc for desktop service {process_id} (PID: {vnc_proc.pid}, port: {vnc_port}, display: :{display_num})")
+            return vnc_proc
+        except Exception as e:
+            self.logger.error(f"Failed to spawn x11vnc for service {process_id}: {e}")
+            return None
+
+    def find_auxiliary_pids(self, process_id: int, svc_type: str = "desktop") -> List[int]:
+        """
+        Discovers active auxiliary OS processes associated with this service ID (e.g. x11vnc, browser).
+        Only applicable to multi-process services (e.g. desktop).
+        """
+        if svc_type != "desktop":
+            return []
+
+        with self.db_session_factory() as session:
+            from database.models import Service
+            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+            if not media_proc or getattr(media_proc, "service_type", None) != "desktop":
+                return []
+            desk_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
+            target_display = int(desk_cfg.get("display_num", 99))
+
+        aux_pids = []
+        str_proc_id = str(process_id)
+        main_pid = self.reattached_pids.get(process_id) or (self.processes.get(process_id).pid if self.processes.get(process_id) else None)
+
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                pid = proc.info['pid']
+                if main_pid is not None and pid == main_pid:
+                    continue
+
+                name = (proc.info['name'] or '').lower()
+                # Auxiliary binaries for desktop (Xvfb is the main process, never an auxiliary)
+                is_target = any(bin_name in name for bin_name in ['x11vnc', 'chromium', 'chrome', 'firefox', 'cog'])
+                if not is_target:
+                    continue
+
+                matches = False
+                try:
+                    env = proc.environ()
+                    if env.get("FFMPEG_GUI_PROCESS_ID") == str_proc_id:
+                        matches = True
+                except Exception:
+                    pass
+
+                if not matches:
+                    try:
+                        cmdline = " ".join(proc.cmdline())
+                        disp_str = f":{target_display}"
+                        if disp_str in cmdline:
+                            matches = True
+                    except Exception:
+                        pass
+
+                if matches and pid not in aux_pids:
+                    aux_pids.append(pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+        return aux_pids
+
+    async def _ensure_desktop_vnc(self, process_id: int, log_path: Optional[str] = None):
+        """Ensures that x11vnc is running for a desktop service whose Xvfb is alive."""
+        with self.db_session_factory() as session:
+            from database.models import Service
+            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+            if not media_proc or getattr(media_proc, "service_type", None) != "desktop":
+                return
+            desk_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
+            display_num = int(desk_cfg.get("display_num", 99))
+            vnc_port = int(desk_cfg.get("vnc_port", 5900 + display_num))
+            if not log_path:
+                log_path = self.get_process_log_path(process_id, media_proc.log_storage_id, session=session)
+
+        # Check if an x11vnc process is already alive in tracked auxiliary PIDs
+        existing_pids = list(self.auxiliary_pids.get(process_id, []))
+        for apid in existing_pids:
+            try:
+                p = psutil.Process(apid)
+                if "x11vnc" in (p.name() or "").lower() and p.is_running():
+                    return
+            except Exception:
+                pass
+
+        # Also search OS in case it was already running untracked
+        found_pids = self.find_auxiliary_pids(process_id, svc_type="desktop")
+        for fpid in found_pids:
+            try:
+                p = psutil.Process(fpid)
+                if "x11vnc" in (p.name() or "").lower() and p.is_running():
+                    if fpid not in self.auxiliary_pids.setdefault(process_id, []):
+                        self.auxiliary_pids[process_id].append(fpid)
+                    return
+            except Exception:
+                pass
+
+        # Spawn x11vnc
+        await self._spawn_x11vnc(
+            process_id=process_id,
+            display_num=display_num,
+            vnc_port=vnc_port,
+            log_path=log_path
+        )
+
     async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process, log_path: Optional[str] = None):
         import re
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
@@ -1526,6 +2519,34 @@ class ProcessManager:
 
                 if not running:
                     break
+
+                # For services with auxiliary processes (e.g. x11vnc for desktop services), check their health
+                aux_pids = list(self.auxiliary_pids.get(process_id, []))
+                for aux in self.auxiliary_processes.get(process_id, []):
+                    if aux and aux.pid and aux.pid not in aux_pids:
+                        aux_pids.append(aux.pid)
+
+                aux_dead = False
+                for aux_pid in aux_pids:
+                    if not psutil.pid_exists(aux_pid):
+                        aux_dead = True
+                        break
+
+                if aux_dead:
+                    # Detect svc_type for appropriate recovery
+                    with self.db_session_factory() as session:
+                        from database.models import Service
+                        _proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                        _svc_type = getattr(_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream" if _proc else "ffmpeg_stream"
+
+                    if _svc_type == "desktop":
+                        self.logger.warning(f"Auxiliary process for desktop service {process_id} terminated. Attempting self-healing respawn...")
+                        self.auxiliary_pids[process_id] = [ap for ap in self.auxiliary_pids.get(process_id, []) if psutil.pid_exists(ap)]
+                        self.auxiliary_processes[process_id] = [ap for ap in self.auxiliary_processes.get(process_id, []) if ap.returncode is None and psutil.pid_exists(ap.pid)]
+                        await self._ensure_desktop_vnc(process_id)
+                    else:
+                        self.logger.warning(f"Auxiliary process for service {process_id} terminated unexpectedly.")
+                        break
 
                 # Get system metrics
                 cpu = 0
@@ -1839,8 +2860,20 @@ class ProcessManager:
                 return
 
             if proc is not None:
-                await proc.wait()
-                exit_code = proc.returncode
+                if getattr(proc, '_loop', None) is asyncio.get_running_loop():
+                    try:
+                        await proc.wait()
+                        exit_code = proc.returncode
+                    except Exception:
+                        exit_code = 0
+                else:
+                    if pid and psutil.pid_exists(pid):
+                        try:
+                            p = psutil.Process(pid)
+                            await asyncio.to_thread(p.wait, timeout=2.0)
+                        except Exception:
+                            pass
+                    exit_code = getattr(proc, 'returncode', 0) or 0
             else:
                 exit_code = 0
 
@@ -2036,13 +3069,13 @@ class ProcessManager:
             if process_id in self.processes:
                 del self.processes[process_id]
 
-    def reattach_process(self, process_id: int, pid: int):
+    def reattach_process(self, process_id: int, pid: int) -> List[int]:
         with self.db_session_factory() as session:
             from database.models import Service
             media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
             if not media_proc:
                 self.logger.error(f"Cannot reattach service {process_id}: not found in DB")
-                return
+                return [pid]
             svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
             log_path = self.get_process_log_path(process_id, media_proc.log_storage_id, session=session)
             out_cfg = (media_proc.config or {}).get("output_config") or media_proc.output_config
@@ -2051,7 +3084,27 @@ class ProcessManager:
         self.processes[process_id] = None
         self.reattached_pids[process_id] = pid
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
-        if svc_type in ("mediamtx_hub", "icecast_server"):
+
+        # Discover and register auxiliary processes (e.g. x11vnc, browser)
+        if svc_type == "desktop":
+            found_aux = self.find_auxiliary_pids(process_id, svc_type=svc_type)
+            self.auxiliary_pids[process_id] = list(found_aux)
+
+            has_x11vnc = False
+            for apid in found_aux:
+                try:
+                    if "x11vnc" in (psutil.Process(apid).name() or "").lower():
+                        has_x11vnc = True
+                        break
+                except Exception:
+                    pass
+            if not has_x11vnc:
+                self.logger.warning(f"Reattached desktop service {process_id} is missing x11vnc. Scheduling auto-spawn.")
+                asyncio.create_task(self._ensure_desktop_vnc(process_id, log_path))
+        else:
+            self.auxiliary_pids[process_id] = []
+
+        if svc_type in ("mediamtx_hub", "icecast_server", "desktop"):
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
 
@@ -2061,6 +3114,8 @@ class ProcessManager:
             resource_lock_manager.acquire_lock("service", process_id, out_cfg, owner_name=proc_name)
         except Exception as lock_err:
             self.logger.warning(f"Failed to re-acquire resource lock on reattach for service {process_id}: {lock_err}")
+
+        return [pid] + list(self.auxiliary_pids.get(process_id, []))
 
     async def reload_ssl_services(self, db_session = None, log_fn = None) -> list:
         """Gracefully restarts any active/running services configured with TLS/SSL encryption."""

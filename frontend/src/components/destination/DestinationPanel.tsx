@@ -58,6 +58,7 @@ export interface OutputConfig {
   ice_name?: string;
   ice_genre?: string;
   ice_description?: string;
+  ice_url?: string;
   ice_public?: boolean;
   legacy_icecast?: boolean;
   tls?: boolean;
@@ -2686,6 +2687,37 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     onChange={(e) => update({ ice_description: e.target.value })}
                     className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs focus:outline-none focus:border-brand-lime"
                   />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
+                    {t('destinations.icecast.iceUrl', 'URL del Sitio Web (Stream URL)')}
+                  </label>
+                  <input
+                    type="url"
+                    placeholder={t('destinations.icecast.iceUrlPlaceholder', 'https://www.mi-radio.fm')}
+                    value={config.ice_url || ''}
+                    onChange={(e) => update({ ice_url: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs focus:outline-none focus:border-brand-lime"
+                  />
+                </div>
+                <div className="col-span-2 flex items-center justify-between pt-1 border-t border-white/5">
+                  <div className="flex flex-col pr-2">
+                    <span className="text-[10px] font-bold text-[var(--text-primary)]">
+                      {t('destinations.icecast.icePublic', 'Listar en Directorios Públicos (YP Directory)')}
+                    </span>
+                    <span className="text-[9px] text-[var(--text-secondary)]">
+                      {t('destinations.icecast.icePublicDesc', 'Envía -ice_public 1 al servidor para publicar la emisora en directorios públicos')}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(config.ice_public)}
+                      onChange={(e) => update({ ice_public: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-brand-lime peer-checked:after:border-black peer-checked:after:bg-black"></div>
+                  </label>
                 </div>
               </div>
             </details>

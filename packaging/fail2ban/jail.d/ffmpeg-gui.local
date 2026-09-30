@@ -1,0 +1,16 @@
+# Fail2ban jail configuration for ffmpeg-gui
+# Copy to /etc/fail2ban/jail.d/ffmpeg-gui.local
+
+[ffmpeg-gui]
+enabled = true
+port = 8000,8080,8443
+filter = ffmpeg-gui
+logpath = /var/log/ffmpeg-gui/ffmpeg-gui.log
+maxretry = 5
+findtime = 300
+bantime = 900
+
+# If ffmpeg-gui is managed by systemd and logs directly to journald,
+# you can use systemd backend instead:
+# backend = systemd
+# journalmatch = _SYSTEMD_UNIT=ffmpeg-gui.service

@@ -1,1 +1,1 @@
-__schema_version__ = "2.3.0"
+__schema_version__ = "2.4.0"

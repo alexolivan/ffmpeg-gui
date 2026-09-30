@@ -66,3 +66,25 @@ class TestAlsaV4l2Helper(unittest.TestCase):
         self.assertEqual(res[0]["name"], "ASI5810 - Asihpi PCM (Subdevice #0)")
         self.assertEqual(res[1]["device"], "hw:2,0,1")
         self.assertEqual(res[1]["name"], "ASI5810 - Asihpi PCM (Subdevice #1)")
+
+    def test_parse_arecord_output_loopback(self):
+        stdout = (
+            "card 3: Loopback [Loopback], device 0: Loopback PCM [Loopback PCM]\n"
+            "  Subdevices: 2/2\n"
+            "  Subdevice #0: subdevice #0\n"
+            "  Subdevice #1: subdevice #1\n"
+            "card 3: Loopback [Loopback], device 1: Loopback PCM [Loopback PCM]\n"
+            "  Subdevices: 2/2\n"
+            "  Subdevice #0: subdevice #0\n"
+            "  Subdevice #1: subdevice #1\n"
+        )
+        res = parse_arecord_output(stdout)
+        self.assertEqual(len(res), 4)
+        self.assertEqual(res[0]["device"], "hw:3,0,0")
+        self.assertEqual(res[0]["name"], "ALSA Loopback - Playback Subdevice 0 (hw:3,0,0)")
+        self.assertEqual(res[1]["device"], "hw:3,0,1")
+        self.assertEqual(res[1]["name"], "ALSA Loopback - Playback Subdevice 1 (hw:3,0,1)")
+        self.assertEqual(res[2]["device"], "hw:3,1,0")
+        self.assertEqual(res[2]["name"], "ALSA Loopback - Capture Subdevice 0 (hw:3,1,0)")
+        self.assertEqual(res[3]["device"], "hw:3,1,1")
+        self.assertEqual(res[3]["name"], "ALSA Loopback - Capture Subdevice 1 (hw:3,1,1)")

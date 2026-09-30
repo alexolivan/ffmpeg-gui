@@ -17,7 +17,7 @@ import AdvancedFlagsFormSection from './form/AdvancedFlagsFormSection';
 import PreviewCmdModal from './modals/PreviewCmdModal';
 import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
 
-const VIDEO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
+const VIDEO_ALLOWED_TYPES = ['file', 'desktop', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
 const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls'];
 
 interface ProcessConfig {
@@ -566,6 +566,19 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     }
   }, [existingConfigs, initialConfig]);
 
+  const resolveBuildOptions = (build: any): Record<string, boolean> => {
+    if (!build) return {};
+    const opts = { ...(build.build_options || {}) };
+    const ver = (build.version_output || build.ffmpeg_version_output || build.build_log_summary || '').toLowerCase();
+    if (ver.includes('--enable-libfdk-aac') || ver.includes('libfdk-aac') || ver.includes('libfdk_aac')) {
+      opts.libfdk_aac = true;
+    }
+    if (ver.includes('--enable-libvpx') || ver.includes('libvpx')) {
+      opts.libvpx = true;
+    }
+    return opts;
+  };
+
   useEffect(() => {
     fetch('/builds')
       .then(r => r.json())
@@ -577,15 +590,19 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         if (currentBuildId) {
           const selected = ready.find((b: any) => b.id === currentBuildId);
           if (selected) {
-            setSelectedBuildOptions(selected.build_options);
+            setSelectedBuildOptions(resolveBuildOptions(selected));
             return;
           }
         }
 
         const def = ready.find((b: any) => b.is_default);
-        if (def && !initialConfig) {
-          setConfig(prev => ({ ...prev, ffmpeg_build_id: def.id }));
-          setSelectedBuildOptions(def.build_options);
+        if (def) {
+          if (!initialConfig || !initialConfig.ffmpeg_build_id) {
+            if (!initialConfig) {
+              setConfig(prev => ({ ...prev, ffmpeg_build_id: def.id }));
+            }
+            setSelectedBuildOptions(resolveBuildOptions(def));
+          }
         }
       })
       .catch(() => {});
@@ -648,9 +665,10 @@ const hasNDICodecIncompatibility = isNDIOutput && (
     setConfig(prev => ({ ...prev, ffmpeg_build_id: buildId }));
     if (buildId) {
       const build = availableBuilds.find(b => b.id === buildId);
-      setSelectedBuildOptions(build?.build_options);
+      setSelectedBuildOptions(build ? resolveBuildOptions(build) : undefined);
     } else {
-      setSelectedBuildOptions(undefined);
+      const def = availableBuilds.find(b => b.is_default);
+      setSelectedBuildOptions(def ? resolveBuildOptions(def) : undefined);
     }
   };
 
@@ -923,7 +941,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
 
     // Check codec compatibility
     const availableVideo = getAvailableVideoCodecs(selectedBuildOptions, systemCapabilities, newType);
-    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType);
+    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType, systemCapabilities || undefined);
 
     const videoIncompatible = finalHasVideo && !availableVideo.some(c => c.id === config.video_codec_id);
     const audioIncompatible = finalHasAudio && !availableAudio.some(c => c.id === config.audio_codec_id);
@@ -1484,6 +1502,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                   params={config.audio_codec_params}
                   buildOptions={selectedBuildOptions}
                   outputType={config.output.type}
+                  systemCapabilities={systemCapabilities || undefined}
                   onChange={handleAudioCodecChange}
                 />
               </div>

@@ -9,14 +9,16 @@ This guide details the installation, dependency setup, and upgrade workflow for 
 - **Operating System**: Linux (Ubuntu 20.04+ or Debian 11+ recommended).
 - **Python**: Version 3.10 or higher (with `venv` support).
 - **Node.js**: Version 18 or higher (with `npm`).
-- **Compiler Tools & Libraries**: `gcc`, `make`, `pkg-config`, `yasm`/`nasm`, and development headers (`libx264-dev`, `libx265-dev`, `libssl-dev`, `libmp3lame-dev`, `libvorbis-dev`, `libopus-dev`, `libxml2-dev`, `libxslt1-dev`) required to compile custom FFmpeg and Icecast2 binaries.
+- **Compiler Tools & Libraries**: `gcc`, `make`, `pkg-config`, `yasm`/`nasm`, and development headers (`libx264-dev`, `libx265-dev`, `libssl-dev`, `libfdk-aac-dev`, `libmp3lame-dev`, `libvorbis-dev`, `libopus-dev`, `libasound2-dev`, `libxml2-dev`, `libxslt1-dev`) required to compile custom FFmpeg and Icecast2 binaries.
+- **Audio & System Utilities**: `alsa-utils` (provides `amixer`, required for soundcard mixer controls and AudioScience matrix routing), `libasound2-plugins` (installed automatically by `install.sh --system`), and `apulse` (PulseAudio emulation wrapper for ALSA, enabling audio playback in Firefox Kiosks without running PulseAudio/PipeWire daemons).
+- **ALSA Loopback Kernel Driver (`snd-aloop`)**: Required for capturing Virtual Desktop and Web Kiosk audio into FFmpeg pipelines without PulseAudio/PipeWire. Automatically loaded and persisted by `install.sh --system`.
 - **Optional System Packages**: Standard `icecast2` package (`sudo apt install icecast2`) can be installed directly from Debian/Ubuntu repositories if source compilation via Forge is not desired.
 - **Optional Hardware Tools**:
   - NVIDIA GPU with proprietary drivers & CUDA toolkit (optional for hardware acceleration; system compiles and runs on CPU-only hosts without NVIDIA drivers).
   - Intel graphics processors with QSV / VAAPI media drivers (e.g., `intel-media-driver` for low-overhead hardware transcoding) and `intel-gpu-tools` for real-time engine and VRAM telemetry.
   - Blackmagic DeckLink PCIe cards (requires `desktopvideo` Linux drivers and DeckLink SDK uploaded in the Forge).
   - Magewell capture devices (HDMI/SDI capture routed via V4L2).
-  - AudioScience professional soundcards (ALSA audio matrix and topology controls).
+  - AudioScience & ALSA professional soundcards (ALSA audio matrix, mixer topology, and hardware faders; requires `alsa-utils`).
   - CrystalFontz CFA635 USB LCD Display.
 
 ---
@@ -64,7 +66,43 @@ To allow the Python application to bind to port 80/443 and monitor Intel GPU met
 
 ---
 
-## 3. Custom FFmpeg SDK Setup (NDI & DeckLink)
+## 3. Virtual Desktop Audio Loopback (`snd-aloop`)
+
+To route audio played inside Virtual Desktops (e.g., Kiosk browsers like Chromium or Firefox) into FFmpeg pipelines without third-party audio daemons (PulseAudio/PipeWire), the Linux kernel's `snd-aloop` virtual soundcard driver is utilized.
+
+### Verification
+Check if the module and virtual card are registered:
+```bash
+lsmod | grep snd_aloop
+cat /proc/asound/cards
+arecord -l
+```
+When active, `/proc/asound/cards` will display:
+```
+Card [Loopback]: Loopback - Loopback
+```
+
+### Manual Configuration & Persistence
+If running in user-space or configuring manually:
+1. Load the module in kernel:
+   ```bash
+   sudo modprobe snd-aloop
+   ```
+2. Enable persistence across reboots:
+   ```bash
+   echo "snd-aloop" | sudo tee /etc/modules-load.d/snd-aloop.conf
+   ```
+3. Set non-conflicting card index and substream allocation (default 8 substreams):
+   ```bash
+   echo "options snd-aloop index=-2 enable=1 pcm_substreams=8" | sudo tee /etc/modprobe.d/snd-aloop.conf
+   ```
+
+> [!TIP]
+> If your system requires running more than 8 concurrent Virtual Desktops with isolated audio, increase `pcm_substreams=16` or `32` in `/etc/modprobe.d/snd-aloop.conf`.
+
+---
+
+## 4. Custom FFmpeg SDK Setup (NDI & DeckLink)
 
 The in-app compiler supports linking external SDKs for NDI and Blackmagic DeckLink:
 - **Automatic Retrieval**: When triggering a compilation in the panel, `SdkManager` handles downloading, extracting, and configuring the required files.
@@ -75,7 +113,7 @@ The in-app compiler supports linking external SDKs for NDI and Blackmagic DeckLi
 
 ---
 
-## 4. Upgrading (Zero-Downtime Updater)
+## 5. Upgrading (Zero-Downtime Updater)
 
 The `update.sh` script pulls the latest dependencies, builds the frontend, verifies systemd configurations, and restarts the service. 
 

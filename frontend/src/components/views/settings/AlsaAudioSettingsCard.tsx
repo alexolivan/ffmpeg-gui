@@ -25,6 +25,9 @@ interface AlsaGroup {
   category: 'virtual_playout' | 'hardware_outputs' | 'virtual_capture' | 'hardware_inputs' | 'system_clock';
   controls: AlsaControl[];
   meters: AlsaControl[];
+  matrix_source?: string;
+  pcm_device?: string;
+  subdevice_index?: number;
 }
 
 interface ActiveProcessBadge {
@@ -41,6 +44,7 @@ interface ActiveProcessBadge {
 
 interface AlsaTopology {
   card_index: number;
+  is_loopback?: boolean;
   virtual_playout: AlsaGroup[];
   hardware_outputs: AlsaGroup[];
   virtual_capture: AlsaGroup[];
@@ -91,24 +95,21 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
       return true;
     }
 
-    // 3. Channel Index Matching (Handling AudioScience hw:0,0,N stream hierarchy)
+    // 3. Channel Index Matching (Handling AudioScience and Loopback stream hierarchy)
     if (grpIndex !== null) {
-      // In AudioScience hw:card,device,stream (e.g. hw:0,0,1 or hw:0,0,2), subdevice_index (1 or 2) is the stream/channel index!
       let effectiveChanIdx: number | null = null;
-      if (proc.subdevice_index !== null && proc.subdevice_index !== undefined && proc.subdevice_index > 0) {
+      if (proc.subdevice_index !== null && proc.subdevice_index !== undefined) {
         effectiveChanIdx = proc.subdevice_index;
       } else if (proc.pcm_index !== null && proc.pcm_index !== undefined) {
         effectiveChanIdx = proc.pcm_index;
-      } else if (proc.subdevice_index === 0) {
-        effectiveChanIdx = 0;
       }
 
       if (effectiveChanIdx !== null) {
         return effectiveChanIdx === grpIndex;
       }
 
-      // Regex fallback matching hw:0,0,grpIndex or hw:0,grpIndex
-      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):\\d+,(?:\\d+,)?${grpIndex}\\b`, 'i');
+      // Regex fallback matching hw:card,device,grpIndex or hw:card,grpIndex
+      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):[a-zA-Z0-9_\\-]+,(?:\\d+,)?${grpIndex}\\b`, 'i');
       if (subdevRegex.test(target) || subdevRegex.test(cmd)) {
         return true;
       }
@@ -806,11 +807,25 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   useEffect(() => {
     if (cards.length === 0) return;
     fetchTopology(selectedCardIdx);
-    connectMeterWebSocket(selectedCardIdx);
+
+    const selectedCard = cards.find(c => c.card_index === selectedCardIdx);
+    const isLoopbackCard = selectedCard && (
+      (selectedCard.card_id && selectedCard.card_id.toLowerCase().includes('loopback')) ||
+      (selectedCard.name && selectedCard.name.toLowerCase().includes('loopback')) ||
+      (selectedCard.driver && selectedCard.driver.toLowerCase().includes('loopback'))
+    );
+
+    if (!isLoopbackCard) {
+      connectMeterWebSocket(selectedCardIdx);
+    } else if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
   }, [selectedCardIdx, cards]);
@@ -1113,7 +1128,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-stretch relative">
         
         {/* TOP-LEFT: VIRTUAL PLAYOUT */}
-        <div className="lg:col-span-5 space-y-2">
+        <div className="lg:col-span-5 lg:col-start-1 space-y-2">
           <div className="space-y-2">
             {topology?.virtual_playout?.map((group) => (
               <AlsaSkewerChannelStrip
@@ -1136,7 +1151,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* CENTRAL AUDIO BUS COLUMN */}
-        <div className="lg:col-span-1 lg:row-span-3 hidden lg:flex flex-col items-center justify-between py-2 self-stretch">
+        <div className="lg:col-span-1 lg:col-start-6 lg:row-span-3 hidden lg:flex flex-col items-center justify-between py-2 self-stretch">
           <div className="w-1.5 h-full bg-gradient-to-b from-brand-lime via-indigo-500 to-red-500 rounded-full opacity-60" />
           <div className="my-3 px-1 py-4 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded text-[10px] font-mono font-bold text-text-secondary uppercase tracking-widest text-center rotate-180 [writing-mode:vertical-lr]">
             AUDIO BUS
@@ -1145,7 +1160,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* TOP-RIGHT: HARDWARE OUTPUTS */}
-        <div className="lg:col-span-5 space-y-3">
+        <div className="lg:col-span-5 lg:col-start-7 space-y-3">
           <div className="space-y-3">
             {groupedHardwareNodes.map((node) => (
               <div 
@@ -1219,7 +1234,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 </div>
               </div>
             ))}
-            {(!topology?.hardware_outputs || topology.hardware_outputs.length === 0) && (
+            {!topology?.is_loopback && (!topology?.hardware_outputs || topology.hardware_outputs.length === 0) && (
               <div className="h-12 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
                 {t('settings.alsa.noControls', 'No hardware outputs detected')}
               </div>
@@ -1228,11 +1243,11 @@ export const AlsaAudioSettingsCard: React.FC = () => {
         </div>
 
         {/* ROW SEPARATOR HORIZONTAL GAP */}
-        <div className="lg:col-span-5 h-1 my-0.5 border-b border-[var(--glass-border)]/40" />
-        <div className="lg:col-span-5 h-1 my-0.5 border-b border-[var(--glass-border)]/40 lg:col-start-7" />
+        <div className="lg:col-span-5 lg:col-start-1 h-1 my-0.5 border-b border-[var(--glass-border)]/40" />
+        {!topology?.is_loopback && <div className="lg:col-span-5 h-1 my-0.5 border-b border-[var(--glass-border)]/40 lg:col-start-7" />}
 
         {/* BOTTOM-LEFT: VIRTUAL CAPTURE */}
-        <div className="lg:col-span-5 space-y-2">
+        <div className="lg:col-span-5 lg:col-start-1 space-y-2">
           <div className="space-y-2">
             {topology?.virtual_capture?.map((group) => (
               <AlsaSkewerChannelStrip
@@ -1271,7 +1286,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 isLoopbackActive={isLoopbackEnabled}
               />
             ))}
-            {(!topology?.hardware_inputs || topology.hardware_inputs.length === 0) && (
+            {!topology?.is_loopback && (!topology?.hardware_inputs || topology.hardware_inputs.length === 0) && (
               <div className="h-12 flex items-center justify-center border border-dashed border-[var(--glass-border)] rounded-lg text-xs text-text-secondary/50">
                 {t('settings.alsa.noControls', 'No hardware inputs detected')}
               </div>
@@ -1791,9 +1806,9 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
 
   // Only display ROUTE badge on capture channels (Virtual Capture / Bottom-Left quadrant or Hardware Input capture routes)
   const isCaptureChannel = isVirtualCapture || isHardwareInputs;
-  const activeRouteName = isCaptureChannel && routeCtrl && routeCtrl.items && routeCtrl.items[routeCtrl.values?.[0] ?? 0]
-    ? routeCtrl.items[routeCtrl.values?.[0] ?? 0]
-    : null;
+  const activeRouteName =
+    (isCaptureChannel && routeCtrl && routeCtrl.items && routeCtrl.items[routeCtrl.values?.[0] ?? 0]) ||
+    (isVirtualCapture && group.matrix_source ? group.matrix_source : null);
 
   return (
     <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl flex flex-col overflow-visible hover:border-brand-lime/40 transition-all shadow-sm">
@@ -2357,6 +2372,13 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
             </span>
           )}
 
+          {/* Virtual Capture Origin: Left arrow pointing OUT of Audio Bus */}
+          {isVirtualCapture && (
+            <span className="text-indigo-400 font-bold text-xs" title="From Audio Bus">
+              ◄
+            </span>
+          )}
+
           {/* Hardware Outputs Destination: Right arrow + physical output device icon */}
           {isHardwareOutputs && (
             <span className="text-sky-400 font-bold text-sm flex items-center gap-1" title="Into Hardware Output Device">
@@ -2406,12 +2428,18 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
 
           {activeProcesses && activeProcesses.length > 0 && (
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] text-brand-lime font-semibold uppercase">FFmpeg:</span>
+              <span className="text-[9px] text-brand-lime font-semibold uppercase">
+                {activeProcesses.some((p) => p.type === 'kiosk_browser') ? 'Kiosk:' : 'FFmpeg:'}
+              </span>
               {activeProcesses.map((proc) => (
                 <span
                   key={proc.process_id}
                   title={`Process #${proc.process_id} (${proc.status})`}
-                  className="bg-brand-lime/10 border border-brand-lime/30 text-brand-lime text-[9px] px-1.5 py-0.2 rounded font-mono font-bold"
+                  className={`${
+                    proc.type === 'kiosk_browser'
+                      ? 'bg-sky-500/10 border-sky-500/30 text-sky-400'
+                      : 'bg-brand-lime/10 border-brand-lime/30 text-brand-lime'
+                  } text-[9px] px-1.5 py-0.2 rounded font-mono font-bold`}
                 >
                   {proc.alias}
                 </span>

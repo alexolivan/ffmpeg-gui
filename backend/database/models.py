@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, BigInteger, String, DateTime, JSON, ForeignKey, Boolean, Float, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, JSON, ForeignKey, Boolean, Float, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 class Base(DeclarativeBase):
@@ -105,9 +105,17 @@ class SoftwareBuild(Base):
 
     @srt_version.setter
     def srt_version(self, val):
-        if not isinstance(self.build_options, dict):
-            self.build_options = {}
-        self.build_options['srt_version'] = val
+        opts = dict(self.build_options or {})
+        if val is None:
+            opts.pop('srt_version', None)
+        else:
+            opts['srt_version'] = val
+        self.build_options = opts
+        try:
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(self, "build_options")
+        except Exception:
+            pass
 
 
 FfmpegBuild = SoftwareBuild
@@ -118,7 +126,7 @@ class Service(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    service_type = Column(String, nullable=False)  # 'ffmpeg_stream', 'kiosk_browser', 'icecast_server', 'mediamtx_hub'
+    service_type = Column(String, nullable=False)  # 'ffmpeg_stream', 'desktop', 'kiosk_browser', 'icecast_server', 'mediamtx_hub'
     config = Column(JSON, nullable=False)
     is_active = Column(Boolean, default=True)
 
@@ -348,6 +356,22 @@ class Service(Base):
         self._set_config_key('software_build_id', val)
 
     @property
+    def last_error(self):
+        return self.config.get('last_error') if self.config else None
+
+    @last_error.setter
+    def last_error(self, val):
+        self._set_config_key('last_error', val)
+
+    @property
+    def error_message(self):
+        return self.last_error
+
+    @error_message.setter
+    def error_message(self, val):
+        self.last_error = val
+
+    @property
     def pending_changes(self) -> bool:
         if self.status != 'running' or not self.last_started_config:
             return False
@@ -433,6 +457,13 @@ class SystemSettings(Base):
     lcd_led2_profile = Column(String, default="tasks")
     lcd_led3_profile = Column(String, default="alert")
 
+    # Brute-force & Security Settings
+    brute_force_enabled = Column(Boolean, default=True)
+    brute_force_max_attempts = Column(Integer, default=5)
+    brute_force_window_seconds = Column(Integer, default=300)
+    brute_force_lockout_seconds = Column(Integer, default=900)
+    brute_force_whitelist = Column(Text, nullable=True)
+
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 
@@ -517,7 +548,7 @@ class Storage(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
     path = Column(String, nullable=False)
-    type = Column(String, nullable=False)  # 'build', 'media', 'hls', 'logs', 'sdk', 'preview'
+    type = Column(String, nullable=False)  # 'build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'
     is_default = Column(Boolean, default=False)
     route_path = Column(String, nullable=True)  # Optional HTTP route path for HLS serving
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

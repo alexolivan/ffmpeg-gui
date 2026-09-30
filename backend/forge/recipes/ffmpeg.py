@@ -15,7 +15,7 @@ class FfmpegRecipe(BaseRecipe):
             "cmake", "git", "make", "gcc", "pkg-config", "yasm/nasm",
             "libx264", "libx265", "libssl", "libva", "libdrm",
             "libopus", "libvpx", "libfreetype", "libharfbuzz",
-            "libfontconfig", "libfribidi"
+            "libfontconfig", "libfribidi", "libfdk_aac"
         ]
 
     async def compile(self, build_id: int, version_tag: str, options: dict,
@@ -170,6 +170,9 @@ class FfmpegRecipe(BaseRecipe):
             config_flags.append("--enable-libfontconfig")
         if dep_check.get("dependencies", {}).get("libfribidi", {}).get("installed"):
             config_flags.append("--enable-libfribidi")
+        if dep_check.get("dependencies", {}).get("libfdk_aac", {}).get("installed"):
+            config_flags.append("--enable-libfdk-aac")
+            options["libfdk_aac"] = True
 
         if options.get("libsrt"):
             config_flags.append("--enable-libsrt")
@@ -274,7 +277,8 @@ class FfmpegRecipe(BaseRecipe):
             "success": True,
             "binary_path": ffmpeg_bin if os.path.isfile(ffmpeg_bin) else None,
             "version_output": version_output,
-            "sdk_paths": sdk_paths
+            "sdk_paths": sdk_paths,
+            "build_options": options
         }
 
     async def validate(self, binary_path: str) -> dict:

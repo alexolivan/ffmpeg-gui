@@ -31,7 +31,8 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ![Icecast2 Forge Recipes & Build Profiles](docs/assets/screenshot17.png)
 
 ### 📺 2. Media Services & Daemon Streams
-- **Persistent Pipelines**: Run RTMP, SRT (listener/caller), HLS, NDI, UDP, or ALSA audio streams as persistent background daemons.
+- **Persistent Pipelines**: Run RTMP, SRT (listener/caller), HLS, NDI, UDP, X11 Virtual Desktop (`x11grab`), or ALSA audio streams as persistent background daemons.
+- **Virtual Desktop Ingest & Intelligent Audio/FPS Sync**: Ingest uncompressed video from X11 Virtual Desktops with automatic geometry adoption, 1-click framerate alignment, and 1-click ALSA loopback audio pairing (`hw:Loopback,1,X`) to prevent audio desync or FFmpeg stream mapping crashes.
 - **Boot Sequence Hierarchies**: Configure specific startup ordering and delay gaps to synchronize cross-dependent streams (e.g., waiting for an input stream to initialize before starting a transcoder).
 - **GPU/CPU Pipeline Diagramming**: An interactive resource pipeline diagram in the GUI that visually tracks GPU decoding, filtering, encoding, and CPU multiplexing flow.
 - **Live Stream Previews**: Embedded native HLS live video & audio player for HLS broadcast services, plus configurable periodic frame snapshots (MJPEG) with performance toggles for other streaming outputs.
@@ -76,10 +77,24 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Remote Federated Peer Nodes](docs/assets/screenshot19.png)
 
-### 🎛️ 6. Professional AV Hardware & Control
+### 🖥️ 6. Virtual Desktops, Web Kiosks & Ingest
+- **X11 Headless Virtual Desktops**: Spawn managed `Xvfb` and `x11vnc` virtual display sessions with configurable resolution, framerate, client-side cursor, and automatic watchdog self-healing.
+- **Embedded noVNC Remote Display**: Full interactive remote control directly within the browser interface, with live connection status, display scaling, and fullscreen view.
+- **Unattended Web Kiosks (Chromium & Firefox ESR)**: Deploy automated browser kiosks targeting specific virtual desktops with popup/first-run suppression, auto-fullscreen via `xdotool`, and GPU acceleration.
+- **Persistent Profiles & Flash Storage Protection**: Decoupled profile architecture preserving cookies and logins across reboots while running cache on fast memory disks (`/dev/shm`) or disabled to protect SATADOM/SD storage.
+- **Direct FFmpeg Desktop Ingest (`x11grab`)**: Capture live video feeds from virtual desktops into FFmpeg pipelines with 1-click 1:1 geometry/framerate alignment and secondary ALSA loopback audio pairing.
+
+![Virtual Desktop Interactive Remote Display](docs/assets/screenshot20.png)
+
+![Web Kiosk Diagnostics & Headless Browser Isolation](docs/assets/screenshot21.png)
+
+![FFmpeg Desktop Ingest & Audio Pairing](docs/assets/screenshot22.png)
+
+### 🎛️ 7. Professional AV Hardware & Control
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
 - **Magewell Capture Cards**: Hardware telemetry and routing for Pro Capture / Eco Capture / USB Capture devices (`mwcap-info` / `mwcap-control`), live FPGA temperature monitoring, connector switching, and V4L2/ALSA stream integration.
 - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping and crosspoint volume matrix routing.
+- **ALSA Loopback (`snd-aloop`) Routing**: Clean 8-subdevice virtual topology in the ALSA mixer with browser audio sandboxing (`asound.conf`), 1-click secondary audio pairing for virtual desktops, and fixed routing indicators (`◄ PCM X Playback`) between playout (`hw:Loopback,0,X`) and broadcast ingest (`hw:Loopback,1,X`).
 - **Graphical Overlay Studio**: Fully graphical editor to place, scale, and preview graphic overlays on top of video streams.
 - **Audio Dynamics & Filters**: Dynamic range compressors, multi-band graphic equalizers, and ALSA loopback routing.
 
@@ -89,39 +104,41 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![ALSA Audio Routing Matrix](docs/assets/screenshot8.png)
 
+![ALSA Loopback Virtual Audio Routing & Process Bindings](docs/assets/screenshot23.png)
+
 ![Graphic EQ & Dynamics Compressor](docs/assets/screenshot7.png)
 
-### 🛡️ 7. Decoupled Watchdog Recovery
+### 🛡️ 8. Decoupled Watchdog Recovery
 - **Automatic Auto-Start**: Recovers crashed or disconnected streams automatically.
 - **Freeze Protection**: Actively monitors process FPS, bitrate, and outputs, force-restarting streams if frames freeze or connection drops.
 - **Jittered Backoff**: Uses exponential backoff delays combined with randomized jitter to break lockstep recovery loops and reduce server resource peaks during network outages.
 
-### ⏰ 8. Task Scheduler & Bilateral Cloning
+### ⏰ 9. Task Scheduler & Bilateral Cloning
 - **Automation Jobs**: Schedule recurring (cron-like) or one-shot encoding tasks (e.g., recording daily broadcasts, scheduled stream dumps).
 - **Safety Runtime Limits**: Define max duration timers to automatically clean up active tasks.
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
 
 ![Scheduled Tasks & Cron Automation](docs/assets/screenshot4.png)
 
-### 🔒 9. HTTPS & Let's Encrypt SSL Manager
+### 🔒 10. HTTPS & Let's Encrypt SSL Manager
 - **Automated SSL/TLS Certificates**: Request and renew Let's Encrypt certificates directly from the GUI panel.
 - **ACME Challenge Handler**: Integrated HTTP-01 challenge router (`/.well-known/acme-challenge/*`) for automated domain verification.
 - **Status & Monitoring**: Real-time display of certificate validity, domain bindings, and automated expiration warnings.
 
-### 💾 10. Granular Backup & Restore
+### 💾 11. Granular Backup & Restore
 - **Selective Section Toggles**: Export and import specific configuration parts (e.g., backing up media services and scheduled tasks, storage volumes, software engines, and peer federation credentials while leaving SMTP credentials or network port configs unchanged).
 - **Format Verification & SSOT Synchronization**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions (`SystemSettings`) and configuration file updates.
 
-### 🗄️ 11. Storage, HTTP HLS Routes, Log Retention & Branding
+### 🗄️ 12. Storage, HTTP HLS Routes, Log Retention & Branding
 - **Storage Management & HTTP HLS Delivery**: Configure local or mounted storage volumes, monitor disk space usage in real time, and map custom HTTP route paths (`/route_path -> HLS Storage`) with CORS and video caching headers to serve live and archived HLS manifests (`.m3u8`) and segments (`.ts`) directly through the web engine.
 - **Decoupled Logging & Automated Rotation**: Decouples application server logs (`ffmpeg-gui.log`) from HTTP access logs (`access.log`), with noise suppression for media chunks and copytruncate rotation with configurable retention periods.
 - **Branding Customization**: Customize the application name, panel headers, and console branding directly from the interface settings.
 
-### 🔔 12. State-Based SMTP Notifications
+### 🔔 13. State-Based SMTP Notifications
 - **Alert Fatigue Prevention**: Stateful notification queue that filters redundant alerts. Emails are dispatched exclusively on initial stream crashes, recovery success, and final retry exhaustion.
 - **System Health Checks**: Active warnings for pending SSL/TLS certificate expirations and disk space utilization exceeding 90%.
 
-### 📟 13. CFA635 LCD Display Driver
+### 📟 14. CFA635 LCD Display Driver
 - **Serial LCD Integration**: Direct driver control for CrystalFontz CFA635 USB/Serial displays. Renders live CPU, RAM, active stream counts, locator beacons, and handles backlight dimming timeouts.
 - **Bicolor Status LEDs**: Maps physical LEDs to profile monitors:
   - Heartbeat status indicator.
@@ -132,13 +149,28 @@ Inspired by high-reliability systems and developer utility, it provides an intui
   - Recording indicator (active REC pilot).
   - Federated peer status monitor (`P2P` profile with worst-state aggregation).
 
-### 🌐 14. Styling & Localization
+### 🌐 15. Styling & Localization
 - **Multi-Theme Engine**: 5 visual styles (Studio Dark, Cyberpunk Neon, Nordic Frost, Broadcast Light, Warm Paper) loaded instantly without page flash.
 - **Full Translations**: English, Spanish, and Catalan interfaces with 100% i18n parity.
 
 ![Theme Switcher & Localization Settings](docs/assets/screenshot9.png)
 
 ![Warm Paper Theme in Task Scheduling](docs/assets/screenshot12.png)
+
+### 🛡️ 16. Brute-Force Protection & Security Logging (Fail2ban Ready)
+- **In-Memory IP Lockout**: Built-in guard tracks failed login attempts in RAM and temporarily bans abusive clients (`HTTP 429 Too Many Requests` / `Retry-After`) with zero SQLite overhead during attacks.
+- **Permanent Loopback Immunity**: Localhost and loopback interfaces (`127.0.0.1`, `::1`) are hardcoded as immune to prevent locking out local SSH tunnels or reverse proxies, alongside custom CIDR/IP whitelisting.
+- **Standardized Logs for External IDS/IPS**: Standardized warning events emitted in `ffmpeg-gui.log` and Nginx-format HTTP lines in `access.log` with real client IP resolution via `X-Forwarded-For` and `X-Real-IP`.
+- **Ready-to-use Fail2ban Rules**: Pre-configured filter and jail definitions are included in the repository under [`packaging/fail2ban/`](packaging/fail2ban/):
+  - `packaging/fail2ban/filter.d/ffmpeg-gui.conf` $\rightarrow$ copy to `/etc/fail2ban/filter.d/`
+  - `packaging/fail2ban/jail.d/ffmpeg-gui.local` $\rightarrow$ copy to `/etc/fail2ban/jail.d/`
+
+```bash
+# 1-step installation
+sudo cp packaging/fail2ban/filter.d/ffmpeg-gui.conf /etc/fail2ban/filter.d/
+sudo cp packaging/fail2ban/jail.d/ffmpeg-gui.local /etc/fail2ban/jail.d/
+sudo fail2ban-client reload
+```
 
 ---
 

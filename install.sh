@@ -85,10 +85,13 @@ install_debian_deps() {
     apt-get install -y python3-venv python3-pip python3-dev nodejs npm \
                        build-essential cmake git pkg-config yasm nasm \
                        libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev \
-                       libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
-                       libavahi-client-dev libavahi-common-dev libasound2-dev \
+                       libfdk-aac-dev libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
+                       libavahi-client-dev libavahi-common-dev libasound2-dev alsa-utils libasound2-plugins \
                        libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
-                       intel-gpu-tools
+                       intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base xdotool dbus-x11 apulse \
+                       libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+                       libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+                       libgbm1 libpango-1.0-0 libcairo2 libasound2
 }
 
 # Paquetes a instalar en RedHat/Fedora/CentOS
@@ -97,9 +100,11 @@ install_rhel_deps() {
     dnf groupinstall -y "Development Tools"
     dnf install -y python3-devel nodejs npm cmake git pkgconfig yasm nasm \
                    x264-devel x265-devel openssl-devel libva-devel libdrm-devel \
-                   lame-devel libvorbis-devel opus-devel libvpx-devel \
+                   fdk-aac-free-devel lame-devel libvorbis-devel opus-devel libvpx-devel \
                    avahi-devel alsa-lib-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel \
-                   intel-gpu-tools
+                   intel-gpu-tools xorg-x11-server-Xvfb x11vnc xorg-x11-server-utils xdotool dbus-x11 \
+                   nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon \
+                   libXcomposite libXdamage libXfixes libXrandr mesa-libgbm pango cairo alsa-lib alsa-utils
 }
 
 # Paquetes a instalar en Arch Linux
@@ -107,9 +112,31 @@ install_arch_deps() {
     echo "--> Installing system dependencies via pacman..."
     pacman -S --needed --noconfirm base-devel cmake git pkgconf yasm nasm \
                                  x264 x265 openssl libva libdrm \
-                                 lame libvorbis opus libvpx \
+                                 libfdk-aac lame libvorbis opus libvpx \
                                  avahi alsa-lib freetype2 harfbuzz fontconfig fribidi \
-                                 intel-gpu-tools python nodejs npm
+                                 intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm xdotool apulse \
+                                 nss nspr atk at-spi2-atk cups libdrm libxkbcommon \
+                                 libxcomposite libxdamage libxfixes libxrandr mesa pango cairo alsa-lib alsa-utils
+}
+
+# Configuración y persistencia del módulo de kernel ALSA Loopback
+configure_alsa_loopback() {
+    echo "--> Configuring ALSA Loopback kernel module (snd-aloop)..."
+    if command -v modprobe &>/dev/null; then
+        modprobe snd-aloop 2>/dev/null || echo "    Note: modprobe snd-aloop returned non-zero. If running in a container, ensure the host loads snd-aloop."
+
+        # Configurar persistencia tras reinicio
+        if [ -d /etc/modules-load.d ]; then
+            echo "snd-aloop" > /etc/modules-load.d/snd-aloop.conf
+        elif [ -f /etc/modules ]; then
+            grep -qxF "snd-aloop" /etc/modules || echo "snd-aloop" >> /etc/modules
+        fi
+
+        # Asignar index=-2 para evitar conflictos con tarjetas físicas primarias y fijar 8 subdispositivos
+        if [ -d /etc/modprobe.d ]; then
+            echo "options snd-aloop index=-2 enable=1 pcm_substreams=8" > /etc/modprobe.d/snd-aloop.conf
+        fi
+    fi
 }
 
 # ---------------------------------------------------------
@@ -134,9 +161,18 @@ if [ "$MODE" = "system" ]; then
         echo "Warning: Unsupported package manager. Please ensure development tools and libraries (x264, x265, openssl, libva, libdrm, avahi, intel-gpu-tools) are installed manually."
     fi
 
+    # Configurar y persistir el módulo ALSA Loopback (snd-aloop) para audio de escritorios virtuales
+    configure_alsa_loopback
+
     # Verificar herramientas indispensables después de la instalación
     verify_installer_tools
 else
+    # Modo de espacio de usuario: verificar si snd-aloop está activo
+    if ! lsmod 2>/dev/null | grep -q "snd_aloop"; then
+        echo "--> Notice: ALSA Loopback kernel module (snd-aloop) is not loaded."
+        echo "    Virtual Desktop & Kiosk audio capture in FFmpeg requires: sudo modprobe snd-aloop"
+    fi
+
     # Modo de espacio de usuario: verificar primero ya que no podemos autoinstalar
     verify_installer_tools
     # Modo de espacio de usuario: solo alertar dependencias faltantes
@@ -219,6 +255,11 @@ if [ "$MODE" = "system" ]; then
     mkdir -p /etc/ffmpeg-gui
     mkdir -p /var/lib/ffmpeg-gui
     mkdir -p /var/log/ffmpeg-gui
+    mkdir -p "$PROJ_DIR/backend/data/logs"
+    mkdir -p "$PROJ_DIR/backend/data/sdks"
+    mkdir -p "$PROJ_DIR/backend/data/cache"
+    mkdir -p "$PROJ_DIR/backend/data/uploads"
+    mkdir -p "$PROJ_DIR/backend/ffmpeg_builds"
 
     # Configuración INI por defecto
     CONF_FILE="/etc/ffmpeg-gui/ffmpeg-gui.conf"
@@ -242,6 +283,11 @@ else
     # Crear directorios de usuario
     mkdir -p "$HOME/.config/ffmpeg-gui"
     mkdir -p "$HOME/.local/share/ffmpeg-gui"
+    mkdir -p "$PROJ_DIR/backend/data/logs"
+    mkdir -p "$PROJ_DIR/backend/data/sdks"
+    mkdir -p "$PROJ_DIR/backend/data/cache"
+    mkdir -p "$PROJ_DIR/backend/data/uploads"
+    mkdir -p "$PROJ_DIR/backend/ffmpeg_builds"
 
     # Configuración INI por defecto
     CONF_FILE="$HOME/.config/ffmpeg-gui/ffmpeg-gui.conf"

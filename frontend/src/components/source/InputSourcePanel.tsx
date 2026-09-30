@@ -47,6 +47,12 @@ export interface InputSourceConfig {
   icecast_mount?: string;
   icecast_target_type?: 'local' | 'remote' | 'managed' | 'external';
   tls?: boolean;
+  display_num?: string | number;
+  video_size?: string;
+  framerate?: string | number;
+  draw_mouse?: number | boolean;
+  offset_x?: number;
+  offset_y?: number;
 }
 
 interface InputSourcePanelProps {
@@ -65,6 +71,7 @@ interface InputSourcePanelProps {
 
 const ALL_SOURCE_TYPES = [
   { value: 'file', labelKey: 'sources.types.file', label: 'Local File / VOD' },
+  { value: 'desktop', labelKey: 'sources.types.desktop', label: 'Virtual Desktop (x11grab)' },
   { value: 'srt', labelKey: 'sources.types.srt', label: 'SRT Stream' },
   { value: 'ndi', labelKey: 'sources.types.ndi', label: 'NDI Source' },
   { value: 'udp', labelKey: 'sources.types.udp', label: 'UDP / MPEG-TS' },
@@ -139,6 +146,32 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   const [alsaDevices, setAlsaDevices] = React.useState<any[]>([]);
   const [loadingAlsaDevices, setLoadingAlsaDevices] = React.useState(false);
   const [manualAlsaMode, setManualAlsaMode] = React.useState(false);
+
+  // Virtual Desktop (x11grab) State
+  const [desktops, setDesktops] = React.useState<any[]>([]);
+  const [loadingDesktops, setLoadingDesktops] = React.useState(false);
+  const [manualDesktopMode, setManualDesktopMode] = React.useState(false);
+  const [pairedAlsaDevice, setPairedAlsaDevice] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    setLoadingDesktops(true);
+    fetch('/processes')
+      .then(res => res.ok ? res.json() : [])
+      .then((procs: any[]) => {
+        if (!active) return;
+        const desktopList = procs.filter((p: any) => p.service_type === 'desktop');
+        setDesktops(desktopList);
+      })
+      .catch(err => {
+        console.error('Error fetching desktops in InputSourcePanel:', err);
+        if (active) setDesktops([]);
+      })
+      .finally(() => {
+        if (active) setLoadingDesktops(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   // NDI Scan State
   const [ndiSources, setNdiSources] = React.useState<string[]>([]);
@@ -489,13 +522,22 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         onChange={e => {
           const newType = e.target.value;
           const isHwSupported = ['file', 'srt', 'udp', 'rtp', 'rtmp', 'hls'].includes(newType);
+          const defaultDesk = desktops[0];
+          const defaultDeskCfg = defaultDesk?.config?.desktop_config || defaultDesk?.config || {};
           update({
             type: newType,
-            path: '', host: '', port: '', mode: 'listener', device: '', name: '',
+            path: '', host: '', port: '', mode: ['srt', 'tcp'].includes(newType) ? 'listener' : undefined, device: '', name: '',
             pattern: newType === 'lavfi_video' ? 'testsrc' : newType === 'lavfi_audio' ? 'sine' : '',
             size: newType === 'lavfi_video' ? '1920x1080' : undefined,
             rate: newType === 'lavfi_video' ? '25' : undefined,
             frequency: newType === 'lavfi_audio' ? 1000 : undefined,
+            ...(newType === 'desktop' ? {
+              display_num: defaultDeskCfg.display_num !== undefined ? String(defaultDeskCfg.display_num) : '99',
+              video_size: defaultDeskCfg.resolution || '1920x1080',
+              framerate: defaultDeskCfg.framerate !== undefined ? Number(defaultDeskCfg.framerate) : 30,
+              provider_service_id: defaultDesk ? defaultDesk.id : null,
+              draw_mouse: 0,
+            } : {}),
             ...(!isHwSupported ? {
               hwaccel: 'none',
               hwaccel_output_format: '',
@@ -541,6 +583,370 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </div>
         </div>
       )}
+
+      {/* ── Virtual Desktop (x11grab) Input Panel ── */}
+      {config.type === 'desktop' && (() => {
+        const selectedDesktop = desktops.find(d => d.id === config.provider_service_id);
+        const dCfg = selectedDesktop?.config?.desktop_config || selectedDesktop?.config || {};
+        const nativeDisplay = dCfg.display_num !== undefined ? String(dCfg.display_num) : '99';
+        const nativeRes = dCfg.resolution || '1920x1080';
+        const nativeFps = dCfg.framerate !== undefined ? Number(dCfg.framerate) : 30;
+
+        const currentDisplay = config.display_num !== undefined && config.display_num !== ''
+          ? String(config.display_num).replace(/^:/, '').replace(/\.0$/, '')
+          : (selectedDesktop ? nativeDisplay : '99');
+        const currentRes = config.video_size || config.size || (selectedDesktop ? nativeRes : '1920x1080');
+        const currentFps = config.framerate !== undefined && config.framerate !== ''
+          ? Number(config.framerate)
+          : (config.rate !== undefined && config.rate !== '' ? Number(config.rate) : (selectedDesktop ? nativeFps : 30));
+        const drawMouse = Boolean(config.draw_mouse === 1 || config.draw_mouse === true);
+
+        const isFpsMatched = selectedDesktop ? currentFps === nativeFps : true;
+        const isResMatched = selectedDesktop ? currentRes.trim().toLowerCase() === nativeRes.trim().toLowerCase() : true;
+        const isFullySynced = Boolean(selectedDesktop && isFpsMatched && isResMatched);
+
+        const handleSelectDesktop = (provIdStr: string) => {
+          if (provIdStr === '__manual__') {
+            setManualDesktopMode(true);
+            update({
+              provider_service_id: null,
+            });
+            return;
+          }
+          setManualDesktopMode(false);
+          const provId = Number(provIdStr);
+          const target = desktops.find(d => d.id === provId);
+          if (target) {
+            const tCfg = target.config?.desktop_config || target.config || {};
+            const tDisplay = tCfg.display_num !== undefined ? String(tCfg.display_num) : '99';
+            const tRes = tCfg.resolution || '1920x1080';
+            const tFps = tCfg.framerate !== undefined ? Number(tCfg.framerate) : 30;
+            update({
+              provider_service_id: provId,
+              display_num: tDisplay,
+              video_size: tRes,
+              framerate: tFps,
+            });
+          } else {
+            update({
+              provider_service_id: null,
+            });
+          }
+        };
+
+        const handleAlign = () => {
+          if (selectedDesktop) {
+            update({
+              display_num: nativeDisplay,
+              video_size: nativeRes,
+              framerate: nativeFps,
+            });
+          }
+        };
+
+        const deskCfg = selectedDesktop?.config?.desktop_config || selectedDesktop?.config || {};
+        const deskDispNum = Number(deskCfg.display_num ?? currentDisplay ?? 99) || 0;
+        const alsaSub = deskCfg.alsa_subdevice !== undefined && deskCfg.alsa_subdevice !== null
+          ? Number(deskCfg.alsa_subdevice)
+          : (deskDispNum % 8);
+        const loopbackCaptureDev = `hw:Loopback,1,${alsaSub}`;
+
+        return (
+          <div className="space-y-3 p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🖥️</span>
+                <span className="text-xs font-bold text-brand-lime uppercase tracking-wider">
+                  {t('sources.desktop.title', 'Virtual Desktop Ingest (x11grab)')}
+                </span>
+              </div>
+              {selectedDesktop && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-lime/10 border border-brand-lime/30 text-brand-lime font-mono">
+                  Display :{nativeDisplay}.0
+                </span>
+              )}
+            </div>
+
+            {/* Desktop Selector */}
+            <div>
+              <label htmlFor={`${idPrefix}-desktop-provider`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                {t('sources.desktop.selectDesktop', 'Target Virtual Desktop')}
+              </label>
+              {loadingDesktops ? (
+                <div className="text-xs text-[var(--text-secondary)] py-1.5 flex items-center gap-2">
+                  <span className="animate-spin text-brand-lime">↻</span>
+                  {t('common.loading', 'Loading virtual desktops...')}
+                </div>
+              ) : desktops.length === 0 ? (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>{t('sources.desktop.noDesktopsFound', 'No active Virtual Desktop found. You can configure one in Services or enter an X11 display manually.')}</span>
+                </div>
+              ) : (
+                <select
+                  id={`${idPrefix}-desktop-provider`}
+                  value={manualDesktopMode ? '__manual__' : (config.provider_service_id || '')}
+                  onChange={e => handleSelectDesktop(e.target.value)}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                >
+                  <option value="">{t('sources.desktop.chooseDesktop', '-- Select Virtual Desktop --')}</option>
+                  {desktops.map(desk => {
+                    const cfg = desk.config?.desktop_config || desk.config || {};
+                    return (
+                      <option key={desk.id} value={desk.id}>
+                        #{desk.id} - {desk.alias || desk.name} (Display :{cfg.display_num ?? 99} • {cfg.resolution || '1920x1080'} @ {cfg.framerate ?? 30} fps)
+                      </option>
+                    );
+                  })}
+                  <option value="__manual__">{t('sources.desktop.manualDesktop', 'Manual / Custom X11 Display')}</option>
+                </select>
+              )}
+            </div>
+
+            {/* Intelligent Sync Assistant Banner */}
+            {selectedDesktop && (
+              <div className="transition-all duration-200">
+                {isFullySynced ? (
+                  <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-400 font-bold">✓</span>
+                      <div>
+                        <div className="font-semibold">
+                          {t('sources.desktop.syncedBadge', '✓ Synchronized with Desktop #{{id}} ({{res}} @ {{fps}} fps)', {
+                            id: selectedDesktop.id,
+                            res: nativeRes,
+                            fps: nativeFps
+                          })}
+                        </div>
+                        <div className="text-[10px] text-emerald-300/70">
+                          {t('sources.desktop.syncedHelp', 'Optimal capture pipeline without temporal judder or redundant scaling.')}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
+                      1:1 Sync
+                    </span>
+                  </div>
+                ) : (
+                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2">
+                    <div className="flex items-start gap-2">
+                      <span className="text-base mt-0.5">⚠️</span>
+                      <div className="flex-1">
+                        <div className="font-semibold text-amber-200">
+                          {t('sources.desktop.mismatchWarning', 'Ingest parameters desynchronized from native display (#{{id}}: {{nativeRes}} @ {{nativeFps}} fps vs Ingest: {{currentRes}} @ {{currentFps}} fps). Risk of temporal judder or redundant CPU overhead.', {
+                            id: selectedDesktop.id,
+                            nativeRes,
+                            nativeFps,
+                            currentRes,
+                            currentFps
+                          })}
+                        </div>
+                        <div className="text-[10px] text-amber-300/70 mt-0.5">
+                          {t('sources.desktop.mismatchTip', 'Framerate or resolution differences cause software scaling/conversion in FFmpeg.')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleAlign}
+                        className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                      >
+                        <span>🔄</span>
+                        {t('sources.desktop.alignButton', 'Align with Desktop')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Desktop Virtual Audio Pairing Assistant (ALSA Loopback) */}
+            {onSyncAlsaAudio && (
+              <div className="p-2.5 rounded-lg border border-brand-lime/20 bg-brand-lime/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 transition-all">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs">🔊</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-brand-lime">
+                      {t('sources.desktop.audioLoopbackTitle', 'Virtual Audio Capture')}
+                    </span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20">
+                      {loopbackCaptureDev}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    {pairedAlsaDevice === loopbackCaptureDev
+                      ? t('sources.desktop.audioPairedNotice', '✓ Audio paired with {{device}} as secondary input source.', { device: loopbackCaptureDev })
+                      : t('sources.desktop.audioPairingTip', 'x11grab only provides video. Pair the desktop ALSA loopback channel to broadcast audio.')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSyncAlsaAudio(loopbackCaptureDev);
+                    setPairedAlsaDevice(loopbackCaptureDev);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer whitespace-nowrap self-end sm:self-center ${
+                    pairedAlsaDevice === loopbackCaptureDev
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-brand-lime hover:bg-brand-lime/90 text-black'
+                  }`}
+                >
+                  <span>🔗</span>
+                  {pairedAlsaDevice === loopbackCaptureDev
+                    ? t('sources.desktop.audioPairedButton', 'Audio Paired (hw:Loopback,1,{{sub}})', { sub: alsaSub })
+                    : t('sources.desktop.pairAudioButton', 'Pair Desktop Audio (hw:Loopback,1,{{sub}})', { sub: alsaSub })}
+                </button>
+              </div>
+            )}
+
+            {/* Ingest Geometry & Display Controls */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+              <div>
+                <label htmlFor={`${idPrefix}-display-num`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                  {t('sources.desktop.displayNum', 'X11 Display Socket')}
+                </label>
+                <div className="flex items-center">
+                  <span className="bg-white/5 border border-r-0 border-[var(--glass-border)] rounded-l-lg px-2 py-1.5 text-xs text-[var(--text-secondary)] font-mono">
+                    :
+                  </span>
+                  <input
+                    type="text"
+                    id={`${idPrefix}-display-num`}
+                    value={currentDisplay}
+                    onChange={e => update({ display_num: e.target.value.replace(/^:/, '').replace(/\.0$/, '') })}
+                    placeholder="99"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-r-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                  />
+                </div>
+                <span className="text-[9px] text-[var(--text-secondary)] mt-0.5 block">
+                  {t('sources.desktop.displayNumHelp', 'Target display socket number (e.g. 99 for :99.0)')}
+                </span>
+              </div>
+
+              <div>
+                <label htmlFor={`${idPrefix}-video-size`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                  {t('sources.desktop.videoSize', 'Resolution (video_size)')}
+                </label>
+                <input
+                  type="text"
+                  id={`${idPrefix}-video-size`}
+                  value={currentRes}
+                  onChange={e => update({ video_size: e.target.value })}
+                  placeholder="1920x1080"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                />
+                <div className="flex items-center gap-1 mt-1">
+                  {['1920x1080', '1280x720', '2560x1440'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => update({ video_size: preset })}
+                      className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
+                        currentRes === preset
+                          ? 'bg-brand-lime/20 border-brand-lime/50 text-brand-lime font-bold'
+                          : 'bg-white/5 border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor={`${idPrefix}-framerate`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                  {t('sources.desktop.framerate', 'Framerate (fps)')}
+                </label>
+                <input
+                  type="number"
+                  id={`${idPrefix}-framerate`}
+                  value={currentFps}
+                  min={1}
+                  max={120}
+                  onChange={e => update({ framerate: Number(e.target.value) || 30 })}
+                  placeholder="30"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                />
+                <div className="flex items-center gap-1 mt-1">
+                  {[24, 25, 30, 50, 60].map(fpsVal => (
+                    <button
+                      key={fpsVal}
+                      type="button"
+                      onClick={() => update({ framerate: fpsVal })}
+                      className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
+                        currentFps === fpsVal
+                          ? 'bg-brand-lime/20 border-brand-lime/50 text-brand-lime font-bold'
+                          : 'bg-white/5 border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      {fpsVal}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Mouse Cursor Toggle */}
+            <div className="pt-2 border-t border-[var(--glass-border)]">
+              <label htmlFor={`${idPrefix}-draw-mouse`} className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  id={`${idPrefix}-draw-mouse`}
+                  checked={drawMouse}
+                  onChange={e => update({ draw_mouse: e.target.checked ? 1 : 0 })}
+                  className="w-4 h-4 accent-brand-lime rounded cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-brand-lime transition-colors">
+                    {t('sources.desktop.drawMouse', 'Capture Mouse Cursor (draw_mouse)')}
+                  </span>
+                  <p className="text-[10px] text-[var(--text-secondary)]">
+                    {t('sources.desktop.drawMouseHelp', 'Record pointer movements. Keep disabled for a clean broadcast feed.')}
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {/* Optional Offset Coordinates */}
+            <details className="text-xs text-[var(--text-secondary)] group">
+              <summary className="cursor-pointer select-none py-1 hover:text-[var(--text-primary)] transition-colors flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider">
+                <span>▶</span>
+                <span>{t('sources.desktop.advancedOffsets', 'Custom Window Offsets (Optional)')}</span>
+              </summary>
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <div>
+                  <label htmlFor={`${idPrefix}-offset-x`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                    {t('sources.desktop.offsetX', 'Offset X (px)')}
+                  </label>
+                  <input
+                    type="number"
+                    id={`${idPrefix}-offset-x`}
+                    value={config.offset_x ?? ''}
+                    onChange={e => update({ offset_x: e.target.value !== '' ? Number(e.target.value) : undefined })}
+                    placeholder="0"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                  />
+                </div>
+                <div>
+                  <label htmlFor={`${idPrefix}-offset-y`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                    {t('sources.desktop.offsetY', 'Offset Y (px)')}
+                  </label>
+                  <input
+                    type="number"
+                    id={`${idPrefix}-offset-y`}
+                    value={config.offset_y ?? ''}
+                    onChange={e => update({ offset_y: e.target.value !== '' ? Number(e.target.value) : undefined })}
+                    placeholder="0"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                  />
+                </div>
+              </div>
+            </details>
+          </div>
+        );
+      })()}
 
       {/* ── HTTP Audio (Icecast / Shoutcast) Input Assistant ── */}
       {config.type === 'http_audio' && (() => {

@@ -14,7 +14,7 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
         try:
             name = proc.info['name'] or ''
             # Check if it is a managed process binary
-            is_candidate = any(target in name.lower() for target in ['ffmpeg', 'mediamtx', 'icecast', 'cog'])
+            is_candidate = any(target in name.lower() for target in ['ffmpeg', 'mediamtx', 'icecast', 'cog', 'xvfb', 'x11vnc'])
             if is_candidate:
                 pid = proc.info['pid']
                 gui_proc_id = None

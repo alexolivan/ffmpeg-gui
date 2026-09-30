@@ -389,7 +389,9 @@ class TestCommandGenerator(unittest.TestCase):
             'icecast_username': 'source',
             'icecast_password': 'mypassword',
             'ice_name': 'My Station',
-            'ice_genre': 'Rock'
+            'ice_genre': 'Rock',
+            'ice_url': 'https://mystation.org',
+            'ice_public': True
         }
 
         cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
@@ -397,6 +399,8 @@ class TestCommandGenerator(unittest.TestCase):
 
         self.assertIn("-f mp3 -content_type audio/mpeg", cmd_str)
         self.assertIn("-ice_name My Station -ice_genre Rock", cmd_str)
+        self.assertIn("-ice_url https://mystation.org", cmd_str)
+        self.assertIn("-ice_public 1", cmd_str)
         self.assertNotIn("-legacy_icecast", cmd_str)
         self.assertNotIn("-tls", cmd_str)
         self.assertIn("icecast://source:mypassword@127.0.0.1:7000/radio.mp3", cmd_str)
@@ -509,6 +513,138 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-f ogg -content_type application/ogg", cmd_vorbis_str)
         self.assertIn("icecast://source:hackme@127.0.0.1:8000/stream.ogg", cmd_vorbis_str)
 
+    def test_alsa_to_icecast_flac_command_generation(self):
+        proc = MagicMock()
+        proc.id = 602
+        proc.type = "service"
+        # ALSA input: even if has_video was mistakenly left True, builder must suppress it with -vn
+        proc.input_config = {
+            'input1': {'type': 'alsa', 'device': 'hw:Loopback,1,0'},
+            'has_video': True,
+            'has_audio': True
+        }
+        proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'flac',
+            'audio_params': {'compression_level': '7', 'ac': '2', 'ar': '48000'}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'icecast',
+            'host': '127.0.0.1',
+            'port': '7000',
+            'icecast_mount': '/lossless.flac',
+            'icecast_username': 'source',
+            'icecast_password': 'hackme',
+            'ice_name': 'Lossless Studio Audio',
+            'ice_url': 'https://studio.local',
+            'ice_public': False,
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        # 1. ALSA input
+        self.assertIn("-f alsa -i hw:Loopback,1,0", cmd_str)
+        # 2. Audio-only suppression of video mapping (-vn)
+        self.assertIn("-vn", cmd_str)
+        self.assertNotIn("-map 0:v", cmd_str)
+        # 3. Audio mapping
+        self.assertIn("-map 0:a", cmd_str)
+        # 4. FLAC codec and parameters (no -b:a)
+        self.assertIn("-c:a flac", cmd_str)
+        self.assertIn("-compression_level 7", cmd_str)
+        self.assertIn("-ac 2", cmd_str)
+        self.assertIn("-ar 48000", cmd_str)
+        self.assertNotIn("-b:a", cmd_str)
+        # 5. Container & Content Type (default / .flac extension -> raw flac)
+        self.assertIn("-f flac -content_type audio/flac", cmd_str)
+        # 6. Metadata
+        self.assertIn("-ice_name Lossless Studio Audio", cmd_str)
+        self.assertIn("-ice_url https://studio.local", cmd_str)
+        self.assertIn("-ice_public 0", cmd_str)
+        # 7. Output URL
+        self.assertIn("icecast://source:hackme@127.0.0.1:7000/lossless.flac", cmd_str)
+
+        # Case 2: FLAC with .ogg mountpoint auto-detects Ogg FLAC encapsulation (-f ogg -content_type audio/ogg)
+        proc.output_config['icecast_mount'] = '/master.ogg'
+        cmd_ogg = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_ogg_str = " ".join(cmd_ogg)
+        self.assertIn("-c:a flac", cmd_ogg_str)
+        self.assertIn("-f ogg -content_type audio/ogg", cmd_ogg_str)
+        self.assertIn("icecast://source:hackme@127.0.0.1:7000/master.ogg", cmd_ogg_str)
+
+    def test_libfdk_aac_and_he_v2_generation(self):
+        # Case 1: libfdk_aac with HE-AAC v2 and CBR 48k (forces -ac 2 even if ac: 1)
+        proc = MagicMock()
+        proc.id = 603
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'http_audio',
+            'url': 'http://127.0.0.1:7000/master.ogg',
+            'has_video': False,
+            'has_audio': True
+        }
+        proc.codec_config = {
+            'vcodec': 'none',
+            'acodec': 'libfdk_aac',
+            'audio_params': {
+                'profile:a': 'aac_he_v2',
+                'rate_control': 'cbr',
+                'b:a': '48k',
+                'ac': '1',  # Incompatible with HE-AAC v2, builder must force 2
+                'afterburner': '1'
+            }
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'icecast',
+            'host': 'ingest.example.com',
+            'port': '8000',
+            'icecast_mount': '/stream.aac',
+            'icecast_username': 'source',
+            'icecast_password': 'secret'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-c:a libfdk_aac", cmd_str)
+        self.assertIn("-b:a 48k", cmd_str)
+        self.assertIn("-profile:a aac_he_v2", cmd_str)
+        self.assertIn("-ac 2", cmd_str)
+        self.assertIn("-afterburner 1", cmd_str)
+        self.assertIn("-f adts -content_type audio/aac", cmd_str)
+        self.assertIn("icecast://source:secret@ingest.example.com:8000/stream.aac", cmd_str)
+
+        # Case 2: libfdk_aac with VBR quality 3 (omits -b:a, outputs -vbr 3)
+        proc.codec_config['audio_params'] = {
+            'profile:a': 'aac_low',
+            'rate_control': 'vbr',
+            'vbr': '3',
+            'ac': '2',
+            'afterburner': '1'
+        }
+        cmd_vbr = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_vbr_str = " ".join(cmd_vbr)
+        self.assertIn("-c:a libfdk_aac", cmd_vbr_str)
+        self.assertIn("-vbr 3", cmd_vbr_str)
+        self.assertNotIn("-b:a", cmd_vbr_str)
+        self.assertIn("-profile:a aac_low", cmd_vbr_str)
+
+        # Case 3: Native aac with illegal aac_he_v2 profile gracefully falls back to aac_low
+        proc.codec_config['acodec'] = 'aac'
+        proc.codec_config['audio_params'] = {
+            'profile:a': 'aac_he_v2',
+            'b:a': '64k',
+            'ac': '2'
+        }
+        cmd_native = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_native_str = " ".join(cmd_native)
+        self.assertIn("-c:a aac", cmd_native_str)
+        self.assertIn("-profile:a aac_low", cmd_native_str)
+        self.assertNotIn("aac_he_v2", cmd_native_str)
+
     def test_hls_abr_vaapi_cqp_command(self):
         proc = MagicMock()
         proc.id = 50
@@ -604,5 +740,201 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-c:v:0 h264_nvenc -rc:v:0 cbr -b:v:0 4500k -preset:v:0 p4", cmd_str)
         self.assertIn("-c:v:1 h264_nvenc -rc:v:1 cbr -b:v:1 2500k -preset:v:1 p4", cmd_str)
 
+    def test_desktop_x11grab_input_default(self):
+        proc = MagicMock()
+        proc.id = 60
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'desktop',
+            'display_num': 99,
+            'framerate': 30,
+            'video_size': '1920x1080',
+            'draw_mouse': 0,
+            'has_video': True,
+            'has_audio': False
+        }
+        proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'none',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'file',
+            'path': '/tmp/test_desktop.mp4'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f x11grab", cmd_str)
+        self.assertIn("-draw_mouse 0", cmd_str)
+        self.assertIn("-framerate 30", cmd_str)
+        self.assertIn("-video_size 1920x1080", cmd_str)
+        self.assertIn("-i :99.0", cmd_str)
+
+    def test_desktop_x11grab_custom_fps_size_mouse(self):
+        proc = MagicMock()
+        proc.id = 61
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'x11grab',
+            'display': ':98',
+            'framerate': 60,
+            'size': '1280x720',
+            'draw_mouse': 1,
+            'offset_x': 100,
+            'offset_y': 50,
+            'has_video': True,
+            'has_audio': False
+        }
+        proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'none',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'file',
+            'path': '/tmp/test_desktop_custom.mp4'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f x11grab", cmd_str)
+        self.assertIn("-draw_mouse 1", cmd_str)
+        self.assertIn("-framerate 60", cmd_str)
+        self.assertIn("-video_size 1280x720", cmd_str)
+        self.assertIn("-i :98.0+100,50", cmd_str)
+
+    def test_desktop_input_with_provider_auto_resolution(self):
+        prov_desktop = MagicMock()
+        prov_desktop.id = 15
+        prov_desktop.config = {
+            'desktop_config': {
+                'display_num': 95,
+                'resolution': '1920x1080',
+                'framerate': 25
+            }
+        }
+
+        mock_session = MagicMock()
+        mock_session.__enter__.return_value = mock_session
+        mock_session.query.return_value.get.return_value = prov_desktop
+        self.mock_session_factory.return_value = mock_session
+
+        proc = MagicMock()
+        proc.id = 62
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'desktop',
+            'provider_service_id': 15,
+            'has_video': True,
+            'has_audio': False
+        }
+        proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'none',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'file',
+            'path': '/tmp/test_desktop_auto.mp4'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f x11grab", cmd_str)
+        self.assertIn("-draw_mouse 0", cmd_str)
+        self.assertIn("-framerate 25", cmd_str)
+        self.assertIn("-video_size 1920x1080", cmd_str)
+        self.assertIn("-i :95.0", cmd_str)
+
+    def test_desktop_audio_mapping_and_pairing(self):
+        # Case 1: Desktop with has_audio=True and NO secondary input
+        proc_single = MagicMock()
+        proc_single.id = 81
+        proc_single.type = "service"
+        proc_single.input_config = {
+            'type': 'desktop',
+            'display_num': 99,
+            'video_size': '1920x1080',
+            'framerate': 30,
+            'has_video': True,
+            'has_audio': True
+        }
+        proc_single.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'aac',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc_single.filter_config = {}
+        proc_single.output_config = {
+            'type': 'udp',
+            'host': '239.0.0.1',
+            'port': 1234
+        }
+
+        cmd_single = self.pm._build_ffmpeg_cmd(proc_single, "ffmpeg")
+        cmd_str_single = " ".join(cmd_single)
+
+        # Must NOT map nonexistent audio from stream 0 (0:a)
+        self.assertNotIn("-map 0:a", cmd_str_single)
+        # Should cleanly mute/disable audio with -an
+        self.assertIn("-an", cmd_str_single)
+
+        # Case 2: Desktop with paired secondary input (ALSA Loopback hw:Loopback,1,3)
+        proc_paired = MagicMock()
+        proc_paired.id = 82
+        proc_paired.type = "service"
+        proc_paired.input_config = {
+            'use_secondary_input': True,
+            'input1': {
+                'type': 'desktop',
+                'display_num': 99,
+                'video_size': '1920x1080',
+                'framerate': 30,
+                'has_video': True,
+                'has_audio': False
+            },
+            'input2': {
+                'type': 'alsa',
+                'device': 'hw:Loopback,1,3',
+                'has_video': False,
+                'has_audio': True
+            }
+        }
+        proc_paired.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'aac',
+            'video_params': {},
+            'audio_params': {}
+        }
+        proc_paired.filter_config = {}
+        proc_paired.output_config = {
+            'type': 'udp',
+            'host': '239.0.0.1',
+            'port': 1234
+        }
+
+        cmd_paired = self.pm._build_ffmpeg_cmd(proc_paired, "ffmpeg")
+        cmd_str_paired = " ".join(cmd_paired)
+
+        # Both inputs must be present
+        self.assertIn("-f x11grab", cmd_str_paired)
+        self.assertIn("-f alsa -i hw:Loopback,1,3", cmd_str_paired)
+        # Maps video from input 0 and audio from input 1
+        self.assertIn("-map 0:v", cmd_str_paired)
+        self.assertIn("-map 1:a", cmd_str_paired)
+
+
 if __name__ == '__main__':
     unittest.main()
+

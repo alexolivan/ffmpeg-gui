@@ -5,6 +5,322 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [2.30.0] - 2026-09-30
+
+### Fixed
+- **ALSA Process Binding Resilience for Reattached Processes**:
+  - Resolved process PIDs in `get_alsa_topology` for surviving and reattached background services (`ProcessManager.reattached_pids` and `proc.pid`), ensuring kernel `/proc/{pid}/fd` inspection is used even after application restarts with `KillMode=process`.
+  - Prioritized explicit CLI device arguments (`hw:1,0`, `plughw:1,0`) and JSON device strings over stale or default numeric `soundcard` / `card_index` configuration values, preventing capture processes from falsely binding to Card 0 (NVIDIA HDMI).
+  - Restricted structured JSON fallback evaluation to explicit ALSA sections (`type == 'alsa'` or `audio_driver == 'alsa'`).
+
+## [2.29.7] - 2026-09-30
+
+### Added
+- **Dynamic Free Loopback Subdevice Allocation & Humanized UI**:
+  - Replaced the obscure `:display % 8` formula with dynamic free subdevice calculation in `get_next_available_desktop_display_and_vnc_port`.
+  - Added real-time tracking of occupied ALSA Loopback subdevices across active and configured Desktops (`occupied_subdevices`).
+  - Humanized subdevice dropdown in `DesktopConfigForm.tsx` to explicitly indicate `[Disponible]` vs `[En uso por: <Desktop>]` and auto-select the first free subdevice.
+  - Resolved target desktop ALSA subdevice directly in `ProcessManager.start_process` for Kiosk browser launches, passing the explicit subdevice to `apulse` environment variables and sandbox configs.
+
+### Fixed
+- **Kernel FD Ground Truth for ALSA Process Card Binding**:
+  - Eliminated false bindings where FFmpeg processes utilizing NVIDIA NVENC (`h264_nvenc`) were incorrectly displayed as bound to NVIDIA HDMI Audio (Card 0).
+  - Implemented `/proc/{pid}/fd` inspection to read active `/dev/snd/pcmC*` and `controlC*` device descriptors as the authoritative source of truth.
+  - Refined fallback CLI and config parsing with strict ALSA device regexes (`(?:hw|plughw|dsnoop|dmix|default|sysdefault):...`), eliminating loose substring matching and improper Card 0 wildcard fallbacks.
+- **Elimination of Fake Loopback VU Meters & WebSocket Polling**:
+  - Classified read-only kernel synchronization controls (`PCM Slave Active`, `PCM Slave Rate`, etc.) as ignored internal state on ALSA Loopback cards, removing non-functional VU meter nodes and blank canvases from the UI.
+  - Prevented opening `/ws/alsa/meters/{card_idx}` WebSockets from frontend when viewing Loopback cards, eliminating unnecessary 30Hz network and CPU polling.
+  - Updated `AlsaManager.read_meters` to immediately return an empty dictionary for Loopback cards.
+
+### Changed
+- **System Installer & Upgrade Hardening**:
+  - Added `apulse` package dependency to Debian/Ubuntu (`apt-get`) and Arch Linux (`pacman`) dependency lists in `install.sh`.
+  - Updated `INSTALL.md` documentation detailing the `apulse` requirement for PulseAudio emulation without background daemons.
+
+## [2.29.6] - 2026-09-30
+
+### Fixed
+- **Firefox Kiosk ALSA Loopback Audio Routing via `apulse` & Cubeb Configuration**:
+  - Resolved `OpenCubeb() failed to init cubeb` and `OnMediaSinkAudioError` caused by official Mozilla Firefox ESR releases lacking native ALSA Cubeb backends on headless / PulseAudio-less hosts.
+  - Automatically detect and prefix Firefox kiosk launches with `apulse` (`shutil.which("apulse")`) to intercept PulseAudio API calls and translate them into native ALSA PCM streams.
+  - Explicitly configured `APULSE_PLAYBACK_DEVICE` and `APULSE_CAPTURE_DEVICE` to target the isolated ALSA Loopback device `plughw:Loopback,0,<subdevice>`, matching Chromium's audio isolation architecture.
+  - Added multiarch detection for `/usr/lib/*/apulse` and exported `LD_LIBRARY_PATH` in `kiosk_sub_env` to ensure Firefox Cubeb threads locate `libpulse.so.0`.
+  - Configured Firefox `user.js` preferences with `media.cubeb.backend: "pulse"`, `media.cubeb.sandbox: false`, `security.sandbox.content.level: 0`, and whitelisted `/dev/snd/` in content sandboxes to prevent permission denials accessing sound card devices.
+  - Provided descriptive `FileNotFoundError` guidance (`sudo apt update && sudo apt install -y apulse`) logged directly to the virtual console and dashboard if `apulse` is missing on headless systems.
+
+## [2.29.5] - 2026-09-30
+
+### Fixed
+- **shutil Variable Scoping in ProcessManager**:
+  - Removed inner `import shutil` in `ProcessManager.start_process` that inadvertently shadowed module-level `shutil`, causing `UnboundLocalError: cannot access local variable 'shutil'` when launching Virtual Desktops and other services.
+- **Immediate Startup Error Logging in Virtual Console & Telemetry**:
+  - Resolved `log_path` and `logs_dir` at the entrypoint of `ProcessManager.start_process` to guarantee early diagnostics are immediately captured.
+  - Formatted and persisted startup error banners (`--- PROCESS START ERROR AT ... ---`) to `process_{id}.log`, in-memory log buffers, and the database `ServiceLog` table whenever validation, binary resolution, or process spawning fails.
+  - Added `last_error` property to `Service` model and populated `last_error` in WebSocket telemetry broadcast and API responses, eliminating stale log displays from previous days in virtual console modals.
+  - Refined `is_alive` check in `stop_process` to evaluate both `proc.returncode is None` and OS PID tracking via `psutil`.
+
+## [2.29.4] - 2026-09-29
+
+### Fixed
+- **Clean `.asoundrc` Structure & Elimination of Circular ALSA Inclusion**:
+  - Removed recursive `<confdir:alsa.conf>` from `.asoundrc` template that triggered `ALSA lib conf.c:1245:(parse_value) default is not a string` when parsed by system ALSA hooks.
+  - Eliminated overriding `ALSA_CONFIG_PATH` environment variable in kiosk launchers, allowing ALSA to naturally load system definitions followed by `$HOME/.asoundrc`.
+
+## [2.29.3] - 2026-09-29
+
+### Fixed
+- **Kiosk Browser Audio Isolation via ALSA `plughw` & `<confdir:alsa.conf>` Include**:
+  - Prefixed sandboxed `asound.conf` and `~/.asoundrc` with `<confdir:alsa.conf>` to ensure system ALSA plugin definitions (`type plug`) load correctly when `ALSA_CONFIG_PATH` is set.
+  - Concurrently wrote `.asoundrc` inside the kiosk profile directory (`$HOME/.asoundrc`) to ensure Chromium child processes and zygotes inherit the ALSA configuration even if environment variables are dropped.
+  - Updated Chromium launch parameters to `--alsa-output-device=plughw:Loopback,0,<subdevice>`, allowing ALSA's `plug` layer to convert Chromium's internal `float32` audio streams to hardware PCM formats without rejected opens.
+  - Filtered out `PCM Rate Shift 100000` controls for Loopback cards in `AlsaManager._classify_control` to eliminate 16 redundant sliders and suppress the useless system clock panel on virtual loopback devices.
+
+## [2.29.2] - 2026-09-29
+
+### Fixed
+- **ALSA Loopback Virtual Capture Quadrant Layout & Bus Exit Indicator**:
+  - Enforced explicit `lg:col-start-1` and `lg:col-start-7` CSS Grid column coordinates in `AlsaAudioSettingsCard.tsx` across all four quadrants and row dividers.
+  - Fixed an issue where the 8 Virtual Capture PCM lanes were pushed into the bottom-right hardware quadrant due to CSS Grid auto-placement after omitting the right divider for Loopback devices.
+  - Added visual flow exit arrow (`◄`) at the right endpoint of virtual capture strips adjacent to the central Audio Bus to indicate audio emerging from the central bus into capture/ingest.
+
+## [2.29.1] - 2026-09-29
+
+### Fixed
+- **Fraunhofer FDK AAC Visibility in Audio Codec Selector**:
+  - Fixed an issue where `Fraunhofer FDK AAC` was filtered out from the audio codec dropdown even when compiled into the active/selected FFmpeg binary.
+  - Removed restrictive `requiresBuildOption: 'libfdk_aac'` filter in `codecRegistry.ts` that evaluated to false for builds without static checkbox keys.
+  - Implemented multi-tiered detection in `getAvailableAudioCodecs` checking explicit build options, binary `--version` configuration flags (`--enable-libfdk-aac`), and introspected active encoders (`/system/capabilities`).
+  - Added `resolveBuildOptions` in `ProcessConfigForm.tsx` to automatically parse auto-detected Forge libraries (such as `libfdk_aac` and `libvpx`) from `version_output` or `build_log_summary`.
+  - Updated `FfmpegRecipe` and `main.py` build completion handlers to persist auto-detected `libfdk_aac` in `build_options` in the database.
+
+## [2.29.0] - 2026-09-29
+
+### Added
+- **Fraunhofer FDK AAC (`libfdk_aac`) Integration in Forge & Codec Registry**:
+  - Registered `libfdk_aac` in `BuildManager.check_dependencies` with package mapping across Debian/Ubuntu (`libfdk-aac-dev`), Fedora (`fdk-aac-free-devel`), and Arch Linux (`libfdk-aac`).
+  - Added auto-detection flag `--enable-libfdk-aac` in `FfmpegRecipe` when `libfdk-aac-dev` is installed on the host system.
+  - Added `libfdk_aac` to `AUDIO_CODECS` with full profile support: `aac_low` (LC), `aac_he` (HE-AAC v1 SBR), `aac_he_v2` (HE-AAC v2 Parametric Stereo), `aac_ld` (Low Delay), and `aac_eld` (Enhanced Low Delay).
+  - Added smart guidance for bitrate selection with recommended per-profile ranges and optional VBR mode (qualities 1-5).
+  - Enabled dynamic introspective filtering in `getAvailableAudioCodecs` and `AudioCodecPanel` based on active build encoders from `/system/capabilities`, ensuring `libfdk_aac` only appears when supported by the active FFmpeg binary.
+  - Added smart UI validation in `AudioCodecPanel` to disallow mono audio when using HE-AAC v2 (Parametric Stereo).
+  - Added defensive safeguards in `FfmpegCommandBuilder` (`_append_audio_codec_params` and `_append_audio_codec_params_indexed`) to enforce `-ac 2` for `aac_he_v2` and gracefully fall back to `aac_low` when native `aac` is invoked with unsupported HE-AAC profiles.
+  - Added unit test cases in `backend/tests/test_command_generator.py`.
+
+## [2.28.1] - 2026-09-29
+
+### Fixed
+- **Icecast FLAC Container Format Auto-Detection (Ogg vs Raw FLAC)**:
+  - Fixed downstream FFmpeg input failure (`cannot find sync word`, `Invalid data found when processing input`) when pulling from an Icecast stream with `.ogg` mountpoint delivering FLAC audio.
+  - Added smart container and content-type detection in `FfmpegCommandBuilder` (`backend/core/builders/ffmpeg_builder.py`) for FLAC Icecast outputs:
+    - If the mountpoint ends with `.ogg` or `.oga` (or `container` is explicitly configured as `ogg`), FFmpeg muxes as Ogg FLAC encapsulation (`-f ogg -content_type audio/ogg`).
+    - If the mountpoint ends with `.flac` or other, FFmpeg muxes as Raw FLAC bitstream (`-f flac -content_type audio/flac`).
+  - Added unit test coverage for both `.ogg` and `.flac` mountpoint extension muxing in `backend/tests/test_command_generator.py`.
+
+## [2.28.0] - 2026-09-29
+
+### Added
+- **Icecast Stream URL & Public YP Directory Metadata**:
+  - Added `-ice_url` parameter support in `FfmpegCommandBuilder` (`backend/core/builders/ffmpeg_builder.py`) to broadcast the radio station website URL directly to Icecast servers.
+  - Added `ice_url` text input and `ice_public` toggle switch in `DestinationPanel.tsx` under stream metadata, with full i18n support across English, Spanish, and Catalan.
+  - Verified end-to-end data persistence and lifecycle across UI state, JSON payloads, Pydantic endpoints, and database models.
+- **Lossless FLAC Audio Codec & Audio-Only Ingest Safeguards**:
+  - Registered `flac` (Free Lossless Audio Codec) in `AUDIO_CODECS` with customizable `compression_level` (0-12, default 5), sample rate, and channel options in `frontend/src/components/codec/codecRegistry.ts`.
+  - Added `flac` to the compatibility whitelist for `icecast` and `file` destinations (`OUTPUT_COMPATIBLE_CODECS`).
+  - Added audio codec parameter builder support for FLAC compression level while omitting meaningless target bitrates (`-b:a`).
+  - Added automatic audio-only safeguards in `FfmpegCommandBuilder` to suppress video mapping (`-vn`) when capturing from audio-only hardware/generators (`alsa`, `lavfi_audio`, `http_audio`) or pushing to audio-only destinations (`icecast`, `alsa`), preventing FFmpeg aborts (`Stream map '0:v' matches no streams`).
+  - Added unit test `test_alsa_to_icecast_flac_command_generation` in `backend/tests/test_command_generator.py`.
+
+## [2.27.1] - 2026-09-29
+
+### Fixed
+- **Port Collision Validation for Client / Outbound FFmpeg Streams**:
+  - Fixed false-positive port collision errors (`Port collision: Port X/ANY is already in use by service...`) when configuring FFmpeg streams to capture from or push to network services (such as pulling audio from a local Icecast server on port 7000 or pushing to remote Icecast / RTMP / HLS / UDP destinations).
+  - Clarified port registration in `backend/utils/port_validator.py` (`extract_ports_from_service`) to only bind host listening ports for inputs that truly open a local server socket (`srt` in listener mode, `udp`/`rtp` inbound sockets, and `tcp` in listener mode) and outputs in listener mode.
+  - Sanitized `InputSourcePanel.tsx` to avoid resetting `mode: 'listener'` indiscriminately for protocols that do not support listener sockets (e.g., `http_audio`, `icecast`, `hls`, `rtmp`).
+  - Added regression test `test_ffmpeg_service_reading_from_icecast_does_not_collide` and `test_ffmpeg_srt_caller_input_does_not_collide` in `backend/tests/test_icecast_ports.py`.
+
+## [2.27.0] - 2026-09-29
+
+### Added
+- **ALSA Loopback (`snd-aloop`) Subdevice Topology & Clean Audio Routing**:
+  - Implemented clean 8-subdevice virtual topology in `AlsaManager` (`virtual_playout` on `hw:Loopback,0,0..7` and `virtual_capture` on `hw:Loopback,1,0..7`).
+  - Filtered phantom analog mixer controls (`PCM Rate Shift 100000`, `PCM Slave Rate`, etc.) into system clock telemetry to eliminate spurious volume faders and phantom crossovers.
+  - Kept right column quadrants (`hardware_outputs` and `hardware_inputs`) completely empty for Loopback cards in `AlsaAudioSettingsCard.tsx` to communicate a purely virtual closed loop between playout and capture through the audio bus.
+  - Added fixed routing badge (`◄ PCM X Playback`) on capture lanes and live process badges for active Kiosk browsers (`Kiosk:`) and FFmpeg services (`FFmpeg:`).
+- **Virtual Desktop & Kiosk Browser Audio Sandboxing**:
+  - Sandboxed browser audio playback to dedicated ALSA loopback subdevices (`display_num % 8` or manual selection) via dynamic `asound.conf` generation (`ALSA_CONFIG_PATH`) and `--alsa-output-device=hw:Loopback,0,X` for Chromium in `process_manager.py`.
+  - Added ALSA Loopback Subdevice selector in `DesktopConfigForm.tsx` with automatic detection of the `snd-aloop` kernel module and helper warning banners.
+- **1-Click Desktop Virtual Audio Pairing & Crash Prevention**:
+  - Enhanced `InputSourcePanel.tsx` with 1-click `[🔗 Vincular Audio de este Desktop]` assistant, automatically activating secondary input on `hw:Loopback,1,X`.
+  - Sanitized CLI generator in `backend/core/builders/ffmpeg_builder.py` to prevent FFmpeg crashes (`Stream map '0:a' matches no streams`) when `x11grab` is captured without a secondary audio source by suppressing `-map 0:a` and applying `-an`.
+- **System Installer & Kernel Module Persistence**:
+  - Added `configure_alsa_loopback` in `install.sh` to load `snd-aloop`, write `/etc/modules-load.d/snd-aloop.conf`, and configure `options snd-aloop index=-2 enable=1 pcm_substreams=8` in `/etc/modprobe.d/snd-aloop.conf`.
+  - Documented kernel module requirements, manual verification, and substream scaling in `INSTALL.md` and `README.md`.
+
+## [2.26.2] - 2026-09-28
+
+### Fixed
+- **ProcessManager Cross-Loop Process Lifecycle & Termination**:
+  - Fixed an unhandled `RuntimeError: Task got Future attached to a different loop` inside `ProcessManager.stop_process` and `_watchdog` that prevented stopping or restarting services (such as MediaMTX Hubs or streams) and flooded ASGI server logs.
+  - Implemented event loop affinity detection (`proc._loop is asyncio.get_running_loop()`) before awaiting `proc.wait()` or draining `proc.stdin`.
+  - Added non-blocking OS/psutil fallbacks (`psutil.Process(pid).wait` via `asyncio.to_thread` and direct `os.kill`) ensuring process termination and resource cleanup succeed even when an active process was spawned in a different event loop or thread.
+  - Added unit test `test_stop_process_with_cross_loop_subprocess_does_not_crash` in `backend/tests/test_lifecycle_reload_stop.py`.
+- **Unified Single-Loop Dual HTTP/HTTPS Server Runtime**:
+  - Refactored `backend/run_server.py` to run dual-port HTTP and HTTPS Uvicorn instances concurrently on the **same asyncio event loop** using `asyncio.gather(*(s.serve() for s in active_servers))` instead of spawning a separate thread with an isolated event loop for HTTPS.
+  - Unified signal handling for `SIGHUP`, `SIGUSR1`, `SIGTERM`, and `SIGINT` across all active servers.
+
+## [2.26.1] - 2026-09-28
+
+### Fixed
+- **Forge Build Profile LibSRT Version Synchronization**:
+  - Fixed an issue where editing an existing or imported build profile with LibSRT enabled would not update `srt_version` (or clear it when LibSRT was unchecked) due to state desynchronization between `srtVersion` and `build_options` in `BuildFormModal.tsx`.
+  - Updated `update_build` and `create_build` endpoints in `backend/main.py` to synchronize `build_options['srt_version']` with `srt_version`, preventing stale options dictionaries from clobbering updated versions.
+  - Updated `SoftwareBuild.srt_version` setter in `backend/database/models.py` to reassign the dictionary and mark `build_options` as modified for reliable SQLite persistence.
+  - Added comprehensive automated test suite `backend/tests/test_forge_profile_updates.py`.
+- **Default Storage Directories Provisioning**:
+  - Fixed clean installations missing essential storage directories (`backend/data/logs`, `data/sdks`, `data/cache`, `data/uploads`, `ffmpeg_builds`) by provisioning them via `mkdir -p` in `install.sh`.
+  - Added defensive directory creation in `backend/database/db.py` during `init_db()` and in `backend/core/process_manager.py` when resolving process log storage paths.
+
+## [2.26.0] - 2026-09-28
+
+### Added
+- **FFmpeg Virtual Desktop Video Ingest (`x11grab`)**:
+  - Implemented uncompressed video ingest from X11 Virtual Desktops (`type: 'desktop'` or `type: 'x11grab'`) into FFmpeg pipelines in `backend/core/builders/ffmpeg_builder.py`.
+  - Added CLI generator support for `-f x11grab -draw_mouse {draw_mouse} -framerate {framerate} -video_size {video_size} -i :{display_num}.0[+{offset_x},{offset_y}]`.
+  - Added hardware decoding sanitization in `_HWACCEL_UNSUPPORTED_INPUT_TYPES` ensuring raw X11 shared memory frames bypass input hardware decoders while maintaining downstream GPU encoding acceleration (NVENC, VAAPI).
+- **Intelligent Framerate & Resolution Synchronization Assistant**:
+  - Added dedicated Virtual Desktop Ingest configuration panel in `InputSourcePanel.tsx` with automatic desktop provider detection and auto-adoption of display geometry (`resolution`, `framerate`, `display_num`).
+  - Added real-time Synchronization Assistant banner with 1:1 match indicator (`✓ Sincronizado`) and temporal judder warning when capturing at mismatched framerates or resolutions.
+  - Added 1-click `[Alinear con Desktop]` quick action to auto-align capture framerate and geometry with the target Virtual Desktop.
+  - Added mouse cursor capture toggle (`draw_mouse`, default disabled for clean broadcast feeds) and optional window coordinate offsets.
+- **Process Dependency Auto-Linking for Virtual Desktops**:
+  - Extended `DependencyManager` in `backend/core/dependency_manager.py` to recognize `desktop` / `x11grab` input sources and automatically register the parent Virtual Desktop service as a required dependency.
+  - Included `desktop` services in `/api/dependencies/providers` and added `desktop` to `VIDEO_ALLOWED_TYPES` in `ProcessConfigForm.tsx`.
+- **ALSA Loopback (`snd-aloop`) 4-Quadrant Topology & Labeling**:
+  - Implemented 4-quadrant topology representation for `snd-aloop` virtual sound cards in `backend/core/alsa_manager.py`:
+    - Top-Left (`virtual_playout`): Device 0 Playout for web browsers & desktop audio (`hw:Loopback,0,X`).
+    - Bottom-Left (`virtual_capture`): Device 1 Capture for FFmpeg pipelines (`hw:Loopback,1,X`).
+    - Top-Right (`hardware_outputs`): Digital loopback cable bridge (`Playback 0,X -> Capture 1,X`).
+    - Bottom-Right (`hardware_inputs`): Bidirectional loopback route (`Capture 1,X <- Playback 0,X`).
+  - Enhanced PCM device naming in `backend/utils/alsa_v4l2_helper.py` to clearly disambiguate direction: `ALSA Loopback - Playback Subdevice X` vs. `ALSA Loopback - Capture Subdevice X`.
+  - Added comprehensive test coverage in `backend/tests/test_command_generator.py`, `backend/tests/test_alsa_manager.py`, and `backend/tests/test_alsa_v4l2.py`.
+
+## [2.25.1] - 2026-09-25
+
+### Fixed
+- **System Installer ALSA Dependencies (`install.sh`)**:
+  - Added `alsa-utils` and `libasound2-plugins` to Debian/Ubuntu system dependency installation.
+  - Added `alsa-utils` to RHEL/Fedora and Arch Linux system dependency installation.
+  - Ensures the `amixer` command is present on fresh/virgin Linux installations, allowing `AlsaManager` to properly discover hardware soundcard controls and apply volume matrix adjustments without missing binary errors.
+  - Updated `INSTALL.md` with explicit ALSA system requirements and soundcard utility guidance.
+
+## [2.25.0] - 2026-09-25
+
+### Added
+- **In-Memory Brute-Force Protection & Security Guard**:
+  - Implemented thread-safe `SecurityGuard` in `backend/core/security_guard.py` tracking failed login attempts and temporary lockouts in RAM without SQLite queries during attacks.
+  - Implemented RFC 6585 compliant HTTP 429 response (`Too Many Requests`) with `Retry-After` header and immediate rejection in RAM for locked-out IP addresses.
+  - Hardcoded permanent loopback immunity (`127.0.0.1`, `::1`, `localhost`) to guarantee local administrative tunnels and services can never be locked out.
+  - Added support for custom whitelist IPs and CIDR blocks (e.g. `192.168.1.0/24`) with strict Pydantic and regex validation in backend and frontend.
+  - Added database persistence columns (`brute_force_enabled`, `brute_force_max_attempts`, `brute_force_window_seconds`, `brute_force_lockout_seconds`, `brute_force_whitelist`) in `SystemSettings` with automatic dynamic migrations in `backend/database/db.py` (schema v2.4.0).
+  - Added administrative inspection endpoints `GET /api/settings/security/status` and `POST /api/settings/security/unblock` protected behind session authentication.
+- **Fail2ban Packaging & Standardized Security Logging**:
+  - Emitted structured `WARNING [security] Failed GUI login attempt from <client_ip> (attempt <n>)` in `ffmpeg-gui.log`.
+  - Updated `NginxAccessLogMiddleware` to resolve real client IP addresses via `X-Forwarded-For` and `X-Real-IP` headers when deployed behind reverse proxies.
+  - Packaged ready-to-copy configurations under `packaging/fail2ban/` (`filter.d/ffmpeg-gui.conf`, `jail.d/ffmpeg-gui.local`, `README.md`) for quick 1-line sysadmin deployment.
+- **Frontend Security Management (Settings ➔ Security)**:
+  - Added dedicated `BruteForceProtectionCard.tsx` in Settings integrated into global settings dirty-state tracking and save action.
+  - Added real-time IP/CIDR syntax validation warning and dynamic duration formatting (`1d`, `2h`, `15m`, `45s`).
+  - Added real-time Active IP Lockouts list displaying banned IPs, remaining lockout duration, and manual 1-click unblock action.
+  - Added multilingual translation support in English, Spanish, and Catalan.
+  - Updated `README.md` with Fail2ban installation commands referencing repository packaged rules.
+
+## [2.24.0] - 2026-09-24
+
+### Added
+- **Kiosk Cache Storage Decoupling & Persistent User Profiles**:
+  - Implemented dual-layer storage architecture for unattended Web Kiosk displays, separating user profile storage (cookies, sessions, site preferences, consent prompts) from browser web cache.
+  - Added dedicated `'cache'` storage type in `backend/database/models.py` and auto-seeded a default fast cache storage pointing to `/dev/shm/ffmpeg-gui-cache` (RAM memory disk) with automatic fallback to `data/cache`.
+  - Added support for ephemeral (`/tmp/kiosk_{prefix}_{id}`) vs. persistent (`data/kiosk_profiles/{id}`) profile modes in `ProcessManager`.
+  - Added three cache modes for Chromium and Firefox: RAM Memory (`ram`, default, `/dev/shm`), Disabled (`disabled`, `/dev/null`), and Persistent Storage (`custom`, routed to configured `cache` storages).
+  - Enforced deterministic cache size caps across browsers: `--disk-cache-size=104857600 --media-cache-size=52428800` (Chromium) and `browser.cache.disk.capacity = 102400` (Firefox).
+  - Added cache purge endpoint `POST /api/processes/{id}/kiosk/clear-cache` with safety guard blocking execution when kiosk process is running (HTTP 409 Conflict).
+  - Added storage type selector option `'cache'` in `SettingsView.tsx`.
+  - Added Profile Mode (`ephemeral` vs `persistent`) and Cache Mode (`ram` vs `disabled` vs `custom`) selectors in `KioskConfigForm.tsx`, conditioning persistent cache selection on existing cache storages.
+  - Added "Limpiar Caché" action in `KioskPreviewModal.tsx`, active only when the service is stopped, with real-time feedback of freed disk/memory space.
+  - Added Profile Mode badge and Cache Mode indicators in `KioskServiceCard.tsx` and `KioskPreviewModal.tsx`.
+  - Comprehensive automated test coverage in `backend/tests/test_storage_cache.py` and `backend/tests/test_kiosk_browser.py`.
+
+### Fixed
+- **Chromium Unattended Translation Banner Suppression**:
+  - Completely suppressed the "Translate this page" banner in Chrome/Chromium by combining `--disable-features=Translate,TranslateUI` with injected user profile preferences (`"translate": {"enabled": false}, "translate_blocked_languages": ["all"]`).
+- **Crystalfontz LCD Hardware Probing and Capabilities Detection**:
+  - Corrected module import path and driver class reference in `get_system_capabilities()` (`core.lcd.drivers.cfa635.Cfa635Driver`).
+  - Implemented dynamic COM port discovery in capabilities scanning using `serial.tools.list_ports.comports()`, verifying Crystalfontz USB Vendor ID (`0x223B`), descriptor strings, active manager port binding, and fallback packet ping probing.
+  - Enhanced `/settings/lcd/probe` to auto-detect and populate USB Crystalfontz displays (e.g., CFA735-USB) even prior to ping response.
+  - Made Settings LCD tab visibility resilient during capabilities load cycle in `SettingsView.tsx`.
+  - Excluded `lcd` from generic capabilities iteration in `DashboardView.tsx` to prevent duplicate display cards alongside the dedicated active LCD panel card.
+
+## [2.23.0] - 2026-09-23
+
+### Added
+- **Web Kiosk Display Subsystem (Chromium & Firefox Launcher Strategy)**:
+  - Implemented `kiosk_browser` service orchestration in `ProcessManager` using the Launcher Strategy pattern with feature parity across Chromium and Mozilla Firefox.
+  - Implemented ephemeral profile isolation (`/tmp/kiosk_cr_{id}` and `/tmp/kiosk_ff_{id}` with injected `user.js` and `userChrome.css` for clean scrollbar suppression).
+  - Added SATADOM flash storage protection via `--disk-cache-dir=/dev/null` (Chromium) and `browser.cache.disk.enable = false` (Firefox).
+  - Enforced unattended autoplay policy and suppressed first-run wizards, translation popups, and crash recovery bubbles.
+  - Added auto-dependency management in `DependencyManager.sync_auto_dependencies` binding `kiosk_browser` to its parent `desktop` service (`desktop_service_id`).
+  - Added `KioskConfigForm.tsx` supporting engine selection, desktop target binding, flash protection, GPU acceleration modes, and custom operator flags.
+  - Updated `ServiceTypePickerModal.tsx` to enable Web Kiosk Display creation when browser engines are present.
+  - Updated `UnifiedServiceCard.tsx` with dynamic browser engine branding (`EngineLogo`), target URL, desktop reference, and engine label while preserving unified design tokens.
+  - Added dedicated `KioskServiceCard.tsx` with unified look & feel, displaying URL destination, parent desktop reference, engine identity badge, flash protection indicator, and telemetry.
+  - Added dedicated `KioskPreviewModal.tsx` focusing on real-time stdout/stderr console diagnostics and hardware telemetry instead of duplicating the parent desktop VNC viewer.
+  - Added dynamic browser engine reactivity to `EngineLogo.tsx` and synchronized `ffmpeg_build_id` selection in `KioskConfigForm.tsx`.
+  - Added automated test coverage in `backend/tests/test_kiosk_browser.py`.
+
+### Fixed
+- **Browser Kiosk Runtime & Multi-Process Stability**:
+  - Resolved Chromium crashpad `posix_spawn` Permission Denied (13) by ensuring all extracted helper binaries (`chrome_crashpad_handler`, `chrome-sandbox`, etc.) are granted `0o755` permissions during provisioning and runtime launch, and passing `--disable-crash-reporter`, `--no-crashpad`, and `--disable-breakpad`.
+  - Resolved daemon environment permission denied errors (`.cache/dconf`, fontconfig cache, and dbus-launch warnings) by isolating `HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, and `XDG_DATA_HOME` per kiosk instance, setting `NO_AT_BRIDGE=1`, and disabling accessibility subsystems in Firefox `user.js`.
+  - Resolved Firefox "profile cannot be loaded or is in use" error by passing `--no-remote`, disabling crash resume prompts in `user.js`, and automatically purging stale `.parentlock`/`lock` files from ephemeral profile folders prior to launch.
+  - Resolved Chromium missing shared libraries on headless Linux installations by adding browser runtime dependencies (`libnss3`, `libnspr4`, `libatk`, `libcups2`, `libdrm2`, `libxkbcommon`, `libgbm`, `libpango`, `libcairo`, `libasound2`) to `install.sh`.
+  - Added `--no-sandbox` fallback and `--disable-dev-shm-usage` for Chromium processes running under root/containerized systemd environments.
+  - Ensured automatic engine synchronization in `ProcessManager._build_kiosk_cmds` when a custom software build is selected.
+  - Enforced exact full-screen geometry on bare X11 virtual desktops lacking a window manager by injecting target display resolution into browser launch flags (`--window-position=0,0`, `--window-size=W,H`, `--start-maximized` for Chromium, and `-width W`, `-height H`, `browser.window.width/height` for Firefox).
+  - Suppressed Chrome for Testing "Google Chrome for Testing is only for automated testing" notification banner via `--disable-infobars`, `--test-type`, and `--disable-blink-features=AutomationControlled`.
+  - Suppressed DBus connection and keyring errors by setting `DBUS_SESSION_BUS_ADDRESS="disabled:"`, `AT_SPI_BUS_ADDRESS="disabled:"`, adding `GTK_A11Y="none"`, and passing `--password-store=basic` and `--use-mock-keychain` to Chromium.
+  - Silenced D-Bus autolaunch noise and Google Cloud Messaging endpoint warnings in Chromium by passing `--log-level=3`, `--disable-sync`, `--disable-background-networking`, and `--disable-component-update`.
+  - Prevented Firefox AT-SPI `dbus-launch` missing warnings in console diagnostics by deploying an ephemeral `dbus-launch` stub executable in the profile `bin/` directory and adding `dbus-x11` to `install.sh`.
+  - Implemented asynchronous window-snap enforcer (`ProcessManager._ensure_kiosk_fullscreen`) using `xdotool` to guarantee active browser windows cover 100% of the display coordinates, and added `xdotool` to `install.sh`.
+
+## [2.22.0] - 2026-09-23
+
+### Added
+- **Virtual Desktop Root Cursor & Background Canvas Initialization**:
+  - Automatically initialize distinct dark slate canvas (`#1e293b`, Slate-800) with explicit `-display` targeting via `xsetroot` on virtual desktop launch, providing immediate visual confirmation of an active session.
+  - Enforced persistent client-side arrow cursor in `x11vnc` via `-cursor arrow`, eliminating fallback to legacy X11 'X' font cursor on minimal server hosts without desktop font packages.
+  - Added `xfonts-base` to Debian/Ubuntu system packages in `install.sh`.
+
+### Changed
+- **Virtual Desktop UI/UX Card Homogenization**:
+  - Homogenized `DesktopServiceCard` header row to match MediaMTX and Icecast2 cards, relocating display and VNC details into semantic engine badges (`Xvfb :99 1920x1080@30fps, 24bpp` and `x11vnc :5999 127.0.0.1 • WS RFB`).
+
+### Fixed
+- **Virtual Desktop Readiness Handshake & Canvas Retention**:
+  - Added `-noreset` flag to `Xvfb` command to prevent X11 server generation reset and canvas erasure upon client disconnection.
+  - Re-ordered desktop startup: spawned `x11vnc` first as persistent client listener, introduced a 1.5s settling window for industrial machine stability, and then applied root canvas via `xsetroot` directly while `x11vnc` is monitoring frame damage.
+  - Implemented active polling retry loop for `xsetroot` to account for Xvfb initializing its internal event loop after socket inode creation.
+  - Added `-nocursorshape` to `x11vnc` and `[&_canvas]:!cursor-default` to frontend `DesktopPreviewModal` to prevent the browser arrow cursor from reverting to legacy X11 'X' font cursor.
+- **Multi-Process Desktop Lifecycle & Warm-Reload Resilience**:
+  - Prevented premature termination of `x11vnc` during `systemctl reload ffmpeg-gui` by discovering and including all auxiliary child process PIDs in `active_pids` before executing `cleanup_rogue_processes`.
+  - Added recursive child process protection in `backend/main.py` startup routine to prevent orphan cleanup sweeps from killing legitimate auxiliary processes.
+  - Implemented automatic auxiliary process discovery in `ProcessManager.find_auxiliary_pids` and `ProcessManager.reattach_process`.
+  - Added self-healing recovery in `ProcessManager._watchdog`: if `x11vnc` terminates unexpectedly while `Xvfb` remains healthy, the watchdog automatically respawns `x11vnc` on the target display without disrupting the virtual desktop session or terminating user applications.
+  - Replaced static sleep timeout during `Xvfb` launch with active Unix socket readiness polling on `/tmp/.X11-unix/X{display_num}` (up to 5s) before binding `xset` and `x11vnc`.
+  - Ensured `ProcessManager.stop_process` terminates both primary and auxiliary PIDs (`self.auxiliary_pids`).
+
 ## [2.21.1] - 2026-09-22
 
 ### Changed

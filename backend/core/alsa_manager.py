@@ -94,7 +94,7 @@ class AlsaManager:
 
         return cards
 
-    def _classify_control(self, name: str, iface: int, elem_type: int, access_flags: str, items: List[str], index: int = 0) -> Dict[str, Any]:
+    def _classify_control(self, name: str, iface: int, elem_type: int, access_flags: str, items: List[str], index: int = 0, is_loopback: bool = False, device: int = 0, subdevice: int = 0) -> Dict[str, Any]:
         """Classify raw ALSA control into semantic type and category."""
         is_readonly = "r" in access_flags and "w" not in access_flags
         is_meter = is_readonly and ("meter" in name.lower() or "peak" in name.lower() or "level" in name.lower())
@@ -103,6 +103,18 @@ class AlsaManager:
         is_bool = elem_type == SND_CTL_ELEM_TYPE_BOOLEAN or elem_str == "BOOLEAN"
         is_int = elem_type == SND_CTL_ELEM_TYPE_INTEGER or elem_str == "INTEGER"
         is_enum = elem_type == SND_CTL_ELEM_TYPE_ENUMERATED or elem_str == "ENUMERATED"
+
+        if is_loopback:
+            # Dedicated classification for snd-aloop devices:
+            # snd-aloop exposes internal kernel sync controls (Slave Active, Slave Rate, Notify, Rate Shift)
+            # that are not audio controls or peak meters. Ignore them so Loopback strips remain clean.
+            return {
+                "type": "ignored",
+                "group": "Ignored",
+                "category": "ignored",
+                "is_meter": False,
+                "matrix_source": None
+            }
 
         # Ignore redundant internal monitoring crossover mode enums (e.g. 'Line 0 Line 0 Monitor Playback Mode')
         if "monitor playback mode" in name.lower():
@@ -276,14 +288,27 @@ class AlsaManager:
             "global_controls": []
         }
 
+        # Check if card is Loopback
+        card_info = next((c for c in self.get_cards() if str(c.get("card_index")) == str(card_idx)), None)
+        is_loopback = False
+        if card_info:
+            c_id = str(card_info.get("card_id", "")).lower()
+            c_drv = str(card_info.get("driver", "")).lower()
+            c_name = str(card_info.get("name", "")).lower()
+            if "loopback" in c_id or "loopback" in c_drv or "loopback" in c_name:
+                is_loopback = True
+        elif str(card_idx).lower() == "loopback":
+            is_loopback = True
+
+        if is_loopback:
+            topology["is_loopback"] = True
+
         try:
             cmd = ["amixer", "-c", str(card_idx), "contents"]
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            if res.returncode != 0:
-                return topology
-
-            output = res.stdout
-            controls = self._parse_amixer_contents(output)
+            controls = []
+            if res.returncode == 0:
+                controls = self._parse_amixer_contents(res.stdout)
 
             # Group controls by group prefix into channel strips
             groups: Dict[str, Dict[str, Any]] = {}
@@ -295,7 +320,10 @@ class AlsaManager:
                     elem_type=ctrl.get("type", ""),
                     access_flags=ctrl.get("access", "rw------"),
                     items=ctrl.get("items", []),
-                    index=ctrl.get("index", 0)
+                    index=ctrl.get("index", 0),
+                    is_loopback=is_loopback,
+                    device=ctrl.get("device", 0),
+                    subdevice=ctrl.get("subdevice", 0)
                 )
 
                 if meta.get("category") == "ignored" or meta.get("type") == "ignored":
@@ -303,13 +331,25 @@ class AlsaManager:
 
                 grp_key = f"{meta['category']}_{meta['group']}"
                 if grp_key not in groups:
-                    groups[grp_key] = {
+                    grp_data = {
                         "id": grp_key,
                         "name": meta["group"],
                         "category": meta["category"],
                         "controls": [],
                         "meters": []
                     }
+                    if is_loopback:
+                        sub = ctrl.get("subdevice", 0)
+                        if meta["category"] == "virtual_playout":
+                            grp_data["pcm_device"] = f"hw:{card_idx},0,{sub}"
+                            grp_data["subdevice_index"] = sub
+                            grp_data["description"] = f"Virtual Playout Subdevice {sub} for Desktop / Kiosk"
+                        elif meta["category"] == "virtual_capture":
+                            grp_data["pcm_device"] = f"hw:{card_idx},1,{sub}"
+                            grp_data["subdevice_index"] = sub
+                            grp_data["description"] = f"Virtual Capture Subdevice {sub} for FFmpeg Ingest"
+                            grp_data["matrix_source"] = f"PCM {sub} Playback"
+                    groups[grp_key] = grp_data
 
                 ctrl["ctrl_type"] = meta["type"]
                 ctrl["is_meter"] = meta["is_meter"]
@@ -328,15 +368,68 @@ class AlsaManager:
                 else:
                     topology["global_controls"].append(group)
 
-            # Ensure virtual_playout contains a virtual PCM stream node (Master / PCM 0) for software process binding (FFmpeg: foo)
-            if not topology["virtual_playout"]:
-                topology["virtual_playout"].append({
-                    "id": f"virtual_playout_PCM_{card_idx}",
-                    "name": "Master",
-                    "category": "virtual_playout",
-                    "controls": [],
-                    "meters": []
-                })
+            if is_loopback:
+                # Loopback has NO physical inputs or outputs
+                topology["hardware_outputs"] = []
+                topology["hardware_inputs"] = []
+
+                # Ensure all 8 subdevices (0 through 7) exist in virtual_playout
+                existing_playouts = {g.get("pcm_device"): g for g in topology["virtual_playout"]}
+                new_playout = []
+                for sub in range(8):
+                    pcm_dev = f"hw:{card_idx},0,{sub}"
+                    if pcm_dev in existing_playouts:
+                        g = existing_playouts[pcm_dev]
+                        g["name"] = f"Loopback Playout (Subdevice {sub})"
+                        g["subdevice_index"] = sub
+                        new_playout.append(g)
+                    else:
+                        new_playout.append({
+                            "id": f"virtual_playout_loopback_{card_idx}_sub{sub}",
+                            "name": f"Loopback Playout (Subdevice {sub})",
+                            "category": "virtual_playout",
+                            "pcm_device": pcm_dev,
+                            "subdevice_index": sub,
+                            "controls": [],
+                            "meters": [],
+                            "description": f"Virtual Playout endpoint for Desktop / Kiosk {sub}"
+                        })
+                topology["virtual_playout"] = new_playout
+
+                # Ensure all 8 subdevices (0 through 7) exist in virtual_capture
+                existing_captures = {g.get("pcm_device"): g for g in topology["virtual_capture"]}
+                new_capture = []
+                for sub in range(8):
+                    pcm_dev = f"hw:{card_idx},1,{sub}"
+                    if pcm_dev in existing_captures:
+                        g = existing_captures[pcm_dev]
+                        g["name"] = f"Loopback Capture (Subdevice {sub})"
+                        g["subdevice_index"] = sub
+                        g["matrix_source"] = f"PCM {sub} Playback"
+                        new_capture.append(g)
+                    else:
+                        new_capture.append({
+                            "id": f"virtual_capture_loopback_{card_idx}_sub{sub}",
+                            "name": f"Loopback Capture (Subdevice {sub})",
+                            "category": "virtual_capture",
+                            "pcm_device": pcm_dev,
+                            "subdevice_index": sub,
+                            "matrix_source": f"PCM {sub} Playback",
+                            "controls": [],
+                            "meters": [],
+                            "description": f"Virtual Capture endpoint for FFmpeg Ingest (Subdevice {sub})"
+                        })
+                topology["virtual_capture"] = new_capture
+            else:
+                # Ensure virtual_playout contains a virtual PCM stream node (Master / PCM 0) for software process binding (FFmpeg: foo)
+                if not topology["virtual_playout"]:
+                    topology["virtual_playout"].append({
+                        "id": f"virtual_playout_PCM_{card_idx}",
+                        "name": "Master",
+                        "category": "virtual_playout",
+                        "controls": [],
+                        "meters": []
+                    })
 
         except Exception as e:
             logger.error(f"Error in amixer contents fallback parser for card {card_idx}: {e}")
@@ -361,6 +454,8 @@ class AlsaManager:
                 current = {
                     "numid": None,
                     "iface": "MIXER",
+                    "device": 0,
+                    "subdevice": 0,
                     "name": "",
                     "index": 0,
                     "type": "INTEGER",
@@ -381,6 +476,16 @@ class AlsaManager:
                         current["numid"] = int(p.split("=")[1])
                     elif p.startswith("iface="):
                         current["iface"] = p.split("=")[1]
+                    elif p.startswith("device="):
+                        try:
+                            current["device"] = int(p.split("=")[1])
+                        except ValueError:
+                            pass
+                    elif p.startswith("subdevice="):
+                        try:
+                            current["subdevice"] = int(p.split("=")[1])
+                        except ValueError:
+                            pass
                     elif p.startswith("index="):
                         try:
                             current["index"] = int(p.split("=")[1])
@@ -501,6 +606,14 @@ class AlsaManager:
 
     def read_meters(self, card_idx: int) -> Dict[int, List[int]]:
         """Fast-path reading for Vumeters (numids with meter type)."""
+        card_info = next((c for c in self.get_cards() if str(c.get("card_index")) == str(card_idx)), None)
+        if card_info:
+            c_name = f"{card_info.get('card_id', '')} {card_info.get('name', '')} {card_info.get('driver', '')}".lower()
+            if "loopback" in c_name:
+                return {}
+        elif str(card_idx).lower() == "loopback":
+            return {}
+
         topology = self.get_card_topology(card_idx)
         meters_data = {}
 

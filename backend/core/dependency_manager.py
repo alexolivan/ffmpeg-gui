@@ -250,10 +250,12 @@ class DependencyManager:
         def extract_provider_id(conf: dict, is_output: bool = False) -> Optional[int]:
             if not conf or not isinstance(conf, dict):
                 return None
+            cfg_type = conf.get("type")
             val = conf.get("provider_service_id")
+            if val is None and cfg_type in ('desktop', 'x11grab'):
+                val = conf.get("desktop_service_id")
             if val is None:
                 return None
-            cfg_type = conf.get("type")
             if is_output:
                 # Non-auxiliary output destinations (hls, file, udp, rtp, decklink, ndi, alsa) NEVER depend on auxiliary services
                 if cfg_type in ('srt', 'rtmp', 'whip'):
@@ -271,6 +273,8 @@ class DependencyManager:
                 elif cfg_type == 'icecast':
                     if conf.get('icecast_mode') == 'remote':
                         return None
+                elif cfg_type in ('desktop', 'x11grab'):
+                    pass
                 else:
                     return None
             try:
@@ -300,6 +304,19 @@ class DependencyManager:
                 k_pid = extract_provider_id(input_config.get(k), is_output=False)
                 if k_pid:
                     detected_provider_ids.add(k_pid)
+
+        # Check kiosk_config for desktop_service_id
+        if consumer_type == 'service':
+            from database.models import Service
+            consumer_svc = db_session.get(Service, consumer_id)
+            if consumer_svc and getattr(consumer_svc, 'service_type', None) == 'kiosk_browser':
+                k_cfg = (consumer_svc.config or {}).get("kiosk_config", {})
+                d_id = k_cfg.get("desktop_service_id")
+                if d_id:
+                    try:
+                        detected_provider_ids.add(int(d_id))
+                    except (ValueError, TypeError):
+                        pass
 
         # Never allow self-dependency
         if consumer_type == 'service':

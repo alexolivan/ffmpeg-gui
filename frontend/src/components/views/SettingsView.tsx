@@ -9,8 +9,9 @@ import { BackupRestoreCard } from './settings/BackupRestoreCard';
 import { SoftwareEngineCard, type SoftwareEngineData } from './settings/SoftwareEngineCard';
 import { InboundKeysCard } from './settings/InboundKeysCard';
 import { RemotePeersCard } from './settings/RemotePeersCard';
+import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
 
-const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview'] as const;
+const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'] as const;
 
 const THEME_OPTIONS = [
   {
@@ -141,11 +142,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const hasLcdHardware = !!(
+  const hasLcdHardware = capabilities ? !!(
     capabilities?.lcd?.available ||
     systemTelemetry?.lcd?.connected ||
     settings?.lcd_enabled
-  );
+  ) : true;
   const hasAlsaHardware = capabilities ? !!capabilities?.alsa?.available : true;
   const hasDecklinkHardware = capabilities ? !!capabilities?.decklink?.available : true;
   const hasMagewellHardware = capabilities ? (!!capabilities?.magewell?.available || capabilities?.magewell?.status === 'SETUP_REQUIRED' || capabilities?.magewell?.status === 'READY') : true;
@@ -223,6 +224,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [networkWaitTimeout, setNetworkWaitTimeout] = useState(settings?.watchdog?.network_wait_timeout ?? 60);
   const [watchdogMaxBackoff, setWatchdogMaxBackoff] = useState(settings?.watchdog?.watchdog_max_backoff ?? 30);
 
+  // Brute-force & Login Security States
+  const [bruteForceEnabled, setBruteForceEnabled] = useState(settings?.brute_force_enabled !== undefined ? !!settings?.brute_force_enabled : true);
+  const [bruteForceMaxAttempts, setBruteForceMaxAttempts] = useState(settings?.brute_force_max_attempts ?? 5);
+  const [bruteForceWindowSeconds, setBruteForceWindowSeconds] = useState(settings?.brute_force_window_seconds ?? 300);
+  const [bruteForceLockoutSeconds, setBruteForceLockoutSeconds] = useState(settings?.brute_force_lockout_seconds ?? 900);
+  const [bruteForceWhitelist, setBruteForceWhitelist] = useState(settings?.brute_force_whitelist ?? '');
+
   useEffect(() => {
     setBindAddress(settings?.bind_address || '0.0.0.0');
     setGuiPort(settings?.gui_port || settings?.http_port || 8000);
@@ -234,6 +242,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSslEmail(settings?.ssl_email || '');
     setSslChallengeType(settings?.ssl_challenge_type || 'http-01');
     setAutoReloadSslServices(settings?.auto_reload_ssl_services !== undefined ? !!settings?.auto_reload_ssl_services : true);
+    setBruteForceEnabled(settings?.brute_force_enabled !== undefined ? !!settings?.brute_force_enabled : true);
+    setBruteForceMaxAttempts(settings?.brute_force_max_attempts ?? 5);
+    setBruteForceWindowSeconds(settings?.brute_force_window_seconds ?? 300);
+    setBruteForceLockoutSeconds(settings?.brute_force_lockout_seconds ?? 900);
+    setBruteForceWhitelist(settings?.brute_force_whitelist ?? '');
     const notif = settings?.notifications;
     setNotifEnabled(!!notif?.enabled);
     setSmtpHost(notif?.smtp_host || '');
@@ -732,6 +745,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(startupGraceDelay) !== Number(settings?.watchdog?.startup_grace_delay ?? 10) ||
     Number(networkWaitTimeout) !== Number(settings?.watchdog?.network_wait_timeout ?? 60) ||
     Number(watchdogMaxBackoff) !== Number(settings?.watchdog?.watchdog_max_backoff ?? 30) ||
+    bruteForceEnabled !== (settings?.brute_force_enabled !== undefined ? !!settings?.brute_force_enabled : true) ||
+    Number(bruteForceMaxAttempts) !== Number(settings?.brute_force_max_attempts ?? 5) ||
+    Number(bruteForceWindowSeconds) !== Number(settings?.brute_force_window_seconds ?? 300) ||
+    Number(bruteForceLockoutSeconds) !== Number(settings?.brute_force_lockout_seconds ?? 900) ||
+    bruteForceWhitelist !== (settings?.brute_force_whitelist || '') ||
     newPassword !== '' ||
     confirmPassword !== '';
 
@@ -807,6 +825,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           network_wait_timeout: Number(networkWaitTimeout),
           watchdog_max_backoff: Number(watchdogMaxBackoff),
         },
+        brute_force_enabled: bruteForceEnabled,
+        brute_force_max_attempts: Number(bruteForceMaxAttempts),
+        brute_force_window_seconds: Number(bruteForceWindowSeconds),
+        brute_force_lockout_seconds: Number(bruteForceLockoutSeconds),
+        brute_force_whitelist: bruteForceWhitelist,
       };
 
       // Ensure gui_password is only passed if explicitly updated with new value
@@ -1794,6 +1817,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <option value="logs" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">logs (FFmpeg/System Logs)</option>
                       <option value="sdk" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">sdk (DeckLink/NDI SDKs)</option>
                       <option value="preview" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">preview (Snapshot Thumbnails)</option>
+                      <option value="cache" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">cache (Kiosk Browser / RAM Cache)</option>
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -2507,6 +2531,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </p>
               </div>
             </div>
+
+            {/* CARD 2: BRUTE-FORCE PROTECTION */}
+            <BruteForceProtectionCard
+              API={API}
+              enabled={bruteForceEnabled}
+              setEnabled={setBruteForceEnabled}
+              maxAttempts={bruteForceMaxAttempts}
+              setMaxAttempts={setBruteForceMaxAttempts}
+              windowSeconds={bruteForceWindowSeconds}
+              setWindowSeconds={setBruteForceWindowSeconds}
+              lockoutSeconds={bruteForceLockoutSeconds}
+              setLockoutSeconds={setBruteForceLockoutSeconds}
+              whitelist={bruteForceWhitelist}
+              setWhitelist={setBruteForceWhitelist}
+            />
 
             {/* CARD 3: SSL / TLS CERTIFICATES */}
             <div className="glass-card p-5 !rounded-2xl space-y-5">

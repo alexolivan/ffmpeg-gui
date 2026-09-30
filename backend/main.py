@@ -47,6 +47,10 @@ try:
     from core.software_manager import software_manager
 except ImportError:
     from backend.core.software_manager import software_manager
+try:
+    from core.security_guard import security_guard
+except ImportError:
+    from backend.core.security_guard import security_guard
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -117,6 +121,24 @@ class NginxAccessLogMiddleware:
             client_host = client[0] if client else "-"
             remote_user = "-"
             
+            headers = scope.get("headers", [])
+            referer = "-"
+            user_agent = "-"
+            for key, val in headers:
+                key_lower = key.lower()
+                if key_lower == b"referer":
+                    referer = val.decode("utf-8", errors="ignore")
+                elif key_lower == b"user-agent":
+                    user_agent = val.decode("utf-8", errors="ignore")
+                elif key_lower == b"x-forwarded-for":
+                    xff_val = val.decode("utf-8", errors="ignore").strip()
+                    if xff_val:
+                        client_host = xff_val.split(",")[0].strip()
+                elif key_lower == b"x-real-ip" and client_host in ("-", "127.0.0.1", "::1", "localhost"):
+                    x_real_val = val.decode("utf-8", errors="ignore").strip()
+                    if x_real_val:
+                        client_host = x_real_val
+
             now = datetime.datetime.now(datetime.timezone.utc)
             time_local = now.strftime("%d/%b/%Y:%H:%M:%S +0000")
             
@@ -130,15 +152,6 @@ class NginxAccessLogMiddleware:
             http_version = scope.get("http_version", "1.1")
             request_line = f"{method} {full_path} HTTP/{http_version}"
             
-            headers = scope.get("headers", [])
-            referer = "-"
-            user_agent = "-"
-            for key, val in headers:
-                if key.lower() == b"referer":
-                    referer = val.decode("utf-8")
-                elif key.lower() == b"user-agent":
-                    user_agent = val.decode("utf-8")
-            
             access_log_path = os.getenv("ACCESS_LOG_PATH")
             if access_log_path:
                 try:
@@ -150,6 +163,27 @@ class NginxAccessLogMiddleware:
             else:
                 console_msg = f'HTTP {request_line} -> {status_code[0]} ({client_host})'
                 logger.info(console_msg)
+
+
+def get_real_client_ip(request: Request) -> str:
+    """
+    Extracts the client IP from FastAPI Request, taking into account
+    X-Forwarded-For and X-Real-IP headers when deployed behind reverse proxies.
+    """
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        first_ip = xff.split(",")[0].strip()
+        if first_ip:
+            return first_ip
+    x_real = request.headers.get("x-real-ip")
+    if x_real:
+        ip = x_real.strip()
+        if ip:
+            return ip
+    if request.client and request.client.host:
+        return request.client.host
+    return "127.0.0.1"
+
 
 app = FastAPI(title="FFMPEG Orchestrator API")
 
@@ -224,6 +258,21 @@ app.add_middleware(
 
 # Initialize DB
 init_db()
+
+try:
+    with SessionLocal() as _db_init:
+        from database.models import SystemSettings
+        _s = _db_init.query(SystemSettings).first()
+        if _s:
+            security_guard.configure(
+                enabled=_s.brute_force_enabled,
+                max_attempts=_s.brute_force_max_attempts,
+                window_seconds=_s.brute_force_window_seconds,
+                lockout_seconds=_s.brute_force_lockout_seconds,
+                whitelist=_s.brute_force_whitelist or ""
+            )
+except Exception as _e:
+    logger.warning(f"Initial SecurityGuard configuration skipped: {_e}")
 
 UPLOAD_DIR = "data/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -501,6 +550,11 @@ class SettingsResponse(BaseModel):
     auto_reload_ssl_services: Optional[bool] = True
     notifications: NotificationSettings = NotificationSettings()
     watchdog: WatchdogSettings = WatchdogSettings()
+    brute_force_enabled: Optional[bool] = True
+    brute_force_max_attempts: Optional[int] = 5
+    brute_force_window_seconds: Optional[int] = 300
+    brute_force_lockout_seconds: Optional[int] = 900
+    brute_force_whitelist: Optional[str] = None
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -539,6 +593,24 @@ class SettingsUpdate(BaseModel):
     access_log_ignore_media: Optional[bool] = None
     notifications: Optional[NotificationSettingsUpdate] = None
     watchdog: Optional[WatchdogSettingsUpdate] = None
+    brute_force_enabled: Optional[bool] = None
+    brute_force_max_attempts: Optional[int] = None
+    brute_force_window_seconds: Optional[int] = None
+    brute_force_lockout_seconds: Optional[int] = None
+    brute_force_whitelist: Optional[str] = None
+
+    @validator('brute_force_whitelist')
+    def validate_brute_force_whitelist(cls, v):
+        if v is None:
+            return v
+        try:
+            from core.security_guard import validate_whitelist_entries
+        except ImportError:
+            from backend.core.security_guard import validate_whitelist_entries
+        invalid = validate_whitelist_entries(v)
+        if invalid:
+            raise ValueError(f"Invalid IP address or CIDR network in whitelist: {', '.join(invalid)}")
+        return v
 
     @validator('lcd_alias')
     def validate_lcd_alias(cls, v):
@@ -1396,8 +1468,22 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.lcd_led2_profile is not None: settings.lcd_led2_profile = settings_in.lcd_led2_profile
     if settings_in.lcd_led3_profile is not None: settings.lcd_led3_profile = settings_in.lcd_led3_profile
 
+    if settings_in.brute_force_enabled is not None: settings.brute_force_enabled = settings_in.brute_force_enabled
+    if settings_in.brute_force_max_attempts is not None: settings.brute_force_max_attempts = settings_in.brute_force_max_attempts
+    if settings_in.brute_force_window_seconds is not None: settings.brute_force_window_seconds = settings_in.brute_force_window_seconds
+    if settings_in.brute_force_lockout_seconds is not None: settings.brute_force_lockout_seconds = settings_in.brute_force_lockout_seconds
+    if settings_in.brute_force_whitelist is not None: settings.brute_force_whitelist = settings_in.brute_force_whitelist
+
     db.commit()
     db.refresh(settings)
+
+    security_guard.configure(
+        enabled=settings.brute_force_enabled,
+        max_attempts=settings.brute_force_max_attempts,
+        window_seconds=settings.brute_force_window_seconds,
+        lockout_seconds=settings.brute_force_lockout_seconds,
+        whitelist=settings.brute_force_whitelist or ""
+    )
 
     global lcd_manager
     if lcd_core_changed:
@@ -2065,15 +2151,41 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
 @app.post("/login")
 @app.post("/api/auth/login")
 def login(req: LoginRequest, response: Response, request: Request, db: Session = Depends(get_db)):
+    client_ip = get_real_client_ip(request)
+
+    # 1. Fast in-memory check if IP is currently locked out
+    blocked, remaining = security_guard.is_blocked(client_ip)
+    if blocked:
+        logger.warning(f"[security] Blocked login attempt from banned IP {client_ip} ({remaining}s remaining)")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. IP temporarily locked out for {remaining} seconds.",
+            headers={"Retry-After": str(remaining)}
+        )
+
     from database.models import SystemSettings
     settings = db.query(SystemSettings).first()
     if not settings or not settings.gui_password:
         return {"authenticated": True, "token": None}
+
     if req.password == settings.gui_password:
+        security_guard.record_success(client_ip)
         token = auth_manager.create_session(settings.gui_password)
         is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
         auth_manager.set_session_cookie(response, token, is_https=is_https)
         return {"authenticated": True, "token": token}
+
+    # Record failed attempt in RAM
+    is_now_blocked, attempt_count, lockout_sec = security_guard.record_failure(client_ip)
+    logger.warning(f"[security] Failed GUI login attempt from {client_ip} (attempt {attempt_count})")
+    if is_now_blocked:
+        logger.warning(f"[security] IP {client_ip} has been locked out for {lockout_sec}s due to repeated failed logins")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. IP temporarily locked out for {lockout_sec} seconds.",
+            headers={"Retry-After": str(lockout_sec)}
+        )
+
     raise HTTPException(status_code=401, detail="Invalid password")
 
 
@@ -2082,6 +2194,32 @@ def login(req: LoginRequest, response: Response, request: Request, db: Session =
 def logout(response: Response):
     auth_manager.clear_session_cookie(response)
     return {"authenticated": False}
+
+
+class UnblockIPRequest(BaseModel):
+    ip: str
+
+
+@app.get("/api/settings/security/status")
+def get_security_status():
+    """
+    Returns active brute-force protection status, configuration, and list of locked-out IPs.
+    Protected behind session authentication by AuthBarrierMiddleware.
+    """
+    return security_guard.get_status()
+
+
+@app.post("/api/settings/security/unblock")
+def unblock_security_ip(req: UnblockIPRequest):
+    """
+    Manually removes an IP from the active lockout list in RAM.
+    Protected behind session authentication by AuthBarrierMiddleware.
+    """
+    cleaned_ip = req.ip.strip()
+    unblocked = security_guard.unblock(cleaned_ip)
+    logger.info(f"[security] IP {cleaned_ip} manually unblocked via settings GUI (was_locked={unblocked})")
+    return {"success": True, "ip": cleaned_ip, "unblocked": unblocked}
+
 
 @app.post("/settings/logo")
 @app.post("/api/settings/logo")
@@ -2463,12 +2601,28 @@ def get_system_capabilities():
     # LCD Display Hardware
     lcd_available = False
     lcd_details = "No compatible Crystalfontz LCD detected"
+    detected_lcd_ports = []
     try:
-        from core.lcd.driver_cfa635 import CFA635Driver
-        detected_lcds = CFA635Driver.find_devices()
-        lcd_available = len(detected_lcds) > 0
-        if lcd_available:
-            lcd_details = f"Detected LCD display device(s): {', '.join([d.get('port', '') for d in detected_lcds if d.get('port')])}"
+        import serial.tools.list_ports
+        from core.lcd.drivers.cfa635 import Cfa635Driver
+
+        for port_info in serial.tools.list_ports.comports():
+            # Check by USB Vendor ID (Crystalfontz America: 0x223B) or manufacturer/description string
+            vid = getattr(port_info, 'vid', None)
+            is_cf_vid = (vid == 0x223B)
+            desc = (port_info.description or "").lower()
+            mfg = (getattr(port_info, 'manufacturer', '') or "").lower()
+            is_cf_desc = "crystalfontz" in desc or "crystalfontz" in mfg or "cfa" in desc or "cfa" in mfg
+            
+            # If LCD manager is actively running on this port
+            if lcd_manager and lcd_manager._running and lcd_manager.port == port_info.device:
+                detected_lcd_ports.append(f"{port_info.device} (Active)")
+            elif is_cf_vid or is_cf_desc or Cfa635Driver.probe(port_info.device):
+                detected_lcd_ports.append(port_info.device)
+
+        if detected_lcd_ports:
+            lcd_available = True
+            lcd_details = f"Detected LCD display device(s): {', '.join(detected_lcd_ports)}"
         elif settings.lcd_enabled:
             lcd_available = True
             lcd_details = f"LCD enabled on configured port: {settings.lcd_port}"
@@ -2570,7 +2724,7 @@ def get_system_capabilities():
             "cards": magewell_cards,
             "driver_version": magewell_driver_ver
         },
-        "lcd": {"available": lcd_available, "details": lcd_details},
+        "lcd": {"available": lcd_available, "details": lcd_details, "ports": detected_lcd_ports},
         "avahi": {"available": avahi_available, "details": avahi_details},
         "ffmpeg": {
             "filters": supported_filters,
@@ -3064,6 +3218,7 @@ async def telemetry_broadcast_loop():
                         "debug_mode": p.debug_mode,
                         "log_storage_id": p.log_storage_id,
                         "log_file_path": process_manager.get_process_log_path(p.id),
+                        "last_error": getattr(p, "last_error", None),
                         "is_shared_with_peers": bool(p.is_shared_with_peers),
                         "allow_peer_lease": bool(p.allow_peer_lease),
                         "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
@@ -3458,8 +3613,12 @@ async def startup_event():
                         p.speed = "0x"
                     else:
                         logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is alive with PID {p.pid}. Re-attaching watchdog.")
-                        process_manager.reattach_process(p.id, p.pid)
-                        active_pids.add(p.pid)
+                        reattached_pids = process_manager.reattach_process(p.id, p.pid)
+                        if isinstance(reattached_pids, (list, set, tuple)):
+                            for r_pid in reattached_pids:
+                                active_pids.add(r_pid)
+                        else:
+                            active_pids.add(p.pid)
                 else:
                     logger.info(f"Startup: Process '{p.name}' (ID: {p.id}) is NOT alive in OS (status was {p.status}). Cleaning up.")
                     p.status = "stopped"
@@ -3495,6 +3654,14 @@ async def startup_event():
         logger.error(f"Failed to clean up stale builds/processes/tasks on startup: {e}")
 
     try:
+        # Protect all active processes and their direct OS child processes from cleanup sweep
+        for active_pid in list(active_pids):
+            try:
+                proc = psutil.Process(active_pid)
+                for child in proc.children(recursive=True):
+                    active_pids.add(child.pid)
+            except Exception:
+                pass
         cleanup_rogue_processes(active_pids=active_pids)
     except Exception as e:
         logger.error(f"Failed to clean up rogue processes on startup: {e}")
@@ -3728,8 +3895,13 @@ def probe_lcd_ports():
             })
             continue
             
+        is_cf_vid = (getattr(port_info, 'vid', None) == 0x223B)
+        desc = (port_info.description or "").lower()
+        mfg = (getattr(port_info, 'manufacturer', '') or "").lower()
+        is_cf_desc = "crystalfontz" in desc or "crystalfontz" in mfg or "cfa" in desc or "cfa" in mfg
+
         for driver in drivers:
-            if driver.probe(port_device):
+            if is_cf_vid or is_cf_desc or driver.probe(port_device):
                 detected_ports.append({
                     "port": port_device,
                     "driver": driver.__name__,
@@ -3975,11 +4147,17 @@ def create_build(data: BuildCreate, db: Session = Depends(get_db)):
         if not storage or storage.type != "build":
             raise HTTPException(status_code=400, detail="Invalid storage selected for build")
 
+    opts = dict(data.build_options or {})
+    if software_type == "ffmpeg":
+        if data.srt_version:
+            opts["srt_version"] = data.srt_version
+        elif not opts.get("libsrt"):
+            opts.pop("srt_version", None)
+
     build = FfmpegBuild(
         name=data.name,
         ffmpeg_version=data.ffmpeg_version,
-        srt_version=data.srt_version,
-        build_options=data.build_options,
+        build_options=opts,
         sdk_paths=data.sdk_paths,
         auto_clean=data.auto_clean or False,
         install_path="",  # Will be set after we have the ID
@@ -4044,10 +4222,30 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
         build.name = data.name
     if data.ffmpeg_version is not None:
         build.ffmpeg_version = data.ffmpeg_version
-    if data.srt_version is not None:
-        build.srt_version = data.srt_version
+    fields_set = getattr(data, "model_fields_set", getattr(data, "__fields_set__", set()))
+
     if data.build_options is not None:
-        build.build_options = data.build_options
+        opts = dict(data.build_options)
+        if "srt_version" in fields_set:
+            if data.srt_version:
+                opts["srt_version"] = data.srt_version
+            else:
+                opts.pop("srt_version", None)
+        elif not opts.get("libsrt"):
+            opts.pop("srt_version", None)
+        build.build_options = opts
+        try:
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(build, "build_options")
+        except Exception:
+            pass
+    elif "srt_version" in fields_set:
+        build.srt_version = data.srt_version
+        try:
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(build, "build_options")
+        except Exception:
+            pass
     if data.sdk_paths is not None:
         build.sdk_paths = data.sdk_paths
     if data.auto_clean is not None:
@@ -4169,6 +4367,10 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                         db_build.disk_usage_mb = result.get("disk_usage_mb")
                         db_build.built_at = datetime.datetime.utcnow()
                         db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
+                        if result.get("build_options"):
+                            from sqlalchemy.orm.attributes import flag_modified
+                            db_build.build_options = result.get("build_options")
+                            flag_modified(db_build, "build_options")
                         if result.get("sdk_paths"):
                             # SQLAlchemy flag mutation for JSON fields
                             from sqlalchemy.orm.attributes import flag_modified
@@ -4403,6 +4605,7 @@ def list_processes(db: Session = Depends(get_db)):
             "debug_mode": p.debug_mode,
             "log_storage_id": p.log_storage_id,
             "log_file_path": process_manager.get_process_log_path(p.id),
+            "last_error": getattr(p, "last_error", None),
             "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
             "is_shared_with_peers": bool(getattr(p, 'is_shared_with_peers', False)),
             "allow_peer_lease": bool(getattr(p, 'allow_peer_lease', False)),
@@ -4437,6 +4640,15 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
         ).first()
         if ice_build:
             build_id = ice_build.id
+    elif build_id is None and svc_type == "kiosk_browser":
+        k_cfg = (proc_in.config or {}).get("kiosk_config", {})
+        eng_id = k_cfg.get("engine_id", "chromium")
+        browser_build = db.query(FfmpegBuild).filter(
+            FfmpegBuild.software_type == eng_id,
+            FfmpegBuild.status == 'ready'
+        ).first()
+        if browser_build:
+            build_id = browser_build.id
 
     input_cfg = dict(proc_in.input_config) if proc_in.input_config is not None else None
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else None
@@ -4503,6 +4715,13 @@ def get_mediamtx_next_available_ports(exclude_service_id: Optional[int] = Query(
 def get_icecast_next_available_ports_endpoint(db: Session = Depends(get_db)):
     from utils.port_validator import get_next_available_icecast_ports
     return get_next_available_icecast_ports(db)
+
+@app.get("/api/services/desktop/next-available-ports")
+@app.get("/services/desktop/next-available-ports")
+@app.get("/api/services/next-desktop-ports")
+def get_desktop_next_available_ports(exclude_service_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+    from utils.port_validator import get_next_available_desktop_display_and_vnc_port
+    return get_next_available_desktop_display_and_vnc_port(db, exclude_service_id=exclude_service_id)
 
 @app.post("/processes/preview-cmd")
 def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
@@ -4821,6 +5040,15 @@ def clone_process(process_id: int, db: Session = Depends(get_db)):
             ).first()
             if ice_build:
                 build_id = ice_build.id
+        elif svc_type == "kiosk_browser":
+            k_cfg = (new_config or {}).get("kiosk_config", {})
+            eng_id = k_cfg.get("engine_id", "chromium")
+            browser_build = db.query(FfmpegBuild).filter(
+                FfmpegBuild.software_type == eng_id,
+                FfmpegBuild.status == 'ready'
+            ).first()
+            if browser_build:
+                build_id = browser_build.id
 
     # 6. Validate ports
     validate_service_port_conflicts(
@@ -5155,6 +5383,23 @@ def get_mediamtx_live_paths(process_id: int, db: Session = Depends(get_db)):
     return {"items": []}
 
 
+@app.post("/processes/{process_id}/kiosk/clear-cache")
+@app.post("/api/processes/{process_id}/kiosk/clear-cache")
+def clear_kiosk_cache_endpoint(process_id: int, db: Session = Depends(get_db)):
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if getattr(db_proc, "service_type", "") != "kiosk_browser":
+        raise HTTPException(status_code=400, detail="Service is not a Web Kiosk")
+    if db_proc.status == "running" or process_id in process_manager.processes:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot clear cache while service is running. Stop the service first."
+        )
+    freed = process_manager.clear_kiosk_cache(process_id, session=db)
+    return {"success": True, "freed_bytes": freed, "service_id": process_id}
+
+
 @app.post("/processes/{process_id}/start")
 async def start_process(process_id: int):
     await process_manager.start_process(process_id)
@@ -5479,12 +5724,19 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
         or ("6.0" if software_type == "ffmpeg" else "latest")
     )
 
+    recipe_srt_version = recipe.get("srt_version") if software_type == "ffmpeg" else None
+    opts = dict(build_options)
+    if software_type == "ffmpeg":
+        if recipe_srt_version:
+            opts["srt_version"] = recipe_srt_version
+        elif not opts.get("libsrt"):
+            opts.pop("srt_version", None)
+
     db_build = FfmpegBuild(
         name=name,
         software_type=software_type,
         version_tag=version_tag,
-        srt_version=recipe.get("srt_version") if software_type == "ffmpeg" else None,
-        build_options=build_options,
+        build_options=opts,
         sdk_paths=sdk_paths,
         auto_clean=recipe.get("auto_clean", False),
         status="pending",
@@ -5620,6 +5872,7 @@ def list_services(db: Session = Depends(get_db)):
             "last_stop": s.last_stop.isoformat() + "Z" if s.last_stop else None,
             "restart_count": s.restart_count,
             "pending_changes": s.pending_changes,
+            "last_error": getattr(s, "last_error", None),
             "is_shared_with_peers": bool(s.is_shared_with_peers),
             "allow_peer_lease": bool(s.allow_peer_lease),
             "public_hls_path": resolve_service_public_hls_path(s, hls_storages),
@@ -5787,9 +6040,9 @@ def remove_service_dependency(service_id: int, provider_service_id: int, db: Ses
 
 @app.get("/api/dependencies/providers")
 def list_available_dependency_providers(db: Session = Depends(get_db)):
-    """List auxiliary services that can act as stream routing or protocol hubs (MediaMTX, Icecast)."""
+    """List auxiliary services that can act as stream routing or protocol hubs (MediaMTX, Icecast) or virtual desktops."""
     providers = db.query(MediaProcess).filter(
-        MediaProcess.service_type.in_(["mediamtx_hub", "icecast_server"])
+        MediaProcess.service_type.in_(["mediamtx_hub", "icecast_server", "desktop"])
     ).all()
     
     result = []
@@ -5797,7 +6050,7 @@ def list_available_dependency_providers(db: Session = Depends(get_db)):
     from core.builders.ffmpeg_builder import FFmpegCommandBuilder
     for p in providers:
         cfg = p.config or {}
-        prov_cfg = dict(cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg)
+        prov_cfg = dict(cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg.get("desktop_config") or cfg)
         is_legacy = False
         software_version = None
         if p.service_type == "icecast_server":
@@ -6832,7 +7085,71 @@ def get_alsa_cards():
     return alsa_manager.get_cards()
 
 
-def analyze_alsa_process_info(cmd_str: str, config_json_str: str) -> Dict[str, Any]:
+def check_pid_using_alsa_card(pid: Optional[int], card_index: int) -> Optional[bool]:
+    """Inspect /proc/{pid}/fd to see if the process actually has ALSA sound card file descriptors open."""
+    if not pid or not isinstance(pid, int):
+        return None
+    try:
+        fd_dir = f"/proc/{pid}/fd"
+        if not os.path.isdir(fd_dir):
+            return None
+
+        card_pcm_prefix = f"pcmC{card_index}D"
+        card_ctl_prefix = f"controlC{card_index}"
+        has_target_card = False
+        has_any_snd = False
+
+        for fd in os.listdir(fd_dir):
+            try:
+                target = os.readlink(os.path.join(fd_dir, fd))
+                if "/dev/snd/" in target:
+                    has_any_snd = True
+                    base = os.path.basename(target)
+                    if base.startswith(card_pcm_prefix) or base.startswith(card_ctl_prefix):
+                        has_target_card = True
+                        break
+            except (OSError, FileNotFoundError):
+                continue
+
+        if has_target_card:
+            return True
+        if has_any_snd:
+            # Process is holding ALSA descriptors open, but for another card
+            return False
+        # If /proc/{pid}/fd is readable and has descriptors but none in /dev/snd/,
+        # the process is running without ALSA soundcard bindings
+        return False
+    except Exception:
+        pass
+    return None
+
+
+def analyze_alsa_process_info(cmd_str: str, config_json_str: str, pid: Optional[int] = None, card_index: Optional[int] = None) -> Dict[str, Any]:
+    # Check kernel /proc/{pid}/fd first if available
+    if pid and card_index is not None:
+        try:
+            fd_dir = f"/proc/{pid}/fd"
+            if os.path.isdir(fd_dir):
+                for fd in os.listdir(fd_dir):
+                    try:
+                        target = os.readlink(os.path.join(fd_dir, fd))
+                        if "/dev/snd/" in target:
+                            base = os.path.basename(target)
+                            m = re.match(r"pcmC(\d+)D(\d+)([pc])", base)
+                            if m and int(m.group(1)) == card_index:
+                                pcm_idx = int(m.group(2))
+                                direction = "playout" if m.group(3) == "p" else "capture"
+                                return {
+                                    "direction": direction,
+                                    "device_target": f"hw:{card_index},{pcm_idx}",
+                                    "pcm_index": pcm_idx,
+                                    "subdevice_index": None
+                                }
+                    except (OSError, FileNotFoundError):
+                        continue
+        except Exception:
+            pass
+
     cmd_lower = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
 
     # Capture vs Playout detection
@@ -6841,16 +7158,21 @@ def analyze_alsa_process_info(cmd_str: str, config_json_str: str) -> Dict[str, A
 
     direction = "both" if (has_input and has_output) else ("capture" if has_input else "playout")
 
-    match = re.search(r'(?:hw|plughw|dsnoop|dmix):(?:card=)?(\d+)(?:,(\d+))?(?:,(\d+))?', cmd_lower)
+    matches = list(re.finditer(r'(?:hw|plughw|dsnoop|dmix):(?:card=)?([a-zA-Z0-9_\-]+)(?:,(\d+))?(?:,(\d+))?', cmd_lower))
     device_target = ""
     pcm_index = None
     subdev_index = None
 
-    if match:
-        card = match.group(1)
-        pcm_index = int(match.group(2)) if match.group(2) is not None else 0
-        subdev_index = int(match.group(3)) if match.group(3) is not None else 0
-        device_target = f"hw:{card},{pcm_index},{subdev_index}"
+    for m in matches:
+        card = m.group(1)
+        pcm = int(m.group(2)) if m.group(2) is not None else 0
+        subdev = int(m.group(3)) if m.group(3) is not None else 0
+        if card_index is None or card == str(card_index) or not device_target:
+            pcm_index = pcm
+            subdev_index = subdev
+            device_target = f"hw:{card},{pcm},{subdev}"
+            if card_index is not None and card == str(card_index):
+                break
 
     return {
         "direction": direction,
@@ -6860,47 +7182,67 @@ def analyze_alsa_process_info(cmd_str: str, config_json_str: str) -> Dict[str, A
     }
 
 
-def is_cmd_using_alsa_card(cmd_str: str, config_json_str: str, card_index: int, card_id: str) -> bool:
-    combined_str = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
-    if not combined_str.strip():
-        return False
-    
-    # Check for ALSA driver / sound card keywords
-    has_alsa_driver = (
-        "-f alsa" in combined_str or 
-        "alsa" in combined_str or 
-        "hw:" in combined_str or 
-        "plughw:" in combined_str or 
-        "dsnoop:" in combined_str or 
-        "dmix:" in combined_str or 
-        "asihpi" in combined_str or 
-        "subdevice" in combined_str
-    )
-    if not has_alsa_driver:
-        return False
+def is_cmd_using_alsa_card(cmd_str: str, config_json_str: str, card_index: int, card_id: str, pid: Optional[int] = None) -> bool:
+    # 1. Inspect kernel /proc/{pid}/fd if process PID is known
+    if pid is not None:
+        fd_match = check_pid_using_alsa_card(pid, card_index)
+        if fd_match is not None:
+            return fd_match
 
+    # 2. Strict ALSA CLI / config regex analysis (fallback)
     c_idx_str = str(card_index)
     c_id_lower = str(card_id).lower()
-    
-    # Matches hw:0, hw:0,0, hw:0,0,0, ASI58100, card=ASI58100, etc.
-    card_patterns = [
-        f"hw:{c_idx_str}",
-        f"plughw:{c_idx_str}",
-        f"dsnoop:{c_idx_str}",
-        f"dmix:{c_idx_str}",
-        f"card={c_id_lower}",
-        f"card={c_idx_str}",
-        c_id_lower
-    ]
-    
-    for pat in card_patterns:
-        if pat in combined_str:
-            return True
-            
-    # Fallback for card 0 if default / sysdefault / alsa is used without specifying a non-zero card
+
+    # Search for ALSA device references: hw:X, plughw:X, dsnoop:X, dmix:X, default:X, sysdefault:X, or card=X
+    alsa_dev_regex = re.compile(
+        r'(?:hw|plughw|dsnoop|dmix|default|sysdefault):\s*(?:card=)?([a-zA-Z0-9_\-]+)',
+        re.IGNORECASE
+    )
+
+    # 2a. Direct evaluation of CLI arguments (highest priority)
+    found_in_cmd = set()
+    if cmd_str:
+        for match in alsa_dev_regex.finditer(cmd_str):
+            found_in_cmd.add(match.group(1).lower())
+
+    if found_in_cmd:
+        return (c_idx_str in found_in_cmd or c_id_lower in found_in_cmd)
+
+    # 2b. Direct evaluation of explicit device strings in config JSON
+    found_in_json = set()
+    if config_json_str:
+        for match in alsa_dev_regex.finditer(config_json_str):
+            found_in_json.add(match.group(1).lower())
+
+    if found_in_json:
+        return (c_idx_str in found_in_json or c_id_lower in found_in_json)
+
+    # 2c. Check structured ALSA section in config JSON (only when audio driver is explicitly ALSA)
+    try:
+        cfg = json.loads(config_json_str) if config_json_str else {}
+        for section in ["input", "output", "params"]:
+            sec = cfg.get(section)
+            if isinstance(sec, dict):
+                is_alsa = (
+                    sec.get("type") == "alsa" or
+                    sec.get("audio_driver") == "alsa" or
+                    sec.get("output_type") == "alsa"
+                )
+                if not is_alsa:
+                    continue
+                sc = str(sec.get("soundcard", "")).strip().lower()
+                ci = str(sec.get("card_index", "")).strip().lower()
+                if sc and (sc == c_idx_str or sc == c_id_lower):
+                    return True
+                if ci and ci == c_idx_str:
+                    return True
+    except Exception:
+        pass
+
+    # 2d. Fallback ONLY for card 0: only if explicitly using default/sysdefault ALSA device and no other card is referenced
+    combined_str = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
     if card_index == 0:
-        other_cards = [f"hw:{i}" for i in range(1, 16)] + [f"plughw:{i}" for i in range(1, 16)]
-        if not any(oc in combined_str for oc in other_cards):
+        if any(d in combined_str for d in ["default:default", "sysdefault:default", "-i default", "-f alsa default"]):
             return True
 
     return False
@@ -6921,6 +7263,9 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
         try:
             active_procs = db.query(MediaProcess).filter(MediaProcess.status.in_(["running", "active", "starting"])).all()
             for proc in active_procs:
+                proc_entry = process_manager.processes.get(proc.id)
+                pid = (getattr(proc_entry, "pid", None) if proc_entry else None) or process_manager.reattached_pids.get(proc.id) or getattr(proc, "pid", None)
+
                 cmd_str = ""
                 try:
                     ffmpeg_bin = process_manager.ffmpeg_path
@@ -6940,8 +7285,8 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
                     "last_started": proc.last_started_config
                 }, default=str)
 
-                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id):
-                    info = analyze_alsa_process_info(cmd_str, config_json_str)
+                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id, pid=pid):
+                    info = analyze_alsa_process_info(cmd_str, config_json_str, pid=pid, card_index=card_index)
                     alsa_badges.append({
                         "process_id": proc.id,
                         "alias": proc.alias or proc.name or f"Service #{proc.id}",
@@ -6960,6 +7305,9 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
         try:
             active_execs = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "in_progress", "starting"])).all()
             for task_exec in active_execs:
+                task_proc = task_manager.running_processes.get(task_exec.id)
+                pid = (getattr(task_proc, "pid", None) if task_proc else None) or getattr(task_exec, "pid", None)
+
                 task = task_exec.task
                 cmd_str = ""
                 config_json_str = ""
@@ -6979,8 +7327,8 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
 
                 task_alias = (task.alias if task else None) or (task.name if task else None) or f"Task #{task_exec.id}"
 
-                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id):
-                    info = analyze_alsa_process_info(cmd_str, config_json_str)
+                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id, pid=pid):
+                    info = analyze_alsa_process_info(cmd_str, config_json_str, pid=pid, card_index=card_index)
                     alsa_badges.append({
                         "process_id": task_exec.id,
                         "alias": task_alias,
@@ -6994,8 +7342,43 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
                     })
         except Exception as task_err:
             logger.warning(f"Error matching active tasks to ALSA card {card_index}: {task_err}")
-        except Exception as task_err:
-            logger.warning(f"Error matching active tasks to ALSA card {card_index}: {task_err}")
+
+        # 3. Active Kiosk Browser Services (targeting virtual_playout on ALSA Loopback)
+        if topology.get("is_loopback"):
+            try:
+                active_kiosks = db.query(MediaProcess).filter(
+                    MediaProcess.service_type == "kiosk_browser",
+                    MediaProcess.status.in_(["running", "active", "starting"])
+                ).all()
+                for kp in active_kiosks:
+                    k_cfg = (kp.config or {}).get("kiosk_config", kp.config or {})
+                    desk_id = k_cfg.get("desktop_service_id")
+                    if desk_id:
+                        desk = db.query(MediaProcess).get(int(desk_id))
+                        if desk:
+                            d_cfg = (desk.config or {}).get("desktop_config", desk.config or {})
+                            raw_sub = d_cfg.get("alsa_subdevice")
+                            if raw_sub is not None:
+                                try:
+                                    k_sub = int(raw_sub)
+                                except (ValueError, TypeError):
+                                    k_sub = int(d_cfg.get("display_num", 99)) % 8
+                            else:
+                                k_sub = int(d_cfg.get("display_num", 99)) % 8
+
+                            alsa_badges.append({
+                                "process_id": kp.id,
+                                "alias": kp.alias or kp.name or f"Kiosk #{kp.id}",
+                                "status": kp.status,
+                                "type": "kiosk_browser",
+                                "direction": "playout",
+                                "device_target": f"hw:Loopback,0,{k_sub}",
+                                "pcm_index": 0,
+                                "subdevice_index": k_sub,
+                                "cmd": f"kiosk -> hw:Loopback,0,{k_sub}"
+                            })
+            except Exception as k_err:
+                logger.warning(f"Error matching active kiosk browsers to loopback card: {k_err}")
 
         topology["active_processes"] = alsa_badges
         return topology
@@ -7038,6 +7421,104 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
         logger.info(f"WebSocket client disconnected from ALSA meters card {card_index}")
     except Exception as e:
         logger.error(f"WebSocket ALSA meters error: {e}")
+
+
+@app.websocket("/ws/desktop/{service_id}/vnc")
+async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
+    # 1. Authenticate WebSocket connection
+    token = websocket.cookies.get(auth_manager.COOKIE_NAME) or websocket.query_params.get("token")
+    if not token:
+        auth_hdr = websocket.headers.get("authorization")
+        if auth_hdr:
+            token = auth_hdr.replace("Bearer ", "").strip()
+
+    with SessionLocal() as db:
+        from database.models import SystemSettings, Service
+        settings = db.query(SystemSettings).first()
+        gui_password = settings.gui_password if settings else None
+
+        if gui_password:
+            is_valid = bool(token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)))
+            if not is_valid:
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+
+        svc = db.get(Service, service_id) if hasattr(db, "get") else db.query(Service).get(service_id)
+        if not svc or svc.service_type != "desktop":
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        cfg = svc.config or {}
+        desk_cfg = cfg.get("desktop_config", cfg)
+        vnc_port = int(desk_cfg.get("vnc_port", 5900 + int(desk_cfg.get("display_num", 99))))
+
+    # 2. Open TCP connection to local x11vnc server
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", vnc_port)
+    except Exception as e:
+        logger.error(f"[Desktop VNC Proxy] Failed to connect to 127.0.0.1:{vnc_port} for service {service_id}: {e}")
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        return
+
+    # 3. Accept WebSocket (negotiate 'binary' subprotocol for noVNC)
+    subprotocol = "binary" if "binary" in websocket.headers.get("sec-websocket-protocol", "") else None
+    await websocket.accept(subprotocol=subprotocol)
+
+    # 4. Bidirectional bridging
+    async def ws_to_tcp():
+        try:
+            while True:
+                msg = await websocket.receive()
+                if msg.get("type") == "websocket.disconnect":
+                    break
+                raw_bytes = msg.get("bytes")
+                if not raw_bytes and msg.get("text"):
+                    raw_bytes = msg["text"].encode("utf-8")
+                if raw_bytes:
+                    writer.write(raw_bytes)
+                    await writer.drain()
+        except Exception:
+            pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+    async def tcp_to_ws():
+        try:
+            while True:
+                chunk = await reader.read(65536)
+                if not chunk:
+                    break
+                await websocket.send_bytes(chunk)
+        except Exception:
+            pass
+        finally:
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+
+    t_ws = asyncio.create_task(ws_to_tcp())
+    t_tcp = asyncio.create_task(tcp_to_ws())
+    try:
+        done, pending = await asyncio.wait([t_ws, t_tcp], return_when=asyncio.FIRST_COMPLETED)
+        for t in pending:
+            t.cancel()
+    except Exception:
+        pass
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 # ── Blackmagic DeckLink Settings Endpoints ───────────────────────────
@@ -7119,8 +7600,11 @@ class ToggleInstalledSoftwareRequest(BaseModel):
     alias: Optional[str] = None
 
 
-class DownloadMediaMtxReleaseRequest(BaseModel):
+class DownloadSoftwareReleaseRequest(BaseModel):
     version: str
+
+
+DownloadMediaMtxReleaseRequest = DownloadSoftwareReleaseRequest
 
 
 @app.get("/api/settings/software")
@@ -7188,32 +7672,57 @@ def toggle_installed_software(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/api/settings/software/mediamtx/releases")
-def get_mediamtx_releases():
-    """Retorna la lista de releases oficiales de MediaMTX en GitHub."""
-    return software_manager.get_mediamtx_releases()
+@app.get("/api/settings/software/{software_type}/releases")
+def get_software_engine_releases(software_type: str):
+    """Retorna la lista de releases oficiales para un motor de software (mediamtx, chromium, firefox)."""
+    try:
+        return software_manager.get_engine_releases(software_type)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error fetching releases for {software_type}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error obteniendo releases de {software_type}: {e}")
 
 
-@app.post("/api/settings/software/mediamtx/download")
-def download_mediamtx_release(
-    payload: DownloadMediaMtxReleaseRequest,
+@app.post("/api/settings/software/{software_type}/download")
+def download_software_engine_release(
+    software_type: str,
+    payload: DownloadSoftwareReleaseRequest,
     db: Session = Depends(get_db)
 ):
-    """Descarga, valida y aprovisiona una release precompilada de MediaMTX."""
+    """Descarga, valida y aprovisiona una release precompilada para un motor (mediamtx, chromium, firefox)."""
     from database.models import Storage
     build_storage = db.query(Storage).filter(Storage.type.in_(["build", "builds"])).first()
     storage_path = build_storage.path if build_storage else os.path.abspath("data/builds")
 
     try:
-        res = software_manager.provision_mediamtx_release(
+        res = software_manager.provision_engine_release(
+            software_type=software_type,
             version_tag=payload.version,
             db_session=db,
             builds_storage_dir=storage_path
         )
         return res
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        logger.error(f"Error aprovisionando MediaMTX: {e}")
-        raise HTTPException(status_code=500, detail=f"Fallo al descargar o validar MediaMTX: {e}")
+        logger.error(f"Error aprovisionando {software_type}: {e}")
+        raise HTTPException(status_code=500, detail=f"Fallo al descargar o validar {software_type}: {e}")
+
+
+@app.get("/api/settings/software/mediamtx/releases")
+def get_mediamtx_releases():
+    """Retorna la lista de releases oficiales de MediaMTX (alias retrocompatible)."""
+    return get_software_engine_releases("mediamtx")
+
+
+@app.post("/api/settings/software/mediamtx/download")
+def download_mediamtx_release(
+    payload: DownloadSoftwareReleaseRequest,
+    db: Session = Depends(get_db)
+):
+    """Descarga, valida y aprovisiona una release precompilada de MediaMTX (alias retrocompatible)."""
+    return download_software_engine_release("mediamtx", payload, db)
 
 
 @app.post("/api/settings/software/{software_type}/icon")

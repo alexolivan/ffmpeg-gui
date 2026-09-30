@@ -1,0 +1,477 @@
+import os
+import shutil
+import asyncio
+import unittest
+from unittest.mock import patch, MagicMock
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from database.models import Base, Service, ServiceDependency, SoftwareBuild
+from core.process_manager import ProcessManager
+from core.dependency_manager import DependencyManager
+
+
+class TestKioskBrowser(unittest.TestCase):
+
+    def setUp(self):
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+        self.db = self.Session()
+        self.pm = ProcessManager(self.Session)
+        self.dm = DependencyManager()
+        self.dm.db_session_factory = self.Session
+
+        # Create a mock Virtual Desktop service
+        self.desktop = Service(
+            name="Virtual Desktop 1",
+            type="service",
+            service_type="desktop",
+            status="running",
+            config={
+                "desktop_config": {
+                    "display_num": 99,
+                    "resolution": "1920x1080",
+                    "vnc_port": 5999
+                }
+            }
+        )
+        self.db.add(self.desktop)
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+        # Clean up any test profile dirs
+        for d in ("/tmp/kiosk_cr_2", "/tmp/kiosk_ff_3", "data/kiosk_profiles"):
+            if os.path.exists(d):
+                shutil.rmtree(d, ignore_errors=True)
+
+    @patch("shutil.which")
+    def test_chromium_launcher_strategy(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_which.return_value = real_sh
+
+        kiosk = Service(
+            name="Kiosk Chrome",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/stream",
+                    "hide_scrollbars": True,
+                    "disk_cache_disabled": True,
+                    "gpu_acceleration": "enabled",
+                    "custom_flags": "--remote-debugging-port=9222"
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertEqual(display_num, 99)
+        self.assertEqual(cmd[0], real_sh)
+        self.assertIn("--kiosk", cmd)
+        self.assertIn("--start-fullscreen", cmd)
+        self.assertIn("--window-position=0,0", cmd)
+        self.assertIn("--window-size=1920,1080", cmd)
+        self.assertIn("--disable-infobars", cmd)
+        self.assertIn(f"--user-data-dir=/tmp/kiosk_cr_{kiosk.id}", cmd)
+        self.assertIn("--hide-scrollbars", cmd)
+        self.assertIn("--disk-cache-dir=/dev/null", cmd)
+        self.assertIn("--enable-gpu-rasterization", cmd)
+        self.assertIn("--remote-debugging-port=9222", cmd)
+        self.assertEqual(cmd[-1], "https://example.com/stream")
+        self.assertEqual(profile_dir, f"/tmp/kiosk_cr_{kiosk.id}")
+
+    @patch("shutil.which")
+    def test_firefox_launcher_strategy(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        def side_which(cmd_name):
+            if cmd_name == "apulse":
+                return "/usr/bin/apulse"
+            return real_sh
+        mock_which.side_effect = side_which
+
+        kiosk = Service(
+            name="Kiosk Firefox",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "firefox",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/dashboard",
+                    "hide_scrollbars": True,
+                    "disk_cache_disabled": True,
+                    "gpu_acceleration": "enabled",
+                    "custom_flags": "--devtools"
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertEqual(display_num, 99)
+        self.assertEqual(cmd[0], "/usr/bin/apulse")
+        self.assertEqual(cmd[1], real_sh)
+        self.assertIn("--kiosk", cmd)
+        self.assertIn("-width", cmd)
+        self.assertIn("1920", cmd)
+        self.assertIn("-height", cmd)
+        self.assertIn("1080", cmd)
+        self.assertIn("-profile", cmd)
+        self.assertIn(f"/tmp/kiosk_ff_{kiosk.id}", cmd)
+        self.assertIn("--devtools", cmd)
+        self.assertEqual(cmd[-1], "https://example.com/dashboard")
+
+        # Verify generated user.js preferences
+        user_js_path = os.path.join(profile_dir, "user.js")
+        self.assertTrue(os.path.exists(user_js_path))
+        with open(user_js_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            self.assertIn('media.autoplay.default', content)
+            self.assertIn('media.cubeb.backend", "pulse"', content)
+            self.assertIn('media.cubeb.sandbox", false', content)
+            self.assertIn('security.sandbox.content.level", 0', content)
+            self.assertIn('security.sandbox.content.write_path_whitelist", "/dev/snd/"', content)
+            self.assertIn('browser.cache.disk.enable", false', content)
+            self.assertIn('layers.acceleration.force-enabled", true', content)
+            self.assertIn('browser.window.width", 1920', content)
+
+        # Verify userChrome.css scrollbar collapse
+        css_path = os.path.join(profile_dir, "chrome", "userChrome.css")
+        self.assertTrue(os.path.exists(css_path))
+        with open(css_path, "r", encoding="utf-8") as f:
+            self.assertIn('scrollbar-width: none', f.read())
+
+    @patch("core.process_manager.ProcessManager._is_sound_server_available")
+    @patch("shutil.which")
+    def test_firefox_launcher_missing_apulse_without_sound_server_raises(self, mock_which, mock_sound):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_sound.return_value = False
+        def side_which(cmd_name):
+            if cmd_name == "apulse":
+                return None
+            return real_sh
+        mock_which.side_effect = side_which
+
+        kiosk = Service(
+            name="Kiosk Firefox No Apulse",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "firefox",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        with self.assertRaises(FileNotFoundError) as ctx:
+            self.pm._build_kiosk_cmds(kiosk, self.db)
+        self.assertIn("apt install -y apulse", str(ctx.exception))
+
+    @patch("core.process_manager.ProcessManager._is_sound_server_available")
+    @patch("shutil.which")
+    def test_firefox_launcher_missing_apulse_with_sound_server_fallback(self, mock_which, mock_sound):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_sound.return_value = True
+        def side_which(cmd_name):
+            if cmd_name == "apulse":
+                return None
+            return real_sh
+        mock_which.side_effect = side_which
+
+        kiosk = Service(
+            name="Kiosk Firefox Sound Server Fallback",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "firefox",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+        self.assertEqual(cmd[0], real_sh)
+        self.assertIn("--kiosk", cmd)
+
+    def test_missing_desktop_validation(self):
+        kiosk = Service(
+            name="Kiosk Broken",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": 99999,  # Non-existent
+                    "target_source": "https://example.com"
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        with self.assertRaises(ValueError):
+            self.pm._build_kiosk_cmds(kiosk, self.db)
+
+    def test_dependency_manager_auto_links_desktop(self):
+        kiosk = Service(
+            name="Kiosk Consumer",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com"
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        providers = self.dm.sync_auto_dependencies("service", kiosk.id, None, None, self.db)
+        self.assertIn(self.desktop.id, providers)
+
+        dep = self.db.query(ServiceDependency).filter(
+            ServiceDependency.consumer_type == "service",
+            ServiceDependency.consumer_id == kiosk.id,
+            ServiceDependency.provider_service_id == self.desktop.id
+        ).first()
+        self.assertIsNotNone(dep)
+        self.assertTrue(dep.is_auto_managed)
+
+    @patch("shutil.which")
+    def test_chromium_persistent_profile_and_ram_cache(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_which.return_value = real_sh
+
+        kiosk = Service(
+            name="Kiosk Chrome Persistent",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com",
+                    "profile_mode": "persistent",
+                    "cache_mode": "ram"
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertIn("data/kiosk_profiles", profile_dir)
+        self.assertIn(f"--user-data-dir={profile_dir}", cmd)
+        self.assertTrue(any("--disk-cache-dir=" in arg and "/cr_" in arg for arg in cmd))
+        self.assertIn("--disk-cache-size=104857600", cmd)
+        self.assertIn("--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees", cmd)
+
+        pref_path = os.path.join(profile_dir, "Default", "Preferences")
+        self.assertTrue(os.path.exists(pref_path))
+        with open(pref_path, "r", encoding="utf-8") as f:
+            import json
+            prefs = json.load(f)
+            self.assertEqual(prefs.get("translate", {}).get("enabled"), False)
+
+    @patch("shutil.which")
+    def test_firefox_persistent_profile_and_ram_cache(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_which.return_value = real_sh
+
+        kiosk = Service(
+            name="Kiosk Firefox Persistent",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "firefox",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com",
+                    "profile_mode": "persistent",
+                    "cache_mode": "ram"
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertIn("data/kiosk_profiles", profile_dir)
+        self.assertIn("-profile", cmd)
+        self.assertIn(profile_dir, cmd)
+
+        user_js_path = os.path.join(profile_dir, "user.js")
+        self.assertTrue(os.path.exists(user_js_path))
+        with open(user_js_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            self.assertIn('browser.cache.disk.parent_directory', content)
+            self.assertIn('browser.cache.disk.capacity", 102400', content)
+
+    @patch("shutil.which")
+    def test_kiosk_browser_alsa_loopback_sandbox(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_which.return_value = real_sh
+
+        # Desktop with explicit alsa_subdevice = 5
+        self.desktop.config = {
+            "desktop_config": {
+                "display_num": 99,
+                "resolution": "1920x1080",
+                "vnc_port": 5999,
+                "alsa_subdevice": 5
+            }
+        }
+        self.db.commit()
+
+        kiosk = Service(
+            name="Kiosk Audio Test",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertIn("--alsa-output-device=plughw:Loopback,0,5", cmd)
+
+        asound_path = os.path.join(profile_dir, "asound.conf")
+        asoundrc_path = os.path.join(profile_dir, ".asoundrc")
+        self.assertTrue(os.path.exists(asound_path))
+        self.assertTrue(os.path.exists(asoundrc_path))
+        with open(asound_path, "r", encoding="utf-8") as f:
+            asound_content = f.read()
+            self.assertIn('slave.pcm "hw:Loopback,0,5"', asound_content)
+            self.assertIn('card "Loopback"', asound_content)
+
+    @patch("shutil.which")
+    def test_kiosk_browser_alsa_loopback_auto_subdevice(self, mock_which):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_which.return_value = real_sh
+
+        # Reset desktop to no explicit alsa_subdevice -> display 99 % 8 = 3
+        self.desktop.config = {
+            "desktop_config": {
+                "display_num": 99,
+                "resolution": "1920x1080",
+                "vnc_port": 5999
+            }
+        }
+        self.db.commit()
+
+        kiosk = Service(
+            name="Kiosk Auto Audio Test",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertIn("--alsa-output-device=plughw:Loopback,0,3", cmd)
+        asound_path = os.path.join(profile_dir, "asound.conf")
+        asoundrc_path = os.path.join(profile_dir, ".asoundrc")
+        self.assertTrue(os.path.exists(asound_path))
+        self.assertTrue(os.path.exists(asoundrc_path))
+        with open(asound_path, "r", encoding="utf-8") as f:
+            asound_content = f.read()
+            self.assertIn('slave.pcm "hw:Loopback,0,3"', asound_content)
+
+    @patch("asyncio.create_subprocess_exec")
+    @patch("shutil.which")
+    def test_firefox_kiosk_apulse_environment(self, mock_which, mock_exec):
+        real_sh = "/bin/sh"
+        def side_which(cmd_name):
+            if cmd_name == "apulse":
+                return "/usr/bin/apulse"
+            return real_sh
+        mock_which.side_effect = side_which
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 99999
+        mock_proc.returncode = None
+        mock_exec.return_value = mock_proc
+
+        kiosk = Service(
+            name="Kiosk Firefox Env Test",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "firefox",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self.pm.start_process(kiosk.id))
+            self.assertTrue(mock_exec.called)
+            kiosk_call = next(c for c in mock_exec.call_args_list if any("apulse" in str(arg) for arg in c[0]))
+            env = kiosk_call[1].get("env", {})
+            self.assertEqual(env.get("APULSE_PLAYBACK_DEVICE"), "plughw:Loopback,0,3")
+            self.assertEqual(env.get("APULSE_CAPTURE_DEVICE"), "plughw:Loopback,0,3")
+            self.assertEqual(env.get("MOZ_NO_REMOTE"), "1")
+            self.assertNotIn("DBUS_SESSION_BUS_ADDRESS", env)
+            loop.run_until_complete(self.pm.stop_process(kiosk.id))
+        finally:
+            loop.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FfmpegLogoIcon, ServerIcon } from '../Icons';
+import { FfmpegLogoIcon, ServerIcon, MonitorIcon, ChromiumLogoIcon, FirefoxLogoIcon } from '../Icons';
 
 interface EngineLogoProps {
   softwareType?: string;
@@ -26,6 +26,10 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
     return () => window.removeEventListener('engine_icons_updated', handleIconUpdate);
   }, []);
 
+  useEffect(() => {
+    setHasError(false);
+  }, [softwareType]);
+
   // Normalize softwareType
   let normalizedType = (softwareType || 'ffmpeg').toLowerCase();
   if (normalizedType.includes('ffmpeg') || normalizedType === 'ffmpeg_stream') {
@@ -34,15 +38,21 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
     normalizedType = 'mediamtx';
   } else if (normalizedType.includes('icecast') || normalizedType === 'icecast_server') {
     normalizedType = 'icecast2';
+  } else if (normalizedType.includes('chromium') || normalizedType.includes('chrome')) {
+    normalizedType = 'chromium';
+  } else if (normalizedType.includes('firefox')) {
+    normalizedType = 'firefox';
   } else if (normalizedType.includes('kiosk') || normalizedType.includes('cog') || normalizedType === 'kiosk_browser') {
-    normalizedType = 'kiosk_cog';
+    normalizedType = 'chromium';
   } else if (normalizedType.includes('decklink') || normalizedType === 'decklink_tools') {
     normalizedType = 'decklink_tools';
+  } else if (normalizedType === 'desktop') {
+    normalizedType = 'desktop';
   }
 
   const iconUrl = `${API}/api/settings/software/${normalizedType}/icon?t=${timestamp}`;
 
-  if (!hasError) {
+  if (!hasError && normalizedType !== 'desktop') {
     return (
       <img
         key={`${normalizedType}-${timestamp}`}
@@ -59,9 +69,22 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
     return <FfmpegLogoIcon size={size} className={className} />;
   }
 
+  if (normalizedType === 'chromium') {
+    return <ChromiumLogoIcon size={size} className={className} />;
+  }
+
+  if (normalizedType === 'firefox') {
+    return <FirefoxLogoIcon size={size} className={className} />;
+  }
+
+  if (normalizedType === 'desktop') {
+    return <MonitorIcon size={size} className={className} />;
+  }
+
   if (normalizedType === 'decklink_tools') {
     return <span style={{ fontSize: `${size}px`, lineHeight: 1 }} className={`inline-flex items-center justify-center select-none ${className}`}>🎛️</span>;
   }
 
   return <ServerIcon size={size} className={className} />;
 };
+
