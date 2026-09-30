@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.5] - 2026-09-30
+
+### Fixed
+- **shutil Variable Scoping in ProcessManager**:
+  - Removed inner `import shutil` in `ProcessManager.start_process` that inadvertently shadowed module-level `shutil`, causing `UnboundLocalError: cannot access local variable 'shutil'` when launching Virtual Desktops and other services.
+- **Immediate Startup Error Logging in Virtual Console & Telemetry**:
+  - Resolved `log_path` and `logs_dir` at the entrypoint of `ProcessManager.start_process` to guarantee early diagnostics are immediately captured.
+  - Formatted and persisted startup error banners (`--- PROCESS START ERROR AT ... ---`) to `process_{id}.log`, in-memory log buffers, and the database `ServiceLog` table whenever validation, binary resolution, or process spawning fails.
+  - Added `last_error` property to `Service` model and populated `last_error` in WebSocket telemetry broadcast and API responses, eliminating stale log displays from previous days in virtual console modals.
+  - Refined `is_alive` check in `stop_process` to evaluate both `proc.returncode is None` and OS PID tracking via `psutil`.
+
 ## [2.29.4] - 2026-09-29
 
 ### Fixed
