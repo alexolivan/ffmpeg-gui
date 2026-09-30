@@ -7085,7 +7085,71 @@ def get_alsa_cards():
     return alsa_manager.get_cards()
 
 
-def analyze_alsa_process_info(cmd_str: str, config_json_str: str) -> Dict[str, Any]:
+def check_pid_using_alsa_card(pid: Optional[int], card_index: int) -> Optional[bool]:
+    """Inspect /proc/{pid}/fd to see if the process actually has ALSA sound card file descriptors open."""
+    if not pid or not isinstance(pid, int):
+        return None
+    try:
+        fd_dir = f"/proc/{pid}/fd"
+        if not os.path.isdir(fd_dir):
+            return None
+
+        card_pcm_prefix = f"pcmC{card_index}D"
+        card_ctl_prefix = f"controlC{card_index}"
+        has_target_card = False
+        has_any_snd = False
+
+        for fd in os.listdir(fd_dir):
+            try:
+                target = os.readlink(os.path.join(fd_dir, fd))
+                if "/dev/snd/" in target:
+                    has_any_snd = True
+                    base = os.path.basename(target)
+                    if base.startswith(card_pcm_prefix) or base.startswith(card_ctl_prefix):
+                        has_target_card = True
+                        break
+            except (OSError, FileNotFoundError):
+                continue
+
+        if has_target_card:
+            return True
+        if has_any_snd:
+            # Process is holding ALSA descriptors open, but for another card
+            return False
+        # If /proc/{pid}/fd is readable and has descriptors but none in /dev/snd/,
+        # the process is running without ALSA soundcard bindings
+        return False
+    except Exception:
+        pass
+    return None
+
+
+def analyze_alsa_process_info(cmd_str: str, config_json_str: str, pid: Optional[int] = None, card_index: Optional[int] = None) -> Dict[str, Any]:
+    # Check kernel /proc/{pid}/fd first if available
+    if pid and card_index is not None:
+        try:
+            fd_dir = f"/proc/{pid}/fd"
+            if os.path.isdir(fd_dir):
+                for fd in os.listdir(fd_dir):
+                    try:
+                        target = os.readlink(os.path.join(fd_dir, fd))
+                        if "/dev/snd/" in target:
+                            base = os.path.basename(target)
+                            m = re.match(r"pcmC(\d+)D(\d+)([pc])", base)
+                            if m and int(m.group(1)) == card_index:
+                                pcm_idx = int(m.group(2))
+                                direction = "playout" if m.group(3) == "p" else "capture"
+                                return {
+                                    "direction": direction,
+                                    "device_target": f"hw:{card_index},{pcm_idx}",
+                                    "pcm_index": pcm_idx,
+                                    "subdevice_index": None
+                                }
+                    except (OSError, FileNotFoundError):
+                        continue
+        except Exception:
+            pass
+
     cmd_lower = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
 
     # Capture vs Playout detection
@@ -7113,48 +7177,58 @@ def analyze_alsa_process_info(cmd_str: str, config_json_str: str) -> Dict[str, A
     }
 
 
-def is_cmd_using_alsa_card(cmd_str: str, config_json_str: str, card_index: int, card_id: str) -> bool:
+def is_cmd_using_alsa_card(cmd_str: str, config_json_str: str, card_index: int, card_id: str, pid: Optional[int] = None) -> bool:
+    # 1. Inspect kernel /proc/{pid}/fd if process PID is known
+    if pid is not None:
+        fd_match = check_pid_using_alsa_card(pid, card_index)
+        if fd_match is not None:
+            return fd_match
+
+    # 2. Strict ALSA CLI / config regex analysis (fallback)
     combined_str = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
     if not combined_str.strip():
-        return False
-    
-    # Check for ALSA driver / sound card keywords
-    has_alsa_driver = (
-        "-f alsa" in combined_str or 
-        "alsa" in combined_str or 
-        "hw:" in combined_str or 
-        "plughw:" in combined_str or 
-        "dsnoop:" in combined_str or 
-        "dmix:" in combined_str or 
-        "asihpi" in combined_str or 
-        "subdevice" in combined_str
-    )
-    if not has_alsa_driver:
         return False
 
     c_idx_str = str(card_index)
     c_id_lower = str(card_id).lower()
-    
-    # Matches hw:0, hw:0,0, hw:0,0,0, ASI58100, card=ASI58100, etc.
-    card_patterns = [
-        f"hw:{c_idx_str}",
-        f"plughw:{c_idx_str}",
-        f"dsnoop:{c_idx_str}",
-        f"dmix:{c_idx_str}",
-        f"card={c_id_lower}",
-        f"card={c_idx_str}",
-        c_id_lower
-    ]
-    
-    for pat in card_patterns:
-        if pat in combined_str:
-            return True
-            
-    # Fallback for card 0 if default / sysdefault / alsa is used without specifying a non-zero card
+
+    # Search for ALSA device references: hw:X, plughw:X, dsnoop:X, dmix:X, default:X, sysdefault:X, or card=X
+    alsa_dev_regex = re.compile(
+        r'(?:hw|plughw|dsnoop|dmix|default|sysdefault):\s*(?:card=)?([a-zA-Z0-9_\-]+)',
+        re.IGNORECASE
+    )
+
+    found_cards = set()
+    for match in alsa_dev_regex.finditer(combined_str):
+        matched_card = match.group(1).lower()
+        found_cards.add(matched_card)
+
+    if c_idx_str in found_cards or c_id_lower in found_cards:
+        return True
+
+    # Check structured JSON config for explicit soundcard selection (e.g. "soundcard": "0", "card_index": 0)
+    try:
+        cfg = json.loads(config_json_str) if config_json_str else {}
+        for section in ["input", "output", "params"]:
+            sec = cfg.get(section)
+            if isinstance(sec, dict):
+                sc = str(sec.get("soundcard", "")).lower()
+                ci = str(sec.get("card_index", "")).lower()
+                dev = str(sec.get("device", "")).lower()
+                if sc == c_idx_str or sc == c_id_lower or ci == c_idx_str:
+                    return True
+                if dev:
+                    dev_match = alsa_dev_regex.search(dev)
+                    if dev_match and (dev_match.group(1).lower() in (c_idx_str, c_id_lower)):
+                        return True
+    except Exception:
+        pass
+
+    # Fallback ONLY for card 0: only if explicitly using default/sysdefault ALSA device and no other card is referenced
     if card_index == 0:
-        other_cards = [f"hw:{i}" for i in range(1, 16)] + [f"plughw:{i}" for i in range(1, 16)]
-        if not any(oc in combined_str for oc in other_cards):
-            return True
+        if any(d in combined_str for d in ["default:default", "sysdefault:default", "-i default", "-f alsa default"]):
+            if not found_cards:
+                return True
 
     return False
 
@@ -7174,6 +7248,9 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
         try:
             active_procs = db.query(MediaProcess).filter(MediaProcess.status.in_(["running", "active", "starting"])).all()
             for proc in active_procs:
+                proc_entry = process_manager.processes.get(proc.id)
+                pid = getattr(proc_entry, "pid", None) if proc_entry else None
+
                 cmd_str = ""
                 try:
                     ffmpeg_bin = process_manager.ffmpeg_path
@@ -7193,8 +7270,8 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
                     "last_started": proc.last_started_config
                 }, default=str)
 
-                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id):
-                    info = analyze_alsa_process_info(cmd_str, config_json_str)
+                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id, pid=pid):
+                    info = analyze_alsa_process_info(cmd_str, config_json_str, pid=pid, card_index=card_index)
                     alsa_badges.append({
                         "process_id": proc.id,
                         "alias": proc.alias or proc.name or f"Service #{proc.id}",
@@ -7213,6 +7290,9 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
         try:
             active_execs = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "in_progress", "starting"])).all()
             for task_exec in active_execs:
+                task_proc = task_manager.running_processes.get(task_exec.id)
+                pid = getattr(task_proc, "pid", None) if task_proc else None
+
                 task = task_exec.task
                 cmd_str = ""
                 config_json_str = ""
@@ -7232,8 +7312,8 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
 
                 task_alias = (task.alias if task else None) or (task.name if task else None) or f"Task #{task_exec.id}"
 
-                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id):
-                    info = analyze_alsa_process_info(cmd_str, config_json_str)
+                if is_cmd_using_alsa_card(cmd_str, config_json_str, card_index, card_id, pid=pid):
+                    info = analyze_alsa_process_info(cmd_str, config_json_str, pid=pid, card_index=card_index)
                     alsa_badges.append({
                         "process_id": task_exec.id,
                         "alias": task_alias,
