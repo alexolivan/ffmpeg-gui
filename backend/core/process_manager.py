@@ -3,6 +3,7 @@ import subprocess
 import psutil
 import logging
 import os
+import re
 import shlex
 import shutil
 from datetime import datetime
@@ -507,7 +508,7 @@ class ProcessManager:
                     os.makedirs(config_dir, exist_ok=True)
                     os.makedirs(data_dir, exist_ok=True)
 
-                    is_chromium = any(c in os.path.basename(cmd[0]).lower() for c in ("chrome", "chromium"))
+                    is_chromium = any(c in " ".join(cmd[:2]).lower() for c in ("chrome", "chromium"))
 
                     asound_cfg_file = os.path.join(kiosk_profile, "asound.conf")
                     kiosk_sub_env = {
@@ -530,7 +531,6 @@ class ProcessManager:
                             except Exception:
                                 pass
 
-
                     if is_chromium:
                         # Chromium natively supports "disabled:" to suppress D-Bus autolaunch without error
                         kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
@@ -538,6 +538,32 @@ class ProcessManager:
                         # For Firefox/Gecko, ensure any DBus session or AT-SPI addresses are purged so dbus-launch (dbus-x11) can autolaunch cleanly
                         kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
                         kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
+
+                        # Configure apulse audio routing to isolated ALSA Loopback subdevice
+                        alsa_subdevice = int(display_num) % 8
+                        if os.path.exists(asound_cfg_file):
+                            try:
+                                with open(asound_cfg_file, "r", encoding="utf-8") as acf:
+                                    sub_match = re.search(r"hw:Loopback,0,(\d+)", acf.read())
+                                    if sub_match:
+                                        alsa_subdevice = int(sub_match.group(1))
+                            except Exception:
+                                pass
+
+                        kiosk_sub_env["APULSE_PLAYBACK_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+                        kiosk_sub_env["APULSE_CAPTURE_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+
+                        # Ensure LD_LIBRARY_PATH includes apulse multiarch libraries if present
+                        apulse_lib_dirs = [
+                            "/usr/lib/x86_64-linux-gnu/apulse",
+                            "/usr/lib/aarch64-linux-gnu/apulse",
+                            "/usr/lib/apulse",
+                            "/usr/local/lib/apulse",
+                        ]
+                        found_apulse_lib = next((p for p in apulse_lib_dirs if os.path.isdir(p)), None)
+                        if found_apulse_lib:
+                            existing_ld = kiosk_sub_env.get("LD_LIBRARY_PATH", "")
+                            kiosk_sub_env["LD_LIBRARY_PATH"] = f"{found_apulse_lib}:{existing_ld}".rstrip(":")
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
                         stdout=log_file_handle,
@@ -1610,6 +1636,17 @@ class ProcessManager:
 
         return xvfb_cmd, xset_cmd, xsetroot_cmd, x11vnc_cmd, display_num, vnc_port
 
+    @staticmethod
+    def _is_sound_server_available() -> bool:
+        """Checks if a local PulseAudio or PipeWire daemon socket is available."""
+        if os.environ.get("PULSE_SERVER"):
+            return True
+        uid = os.geteuid() if hasattr(os, "geteuid") else 1000
+        for sock in (f"/run/user/{uid}/pulse/native", f"/run/user/{uid}/pipewire-0", "/var/run/pulse/native"):
+            if os.path.exists(sock):
+                return True
+        return False
+
     def _build_kiosk_cmds(self, media_proc, session) -> Tuple[List[str], int, Optional[str]]:
         """
         Builds the CLI launch arguments for a kiosk_browser service using the Launcher Strategy Pattern.
@@ -1673,6 +1710,20 @@ class ProcessManager:
                 f"No executable binary found for browser engine '{engine_id}'. "
                 f"Please install {engine_id} on the host system or provision an official release in Settings → Software."
             )
+
+        apulse_bin = None
+        if engine_id == "firefox":
+            apulse_bin = shutil.which("apulse")
+            if not apulse_bin:
+                if not self._is_sound_server_available():
+                    raise FileNotFoundError(
+                        "Firefox audio on raw ALSA systems requires 'apulse'. "
+                        "Please install apulse on the host system ('sudo apt update && sudo apt install -y apulse')."
+                    )
+                self.logger.warning(
+                    "apulse not found on host; Firefox will attempt to use system PulseAudio/PipeWire "
+                    "which may not route audio to the isolated ALSA Loopback device."
+                )
 
         # 3. Kiosk options
         target_source = str(k_cfg.get("target_source", "https://google.com")).strip()
@@ -1834,6 +1885,11 @@ class ProcessManager:
                 'user_pref("toolkit.startup.max_resumed_crashes", -1);',
                 'user_pref("media.autoplay.default", 0);',
                 'user_pref("media.autoplay.blocking_policy", 0);',
+                'user_pref("media.cubeb.backend", "pulse");',
+                'user_pref("media.cubeb.sandbox", false);',
+                'user_pref("security.sandbox.content.level", 0);',
+                'user_pref("security.sandbox.content.write_path_whitelist", "/dev/snd/");',
+                'user_pref("security.sandbox.content.read_path_whitelist", "/dev/snd/,/sys/devices/");',
                 'user_pref("toolkit.telemetry.enabled", false);',
                 'user_pref("datareporting.healthreport.uploadEnabled", false);',
                 'user_pref("accessibility.force_disabled", 1);',
@@ -1886,6 +1942,9 @@ class ProcessManager:
                 cmd.extend(shlex.split(custom_flags))
 
             cmd.append(target_source)
+
+            if apulse_bin:
+                cmd.insert(0, apulse_bin)
 
         # Ensure executable permissions on browser binary and any sibling helpers
         bin_dir = os.path.dirname(browser_bin)

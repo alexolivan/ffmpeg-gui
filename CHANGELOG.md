@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.6] - 2026-09-30
+
+### Fixed
+- **Firefox Kiosk ALSA Loopback Audio Routing via `apulse` & Cubeb Configuration**:
+  - Resolved `OpenCubeb() failed to init cubeb` and `OnMediaSinkAudioError` caused by official Mozilla Firefox ESR releases lacking native ALSA Cubeb backends on headless / PulseAudio-less hosts.
+  - Automatically detect and prefix Firefox kiosk launches with `apulse` (`shutil.which("apulse")`) to intercept PulseAudio API calls and translate them into native ALSA PCM streams.
+  - Explicitly configured `APULSE_PLAYBACK_DEVICE` and `APULSE_CAPTURE_DEVICE` to target the isolated ALSA Loopback device `plughw:Loopback,0,<subdevice>`, matching Chromium's audio isolation architecture.
+  - Added multiarch detection for `/usr/lib/*/apulse` and exported `LD_LIBRARY_PATH` in `kiosk_sub_env` to ensure Firefox Cubeb threads locate `libpulse.so.0`.
+  - Configured Firefox `user.js` preferences with `media.cubeb.backend: "pulse"`, `media.cubeb.sandbox: false`, `security.sandbox.content.level: 0`, and whitelisted `/dev/snd/` in content sandboxes to prevent permission denials accessing sound card devices.
+  - Provided descriptive `FileNotFoundError` guidance (`sudo apt update && sudo apt install -y apulse`) logged directly to the virtual console and dashboard if `apulse` is missing on headless systems.
+
 ## [2.29.5] - 2026-09-30
 
 ### Fixed

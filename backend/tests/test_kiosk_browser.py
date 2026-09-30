@@ -1,5 +1,6 @@
 import os
 import shutil
+import asyncio
 import unittest
 from unittest.mock import patch, MagicMock
 from sqlalchemy import create_engine
@@ -90,7 +91,11 @@ class TestKioskBrowser(unittest.TestCase):
     @patch("shutil.which")
     def test_firefox_launcher_strategy(self, mock_which):
         real_sh = shutil.which("sh") or "/bin/sh"
-        mock_which.return_value = real_sh
+        def side_which(cmd_name):
+            if cmd_name == "apulse":
+                return "/usr/bin/apulse"
+            return real_sh
+        mock_which.side_effect = side_which
 
         kiosk = Service(
             name="Kiosk Firefox",
@@ -115,7 +120,8 @@ class TestKioskBrowser(unittest.TestCase):
         cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
 
         self.assertEqual(display_num, 99)
-        self.assertEqual(cmd[0], real_sh)
+        self.assertEqual(cmd[0], "/usr/bin/apulse")
+        self.assertEqual(cmd[1], real_sh)
         self.assertIn("--kiosk", cmd)
         self.assertIn("-width", cmd)
         self.assertIn("1920", cmd)
@@ -132,6 +138,10 @@ class TestKioskBrowser(unittest.TestCase):
         with open(user_js_path, "r", encoding="utf-8") as f:
             content = f.read()
             self.assertIn('media.autoplay.default', content)
+            self.assertIn('media.cubeb.backend", "pulse"', content)
+            self.assertIn('media.cubeb.sandbox", false', content)
+            self.assertIn('security.sandbox.content.level", 0', content)
+            self.assertIn('security.sandbox.content.write_path_whitelist", "/dev/snd/"', content)
             self.assertIn('browser.cache.disk.enable", false', content)
             self.assertIn('layers.acceleration.force-enabled", true', content)
             self.assertIn('browser.window.width", 1920', content)
@@ -141,6 +151,68 @@ class TestKioskBrowser(unittest.TestCase):
         self.assertTrue(os.path.exists(css_path))
         with open(css_path, "r", encoding="utf-8") as f:
             self.assertIn('scrollbar-width: none', f.read())
+
+    @patch("core.process_manager.ProcessManager._is_sound_server_available")
+    @patch("shutil.which")
+    def test_firefox_launcher_missing_apulse_without_sound_server_raises(self, mock_which, mock_sound):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_sound.return_value = False
+        def side_which(cmd_name):
+            if cmd_name == "apulse":
+                return None
+            return real_sh
+        mock_which.side_effect = side_which
+
+        kiosk = Service(
+            name="Kiosk Firefox No Apulse",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "firefox",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        with self.assertRaises(FileNotFoundError) as ctx:
+            self.pm._build_kiosk_cmds(kiosk, self.db)
+        self.assertIn("apt install -y apulse", str(ctx.exception))
+
+    @patch("core.process_manager.ProcessManager._is_sound_server_available")
+    @patch("shutil.which")
+    def test_firefox_launcher_missing_apulse_with_sound_server_fallback(self, mock_which, mock_sound):
+        real_sh = shutil.which("sh") or "/bin/sh"
+        mock_sound.return_value = True
+        def side_which(cmd_name):
+            if cmd_name == "apulse":
+                return None
+            return real_sh
+        mock_which.side_effect = side_which
+
+        kiosk = Service(
+            name="Kiosk Firefox Sound Server Fallback",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "firefox",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+        self.assertEqual(cmd[0], real_sh)
+        self.assertIn("--kiosk", cmd)
 
     def test_missing_desktop_validation(self):
         kiosk = Service(
@@ -350,6 +422,52 @@ class TestKioskBrowser(unittest.TestCase):
         with open(asound_path, "r", encoding="utf-8") as f:
             asound_content = f.read()
             self.assertIn('slave.pcm "hw:Loopback,0,3"', asound_content)
+
+    @patch("asyncio.create_subprocess_exec")
+    @patch("shutil.which")
+    def test_firefox_kiosk_apulse_environment(self, mock_which, mock_exec):
+        real_sh = "/bin/sh"
+        def side_which(cmd_name):
+            if cmd_name == "apulse":
+                return "/usr/bin/apulse"
+            return real_sh
+        mock_which.side_effect = side_which
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 99999
+        mock_proc.returncode = None
+        mock_exec.return_value = mock_proc
+
+        kiosk = Service(
+            name="Kiosk Firefox Env Test",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "firefox",
+                    "desktop_service_id": self.desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self.pm.start_process(kiosk.id))
+            self.assertTrue(mock_exec.called)
+            kiosk_call = next(c for c in mock_exec.call_args_list if any("apulse" in str(arg) for arg in c[0]))
+            env = kiosk_call[1].get("env", {})
+            self.assertEqual(env.get("APULSE_PLAYBACK_DEVICE"), "plughw:Loopback,0,3")
+            self.assertEqual(env.get("APULSE_CAPTURE_DEVICE"), "plughw:Loopback,0,3")
+            self.assertEqual(env.get("MOZ_NO_REMOTE"), "1")
+            self.assertNotIn("DBUS_SESSION_BUS_ADDRESS", env)
+            loop.run_until_complete(self.pm.stop_process(kiosk.id))
+        finally:
+            loop.close()
 
 
 if __name__ == "__main__":
