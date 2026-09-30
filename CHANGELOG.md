@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.8] - 2026-09-30
+
+### Fixed
+- **ALSA Process Binding Resilience for Reattached Processes**:
+  - Resolved process PIDs in `get_alsa_topology` for surviving and reattached background services (`ProcessManager.reattached_pids` and `proc.pid`), ensuring kernel `/proc/{pid}/fd` inspection is used even after application restarts with `KillMode=process`.
+  - Prioritized explicit CLI device arguments (`hw:1,0`, `plughw:1,0`) and JSON device strings over stale or default numeric `soundcard` / `card_index` configuration values, preventing capture processes from falsely binding to Card 0 (NVIDIA HDMI).
+  - Restricted structured JSON fallback evaluation to explicit ALSA sections (`type == 'alsa'` or `audio_driver == 'alsa'`).
+
 ## [2.29.7] - 2026-09-30
 
 ### Added

@@ -69,6 +69,23 @@ class TestAlsaProcessBinding(unittest.TestCase):
         # Checking Card 2 -> False
         self.assertFalse(check_pid_using_alsa_card(1095, card_index=2))
 
+    def test_explicit_card_in_cmd_ignores_stale_json_card_index_0(self):
+        """A command targeting hw:1,0 must not bind to Card 0 even if JSON contains stale soundcard: 0."""
+        cmd = "/usr/local/src/ffmpeg-gui/backend/ffmpeg_builds/1/install/bin/ffmpeg -f alsa -i hw:1,0 -c:a libmp3lame out.mp3"
+        stale_config_json = '{"input": {"type": "alsa", "device": "hw:1,0", "soundcard": 0, "card_index": 0}}'
+
+        self.assertFalse(is_cmd_using_alsa_card(cmd, stale_config_json, card_index=0, card_id="NVidia"))
+        self.assertTrue(is_cmd_using_alsa_card(cmd, stale_config_json, card_index=1, card_id="Generic"))
+        self.assertFalse(is_cmd_using_alsa_card(cmd, stale_config_json, card_index=2, card_id="Loopback"))
+
+    def test_json_device_string_precedence_over_numeric_card_index(self):
+        """When cmd_str is empty, explicit device in JSON takes precedence over numeric card_index."""
+        stale_config_json = '{"input": {"type": "alsa", "device": "plughw:1,0", "soundcard": "0", "card_index": 0}}'
+
+        self.assertFalse(is_cmd_using_alsa_card("", stale_config_json, card_index=0, card_id="NVidia"))
+        self.assertTrue(is_cmd_using_alsa_card("", stale_config_json, card_index=1, card_id="Generic"))
+
 
 if __name__ == "__main__":
     unittest.main()
+
