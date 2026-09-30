@@ -7158,16 +7158,21 @@ def analyze_alsa_process_info(cmd_str: str, config_json_str: str, pid: Optional[
 
     direction = "both" if (has_input and has_output) else ("capture" if has_input else "playout")
 
-    match = re.search(r'(?:hw|plughw|dsnoop|dmix):(?:card=)?([a-zA-Z0-9_\-]+)(?:,(\d+))?(?:,(\d+))?', cmd_lower)
+    matches = list(re.finditer(r'(?:hw|plughw|dsnoop|dmix):(?:card=)?([a-zA-Z0-9_\-]+)(?:,(\d+))?(?:,(\d+))?', cmd_lower))
     device_target = ""
     pcm_index = None
     subdev_index = None
 
-    if match:
-        card = match.group(1)
-        pcm_index = int(match.group(2)) if match.group(2) is not None else 0
-        subdev_index = int(match.group(3)) if match.group(3) is not None else 0
-        device_target = f"hw:{card},{pcm_index},{subdev_index}"
+    for m in matches:
+        card = m.group(1)
+        pcm = int(m.group(2)) if m.group(2) is not None else 0
+        subdev = int(m.group(3)) if m.group(3) is not None else 0
+        if card_index is None or card == str(card_index) or not device_target:
+            pcm_index = pcm
+            subdev_index = subdev
+            device_target = f"hw:{card},{pcm},{subdev}"
+            if card_index is not None and card == str(card_index):
+                break
 
     return {
         "direction": direction,
@@ -7185,10 +7190,6 @@ def is_cmd_using_alsa_card(cmd_str: str, config_json_str: str, card_index: int, 
             return fd_match
 
     # 2. Strict ALSA CLI / config regex analysis (fallback)
-    combined_str = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
-    if not combined_str.strip():
-        return False
-
     c_idx_str = str(card_index)
     c_id_lower = str(card_id).lower()
 
@@ -7198,37 +7199,51 @@ def is_cmd_using_alsa_card(cmd_str: str, config_json_str: str, card_index: int, 
         re.IGNORECASE
     )
 
-    found_cards = set()
-    for match in alsa_dev_regex.finditer(combined_str):
-        matched_card = match.group(1).lower()
-        found_cards.add(matched_card)
+    # 2a. Direct evaluation of CLI arguments (highest priority)
+    found_in_cmd = set()
+    if cmd_str:
+        for match in alsa_dev_regex.finditer(cmd_str):
+            found_in_cmd.add(match.group(1).lower())
 
-    if c_idx_str in found_cards or c_id_lower in found_cards:
-        return True
+    if found_in_cmd:
+        return (c_idx_str in found_in_cmd or c_id_lower in found_in_cmd)
 
-    # Check structured JSON config for explicit soundcard selection (e.g. "soundcard": "0", "card_index": 0)
+    # 2b. Direct evaluation of explicit device strings in config JSON
+    found_in_json = set()
+    if config_json_str:
+        for match in alsa_dev_regex.finditer(config_json_str):
+            found_in_json.add(match.group(1).lower())
+
+    if found_in_json:
+        return (c_idx_str in found_in_json or c_id_lower in found_in_json)
+
+    # 2c. Check structured ALSA section in config JSON (only when audio driver is explicitly ALSA)
     try:
         cfg = json.loads(config_json_str) if config_json_str else {}
         for section in ["input", "output", "params"]:
             sec = cfg.get(section)
             if isinstance(sec, dict):
-                sc = str(sec.get("soundcard", "")).lower()
-                ci = str(sec.get("card_index", "")).lower()
-                dev = str(sec.get("device", "")).lower()
-                if sc == c_idx_str or sc == c_id_lower or ci == c_idx_str:
+                is_alsa = (
+                    sec.get("type") == "alsa" or
+                    sec.get("audio_driver") == "alsa" or
+                    sec.get("output_type") == "alsa"
+                )
+                if not is_alsa:
+                    continue
+                sc = str(sec.get("soundcard", "")).strip().lower()
+                ci = str(sec.get("card_index", "")).strip().lower()
+                if sc and (sc == c_idx_str or sc == c_id_lower):
                     return True
-                if dev:
-                    dev_match = alsa_dev_regex.search(dev)
-                    if dev_match and (dev_match.group(1).lower() in (c_idx_str, c_id_lower)):
-                        return True
+                if ci and ci == c_idx_str:
+                    return True
     except Exception:
         pass
 
-    # Fallback ONLY for card 0: only if explicitly using default/sysdefault ALSA device and no other card is referenced
+    # 2d. Fallback ONLY for card 0: only if explicitly using default/sysdefault ALSA device and no other card is referenced
+    combined_str = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
     if card_index == 0:
         if any(d in combined_str for d in ["default:default", "sysdefault:default", "-i default", "-f alsa default"]):
-            if not found_cards:
-                return True
+            return True
 
     return False
 
@@ -7249,7 +7264,7 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
             active_procs = db.query(MediaProcess).filter(MediaProcess.status.in_(["running", "active", "starting"])).all()
             for proc in active_procs:
                 proc_entry = process_manager.processes.get(proc.id)
-                pid = getattr(proc_entry, "pid", None) if proc_entry else None
+                pid = (getattr(proc_entry, "pid", None) if proc_entry else None) or process_manager.reattached_pids.get(proc.id) or getattr(proc, "pid", None)
 
                 cmd_str = ""
                 try:
@@ -7291,7 +7306,7 @@ def get_alsa_topology(card_index: int, db: Session = Depends(get_db)):
             active_execs = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "in_progress", "starting"])).all()
             for task_exec in active_execs:
                 task_proc = task_manager.running_processes.get(task_exec.id)
-                pid = getattr(task_proc, "pid", None) if task_proc else None
+                pid = (getattr(task_proc, "pid", None) if task_proc else None) or getattr(task_exec, "pid", None)
 
                 task = task_exec.task
                 cmd_str = ""
