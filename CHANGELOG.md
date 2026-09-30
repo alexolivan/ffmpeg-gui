@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.29.7] - 2026-09-30
+
+### Added
+- **Dynamic Free Loopback Subdevice Allocation & Humanized UI**:
+  - Replaced the obscure `:display % 8` formula with dynamic free subdevice calculation in `get_next_available_desktop_display_and_vnc_port`.
+  - Added real-time tracking of occupied ALSA Loopback subdevices across active and configured Desktops (`occupied_subdevices`).
+  - Humanized subdevice dropdown in `DesktopConfigForm.tsx` to explicitly indicate `[Disponible]` vs `[En uso por: <Desktop>]` and auto-select the first free subdevice.
+  - Resolved target desktop ALSA subdevice directly in `ProcessManager.start_process` for Kiosk browser launches, passing the explicit subdevice to `apulse` environment variables and sandbox configs.
+
+### Fixed
+- **Kernel FD Ground Truth for ALSA Process Card Binding**:
+  - Eliminated false bindings where FFmpeg processes utilizing NVIDIA NVENC (`h264_nvenc`) were incorrectly displayed as bound to NVIDIA HDMI Audio (Card 0).
+  - Implemented `/proc/{pid}/fd` inspection to read active `/dev/snd/pcmC*` and `controlC*` device descriptors as the authoritative source of truth.
+  - Refined fallback CLI and config parsing with strict ALSA device regexes (`(?:hw|plughw|dsnoop|dmix|default|sysdefault):...`), eliminating loose substring matching and improper Card 0 wildcard fallbacks.
+- **Elimination of Fake Loopback VU Meters & WebSocket Polling**:
+  - Classified read-only kernel synchronization controls (`PCM Slave Active`, `PCM Slave Rate`, etc.) as ignored internal state on ALSA Loopback cards, removing non-functional VU meter nodes and blank canvases from the UI.
+  - Prevented opening `/ws/alsa/meters/{card_idx}` WebSockets from frontend when viewing Loopback cards, eliminating unnecessary 30Hz network and CPU polling.
+  - Updated `AlsaManager.read_meters` to immediately return an empty dictionary for Loopback cards.
+
+### Changed
+- **System Installer & Upgrade Hardening**:
+  - Added `apulse` package dependency to Debian/Ubuntu (`apt-get`) and Arch Linux (`pacman`) dependency lists in `install.sh`.
+  - Updated `INSTALL.md` documentation detailing the `apulse` requirement for PulseAudio emulation without background daemons.
+
 ## [2.29.6] - 2026-09-30
 
 ### Fixed
