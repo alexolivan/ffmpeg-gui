@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.29.8] - 2026-09-30
+## [2.30.0] - 2026-09-30
 
 ### Fixed
 - **ALSA Process Binding Resilience for Reattached Processes**:
