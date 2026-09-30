@@ -491,10 +491,22 @@ class ProcessManager:
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 elif svc_type == "kiosk_browser":
                     log_file_handle = open(log_path, "ab", buffering=0)
+                    target_desk_subdevice = None
                     with self.db_session_factory() as session:
                         from database.models import Service
                         s_obj = session.get(Service, int(process_id)) if hasattr(session, "get") else session.query(Service).get(int(process_id))
-                        p_mode = str((s_obj.config or {}).get("kiosk_config", {}).get("profile_mode", "ephemeral")).lower() if s_obj else "ephemeral"
+                        k_cfg = (s_obj.config or {}).get("kiosk_config", {}) if s_obj else {}
+                        p_mode = str(k_cfg.get("profile_mode", "ephemeral")).lower()
+                        desk_id = k_cfg.get("target_desktop_service_id")
+                        if desk_id:
+                            desk_obj = session.get(Service, int(desk_id)) if hasattr(session, "get") else session.query(Service).get(int(desk_id))
+                            if desk_obj:
+                                d_cfg = (desk_obj.config or {}).get("desktop_config", desk_obj.config or {})
+                                if d_cfg.get("alsa_subdevice") is not None:
+                                    try:
+                                        target_desk_subdevice = int(d_cfg.get("alsa_subdevice"))
+                                    except (ValueError, TypeError):
+                                        pass
                     
                     if p_mode == "persistent":
                         kiosk_profile = os.path.abspath(f"data/kiosk_profiles/{process_id}")
@@ -540,15 +552,17 @@ class ProcessManager:
                         kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
 
                         # Configure apulse audio routing to isolated ALSA Loopback subdevice
-                        alsa_subdevice = int(display_num) % 8
-                        if os.path.exists(asound_cfg_file):
+                        if target_desk_subdevice is not None:
+                            alsa_subdevice = target_desk_subdevice
+                        elif os.path.exists(asound_cfg_file):
                             try:
                                 with open(asound_cfg_file, "r", encoding="utf-8") as acf:
                                     sub_match = re.search(r"hw:Loopback,0,(\d+)", acf.read())
-                                    if sub_match:
-                                        alsa_subdevice = int(sub_match.group(1))
+                                    alsa_subdevice = int(sub_match.group(1)) if sub_match else (int(display_num) % 8)
                             except Exception:
-                                pass
+                                alsa_subdevice = int(display_num) % 8
+                        else:
+                            alsa_subdevice = int(display_num) % 8
 
                         kiosk_sub_env["APULSE_PLAYBACK_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
                         kiosk_sub_env["APULSE_CAPTURE_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
