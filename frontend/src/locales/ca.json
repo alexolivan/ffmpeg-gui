@@ -419,7 +419,7 @@
         "activeSockets": "en escolta",
         "expandAll": "Desplegar tot",
         "collapseAll": "Plegar tot",
-        "viewRules": "Regles",
+        "ruleHelper": "Assistent de Regles Firewall",
         "copySnippet": "Copiar regles",
         "colPortProto": "Port / Proto",
         "colService": "Servei / Dimoni",

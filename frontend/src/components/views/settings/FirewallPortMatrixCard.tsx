@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 export interface PortMatrixEntry {
   port: number;
@@ -111,17 +112,18 @@ export const FirewallPortMatrixCard: React.FC<FirewallPortMatrixCardProps> = ({ 
     setExpandedGroups(next);
   };
 
-  const handleCopy = (type: 'ufw' | 'iptables') => {
+  const handleCopy = async (type: 'ufw' | 'iptables') => {
     const lines = type === 'ufw' ? rules.ufw : rules.iptables;
     const header =
       type === 'ufw'
         ? '#!/bin/bash\n# FFMPEG-GUI UFW Firewall Rules\n'
         : '#!/bin/bash\n# FFMPEG-GUI iptables Firewall Rules\n';
     const content = header + lines.join('\n') + '\n';
-    navigator.clipboard.writeText(content).then(() => {
+    const ok = await copyToClipboard(content);
+    if (ok) {
       setCopiedType(type);
       setTimeout(() => setCopiedType(null), 2500);
-    });
+    }
   };
 
   const getServiceIcon = (type: string, category: string) => {
@@ -185,42 +187,29 @@ export const FirewallPortMatrixCard: React.FC<FirewallPortMatrixCardProps> = ({ 
 
           <button
             type="button"
-            onClick={() => handleCopy('ufw')}
-            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-all flex items-center gap-1 cursor-pointer"
-          >
-            <span>{copiedType === 'ufw' ? '✓' : '📋'}</span>
-            <span>{copiedType === 'ufw' ? t('common.copied', 'Copied!') : 'UFW'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleCopy('iptables')}
-            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-brand-orange/10 hover:bg-brand-orange/20 text-brand-orange border border-brand-orange/30 transition-all flex items-center gap-1 cursor-pointer"
-          >
-            <span>{copiedType === 'iptables' ? '✓' : '📋'}</span>
-            <span>{copiedType === 'iptables' ? t('common.copied', 'Copied!') : 'iptables'}</span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setShowScriptDrawer(!showScriptDrawer)}
-            className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-secondary hover:text-[var(--text-primary)] transition-all flex items-center gap-1 cursor-pointer"
+            className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer ${
+              showScriptDrawer
+                ? 'bg-brand-lime/15 border-brand-lime/40 text-brand-lime'
+                : 'bg-[var(--input-bg)] border-[var(--glass-border)] text-text-secondary hover:text-[var(--text-primary)] hover:border-brand-lime'
+            }`}
           >
+            <span>🛡️</span>
+            <span>{t('settings.network.firewall.ruleHelper', 'Firewall Rule Helper')}</span>
             <span>{showScriptDrawer ? '▲' : '▼'}</span>
-            <span className="hidden sm:inline">{t('settings.network.firewall.viewRules', 'Rules')}</span>
           </button>
         </div>
       </div>
 
       {/* Script Drawer */}
       {showScriptDrawer && (
-        <div className="p-3 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl space-y-2">
-          <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+        <div className="p-3.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl space-y-2.5">
+          <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setActiveTab('ufw')}
-                className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded transition-all cursor-pointer ${
+                className={`text-[11px] font-bold uppercase px-3 py-1 rounded-lg transition-all cursor-pointer ${
                   activeTab === 'ufw'
                     ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
                     : 'text-text-secondary hover:text-[var(--text-primary)]'
@@ -231,7 +220,7 @@ export const FirewallPortMatrixCard: React.FC<FirewallPortMatrixCardProps> = ({ 
               <button
                 type="button"
                 onClick={() => setActiveTab('iptables')}
-                className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded transition-all cursor-pointer ${
+                className={`text-[11px] font-bold uppercase px-3 py-1 rounded-lg transition-all cursor-pointer ${
                   activeTab === 'iptables'
                     ? 'bg-brand-orange/20 text-brand-orange border border-brand-orange/40'
                     : 'text-text-secondary hover:text-[var(--text-primary)]'
@@ -244,15 +233,18 @@ export const FirewallPortMatrixCard: React.FC<FirewallPortMatrixCardProps> = ({ 
             <button
               type="button"
               onClick={() => handleCopy(activeTab)}
-              className="text-[10px] font-mono font-bold text-text-secondary hover:text-brand-lime transition-colors cursor-pointer"
+              className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-brand-lime/10 hover:bg-brand-lime/20 text-brand-lime border border-brand-lime/30 transition-all flex items-center gap-1.5 cursor-pointer"
             >
-              {copiedType === activeTab
-                ? `✓ ${t('common.copied', 'Copied!')}`
-                : `📋 ${t('settings.network.firewall.copySnippet', 'Copy snippet')}`}
+              <span>{copiedType === activeTab ? '✓' : '📋'}</span>
+              <span>
+                {copiedType === activeTab
+                  ? t('common.copied', 'Copied!')
+                  : t('settings.network.firewall.copySnippet', 'Copy snippet')}
+              </span>
             </button>
           </div>
 
-          <pre className="text-[10px] font-mono text-[var(--text-primary)] p-2.5 bg-black/40 rounded-lg overflow-x-auto max-h-48 border border-[var(--glass-border)] selection:bg-brand-lime/30">
+          <pre className="text-[10px] font-mono text-[var(--text-primary)] p-3 bg-black/40 rounded-lg overflow-x-auto max-h-56 border border-[var(--glass-border)] selection:bg-brand-lime/30">
             {activeTab === 'ufw'
               ? rules.ufw.join('\n') || '# No external UFW rules required (all services bound to localhost)'
               : rules.iptables.join('\n') || '# No external iptables rules required'}

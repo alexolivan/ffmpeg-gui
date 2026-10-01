@@ -419,7 +419,7 @@
         "activeSockets": "listening",
         "expandAll": "Expand All",
         "collapseAll": "Collapse All",
-        "viewRules": "Rules",
+        "ruleHelper": "Firewall Rule Helper",
         "copySnippet": "Copy snippet",
         "colPortProto": "Port / Proto",
         "colService": "Service / Daemon",
