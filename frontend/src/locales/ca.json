@@ -411,7 +411,24 @@
       "enableHttps": "Habilitar Xifratge HTTPS",
       "forceHttpsRedirect": "Redirigir Automàticament HTTP -> HTTPS",
       "httpsDisabledCertTooltip": "No es pot habilitar HTTPS fins que hi hagi un certificat SSL i clau privada vàlids carregats.",
-      "cardTitle": "Configuració d'Interfícies de Xarxa i Ample de Banda"
+      "cardTitle": "Configuració d'Interfícies de Xarxa i Ample de Banda",
+      "firewall": {
+        "title": "Matriu de Ports i Generador Firewall",
+        "subtitle": "Inspecció en temps real de ports oberts, enllaços de dimonis i generador de regles firewall en 1 clic.",
+        "activeSockets": "en escolta",
+        "viewRules": "Regles",
+        "copySnippet": "Copiar regles",
+        "colPortProto": "Port / Proto",
+        "colService": "Servei / Dimoni",
+        "colListenAddress": "Interfície d'Escolta",
+        "colSocket": "Sòcol en Viu",
+        "colFirewall": "Política d'Entrada",
+        "socketListening": "En Escolta",
+        "socketStarting": "Iniciant",
+        "socketStopped": "Aturat",
+        "inboundPublic": "Entrada WAN/LAN",
+        "internalOnly": "Bucle Local Intern"
+      }
     },
     "logging": {
       "title": "CONFIGURACIÓ DE REGISTRES",

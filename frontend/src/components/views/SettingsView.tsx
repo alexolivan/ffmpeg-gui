@@ -10,6 +10,7 @@ import { SoftwareEngineCard, type SoftwareEngineData } from './settings/Software
 import { InboundKeysCard } from './settings/InboundKeysCard';
 import { RemotePeersCard } from './settings/RemotePeersCard';
 import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
+import { FirewallPortMatrixCard } from './settings/FirewallPortMatrixCard';
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'] as const;
@@ -2158,6 +2159,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* CARD: LIVE FIREWALL & PORT MATRIX */}
+            <FirewallPortMatrixCard API={API} />
 
             {/* CARD 5: EMAIL NOTIFICATIONS & ALERTING */}
             <div className="glass-card p-5 !rounded-2xl space-y-5">

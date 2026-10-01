@@ -411,7 +411,24 @@
       "enableHttps": "Enable HTTPS Encryption",
       "forceHttpsRedirect": "Automatically Redirect HTTP -> HTTPS",
       "httpsDisabledCertTooltip": "HTTPS cannot be enabled until a valid SSL certificate and keypair are loaded.",
-      "cardTitle": "Network Interfaces & Bandwidth Settings"
+      "cardTitle": "Network Interfaces & Bandwidth Settings",
+      "firewall": {
+        "title": "Firewall & Active Port Matrix",
+        "subtitle": "Real-time inspection of open network ports, daemon bindings, and 1-click firewall rule generators.",
+        "activeSockets": "listening",
+        "viewRules": "Rules",
+        "copySnippet": "Copy snippet",
+        "colPortProto": "Port / Proto",
+        "colService": "Service / Daemon",
+        "colListenAddress": "Listen Interface",
+        "colSocket": "Live Socket",
+        "colFirewall": "Inbound Policy",
+        "socketListening": "Listening",
+        "socketStarting": "Starting",
+        "socketStopped": "Stopped",
+        "inboundPublic": "Inbound WAN/LAN",
+        "internalOnly": "Internal Loopback"
+      }
     },
     "logging": {
       "title": "LOGGING CONFIGURATION",

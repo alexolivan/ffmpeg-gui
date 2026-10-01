@@ -411,7 +411,24 @@
       "enableHttps": "Habilitar Cifrado HTTPS",
       "forceHttpsRedirect": "Redirigir Automáticamente HTTP -> HTTPS",
       "httpsDisabledCertTooltip": "No se puede habilitar HTTPS hasta que haya un certificado SSL y clave privada válidos cargados.",
-      "cardTitle": "Configuración de Interfaces de Red y Ancho de Banda"
+      "cardTitle": "Configuración de Interfaces de Red y Ancho de Banda",
+      "firewall": {
+        "title": "Matriz de Puertos y Generador Firewall",
+        "subtitle": "Inspección en tiempo real de puertos abiertos, enlaces de demonios y generador de reglas firewall en 1 clic.",
+        "activeSockets": "en escucha",
+        "viewRules": "Reglas",
+        "copySnippet": "Copiar reglas",
+        "colPortProto": "Puerto / Proto",
+        "colService": "Servicio / Demonio",
+        "colListenAddress": "Interfaz de Escucha",
+        "colSocket": "Socket en Vivo",
+        "colFirewall": "Política de Entrada",
+        "socketListening": "En Escucha",
+        "socketStarting": "Iniciando",
+        "socketStopped": "Detenido",
+        "inboundPublic": "Entrada WAN/LAN",
+        "internalOnly": "Bucle Local Interno"
+      }
     },
     "logging": {
       "title": "CONFIGURACIÓN DE LOGS",
