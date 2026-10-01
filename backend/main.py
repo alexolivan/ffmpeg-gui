@@ -3894,6 +3894,14 @@ def read_root() -> dict:
 def manual_check_updates() -> dict:
     return check_latest_release(backend_version, force=True)
 
+@app.get("/api/system/network/interfaces")
+def get_system_network_interfaces() -> dict:
+    try:
+        from core.network_inspector import get_network_interfaces
+    except ImportError:
+        from backend.core.network_inspector import get_network_interfaces
+    return {"interfaces": get_network_interfaces()}
+
 @app.post("/settings/lcd/probe")
 def probe_lcd_ports():
     import serial.tools.list_ports

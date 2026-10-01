@@ -280,6 +280,14 @@ def main():
     if hasattr(signal, "SIGUSR1"):
         signal.signal(signal.SIGUSR1, handle_reload_signal)
 
+    # 6. Fail-Safe Host Resolver (prevent admin lockout on DHCP renewal or interface change)
+    from core.network_inspector import resolve_bind_address
+    effective_host, fell_back, reason = resolve_bind_address(host)
+    if fell_back:
+        print(f"\n[NETWORK FAIL-SAFE WARNING] {reason}")
+        print(f"[NETWORK FAIL-SAFE] Binding server to '{effective_host}' to prevent administrative lockout.\n")
+        host = effective_host
+
     if ssl_enabled and ssl_keyfile and ssl_certfile:
         print(f"Configuring FFMPEG-GUI HTTPS Server on https://{host}:{https_port}...")
         https_config = uvicorn.Config(
