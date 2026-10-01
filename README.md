@@ -172,6 +172,25 @@ sudo cp packaging/fail2ban/jail.d/ffmpeg-gui.local /etc/fail2ban/jail.d/
 sudo fail2ban-client reload
 ```
 
+### 🧰 17. Administrative Rescue CLI (`ffmpeg-gui-admin`)
+- **Out-of-Band Recovery**: Command-line utility to diagnose and recover instances without browser access.
+- **Admin Password Reset**: Reset administrative passwords directly from the terminal (`reset-admin`).
+- **IP Ban & Lockout Clearing**: Clear active in-memory brute-force lockouts (`reset-lockout` / `reset-all`) in case an administrator gets locked out.
+- **Instance Diagnostics**: Inspect active ports, database status, systemd service health, and current listening interfaces (`status`).
+
+```bash
+# Quick CLI usage
+./bin/ffmpeg-gui-admin status
+./bin/ffmpeg-gui-admin reset-lockout
+./bin/ffmpeg-gui-admin reset-admin
+```
+
+### 🌐 18. Dynamic Interface Binding & Live Firewall Matrix
+- **Dynamic Interface Enumeration**: Detects all physical, virtual, and loopback interfaces (IP, netmask, MAC, speed, and link state).
+- **Fail-Safe Bind Resolver**: Prevents administrative lock-out if network interfaces change, drop, or migrate; automatically falls back to `0.0.0.0` with clear diagnostic warnings.
+- **Daemon Integration**: Bind FFmpeg-GUI core, MediaMTX, and Icecast2 to specific interfaces or individual IP addresses.
+- **Live Firewall Matrix & Rule Generator**: Real-time socket scanner reporting live listening ports across all daemons with 1-click copyable UFW and iptables rule sets.
+
 ---
 
 ## Architecture

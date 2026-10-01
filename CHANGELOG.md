@@ -7,7 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.30.0] - 2026-09-30
+## [2.31.0] - 2026-10-01
+
+### Added
+- **Administrative Rescue CLI (`bin/ffmpeg-gui-admin`)**:
+  - Independent CLI tool with executable symlink for out-of-band server administration and lock-out recovery (`status`, `reset-admin`, `reset-lockout`, `reset-all`).
+  - Added `SecurityGuard.reset_all()` to clear memory-locked brute-force IP bans directly from the command line.
+  - Interactive prompts with non-interactive flags (`--yes` / `-y`, `--password <pass>`), and automated environment detection for systemd execution.
+- **Intelligent Offline & Dependency Updates**:
+  - Enhanced `update.sh` with `--dependencies-only` flag matching `install.sh --dependencies-only`.
+  - Air-gapped pip network availability check with 3-second ping timeout, preventing update hangs in isolated LANs.
+  - NPM noise and warning suppression (`--no-fund --no-audit --loglevel=error`) with MD5/SHA256 package-lock cache validation to skip redundant node module reinstallations.
+- **Decoupled GitHub Release Checker**:
+  - Background asynchronous check against GitHub Releases API (`backend/core/update_checker.py`) with persistent 6-hour disk caching and offline resilience.
+  - Exposes `/api/status` release telemetry and manual on-demand `/api/system/check-updates` refresh endpoint.
+  - Dashboard header zero-space environment pills (`🟢 Producción` / `🟣 devel`) with interactive update notification badge (`▲ vX.Y.Z`).
+- **Dynamic Network Interface Binding & Fail-Safe Fallback**:
+  - Linux `psutil`-powered interface enumeration (`backend/core/network_inspector.py`) detecting interface names, IPv4/IPv6 addresses, netmasks, MAC addresses, and link status.
+  - Multi-tier `resolve_bind_address()` resolver with fail-safe fallback to `0.0.0.0` upon interface disconnections, IP migrations, or DHCP reassignments, eliminating server lock-outs.
+  - Extended auxiliary service builders to support specific listen addresses for MediaMTX (`apiAddress`, `rtmpAddress`, `rtspAddress`, `hlsAddress`, `webrtcAddress`, `srtAddress`) and Icecast2 (`<bind-address>`).
+- **Reusable `NetworkInterfaceSelector` & Live Safe-Bind Warnings**:
+  - Modular UI selector component with color-coded IP chips, MAC telemetry, and interface state badges across Server Network Settings, MediaMTX, and Icecast forms.
+  - Contextual modal dialog warning administrators before binding to specific network interfaces to prevent accidental remote disconnection.
+- **Active Kernel Socket Inspector & Live Firewall Port Matrix**:
+  - Kernel socket inspector (`get_active_port_matrix`) reading active listening sockets across FFmpeg-GUI core (8000/8443), MediaMTX (1935, 1936, 8554, 8322, 8888, 8889, 8189, 8890, 9997), Icecast2 (7000/7443), and noVNC (6080).
+  - Built-in firewall rule compiler generating plug-and-play UFW and iptables rule sets with loopback-service exclusions.
+  - Settings Network card `FirewallPortMatrixCard` featuring live socket status badges, inbound WAN/LAN policies, and 1-click clipboard copy for firewall rules.
+
 
 ### Fixed
 - **ALSA Process Binding Resilience for Reattached Processes**:

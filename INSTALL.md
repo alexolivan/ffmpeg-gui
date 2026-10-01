@@ -126,18 +126,42 @@ To run the update:
 
 # Non-interactive mode (assumes yes to prompts)
 ./update.sh -y
+
+# Update dependencies only (without rebuilding frontend or restarting service)
+./update.sh --dependencies-only
 ```
 
 ### What `update.sh` does:
-1. Updates the Python virtual environment (`venv`) and installs requirements.
-2. Re-generates systemd configuration capabilities if missing.
-3. Builds production-grade minified assets using Vite.
-4. Reloads the systemd daemon.
-5. Gracefully restarts the `ffmpeg-gui` orchestrator process.
+1. Verifies network connectivity with air-gap ping fallbacks to prevent update freezes.
+2. Updates the Python virtual environment (`venv`) and installs requirements.
+3. Checks package-lock hash caches to avoid unnecessary `npm install` runs.
+4. Builds production-grade minified assets using Vite.
+5. Re-generates systemd configuration capabilities if missing.
+6. Gracefully restarts the `ffmpeg-gui` orchestrator process.
 
 ---
 
-## 5. Uninstallation
+## 6. Emergency Rescue & Administration CLI (`ffmpeg-gui-admin`)
+
+If you are locked out of the web interface (due to forgotten passwords, brute-force IP lockout, or misconfigured listen ports), the administration CLI allows out-of-band recovery:
+
+```bash
+# View active service state, ports, and listening interfaces
+./bin/ffmpeg-gui-admin status
+
+# Clear in-memory IP bans (brute-force lockouts)
+./bin/ffmpeg-gui-admin reset-lockout
+
+# Reset administrator password
+./bin/ffmpeg-gui-admin reset-admin
+
+# Reset all security guards and password in one step
+./bin/ffmpeg-gui-admin reset-all
+```
+
+---
+
+## 7. Uninstallation
 
 To remove all configuration files, database data, systemd services, and dependencies:
 
