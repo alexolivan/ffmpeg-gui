@@ -49,7 +49,8 @@
         "localhostOnly": "127.0.0.1 (Només Localhost)",
         "defaultGateway": "Passarel·la",
         "customOrMissing": "Configurada - No detectada en aquest equip",
-        "failsafeNotice": "Enllaç segur: Si la IP seleccionada no està disponible o canvia, el sistema recorrerà a 0.0.0.0 per evitar pèrdua d'accés."
+        "failsafeNotice": "Enllaç segur: Si la IP seleccionada no està disponible o canvia, el sistema recorrerà a 0.0.0.0 per evitar pèrdua d'accés.",
+        "specificIpWarning": "Avís: El servei només serà accessible a través d'aquesta adreça IP específica ({{ip}}). Assegura't que l'enrutament de xarxa permeti assolir-la."
       }
     }
   },
@@ -416,6 +417,8 @@
         "title": "Matriu de Ports i Generador Firewall",
         "subtitle": "Inspecció en temps real de ports oberts, enllaços de dimonis i generador de regles firewall en 1 clic.",
         "activeSockets": "en escolta",
+        "expandAll": "Desplegar tot",
+        "collapseAll": "Plegar tot",
         "viewRules": "Regles",
         "copySnippet": "Copiar regles",
         "colPortProto": "Port / Proto",

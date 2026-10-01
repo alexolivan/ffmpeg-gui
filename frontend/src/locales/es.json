@@ -49,7 +49,8 @@
         "localhostOnly": "127.0.0.1 (Solo Localhost)",
         "defaultGateway": "Pasarela",
         "customOrMissing": "Configurada - No detectada en este equipo",
-        "failsafeNotice": "Enlace seguro: Si la IP seleccionada no está disponible o cambia, el sistema recurrirá a 0.0.0.0 para evitar pérdida de acceso."
+        "failsafeNotice": "Enlace seguro: Si la IP seleccionada no está disponible o cambia, el sistema recurrirá a 0.0.0.0 para evitar pérdida de acceso.",
+        "specificIpWarning": "Aviso: El servicio solo será accesible a través de esta dirección IP específica ({{ip}}). Asegúrate de que el enrutamiento de red permita alcanzarla."
       }
     }
   },
@@ -416,6 +417,8 @@
         "title": "Matriz de Puertos y Generador Firewall",
         "subtitle": "Inspección en tiempo real de puertos abiertos, enlaces de demonios y generador de reglas firewall en 1 clic.",
         "activeSockets": "en escucha",
+        "expandAll": "Expandir todo",
+        "collapseAll": "Colapsar todo",
         "viewRules": "Reglas",
         "copySnippet": "Copiar reglas",
         "colPortProto": "Puerto / Proto",

@@ -70,6 +70,12 @@ export const NetworkInterfaceSelector: React.FC<NetworkInterfaceSelectorProps> =
   });
 
   const isValueRecognized = detectedIps.has(value) || value === '' || value === 'localhost';
+  const isSpecificIp = Boolean(
+    value &&
+    value !== '0.0.0.0' &&
+    value !== '127.0.0.1' &&
+    value !== 'localhost'
+  );
 
   return (
     <div className="space-y-1.5">
@@ -120,16 +126,30 @@ export const NetworkInterfaceSelector: React.FC<NetworkInterfaceSelectorProps> =
         </select>
       </div>
 
-      <p className="text-[10px] text-text-secondary flex items-center gap-1 leading-tight">
-        <span>🛡️</span>
-        <span>
-          {helperText ||
-            t(
-              'common.network.interfaceSelector.failsafeNotice',
-              'Safe bind: If the selected IP is down or changes, the system safely falls back to 0.0.0.0 to prevent access loss.'
-            )}
-        </span>
-      </p>
+      {isSpecificIp && (
+        <div className="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-xl space-y-1.5 text-[11px] leading-snug">
+          <p className="text-[var(--text-primary)] flex items-start gap-1.5 font-medium">
+            <span className="text-xs shrink-0">🛡️</span>
+            <span>
+              {helperText ||
+                t(
+                  'common.network.interfaceSelector.failsafeNotice',
+                  'Safe bind: If the selected IP is down or changes, the system safely falls back to 0.0.0.0 to prevent access loss.'
+                )}
+            </span>
+          </p>
+          <p className="text-amber-400 font-bold flex items-start gap-1.5">
+            <span className="text-xs shrink-0">⚠️</span>
+            <span>
+              {t(
+                'common.network.interfaceSelector.specificIpWarning',
+                'Notice: The service will only be accessible through this specific IP address ({{ip}}). Ensure your network routing allows reaching this address.',
+                { ip: value }
+              )}
+            </span>
+          </p>
+        </div>
+      )}
     </div>
   );
 };
