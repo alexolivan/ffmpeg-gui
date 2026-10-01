@@ -203,6 +203,18 @@ class SecurityGuard:
             self._failed_attempts.pop(client_ip, None)
             return was_locked
 
+    def reset_all(self) -> int:
+        """
+        Manually clears all active lockouts and failed attempt counters.
+        Returns the count of lockouts removed.
+        """
+        with self._lock:
+            count = len(self._locked_out)
+            self._locked_out.clear()
+            self._failed_attempts.clear()
+            return count
+
+
     def get_status(self) -> Dict:
         """
         Returns real-time status and active lockouts for administrative inspection.

@@ -70,8 +70,8 @@ class TestStorageAPIs(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = res.json()
         
-        # Should have exactly 5 seeded default storages
-        self.assertEqual(len(data), 5)
+        # Should have seeded default storages (including Default Cache Storage)
+        self.assertEqual(len(data), 6)
         
         # Verify default storage names and that they have stats populated
         names = [item["name"] for item in data]
@@ -80,6 +80,7 @@ class TestStorageAPIs(unittest.TestCase):
         self.assertIn("Default SDK Storage", names)
         self.assertIn("Default Preview Storage", names)
         self.assertIn("Default Logs Storage", names)
+        self.assertIn("Default Cache Storage", names)
         
         for storage in data:
             self.assertTrue(storage["is_default"])
@@ -116,7 +117,7 @@ class TestStorageAPIs(unittest.TestCase):
         res_get = self.client.get("/settings/storages")
         self.assertEqual(res_get.status_code, 200)
         storages = res_get.json()
-        self.assertEqual(len(storages), 6)
+        self.assertEqual(len(storages), 7)
         names = [item["name"] for item in storages]
         self.assertIn("Custom Media Storage", names)
 
