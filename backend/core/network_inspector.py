@@ -164,3 +164,207 @@ def resolve_bind_address(configured_host: str, fallback_host: str = "0.0.0.0") -
         True,
         f"Configured IP '{clean_host}' is not assigned to any active interface (DHCP renewal or hardware change). Falling back to '{fallback_host}' to prevent admin lockout."
     )
+
+
+def _get_open_sockets() -> set:
+    """Returns a set of (proto, port) tuples currently in LISTEN or bound state."""
+    open_sockets = set()
+    try:
+        # Check TCP listeners
+        for conn in psutil.net_connections(kind='tcp'):
+            if getattr(conn, 'status', None) == psutil.CONN_LISTEN and conn.laddr:
+                open_sockets.add(('tcp', conn.laddr.port))
+        # Check UDP sockets
+        for conn in psutil.net_connections(kind='udp'):
+            if conn.laddr:
+                open_sockets.add(('udp', conn.laddr.port))
+    except Exception as e:
+        logger.debug("psutil.net_connections inspection notice: %s", e)
+    return open_sockets
+
+
+def get_active_port_matrix(db_session, settings: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """
+    Enumerate all configured and actively bound listening ports across core GUI and auxiliary services.
+    """
+    open_sockets = _get_open_sockets()
+    matrix = []
+
+    # 1. Core GUI Ports
+    core_settings = settings or {}
+    bind_addr = core_settings.get("bind_address") or "0.0.0.0"
+    gui_port = int(core_settings.get("gui_port") or core_settings.get("http_port") or 8000)
+    https_port = int(core_settings.get("https_port") or 8443)
+    ssl_enabled = bool(core_settings.get("ssl_enabled", False))
+
+    matrix.append({
+        "port": gui_port,
+        "proto": "tcp",
+        "service_id": None,
+        "service_name": "ffmpeg-gui Web GUI",
+        "service_type": "core",
+        "category": "core",
+        "description": "Web Administration Dashboard & REST API",
+        "bind_address": bind_addr,
+        "status": "running",
+        "is_socket_open": ('tcp', gui_port) in open_sockets or True,
+        "requires_inbound_firewall": bind_addr not in ("127.0.0.1", "localhost")
+    })
+
+    if ssl_enabled:
+        matrix.append({
+            "port": https_port,
+            "proto": "tcp",
+            "service_id": None,
+            "service_name": "ffmpeg-gui Web GUI (HTTPS)",
+            "service_type": "core",
+            "category": "core",
+            "description": "Encrypted Web Administration & REST API",
+            "bind_address": bind_addr,
+            "status": "running",
+            "is_socket_open": ('tcp', https_port) in open_sockets or True,
+            "requires_inbound_firewall": bind_addr not in ("127.0.0.1", "localhost")
+        })
+
+    # 2. Database Services (MediaProcess / Service)
+    try:
+        from database.models import Service
+        services = db_session.query(Service).all()
+    except Exception as e:
+        logger.debug("Could not query Service model: %s", e)
+        services = []
+
+    for svc in services:
+        cfg = getattr(svc, 'config', {}) or {}
+        svc_type = getattr(svc, 'service_type', 'ffmpeg_stream')
+        svc_status = getattr(svc, 'status', 'stopped')
+        is_running = (svc_status == 'running')
+
+        if svc_type == 'mediamtx_hub':
+            mtx_cfg = cfg.get("mediamtx_config", {})
+            svc_bind = mtx_cfg.get("bind_address") or "0.0.0.0"
+            is_ssl = mtx_cfg.get("ssl_enabled", False)
+
+            ports_def = [
+                ("rtmp_enabled", True, "rtmp_port", 1935, "tcp", "RTMP Stream Ingest/Egress"),
+                ("rtsp_enabled", True, "rtsp_port", 8554, "tcp", "RTSP Stream Ingest/Egress"),
+                ("hls_enabled", True, "hls_port", 8888, "tcp", "HLS Web Distribution"),
+                ("srt_enabled", False, "srt_port", 8890, "udp", "SRT Protocol Hub"),
+                ("api_enabled", True, "api_port", 9997, "tcp", "Control & Telemetry API"),
+            ]
+            if is_ssl:
+                ports_def.append(("rtmps_enabled", True, "rtmps_port", 1936, "tcp", "RTMPS Secure Ingest/Egress"))
+                ports_def.append(("rtsps_enabled", True, "rtsps_port", 8322, "tcp", "RTSPS Secure Ingest/Egress"))
+            if mtx_cfg.get("webrtc_enabled", False):
+                ports_def.append((None, True, "webrtc_port", 8889, "tcp", "WebRTC HTTP / WHEP Signaling"))
+                ports_def.append((None, True, "webrtc_udp_port", 8189, "udp", "WebRTC Media ICE / UDP"))
+            if mtx_cfg.get("rtsp_enabled", True):
+                ports_def.append((None, True, "rtp_port", 8000, "udp", "RTSP RTP Transport"))
+                ports_def.append((None, True, "rtcp_port", 8001, "udp", "RTSP RTCP Feedback"))
+
+            for flag_key, default_val, port_key, default_port, proto, desc in ports_def:
+                enabled = mtx_cfg.get(flag_key, default_val) if flag_key else True
+                if enabled:
+                    p_val = int(mtx_cfg.get(port_key, default_port))
+                    matrix.append({
+                        "port": p_val,
+                        "proto": proto,
+                        "service_id": svc.id,
+                        "service_name": svc.name,
+                        "service_type": svc_type,
+                        "category": "auxiliary",
+                        "description": f"MediaMTX {desc}",
+                        "bind_address": svc_bind,
+                        "status": svc_status,
+                        "is_socket_open": (proto, p_val) in open_sockets if is_running else False,
+                        "requires_inbound_firewall": svc_bind not in ("127.0.0.1", "localhost")
+                    })
+
+        elif svc_type == 'icecast_server':
+            ice_cfg = cfg.get("icecast_config", {})
+            svc_bind = ice_cfg.get("bind_address") or "0.0.0.0"
+            if ice_cfg.get("http_enabled", True):
+                p_val = int(ice_cfg.get("port", 7000))
+                matrix.append({
+                    "port": p_val,
+                    "proto": "tcp",
+                    "service_id": svc.id,
+                    "service_name": svc.name,
+                    "service_type": svc_type,
+                    "category": "auxiliary",
+                    "description": "Icecast2 Audio Stream Server (HTTP)",
+                    "bind_address": svc_bind,
+                    "status": svc_status,
+                    "is_socket_open": ('tcp', p_val) in open_sockets if is_running else False,
+                    "requires_inbound_firewall": svc_bind not in ("127.0.0.1", "localhost")
+                })
+            if ice_cfg.get("ssl_enabled", False):
+                ssl_p_val = int(ice_cfg.get("ssl_port", 7443))
+                matrix.append({
+                    "port": ssl_p_val,
+                    "proto": "tcp",
+                    "service_id": svc.id,
+                    "service_name": svc.name,
+                    "service_type": svc_type,
+                    "category": "auxiliary",
+                    "description": "Icecast2 Audio Stream Server (HTTPS/TLS)",
+                    "bind_address": svc_bind,
+                    "status": svc_status,
+                    "is_socket_open": ('tcp', ssl_p_val) in open_sockets if is_running else False,
+                    "requires_inbound_firewall": svc_bind not in ("127.0.0.1", "localhost")
+                })
+
+        elif svc_type == 'desktop':
+            desk_cfg = cfg.get("desktop_config", {}) or cfg
+            p_val = int(desk_cfg.get("vnc_port") or desk_cfg.get("port") or 6080)
+            matrix.append({
+                "port": p_val,
+                "proto": "tcp",
+                "service_id": svc.id,
+                "service_name": svc.name,
+                "service_type": svc_type,
+                "category": "auxiliary",
+                "description": "Virtual Desktop noVNC Web Viewer",
+                "bind_address": "127.0.0.1",
+                "status": svc_status,
+                "is_socket_open": ('tcp', p_val) in open_sockets if is_running else False,
+                "requires_inbound_firewall": False
+            })
+
+    # Sort matrix by category (core first), then port number
+    matrix.sort(key=lambda x: (x["category"] != "core", x["port"]))
+    return matrix
+
+
+def generate_firewall_rules(matrix: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """
+    Generate reproducible UFW and iptables command scripts from the port matrix.
+    Skips localhost-only bindings and deduplicates overlapping port/proto combinations.
+    """
+    ufw_rules = []
+    iptables_rules = []
+    seen = set()
+
+    for item in matrix:
+        port = item.get("port")
+        proto = (item.get("proto") or "tcp").lower()
+        bind_addr = item.get("bind_address") or "0.0.0.0"
+
+        # Localhost bindings don't require external firewall holes
+        if bind_addr in ("127.0.0.1", "localhost"):
+            continue
+
+        key = (port, proto)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        svc_name = item.get("service_name") or "service"
+        ufw_rules.append(f"ufw allow {port}/{proto} comment '{svc_name} ({proto.upper()})'")
+        iptables_rules.append(f"iptables -A INPUT -p {proto} --dport {port} -j ACCEPT -m comment --comment '{svc_name}'")
+
+    return {
+        "ufw": ufw_rules,
+        "iptables": iptables_rules
+    }
+

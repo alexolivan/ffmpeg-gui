@@ -3902,6 +3902,38 @@ def get_system_network_interfaces() -> dict:
         from backend.core.network_inspector import get_network_interfaces
     return {"interfaces": get_network_interfaces()}
 
+@app.get("/api/system/network/port-matrix")
+def get_system_port_matrix(db: Session = Depends(get_db)) -> dict:
+    try:
+        from core.network_inspector import get_active_port_matrix, generate_firewall_rules
+    except ImportError:
+        from backend.core.network_inspector import get_active_port_matrix, generate_firewall_rules
+
+    settings_dict = {
+        "bind_address": os.environ.get("BIND_ADDRESS", "0.0.0.0"),
+        "gui_port": int(os.environ.get("ACTIVE_PORT", 8000)),
+        "https_port": 8443,
+        "ssl_enabled": False
+    }
+    config_path = os.environ.get("CONFIG_FILE_PATH")
+    if config_path and os.path.exists(config_path):
+        import configparser
+        cp = configparser.ConfigParser()
+        cp.read(config_path)
+        if "network" in cp:
+            net = cp["network"]
+            settings_dict["bind_address"] = net.get("bind_address", fallback=settings_dict["bind_address"])
+            settings_dict["gui_port"] = net.getint("http_port", fallback=net.getint("gui_port", fallback=settings_dict["gui_port"]))
+            settings_dict["https_port"] = net.getint("https_port", fallback=settings_dict["https_port"])
+            settings_dict["ssl_enabled"] = net.getboolean("ssl_enabled", fallback=settings_dict["ssl_enabled"])
+
+    matrix = get_active_port_matrix(db, settings=settings_dict)
+    firewall_rules = generate_firewall_rules(matrix)
+    return {
+        "matrix": matrix,
+        "firewall_rules": firewall_rules
+    }
+
 @app.post("/settings/lcd/probe")
 def probe_lcd_ports():
     import serial.tools.list_ports
