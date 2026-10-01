@@ -19,12 +19,25 @@ done
 
 PROJ_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Mostrar advertencia inicial
+# Detección de rama, commit y entorno de ejecución
+BRANCH="unknown"
+COMMIT="unknown"
+TAG="untagged"
+if command -v git >/dev/null 2>&1 && [ -d "$PROJ_DIR/.git" ]; then
+    BRANCH=$(git -C "$PROJ_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "release")
+    COMMIT=$(git -C "$PROJ_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    TAG=$(git -C "$PROJ_DIR" describe --tags --always 2>/dev/null || echo "untagged")
+fi
+
 echo "================================================================="
 echo "                  FFMPEG-GUI UPDATER                             "
 echo "================================================================="
-echo "This script will update backend dependencies, compile the latest"
-echo "frontend build, and restart the active systemd service."
+if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+    echo "Environment: [PRODUCTION MODE] (Branch: $BRANCH @ $COMMIT, Tag: $TAG)"
+else
+    echo "Environment: [DEVELOPMENT / CANARY] (Branch: $BRANCH @ $COMMIT)"
+fi
+echo "Project Directory: $PROJ_DIR"
 echo "================================================================="
 
 # Solicitar confirmación interactiva
@@ -37,13 +50,33 @@ if [ "$ASSUME_YES" = false ]; then
 fi
 
 # ---------------------------------------------------------
+# [PHASE 0.5/3] Reconciling OS System Dependencies
+# ---------------------------------------------------------
+echo ""
+echo "[PHASE 0.5/3] Auditing & Reconciling OS System Dependencies..."
+if [ -f "$PROJ_DIR/install.sh" ]; then
+    if [ "$EUID" -eq 0 ]; then
+        "$PROJ_DIR/install.sh" --system --dependencies-only -y || true
+    elif sudo -n true 2>/dev/null; then
+        echo "--> Running install.sh --system --dependencies-only via sudo..."
+        sudo "$PROJ_DIR/install.sh" --system --dependencies-only -y || true
+    else
+        echo "--> Running install.sh --user --dependencies-only..."
+        "$PROJ_DIR/install.sh" --user --dependencies-only -y || true
+    fi
+fi
+
+# ---------------------------------------------------------
 # [PHASE 1/3] Updating Python Virtual Environment
 # ---------------------------------------------------------
 echo ""
 echo "[PHASE 1/3] Updating Python Virtual Environment..."
 if [ -d "$PROJ_DIR/venv" ]; then
-    "$PROJ_DIR/venv/bin/pip" install --upgrade pip
-    "$PROJ_DIR/venv/bin/pip" install -r "$PROJ_DIR/backend/requirements.txt"
+    # Only upgrade pip if online to prevent blocking on air-gapped systems
+    if python3 -c "import urllib.request; urllib.request.urlopen('https://pypi.org', timeout=1.5)" 2>/dev/null; then
+        "$PROJ_DIR/venv/bin/pip" install --upgrade pip --quiet 2>/dev/null || true
+    fi
+    "$PROJ_DIR/venv/bin/pip" install --disable-pip-version-check -r "$PROJ_DIR/backend/requirements.txt"
 else
     echo "Warning: Python virtual environment not found at $PROJ_DIR/venv. Run install.sh first."
 fi
@@ -60,10 +93,22 @@ if [ -d "$PROJ_DIR/venv" ]; then
 fi
 
 # ---------------------------------------------------------
-# [PHASE 1.5/3] Verifying Systemd Service Units & Capabilities
+# [PHASE 1.5/3] Verifying Systemd Service Units & Rescue CLI
 # ---------------------------------------------------------
 echo ""
-echo "[PHASE 1.5/3] Verifying Systemd Service Units..."
+echo "[PHASE 1.5/3] Verifying Systemd Service Units & Rescue CLI..."
+
+# Provision symlink for ffmpeg-gui-admin rescue CLI
+if [ -x "$PROJ_DIR/bin/ffmpeg-gui-admin" ]; then
+    echo "--> Ensuring ffmpeg-gui-admin rescue CLI is linked in PATH..."
+    if [ "$EUID" -eq 0 ]; then
+        ln -sf "$PROJ_DIR/bin/ffmpeg-gui-admin" /usr/local/bin/ffmpeg-gui-admin
+    elif sudo -n true 2>/dev/null; then
+        sudo ln -sf "$PROJ_DIR/bin/ffmpeg-gui-admin" /usr/local/bin/ffmpeg-gui-admin
+    elif [ -d "$HOME/.local/bin" ]; then
+        ln -sf "$PROJ_DIR/bin/ffmpeg-gui-admin" "$HOME/.local/bin/ffmpeg-gui-admin"
+    fi
+fi
 
 # 1. System-wide service check
 SYSTEM_SERVICE="/etc/systemd/system/ffmpeg-gui.service"
@@ -174,18 +219,52 @@ if [ -f "$USER_SERVICE" ]; then
 fi
 
 # ---------------------------------------------------------
-# [PHASE 2/3] Building Frontend Assets
+# [PHASE 2/3] Building Frontend Assets (Intelligent & Zero-Node)
 # ---------------------------------------------------------
 echo ""
 echo "[PHASE 2/3] Building Frontend Assets..."
-if [ -d "$PROJ_DIR/frontend" ]; then
-    cd "$PROJ_DIR/frontend"
-    npm ci
-    npm run build
-    cd "$PROJ_DIR"
+HAS_NODE=false
+if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    HAS_NODE=true
+fi
+
+if [ "$HAS_NODE" = true ]; then
+    if [ -d "$PROJ_DIR/frontend" ]; then
+        cd "$PROJ_DIR/frontend"
+        LOCK_HASH_FILE="$PROJ_DIR/frontend/.package_lock_hash"
+        CURRENT_HASH=""
+        if [ -f "$PROJ_DIR/frontend/package-lock.json" ]; then
+            CURRENT_HASH=$(sha256sum "$PROJ_DIR/frontend/package-lock.json" 2>/dev/null | cut -d' ' -f1 || sha1sum "$PROJ_DIR/frontend/package-lock.json" | cut -d' ' -f1)
+        fi
+        PREV_HASH=""
+        if [ -f "$LOCK_HASH_FILE" ]; then
+            PREV_HASH=$(cat "$LOCK_HASH_FILE" 2>/dev/null || true)
+        fi
+
+        if [ ! -d "$PROJ_DIR/frontend/node_modules" ] || [ "$CURRENT_HASH" != "$PREV_HASH" ]; then
+            echo "--> Dependencies updated or node_modules missing. Running clean npm ci (audit and fund suppressed)..."
+            npm ci --no-audit --fund=false
+            echo "$CURRENT_HASH" > "$LOCK_HASH_FILE"
+        else
+            echo "--> Frontend dependencies up to date (package-lock.json unchanged). Skipping npm ci."
+        fi
+
+        echo "--> Compiling frontend production bundle..."
+        npm run build
+        cd "$PROJ_DIR"
+    else
+        echo "Error: Frontend directory not found at $PROJ_DIR/frontend."
+        exit 1
+    fi
 else
-    echo "Error: Frontend directory not found at $PROJ_DIR/frontend."
-    exit 1
+    echo "--> Node.js / npm not detected on this host."
+    if [ -f "$PROJ_DIR/frontend/dist/index.html" ]; then
+        echo "--> Using precompiled production assets in frontend/dist/ (Zero-Node Production mode)."
+    else
+        echo "Error: Node.js and npm are not installed and precompiled assets were not found in frontend/dist/." >&2
+        echo "Please install nodejs and npm, or download an official release tarball containing precompiled assets." >&2
+        exit 1
+    fi
 fi
 
 # ---------------------------------------------------------

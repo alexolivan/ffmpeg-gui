@@ -29,6 +29,7 @@ node_modules/
 dist/
 .vite/
 .eslintcache
+.package_lock_hash
 
 # OS
 .DS_Store
