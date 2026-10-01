@@ -62,6 +62,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [locatorActive, setLocatorActive] = useState(false);
   const [sslStatus, setSslStatus] = useState<any>(null);
   const [initialPeers, setInitialPeers] = useState<any[]>([]);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [manualUpdateInfo, setManualUpdateInfo] = useState<any>(null);
+
+  const handleCheckUpdates = async () => {
+    if (checkingUpdates) return;
+    setCheckingUpdates(true);
+    try {
+      const res = await fetch('/api/system/check-updates', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setManualUpdateInfo(data);
+      }
+    } catch (err) {
+      console.error("Error checking updates:", err);
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
 
   const fetchPeers = () => {
     fetch('/api/peers/remote-nodes')
@@ -125,6 +143,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       console.error(err);
     }
   };
+
+  const updateAvailable = manualUpdateInfo ? manualUpdateInfo.update_available : systemTelemetry?.update_available;
+  const latestRelease = manualUpdateInfo ? manualUpdateInfo.latest_release : systemTelemetry?.latest_release;
+  const releaseUrl = manualUpdateInfo ? manualUpdateInfo.release_url : (systemTelemetry?.release_url || 'https://github.com/alexolivan/ffmpeg-gui/releases');
+  const isRelease = systemTelemetry?.is_release ?? true;
+  const gitBranch = systemTelemetry?.git_branch || 'main';
+  const gitCommit = systemTelemetry?.git_commit;
 
   // Partition hardware capabilities into active and unavailable
   const capabilitiesList = Object.entries(systemTelemetry.capabilities || {})
@@ -493,6 +518,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </>
               )}
               <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
+                <span className="text-[11px] text-text-secondary">{t('dashboard.environment', 'Environment')}</span>
+                <div className="flex items-center gap-1.5">
+                  {isRelease ? (
+                    <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                      🟢 {t('dashboard.envProduction', 'Production')}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400" title={gitCommit ? `Commit: ${gitCommit}` : undefined}>
+                      🟣 {gitBranch} {gitCommit ? `(${gitCommit})` : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
                 <span className="text-[11px] text-text-secondary">{t('dashboard.activeProfiles')}</span>
                 <span className="text-[11px] font-mono font-bold text-brand-lime text-right">
                   {builds.filter(b => b.status === 'ready').length}
@@ -505,10 +544,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </span>
               </div>
               <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
-                <span className="text-[11px] text-text-secondary">{t('dashboard.backendApiVersion')}</span>
-                <span className="text-[11px] font-mono font-bold text-brand-lime text-right">
-                  v{systemTelemetry.backend_version || '1.0.0'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-text-secondary">{t('dashboard.backendApiVersion')}</span>
+                  <button
+                    type="button"
+                    onClick={handleCheckUpdates}
+                    disabled={checkingUpdates}
+                    title={checkingUpdates ? t('dashboard.checkingUpdates', 'Checking...') : t('dashboard.checkUpdates', 'Check for updates')}
+                    className="text-[11px] text-text-secondary hover:text-brand-lime transition-colors disabled:opacity-50 p-0.5 cursor-pointer"
+                  >
+                    <span className={`inline-block ${checkingUpdates ? 'animate-spin' : ''}`}>↻</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  {updateAvailable && latestRelease ? (
+                    <a
+                      href={releaseUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`${t('dashboard.updateAvailable', 'Update available')}: v${latestRelease}`}
+                      className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-all flex items-center gap-1"
+                    >
+                      <span>▲ v{latestRelease}</span>
+                    </a>
+                  ) : null}
+                  <span className={`text-[11px] font-mono font-bold text-right ${updateAvailable ? 'text-amber-400' : 'text-brand-lime'}`}>
+                    v{systemTelemetry.backend_version || '1.0.0'}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center justify-between py-1.5">
                 <span className="text-[11px] text-text-secondary">{t('dashboard.databaseSchema')}</span>

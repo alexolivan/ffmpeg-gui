@@ -836,7 +836,14 @@
     "cpuUsage": "CPU Usage",
     "ramUsage": "RAM Usage",
     "noActiveHardware": "No specialized hardware acceleration or capture devices detected.",
-    "lcdUnavailableDetails": "External hardware control panel is not detected"
+    "lcdUnavailableDetails": "External hardware control panel is not detected",
+    "envProduction": "Production",
+    "envDevelopment": "Development",
+    "updateAvailable": "Update available",
+    "checkUpdates": "Check for updates",
+    "checkingUpdates": "Checking...",
+    "upToDate": "Up to date",
+    "environment": "Environment"
   },
   "forge": {
     "title": "FFMPEG FORGE",

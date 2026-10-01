@@ -836,7 +836,14 @@
     "cpuUsage": "Ús de CPU",
     "ramUsage": "Ús de RAM",
     "noActiveHardware": "No s'han detectat dispositius de captura o acceleració per maquinari dedicats.",
-    "lcdUnavailableDetails": "Panel de control de maquinari extern no detectat"
+    "lcdUnavailableDetails": "Panel de control de maquinari extern no detectat",
+    "envProduction": "Producció",
+    "envDevelopment": "Desenvolupament",
+    "updateAvailable": "Actualització disponible",
+    "checkUpdates": "Comprovar actualitzacions",
+    "checkingUpdates": "Comprovant...",
+    "upToDate": "Al dia",
+    "environment": "Entorn"
   },
   "forge": {
     "title": "FFMPEG FORGE",

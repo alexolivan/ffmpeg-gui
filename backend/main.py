@@ -3324,6 +3324,8 @@ async def telemetry_broadcast_loop():
             gpu_stats = await asyncio.to_thread(gpu_sensor.get_stats)
             
             global lcd_manager
+            git_meta = get_git_metadata()
+            updates = check_latest_release(backend_version)
             system_data = {
                 "cpu": sys_cpu,
                 "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
@@ -3332,6 +3334,12 @@ async def telemetry_broadcast_loop():
                 "host_os_arch": f"{platform.system()} {platform.machine()}",
                 "backend_version": backend_version,
                 "schema_version": schema_version,
+                "git_branch": git_meta.get("branch"),
+                "git_commit": git_meta.get("commit"),
+                "is_release": git_meta.get("is_release"),
+                "update_available": updates.get("update_available", False),
+                "latest_release": updates.get("latest_release"),
+                "release_url": updates.get("release_url"),
                 "lcd": {
                     "connected": lcd_manager is not None and lcd_manager._running,
                     "port": lcd_manager.port if lcd_manager else None
