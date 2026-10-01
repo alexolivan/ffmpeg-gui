@@ -51,6 +51,10 @@ try:
     from core.security_guard import security_guard
 except ImportError:
     from backend.core.security_guard import security_guard
+try:
+    from core.update_checker import get_git_metadata, check_latest_release
+except ImportError:
+    from backend.core.update_checker import get_git_metadata, check_latest_release
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -3859,16 +3863,28 @@ async def websocket_build(websocket: WebSocket, build_id: int):
 @app.get("/api/status")
 def read_root() -> dict:
     global lcd_manager
+    git_meta = get_git_metadata()
+    updates = check_latest_release(backend_version)
     return {
         "status": "online", 
         "message": "FFMPEG Orchestrator API is running",
         "version": backend_version,
         "schema_version": schema_version,
+        "git_branch": git_meta.get("branch"),
+        "git_commit": git_meta.get("commit"),
+        "is_release": git_meta.get("is_release"),
+        "update_available": updates.get("update_available", False),
+        "latest_release": updates.get("latest_release"),
+        "release_url": updates.get("release_url"),
         "lcd": {
             "connected": lcd_manager is not None and lcd_manager._running,
             "port": lcd_manager.port if lcd_manager else None
         }
     }
+
+@app.post("/api/system/check-updates")
+def manual_check_updates() -> dict:
+    return check_latest_release(backend_version, force=True)
 
 @app.post("/settings/lcd/probe")
 def probe_lcd_ports():
