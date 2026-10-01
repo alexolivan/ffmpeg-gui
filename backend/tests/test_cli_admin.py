@@ -73,6 +73,35 @@ class TestAdminCLI(unittest.TestCase):
         self.assertIn("has_password", info)
         self.assertTrue(info["has_password"])
 
+    def test_parser_aliases(self):
+        import argparse
+        from cli import main
+        # Test that sys.argv with aliases parses without exiting with error
+        with patch("sys.argv", ["cli.py", "reset-admin", "NewPass123"]), \
+             patch("cli.handle_reset_password", return_value=True) as mock_reset:
+            try:
+                main()
+            except SystemExit as e:
+                self.assertEqual(e.code, 0)
+            mock_reset.assert_called_once_with("NewPass123")
+
+        with patch("sys.argv", ["cli.py", "reset-lockout"]), \
+             patch("cli.handle_unlock_ips", return_value=True) as mock_unlock:
+            try:
+                main()
+            except SystemExit as e:
+                self.assertEqual(e.code, 0)
+            mock_unlock.assert_called_once()
+
+        with patch("sys.argv", ["cli.py", "clear-admin"]), \
+             patch("cli.handle_clear_password", return_value=True) as mock_clear:
+            try:
+                main()
+            except SystemExit as e:
+                self.assertEqual(e.code, 0)
+            mock_clear.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -261,23 +261,42 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""Examples:
   ffmpeg-gui-admin status
-  ffmpeg-gui-admin reset-password
-  ffmpeg-gui-admin reset-password "MyNewPass123"
-  ffmpeg-gui-admin clear-password
-  ffmpeg-gui-admin unlock-ips
+  ffmpeg-gui-admin reset-admin (or reset-password)
+  ffmpeg-gui-admin reset-lockout (or unlock-ips)
+  ffmpeg-gui-admin clear-admin (or clear-password)
+  ffmpeg-gui-admin reset-all
 """,
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # reset-password
-    p_reset = subparsers.add_parser("reset-password", help="Update admin password")
+    # reset-password / reset-admin
+    p_reset = subparsers.add_parser(
+        "reset-password",
+        aliases=["reset-admin"],
+        help="Update admin password",
+    )
     p_reset.add_argument("password", nargs="?", default=None, help="New admin password (prompts if omitted)")
 
-    # clear-password
-    subparsers.add_parser("clear-password", help="Remove admin password (open access)")
+    # clear-password / clear-admin
+    subparsers.add_parser(
+        "clear-password",
+        aliases=["clear-admin"],
+        help="Remove admin password (open access)",
+    )
 
-    # unlock-ips
-    subparsers.add_parser("unlock-ips", help="Clear all temporary IP lockouts in SecurityGuard")
+    # unlock-ips / reset-lockout
+    subparsers.add_parser(
+        "unlock-ips",
+        aliases=["reset-lockout"],
+        help="Clear all temporary IP lockouts in SecurityGuard",
+    )
+
+    # reset-all
+    p_all = subparsers.add_parser(
+        "reset-all",
+        help="Reset IP lockouts and update admin password in a single step",
+    )
+    p_all.add_argument("password", nargs="?", default=None, help="New admin password (prompts if omitted)")
 
     # status
     p_status = subparsers.add_parser("status", help="Inspect system health, versions, and ports")
@@ -287,15 +306,21 @@ def main():
 
     if not args.command or args.command == "status":
         handle_status(as_json=getattr(args, "json", False))
-    elif args.command == "reset-password":
+    elif args.command in ("reset-password", "reset-admin"):
         success = handle_reset_password(args.password)
         sys.exit(0 if success else 1)
-    elif args.command == "clear-password":
+    elif args.command in ("clear-password", "clear-admin"):
         success = handle_clear_password()
         sys.exit(0 if success else 1)
-    elif args.command == "unlock-ips":
+    elif args.command in ("unlock-ips", "reset-lockout"):
         success = handle_unlock_ips()
         sys.exit(0 if success else 1)
+    elif args.command == "reset-all":
+        print("--- Step 1: Clearing IP lockouts ---")
+        s1 = handle_unlock_ips()
+        print("--- Step 2: Setting Admin Password ---")
+        s2 = handle_reset_password(args.password)
+        sys.exit(0 if (s1 and s2) else 1)
     else:
         parser.print_help()
 
