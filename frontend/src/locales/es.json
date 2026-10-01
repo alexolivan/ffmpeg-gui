@@ -42,7 +42,16 @@
     "lines": "líneas",
     "activeConsumer": "Consumidor Activo",
     "activeConsumers": "Consumidores Activos",
-    "idle": "0 Leases (Inactivo)"
+    "idle": "0 Leases (Inactivo)",
+    "network": {
+      "interfaceSelector": {
+        "allInterfaces": "0.0.0.0 (Todas las Interfaces - Recomendado)",
+        "localhostOnly": "127.0.0.1 (Solo Localhost)",
+        "defaultGateway": "Pasarela",
+        "customOrMissing": "Configurada - No detectada en este equipo",
+        "failsafeNotice": "Enlace seguro: Si la IP seleccionada no está disponible o cambia, el sistema recurrirá a 0.0.0.0 para evitar pérdida de acceso."
+      }
+    }
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -106,6 +115,7 @@
       "selectBinary": "Versión / Binario de MediaMTX",
       "noBuildsWarning": "No se encontró ningún binario de MediaMTX. Ve a Ajustes -> Software para descargar una versión oficial o registrar el binario del sistema.",
       "protocolsTitle": "2. Protocolos de Transmisión en Vivo y Puertos",
+      "listenInterface": "Interfaz de Red de Escucha del Hub",
       "storageTitle": "3. Almacenamiento y Protección de Disco",
       "hlsStorage": "Volumen de Almacenamiento de Segmentos HLS",
       "hlsStorageDesc": "Los fragmentos HLS usan retención circular en anillo (5 segmentos de 2s) para no saturar el almacenamiento raíz.",
@@ -253,6 +263,7 @@
       "mountsBadge": "Montajes",
       "mountsTitle": "Puntos de Montaje (Mountpoints)",
       "networkTitle": "Red y Puertos de Escucha (TCP 7XXX)",
+      "listenInterface": "Interfaz de Red de Escucha del Servidor",
       "noCertWarning": "Aviso: No se detectó un certificado SSL en Ajustes → Certificados. El servidor generará un bundle una vez que configures tus certificados SSL en el panel.",
       "certDetectedValid": "Certificado SSL del sistema detectado y activo",
       "bundleAutoReady": "El servidor generará automáticamente el bundle PEM concatenado al iniciar el servicio.",

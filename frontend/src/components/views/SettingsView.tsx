@@ -10,6 +10,7 @@ import { SoftwareEngineCard, type SoftwareEngineData } from './settings/Software
 import { InboundKeysCard } from './settings/InboundKeysCard';
 import { RemotePeersCard } from './settings/RemotePeersCard';
 import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
+import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'] as const;
 
@@ -2088,16 +2089,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.network.listenInterfaces', 'Listen IP Interface')}</label>
-                  <select
+                <div>
+                  <NetworkInterfaceSelector
                     value={bindAddress}
-                    onChange={e => setBindAddress(e.target.value)}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-blue text-[var(--text-primary)] font-mono cursor-pointer"
-                  >
-                    <option value="0.0.0.0">0.0.0.0 (All Network Interfaces)</option>
-                    <option value="127.0.0.1">127.0.0.1 (Localhost / VPN Tunnel Only)</option>
-                  </select>
+                    onChange={setBindAddress}
+                    label={t('settings.network.listenInterfaces', 'Listen IP Interface')}
+                    API={API}
+                  />
                 </div>
 
                 <div className="space-y-1">

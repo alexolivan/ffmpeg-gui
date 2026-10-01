@@ -42,7 +42,16 @@
     "lines": "lines",
     "activeConsumer": "Active Consumer",
     "activeConsumers": "Active Consumers",
-    "idle": "0 Leases (Idle)"
+    "idle": "0 Leases (Idle)",
+    "network": {
+      "interfaceSelector": {
+        "allInterfaces": "0.0.0.0 (All Interfaces - Recommended)",
+        "localhostOnly": "127.0.0.1 (Localhost Only)",
+        "defaultGateway": "Gateway",
+        "customOrMissing": "Configured - Not Detected",
+        "failsafeNotice": "Safe bind: If the selected IP is down or changes, the system safely falls back to 0.0.0.0 to prevent access loss."
+      }
+    }
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -106,6 +115,7 @@
       "selectBinary": "MediaMTX Binary Release",
       "noBuildsWarning": "No MediaMTX release found. Please go to Settings -> Software to download an official release or register your system binary.",
       "protocolsTitle": "2. Live Streaming Protocols & Ports",
+      "listenInterface": "Hub Network Listen Interface",
       "storageTitle": "3. Storage & Retention Protection",
       "hlsStorage": "HLS Segment Storage Volume",
       "hlsStorageDesc": "HLS chunks use circular ring retention (5 segments of 2s) to protect root storage.",
@@ -253,6 +263,7 @@
       "mountsBadge": "Mounts",
       "mountsTitle": "Mountpoints",
       "networkTitle": "Network and Listening Ports (TCP 7XXX)",
+      "listenInterface": "Server Network Listen Interface",
       "noCertWarning": "Notice: No SSL certificate detected in Settings → Certificates. The server will generate a bundle once SSL certificates are configured in the panel.",
       "certDetectedValid": "System SSL certificate detected and active",
       "bundleAutoReady": "The server will automatically generate the concatenated PEM bundle upon starting the service.",

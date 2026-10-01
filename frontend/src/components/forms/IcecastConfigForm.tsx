@@ -7,6 +7,7 @@ import {
   ShieldIcon,
   CheckIcon
 } from '../Icons';
+import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 
 interface IcecastConfigFormProps {
   initialConfig?: any;
@@ -38,6 +39,9 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
   const [alias, setAlias] = useState(initialConfig?.alias || '');
   const [buildId, setBuildId] = useState<number | null>(initialConfig?.ffmpeg_build_id || null);
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
+
+  // Network Bind Interface
+  const [bindAddress, setBindAddress] = useState<string>(iceCfg.bind_address || '0.0.0.0');
 
   // Ports & Protocol
   const [httpEnabled, setHttpEnabled] = useState(iceCfg.http_enabled !== false);
@@ -236,6 +240,7 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
         watchdog_retries: Number(watchdogRetries) || 5,
         log_storage_id: logStorageId ? Number(logStorageId) : null,
         icecast_config: {
+          bind_address: bindAddress,
           port: Number(port),
           http_enabled: httpEnabled,
           ssl_enabled: sslEnabled,
@@ -349,6 +354,15 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
                 className="accent-brand-lime w-3.5 h-3.5 cursor-pointer"
               />
             </label>
+          </div>
+
+          <div className="p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg">
+            <NetworkInterfaceSelector
+              value={bindAddress}
+              onChange={setBindAddress}
+              label={t('services.icecast.listenInterface', 'Server Network Listen Interface')}
+              API={API}
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">

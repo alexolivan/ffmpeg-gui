@@ -42,7 +42,16 @@
     "lines": "línies",
     "activeConsumer": "Consumidor Actiu",
     "activeConsumers": "Consumidors Actius",
-    "idle": "0 Leases (Inactiu)"
+    "idle": "0 Leases (Inactiu)",
+    "network": {
+      "interfaceSelector": {
+        "allInterfaces": "0.0.0.0 (Totes les interfícies - Recomanat)",
+        "localhostOnly": "127.0.0.1 (Només Localhost)",
+        "defaultGateway": "Passarel·la",
+        "customOrMissing": "Configurada - No detectada en aquest equip",
+        "failsafeNotice": "Enllaç segur: Si la IP seleccionada no està disponible o canvia, el sistema recorrerà a 0.0.0.0 per evitar pèrdua d'accés."
+      }
+    }
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -106,6 +115,7 @@
       "selectBinary": "Versió / Binari de MediaMTX",
       "noBuildsWarning": "No s'ha trobat cap binari de MediaMTX. Vés a Paràmetres -> Programari per descarregar una versió oficial o registrar el binari del sistema.",
       "protocolsTitle": "2. Protocols de Transmissió en Viu i Ports",
+      "listenInterface": "Interfície de Xarxa d'Escolta del Hub",
       "storageTitle": "3. Emmagatzematge i Protecció de Disc",
       "hlsStorage": "Volum d'Emmagatzematge de Segments HLS",
       "hlsStorageDesc": "Els fragments HLS usen retenció circular en anell (5 segments de 2s) per no saturar l'emmagatzematge arrel.",
@@ -253,6 +263,7 @@
       "mountsBadge": "Muntatges",
       "mountsTitle": "Punts de Muntatge (Mountpoints)",
       "networkTitle": "Xarxa i Ports d'Escolta (TCP 7XXX)",
+      "listenInterface": "Interfície de Xarxa d'Escolta del Servidor",
       "noCertWarning": "Avís: No s'ha detectat cap certificat SSL a Paràmetres → Certificats. El servidor generarà un bundle un cop configurats els certificats SSL al panell.",
       "certDetectedValid": "Certificat SSL del sistema detectat i actiu",
       "bundleAutoReady": "El servidor generarà automàticament el bundle PEM concatenat en iniciar el servei.",
