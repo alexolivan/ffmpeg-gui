@@ -365,6 +365,16 @@
       "watchdogMaxBackoff": "Watchdog Max Backoff (sec)",
       "watchdogMaxBackoffHelp": "Upper cap for exponential backoff retry interval"
     },
+    "thermal": {
+      "title": "THERMAL MONITORING & HARDWARE SHIELDING",
+      "description": "Configure temperature thresholds for proactive hardware monitoring, cooling alarms, and active thermal protection.",
+      "warningThreshold": "Warning Temperature Threshold (°C)",
+      "warningThresholdHelp": "Triggers amber telemetry status and debounced notifications (default: 75°C)",
+      "criticalThreshold": "Critical Temperature Threshold (°C)",
+      "criticalThresholdHelp": "Triggers critical alarm banner, CFA635 red LED, and throttling alerts (default: 85°C)",
+      "activeProtection": "Active Thermal Protection Shielding",
+      "activeProtectionHelp": "Automatically blocks new scheduled tasks and FFmpeg Forge compilation jobs when hardware temperatures exceed the critical threshold."
+    },
     "restart": {
       "title": "Restart Required",
       "reason_both": "A restart is required to apply the new GUI Port and Logging configurations. Click the \"Restart Panel\" button to apply.",
@@ -577,7 +587,8 @@
       "notifyBuildResults": "Build Results (FFmpeg Compilation Ready / Failed)",
       "notifyTaskFailures": "Task Failures (Scheduled Job Errors)",
       "notifySslAlerts": "SSL Alerts (Expiration Warnings & Renewals)",
-      "notifyStorageAlerts": "Storage Alerts (Low Disk Space Threshold Warnings)"
+      "notifyStorageAlerts": "Storage Alerts (Low Disk Space Threshold Warnings)",
+      "notifyThermalAlerts": "Thermal Alerts (CPU / DSP Overheating & Throttling Warnings)"
     },
     "backup": {
       "exportTitle": "Export System Backup (.json)",

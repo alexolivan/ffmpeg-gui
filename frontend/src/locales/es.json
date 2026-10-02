@@ -365,6 +365,16 @@
       "watchdogMaxBackoff": "Backoff Máximo del Watchdog (seg)",
       "watchdogMaxBackoffHelp": "Límite tope para el intervalo de espera entre reintentos"
     },
+    "thermal": {
+      "title": "MONITORIZACIÓN TÉRMICA Y PROTECCIÓN HARDWARE",
+      "description": "Configura los umbrales de temperatura para monitorización preventiva del hardware, alarmas de refrigeración y protección térmica activa.",
+      "warningThreshold": "Umbral de Temperatura de Advertencia (°C)",
+      "warningThresholdHelp": "Activa el estado ámbar en telemetría y notificaciones debounced (por defecto: 75°C)",
+      "criticalThreshold": "Umbral de Temperatura Crítica (°C)",
+      "criticalThresholdHelp": "Activa el banner de alarma crítica, LED rojo CFA635 y alertas de throttling (por defecto: 85°C)",
+      "activeProtection": "Escudo de Protección Térmica Activa",
+      "activeProtectionHelp": "Bloquea automáticamente el inicio de nuevas tareas programadas y compilaciones de FFmpeg Forge si la temperatura supera el umbral crítico."
+    },
     "restart": {
       "title": "Reinicio Requerido",
       "reason_both": "Se requiere un reinicio para aplicar las nuevas configuraciones de Puerto GUI y Logs. Haz clic en \"Reiniciar Panel\" para aplicar.",
@@ -577,7 +587,8 @@
       "notifyBuildResults": "Resultados de Compilación (FFmpeg Listo / Fallido)",
       "notifyTaskFailures": "Fallos de Tarea (Errores en Tareas Programadas)",
       "notifySslAlerts": "Alertas SSL (Avisos de Caducidad y Renovaciones)",
-      "notifyStorageAlerts": "Alertas de Almacenamiento (Avisos de Espacio Escaso)"
+      "notifyStorageAlerts": "Alertas de Almacenamiento (Avisos de Espacio Escaso)",
+      "notifyThermalAlerts": "Alertas Térmicas (Sobrecalentamiento y Throttling de CPU / DSP)"
     },
     "backup": {
       "exportTitle": "Exportar Copia de Seguridad del Sistema (.json)",

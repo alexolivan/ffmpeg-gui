@@ -226,6 +226,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [networkWaitTimeout, setNetworkWaitTimeout] = useState(settings?.watchdog?.network_wait_timeout ?? 60);
   const [watchdogMaxBackoff, setWatchdogMaxBackoff] = useState(settings?.watchdog?.watchdog_max_backoff ?? 30);
 
+  // Hardware Health & Thermal Protection States
+  const [thermalWarningThreshold, setThermalWarningThreshold] = useState(settings?.thermal_warning_threshold ?? 75);
+  const [thermalCriticalThreshold, setThermalCriticalThreshold] = useState(settings?.thermal_critical_threshold ?? 85);
+  const [thermalActiveProtection, setThermalActiveProtection] = useState(!!settings?.thermal_active_protection);
+  const [notifyThermalAlerts, setNotifyThermalAlerts] = useState(settings?.notifications?.notify_thermal_alerts !== undefined ? !!settings?.notifications?.notify_thermal_alerts : true);
+
   // Brute-force & Login Security States
   const [bruteForceEnabled, setBruteForceEnabled] = useState(settings?.brute_force_enabled !== undefined ? !!settings?.brute_force_enabled : true);
   const [bruteForceMaxAttempts, setBruteForceMaxAttempts] = useState(settings?.brute_force_max_attempts ?? 5);
@@ -263,10 +269,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setNotifyTaskFailures(notif?.notify_task_failures !== undefined ? !!notif?.notify_task_failures : true);
     setNotifySslAlerts(notif?.notify_ssl_alerts !== undefined ? !!notif?.notify_ssl_alerts : true);
     setNotifyStorageAlerts(notif?.notify_storage_alerts !== undefined ? !!notif?.notify_storage_alerts : true);
+    setNotifyThermalAlerts(notif?.notify_thermal_alerts !== undefined ? !!notif?.notify_thermal_alerts : true);
     const wd = settings?.watchdog;
     setStartupGraceDelay(wd?.startup_grace_delay ?? 10);
     setNetworkWaitTimeout(wd?.network_wait_timeout ?? 60);
     setWatchdogMaxBackoff(wd?.watchdog_max_backoff ?? 30);
+    setThermalWarningThreshold(settings?.thermal_warning_threshold ?? 75);
+    setThermalCriticalThreshold(settings?.thermal_critical_threshold ?? 85);
+    setThermalActiveProtection(!!settings?.thermal_active_protection);
   }, [
     settings?.bind_address,
     settings?.gui_port,
@@ -291,9 +301,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings?.notifications?.notify_task_failures,
     settings?.notifications?.notify_ssl_alerts,
     settings?.notifications?.notify_storage_alerts,
+    settings?.notifications?.notify_thermal_alerts,
     settings?.watchdog?.startup_grace_delay,
     settings?.watchdog?.network_wait_timeout,
     settings?.watchdog?.watchdog_max_backoff,
+    settings?.thermal_warning_threshold,
+    settings?.thermal_critical_threshold,
+    settings?.thermal_active_protection,
   ]);
 
   const fetchSslStatus = async () => {
@@ -744,6 +758,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     notifyTaskFailures !== (settings?.notifications?.notify_task_failures !== undefined ? !!settings?.notifications?.notify_task_failures : true) ||
     notifySslAlerts !== (settings?.notifications?.notify_ssl_alerts !== undefined ? !!settings?.notifications?.notify_ssl_alerts : true) ||
     notifyStorageAlerts !== (settings?.notifications?.notify_storage_alerts !== undefined ? !!settings?.notifications?.notify_storage_alerts : true) ||
+    notifyThermalAlerts !== (settings?.notifications?.notify_thermal_alerts !== undefined ? !!settings?.notifications?.notify_thermal_alerts : true) ||
+    Number(thermalWarningThreshold) !== Number(settings?.thermal_warning_threshold ?? 75) ||
+    Number(thermalCriticalThreshold) !== Number(settings?.thermal_critical_threshold ?? 85) ||
+    thermalActiveProtection !== !!settings?.thermal_active_protection ||
     Number(startupGraceDelay) !== Number(settings?.watchdog?.startup_grace_delay ?? 10) ||
     Number(networkWaitTimeout) !== Number(settings?.watchdog?.network_wait_timeout ?? 60) ||
     Number(watchdogMaxBackoff) !== Number(settings?.watchdog?.watchdog_max_backoff ?? 30) ||
@@ -807,6 +825,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         logging_compression_enabled: loggingCompressionEnabled,
         logging_retention_days: Number(loggingRetentionDays),
         logging_timestamp_tz: loggingTimestampTz,
+        thermal_warning_threshold: Number(thermalWarningThreshold),
+        thermal_critical_threshold: Number(thermalCriticalThreshold),
+        thermal_active_protection: thermalActiveProtection,
         notifications: {
           enabled: notifEnabled,
           smtp_host: smtpHost,
@@ -821,6 +842,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           notify_task_failures: notifyTaskFailures,
           notify_ssl_alerts: notifySslAlerts,
           notify_storage_alerts: notifyStorageAlerts,
+          notify_thermal_alerts: notifyThermalAlerts,
         },
         watchdog: {
           startup_grace_delay: Number(startupGraceDelay),
@@ -1262,6 +1284,82 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <span className="text-[9px] text-text-secondary/70 block">
                     {t('settings.watchdog.watchdogMaxBackoffHelp', 'Upper cap for exponential backoff retry interval')}
                   </span>
+                </div>
+              </div>
+            </div>
+
+            {/* TAB 1: General -> Thermal Monitoring & Hardware Shielding Card */}
+            <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
+              <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                <h4 className="text-rose-400 font-bold text-xs uppercase tracking-wider">
+                  {t('settings.thermal.title', 'THERMAL MONITORING & HARDWARE SHIELDING')}
+                </h4>
+              </div>
+
+              <p className="text-xs text-text-secondary">
+                {t('settings.thermal.description', 'Configure temperature thresholds for proactive hardware monitoring, cooling alarms, and active thermal protection.')}
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                    {t('settings.thermal.warningThreshold', 'Warning Temperature Threshold (°C)')}
+                  </label>
+                  <input
+                    type="number"
+                    min={40}
+                    max={100}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime font-mono"
+                    value={thermalWarningThreshold}
+                    onChange={(e) => setThermalWarningThreshold(parseInt(e.target.value, 10) || 75)}
+                  />
+                  <span className="text-[9px] text-text-secondary/70 block">
+                    {t('settings.thermal.warningThresholdHelp', 'Triggers amber telemetry status and debounced notifications (default: 75°C)')}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                    {t('settings.thermal.criticalThreshold', 'Critical Temperature Threshold (°C)')}
+                  </label>
+                  <input
+                    type="number"
+                    min={50}
+                    max={105}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime font-mono"
+                    value={thermalCriticalThreshold}
+                    onChange={(e) => setThermalCriticalThreshold(parseInt(e.target.value, 10) || 85)}
+                  />
+                  <span className="text-[9px] text-text-secondary/70 block">
+                    {t('settings.thermal.criticalThresholdHelp', 'Triggers critical alarm banner, CFA635 red LED, and throttling alerts (default: 85°C)')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-[var(--glass-border)]">
+                <div className="flex items-center justify-between p-3 bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)]">
+                  <div className="space-y-0.5 pr-4">
+                    <span className="text-xs font-bold text-[var(--text-primary)] block">
+                      {t('settings.thermal.activeProtection', 'Active Thermal Protection Shielding')}
+                    </span>
+                    <span className="text-[10px] text-text-secondary block">
+                      {t('settings.thermal.activeProtectionHelp', 'Automatically blocks new scheduled tasks and FFmpeg Forge compilation jobs when hardware temperatures exceed the critical threshold.')}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setThermalActiveProtection(!thermalActiveProtection)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                      thermalActiveProtection ? 'bg-brand-lime' : 'bg-white/10'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                        thermalActiveProtection ? 'translate-x-4' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
                 </div>
               </div>
             </div>
@@ -2417,6 +2515,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <span
                           className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
                             notifyStorageAlerts ? 'translate-x-4' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2.5 bg-[var(--input-bg)] rounded-xl border border-[var(--glass-border)]">
+                      <span className="text-xs font-bold text-[var(--text-primary)]">
+                        {t('settings.notifications.notifyThermalAlerts', 'Thermal Alerts (CPU / DSP Overheating & Throttling Warnings)')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNotifyThermalAlerts(!notifyThermalAlerts)}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                          notifyThermalAlerts ? 'bg-brand-lime' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
+                            notifyThermalAlerts ? 'translate-x-4' : 'translate-x-1'
                           }`}
                         />
                       </button>
