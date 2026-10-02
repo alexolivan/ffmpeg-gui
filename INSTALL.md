@@ -18,8 +18,8 @@ This guide details the installation, dependency setup, and upgrade workflow for 
   - Intel graphics processors with QSV / VAAPI media drivers (e.g., `intel-media-driver` for low-overhead hardware transcoding) and `intel-gpu-tools` for real-time engine and VRAM telemetry.
   - Blackmagic DeckLink PCIe cards (requires `desktopvideo` Linux drivers and DeckLink SDK uploaded in the Forge).
   - Magewell capture devices (HDMI/SDI capture routed via V4L2).
-  - AudioScience & ALSA professional soundcards (ALSA audio matrix, mixer topology, and hardware faders; requires `alsa-utils`).
-  - CrystalFontz CFA635 USB LCD Display.
+  - AudioScience & ALSA professional soundcards (ALSA audio matrix, mixer topology, and hardware faders; requires `alsa-utils`, proprietary `hpklinux` driver, and optional `hpicontrol.py` Python bindings for live DSP core load and temperature telemetry).
+  - CrystalFontz CFA635 USB LCD Display (hardware status LEDs and real-time telemetry LCD).
 
 ---
 

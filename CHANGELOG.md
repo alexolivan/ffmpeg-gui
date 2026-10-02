@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.32.0] - 2026-10-02
+
+### Added
+- **Industrial Telemetry & Thermal Health Engine (`HardwareHealthManager`)**:
+  - Direct Linux kernel `/sys/class/hwmon` and `/sys/devices/system/cpu` telemetry extraction with zero external CLI dependencies.
+  - Granular hardware health snapshot: CPU package and core temperatures, active hardware thermal throttling flags (`throttle_active`, `package_throttled`, `core_throttled`, event counters), cooling fan RPM tachometers, and NVIDIA/AMD GPU telemetry.
+  - Specialized AudioScience telemetry engine (`audioscience_health.py`) probing DSP core utilization (%) and card hardware temperatures (°C) via `hpicontrol.py` bindings.
+  - Specialized capture card health integration: Magewell Pro Capture FPGA core temperatures (`mwcap-info`) and DeckLink PCIe bus generation/link width telemetry.
+  - Embedded `/api/hardware/health` REST endpoint and 1Hz real-time snapshot broadcast through the existing WebSocket telemetry pipeline.
+- **Hardware Thermal Shielding & Debounced Multi-Tier Alerting**:
+  - Debounced SMTP notification trigger (`notify_thermal_alerts`) alerting on critical temperature thresholds and thermal throttling events with a 15-minute cooldown to prevent email floods.
+  - Crystalfontz CFA635 USB LCD integration: dedicated `THERM` alarm profile activating solid/blinking red LED indicators on hardware overheat.
+  - User-configurable Active Thermal Protection Shielding (`thermal_active_protection`, default disabled): automatically rejects starting new scheduled tasks or FFmpeg Forge compilation jobs when hardware temperatures exceed the critical threshold, protecting broadcast transcoders from thermal damage.
+- **Modern 4-Column 1080p Dashboard Reorganization**:
+  - Upgraded Dashboard responsive layout to 4 columns on desktop displays (`xl:grid-cols-4`), maximizing horizontal space utilization on broadcast studio monitors.
+  - Decoupled System Status, Services, and Tasks: extracted `ServicesDashboardCard` and `TasksDashboardCard` into dedicated, self-contained widgets stacked cleanly in Column 2.
+  - Integrated CPU thermal pills, core drawer, throttling status badges, and fan RPM tachometers into Column 1 (`SYSTEM STATUS`).
+  - Added specialized hardware health badges in Column 3 (`HARDWARE & PERIPHERALS`) for AudioScience DSP load/temperature, Magewell FPGA temperature, and DeckLink PCIe links.
+  - High-visibility red flashing thermal alert banner in `DashboardView` when critical temperatures or hardware throttling are detected.
+- **Universal Configuration Backup & Restore Alignment**:
+  - Synchronized Backup & Restore architecture (`backend/main.py` and `BackupRestoreCard.tsx`) to support Virtual Desktops (`service_type == "desktop"`) and Web Kiosks (`service_type == "kiosk_browser"`).
+  - Multi-stage import with `db.flush()` and dynamic desktop-name binding re-resolution, ensuring web kiosks seamlessly bind to their restored parent virtual desktops.
+  - Preserved 100% backward compatibility for legacy backup files lacking desktop and kiosk sections.
+- **Hardware Protection Settings & 100% i18n Key Parity**:
+  - Configurable Warning and Critical thermal thresholds (`thermal_warning_threshold`, `thermal_critical_threshold`) and Active Thermal Protection toggle in Settings.
+  - Added thermal notification trigger in Email Notifications settings.
+  - Maintained 100% key parity across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`) (1607 keys in each).
+
 ## [2.31.0] - 2026-10-01
 
 ### Added
