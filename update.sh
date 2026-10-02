@@ -158,6 +158,22 @@ if [ -f "$SYSTEM_SERVICE" ]; then
         fi
     fi
 
+    # Ensure motherboard Super I/O hardware sensor drivers are loaded and persisted
+    echo "--> Checking motherboard hardware sensor drivers (Super I/O)..."
+    if command -v modprobe &>/dev/null; then
+        for mod in nct6775 it87; do
+            if modprobe "$mod" 2>/dev/null || (command -v sudo &>/dev/null && sudo modprobe "$mod" 2>/dev/null); then
+                echo "    Loaded hardware sensor driver: $mod"
+                if [ "$EUID" -eq 0 ] && [ -d /etc/modules-load.d ]; then
+                    echo "$mod" >> /etc/modules-load.d/ffmpeg-gui-sensors.conf
+                fi
+            fi
+        done
+        if [ "$EUID" -eq 0 ] && [ -f /etc/modules-load.d/ffmpeg-gui-sensors.conf ]; then
+            sort -u -o /etc/modules-load.d/ffmpeg-gui-sensors.conf /etc/modules-load.d/ffmpeg-gui-sensors.conf
+        fi
+    fi
+
     # Ensure NVIDIA UVM systemd initialization unit exists if NVIDIA driver present
     if [ -d "/proc/driver/nvidia" ] || command -v nvidia-modprobe >/dev/null 2>&1; then
         echo "--> NVIDIA GPU driver detected. Ensuring /etc/systemd/system/nvidia-uvm-init.service is up to date..."

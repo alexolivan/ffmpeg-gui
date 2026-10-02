@@ -3,6 +3,7 @@ import glob
 import re
 import time
 import asyncio
+import subprocess
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 
@@ -239,12 +240,31 @@ class HardwareHealthManager:
     # PROBES: Chassis & Cooler Fans (RPM)
     # -------------------------------------------------------------------------
 
+    def _try_load_sensor_modules(self):
+        """Attempts to load common motherboard Super I/O fan sensor modules if not loaded."""
+        if getattr(self, "_sensor_modules_probed", False):
+            return
+        self._sensor_modules_probed = True
+        for mod in ["nct6775", "it87"]:
+            try:
+                subprocess.run(["modprobe", mod], capture_output=True, timeout=1)
+            except Exception:
+                pass
+
     def _probe_fans(self) -> List[Dict[str, Any]]:
         """
         Iterates over /sys/class/hwmon/hwmon*/fan*_input tachometers.
+        Supports direct hwmon and intermediate device/fan*_input paths.
+        Filters out invalid readings (e.g. 4294967295 sentinel or negative values).
+        Falls back to ACPI cooling device fans if no tachometers exist.
         """
+        self._try_load_sensor_modules()
+
         fans: List[Dict[str, Any]] = []
         fan_files = sorted(glob.glob("/sys/class/hwmon/hwmon*/fan*_input"))
+        if not fan_files:
+            fan_files = sorted(glob.glob("/sys/class/hwmon/hwmon*/device/fan*_input"))
+
         for idx, f_file in enumerate(fan_files):
             base = f_file[:-6]  # strip '_input'
             label_file = f"{base}_label"
@@ -259,16 +279,67 @@ class HardwareHealthManager:
             rpm = 0
             try:
                 with open(f_file, "r") as f:
-                    rpm = int(f.read().strip())
+                    raw_val = f.read().strip()
+                    rpm = int(raw_val)
             except Exception:
                 continue
 
-            name = label or f"Fan #{idx + 1}"
+            # Filter out ACPI/kernel sentinels (0xFFFFFFFF = 4294967295) and unreasonable values
+            if rpm < 0 or rpm >= 65535 or rpm == 4294967295:
+                continue
+
+            # Determine driver name to provide a friendly label if label_file is absent
+            if not label:
+                driver_name = ""
+                dir_path = os.path.dirname(f_file)
+                name_file = os.path.join(dir_path, "name")
+                if not os.path.isfile(name_file):
+                    name_file = os.path.join(os.path.dirname(dir_path), "name")
+                if os.path.isfile(name_file):
+                    try:
+                        with open(name_file, "r") as f:
+                            driver_name = f.read().strip().lower()
+                    except Exception:
+                        pass
+                fan_num_str = os.path.basename(f_file).replace("fan", "").replace("_input", "")
+                if any(x in driver_name for x in ["nct", "it87", "w83", "f71"]):
+                    label = f"Sys Fan #{fan_num_str}"
+                else:
+                    label = f"Fan #{fan_num_str}"
+
             fans.append({
-                "name": name,
+                "name": label or f"Fan #{idx + 1}",
                 "rpm": rpm,
                 "status": "stopped" if rpm == 0 else "ok",
             })
+
+        # ACPI cooling device fallback if no hardware tachometer is found
+        if not fans:
+            cooling_fan_dirs = sorted(glob.glob("/sys/class/thermal/cooling_device*"))
+            for c_dir in cooling_fan_dirs:
+                type_file = os.path.join(c_dir, "type")
+                if not os.path.isfile(type_file):
+                    continue
+                try:
+                    with open(type_file, "r") as f:
+                        c_type = f.read().strip()
+                except Exception:
+                    continue
+                if any(x in c_type.lower() for x in ["fan", "tfn"]):
+                    cur_file = os.path.join(c_dir, "cur_state")
+                    cur_val = 0
+                    if os.path.isfile(cur_file):
+                        try:
+                            with open(cur_file, "r") as f:
+                                cur_val = int(f.read().strip() or "0")
+                        except Exception:
+                            pass
+                    fans.append({
+                        "name": f"ACPI {c_type}",
+                        "rpm": 0,
+                        "status": "ok" if cur_val > 0 else "stopped",
+                    })
+
         return fans
 
     # -------------------------------------------------------------------------

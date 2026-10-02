@@ -142,6 +142,27 @@ configure_alsa_loopback() {
     fi
 }
 
+# Configuración y persistencia de módulos de sensores hardware (Super I/O) para ventiladores/disipadores
+configure_hardware_sensors() {
+    echo "--> Configuring motherboard hardware sensor drivers (Super I/O)..."
+    if command -v modprobe &>/dev/null; then
+        for mod in nct6775 it87; do
+            if modprobe "$mod" 2>/dev/null; then
+                echo "    Loaded hardware sensor driver: $mod"
+                if [ -d /etc/modules-load.d ]; then
+                    mkdir -p /etc/modules-load.d
+                    echo "$mod" >> /etc/modules-load.d/ffmpeg-gui-sensors.conf
+                elif [ -f /etc/modules ]; then
+                    grep -qxF "$mod" /etc/modules || echo "$mod" >> /etc/modules
+                fi
+            fi
+        done
+        if [ -f /etc/modules-load.d/ffmpeg-gui-sensors.conf ]; then
+            sort -u -o /etc/modules-load.d/ffmpeg-gui-sensors.conf /etc/modules-load.d/ffmpeg-gui-sensors.conf
+        fi
+    fi
+}
+
 # ---------------------------------------------------------
 # [PHASE 1/5] Verifying and Installing System Dependencies
 # ---------------------------------------------------------
@@ -166,6 +187,9 @@ if [ "$MODE" = "system" ]; then
 
     # Configurar y persistir el módulo ALSA Loopback (snd-aloop) para audio de escritorios virtuales
     configure_alsa_loopback
+
+    # Configurar y persistir módulos de sensores Super I/O para ventiladores/disipadores
+    configure_hardware_sensors
 
     # Verificar herramientas indispensables después de la instalación
     verify_installer_tools
