@@ -66,8 +66,14 @@ export function useProcesses() {
           setSystemTelemetry({
             ...msg.system,
             storages: msg.storages || [],
-            peers: msg.peers || []
+            peers: msg.peers || [],
+            hardware_health: msg.hardware_health || null
           });
+        } else if (msg.hardware_health) {
+          setSystemTelemetry((prev: any) => ({
+            ...prev,
+            hardware_health: msg.hardware_health
+          }));
         }
         if (msg.task_stats) {
           setTaskStats(msg.task_stats);

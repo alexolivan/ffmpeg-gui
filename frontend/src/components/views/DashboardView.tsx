@@ -29,6 +29,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [initialPeers, setInitialPeers] = useState<any[]>([]);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [manualUpdateInfo, setManualUpdateInfo] = useState<any>(null);
+  const [showCoresDrawer, setShowCoresDrawer] = useState(false);
+  const [hardwareHealth, setHardwareHealth] = useState<any>(null);
 
   const handleCheckUpdates = async () => {
     if (checkingUpdates) return;
@@ -72,11 +74,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       .then(data => setSslStatus(data))
       .catch(err => console.error(err));
     fetchPeers();
+    fetch('/api/hardware/health')
+      .then(res => res.json())
+      .then(data => setHardwareHealth(data))
+      .catch(err => console.error("Error fetching hardware health:", err));
   }, []);
 
   const peers = (systemTelemetry?.peers && systemTelemetry.peers.length > 0)
     ? systemTelemetry.peers
     : initialPeers;
+
+  const activeHardwareHealth = systemTelemetry?.hardware_health || hardwareHealth;
 
   useEffect(() => {
     let interval: any;
@@ -169,6 +177,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </header>
+ 
+      {/* Critical Thermal Alert Banner */}
+      {activeHardwareHealth && (activeHardwareHealth.status === 'critical' || activeHardwareHealth.alerts?.some((a: any) => a.level === 'critical')) && (
+        <div className="mb-5 p-4 rounded-xl bg-red-500/10 border-2 border-red-500/40 text-red-400 flex items-start gap-3 shadow-lg shadow-red-500/10 animate-pulse">
+          <span className="text-2xl select-none">⚠️</span>
+          <div className="flex-1">
+            <h4 className="font-bold text-sm tracking-wide text-red-300 uppercase">
+              {t('dashboard.criticalThermalAlert', { temp: activeHardwareHealth.max_temp_c ?? 'N/A' })}
+            </h4>
+            {settings?.thermal_active_protection && (
+              <p className="text-xs text-red-300/80 mt-1 font-medium">
+                {t('dashboard.activeProtectionEngaged')}
+              </p>
+            )}
+            {activeHardwareHealth.alerts && activeHardwareHealth.alerts.length > 0 && (
+              <ul className="mt-2 space-y-0.5 text-xs font-mono text-red-200/90 list-disc list-inside">
+                {activeHardwareHealth.alerts.map((alert: any, idx: number) => (
+                  <li key={idx}>{alert.message}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
         {/* Column 1: System Status & Host Load */}
@@ -265,6 +297,110 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
 
+            {/* Thermal & Industrial Health */}
+            <div className="pt-2.5 border-t border-[var(--glass-border)]">
+              <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-2 flex items-center justify-between">
+                <span>{t('dashboard.thermalAndHardwareHealth')}</span>
+                {activeHardwareHealth?.status && (
+                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider ${
+                    activeHardwareHealth.status === 'critical'
+                      ? 'bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse'
+                      : activeHardwareHealth.status === 'warning'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-brand-lime/20 text-brand-lime border border-brand-lime/30'
+                  }`}>
+                    {activeHardwareHealth.status}
+                  </span>
+                )}
+              </h4>
+
+              <div className="space-y-2">
+                {/* CPU Package Temp & Throttling Badges */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {activeHardwareHealth?.cpu?.package_temp !== null && activeHardwareHealth?.cpu?.package_temp !== undefined ? (
+                    <span className={`text-xs font-mono font-bold px-2 py-1 rounded-lg border flex items-center gap-1.5 ${
+                      activeHardwareHealth.cpu.package_temp >= (settings?.thermal_critical_threshold ?? 85)
+                        ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse'
+                        : activeHardwareHealth.cpu.package_temp >= (settings?.thermal_warning_threshold ?? 75)
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : 'bg-brand-lime/10 text-brand-lime border-brand-lime/30'
+                    }`}>
+                      <span>🌡️</span>
+                      <span>{t('dashboard.cpuPackageTemp')}:</span>
+                      <span>{activeHardwareHealth.cpu.package_temp}°C</span>
+                    </span>
+                  ) : null}
+
+                  {activeHardwareHealth?.cpu?.throttling && (
+                    <span className={`text-[10px] font-mono px-2 py-1 rounded-lg border flex items-center gap-1 ${
+                      activeHardwareHealth.cpu.throttling.active
+                        ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse font-bold'
+                        : activeHardwareHealth.cpu.throttling.throttling_detected
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 font-medium'
+                        : 'bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]'
+                    }`}>
+                      {activeHardwareHealth.cpu.throttling.active
+                        ? t('dashboard.throttlingActive', { count: activeHardwareHealth.cpu.throttling.recent_events })
+                        : activeHardwareHealth.cpu.throttling.throttling_detected
+                        ? t('dashboard.throttlingPast', { count: (activeHardwareHealth.cpu.throttling.total_package_events || 0) + (activeHardwareHealth.cpu.throttling.total_core_events || 0) })
+                        : t('dashboard.throttlingNone')}
+                    </span>
+                  )}
+                </div>
+
+                {/* Individual Cores Drawer */}
+                {activeHardwareHealth?.cpu?.cores && activeHardwareHealth.cpu.cores.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCoresDrawer(!showCoresDrawer)}
+                      className="text-[10px] text-text-secondary hover:text-[var(--text-primary)] transition-colors flex items-center gap-1 font-mono py-0.5"
+                    >
+                      <span className="text-[8px]">{showCoresDrawer ? '▲' : '▼'}</span>
+                      <span>{t('dashboard.cpuCores')} ({activeHardwareHealth.cpu.cores.length})</span>
+                    </button>
+                    {showCoresDrawer && (
+                      <div className="grid grid-cols-2 gap-1 p-2 bg-[var(--input-bg)]/60 border border-[var(--glass-border)] rounded-lg text-[10px] font-mono mt-1 max-h-36 overflow-y-auto">
+                        {activeHardwareHealth.cpu.cores.map((core: any, cIdx: number) => {
+                          const cTemp = core.temp;
+                          const isCrit = cTemp >= (settings?.thermal_critical_threshold ?? 85);
+                          const isWarn = cTemp >= (settings?.thermal_warning_threshold ?? 75);
+                          return (
+                            <div key={cIdx} className="flex justify-between items-center text-text-secondary px-1">
+                              <span className="truncate max-w-[70px]" title={core.label}>{core.label}:</span>
+                              <span className={isCrit ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400 font-bold' : 'text-brand-lime font-bold'}>
+                                {cTemp}°C
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Chassis Fans */}
+                {activeHardwareHealth?.fans && activeHardwareHealth.fans.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {activeHardwareHealth.fans.map((fan: any, fIdx: number) => (
+                      <span
+                        key={fIdx}
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                          fan.rpm === 0
+                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                            : 'bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]'
+                        }`}
+                      >
+                        <span className="text-xs">🌀</span>
+                        <span className="font-semibold text-[var(--text-primary)]">{fan.name}:</span>
+                        <span>{fan.rpm > 0 ? t('dashboard.fanRpm', { rpm: fan.rpm }) : t('dashboard.fanStopped')}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {systemTelemetry.storages && systemTelemetry.storages.length > 0 && (
               <div className="mt-3 pt-3 border-t border-[var(--glass-border)]">
                 <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-2">
@@ -341,6 +477,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             )}
 
+            {/* AudioScience Card Telemetry */}
+            {activeHardwareHealth?.av_hardware?.audioscience && activeHardwareHealth.av_hardware.audioscience.length > 0 && (
+              <div className="flex flex-col gap-1.5 p-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs uppercase text-[var(--text-primary)] font-mono">AUDIOSCIENCE</span>
+                  <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-brand-lime/25 text-brand-lime">
+                    {t('dashboard.available')}
+                  </span>
+                </div>
+                <div className="space-y-1.5 mt-0.5">
+                  {activeHardwareHealth.av_hardware.audioscience.map((asi: any) => (
+                    <div key={asi.adapter_index} className="space-y-1 p-1.5 bg-black/10 rounded-lg border border-[var(--glass-border)]">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-[var(--text-primary)] font-mono">
+                          Adapter #{asi.adapter_index} — {asi.model || 'ASI Card'}
+                        </span>
+                        {asi.serial && (
+                          <span className="text-[9px] font-mono text-text-secondary opacity-75">
+                            s/n: {asi.serial}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {asi.dsp_cpu_percent !== null && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 font-bold">
+                            {t('dashboard.dspLoad')}: {asi.dsp_cpu_percent}%
+                          </span>
+                        )}
+                        {asi.dsp_temp_c !== null ? (
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${
+                            asi.dsp_temp_c >= (settings?.thermal_critical_threshold ?? 85)
+                              ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse'
+                              : asi.dsp_temp_c >= (settings?.thermal_warning_threshold ?? 75)
+                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              : 'bg-brand-lime/10 text-brand-lime border-brand-lime/20'
+                          }`}>
+                            🌡️ {t('dashboard.dspTemp')}: {asi.dsp_temp_c}°C
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[var(--input-bg)] text-text-secondary opacity-70 border border-[var(--glass-border)]">
+                            {t('dashboard.noTempSensor')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Active Hardware Capabilities */}
             {activeCapabilities.map(([key, value]: [string, any]) => (
               <div key={key} className="flex flex-col gap-1 p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
@@ -389,21 +575,59 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
                   </div>
                 )}
-                {key === 'decklink' && value.available && value.cards && value.cards.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
-                    <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                {key === 'decklink' && value.available && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1.5 text-[9px] text-text-secondary font-mono leading-normal">
+                    {value.cards && value.cards.length > 0 && (
+                      <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                    )}
+                    {activeHardwareHealth?.av_hardware?.decklink && activeHardwareHealth.av_hardware.decklink.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {activeHardwareHealth.av_hardware.decklink.map((dl: any, idx: number) => (
+                          <div key={idx} className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                            <span className="text-[var(--text-primary)] font-bold">{dl.name}:</span>
+                            <span className="text-brand-blue font-bold">
+                              {t('dashboard.pcieBus')}: {dl.pcie_link || 'OK'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
-                {key === 'magewell' && value.cards && value.cards.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
-                    <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                {key === 'magewell' && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1.5 text-[9px] text-text-secondary font-mono leading-normal">
+                    {value.cards && value.cards.length > 0 && (
+                      <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                    )}
+                    {activeHardwareHealth?.av_hardware?.magewell && activeHardwareHealth.av_hardware.magewell.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {activeHardwareHealth.av_hardware.magewell.map((mw: any, idx: number) => (
+                          <div key={idx} className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                            <span className="text-[var(--text-primary)] font-bold">{mw.name || `CH${mw.channel_index}`}:</span>
+                            {mw.fpga_temp_c !== null ? (
+                              <span className={`font-bold ${
+                                mw.fpga_temp_c >= (settings?.thermal_critical_threshold ?? 85)
+                                  ? 'text-red-400'
+                                  : mw.fpga_temp_c >= (settings?.thermal_warning_threshold ?? 75)
+                                  ? 'text-amber-400'
+                                  : 'text-brand-lime'
+                              }`}>
+                                🌡️ {t('dashboard.fpgaTemp')}: {mw.fpga_temp_c}°C
+                              </span>
+                            ) : (
+                              <span className="opacity-60">{t('dashboard.noTempSensor')}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             ))}
 
             {/* Empty state if no active hardware acceleration is detected */}
-            {activeCapabilities.length === 0 && (!systemTelemetry.lcd || !systemTelemetry.lcd.connected) && (
+            {activeCapabilities.length === 0 && (!systemTelemetry.lcd || !systemTelemetry.lcd.connected) && (!activeHardwareHealth?.av_hardware?.audioscience || activeHardwareHealth.av_hardware.audioscience.length === 0) && (
               <div className="p-3 bg-[var(--input-bg)]/40 border border-[var(--glass-border)] rounded-xl text-center">
                 <p className="text-xs text-text-secondary">
                   {t('dashboard.noActiveHardware', 'No specialized hardware acceleration or capture devices detected.')}
