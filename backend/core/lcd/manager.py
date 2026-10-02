@@ -450,7 +450,7 @@ class LCDManager:
         elif profile in ("peers", "p2p"):
             return "P2P "
         elif profile in ("thermal", "hardware", "therm"):
-            return "THRM"
+            return "THM "
         return "    "
 
 
