@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.32.1] - 2026-10-02
+
+### Fixed
+- **FFmpeg Progress Log Tail Bottleneck & Event Loop Starvation**:
+  - Replaced catastrophic linear file reading (`readlines()`) of multi-megabyte FFmpeg progress logs (`/dev/shm/ffmpeg_progress_*.log`) with `read_tail_progress()`, which seeks to the last 4KB in $O(1)$ time.
+  - Implemented automatic progress log truncation (`truncate_progress_log_if_large`) capping logs at 2MB with 32KB head retention to eliminate unbounded RAM disk growth.
+  - Added cleanup of finished and orphaned task progress files in `/dev/shm` on task completion or stop.
+- **SQLite Concurrency & WAL Mode**:
+  - Configured SQLite Write-Ahead Logging (`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;`) across all database connections via SQLAlchemy event listener to prevent database lock contention between background workers and the async API event loop.
+- **Authentication Middleware In-Memory Password Caching**:
+  - Added in-memory cached lookup (`get_cached_gui_password`) with 5-second TTL in `AuthBarrierMiddleware`, eliminating blocking synchronous SQLite queries on every incoming HTTP request.
+- **Git Metadata & Release Check Subprocess Throttling**:
+  - Added a 300-second TTL cache for git commit and branch metadata extraction in `get_git_metadata()`, preventing continuous `git` subprocess spawns every second from telemetry loops.
+  - Moved background release checks off the main event loop into daemon threads.
+- **Task Metric Write Throttling**:
+  - Throttled high-frequency progress DB writes in `TaskManager`, persisting ephemeral status metrics at most once every 2 seconds and eliminating table bloat.
+- **LCD Thermal LED Tag Alignment & Loop Resilience**:
+  - Shortened thermal alarm profile prefix from `THRM` to `THM ` in `LCDManager.get_led_legend_prefix()`, preventing text truncation and legend overflow on 20-column CFA635 displays.
+  - Hardened LCD reader event loop against non-yielding tight loops.
+
 ## [2.32.0] - 2026-10-02
 
 ### Added

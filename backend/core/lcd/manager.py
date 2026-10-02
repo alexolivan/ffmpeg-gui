@@ -535,42 +535,33 @@ class LCDManager:
                 if self.driver.ser and self.driver.ser.is_open:
                     if self.driver.ser.in_waiting >= 2:
                         type_byte_arr = self.driver.ser.read(1)
-                        if not type_byte_arr:
-                            continue
-                        type_byte = type_byte_arr[0]
-                        
-                        length_byte_arr = self.driver.ser.read(1)
-                        if not length_byte_arr:
-                            continue
-                        length_byte = length_byte_arr[0]
-                        
-                        payload_len = length_byte
-                        data_bytes = b""
-                        if payload_len > 0:
-                            data_bytes = self.driver.ser.read(payload_len)
-                        
-                        # Consume CRC (2 bytes)
-                        self.driver.ser.read(2)
-                        
-                        # Process keypad event (type 0x80, data length 1)
-                        if type_byte == 0x80 and length_byte == 1 and len(data_bytes) == 1:
-                            key_code = data_bytes[0]
-                            # Key codes 1-6 are pressed, 7-12 are released.
-                            # We only trigger action on key press (1-6).
-                            if key_code in self.key_map:
-                                self._register_activity()
-                                if getattr(self, "locator_active", False):
-                                    # Any key press acknowledges/dismisses locator mode
-                                    self.locator_active = False
-                                    logger.info("Locator mode dismissed via local keypad press.")
-                                else:
-                                    key_name = self.key_map[key_code]
-                                    self.current_view.handle_key(key_name)
-                                    self.refresh_display()
-                await asyncio.sleep(0.02)
+                        if type_byte_arr:
+                            type_byte = type_byte_arr[0]
+                            length_byte_arr = self.driver.ser.read(1)
+                            if length_byte_arr:
+                                length_byte = length_byte_arr[0]
+                                payload_len = length_byte
+                                data_bytes = self.driver.ser.read(payload_len) if payload_len > 0 else b""
+                                # Consume CRC (2 bytes)
+                                self.driver.ser.read(2)
+                                
+                                # Process keypad event (type 0x80, data length 1)
+                                if type_byte == 0x80 and length_byte == 1 and len(data_bytes) == 1:
+                                    key_code = data_bytes[0]
+                                    if key_code in self.key_map:
+                                        self._register_activity()
+                                        if getattr(self, "locator_active", False):
+                                            self.locator_active = False
+                                            logger.info("Locator mode dismissed via local keypad press.")
+                                        else:
+                                            key_name = self.key_map[key_code]
+                                            self.current_view.handle_key(key_name)
+                                            self.refresh_display()
             except Exception as e:
                 logger.error(f"Error in read loop: {e}")
                 await asyncio.sleep(1)
+            else:
+                await asyncio.sleep(0.02)
 
     async def _refresh_loop(self):
         while self._running:

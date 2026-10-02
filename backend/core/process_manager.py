@@ -2588,40 +2588,15 @@ class ProcessManager:
                     except Exception as e:
                         self.logger.warning(f"Watchdog failed to get psutil metrics for PID {pid}: {e}")
 
-                # Read progress log file
-                frame = None
-                fps = None
-                bitrate = None
-                speed = None
-                out_time_us = None
-
-                if os.path.exists(progress_log_path):
-                    try:
-                        with open(progress_log_path, "r") as f:
-                            lines = f.readlines()
-                        for line in lines:
-                            if "=" in line:
-                                k, v = line.split("=", 1)
-                                k = k.strip()
-                                v = v.strip()
-                                if k == "frame":
-                                    try:
-                                        frame = int(v)
-                                    except ValueError:
-                                        pass
-                                elif k == "fps":
-                                    fps = v
-                                elif k == "bitrate":
-                                    bitrate = v
-                                elif k == "speed":
-                                    speed = v
-                                elif k == "out_time_us":
-                                    try:
-                                        out_time_us = int(v)
-                                    except ValueError:
-                                        pass
-                    except Exception as read_err:
-                        self.logger.error(f"Watchdog failed to read progress file {progress_log_path}: {read_err}")
+                # Read progress log file (O(1) tail read to prevent memory/CPU saturation on long-running services)
+                from utils.process_utils import read_tail_progress, truncate_progress_log_if_large
+                tail_stats = read_tail_progress(progress_log_path)
+                frame = tail_stats.get("frame")
+                fps = tail_stats.get("fps")
+                bitrate = tail_stats.get("bitrate")
+                speed = tail_stats.get("speed")
+                out_time_us = tail_stats.get("out_time_us")
+                truncate_progress_log_if_large(progress_log_path)
 
                 # Update database
                 try:
@@ -2946,8 +2921,12 @@ class ProcessManager:
                                 try:
                                     log_path = self.get_process_log_path(process_id, session=session)
                                     if os.path.exists(log_path):
-                                        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                                            recent_log_lines = [line.strip() for line in f.readlines()[-60:]]
+                                        f_size = os.path.getsize(log_path)
+                                        with open(log_path, "rb") as f:
+                                            if f_size > 32768:
+                                                f.seek(f_size - 32768)
+                                            chunk = f.read().decode("utf-8", errors="replace")
+                                        recent_log_lines = [line.strip() for line in chunk.splitlines()[-60:]]
                                 except Exception as log_err:
                                     self.logger.warning(f"Watchdog failed to read log file for circuit breaker: {log_err}")
 

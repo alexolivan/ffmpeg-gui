@@ -208,6 +208,30 @@ def set_reload_mode(val: bool = True):
 
 app.add_middleware(NginxAccessLogMiddleware)
 
+_AUTH_PW_CACHE = {
+    "password": None,
+    "timestamp": 0.0
+}
+
+def get_cached_gui_password():
+    global _AUTH_PW_CACHE
+    now = time.time()
+    if now - _AUTH_PW_CACHE["timestamp"] < 5.0:
+        return _AUTH_PW_CACHE["password"]
+    try:
+        with SessionLocal() as db:
+            from database.models import SystemSettings
+            settings = db.query(SystemSettings).first()
+            _AUTH_PW_CACHE["password"] = settings.gui_password if settings else None
+            _AUTH_PW_CACHE["timestamp"] = now
+    except Exception:
+        pass
+    return _AUTH_PW_CACHE["password"]
+
+def invalidate_gui_password_cache():
+    global _AUTH_PW_CACHE
+    _AUTH_PW_CACHE["timestamp"] = 0.0
+
 class AuthBarrierMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # 1. Allow OPTIONS preflight for CORS
@@ -231,11 +255,8 @@ class AuthBarrierMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
             
-        # 3. Check if GUI password is set in database
-        with SessionLocal() as db:
-            from database.models import SystemSettings
-            settings = db.query(SystemSettings).first()
-            gui_password = settings.gui_password if settings else None
+        # 3. Check if GUI password is set (cached with 5s TTL to eliminate DB locking)
+        gui_password = get_cached_gui_password()
             
         if not gui_password:
             return await call_next(request)
@@ -1505,6 +1526,7 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(settings)
+    invalidate_gui_password_cache()
 
     from core.hardware_health import hardware_health_manager
     hardware_health_manager.configure(
@@ -5484,54 +5506,19 @@ def get_process_progress(process_id: int):
     if not found_file:
         return result
         
+    from utils.process_utils import read_tail_progress
+    tail = read_tail_progress(found_file)
+    result["frame"] = tail["frame"] if tail["frame"] is not None else 0
     try:
-        with open(found_file, "r") as f:
-            content = f.read()
-    except Exception as e:
-        logger.error(f"Error reading progress file {found_file}: {e}")
-        return result
-
-    # Parse lines from the file
-    for line in content.splitlines():
-        line = line.strip()
-        if not line or "=" not in line:
-            continue
-        try:
-            k, v = line.split("=", 1)
-            k = k.strip()
-            v = v.strip()
-            
-            if k == "frame":
-                try:
-                    result["frame"] = int(v)
-                except ValueError:
-                    pass
-            elif k == "fps":
-                try:
-                    result["fps"] = float(v)
-                except ValueError:
-                    pass
-            elif k == "bitrate":
-                result["bitrate"] = v
-            elif k == "speed":
-                result["speed"] = v
-            elif k == "out_time":
-                result["out_time"] = v
-            elif k == "dup_frames":
-                try:
-                    result["dup_frames"] = int(v)
-                except ValueError:
-                    pass
-            elif k == "drop_frames":
-                try:
-                    result["drop_frames"] = int(v)
-                except ValueError:
-                    pass
-            elif k == "progress":
-                result["progress"] = v
-        except Exception:
-            continue
-            
+        result["fps"] = float(tail["fps"]) if tail["fps"] is not None else 0.0
+    except (ValueError, TypeError):
+        result["fps"] = 0.0
+    result["bitrate"] = tail["bitrate"] or "N/A"
+    result["speed"] = tail["speed"] or "N/A"
+    result["out_time"] = tail["out_time"] or "N/A"
+    result["dup_frames"] = tail["dup_frames"] if tail["dup_frames"] is not None else 0
+    result["drop_frames"] = tail["drop_frames"] if tail["drop_frames"] is not None else 0
+    result["progress"] = tail["progress"] or "N/A"
     return result
 
 
@@ -5550,8 +5537,12 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
         lines = []
         if os.path.exists(log_file):
             try:
-                with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                    lines.extend(f.readlines())
+                f_size = os.path.getsize(log_file)
+                with open(log_file, "rb") as f:
+                    if f_size > 65536:
+                        f.seek(f_size - 65536)
+                    chunk = f.read().decode("utf-8", errors="replace")
+                lines.extend(chunk.splitlines())
             except Exception as e:
                 logger.error(f"Error reading log file {log_file} for process {process_id}: {e}")
 
@@ -5560,8 +5551,12 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
             ice_err = os.path.join(log_storage_path, f"icecast_{process_id}", "error.log")
             if os.path.exists(ice_err):
                 try:
-                    with open(ice_err, "r", encoding="utf-8", errors="replace") as f:
-                        lines.extend(f.readlines())
+                    i_size = os.path.getsize(ice_err)
+                    with open(ice_err, "rb") as f:
+                        if i_size > 65536:
+                            f.seek(i_size - 65536)
+                        chunk = f.read().decode("utf-8", errors="replace")
+                    lines.extend(chunk.splitlines())
                 except Exception:
                     pass
 

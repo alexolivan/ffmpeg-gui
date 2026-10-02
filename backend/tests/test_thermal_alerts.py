@@ -79,8 +79,8 @@ class TestThermalAlertsAndShielding(unittest.TestCase):
             task_manager=MagicMock(),
             port="/dev/null"
         )
-        self.assertEqual(lcd.get_led_legend_prefix("thermal"), "THRM")
-        self.assertEqual(lcd.get_led_legend_prefix("therm"), "THRM")
+        self.assertEqual(lcd.get_led_legend_prefix("thermal"), "THM ")
+        self.assertEqual(lcd.get_led_legend_prefix("therm"), "THM ")
 
         # Test state mapping
         lcd._cached_led_states["thermal_status"] = "normal"

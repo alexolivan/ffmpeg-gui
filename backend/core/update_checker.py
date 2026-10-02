@@ -10,8 +10,14 @@ logger = logging.getLogger("ffmpeg_gui.update_checker")
 
 _CACHE: Dict[str, Any] = {
     "timestamp": 0.0,
-    "data": None
+    "data": {
+        "update_available": False,
+        "latest_release": None,
+        "release_url": None,
+        "checked_at": 0.0
+    }
 }
+_IS_CHECKING: bool = False
 CACHE_TTL_SECONDS = 6 * 3600  # 6 hours TTL
 
 
@@ -34,16 +40,9 @@ def compare_semver(latest_str: str, current_str: str) -> bool:
     return latest_tuple > current_tuple
 
 
-def check_latest_release(current_version: str, force: bool = False) -> Dict[str, Any]:
-    """
-    Check GitHub Releases for ffmpeg-gui updates with air-gapped silent fallback and 6-hour caching.
-    """
-    global _CACHE
+def _fetch_release_worker(current_version: str):
+    global _CACHE, _IS_CHECKING
     now = time.time()
-
-    if not force and _CACHE["data"] is not None and (now - _CACHE["timestamp"] < CACHE_TTL_SECONDS):
-        return _CACHE["data"]
-
     url = "https://api.github.com/repos/alexolivan/ffmpeg-gui/releases/latest"
     req = urllib.request.Request(
         url,
@@ -54,7 +53,7 @@ def check_latest_release(current_version: str, force: bool = False) -> Dict[str,
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=4.0) as resp:
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             tag_name = data.get("tag_name", "").strip()
             html_url = data.get("html_url")
@@ -62,34 +61,67 @@ def check_latest_release(current_version: str, force: bool = False) -> Dict[str,
 
             is_newer = compare_semver(latest_clean, current_version) if latest_clean else False
 
-            result = {
+            _CACHE["timestamp"] = now
+            _CACHE["data"] = {
                 "update_available": is_newer,
                 "latest_release": latest_clean if latest_clean else None,
                 "release_url": html_url,
                 "checked_at": now
             }
-            _CACHE["timestamp"] = now
-            _CACHE["data"] = result
-            return result
     except Exception as e:
         logger.debug("Silently skipped update check: %s", e)
-        fallback = {
+        _CACHE["timestamp"] = now
+        _CACHE["data"] = {
             "update_available": False,
             "latest_release": None,
             "release_url": None,
             "checked_at": now
         }
-        if _CACHE["data"] is None:
-            _CACHE["timestamp"] = now
-            _CACHE["data"] = fallback
-        return fallback
+    finally:
+        _IS_CHECKING = False
 
 
-def get_git_metadata() -> Dict[str, Any]:
+def check_latest_release(current_version: str, force: bool = False) -> Dict[str, Any]:
+    """
+    Check GitHub Releases for ffmpeg-gui updates with air-gapped silent fallback and 6-hour caching.
+    Non-blocking during regular polling (force=False); synchronous on explicit force refresh.
+    """
+    global _CACHE, _IS_CHECKING
+    now = time.time()
+
+    if not force and _CACHE["data"] is not None and (now - _CACHE["timestamp"] < CACHE_TTL_SECONDS):
+        return _CACHE["data"]
+
+    if force:
+        _fetch_release_worker(current_version)
+        return _CACHE["data"]
+
+    if not _IS_CHECKING:
+        import threading
+        _IS_CHECKING = True
+        t = threading.Thread(target=_fetch_release_worker, args=(current_version,), daemon=True)
+        t.start()
+
+    return _CACHE["data"]
+
+
+_GIT_CACHE: Dict[str, Any] = {
+    "timestamp": 0.0,
+    "data": None
+}
+
+
+def get_git_metadata(force: bool = False) -> Dict[str, Any]:
     """
     Resolve local git metadata (branch, commit short hash, and release environment flag).
+    Cached in memory for 300 seconds to prevent event-loop subprocess overhead.
     Falls back gracefully if running in a non-git (packaged release) directory.
     """
+    global _GIT_CACHE
+    now = time.time()
+    if not force and _GIT_CACHE["data"] is not None and (now - _GIT_CACHE["timestamp"] < 300.0):
+        return _GIT_CACHE["data"]
+
     branch = "main"
     commit = "release"
     is_release = True
@@ -139,8 +171,11 @@ def get_git_metadata() -> Dict[str, Any]:
         commit = "release"
         is_release = True
 
-    return {
+    result = {
         "branch": branch,
         "commit": commit,
         "is_release": is_release
     }
+    _GIT_CACHE["timestamp"] = now
+    _GIT_CACHE["data"] = result
+    return result
