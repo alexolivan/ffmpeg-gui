@@ -92,9 +92,42 @@ class TestBackupRestoreAPI(unittest.TestCase):
             status="online"
         )
 
+        desk_proc = MediaProcess(
+            name="Backup Test Desktop",
+            service_type="desktop",
+            status="stopped",
+            config={
+                "desktop_config": {
+                    "display_num": 99,
+                    "resolution": "1920x1080",
+                    "color_depth": 24,
+                    "audio_server": "pulseaudio",
+                    "window_manager": "openbox",
+                    "vnc_port": 5999
+                }
+            }
+        )
+        self.db.add(desk_proc)
+        self.db.commit()
+        self.db.refresh(desk_proc)
+
+        kiosk_proc = MediaProcess(
+            name="Backup Test Kiosk",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "url": "https://dashboard.lan",
+                    "desktop_service_id": desk_proc.id,
+                    "engine_id": "chromium",
+                    "gpu_acceleration": True
+                }
+            }
+        )
         self.db.add(proc)
         self.db.add(mtx_proc)
         self.db.add(ice_proc)
+        self.db.add(kiosk_proc)
         self.db.add(task)
         self.db.add(build)
         self.db.add(ice_build)
@@ -125,6 +158,8 @@ class TestBackupRestoreAPI(unittest.TestCase):
             "logging_retention": True,
             "watchdog_grace": True,
             "services": True,
+            "virtual_desktops": True,
+            "web_kiosks": True,
             "tasks": True,
             "storage_volumes": True,
             "notifications": True,
@@ -139,9 +174,19 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertIn("gui_general", data["sections"])
         self.assertIn("lcd_display", data["sections"])
         self.assertIn("services", data["sections"])
+        self.assertIn("virtual_desktops", data["sections"])
+        self.assertIn("web_kiosks", data["sections"])
         self.assertIn("tasks", data["sections"])
         self.assertIn("software_engines", data["sections"])
         self.assertIn("peer_federation", data["sections"])
+
+        # Check that desktops and kiosks are not mixed in services
+        service_names = [s["name"] for s in data["sections"]["services"]]
+        self.assertNotIn("Backup Test Desktop", service_names)
+        self.assertNotIn("Backup Test Kiosk", service_names)
+        self.assertEqual(len(data["sections"]["virtual_desktops"]), 1)
+        self.assertEqual(len(data["sections"]["web_kiosks"]), 1)
+        self.assertEqual(data["sections"]["web_kiosks"][0]["desktop_name"], "Backup Test Desktop")
 
         # Check LCD & General export from SystemSettings
         lcd_export = data["sections"]["lcd_display"]
@@ -190,6 +235,8 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.db.query(MediaProcess).filter_by(name="Backup Test Service").delete()
         self.db.query(MediaProcess).filter_by(name="Backup Test MediaMTX").delete()
         self.db.query(MediaProcess).filter_by(name="Backup Test Icecast").delete()
+        self.db.query(MediaProcess).filter_by(name="Backup Test Desktop").delete()
+        self.db.query(MediaProcess).filter_by(name="Backup Test Kiosk").delete()
         self.db.query(ScheduledTask).filter_by(name="Backup Test Task").delete()
         self.db.query(FfmpegBuild).filter_by(name="Backup Test Build").delete()
         self.db.query(FfmpegBuild).filter_by(name="Backup Test Icecast Build").delete()
@@ -219,6 +266,8 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertEqual(import_data["status"], "success")
         self.assertEqual(import_data["imported"]["peer_federation"]["inbound_keys"], 1)
         self.assertEqual(import_data["imported"]["peer_federation"]["remote_nodes"], 1)
+        self.assertEqual(import_data["imported"]["virtual_desktops"], 1)
+        self.assertEqual(import_data["imported"]["web_kiosks"], 1)
 
         # 4. Verify restored
         restored_proc = self.db.query(MediaProcess).filter_by(name="Backup Test Service").first()
@@ -241,6 +290,17 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertEqual(restored_ice.icecast_config.get("port"), 7000)
         self.assertTrue(restored_ice.icecast_config.get("ssl_enabled"))
         self.assertEqual(restored_ice.icecast_config.get("mounts")[0].get("mount_name"), "/stream.mp3")
+
+        restored_desk = self.db.query(MediaProcess).filter_by(name="Backup Test Desktop").first()
+        self.assertIsNotNone(restored_desk)
+        self.assertEqual(restored_desk.service_type, "desktop")
+        self.assertEqual(restored_desk.config["desktop_config"]["display_num"], 99)
+
+        restored_kiosk = self.db.query(MediaProcess).filter_by(name="Backup Test Kiosk").first()
+        self.assertIsNotNone(restored_kiosk)
+        self.assertEqual(restored_kiosk.service_type, "kiosk_browser")
+        self.assertEqual(restored_kiosk.config["kiosk_config"]["url"], "https://dashboard.lan")
+        self.assertEqual(restored_kiosk.config["kiosk_config"]["desktop_service_id"], restored_desk.id)
 
         restored_task = self.db.query(ScheduledTask).filter_by(name="Backup Test Task").first()
         self.assertIsNotNone(restored_task)
@@ -276,4 +336,37 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertEqual(restored_settings.lcd_led1_profile, "services")
         self.assertEqual(restored_settings.lcd_led2_profile, "tasks")
         self.assertEqual(restored_settings.lcd_led3_profile, "alert")
+
+    def test_legacy_backup_with_desktops_in_services(self):
+        legacy_payload = {
+            "app": "ffmpeg-gui",
+            "version": "2.31.0",
+            "sections": {
+                "services": [
+                    {
+                        "name": "Backup Test Legacy Desktop",
+                        "service_type": "desktop",
+                        "config": {"desktop_config": {"display_num": 98}}
+                    },
+                    {
+                        "name": "Backup Test Legacy Kiosk",
+                        "service_type": "kiosk_browser",
+                        "config": {"kiosk_config": {"url": "https://legacy.lan"}}
+                    }
+                ]
+            }
+        }
+        res = self.client.post("/api/backup/import", json=legacy_payload)
+        self.assertEqual(res.status_code, 200)
+        res_data = res.json()
+        self.assertEqual(res_data["imported"]["virtual_desktops"], 1)
+        self.assertEqual(res_data["imported"]["web_kiosks"], 1)
+
+        d = self.db.query(MediaProcess).filter_by(name="Backup Test Legacy Desktop").first()
+        self.assertIsNotNone(d)
+        self.assertEqual(d.service_type, "desktop")
+
+        k = self.db.query(MediaProcess).filter_by(name="Backup Test Legacy Kiosk").first()
+        self.assertIsNotNone(k)
+        self.assertEqual(k.service_type, "kiosk_browser")
 

@@ -479,6 +479,8 @@ class BackupExportRequest(BaseModel):
     notifications: bool = True
     software_engines: bool = True
     peer_federation: bool = True
+    virtual_desktops: bool = True
+    web_kiosks: bool = True
 
 class BackupImportPayload(BaseModel):
     app: str
@@ -1679,7 +1681,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     # 7. Services (Universal: FFmpeg, MediaMTX Hubs, Icecast)
     if req.services:
         from database.models import Service
-        procs = db.query(Service).all()
+        procs = db.query(Service).filter(Service.service_type.notin_(["desktop", "kiosk_browser"])).all()
         sections["services"] = [
             {
                 "name": p.name,
@@ -1714,6 +1716,61 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             }
             for p in procs
         ]
+
+    # 7b. Virtual Desktops
+    if getattr(req, "virtual_desktops", True):
+        from database.models import Service
+        desktops = db.query(Service).filter(Service.service_type == "desktop").all()
+        sections["virtual_desktops"] = [
+            {
+                "name": d.name,
+                "service_type": "desktop",
+                "config": d.config or {},
+                "desktop_config": (d.config or {}).get("desktop_config", {}),
+                "auto_start": d.auto_start,
+                "startup_order": d.startup_order,
+                "startup_delay": d.startup_delay,
+                "watchdog_enabled": d.watchdog_enabled,
+                "watchdog_retries": d.watchdog_retries,
+                "alias": d.alias,
+                "is_shared_with_peers": getattr(d, "is_shared_with_peers", False),
+                "allow_peer_lease": getattr(d, "allow_peer_lease", False),
+            }
+            for d in desktops
+        ]
+
+    # 7c. Web Kiosks
+    if getattr(req, "web_kiosks", True):
+        from database.models import Service
+        kiosks = db.query(Service).filter(Service.service_type == "kiosk_browser").all()
+        kiosk_list = []
+        for k in kiosks:
+            k_cfg = (k.config or {}).get("kiosk_config", {})
+            desk_id = k_cfg.get("desktop_service_id")
+            desktop_name = None
+            if desk_id:
+                try:
+                    desk_svc = db.get(Service, int(desk_id)) if hasattr(db, "get") else db.query(Service).get(int(desk_id))
+                    if desk_svc:
+                        desktop_name = desk_svc.name
+                except Exception:
+                    pass
+            kiosk_list.append({
+                "name": k.name,
+                "service_type": "kiosk_browser",
+                "config": k.config or {},
+                "kiosk_config": k_cfg,
+                "desktop_name": desktop_name,
+                "auto_start": k.auto_start,
+                "startup_order": k.startup_order,
+                "startup_delay": k.startup_delay,
+                "watchdog_enabled": k.watchdog_enabled,
+                "watchdog_retries": k.watchdog_retries,
+                "alias": k.alias,
+                "is_shared_with_peers": getattr(k, "is_shared_with_peers", False),
+                "allow_peer_lease": getattr(k, "allow_peer_lease", False),
+            })
+        sections["web_kiosks"] = kiosk_list
 
     # 8. Scheduled Tasks
     if req.tasks:
@@ -1822,6 +1879,8 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         "logging_retention": False,
         "watchdog_grace": False,
         "services": 0,
+        "virtual_desktops": 0,
+        "web_kiosks": 0,
         "tasks": 0,
         "storage_volumes": 0,
         "software_engines": 0,
@@ -2029,7 +2088,71 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                 if "icecast_config" in p_data and p_data["icecast_config"]:
                     proc.icecast_config = p_data["icecast_config"]
                 db.add(proc)
-                imported_summary["services"] += 1
+                if p_data.get("service_type") == "desktop":
+                    imported_summary["virtual_desktops"] += 1
+                elif p_data.get("service_type") == "kiosk_browser":
+                    imported_summary["web_kiosks"] += 1
+                else:
+                    imported_summary["services"] += 1
+
+    # Restore Virtual Desktops
+    if "virtual_desktops" in sections and isinstance(sections["virtual_desktops"], list):
+        from database.models import Service
+        for d_data in sections["virtual_desktops"]:
+            existing = db.query(Service).filter(Service.name == d_data.get("name")).first()
+            if not existing:
+                cfg = dict(d_data.get("config") or {})
+                if "desktop_config" in d_data and d_data["desktop_config"]:
+                    cfg["desktop_config"] = d_data["desktop_config"]
+                desk = Service(
+                    name=d_data.get("name"),
+                    service_type="desktop",
+                    status="stopped",
+                    config=cfg,
+                    auto_start=d_data.get("auto_start", False),
+                    startup_order=d_data.get("startup_order", 1),
+                    startup_delay=d_data.get("startup_delay", 0),
+                    watchdog_enabled=d_data.get("watchdog_enabled", False),
+                    watchdog_retries=d_data.get("watchdog_retries", 3),
+                    alias=d_data.get("alias"),
+                    is_shared_with_peers=bool(d_data.get("is_shared_with_peers", False)),
+                    allow_peer_lease=bool(d_data.get("allow_peer_lease", False)),
+                )
+                db.add(desk)
+                imported_summary["virtual_desktops"] += 1
+        db.flush()
+
+    # Restore Web Kiosks
+    if "web_kiosks" in sections and isinstance(sections["web_kiosks"], list):
+        from database.models import Service
+        for k_data in sections["web_kiosks"]:
+            existing = db.query(Service).filter(Service.name == k_data.get("name")).first()
+            if not existing:
+                cfg = dict(k_data.get("config") or {})
+                k_cfg = dict(k_data.get("kiosk_config") or cfg.get("kiosk_config") or {})
+                desktop_name = k_data.get("desktop_name")
+                if desktop_name:
+                    desk_svc = db.query(Service).filter(Service.name == desktop_name, Service.service_type == "desktop").first()
+                    if desk_svc:
+                        k_cfg["desktop_service_id"] = desk_svc.id
+                cfg["kiosk_config"] = k_cfg
+
+                kiosk = Service(
+                    name=k_data.get("name"),
+                    service_type="kiosk_browser",
+                    status="stopped",
+                    config=cfg,
+                    auto_start=k_data.get("auto_start", False),
+                    startup_order=k_data.get("startup_order", 1),
+                    startup_delay=k_data.get("startup_delay", 0),
+                    watchdog_enabled=k_data.get("watchdog_enabled", False),
+                    watchdog_retries=k_data.get("watchdog_retries", 3),
+                    alias=k_data.get("alias"),
+                    is_shared_with_peers=bool(k_data.get("is_shared_with_peers", False)),
+                    allow_peer_lease=bool(k_data.get("allow_peer_lease", False)),
+                )
+                db.add(kiosk)
+                imported_summary["web_kiosks"] += 1
 
     # Restore Scheduled Tasks
     if "tasks" in sections and isinstance(sections["tasks"], list):

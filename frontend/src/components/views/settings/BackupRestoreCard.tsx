@@ -16,6 +16,8 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
   const [exportLoggingRetention, setExportLoggingRetention] = useState(true);
   const [exportWatchdogGrace, setExportWatchdogGrace] = useState(true);
   const [exportServices, setExportServices] = useState(true);
+  const [exportVirtualDesktops, setExportVirtualDesktops] = useState(true);
+  const [exportWebKiosks, setExportWebKiosks] = useState(true);
   const [exportTasks, setExportTasks] = useState(true);
   const [exportStorageVolumes, setExportStorageVolumes] = useState(true);
   const [exportSoftwareEngines, setExportSoftwareEngines] = useState(true);
@@ -39,6 +41,8 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
     setExportLoggingRetention(val);
     setExportWatchdogGrace(val);
     setExportServices(val);
+    setExportVirtualDesktops(val);
+    setExportWebKiosks(val);
     setExportTasks(val);
     setExportStorageVolumes(val);
     setExportSoftwareEngines(val);
@@ -56,6 +60,8 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
         logging_retention: exportLoggingRetention,
         watchdog_grace: exportWatchdogGrace,
         services: exportServices,
+        virtual_desktops: exportVirtualDesktops,
+        web_kiosks: exportWebKiosks,
         tasks: exportTasks,
         storage_volumes: exportStorageVolumes,
         software_engines: exportSoftwareEngines,
@@ -138,7 +144,9 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
 
       const counts = result.imported || {};
       const fedCounts = counts.peer_federation ? ((counts.peer_federation.inbound_keys || 0) + (counts.peer_federation.remote_nodes || 0)) : 0;
-      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('nav.services', 'Services')}: ${counts.services || 0}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0}${counts.software_engines !== undefined ? `, ${t('settings.tabs.engines', 'Engines')}: ${counts.software_engines}` : ''}${fedCounts > 0 ? `, ${t('settings.tabs.network', 'Peers')}: ${fedCounts}` : ''})`;
+      const deskCount = counts.virtual_desktops || 0;
+      const kioskCount = counts.web_kiosks || 0;
+      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('nav.services', 'Services')}: ${counts.services || 0}${deskCount > 0 ? `, ${t('settings.backup.sectionDesktopsTitle', 'Desktops')}: ${deskCount}` : ''}${kioskCount > 0 ? `, ${t('settings.backup.sectionKiosksTitle', 'Kiosks')}: ${kioskCount}` : ''}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0}${counts.software_engines !== undefined ? `, ${t('settings.tabs.engines', 'Engines')}: ${counts.software_engines}` : ''}${fedCounts > 0 ? `, ${t('settings.tabs.network', 'Peers')}: ${fedCounts}` : ''})`;
       setImportSuccess(summaryMsg);
       setImportFile(null);
       setImportData(null);
@@ -149,7 +157,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
     }
   };
 
-  const anyExportSelected = exportGuiGeneral || exportGuiNetworkSsl || exportLcdDisplay || exportLoggingRetention || exportWatchdogGrace || exportServices || exportTasks || exportStorageVolumes || exportSoftwareEngines || exportNotifications || exportPeerFederation;
+  const anyExportSelected = exportGuiGeneral || exportGuiNetworkSsl || exportLcdDisplay || exportLoggingRetention || exportWatchdogGrace || exportServices || exportVirtualDesktops || exportWebKiosks || exportTasks || exportStorageVolumes || exportSoftwareEngines || exportNotifications || exportPeerFederation;
 
   return (
     <div className="space-y-6">
@@ -299,7 +307,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
             <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <ServerIcon size={12} /> Media Pipeline & Automation
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
                 <input
                   type="checkbox"
@@ -310,6 +318,32 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 <div className="text-xs min-w-0">
                   <span className="font-bold text-[var(--text-primary)] block truncate">{t('nav.services', 'Media Services')}</span>
                   <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionServicesDesc', 'Broadcast pipelines, MediaMTX Hubs, Icecast Servers & codecs')}</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportVirtualDesktops}
+                  onChange={(e) => setExportVirtualDesktops(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">{t('settings.backup.sectionDesktopsTitle', 'Virtual Desktops')}</span>
+                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionDesktopsDesc', 'X11 display servers, VNC & audio sinks')}</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
+                  checked={exportWebKiosks}
+                  onChange={(e) => setExportWebKiosks(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">{t('settings.backup.sectionKiosksTitle', 'Web Kiosks')}</span>
+                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionKiosksDesc', 'Chromium/Cog browser instances & target bindings')}</span>
                 </div>
               </label>
 
@@ -418,9 +452,9 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-xs font-mono">
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2 text-xs font-mono">
                 <div className="p-2 rounded bg-white/5 border border-white/5">
-                  <span className="text-[10px] text-text-secondary block">GUI General & Theme</span>
+                  <span className="text-[10px] text-text-secondary block">General & Theme</span>
                   <strong className="text-[var(--text-primary)]">{importData.sections?.gui_general || importData.sections?.system_settings ? '✓ Present' : 'None'}</strong>
                 </div>
                 <div className="p-2 rounded bg-white/5 border border-white/5">
@@ -430,6 +464,14 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">Services</span>
                   <strong className="text-[var(--text-primary)]">{importData.sections?.services?.length || 0} entries</strong>
+                </div>
+                <div className="p-2 rounded bg-white/5 border border-white/5">
+                  <span className="text-[10px] text-text-secondary block">Desktops</span>
+                  <strong className="text-[var(--text-primary)]">{importData.sections?.virtual_desktops?.length || 0} entries</strong>
+                </div>
+                <div className="p-2 rounded bg-white/5 border border-white/5">
+                  <span className="text-[10px] text-text-secondary block">Kiosks</span>
+                  <strong className="text-[var(--text-primary)]">{importData.sections?.web_kiosks?.length || 0} entries</strong>
                 </div>
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">Tasks</span>
