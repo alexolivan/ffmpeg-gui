@@ -487,7 +487,8 @@
         "alert": "Alerta Recursos (CPU/RAM)",
         "recording": "Gravació (Pilot REC)",
         "storage": "Alerta Emmagatzematge",
-        "peers": "Federació de Peers (P2P)"
+        "peers": "Federació de Peers (P2P)",
+        "thermal": "Alerta Tèrmica (THERM)"
       }
     },
     "storage": {

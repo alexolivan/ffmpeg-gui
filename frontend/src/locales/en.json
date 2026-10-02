@@ -487,7 +487,8 @@
         "alert": "Resources Alert (CPU/RAM)",
         "recording": "Recording (REC Pilot)",
         "storage": "Storage Alert",
-        "peers": "Peer Federation (P2P)"
+        "peers": "Peer Federation (P2P)",
+        "thermal": "Thermal Overheat (THERM)"
       }
     },
     "storage": {
