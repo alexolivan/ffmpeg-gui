@@ -308,7 +308,23 @@ class BuildManager:
             await log_callback("ERROR: Build already in progress\n")
             return {"success": False, "error": "Build already in progress"}
 
+        # Check active thermal protection gate
+        try:
+            from core.hardware_health import hardware_health_manager
+            if hardware_health_manager.active_protection_enabled:
+                snap = hardware_health_manager.get_health_snapshot()
+                if snap.get("status") == "critical":
+                    err_msg = (
+                        f"Thermal protection active: build halted due to critical hardware "
+                        f"temperature ({snap.get('max_temp_c')}°C >= {hardware_health_manager.critical_threshold_c}°C)"
+                    )
+                    await log_callback(f"ERROR: {err_msg}\n")
+                    return {"success": False, "error": err_msg}
+        except Exception as e:
+            logger.debug(f"Thermal protection check error: {e}")
+
         # WHIP requirement validation for FFmpeg 8.0+
+
         if software_type == "ffmpeg" and options.get("whip"):
             ver_str = ffmpeg_version.lstrip("n")
             if ver_str and ver_str[0].isdigit():

@@ -44,9 +44,35 @@ class TaskManager:
     async def start_execution(self, execution_id: int):
         cleanup_rogue_processes(execution_id=execution_id)
         
+        # Check active thermal protection gate
+        try:
+            from core.hardware_health import hardware_health_manager
+            if hardware_health_manager.active_protection_enabled:
+                snap = hardware_health_manager.get_health_snapshot()
+                if snap.get("status") == "critical":
+                    err_msg = (
+                        f"Thermal protection active: execution halted due to critical hardware "
+                        f"temperature ({snap.get('max_temp_c')}°C >= {hardware_health_manager.critical_threshold_c}°C)"
+                    )
+                    with self.db_session_factory() as session:
+                        ex = session.query(TaskExecution).get(execution_id)
+                        if ex:
+                            ex.status = 'error'
+                            ex.error_message = err_msg
+                            ex.stopped_at = datetime.utcnow()
+                            session.commit()
+                            t_name = getattr(ex.task, 'name', f"Task #{execution_id}") if ex.task else f"Task #{execution_id}"
+                            self.notify_task_failure(execution_id, t_name, error_msg=err_msg)
+                    raise RuntimeError(err_msg)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.debug(f"Thermal protection check error: {e}")
+
         # 1. Fetch task and calculate limits in a quick database transaction
         with self.db_session_factory() as session:
             execution = session.query(TaskExecution).get(execution_id)
+
             if not execution:
                 return
             task = execution.task

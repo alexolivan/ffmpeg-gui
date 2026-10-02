@@ -231,6 +231,15 @@ class LCDManager:
                 ram = psutil.virtual_memory().percent
                 self._cached_led_states["cpu_high"] = cpu > 90
                 self._cached_led_states["ram_high"] = ram > 90
+
+                # 4. Check hardware thermal health
+                try:
+                    from core.hardware_health import hardware_health_manager
+                    hw_snap = hardware_health_manager.get_health_snapshot()
+                    self._cached_led_states["thermal_status"] = hw_snap.get("status", "normal")
+                except Exception:
+                    self._cached_led_states["thermal_status"] = "normal"
+
                 
             except Exception as e:
                 logger.error(f"Error in db poll loop: {e}")
@@ -356,8 +365,17 @@ class LCDManager:
                             color = "green"
                         else:
                             color = "off"
+                    elif profile in ("thermal", "hardware", "therm"):
+                        t_st = self._cached_led_states.get("thermal_status", "normal")
+                        if t_st == "critical":
+                            color = "red"
+                        elif t_st == "warning":
+                            color = "yellow"
+                        else:
+                            color = "green"
                     
                     self.set_led_color(idx, color)
+
             except Exception as e:
                 logger.error(f"Error in led control loop: {e}")
             await asyncio.sleep(0.1)
@@ -431,7 +449,10 @@ class LCDManager:
             return "STO "
         elif profile in ("peers", "p2p"):
             return "P2P "
+        elif profile in ("thermal", "hardware", "therm"):
+            return "THRM"
         return "    "
+
 
     def refresh_display(self):
         try:

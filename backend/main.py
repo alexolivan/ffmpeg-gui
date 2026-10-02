@@ -465,6 +465,7 @@ class NotificationSettings(BaseModel):
     notify_task_failures: bool = True
     notify_ssl_alerts: bool = True
     notify_storage_alerts: bool = True
+    notify_thermal_alerts: bool = True
 
 class BackupExportRequest(BaseModel):
     gui_general: bool = True
@@ -499,6 +500,8 @@ class NotificationSettingsUpdate(BaseModel):
     notify_task_failures: Optional[bool] = None
     notify_ssl_alerts: Optional[bool] = None
     notify_storage_alerts: Optional[bool] = None
+    notify_thermal_alerts: Optional[bool] = None
+
 
 class WatchdogSettings(BaseModel):
     startup_grace_delay: int = 10
@@ -768,6 +771,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
         "notify_task_failures": True,
         "notify_ssl_alerts": True,
         "notify_storage_alerts": True,
+        "notify_thermal_alerts": True,
     }
 
     # Default watchdog values
@@ -829,6 +833,9 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 except ValueError: pass
                 try: notifications_data["notify_storage_alerts"] = notif_cfg.getboolean("notify_storage_alerts", fallback=notifications_data["notify_storage_alerts"])
                 except ValueError: pass
+                try: notifications_data["notify_thermal_alerts"] = notif_cfg.getboolean("notify_thermal_alerts", fallback=notifications_data["notify_thermal_alerts"])
+                except ValueError: pass
+
             if "software_engines" in config:
                 software_manager.load_config(dict(config["software_engines"]))
             if "server" in config and "port" in config["server"]:
@@ -3383,6 +3390,11 @@ async def telemetry_broadcast_loop():
 
             from core.hardware_health import hardware_health_manager
             hardware_health_data = hardware_health_manager.get_health_snapshot()
+            try:
+                notification_manager.notify_thermal_alerts(hardware_health_data)
+            except Exception as e:
+                logger.error(f"Error evaluating thermal notification alerts: {e}")
+
 
             await manager.broadcast({
                 "type": "telemetry",
@@ -4420,6 +4432,15 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
         raise HTTPException(status_code=404, detail="Build profile not found")
     if build_manager.is_building:
         raise HTTPException(status_code=409, detail="Another build is already in progress")
+
+    if hardware_health_manager.active_protection_enabled:
+        snap = hardware_health_manager.get_health_snapshot()
+        if snap.get("status") == "critical":
+            raise HTTPException(
+                status_code=503,
+                detail=f"Thermal protection active: build halted due to critical hardware temperature ({snap.get('max_temp_c')}°C >= {hardware_health_manager.critical_threshold_c}°C)"
+            )
+
 
     # Mark as building
     build.status = "building"
