@@ -31,30 +31,40 @@ class TestSSLSettingsAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["auto_reload_ssl_services"], True)
 
+    def tearDown(self):
+        from database.db import SessionLocal
+        from database.models import SystemSettings
+        with SessionLocal() as db:
+            s = db.query(SystemSettings).first()
+            if s and s.gui_password:
+                s.gui_password = None
+                db.commit()
+
     def test_password_preservation_when_not_provided(self):
         # Set password
         self.client.post("/api/settings", json={"gui_password": "supersecretpassword"})
+        auth_headers = {"Authorization": "Bearer supersecretpassword"}
         
         # Verify password is set
-        res = self.client.get("/api/settings")
+        res = self.client.get("/api/settings", headers=auth_headers)
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["gui_password"], "supersecretpassword")
+        self.assertTrue(res.json()["has_gui_password"])
 
         # Update another setting without providing gui_password
-        update_res = self.client.post("/api/settings", json={"node_name": "Renamed Node"})
+        update_res = self.client.post("/api/settings", json={"node_name": "Renamed Node"}, headers=auth_headers)
         self.assertEqual(update_res.status_code, 200)
 
         # Verify password was NOT wiped
-        check_res = self.client.get("/api/settings")
+        check_res = self.client.get("/api/settings", headers=auth_headers)
         self.assertEqual(check_res.status_code, 200)
-        self.assertEqual(check_res.json()["gui_password"], "supersecretpassword")
+        self.assertTrue(check_res.json()["has_gui_password"])
         self.assertEqual(check_res.json()["node_name"], "Renamed Node")
 
         # Clear password with empty string
-        clear_res = self.client.post("/api/settings", json={"gui_password": ""})
+        clear_res = self.client.post("/api/settings", json={"gui_password": ""}, headers=auth_headers)
         self.assertEqual(clear_res.status_code, 200)
         check_clear = self.client.get("/api/settings")
-        self.assertIsNone(check_clear.json()["gui_password"])
+        self.assertFalse(check_clear.json().get("has_gui_password", False))
 
     def test_get_ssl_status(self):
         response = self.client.get("/api/settings/ssl/status")

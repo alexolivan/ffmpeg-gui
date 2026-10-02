@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import smtplib
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Dict, Any, List, Optional, Tuple
@@ -21,6 +22,8 @@ class NotificationManager:
         self.logger = logging.getLogger("NotificationManager")
         self.config = self._default_config()
         self._failed_services = set()
+        self._last_thermal_status = "normal"
+        self._last_thermal_alert_time = 0.0
         self._queue = asyncio.Queue()
         self._worker_task = None
         self._running = False
@@ -41,7 +44,9 @@ class NotificationManager:
             "notify_task_failures": True,
             "notify_ssl_alerts": True,
             "notify_storage_alerts": True,
+            "notify_thermal_alerts": True,
         }
+
 
     def _normalize_config(self, config_input: Any) -> Dict[str, Any]:
         """Normalizes raw configuration dictionary or object into internal config format."""
@@ -80,7 +85,7 @@ class NotificationManager:
                 if key == "smtp_port":
                     try: val = int(val)
                     except (ValueError, TypeError): pass
-                elif key in ("enabled", "use_tls", "use_ssl", "notify_service_failures", "notify_build_results", "notify_task_failures", "notify_ssl_alerts", "notify_storage_alerts"):
+                elif key in ("enabled", "use_tls", "use_ssl", "notify_service_failures", "notify_build_results", "notify_task_failures", "notify_ssl_alerts", "notify_storage_alerts", "notify_thermal_alerts"):
                     if isinstance(val, str):
                         val = val.lower() in ("true", "1", "yes")
                     else:
@@ -132,6 +137,68 @@ class NotificationManager:
             else:
                 self._failed_services.add(pid_key)
                 return True
+
+    def notify_thermal_alerts(self, snapshot: Dict[str, Any]) -> bool:
+        """
+        Evaluates snapshot status and dispatches debounced email notification on transitions:
+        - normal -> warning or critical
+        - warning -> critical
+        - (warning or critical) -> normal (Recovery)
+        - Periodic repeat if still warning/critical after 1800s
+        """
+        if not self.is_enabled() or not self.config.get("notify_thermal_alerts", True):
+            return False
+
+        status = snapshot.get("status", "normal")
+        max_temp = snapshot.get("max_temp_c")
+        alerts = snapshot.get("alerts", [])
+        alert_msgs = "\n".join(f"- {a.get('message', '')}" for a in alerts) if alerts else "No detailed messages."
+
+        now = time.time()
+        should_send = False
+        subject = ""
+        body = ""
+
+        if status == "normal":
+            if self._last_thermal_status in ("warning", "critical"):
+                # Recovery notification
+                should_send = True
+                subject = f"[FFmpeg-GUI Recovery] Hardware Health Returned to Normal ({max_temp}°C)"
+                body = (
+                    f"Hardware temperature and thermal sensors have returned to normal operating levels.\n\n"
+                    f"Current peak temperature: {max_temp}°C\n"
+                    f"System status: Normal\n"
+                )
+            self._last_thermal_status = "normal"
+        elif status == "critical":
+            if self._last_thermal_status != "critical" or (now - self._last_thermal_alert_time > 1800):
+                should_send = True
+                subject = f"[FFmpeg-GUI CRITICAL] Hardware Thermal Alert ({max_temp}°C)"
+                body = (
+                    f"CRITICAL THERMAL ALERT DETECTED on host system!\n\n"
+                    f"Peak temperature: {max_temp}°C\n"
+                    f"Details:\n{alert_msgs}\n\n"
+                    f"Please inspect system cooling fans and workload immediately."
+                )
+                self._last_thermal_status = "critical"
+                self._last_thermal_alert_time = now
+        elif status == "warning":
+            if self._last_thermal_status == "normal" or (now - self._last_thermal_alert_time > 1800):
+                should_send = True
+                subject = f"[FFmpeg-GUI WARNING] Elevated Hardware Temperature ({max_temp}°C)"
+                body = (
+                    f"Elevated hardware temperature detected.\n\n"
+                    f"Peak temperature: {max_temp}°C\n"
+                    f"Details:\n{alert_msgs}\n"
+                )
+                self._last_thermal_status = "warning"
+                self._last_thermal_alert_time = now
+
+        if should_send:
+            self.enqueue_notification({"subject": subject, "body": body})
+            return True
+        return False
+
 
     def _build_email_message(
         self, sender: str, recipients: List[str], subject: str, body: str, html_body: Optional[str] = None

@@ -18,8 +18,8 @@ This guide details the installation, dependency setup, and upgrade workflow for 
   - Intel graphics processors with QSV / VAAPI media drivers (e.g., `intel-media-driver` for low-overhead hardware transcoding) and `intel-gpu-tools` for real-time engine and VRAM telemetry.
   - Blackmagic DeckLink PCIe cards (requires `desktopvideo` Linux drivers and DeckLink SDK uploaded in the Forge).
   - Magewell capture devices (HDMI/SDI capture routed via V4L2).
-  - AudioScience & ALSA professional soundcards (ALSA audio matrix, mixer topology, and hardware faders; requires `alsa-utils`).
-  - CrystalFontz CFA635 USB LCD Display.
+  - AudioScience & ALSA professional soundcards (ALSA audio matrix, mixer topology, and hardware faders; requires `alsa-utils`, proprietary `hpklinux` driver, and optional `hpicontrol.py` Python bindings for live DSP core load and temperature telemetry).
+  - CrystalFontz CFA635 USB LCD Display (hardware status LEDs and real-time telemetry LCD).
 
 ---
 
@@ -126,18 +126,42 @@ To run the update:
 
 # Non-interactive mode (assumes yes to prompts)
 ./update.sh -y
+
+# Update dependencies only (without rebuilding frontend or restarting service)
+./update.sh --dependencies-only
 ```
 
 ### What `update.sh` does:
-1. Updates the Python virtual environment (`venv`) and installs requirements.
-2. Re-generates systemd configuration capabilities if missing.
-3. Builds production-grade minified assets using Vite.
-4. Reloads the systemd daemon.
-5. Gracefully restarts the `ffmpeg-gui` orchestrator process.
+1. Verifies network connectivity with air-gap ping fallbacks to prevent update freezes.
+2. Updates the Python virtual environment (`venv`) and installs requirements.
+3. Checks package-lock hash caches to avoid unnecessary `npm install` runs.
+4. Builds production-grade minified assets using Vite.
+5. Re-generates systemd configuration capabilities if missing.
+6. Gracefully restarts the `ffmpeg-gui` orchestrator process.
 
 ---
 
-## 5. Uninstallation
+## 6. Emergency Rescue & Administration CLI (`ffmpeg-gui-admin`)
+
+If you are locked out of the web interface (due to forgotten passwords, brute-force IP lockout, or misconfigured listen ports), the administration CLI allows out-of-band recovery:
+
+```bash
+# View active service state, ports, and listening interfaces
+./bin/ffmpeg-gui-admin status
+
+# Clear in-memory IP bans (brute-force lockouts)
+./bin/ffmpeg-gui-admin reset-lockout
+
+# Reset administrator password
+./bin/ffmpeg-gui-admin reset-admin
+
+# Reset all security guards and password in one step
+./bin/ffmpeg-gui-admin reset-all
+```
+
+---
+
+## 7. Uninstallation
 
 To remove all configuration files, database data, systemd services, and dependencies:
 

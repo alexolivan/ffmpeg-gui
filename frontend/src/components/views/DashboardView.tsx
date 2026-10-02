@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BuildProfile } from '../../components/BuildProfileCard';
-import { isActiveService } from './ServicesView';
 import { PeerStatusCard } from '../cards/PeerStatusCard';
+import { ServicesDashboardCard } from '../cards/ServicesDashboardCard';
+import { TasksDashboardCard } from '../cards/TasksDashboardCard';
 
 interface DashboardViewProps {
   telemetry: any[];
@@ -13,42 +14,6 @@ interface DashboardViewProps {
   settings: any;
 }
 
-function formatRelativeNextRun(isoString: string | null, t: any): string {
-  if (!isoString) return '';
-  const target = new Date(isoString);
-  const now = new Date();
-  const diffMs = target.getTime() - now.getTime();
-  
-  if (diffMs <= 0) {
-    return t('dashboard.nextRunImminent', 'Imminent');
-  }
-  
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  if (diffMins < 60) {
-    return t('dashboard.nextRunInMins', 'In {{mins}} min', { mins: diffMins || 1 });
-  }
-  
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) {
-    const remainingMins = diffMins % 60;
-    if (remainingMins === 0) {
-      return t('dashboard.nextRunInHours', 'In {{hours}}h', { hours: diffHours });
-    }
-    return t('dashboard.nextRunInHoursMins', 'In {{hours}}h {{mins}}m', { hours: diffHours, mins: remainingMins });
-  }
-  
-  const hours = target.getHours().toString().padStart(2, '0');
-  const minutes = target.getMinutes().toString().padStart(2, '0');
-  
-  const isSameDay = target.getDate() === now.getDate() && target.getMonth() === now.getMonth() && target.getFullYear() === now.getFullYear();
-  if (isSameDay) {
-    return t('dashboard.nextRunTodayAt', 'Today at {{time}}', { time: `${hours}:${minutes}` });
-  }
-  
-  const month = (target.getMonth() + 1).toString().padStart(2, '0');
-  const day = target.getDate().toString().padStart(2, '0');
-  return `${day}/${month} ${hours}:${minutes}`;
-}
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   telemetry,
@@ -62,6 +27,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [locatorActive, setLocatorActive] = useState(false);
   const [sslStatus, setSslStatus] = useState<any>(null);
   const [initialPeers, setInitialPeers] = useState<any[]>([]);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [manualUpdateInfo, setManualUpdateInfo] = useState<any>(null);
+  const [showCoresDrawer, setShowCoresDrawer] = useState(false);
+  const [hardwareHealth, setHardwareHealth] = useState<any>(null);
+
+  const handleCheckUpdates = async () => {
+    if (checkingUpdates) return;
+    setCheckingUpdates(true);
+    try {
+      const res = await fetch('/api/system/check-updates', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setManualUpdateInfo(data);
+      }
+    } catch (err) {
+      console.error("Error checking updates:", err);
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
 
   const fetchPeers = () => {
     fetch('/api/peers/remote-nodes')
@@ -89,11 +74,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       .then(data => setSslStatus(data))
       .catch(err => console.error(err));
     fetchPeers();
+    fetch('/api/hardware/health')
+      .then(res => res.json())
+      .then(data => setHardwareHealth(data))
+      .catch(err => console.error("Error fetching hardware health:", err));
   }, []);
 
   const peers = (systemTelemetry?.peers && systemTelemetry.peers.length > 0)
     ? systemTelemetry.peers
     : initialPeers;
+
+  const activeHardwareHealth = systemTelemetry?.hardware_health || hardwareHealth;
 
   useEffect(() => {
     let interval: any;
@@ -125,6 +116,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       console.error(err);
     }
   };
+
+  const updateAvailable = manualUpdateInfo ? manualUpdateInfo.update_available : systemTelemetry?.update_available;
+  const latestRelease = manualUpdateInfo ? manualUpdateInfo.latest_release : systemTelemetry?.latest_release;
+  const releaseUrl = manualUpdateInfo ? manualUpdateInfo.release_url : (systemTelemetry?.release_url || 'https://github.com/alexolivan/ffmpeg-gui/releases');
+  const isRelease = systemTelemetry?.is_release ?? true;
+  const gitBranch = systemTelemetry?.git_branch || 'main';
+  const gitCommit = systemTelemetry?.git_commit;
 
   // Partition hardware capabilities into active and unavailable
   const capabilitiesList = Object.entries(systemTelemetry.capabilities || {})
@@ -179,47 +177,43 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </header>
+ 
+      {/* Critical Thermal Alert Banner */}
+      {activeHardwareHealth && (activeHardwareHealth.status === 'critical' || activeHardwareHealth.alerts?.some((a: any) => a.level === 'critical')) && (
+        <div className="mb-5 p-4 rounded-xl bg-red-500/10 border-2 border-red-500/40 text-red-400 flex items-start gap-3 shadow-lg shadow-red-500/10 animate-pulse">
+          <span className="text-2xl select-none">⚠️</span>
+          <div className="flex-1">
+            <h4 className="font-bold text-sm tracking-wide text-red-300 uppercase">
+              {t('dashboard.criticalThermalAlert', { temp: activeHardwareHealth.max_temp_c ?? 'N/A' })}
+            </h4>
+            {settings?.thermal_active_protection && (
+              <p className="text-xs text-red-300/80 mt-1 font-medium">
+                {t('dashboard.activeProtectionEngaged')}
+              </p>
+            )}
+            {activeHardwareHealth.alerts && activeHardwareHealth.alerts.length > 0 && (
+              <ul className="mt-2 space-y-0.5 text-xs font-mono text-red-200/90 list-disc list-inside">
+                {activeHardwareHealth.alerts.map((alert: any, idx: number) => (
+                  <li key={idx}>{alert.message}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
-        {/* Column 1: Process Management & load */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
+        {/* Column 1: System Status & Host Load */}
         <div className="space-y-4">
           <div className="glass-card p-4 border-brand-lime/10 space-y-3">
-            <h3 className="text-base font-black mb-2 text-[var(--text-primary)] uppercase tracking-wider">{t('dashboard.systemStats')}</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.activeServices')}</div>
-                <div className="font-black text-lg text-brand-lime">
-                  {telemetry.filter(p => (p.type === 'service' || !p.type) && isActiveService(p)).length}
-                </div>
-              </div>
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.inactiveServices')}</div>
-                <div className="font-black text-lg text-text-secondary">
-                  {telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p)).length}
-                </div>
-              </div>
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.activeTasks')}</div>
-                <div className="font-black text-lg text-brand-blue">
-                  {taskStats.active}
-                </div>
-              </div>
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.scheduledTasks')}</div>
-                <div className="font-black text-lg text-brand-orange">
-                  {taskStats.scheduled}
-                </div>
-              </div>
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center col-span-2 sm:col-span-1">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.inactiveTasks')}</div>
-                <div className="font-black text-lg text-text-secondary">
-                  {taskStats.inactive}
-                </div>
-              </div>
-            </div>
+            <h3 className="text-sm font-black mb-2 text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-2">
+              <span>🖥️</span>
+              <span>{t('dashboard.systemStatus', 'SYSTEM STATUS')}</span>
+            </h3>
 
             <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-1.5">{t('dashboard.nodeResourcesLoad')}</h4>
             <div className="space-y-2">
+
               <div>
                 <div className="flex justify-between text-xs mb-0.5">
                   <span className="text-text-secondary">{t('dashboard.cpuLoad')}</span>
@@ -303,6 +297,110 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
 
+            {/* Thermal & Industrial Health */}
+            <div className="pt-2.5 border-t border-[var(--glass-border)]">
+              <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-2 flex items-center justify-between">
+                <span>{t('dashboard.thermalAndHardwareHealth')}</span>
+                {activeHardwareHealth?.status && (
+                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider ${
+                    activeHardwareHealth.status === 'critical'
+                      ? 'bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse'
+                      : activeHardwareHealth.status === 'warning'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-brand-lime/20 text-brand-lime border border-brand-lime/30'
+                  }`}>
+                    {activeHardwareHealth.status}
+                  </span>
+                )}
+              </h4>
+
+              <div className="space-y-2">
+                {/* CPU Package Temp & Throttling Badges */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {activeHardwareHealth?.cpu?.package_temp !== null && activeHardwareHealth?.cpu?.package_temp !== undefined ? (
+                    <span className={`text-xs font-mono font-bold px-2 py-1 rounded-lg border flex items-center gap-1.5 ${
+                      activeHardwareHealth.cpu.package_temp >= (settings?.thermal_critical_threshold ?? 85)
+                        ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse'
+                        : activeHardwareHealth.cpu.package_temp >= (settings?.thermal_warning_threshold ?? 75)
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : 'bg-brand-lime/10 text-brand-lime border-brand-lime/30'
+                    }`}>
+                      <span>🌡️</span>
+                      <span>{t('dashboard.cpuPackageTemp')}:</span>
+                      <span>{activeHardwareHealth.cpu.package_temp}°C</span>
+                    </span>
+                  ) : null}
+
+                  {activeHardwareHealth?.cpu?.throttling && (
+                    <span className={`text-[10px] font-mono px-2 py-1 rounded-lg border flex items-center gap-1 ${
+                      activeHardwareHealth.cpu.throttling.active
+                        ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse font-bold'
+                        : activeHardwareHealth.cpu.throttling.throttling_detected
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 font-medium'
+                        : 'bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]'
+                    }`}>
+                      {activeHardwareHealth.cpu.throttling.active
+                        ? t('dashboard.throttlingActive', { count: activeHardwareHealth.cpu.throttling.recent_events })
+                        : activeHardwareHealth.cpu.throttling.throttling_detected
+                        ? t('dashboard.throttlingPast', { count: (activeHardwareHealth.cpu.throttling.total_package_events || 0) + (activeHardwareHealth.cpu.throttling.total_core_events || 0) })
+                        : t('dashboard.throttlingNone')}
+                    </span>
+                  )}
+                </div>
+
+                {/* Individual Cores Drawer */}
+                {activeHardwareHealth?.cpu?.cores && activeHardwareHealth.cpu.cores.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCoresDrawer(!showCoresDrawer)}
+                      className="text-[10px] text-text-secondary hover:text-[var(--text-primary)] transition-colors flex items-center gap-1 font-mono py-0.5"
+                    >
+                      <span className="text-[8px]">{showCoresDrawer ? '▲' : '▼'}</span>
+                      <span>{t('dashboard.cpuCores')} ({activeHardwareHealth.cpu.cores.length})</span>
+                    </button>
+                    {showCoresDrawer && (
+                      <div className="grid grid-cols-2 gap-1 p-2 bg-[var(--input-bg)]/60 border border-[var(--glass-border)] rounded-lg text-[10px] font-mono mt-1 max-h-36 overflow-y-auto">
+                        {activeHardwareHealth.cpu.cores.map((core: any, cIdx: number) => {
+                          const cTemp = core.temp;
+                          const isCrit = cTemp >= (settings?.thermal_critical_threshold ?? 85);
+                          const isWarn = cTemp >= (settings?.thermal_warning_threshold ?? 75);
+                          return (
+                            <div key={cIdx} className="flex justify-between items-center text-text-secondary px-1">
+                              <span className="truncate max-w-[70px]" title={core.label}>{core.label}:</span>
+                              <span className={isCrit ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400 font-bold' : 'text-brand-lime font-bold'}>
+                                {cTemp}°C
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Chassis Fans */}
+                {activeHardwareHealth?.fans && activeHardwareHealth.fans.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {activeHardwareHealth.fans.map((fan: any, fIdx: number) => (
+                      <span
+                        key={fIdx}
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                          fan.rpm === 0
+                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                            : 'bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]'
+                        }`}
+                      >
+                        <span className="text-xs">🌀</span>
+                        <span className="font-semibold text-[var(--text-primary)]">{fan.name}:</span>
+                        <span>{fan.rpm > 0 ? t('dashboard.fanRpm', { rpm: fan.rpm }) : t('dashboard.fanStopped')}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {systemTelemetry.storages && systemTelemetry.storages.length > 0 && (
               <div className="mt-3 pt-3 border-t border-[var(--glass-border)]">
                 <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-2">
@@ -348,9 +446,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Column 2: Hardware Capabilities Detection */}
+        {/* Column 2: Workloads (Services & Tasks Stacked) */}
+        <div className="space-y-4">
+          <ServicesDashboardCard telemetry={telemetry} />
+          <TasksDashboardCard taskStats={taskStats} upcomingTasks={upcomingTasks} />
+        </div>
+
+        {/* Column 3: Hardware Capabilities Detection */}
         <div className="glass-card p-4 border-brand-orange/10 space-y-2.5">
           <h3 className="text-sm font-black mb-1.5 text-[var(--text-primary)] uppercase tracking-wider">
+
             {t('dashboard.hardwarePeripherals')}
           </h3>
           <p className="text-xs text-text-secondary mb-3 leading-normal">
@@ -369,6 +474,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <p className="text-[10px] text-text-secondary mt-1">
                   Crystalfontz CFA-635 active on {systemTelemetry.lcd.port || 'detected port'}
                 </p>
+              </div>
+            )}
+
+            {/* AudioScience Card Telemetry */}
+            {activeHardwareHealth?.av_hardware?.audioscience && activeHardwareHealth.av_hardware.audioscience.length > 0 && (
+              <div className="flex flex-col gap-1.5 p-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs uppercase text-[var(--text-primary)] font-mono">AUDIOSCIENCE</span>
+                  <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-brand-lime/25 text-brand-lime">
+                    {t('dashboard.available')}
+                  </span>
+                </div>
+                <div className="space-y-1.5 mt-0.5">
+                  {activeHardwareHealth.av_hardware.audioscience.map((asi: any) => (
+                    <div key={asi.adapter_index} className="space-y-1 p-1.5 bg-black/10 rounded-lg border border-[var(--glass-border)]">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-[var(--text-primary)] font-mono">
+                          Adapter #{asi.adapter_index} — {asi.model || 'ASI Card'}
+                        </span>
+                        {asi.serial && (
+                          <span className="text-[9px] font-mono text-text-secondary opacity-75">
+                            s/n: {asi.serial}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        {asi.dsp_cpu_percent !== null && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 font-bold">
+                            {t('dashboard.dspLoad')}: {asi.dsp_cpu_percent}%
+                          </span>
+                        )}
+                        {asi.dsp_temp_c !== null ? (
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${
+                            asi.dsp_temp_c >= (settings?.thermal_critical_threshold ?? 85)
+                              ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse'
+                              : asi.dsp_temp_c >= (settings?.thermal_warning_threshold ?? 75)
+                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              : 'bg-brand-lime/10 text-brand-lime border-brand-lime/20'
+                          }`}>
+                            🌡️ {t('dashboard.dspTemp')}: {asi.dsp_temp_c}°C
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[var(--input-bg)] text-text-secondary opacity-70 border border-[var(--glass-border)]">
+                            {t('dashboard.noTempSensor')}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -420,21 +575,59 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
                   </div>
                 )}
-                {key === 'decklink' && value.available && value.cards && value.cards.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
-                    <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                {key === 'decklink' && value.available && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1.5 text-[9px] text-text-secondary font-mono leading-normal">
+                    {value.cards && value.cards.length > 0 && (
+                      <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                    )}
+                    {activeHardwareHealth?.av_hardware?.decklink && activeHardwareHealth.av_hardware.decklink.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {activeHardwareHealth.av_hardware.decklink.map((dl: any, idx: number) => (
+                          <div key={idx} className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                            <span className="text-[var(--text-primary)] font-bold">{dl.name}:</span>
+                            <span className="text-brand-blue font-bold">
+                              {t('dashboard.pcieBus')}: {dl.pcie_link || 'OK'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
-                {key === 'magewell' && value.cards && value.cards.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
-                    <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                {key === 'magewell' && (
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1.5 text-[9px] text-text-secondary font-mono leading-normal">
+                    {value.cards && value.cards.length > 0 && (
+                      <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                    )}
+                    {activeHardwareHealth?.av_hardware?.magewell && activeHardwareHealth.av_hardware.magewell.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {activeHardwareHealth.av_hardware.magewell.map((mw: any, idx: number) => (
+                          <div key={idx} className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                            <span className="text-[var(--text-primary)] font-bold">{mw.name || `CH${mw.channel_index}`}:</span>
+                            {mw.fpga_temp_c !== null ? (
+                              <span className={`font-bold ${
+                                mw.fpga_temp_c >= (settings?.thermal_critical_threshold ?? 85)
+                                  ? 'text-red-400'
+                                  : mw.fpga_temp_c >= (settings?.thermal_warning_threshold ?? 75)
+                                  ? 'text-amber-400'
+                                  : 'text-brand-lime'
+                              }`}>
+                                🌡️ {t('dashboard.fpgaTemp')}: {mw.fpga_temp_c}°C
+                              </span>
+                            ) : (
+                              <span className="opacity-60">{t('dashboard.noTempSensor')}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             ))}
 
             {/* Empty state if no active hardware acceleration is detected */}
-            {activeCapabilities.length === 0 && (!systemTelemetry.lcd || !systemTelemetry.lcd.connected) && (
+            {activeCapabilities.length === 0 && (!systemTelemetry.lcd || !systemTelemetry.lcd.connected) && (!activeHardwareHealth?.av_hardware?.audioscience || activeHardwareHealth.av_hardware.audioscience.length === 0) && (
               <div className="p-3 bg-[var(--input-bg)]/40 border border-[var(--glass-border)] rounded-xl text-center">
                 <p className="text-xs text-text-secondary">
                   {t('dashboard.noActiveHardware', 'No specialized hardware acceleration or capture devices detected.')}
@@ -466,7 +659,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Column 3: System Info & Scheduler status */}
+        {/* Column 4: System Info & Federation */}
         <div className="space-y-4">
           {/* System Info */}
           <div className="glass-card p-4 border-[var(--glass-border)]">
@@ -493,6 +686,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </>
               )}
               <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
+                <span className="text-[11px] text-text-secondary">{t('dashboard.environment', 'Environment')}</span>
+                <div className="flex items-center gap-1.5">
+                  {isRelease ? (
+                    <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                      🟢 {t('dashboard.envProduction', 'Production')}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400" title={gitCommit ? `Commit: ${gitCommit}` : undefined}>
+                      🟣 {gitBranch} {gitCommit ? `(${gitCommit})` : ''}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
                 <span className="text-[11px] text-text-secondary">{t('dashboard.activeProfiles')}</span>
                 <span className="text-[11px] font-mono font-bold text-brand-lime text-right">
                   {builds.filter(b => b.status === 'ready').length}
@@ -505,10 +712,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </span>
               </div>
               <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
-                <span className="text-[11px] text-text-secondary">{t('dashboard.backendApiVersion')}</span>
-                <span className="text-[11px] font-mono font-bold text-brand-lime text-right">
-                  v{systemTelemetry.backend_version || '1.0.0'}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-text-secondary">{t('dashboard.backendApiVersion')}</span>
+                  <button
+                    type="button"
+                    onClick={handleCheckUpdates}
+                    disabled={checkingUpdates}
+                    title={checkingUpdates ? t('dashboard.checkingUpdates', 'Checking...') : t('dashboard.checkUpdates', 'Check for updates')}
+                    className="text-[11px] text-text-secondary hover:text-brand-lime transition-colors disabled:opacity-50 p-0.5 cursor-pointer"
+                  >
+                    <span className={`inline-block ${checkingUpdates ? 'animate-spin' : ''}`}>↻</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  {updateAvailable && latestRelease ? (
+                    <a
+                      href={releaseUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={`${t('dashboard.updateAvailable', 'Update available')}: v${latestRelease}`}
+                      className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition-all flex items-center gap-1"
+                    >
+                      <span>▲ v{latestRelease}</span>
+                    </a>
+                  ) : null}
+                  <span className={`text-[11px] font-mono font-bold text-right ${updateAvailable ? 'text-amber-400' : 'text-brand-lime'}`}>
+                    v{systemTelemetry.backend_version || '1.0.0'}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center justify-between py-1.5">
                 <span className="text-[11px] text-text-secondary">{t('dashboard.databaseSchema')}</span>
@@ -523,63 +754,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {peers && peers.length > 0 && (
             <PeerStatusCard peers={peers} onRefreshAll={fetchPeers} />
           )}
-
-          {/* Upcoming Scheduled Tasks */}
-          <div className="glass-card p-3.5 border-purple-500/10 bg-purple-500/2 space-y-2.5">
-            <div className="flex items-center justify-between border-b border-purple-500/10 pb-1.5 mb-2">
-              <h3 className="text-sm font-black uppercase text-[var(--text-primary)] tracking-wider">
-                {t('dashboard.upcomingTasksTitle', 'Upcoming Tasks')}
-              </h3>
-              {upcomingTasks && upcomingTasks.length > 0 && (
-                <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300">
-                  {upcomingTasks.length} {t('dashboard.scheduledCount', 'scheduled')}
-                </span>
-              )}
-            </div>
-
-            {!upcomingTasks || upcomingTasks.length === 0 ? (
-              <div className="p-3 bg-purple-500/5 border border-purple-500/15 rounded-xl text-center space-y-0.5">
-                <p className="text-xs text-text-secondary font-medium">{t('dashboard.noUpcomingTasks', 'No upcoming tasks scheduled in the near future.')}</p>
-                <p className="text-[9px] text-text-secondary">{t('dashboard.noUpcomingTasksSub', 'Active recurring or one-shot tasks will be listed here.')}</p>
-              </div>
-            ) : (
-              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
-                {upcomingTasks.map((task: any) => (
-                  <div key={task.id} className="py-1.5 px-2.5 bg-purple-500/10 border border-purple-500/20 rounded-lg flex items-center justify-between gap-2 hover:border-purple-500/40 transition-all">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider ${
-                          task.is_system ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30'
-                        }`}>
-                          {task.is_system ? t('dashboard.systemTask', 'SYSTEM') : t('dashboard.userTask', 'JOB')}
-                        </span>
-                        <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-[140px]" title={task.alias || task.name}>
-                          {task.alias || task.name}
-                        </span>
-                      </div>
-                      {task.schedule_cron && (
-                        <span className="text-[9px] font-mono text-[var(--text-primary)] opacity-70 block">
-                          cron: {task.schedule_cron}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-xs font-black font-mono text-brand-lime block">
-                        {formatRelativeNextRun(task.next_run, t)}
-                      </span>
-                      {task.next_run && (
-                        <span className="text-[8px] text-text-secondary font-mono block">
-                          {new Date(task.next_run).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </>
   );
 };
+

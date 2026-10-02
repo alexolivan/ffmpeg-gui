@@ -7,6 +7,7 @@ import {
   ShieldIcon, 
   CheckIcon 
 } from '../Icons';
+import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 
 interface MediaMtxConfigFormProps {
   initialConfig?: any;
@@ -47,6 +48,9 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
   const [alias, setAlias] = useState(initialConfig?.alias || '');
   const [buildId, setBuildId] = useState<number | null>(initialConfig?.ffmpeg_build_id || null);
   const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
+
+  // Network Bind Interface
+  const [bindAddress, setBindAddress] = useState<string>(mtxCfg.bind_address || '0.0.0.0');
 
   // Protocol toggles & ports
   const [rtmpEnabled, setRtmpEnabled] = useState(mtxCfg.rtmp_enabled !== false);
@@ -475,6 +479,7 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
       allow_peer_lease: allowPeerLease,
       config: {
         mediamtx_config: {
+          bind_address: bindAddress,
           rtmp_enabled: rtmpEnabled,
           rtmp_port: Number(rtmpPort) || 1935,
           rtsp_enabled: rtspEnabled,
@@ -610,6 +615,15 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             <span>⚡</span>
             <span>{t('services.mediamtx.suggestFreePorts', 'Auto-assign Free Ports')}</span>
           </button>
+        </div>
+
+        <div className="p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg">
+          <NetworkInterfaceSelector
+            value={bindAddress}
+            onChange={setBindAddress}
+            label={t('services.mediamtx.listenInterface', 'Hub Network Listen Interface')}
+            API={API}
+          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">

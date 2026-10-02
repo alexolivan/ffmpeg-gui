@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# FFMPEG-GUI Admin CLI Wrapper
+set -e
+
+# Resolve repository directory
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+PROJ_DIR="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
+
+# Resolve Python interpreter in project venv, fallback to system python3
+if [ -f "$PROJ_DIR/venv/bin/python3" ]; then
+    PYTHON_EXEC="$PROJ_DIR/venv/bin/python3"
+elif command -v python3 >/dev/null 2>&1; then
+    PYTHON_EXEC="$(command -v python3)"
+else
+    echo "Error: Python 3 was not found." >&2
+    exit 1
+fi
+
+exec "$PYTHON_EXEC" "$PROJ_DIR/backend/cli.py" "$@"

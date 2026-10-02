@@ -1,3 +1,4 @@
+import os
 import psutil
 import signal
 import logging
@@ -143,4 +144,106 @@ def prepare_process_file_permissions(process_id: int = None, execution_id: int =
         except Exception as chmod_err:
             if logger:
                 logger.debug(f"Could not chmod 0666 on {path}: {chmod_err}")
+
+
+def read_tail_progress(file_path: str, max_bytes: int = 4096) -> dict:
+    """
+    Reads only the tail (last max_bytes) of an ffmpeg -progress output file in O(1) time,
+    parsing key-value status lines without reading or allocating the entire file in memory.
+    """
+    result = {
+        "frame": None,
+        "fps": None,
+        "bitrate": None,
+        "speed": None,
+        "out_time": None,
+        "out_time_us": None,
+        "dup_frames": None,
+        "drop_frames": None,
+        "progress": None,
+    }
+    if not file_path or not os.path.exists(file_path):
+        return result
+
+    try:
+        size = os.path.getsize(file_path)
+        if size == 0:
+            return result
+        offset = max(0, size - max_bytes)
+        with open(file_path, "rb") as f:
+            if offset > 0:
+                f.seek(offset)
+            raw_data = f.read()
+
+        text = raw_data.decode("utf-8", errors="replace")
+        for line in text.splitlines():
+            line = line.strip()
+            if "=" in line:
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip()
+                if k == "frame":
+                    try:
+                        result["frame"] = int(v)
+                    except ValueError:
+                        pass
+                elif k == "fps":
+                    result["fps"] = v
+                elif k == "bitrate":
+                    result["bitrate"] = v
+                elif k == "speed":
+                    result["speed"] = v
+                elif k == "out_time":
+                    result["out_time"] = v
+                elif k == "out_time_us":
+                    try:
+                        result["out_time_us"] = int(v)
+                    except ValueError:
+                        pass
+                elif k == "dup_frames":
+                    try:
+                        result["dup_frames"] = int(v)
+                    except ValueError:
+                        pass
+                elif k == "drop_frames":
+                    try:
+                        result["drop_frames"] = int(v)
+                    except ValueError:
+                        pass
+                elif k == "progress":
+                    result["progress"] = v
+    except Exception:
+        pass
+
+    return result
+
+
+def truncate_progress_log_if_large(file_path: str, max_size_bytes: int = 2 * 1024 * 1024, keep_bytes: int = 32768):
+    """
+    If a progress log file exceeds max_size_bytes (default 2MB), truncates it keeping only the last keep_bytes
+    to prevent disk space exhaustion in /dev/shm.
+    """
+    try:
+        if not file_path or not os.path.exists(file_path):
+            return
+        size = os.path.getsize(file_path)
+        if size > max_size_bytes:
+            with open(file_path, "rb") as f:
+                f.seek(size - keep_bytes)
+                tail = f.read()
+            with open(file_path, "wb") as f:
+                f.write(tail)
+    except Exception:
+        pass
+
+
+def cleanup_task_progress_files(execution_id: int):
+    """Removes /dev/shm and /tmp progress files for completed task executions."""
+    for p in [f"/dev/shm/ffmpeg_progress_{execution_id}t.log", f"/tmp/ffmpeg_progress_{execution_id}t.log"]:
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
+
 

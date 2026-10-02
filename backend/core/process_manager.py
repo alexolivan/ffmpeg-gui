@@ -1076,23 +1076,37 @@ class ProcessManager:
         config_dict["logLevel"] = mtx_cfg.get("log_level", "info")
         config_dict["logDestinations"] = ["stdout"]
 
+        # Resolve bind address with fail-safe fallback
+        bind_host = (mtx_cfg.get("bind_address") or "").strip()
+        bind_prefix = ""
+        if bind_host and bind_host not in ("0.0.0.0", "::"):
+            try:
+                from core.network_inspector import resolve_bind_address
+            except ImportError:
+                from backend.core.network_inspector import resolve_bind_address
+            effective_bind, fell_back, reason = resolve_bind_address(bind_host, fallback_host="0.0.0.0")
+            if fell_back:
+                self.logger.warning(f"[MediaMTX] Fail-safe fallback: {reason}")
+            elif effective_bind not in ("0.0.0.0", "::"):
+                bind_prefix = f"{effective_bind}"
+
         # Protocols & Ports
         rtsp_enabled = mtx_cfg.get("rtsp_enabled", True)
         config_dict["rtsp"] = rtsp_enabled
         if rtsp_enabled:
-            config_dict["rtspAddress"] = f":{int(mtx_cfg.get('rtsp_port', 8554))}"
-            config_dict["rtpAddress"] = f":{int(mtx_cfg.get('rtp_port', 8000))}"
-            config_dict["rtcpAddress"] = f":{int(mtx_cfg.get('rtcp_port', 8001))}"
+            config_dict["rtspAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('rtsp_port', 8554))}"
+            config_dict["rtpAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('rtp_port', 8000))}"
+            config_dict["rtcpAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('rtcp_port', 8001))}"
 
         rtmp_enabled = mtx_cfg.get("rtmp_enabled", True)
         config_dict["rtmp"] = rtmp_enabled
         if rtmp_enabled:
-            config_dict["rtmpAddress"] = f":{int(mtx_cfg.get('rtmp_port', 1935))}"
+            config_dict["rtmpAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('rtmp_port', 1935))}"
 
         hls_enabled = mtx_cfg.get("hls_enabled", True)
         config_dict["hls"] = hls_enabled
         if hls_enabled:
-            config_dict["hlsAddress"] = f":{int(mtx_cfg.get('hls_port', 8888))}"
+            config_dict["hlsAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('hls_port', 8888))}"
             config_dict["hlsSegmentCount"] = int(mtx_cfg.get("hls_segment_count", 7))
             config_dict["hlsSegmentDuration"] = f"{mtx_cfg.get('hls_segment_duration', 2)}s"
 
@@ -1112,20 +1126,20 @@ class ProcessManager:
         webrtc_enabled = mtx_cfg.get("webrtc_enabled", False)
         config_dict["webrtc"] = webrtc_enabled
         if webrtc_enabled:
-            config_dict["webrtcAddress"] = f":{int(mtx_cfg.get('webrtc_port', 8889))}"
+            config_dict["webrtcAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('webrtc_port', 8889))}"
             webrtc_udp = int(mtx_cfg.get("webrtc_udp_port", 8189))
-            config_dict["webrtcLocalUDPAddress"] = f":{webrtc_udp}"
+            config_dict["webrtcLocalUDPAddress"] = f"{bind_prefix}:{webrtc_udp}"
 
         srt_enabled = mtx_cfg.get("srt_enabled", False)
         config_dict["srt"] = srt_enabled
         if srt_enabled:
-            config_dict["srtAddress"] = f":{int(mtx_cfg.get('srt_port', 8890))}"
+            config_dict["srtAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('srt_port', 8890))}"
 
         # API & Diagnostics
         api_enabled = mtx_cfg.get("api_enabled", True)
         config_dict["api"] = api_enabled
         if api_enabled:
-            config_dict["apiAddress"] = f":{int(mtx_cfg.get('api_port', 9997))}"
+            config_dict["apiAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('api_port', 9997))}"
 
         # Resolve build version if available to adapt YAML schema safely across releases
         build_ver_major = 1
@@ -1135,7 +1149,7 @@ class ProcessManager:
             from database.models import SoftwareBuild
             build = session.query(SoftwareBuild).get(build_id)
             version_str = getattr(build, "version_tag", None) or getattr(build, "name", None) or ""
-            if version_str:
+            if version_str and isinstance(version_str, str):
                 import re
                 clean = re.sub(r'^[^\d]*', '', version_str)
                 parts = clean.split('.')
@@ -1189,11 +1203,11 @@ class ProcessManager:
 
             if mtx_cfg.get("rtmps_enabled", False):
                 config_dict["rtmpEncryption"] = "optional"
-                config_dict["rtmpsAddress"] = f":{int(mtx_cfg.get('rtmps_port', 1936))}"
+                config_dict["rtmpsAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('rtmps_port', 1936))}"
 
             if mtx_cfg.get("rtsps_enabled", False):
                 config_dict["rtspEncryption"] = "optional"
-                config_dict["rtspsAddress"] = f":{int(mtx_cfg.get('rtsps_port', 8322))}"
+                config_dict["rtspsAddress"] = f"{bind_prefix}:{int(mtx_cfg.get('rtsps_port', 8322))}"
 
             config_dict["hlsEncryption"] = True
             config_dict["webrtcEncryption"] = True
@@ -1433,6 +1447,20 @@ class ProcessManager:
         ssl_socket_xml = ""
         security_xml = ""
         bundle_path = None
+        # Resolve bind address with fail-safe fallback
+        ice_bind_host = (ice_cfg.get("bind_address") or "").strip()
+        bind_address_xml = ""
+        if ice_bind_host and ice_bind_host not in ("0.0.0.0", "::"):
+            try:
+                from core.network_inspector import resolve_bind_address
+            except ImportError:
+                from backend.core.network_inspector import resolve_bind_address
+            effective_bind, fell_back, reason = resolve_bind_address(ice_bind_host, fallback_host="0.0.0.0")
+            if fell_back:
+                self.logger.warning(f"[Icecast] Fail-safe fallback: {reason}")
+            elif effective_bind not in ("0.0.0.0", "::"):
+                bind_address_xml = f"\n        <bind-address>{effective_bind}</bind-address>"
+
         if ssl_enabled:
             server_key = ice_cfg.get("server_key")
             server_cert = ice_cfg.get("server_cert")
@@ -1466,7 +1494,7 @@ class ProcessManager:
                     ssl_socket_xml = f"""
     <listen-socket>
         <port>{ssl_port}</port>
-        <ssl>1</ssl>
+        <ssl>1</ssl>{bind_address_xml}
     </listen-socket>"""
                 except Exception as b_err:
                     self.logger.error(f"[Icecast] Failed to generate concatenated SSL bundle: {b_err}")
@@ -1489,7 +1517,7 @@ class ProcessManager:
         if http_enabled or not ssl_socket_xml:
             http_socket_xml = f"""
     <listen-socket>
-        <port>{port}</port>
+        <port>{port}</port>{bind_address_xml}
     </listen-socket>"""
 
         # Mountpoints
@@ -2560,40 +2588,15 @@ class ProcessManager:
                     except Exception as e:
                         self.logger.warning(f"Watchdog failed to get psutil metrics for PID {pid}: {e}")
 
-                # Read progress log file
-                frame = None
-                fps = None
-                bitrate = None
-                speed = None
-                out_time_us = None
-
-                if os.path.exists(progress_log_path):
-                    try:
-                        with open(progress_log_path, "r") as f:
-                            lines = f.readlines()
-                        for line in lines:
-                            if "=" in line:
-                                k, v = line.split("=", 1)
-                                k = k.strip()
-                                v = v.strip()
-                                if k == "frame":
-                                    try:
-                                        frame = int(v)
-                                    except ValueError:
-                                        pass
-                                elif k == "fps":
-                                    fps = v
-                                elif k == "bitrate":
-                                    bitrate = v
-                                elif k == "speed":
-                                    speed = v
-                                elif k == "out_time_us":
-                                    try:
-                                        out_time_us = int(v)
-                                    except ValueError:
-                                        pass
-                    except Exception as read_err:
-                        self.logger.error(f"Watchdog failed to read progress file {progress_log_path}: {read_err}")
+                # Read progress log file (O(1) tail read to prevent memory/CPU saturation on long-running services)
+                from utils.process_utils import read_tail_progress, truncate_progress_log_if_large
+                tail_stats = read_tail_progress(progress_log_path)
+                frame = tail_stats.get("frame")
+                fps = tail_stats.get("fps")
+                bitrate = tail_stats.get("bitrate")
+                speed = tail_stats.get("speed")
+                out_time_us = tail_stats.get("out_time_us")
+                truncate_progress_log_if_large(progress_log_path)
 
                 # Update database
                 try:
@@ -2918,8 +2921,12 @@ class ProcessManager:
                                 try:
                                     log_path = self.get_process_log_path(process_id, session=session)
                                     if os.path.exists(log_path):
-                                        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                                            recent_log_lines = [line.strip() for line in f.readlines()[-60:]]
+                                        f_size = os.path.getsize(log_path)
+                                        with open(log_path, "rb") as f:
+                                            if f_size > 32768:
+                                                f.seek(f_size - 32768)
+                                            chunk = f.read().decode("utf-8", errors="replace")
+                                        recent_log_lines = [line.strip() for line in chunk.splitlines()[-60:]]
                                 except Exception as log_err:
                                     self.logger.warning(f"Watchdog failed to read log file for circuit breaker: {log_err}")
 

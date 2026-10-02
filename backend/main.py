@@ -51,6 +51,15 @@ try:
     from core.security_guard import security_guard
 except ImportError:
     from backend.core.security_guard import security_guard
+try:
+    from core.hardware_health import hardware_health_manager
+except ImportError:
+    from backend.core.hardware_health import hardware_health_manager
+try:
+    from core.update_checker import get_git_metadata, check_latest_release
+
+except ImportError:
+    from backend.core.update_checker import get_git_metadata, check_latest_release
 from utils.gpu_sensor import GPUSensor
 from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
 import psutil
@@ -199,6 +208,30 @@ def set_reload_mode(val: bool = True):
 
 app.add_middleware(NginxAccessLogMiddleware)
 
+_AUTH_PW_CACHE = {
+    "password": None,
+    "timestamp": 0.0
+}
+
+def get_cached_gui_password():
+    global _AUTH_PW_CACHE
+    now = time.time()
+    if now - _AUTH_PW_CACHE["timestamp"] < 5.0:
+        return _AUTH_PW_CACHE["password"]
+    try:
+        with SessionLocal() as db:
+            from database.models import SystemSettings
+            settings = db.query(SystemSettings).first()
+            _AUTH_PW_CACHE["password"] = settings.gui_password if settings else None
+            _AUTH_PW_CACHE["timestamp"] = now
+    except Exception:
+        pass
+    return _AUTH_PW_CACHE["password"]
+
+def invalidate_gui_password_cache():
+    global _AUTH_PW_CACHE
+    _AUTH_PW_CACHE["timestamp"] = 0.0
+
 class AuthBarrierMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # 1. Allow OPTIONS preflight for CORS
@@ -222,11 +255,8 @@ class AuthBarrierMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
             
-        # 3. Check if GUI password is set in database
-        with SessionLocal() as db:
-            from database.models import SystemSettings
-            settings = db.query(SystemSettings).first()
-            gui_password = settings.gui_password if settings else None
+        # 3. Check if GUI password is set (cached with 5s TTL to eliminate DB locking)
+        gui_password = get_cached_gui_password()
             
         if not gui_password:
             return await call_next(request)
@@ -456,6 +486,7 @@ class NotificationSettings(BaseModel):
     notify_task_failures: bool = True
     notify_ssl_alerts: bool = True
     notify_storage_alerts: bool = True
+    notify_thermal_alerts: bool = True
 
 class BackupExportRequest(BaseModel):
     gui_general: bool = True
@@ -469,6 +500,8 @@ class BackupExportRequest(BaseModel):
     notifications: bool = True
     software_engines: bool = True
     peer_federation: bool = True
+    virtual_desktops: bool = True
+    web_kiosks: bool = True
 
 class BackupImportPayload(BaseModel):
     app: str
@@ -490,6 +523,8 @@ class NotificationSettingsUpdate(BaseModel):
     notify_task_failures: Optional[bool] = None
     notify_ssl_alerts: Optional[bool] = None
     notify_storage_alerts: Optional[bool] = None
+    notify_thermal_alerts: Optional[bool] = None
+
 
 class WatchdogSettings(BaseModel):
     startup_grace_delay: int = 10
@@ -555,6 +590,9 @@ class SettingsResponse(BaseModel):
     brute_force_window_seconds: Optional[int] = 300
     brute_force_lockout_seconds: Optional[int] = 900
     brute_force_whitelist: Optional[str] = None
+    thermal_warning_threshold: Optional[int] = 75
+    thermal_critical_threshold: Optional[int] = 85
+    thermal_active_protection: Optional[bool] = False
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -598,6 +636,10 @@ class SettingsUpdate(BaseModel):
     brute_force_window_seconds: Optional[int] = None
     brute_force_lockout_seconds: Optional[int] = None
     brute_force_whitelist: Optional[str] = None
+    thermal_warning_threshold: Optional[int] = None
+    thermal_critical_threshold: Optional[int] = None
+    thermal_active_protection: Optional[bool] = None
+
 
     @validator('brute_force_whitelist')
     def validate_brute_force_whitelist(cls, v):
@@ -752,6 +794,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
         "notify_task_failures": True,
         "notify_ssl_alerts": True,
         "notify_storage_alerts": True,
+        "notify_thermal_alerts": True,
     }
 
     # Default watchdog values
@@ -813,6 +856,9 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 except ValueError: pass
                 try: notifications_data["notify_storage_alerts"] = notif_cfg.getboolean("notify_storage_alerts", fallback=notifications_data["notify_storage_alerts"])
                 except ValueError: pass
+                try: notifications_data["notify_thermal_alerts"] = notif_cfg.getboolean("notify_thermal_alerts", fallback=notifications_data["notify_thermal_alerts"])
+                except ValueError: pass
+
             if "software_engines" in config:
                 software_manager.load_config(dict(config["software_engines"]))
             if "server" in config and "port" in config["server"]:
@@ -1474,8 +1520,21 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.brute_force_lockout_seconds is not None: settings.brute_force_lockout_seconds = settings_in.brute_force_lockout_seconds
     if settings_in.brute_force_whitelist is not None: settings.brute_force_whitelist = settings_in.brute_force_whitelist
 
+    if settings_in.thermal_warning_threshold is not None: settings.thermal_warning_threshold = settings_in.thermal_warning_threshold
+    if settings_in.thermal_critical_threshold is not None: settings.thermal_critical_threshold = settings_in.thermal_critical_threshold
+    if settings_in.thermal_active_protection is not None: settings.thermal_active_protection = settings_in.thermal_active_protection
+
     db.commit()
     db.refresh(settings)
+    invalidate_gui_password_cache()
+
+    from core.hardware_health import hardware_health_manager
+    hardware_health_manager.configure(
+        warning_threshold_c=settings.thermal_warning_threshold,
+        critical_threshold_c=settings.thermal_critical_threshold,
+        active_protection=settings.thermal_active_protection
+    )
+
 
     security_guard.configure(
         enabled=settings.brute_force_enabled,
@@ -1644,7 +1703,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     # 7. Services (Universal: FFmpeg, MediaMTX Hubs, Icecast)
     if req.services:
         from database.models import Service
-        procs = db.query(Service).all()
+        procs = db.query(Service).filter(Service.service_type.notin_(["desktop", "kiosk_browser"])).all()
         sections["services"] = [
             {
                 "name": p.name,
@@ -1679,6 +1738,61 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             }
             for p in procs
         ]
+
+    # 7b. Virtual Desktops
+    if getattr(req, "virtual_desktops", True):
+        from database.models import Service
+        desktops = db.query(Service).filter(Service.service_type == "desktop").all()
+        sections["virtual_desktops"] = [
+            {
+                "name": d.name,
+                "service_type": "desktop",
+                "config": d.config or {},
+                "desktop_config": (d.config or {}).get("desktop_config", {}),
+                "auto_start": d.auto_start,
+                "startup_order": d.startup_order,
+                "startup_delay": d.startup_delay,
+                "watchdog_enabled": d.watchdog_enabled,
+                "watchdog_retries": d.watchdog_retries,
+                "alias": d.alias,
+                "is_shared_with_peers": getattr(d, "is_shared_with_peers", False),
+                "allow_peer_lease": getattr(d, "allow_peer_lease", False),
+            }
+            for d in desktops
+        ]
+
+    # 7c. Web Kiosks
+    if getattr(req, "web_kiosks", True):
+        from database.models import Service
+        kiosks = db.query(Service).filter(Service.service_type == "kiosk_browser").all()
+        kiosk_list = []
+        for k in kiosks:
+            k_cfg = (k.config or {}).get("kiosk_config", {})
+            desk_id = k_cfg.get("desktop_service_id")
+            desktop_name = None
+            if desk_id:
+                try:
+                    desk_svc = db.get(Service, int(desk_id)) if hasattr(db, "get") else db.query(Service).get(int(desk_id))
+                    if desk_svc:
+                        desktop_name = desk_svc.name
+                except Exception:
+                    pass
+            kiosk_list.append({
+                "name": k.name,
+                "service_type": "kiosk_browser",
+                "config": k.config or {},
+                "kiosk_config": k_cfg,
+                "desktop_name": desktop_name,
+                "auto_start": k.auto_start,
+                "startup_order": k.startup_order,
+                "startup_delay": k.startup_delay,
+                "watchdog_enabled": k.watchdog_enabled,
+                "watchdog_retries": k.watchdog_retries,
+                "alias": k.alias,
+                "is_shared_with_peers": getattr(k, "is_shared_with_peers", False),
+                "allow_peer_lease": getattr(k, "allow_peer_lease", False),
+            })
+        sections["web_kiosks"] = kiosk_list
 
     # 8. Scheduled Tasks
     if req.tasks:
@@ -1787,6 +1901,8 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         "logging_retention": False,
         "watchdog_grace": False,
         "services": 0,
+        "virtual_desktops": 0,
+        "web_kiosks": 0,
         "tasks": 0,
         "storage_volumes": 0,
         "software_engines": 0,
@@ -1994,7 +2110,71 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                 if "icecast_config" in p_data and p_data["icecast_config"]:
                     proc.icecast_config = p_data["icecast_config"]
                 db.add(proc)
-                imported_summary["services"] += 1
+                if p_data.get("service_type") == "desktop":
+                    imported_summary["virtual_desktops"] += 1
+                elif p_data.get("service_type") == "kiosk_browser":
+                    imported_summary["web_kiosks"] += 1
+                else:
+                    imported_summary["services"] += 1
+
+    # Restore Virtual Desktops
+    if "virtual_desktops" in sections and isinstance(sections["virtual_desktops"], list):
+        from database.models import Service
+        for d_data in sections["virtual_desktops"]:
+            existing = db.query(Service).filter(Service.name == d_data.get("name")).first()
+            if not existing:
+                cfg = dict(d_data.get("config") or {})
+                if "desktop_config" in d_data and d_data["desktop_config"]:
+                    cfg["desktop_config"] = d_data["desktop_config"]
+                desk = Service(
+                    name=d_data.get("name"),
+                    service_type="desktop",
+                    status="stopped",
+                    config=cfg,
+                    auto_start=d_data.get("auto_start", False),
+                    startup_order=d_data.get("startup_order", 1),
+                    startup_delay=d_data.get("startup_delay", 0),
+                    watchdog_enabled=d_data.get("watchdog_enabled", False),
+                    watchdog_retries=d_data.get("watchdog_retries", 3),
+                    alias=d_data.get("alias"),
+                    is_shared_with_peers=bool(d_data.get("is_shared_with_peers", False)),
+                    allow_peer_lease=bool(d_data.get("allow_peer_lease", False)),
+                )
+                db.add(desk)
+                imported_summary["virtual_desktops"] += 1
+        db.flush()
+
+    # Restore Web Kiosks
+    if "web_kiosks" in sections and isinstance(sections["web_kiosks"], list):
+        from database.models import Service
+        for k_data in sections["web_kiosks"]:
+            existing = db.query(Service).filter(Service.name == k_data.get("name")).first()
+            if not existing:
+                cfg = dict(k_data.get("config") or {})
+                k_cfg = dict(k_data.get("kiosk_config") or cfg.get("kiosk_config") or {})
+                desktop_name = k_data.get("desktop_name")
+                if desktop_name:
+                    desk_svc = db.query(Service).filter(Service.name == desktop_name, Service.service_type == "desktop").first()
+                    if desk_svc:
+                        k_cfg["desktop_service_id"] = desk_svc.id
+                cfg["kiosk_config"] = k_cfg
+
+                kiosk = Service(
+                    name=k_data.get("name"),
+                    service_type="kiosk_browser",
+                    status="stopped",
+                    config=cfg,
+                    auto_start=k_data.get("auto_start", False),
+                    startup_order=k_data.get("startup_order", 1),
+                    startup_delay=k_data.get("startup_delay", 0),
+                    watchdog_enabled=k_data.get("watchdog_enabled", False),
+                    watchdog_retries=k_data.get("watchdog_retries", 3),
+                    alias=k_data.get("alias"),
+                    is_shared_with_peers=bool(k_data.get("is_shared_with_peers", False)),
+                    allow_peer_lease=bool(k_data.get("allow_peer_lease", False)),
+                )
+                db.add(kiosk)
+                imported_summary["web_kiosks"] += 1
 
     # Restore Scheduled Tasks
     if "tasks" in sections and isinstance(sections["tasks"], list):
@@ -2734,7 +2914,15 @@ def get_system_capabilities():
     }
 
 
+@app.get("/api/hardware/health")
+async def get_hardware_health(user: str = Depends(verify_token)):
+    """Returns real-time hardware health, thermal status, fan speeds, and card telemetry."""
+    return hardware_health_manager.get_health_snapshot()
+
+
+
 def get_effective_ffmpeg_path() -> str:
+
     from database.models import FfmpegBuild
     from database.db import SessionLocal
     import os
@@ -3320,6 +3508,8 @@ async def telemetry_broadcast_loop():
             gpu_stats = await asyncio.to_thread(gpu_sensor.get_stats)
             
             global lcd_manager
+            git_meta = get_git_metadata()
+            updates = check_latest_release(backend_version)
             system_data = {
                 "cpu": sys_cpu,
                 "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
@@ -3328,6 +3518,12 @@ async def telemetry_broadcast_loop():
                 "host_os_arch": f"{platform.system()} {platform.machine()}",
                 "backend_version": backend_version,
                 "schema_version": schema_version,
+                "git_branch": git_meta.get("branch"),
+                "git_commit": git_meta.get("commit"),
+                "is_release": git_meta.get("is_release"),
+                "update_available": updates.get("update_available", False),
+                "latest_release": updates.get("latest_release"),
+                "release_url": updates.get("release_url"),
                 "lcd": {
                     "connected": lcd_manager is not None and lcd_manager._running,
                     "port": lcd_manager.port if lcd_manager else None
@@ -3336,6 +3532,14 @@ async def telemetry_broadcast_loop():
 
             from core.resource_lock_manager import resource_lock_manager
             active_resource_locks = resource_lock_manager.get_active_locks()
+
+            from core.hardware_health import hardware_health_manager
+            hardware_health_data = hardware_health_manager.get_health_snapshot()
+            try:
+                notification_manager.notify_thermal_alerts(hardware_health_data)
+            except Exception as e:
+                logger.error(f"Error evaluating thermal notification alerts: {e}")
+
 
             await manager.broadcast({
                 "type": "telemetry",
@@ -3346,8 +3550,10 @@ async def telemetry_broadcast_loop():
                 "task_stats": task_stats,
                 "storages": storages_data,
                 "peers": peers_data,
-                "resource_locks": active_resource_locks
+                "resource_locks": active_resource_locks,
+                "hardware_health": hardware_health_data,
             })
+
         except Exception as e:
             logger.exception(f"Error in telemetry broadcast loop: {e}")
         await asyncio.sleep(1)
@@ -3719,6 +3925,22 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start notification worker on startup: {e}")
 
+    try:
+        with SessionLocal() as db:
+            from database.models import SystemSettings
+            settings = db.query(SystemSettings).first()
+            if settings:
+                from core.hardware_health import hardware_health_manager
+                hardware_health_manager.configure(
+                    warning_threshold_c=settings.thermal_warning_threshold,
+                    critical_threshold_c=settings.thermal_critical_threshold,
+                    active_protection=settings.thermal_active_protection
+                )
+        from core.hardware_health import hardware_health_manager
+        hardware_health_manager.start_worker()
+    except Exception as e:
+        logger.error(f"Failed to start hardware health manager on startup: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     global _shutdown_initialized
@@ -3732,9 +3954,16 @@ async def shutdown_event():
     await scheduler.stop()
     
     try:
+        from core.hardware_health import hardware_health_manager
+        hardware_health_manager.stop_worker()
+    except Exception as e:
+        logger.error(f"Failed to stop hardware health manager on shutdown: {e}")
+
+    try:
         notification_manager.stop_worker()
     except Exception as e:
         logger.error(f"Failed to stop notification worker on shutdown: {e}")
+
 
     global lcd_manager
     if lcd_manager:
@@ -3859,15 +4088,67 @@ async def websocket_build(websocket: WebSocket, build_id: int):
 @app.get("/api/status")
 def read_root() -> dict:
     global lcd_manager
+    git_meta = get_git_metadata()
+    updates = check_latest_release(backend_version)
     return {
         "status": "online", 
         "message": "FFMPEG Orchestrator API is running",
         "version": backend_version,
         "schema_version": schema_version,
+        "git_branch": git_meta.get("branch"),
+        "git_commit": git_meta.get("commit"),
+        "is_release": git_meta.get("is_release"),
+        "update_available": updates.get("update_available", False),
+        "latest_release": updates.get("latest_release"),
+        "release_url": updates.get("release_url"),
         "lcd": {
             "connected": lcd_manager is not None and lcd_manager._running,
             "port": lcd_manager.port if lcd_manager else None
         }
+    }
+
+@app.post("/api/system/check-updates")
+def manual_check_updates() -> dict:
+    return check_latest_release(backend_version, force=True)
+
+@app.get("/api/system/network/interfaces")
+def get_system_network_interfaces() -> dict:
+    try:
+        from core.network_inspector import get_network_interfaces
+    except ImportError:
+        from backend.core.network_inspector import get_network_interfaces
+    return {"interfaces": get_network_interfaces()}
+
+@app.get("/api/system/network/port-matrix")
+def get_system_port_matrix(db: Session = Depends(get_db)) -> dict:
+    try:
+        from core.network_inspector import get_active_port_matrix, generate_firewall_rules
+    except ImportError:
+        from backend.core.network_inspector import get_active_port_matrix, generate_firewall_rules
+
+    settings_dict = {
+        "bind_address": os.environ.get("BIND_ADDRESS", "0.0.0.0"),
+        "gui_port": int(os.environ.get("ACTIVE_PORT", 8000)),
+        "https_port": 8443,
+        "ssl_enabled": False
+    }
+    config_path = os.environ.get("CONFIG_FILE_PATH")
+    if config_path and os.path.exists(config_path):
+        import configparser
+        cp = configparser.ConfigParser()
+        cp.read(config_path)
+        if "network" in cp:
+            net = cp["network"]
+            settings_dict["bind_address"] = net.get("bind_address", fallback=settings_dict["bind_address"])
+            settings_dict["gui_port"] = net.getint("http_port", fallback=net.getint("gui_port", fallback=settings_dict["gui_port"]))
+            settings_dict["https_port"] = net.getint("https_port", fallback=settings_dict["https_port"])
+            settings_dict["ssl_enabled"] = net.getboolean("ssl_enabled", fallback=settings_dict["ssl_enabled"])
+
+    matrix = get_active_port_matrix(db, settings=settings_dict)
+    firewall_rules = generate_firewall_rules(matrix)
+    return {
+        "matrix": matrix,
+        "firewall_rules": firewall_rules
     }
 
 @app.post("/settings/lcd/probe")
@@ -4296,6 +4577,15 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
         raise HTTPException(status_code=404, detail="Build profile not found")
     if build_manager.is_building:
         raise HTTPException(status_code=409, detail="Another build is already in progress")
+
+    if hardware_health_manager.active_protection_enabled:
+        snap = hardware_health_manager.get_health_snapshot()
+        if snap.get("status") == "critical":
+            raise HTTPException(
+                status_code=503,
+                detail=f"Thermal protection active: build halted due to critical hardware temperature ({snap.get('max_temp_c')}°C >= {hardware_health_manager.critical_threshold_c}°C)"
+            )
+
 
     # Mark as building
     build.status = "building"
@@ -5216,54 +5506,19 @@ def get_process_progress(process_id: int):
     if not found_file:
         return result
         
+    from utils.process_utils import read_tail_progress
+    tail = read_tail_progress(found_file)
+    result["frame"] = tail["frame"] if tail["frame"] is not None else 0
     try:
-        with open(found_file, "r") as f:
-            content = f.read()
-    except Exception as e:
-        logger.error(f"Error reading progress file {found_file}: {e}")
-        return result
-
-    # Parse lines from the file
-    for line in content.splitlines():
-        line = line.strip()
-        if not line or "=" not in line:
-            continue
-        try:
-            k, v = line.split("=", 1)
-            k = k.strip()
-            v = v.strip()
-            
-            if k == "frame":
-                try:
-                    result["frame"] = int(v)
-                except ValueError:
-                    pass
-            elif k == "fps":
-                try:
-                    result["fps"] = float(v)
-                except ValueError:
-                    pass
-            elif k == "bitrate":
-                result["bitrate"] = v
-            elif k == "speed":
-                result["speed"] = v
-            elif k == "out_time":
-                result["out_time"] = v
-            elif k == "dup_frames":
-                try:
-                    result["dup_frames"] = int(v)
-                except ValueError:
-                    pass
-            elif k == "drop_frames":
-                try:
-                    result["drop_frames"] = int(v)
-                except ValueError:
-                    pass
-            elif k == "progress":
-                result["progress"] = v
-        except Exception:
-            continue
-            
+        result["fps"] = float(tail["fps"]) if tail["fps"] is not None else 0.0
+    except (ValueError, TypeError):
+        result["fps"] = 0.0
+    result["bitrate"] = tail["bitrate"] or "N/A"
+    result["speed"] = tail["speed"] or "N/A"
+    result["out_time"] = tail["out_time"] or "N/A"
+    result["dup_frames"] = tail["dup_frames"] if tail["dup_frames"] is not None else 0
+    result["drop_frames"] = tail["drop_frames"] if tail["drop_frames"] is not None else 0
+    result["progress"] = tail["progress"] or "N/A"
     return result
 
 
@@ -5282,8 +5537,12 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
         lines = []
         if os.path.exists(log_file):
             try:
-                with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                    lines.extend(f.readlines())
+                f_size = os.path.getsize(log_file)
+                with open(log_file, "rb") as f:
+                    if f_size > 65536:
+                        f.seek(f_size - 65536)
+                    chunk = f.read().decode("utf-8", errors="replace")
+                lines.extend(chunk.splitlines())
             except Exception as e:
                 logger.error(f"Error reading log file {log_file} for process {process_id}: {e}")
 
@@ -5292,8 +5551,12 @@ def get_process_logs(process_id: int, db: Session = Depends(get_db)):
             ice_err = os.path.join(log_storage_path, f"icecast_{process_id}", "error.log")
             if os.path.exists(ice_err):
                 try:
-                    with open(ice_err, "r", encoding="utf-8", errors="replace") as f:
-                        lines.extend(f.readlines())
+                    i_size = os.path.getsize(ice_err)
+                    with open(ice_err, "rb") as f:
+                        if i_size > 65536:
+                            f.seek(i_size - 65536)
+                        chunk = f.read().decode("utf-8", errors="replace")
+                    lines.extend(chunk.splitlines())
                 except Exception:
                     pass
 

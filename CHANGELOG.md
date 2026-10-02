@@ -7,7 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.30.0] - 2026-09-30
+## [2.32.1] - 2026-10-02
+
+### Fixed
+- **FFmpeg Progress Log Tail Bottleneck & Event Loop Starvation**:
+  - Replaced catastrophic linear file reading (`readlines()`) of multi-megabyte FFmpeg progress logs (`/dev/shm/ffmpeg_progress_*.log`) with `read_tail_progress()`, which seeks to the last 4KB in $O(1)$ time.
+  - Implemented automatic progress log truncation (`truncate_progress_log_if_large`) capping logs at 2MB with 32KB head retention to eliminate unbounded RAM disk growth.
+  - Added cleanup of finished and orphaned task progress files in `/dev/shm` on task completion or stop.
+- **SQLite Concurrency & WAL Mode**:
+  - Configured SQLite Write-Ahead Logging (`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;`) across all database connections via SQLAlchemy event listener to prevent database lock contention between background workers and the async API event loop.
+- **Authentication Middleware In-Memory Password Caching**:
+  - Added in-memory cached lookup (`get_cached_gui_password`) with 5-second TTL in `AuthBarrierMiddleware`, eliminating blocking synchronous SQLite queries on every incoming HTTP request.
+- **Git Metadata & Release Check Subprocess Throttling**:
+  - Added a 300-second TTL cache for git commit and branch metadata extraction in `get_git_metadata()`, preventing continuous `git` subprocess spawns every second from telemetry loops.
+  - Moved background release checks off the main event loop into daemon threads.
+- **Task Metric Write Throttling**:
+  - Throttled high-frequency progress DB writes in `TaskManager`, persisting ephemeral status metrics at most once every 2 seconds and eliminating table bloat.
+- **LCD Thermal LED Tag Alignment & Loop Resilience**:
+  - Shortened thermal alarm profile prefix from `THRM` to `THM ` in `LCDManager.get_led_legend_prefix()`, preventing text truncation and legend overflow on 20-column CFA635 displays.
+  - Hardened LCD reader event loop against non-yielding tight loops.
+
+## [2.32.0] - 2026-10-02
+
+### Added
+- **Industrial Telemetry & Thermal Health Engine (`HardwareHealthManager`)**:
+  - Direct Linux kernel `/sys/class/hwmon` and `/sys/devices/system/cpu` telemetry extraction with zero external CLI dependencies.
+  - Granular hardware health snapshot: CPU package and core temperatures, active hardware thermal throttling flags (`throttle_active`, `package_throttled`, `core_throttled`, event counters), cooling fan RPM tachometers, and NVIDIA/AMD GPU telemetry.
+  - Specialized AudioScience telemetry engine (`audioscience_health.py`) probing DSP core utilization (%) and card hardware temperatures (°C) via `hpicontrol.py` bindings.
+  - Specialized capture card health integration: Magewell Pro Capture FPGA core temperatures (`mwcap-info`) and DeckLink PCIe bus generation/link width telemetry.
+  - Embedded `/api/hardware/health` REST endpoint and 1Hz real-time snapshot broadcast through the existing WebSocket telemetry pipeline.
+- **Hardware Thermal Shielding & Debounced Multi-Tier Alerting**:
+  - Debounced SMTP notification trigger (`notify_thermal_alerts`) alerting on critical temperature thresholds and thermal throttling events with a 15-minute cooldown to prevent email floods.
+  - Crystalfontz CFA635 USB LCD integration: dedicated `THERM` alarm profile activating solid/blinking red LED indicators on hardware overheat.
+  - User-configurable Active Thermal Protection Shielding (`thermal_active_protection`, default disabled): automatically rejects starting new scheduled tasks or FFmpeg Forge compilation jobs when hardware temperatures exceed the critical threshold, protecting broadcast transcoders from thermal damage.
+- **Modern 4-Column 1080p Dashboard Reorganization**:
+  - Upgraded Dashboard responsive layout to 4 columns on desktop displays (`xl:grid-cols-4`), maximizing horizontal space utilization on broadcast studio monitors.
+  - Decoupled System Status, Services, and Tasks: extracted `ServicesDashboardCard` and `TasksDashboardCard` into dedicated, self-contained widgets stacked cleanly in Column 2.
+  - Integrated CPU thermal pills, core drawer, throttling status badges, and fan RPM tachometers into Column 1 (`SYSTEM STATUS`).
+  - Added specialized hardware health badges in Column 3 (`HARDWARE & PERIPHERALS`) for AudioScience DSP load/temperature, Magewell FPGA temperature, and DeckLink PCIe links.
+  - High-visibility red flashing thermal alert banner in `DashboardView` when critical temperatures or hardware throttling are detected.
+- **Universal Configuration Backup & Restore Alignment**:
+  - Synchronized Backup & Restore architecture (`backend/main.py` and `BackupRestoreCard.tsx`) to support Virtual Desktops (`service_type == "desktop"`) and Web Kiosks (`service_type == "kiosk_browser"`).
+  - Multi-stage import with `db.flush()` and dynamic desktop-name binding re-resolution, ensuring web kiosks seamlessly bind to their restored parent virtual desktops.
+  - Preserved 100% backward compatibility for legacy backup files lacking desktop and kiosk sections.
+- **Hardware Protection Settings & 100% i18n Key Parity**:
+  - Configurable Warning and Critical thermal thresholds (`thermal_warning_threshold`, `thermal_critical_threshold`) and Active Thermal Protection toggle in Settings.
+  - Added thermal notification trigger in Email Notifications settings.
+  - Maintained 100% key parity across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`) (1607 keys in each).
+
+## [2.31.0] - 2026-10-01
+
+### Added
+- **Administrative Rescue CLI (`bin/ffmpeg-gui-admin`)**:
+  - Independent CLI tool with executable symlink for out-of-band server administration and lock-out recovery (`status`, `reset-admin`, `reset-lockout`, `reset-all`).
+  - Added `SecurityGuard.reset_all()` to clear memory-locked brute-force IP bans directly from the command line.
+  - Interactive prompts with non-interactive flags (`--yes` / `-y`, `--password <pass>`), and automated environment detection for systemd execution.
+- **Intelligent Offline & Dependency Updates**:
+  - Enhanced `update.sh` with `--dependencies-only` flag matching `install.sh --dependencies-only`.
+  - Air-gapped pip network availability check with 3-second ping timeout, preventing update hangs in isolated LANs.
+  - NPM noise and warning suppression (`--no-fund --no-audit --loglevel=error`) with MD5/SHA256 package-lock cache validation to skip redundant node module reinstallations.
+- **Decoupled GitHub Release Checker**:
+  - Background asynchronous check against GitHub Releases API (`backend/core/update_checker.py`) with persistent 6-hour disk caching and offline resilience.
+  - Exposes `/api/status` release telemetry and manual on-demand `/api/system/check-updates` refresh endpoint.
+  - Dashboard header zero-space environment pills (`🟢 Producción` / `🟣 devel`) with interactive update notification badge (`▲ vX.Y.Z`).
+- **Dynamic Network Interface Binding & Fail-Safe Fallback**:
+  - Linux `psutil`-powered interface enumeration (`backend/core/network_inspector.py`) detecting interface names, IPv4/IPv6 addresses, netmasks, MAC addresses, and link status.
+  - Multi-tier `resolve_bind_address()` resolver with fail-safe fallback to `0.0.0.0` upon interface disconnections, IP migrations, or DHCP reassignments, eliminating server lock-outs.
+  - Extended auxiliary service builders to support specific listen addresses for MediaMTX (`apiAddress`, `rtmpAddress`, `rtspAddress`, `hlsAddress`, `webrtcAddress`, `srtAddress`) and Icecast2 (`<bind-address>`).
+- **Reusable `NetworkInterfaceSelector` & Live Safe-Bind Warnings**:
+  - Modular UI selector component with color-coded IP chips, MAC telemetry, and interface state badges across Server Network Settings, MediaMTX, and Icecast forms.
+  - Contextual modal dialog warning administrators before binding to specific network interfaces to prevent accidental remote disconnection.
+- **Active Kernel Socket Inspector & Live Firewall Port Matrix**:
+  - Kernel socket inspector (`get_active_port_matrix`) reading active listening sockets across FFmpeg-GUI core (8000/8443), MediaMTX (1935, 1936, 8554, 8322, 8888, 8889, 8189, 8890, 9997), Icecast2 (7000/7443), and noVNC (6080).
+  - Built-in firewall rule compiler generating plug-and-play UFW and iptables rule sets with loopback-service exclusions.
+  - Settings Network card `FirewallPortMatrixCard` featuring live socket status badges, inbound WAN/LAN policies, and 1-click clipboard copy for firewall rules.
+
 
 ### Fixed
 - **ALSA Process Binding Resilience for Reattached Processes**:

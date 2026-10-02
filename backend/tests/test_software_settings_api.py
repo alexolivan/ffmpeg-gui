@@ -45,7 +45,8 @@ class TestSoftwareSettingsApi(unittest.TestCase):
         self.assertIn("ffmpeg", data)
         self.assertIn("mediamtx", data)
         self.assertIn("icecast2", data)
-        self.assertIn("kiosk_cog", data)
+        self.assertIn("chromium", data)
+        self.assertIn("firefox", data)
         self.assertTrue(data["ffmpeg"]["is_enabled"])
         self.assertTrue(data["ffmpeg"]["supports_forge"])
 

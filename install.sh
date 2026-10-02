@@ -3,20 +3,23 @@ set -e
 
 # Mostrar uso del script
 show_help() {
-    echo "Usage: $0 [--user | --system] [-y | --yes]"
+    echo "Usage: $0 [--user | --system] [-y | --yes] [--dependencies-only]"
     echo "  --user: Install in user space (no root required)"
     echo "  --system: Install system-wide (requires root/sudo)"
     echo "  -y, --yes: Run in non-interactive mode (assume yes to all prompts)"
+    echo "  --dependencies-only: Only install/audit OS packages and kernel modules, then exit"
 }
 
 MODE=""
 ASSUME_YES=false
+DEPENDENCIES_ONLY=false
 
 # Procesar argumentos
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --user) MODE="user"; shift ;;
         --system) MODE="system"; shift ;;
+        --dependencies-only) DEPENDENCIES_ONLY=true; shift ;;
         -y|--yes) ASSUME_YES=true; shift ;;
         -h|--help) show_help; exit 0 ;;
         *) echo "Unknown parameter: $1"; show_help; exit 1 ;;
@@ -55,7 +58,7 @@ fi
 echo "================================================================="
 
 # Solicitar confirmación interactiva
-if [ "$ASSUME_YES" = false ]; then
+if [ "$ASSUME_YES" = false ] && [ "$DEPENDENCIES_ONLY" = false ]; then
     read -p "Do you want to proceed with the installation? [y/N]: " confirm || confirm="n"
     if [[ ! "$confirm" =~ ^[yY]([eE][sS])?$ ]]; then
         echo "Installation cancelled by user."
@@ -139,6 +142,27 @@ configure_alsa_loopback() {
     fi
 }
 
+# Configuración y persistencia de módulos de sensores hardware (Super I/O) para ventiladores/disipadores
+configure_hardware_sensors() {
+    echo "--> Configuring motherboard hardware sensor drivers (Super I/O)..."
+    if command -v modprobe &>/dev/null; then
+        for mod in nct6775 it87; do
+            if modprobe "$mod" 2>/dev/null; then
+                echo "    Loaded hardware sensor driver: $mod"
+                if [ -d /etc/modules-load.d ]; then
+                    mkdir -p /etc/modules-load.d
+                    echo "$mod" >> /etc/modules-load.d/ffmpeg-gui-sensors.conf
+                elif [ -f /etc/modules ]; then
+                    grep -qxF "$mod" /etc/modules || echo "$mod" >> /etc/modules
+                fi
+            fi
+        done
+        if [ -f /etc/modules-load.d/ffmpeg-gui-sensors.conf ]; then
+            sort -u -o /etc/modules-load.d/ffmpeg-gui-sensors.conf /etc/modules-load.d/ffmpeg-gui-sensors.conf
+        fi
+    fi
+}
+
 # ---------------------------------------------------------
 # [PHASE 1/5] Verifying and Installing System Dependencies
 # ---------------------------------------------------------
@@ -163,6 +187,9 @@ if [ "$MODE" = "system" ]; then
 
     # Configurar y persistir el módulo ALSA Loopback (snd-aloop) para audio de escritorios virtuales
     configure_alsa_loopback
+
+    # Configurar y persistir módulos de sensores Super I/O para ventiladores/disipadores
+    configure_hardware_sensors
 
     # Verificar herramientas indispensables después de la instalación
     verify_installer_tools
@@ -207,6 +234,15 @@ else
         echo "================================================================="
         sleep 2
     fi
+fi
+
+# Salir inmediatamente si solo se solicitó instalar dependencias
+if [ "$DEPENDENCIES_ONLY" = true ]; then
+    echo ""
+    echo "================================================================="
+    echo "       SYSTEM DEPENDENCIES RECONCILIATION COMPLETE               "
+    echo "================================================================="
+    exit 0
 fi
 
 # ---------------------------------------------------------

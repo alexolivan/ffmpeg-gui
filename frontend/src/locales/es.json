@@ -42,7 +42,17 @@
     "lines": "líneas",
     "activeConsumer": "Consumidor Activo",
     "activeConsumers": "Consumidores Activos",
-    "idle": "0 Leases (Inactivo)"
+    "idle": "0 Leases (Inactivo)",
+    "network": {
+      "interfaceSelector": {
+        "allInterfaces": "0.0.0.0 (Todas las Interfaces - Recomendado)",
+        "localhostOnly": "127.0.0.1 (Solo Localhost)",
+        "defaultGateway": "Pasarela",
+        "customOrMissing": "Configurada - No detectada en este equipo",
+        "failsafeNotice": "Enlace seguro: Si la IP seleccionada no está disponible o cambia, el sistema recurrirá a 0.0.0.0 para evitar pérdida de acceso.",
+        "specificIpWarning": "Aviso: El servicio solo será accesible a través de esta dirección IP específica ({{ip}}). Asegúrate de que el enrutamiento de red permita alcanzarla."
+      }
+    }
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -106,6 +116,7 @@
       "selectBinary": "Versión / Binario de MediaMTX",
       "noBuildsWarning": "No se encontró ningún binario de MediaMTX. Ve a Ajustes -> Software para descargar una versión oficial o registrar el binario del sistema.",
       "protocolsTitle": "2. Protocolos de Transmisión en Vivo y Puertos",
+      "listenInterface": "Interfaz de Red de Escucha del Hub",
       "storageTitle": "3. Almacenamiento y Protección de Disco",
       "hlsStorage": "Volumen de Almacenamiento de Segmentos HLS",
       "hlsStorageDesc": "Los fragmentos HLS usan retención circular en anillo (5 segmentos de 2s) para no saturar el almacenamiento raíz.",
@@ -253,6 +264,7 @@
       "mountsBadge": "Montajes",
       "mountsTitle": "Puntos de Montaje (Mountpoints)",
       "networkTitle": "Red y Puertos de Escucha (TCP 7XXX)",
+      "listenInterface": "Interfaz de Red de Escucha del Servidor",
       "noCertWarning": "Aviso: No se detectó un certificado SSL en Ajustes → Certificados. El servidor generará un bundle una vez que configures tus certificados SSL en el panel.",
       "certDetectedValid": "Certificado SSL del sistema detectado y activo",
       "bundleAutoReady": "El servidor generará automáticamente el bundle PEM concatenado al iniciar el servicio.",
@@ -353,6 +365,16 @@
       "watchdogMaxBackoff": "Backoff Máximo del Watchdog (seg)",
       "watchdogMaxBackoffHelp": "Límite tope para el intervalo de espera entre reintentos"
     },
+    "thermal": {
+      "title": "MONITORIZACIÓN TÉRMICA Y PROTECCIÓN HARDWARE",
+      "description": "Configura los umbrales de temperatura para monitorización preventiva del hardware, alarmas de refrigeración y protección térmica activa.",
+      "warningThreshold": "Umbral de Temperatura de Advertencia (°C)",
+      "warningThresholdHelp": "Activa el estado ámbar en telemetría y notificaciones debounced (por defecto: 75°C)",
+      "criticalThreshold": "Umbral de Temperatura Crítica (°C)",
+      "criticalThresholdHelp": "Activa el banner de alarma crítica, LED rojo CFA635 y alertas de throttling (por defecto: 85°C)",
+      "activeProtection": "Escudo de Protección Térmica Activa",
+      "activeProtectionHelp": "Bloquea automáticamente el inicio de nuevas tareas programadas y compilaciones de FFmpeg Forge si la temperatura supera el umbral crítico."
+    },
     "restart": {
       "title": "Reinicio Requerido",
       "reason_both": "Se requiere un reinicio para aplicar las nuevas configuraciones de Puerto GUI y Logs. Haz clic en \"Reiniciar Panel\" para aplicar.",
@@ -400,7 +422,26 @@
       "enableHttps": "Habilitar Cifrado HTTPS",
       "forceHttpsRedirect": "Redirigir Automáticamente HTTP -> HTTPS",
       "httpsDisabledCertTooltip": "No se puede habilitar HTTPS hasta que haya un certificado SSL y clave privada válidos cargados.",
-      "cardTitle": "Configuración de Interfaces de Red y Ancho de Banda"
+      "cardTitle": "Configuración de Interfaces de Red y Ancho de Banda",
+      "firewall": {
+        "title": "Matriz de Puertos y Generador Firewall",
+        "subtitle": "Inspección en tiempo real de puertos abiertos, enlaces de demonios y generador de reglas firewall en 1 clic.",
+        "activeSockets": "en escucha",
+        "expandAll": "Expandir todo",
+        "collapseAll": "Colapsar todo",
+        "ruleHelper": "Asistente de Reglas Firewall",
+        "copySnippet": "Copiar reglas",
+        "colPortProto": "Puerto / Proto",
+        "colService": "Servicio / Demonio",
+        "colListenAddress": "Interfaz de Escucha",
+        "colSocket": "Socket en Vivo",
+        "colFirewall": "Política de Entrada",
+        "socketListening": "En Escucha",
+        "socketStarting": "Iniciando",
+        "socketStopped": "Detenido",
+        "inboundPublic": "Entrada WAN/LAN",
+        "internalOnly": "Bucle Local Interno"
+      }
     },
     "logging": {
       "title": "CONFIGURACIÓN DE LOGS",
@@ -446,7 +487,8 @@
         "alert": "Alerta Recursos (CPU/RAM)",
         "recording": "Grabación (Piloto REC)",
         "storage": "Alerta Almacenamiento",
-        "peers": "Federación de Peers (P2P)"
+        "peers": "Federación de Peers (P2P)",
+        "thermal": "Alerta Térmica (THERM)"
       }
     },
     "storage": {
@@ -546,7 +588,8 @@
       "notifyBuildResults": "Resultados de Compilación (FFmpeg Listo / Fallido)",
       "notifyTaskFailures": "Fallos de Tarea (Errores en Tareas Programadas)",
       "notifySslAlerts": "Alertas SSL (Avisos de Caducidad y Renovaciones)",
-      "notifyStorageAlerts": "Alertas de Almacenamiento (Avisos de Espacio Escaso)"
+      "notifyStorageAlerts": "Alertas de Almacenamiento (Avisos de Espacio Escaso)",
+      "notifyThermalAlerts": "Alertas Térmicas (Sobrecalentamiento y Throttling de CPU / DSP)"
     },
     "backup": {
       "exportTitle": "Exportar Copia de Seguridad del Sistema (.json)",
@@ -561,6 +604,10 @@
       "sectionNotificationsDesc": "Servidor de correo SMTP y alertas",
       "sectionFederationTitle": "Peer Federation & Enlaces",
       "sectionFederationDesc": "Claves de enlace y nodos peers vinculados",
+      "sectionDesktopsTitle": "Escritorios Virtuales",
+      "sectionDesktopsDesc": "Servidores de display X11, VNC y salidas de audio",
+      "sectionKiosksTitle": "Kioskos Web",
+      "sectionKiosksDesc": "Instancias de navegador Chromium/Cog y bindings",
       "exporting": "GENERANDO COPIA...",
       "exportBtn": "EXPORTAR COPIA DE SEGURIDAD (.JSON)",
       "importTitle": "Restaurar Copia de Seguridad",
@@ -836,7 +883,32 @@
     "cpuUsage": "Uso de CPU",
     "ramUsage": "Uso de RAM",
     "noActiveHardware": "No se detectaron dispositivos de captura o aceleración por hardware dedicados.",
-    "lcdUnavailableDetails": "Panel de control de hardware externo no detectado"
+    "lcdUnavailableDetails": "Panel de control de hardware externo no detectado",
+    "envProduction": "Producción",
+    "envDevelopment": "Desarrollo",
+    "updateAvailable": "Actualización disponible",
+    "checkUpdates": "Comprobar actualizaciones",
+    "checkingUpdates": "Comprobando...",
+    "upToDate": "Al día",
+    "environment": "Entorno",
+    "thermalAndHardwareHealth": "Salud Térmica e Industrial",
+    "cpuPackageTemp": "Package CPU",
+    "cpuCores": "Núcleos",
+    "throttling": "Throttling",
+    "throttlingActive": "Throttling Activo ({{count}} eventos)",
+    "throttlingPast": "Throttling Previo ({{count}})",
+    "throttlingNone": "Throttling: 0",
+    "fans": "Ventiladores",
+    "fanStopped": "Parado",
+    "fanRpm": "{{rpm}} RPM",
+    "noFans": "Sin tacómetros de ventilador detectados",
+    "dspLoad": "Carga DSP",
+    "dspTemp": "Temp DSP",
+    "noTempSensor": "Sin sensor temp",
+    "fpgaTemp": "Temp FPGA",
+    "pcieBus": "Bus PCIe",
+    "criticalThermalAlert": "ALERTA TÉRMICA CRÍTICA: Temperatura de hardware alcanzó {{temp}}°C. Se recomienda refrigeración o reducción de carga inmediata.",
+    "activeProtectionEngaged": "Protección térmica activa activada: nuevas tareas programadas y compilaciones pausadas."
   },
   "forge": {
     "title": "FFMPEG FORGE",

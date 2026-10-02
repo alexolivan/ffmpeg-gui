@@ -464,7 +464,13 @@ class SystemSettings(Base):
     brute_force_lockout_seconds = Column(Integer, default=900)
     brute_force_whitelist = Column(Text, nullable=True)
 
+    # Thermal & Hardware Health Settings
+    thermal_warning_threshold = Column(Integer, default=75)
+    thermal_critical_threshold = Column(Integer, default=85)
+    thermal_active_protection = Column(Boolean, default=False)
+
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
 
 
 class ScheduledTask(Base):

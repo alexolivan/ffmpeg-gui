@@ -42,7 +42,17 @@
     "lines": "línies",
     "activeConsumer": "Consumidor Actiu",
     "activeConsumers": "Consumidors Actius",
-    "idle": "0 Leases (Inactiu)"
+    "idle": "0 Leases (Inactiu)",
+    "network": {
+      "interfaceSelector": {
+        "allInterfaces": "0.0.0.0 (Totes les interfícies - Recomanat)",
+        "localhostOnly": "127.0.0.1 (Només Localhost)",
+        "defaultGateway": "Passarel·la",
+        "customOrMissing": "Configurada - No detectada en aquest equip",
+        "failsafeNotice": "Enllaç segur: Si la IP seleccionada no està disponible o canvia, el sistema recorrerà a 0.0.0.0 per evitar pèrdua d'accés.",
+        "specificIpWarning": "Avís: El servei només serà accessible a través d'aquesta adreça IP específica ({{ip}}). Assegura't que l'enrutament de xarxa permeti assolir-la."
+      }
+    }
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -106,6 +116,7 @@
       "selectBinary": "Versió / Binari de MediaMTX",
       "noBuildsWarning": "No s'ha trobat cap binari de MediaMTX. Vés a Paràmetres -> Programari per descarregar una versió oficial o registrar el binari del sistema.",
       "protocolsTitle": "2. Protocols de Transmissió en Viu i Ports",
+      "listenInterface": "Interfície de Xarxa d'Escolta del Hub",
       "storageTitle": "3. Emmagatzematge i Protecció de Disc",
       "hlsStorage": "Volum d'Emmagatzematge de Segments HLS",
       "hlsStorageDesc": "Els fragments HLS usen retenció circular en anell (5 segments de 2s) per no saturar l'emmagatzematge arrel.",
@@ -253,6 +264,7 @@
       "mountsBadge": "Muntatges",
       "mountsTitle": "Punts de Muntatge (Mountpoints)",
       "networkTitle": "Xarxa i Ports d'Escolta (TCP 7XXX)",
+      "listenInterface": "Interfície de Xarxa d'Escolta del Servidor",
       "noCertWarning": "Avís: No s'ha detectat cap certificat SSL a Paràmetres → Certificats. El servidor generarà un bundle un cop configurats els certificats SSL al panell.",
       "certDetectedValid": "Certificat SSL del sistema detectat i actiu",
       "bundleAutoReady": "El servidor generarà automàticament el bundle PEM concatenat en iniciar el servei.",
@@ -353,6 +365,16 @@
       "watchdogMaxBackoff": "Backoff Màxim del Watchdog (seg)",
       "watchdogMaxBackoffHelp": "Límit màxim per a l'interval d'espera entre reintents"
     },
+    "thermal": {
+      "title": "MONITORATGE TÈRMIC I PROTECCIÓ HARDWARE",
+      "description": "Configura els llindars de temperatura per al monitoratge preventiu del hardware, alarmes de refrigeració i protecció tèrmica activa.",
+      "warningThreshold": "Llindar de Temperatura d'Advertència (°C)",
+      "warningThresholdHelp": "Activa l'estat ambre en telemetria i notificacions debounced (per defecte: 75°C)",
+      "criticalThreshold": "Llindar de Temperatura Crítica (°C)",
+      "criticalThresholdHelp": "Activa el banner d'alarma crítica, LED vermell CFA635 i alertes de throttling (per defecte: 85°C)",
+      "activeProtection": "Escut de Protecció Tèrmica Activa",
+      "activeProtectionHelp": "Bloqueja automàticament l'inici de noves tasques programades i compilacions de FFmpeg Forge si la temperatura supera el llindar crític."
+    },
     "restart": {
       "title": "Reinici Requerit",
       "reason_both": "Es requereix un reinici per aplicar les noves configuracions de Port GUI i Registres. Fes clic a \"Reiniciar Panell\" per aplicar.",
@@ -400,7 +422,26 @@
       "enableHttps": "Habilitar Xifratge HTTPS",
       "forceHttpsRedirect": "Redirigir Automàticament HTTP -> HTTPS",
       "httpsDisabledCertTooltip": "No es pot habilitar HTTPS fins que hi hagi un certificat SSL i clau privada vàlids carregats.",
-      "cardTitle": "Configuració d'Interfícies de Xarxa i Ample de Banda"
+      "cardTitle": "Configuració d'Interfícies de Xarxa i Ample de Banda",
+      "firewall": {
+        "title": "Matriu de Ports i Generador Firewall",
+        "subtitle": "Inspecció en temps real de ports oberts, enllaços de dimonis i generador de regles firewall en 1 clic.",
+        "activeSockets": "en escolta",
+        "expandAll": "Desplegar tot",
+        "collapseAll": "Plegar tot",
+        "ruleHelper": "Assistent de Regles Firewall",
+        "copySnippet": "Copiar regles",
+        "colPortProto": "Port / Proto",
+        "colService": "Servei / Dimoni",
+        "colListenAddress": "Interfície d'Escolta",
+        "colSocket": "Sòcol en Viu",
+        "colFirewall": "Política d'Entrada",
+        "socketListening": "En Escolta",
+        "socketStarting": "Iniciant",
+        "socketStopped": "Aturat",
+        "inboundPublic": "Entrada WAN/LAN",
+        "internalOnly": "Bucle Local Intern"
+      }
     },
     "logging": {
       "title": "CONFIGURACIÓ DE REGISTRES",
@@ -446,7 +487,8 @@
         "alert": "Alerta Recursos (CPU/RAM)",
         "recording": "Gravació (Pilot REC)",
         "storage": "Alerta Emmagatzematge",
-        "peers": "Federació de Peers (P2P)"
+        "peers": "Federació de Peers (P2P)",
+        "thermal": "Alerta Tèrmica (THERM)"
       }
     },
     "storage": {
@@ -546,7 +588,8 @@
       "notifyBuildResults": "Resultats de Compilació (FFmpeg A Punt / Fallat)",
       "notifyTaskFailures": "Errades de Tasca (Errors en Tasques Programades)",
       "notifySslAlerts": "Alertes SSL (Avisos de Caducitat i Renovacions)",
-      "notifyStorageAlerts": "Alertes d'Emmagatzematge (Avisos d'Espai Escàs)"
+      "notifyStorageAlerts": "Alertes d'Emmagatzematge (Avisos d'Espai Escàs)",
+      "notifyThermalAlerts": "Alertes Tèrmiques (Sobreescalfament i Throttling de CPU / DSP)"
     },
     "backup": {
       "exportTitle": "Exportar Còpia de Seguretat del Sistema (.json)",
@@ -561,6 +604,10 @@
       "sectionNotificationsDesc": "Servidor de correu SMTP i alertes",
       "sectionFederationTitle": "Federació de Peers i Enllaços",
       "sectionFederationDesc": "Claus d'enllaç i nodes peers vinculats",
+      "sectionDesktopsTitle": "Escriptoris Virtuals",
+      "sectionDesktopsDesc": "Servidors de display X11, VNC i sortides d'àudio",
+      "sectionKiosksTitle": "Quioscos Web",
+      "sectionKiosksDesc": "Instàncies de navegador Chromium/Cog i enllaços",
       "exporting": "GENERANT CÒPIA...",
       "exportBtn": "EXPORTAR CÒPIA DE SEGURETAT (.JSON)",
       "importTitle": "Restaurar Còpia de Seguretat",
@@ -836,7 +883,32 @@
     "cpuUsage": "Ús de CPU",
     "ramUsage": "Ús de RAM",
     "noActiveHardware": "No s'han detectat dispositius de captura o acceleració per maquinari dedicats.",
-    "lcdUnavailableDetails": "Panel de control de maquinari extern no detectat"
+    "lcdUnavailableDetails": "Panel de control de maquinari extern no detectat",
+    "envProduction": "Producció",
+    "envDevelopment": "Desenvolupament",
+    "updateAvailable": "Actualització disponible",
+    "checkUpdates": "Comprovar actualitzacions",
+    "checkingUpdates": "Comprovant...",
+    "upToDate": "Al dia",
+    "environment": "Entorn",
+    "thermalAndHardwareHealth": "Salut Tèrmica i Industrial",
+    "cpuPackageTemp": "Package CPU",
+    "cpuCores": "Nuclis",
+    "throttling": "Throttling",
+    "throttlingActive": "Throttling Actiu ({{count}} esdeveniments)",
+    "throttlingPast": "Throttling Previ ({{count}})",
+    "throttlingNone": "Throttling: 0",
+    "fans": "Ventiladors",
+    "fanStopped": "Aturat",
+    "fanRpm": "{{rpm}} RPM",
+    "noFans": "Sense tacòmetres de ventilador detectats",
+    "dspLoad": "Càrrega DSP",
+    "dspTemp": "Temp DSP",
+    "noTempSensor": "Sense sensor temp",
+    "fpgaTemp": "Temp FPGA",
+    "pcieBus": "Bus PCIe",
+    "criticalThermalAlert": "ALERTA TÈRMICA CRÍTICA: Temperatura de maquinari ha assolit {{temp}}°C. Es recomana refrigeració o reducció de càrrega immediata.",
+    "activeProtectionEngaged": "Protecció tèrmica activa activada: noves tasques programades i compilacions pausades."
   },
   "forge": {
     "title": "FFMPEG FORGE",
