@@ -233,8 +233,15 @@ def init_db():
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN brute_force_lockout_seconds INTEGER DEFAULT 900"))
             if "brute_force_whitelist" not in settings_columns:
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN brute_force_whitelist TEXT DEFAULT NULL"))
+            if "thermal_warning_threshold" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN thermal_warning_threshold INTEGER DEFAULT 75"))
+            if "thermal_critical_threshold" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN thermal_critical_threshold INTEGER DEFAULT 85"))
+            if "thermal_active_protection" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN thermal_active_protection BOOLEAN DEFAULT 0"))
 
             # Storages table migrations
+
             res_storage = conn.execute(text("PRAGMA table_info(storages)"))
             storage_columns = [row[1] for row in res_storage.fetchall()]
             if "route_path" not in storage_columns:

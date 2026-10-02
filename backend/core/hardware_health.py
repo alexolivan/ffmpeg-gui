@@ -77,7 +77,26 @@ class HardwareHealthManager:
             "timestamp": time.time(),
         }
 
+    def configure(
+        self,
+        warning_threshold_c: Optional[float] = None,
+        critical_threshold_c: Optional[float] = None,
+        active_protection: Optional[bool] = None,
+    ):
+        """Updates runtime thermal alert thresholds and active protection mode."""
+        if warning_threshold_c is not None:
+            self.warning_threshold_c = float(warning_threshold_c)
+        if critical_threshold_c is not None:
+            self.critical_threshold_c = float(critical_threshold_c)
+        if active_protection is not None:
+            self.active_protection_enabled = bool(active_protection)
+        logger.info(
+            f"HardwareHealthManager configured: warning={self.warning_threshold_c}°C, "
+            f"critical={self.critical_threshold_c}°C, active_protection={self.active_protection_enabled}"
+        )
+
     # -------------------------------------------------------------------------
+
     # PROBES: CPU Temperatures via /sys/class/hwmon & /sys/class/thermal
     # -------------------------------------------------------------------------
 
@@ -297,8 +316,9 @@ class HardwareHealthManager:
         try:
             from core.decklink_manager import DecklinkManager
             dl_mgr = DecklinkManager()
-            dl_devs = dl_mgr.get_devices()
+            dl_devs = dl_mgr.list_devices_sync()
             for dev in dl_devs:
+
                 decklink_cards.append({
                     "id": dev.get("id"),
                     "name": dev.get("name", "Blackmagic DeckLink"),

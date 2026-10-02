@@ -52,7 +52,12 @@ try:
 except ImportError:
     from backend.core.security_guard import security_guard
 try:
+    from core.hardware_health import hardware_health_manager
+except ImportError:
+    from backend.core.hardware_health import hardware_health_manager
+try:
     from core.update_checker import get_git_metadata, check_latest_release
+
 except ImportError:
     from backend.core.update_checker import get_git_metadata, check_latest_release
 from utils.gpu_sensor import GPUSensor
@@ -559,6 +564,9 @@ class SettingsResponse(BaseModel):
     brute_force_window_seconds: Optional[int] = 300
     brute_force_lockout_seconds: Optional[int] = 900
     brute_force_whitelist: Optional[str] = None
+    thermal_warning_threshold: Optional[int] = 75
+    thermal_critical_threshold: Optional[int] = 85
+    thermal_active_protection: Optional[bool] = False
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -602,6 +610,10 @@ class SettingsUpdate(BaseModel):
     brute_force_window_seconds: Optional[int] = None
     brute_force_lockout_seconds: Optional[int] = None
     brute_force_whitelist: Optional[str] = None
+    thermal_warning_threshold: Optional[int] = None
+    thermal_critical_threshold: Optional[int] = None
+    thermal_active_protection: Optional[bool] = None
+
 
     @validator('brute_force_whitelist')
     def validate_brute_force_whitelist(cls, v):
@@ -1478,8 +1490,20 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.brute_force_lockout_seconds is not None: settings.brute_force_lockout_seconds = settings_in.brute_force_lockout_seconds
     if settings_in.brute_force_whitelist is not None: settings.brute_force_whitelist = settings_in.brute_force_whitelist
 
+    if settings_in.thermal_warning_threshold is not None: settings.thermal_warning_threshold = settings_in.thermal_warning_threshold
+    if settings_in.thermal_critical_threshold is not None: settings.thermal_critical_threshold = settings_in.thermal_critical_threshold
+    if settings_in.thermal_active_protection is not None: settings.thermal_active_protection = settings_in.thermal_active_protection
+
     db.commit()
     db.refresh(settings)
+
+    from core.hardware_health import hardware_health_manager
+    hardware_health_manager.configure(
+        warning_threshold_c=settings.thermal_warning_threshold,
+        critical_threshold_c=settings.thermal_critical_threshold,
+        active_protection=settings.thermal_active_protection
+    )
+
 
     security_guard.configure(
         enabled=settings.brute_force_enabled,
@@ -2738,7 +2762,15 @@ def get_system_capabilities():
     }
 
 
+@app.get("/api/hardware/health")
+async def get_hardware_health(user: str = Depends(verify_token)):
+    """Returns real-time hardware health, thermal status, fan speeds, and card telemetry."""
+    return hardware_health_manager.get_health_snapshot()
+
+
+
 def get_effective_ffmpeg_path() -> str:
+
     from database.models import FfmpegBuild
     from database.db import SessionLocal
     import os
@@ -3349,6 +3381,9 @@ async def telemetry_broadcast_loop():
             from core.resource_lock_manager import resource_lock_manager
             active_resource_locks = resource_lock_manager.get_active_locks()
 
+            from core.hardware_health import hardware_health_manager
+            hardware_health_data = hardware_health_manager.get_health_snapshot()
+
             await manager.broadcast({
                 "type": "telemetry",
                 "data": processes_data,
@@ -3358,8 +3393,10 @@ async def telemetry_broadcast_loop():
                 "task_stats": task_stats,
                 "storages": storages_data,
                 "peers": peers_data,
-                "resource_locks": active_resource_locks
+                "resource_locks": active_resource_locks,
+                "hardware_health": hardware_health_data,
             })
+
         except Exception as e:
             logger.exception(f"Error in telemetry broadcast loop: {e}")
         await asyncio.sleep(1)
@@ -3731,6 +3768,22 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start notification worker on startup: {e}")
 
+    try:
+        with SessionLocal() as db:
+            from database.models import SystemSettings
+            settings = db.query(SystemSettings).first()
+            if settings:
+                from core.hardware_health import hardware_health_manager
+                hardware_health_manager.configure(
+                    warning_threshold_c=settings.thermal_warning_threshold,
+                    critical_threshold_c=settings.thermal_critical_threshold,
+                    active_protection=settings.thermal_active_protection
+                )
+        from core.hardware_health import hardware_health_manager
+        hardware_health_manager.start_worker()
+    except Exception as e:
+        logger.error(f"Failed to start hardware health manager on startup: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     global _shutdown_initialized
@@ -3744,9 +3797,16 @@ async def shutdown_event():
     await scheduler.stop()
     
     try:
+        from core.hardware_health import hardware_health_manager
+        hardware_health_manager.stop_worker()
+    except Exception as e:
+        logger.error(f"Failed to stop hardware health manager on shutdown: {e}")
+
+    try:
         notification_manager.stop_worker()
     except Exception as e:
         logger.error(f"Failed to stop notification worker on shutdown: {e}")
+
 
     global lcd_manager
     if lcd_manager:
