@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BuildProfile } from '../../components/BuildProfileCard';
-import { isActiveService } from './ServicesView';
 import { PeerStatusCard } from '../cards/PeerStatusCard';
+import { ServicesDashboardCard } from '../cards/ServicesDashboardCard';
+import { TasksDashboardCard } from '../cards/TasksDashboardCard';
 
 interface DashboardViewProps {
   telemetry: any[];
@@ -13,42 +14,6 @@ interface DashboardViewProps {
   settings: any;
 }
 
-function formatRelativeNextRun(isoString: string | null, t: any): string {
-  if (!isoString) return '';
-  const target = new Date(isoString);
-  const now = new Date();
-  const diffMs = target.getTime() - now.getTime();
-  
-  if (diffMs <= 0) {
-    return t('dashboard.nextRunImminent', 'Imminent');
-  }
-  
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-  if (diffMins < 60) {
-    return t('dashboard.nextRunInMins', 'In {{mins}} min', { mins: diffMins || 1 });
-  }
-  
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) {
-    const remainingMins = diffMins % 60;
-    if (remainingMins === 0) {
-      return t('dashboard.nextRunInHours', 'In {{hours}}h', { hours: diffHours });
-    }
-    return t('dashboard.nextRunInHoursMins', 'In {{hours}}h {{mins}}m', { hours: diffHours, mins: remainingMins });
-  }
-  
-  const hours = target.getHours().toString().padStart(2, '0');
-  const minutes = target.getMinutes().toString().padStart(2, '0');
-  
-  const isSameDay = target.getDate() === now.getDate() && target.getMonth() === now.getMonth() && target.getFullYear() === now.getFullYear();
-  if (isSameDay) {
-    return t('dashboard.nextRunTodayAt', 'Today at {{time}}', { time: `${hours}:${minutes}` });
-  }
-  
-  const month = (target.getMonth() + 1).toString().padStart(2, '0');
-  const day = target.getDate().toString().padStart(2, '0');
-  return `${day}/${month} ${hours}:${minutes}`;
-}
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   telemetry,
@@ -205,46 +170,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
-        {/* Column 1: Process Management & load */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
+        {/* Column 1: System Status & Host Load */}
         <div className="space-y-4">
           <div className="glass-card p-4 border-brand-lime/10 space-y-3">
-            <h3 className="text-base font-black mb-2 text-[var(--text-primary)] uppercase tracking-wider">{t('dashboard.systemStats')}</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.activeServices')}</div>
-                <div className="font-black text-lg text-brand-lime">
-                  {telemetry.filter(p => (p.type === 'service' || !p.type) && isActiveService(p)).length}
-                </div>
-              </div>
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.inactiveServices')}</div>
-                <div className="font-black text-lg text-text-secondary">
-                  {telemetry.filter(p => (p.type === 'service' || !p.type) && !isActiveService(p)).length}
-                </div>
-              </div>
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.activeTasks')}</div>
-                <div className="font-black text-lg text-brand-blue">
-                  {taskStats.active}
-                </div>
-              </div>
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.scheduledTasks')}</div>
-                <div className="font-black text-lg text-brand-orange">
-                  {taskStats.scheduled}
-                </div>
-              </div>
-              <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center col-span-2 sm:col-span-1">
-                <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">{t('dashboard.inactiveTasks')}</div>
-                <div className="font-black text-lg text-text-secondary">
-                  {taskStats.inactive}
-                </div>
-              </div>
-            </div>
+            <h3 className="text-sm font-black mb-2 text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-2">
+              <span>🖥️</span>
+              <span>{t('dashboard.systemStatus', 'SYSTEM STATUS')}</span>
+            </h3>
 
             <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-1.5">{t('dashboard.nodeResourcesLoad')}</h4>
             <div className="space-y-2">
+
               <div>
                 <div className="flex justify-between text-xs mb-0.5">
                   <span className="text-text-secondary">{t('dashboard.cpuLoad')}</span>
@@ -373,9 +310,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Column 2: Hardware Capabilities Detection */}
+        {/* Column 2: Workloads (Services & Tasks Stacked) */}
+        <div className="space-y-4">
+          <ServicesDashboardCard telemetry={telemetry} />
+          <TasksDashboardCard taskStats={taskStats} upcomingTasks={upcomingTasks} />
+        </div>
+
+        {/* Column 3: Hardware Capabilities Detection */}
         <div className="glass-card p-4 border-brand-orange/10 space-y-2.5">
           <h3 className="text-sm font-black mb-1.5 text-[var(--text-primary)] uppercase tracking-wider">
+
             {t('dashboard.hardwarePeripherals')}
           </h3>
           <p className="text-xs text-text-secondary mb-3 leading-normal">
@@ -491,7 +435,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Column 3: System Info & Scheduler status */}
+        {/* Column 4: System Info & Federation */}
         <div className="space-y-4">
           {/* System Info */}
           <div className="glass-card p-4 border-[var(--glass-border)]">
@@ -586,63 +530,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {peers && peers.length > 0 && (
             <PeerStatusCard peers={peers} onRefreshAll={fetchPeers} />
           )}
-
-          {/* Upcoming Scheduled Tasks */}
-          <div className="glass-card p-3.5 border-purple-500/10 bg-purple-500/2 space-y-2.5">
-            <div className="flex items-center justify-between border-b border-purple-500/10 pb-1.5 mb-2">
-              <h3 className="text-sm font-black uppercase text-[var(--text-primary)] tracking-wider">
-                {t('dashboard.upcomingTasksTitle', 'Upcoming Tasks')}
-              </h3>
-              {upcomingTasks && upcomingTasks.length > 0 && (
-                <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/30 text-purple-300">
-                  {upcomingTasks.length} {t('dashboard.scheduledCount', 'scheduled')}
-                </span>
-              )}
-            </div>
-
-            {!upcomingTasks || upcomingTasks.length === 0 ? (
-              <div className="p-3 bg-purple-500/5 border border-purple-500/15 rounded-xl text-center space-y-0.5">
-                <p className="text-xs text-text-secondary font-medium">{t('dashboard.noUpcomingTasks', 'No upcoming tasks scheduled in the near future.')}</p>
-                <p className="text-[9px] text-text-secondary">{t('dashboard.noUpcomingTasksSub', 'Active recurring or one-shot tasks will be listed here.')}</p>
-              </div>
-            ) : (
-              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
-                {upcomingTasks.map((task: any) => (
-                  <div key={task.id} className="py-1.5 px-2.5 bg-purple-500/10 border border-purple-500/20 rounded-lg flex items-center justify-between gap-2 hover:border-purple-500/40 transition-all">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider ${
-                          task.is_system ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-brand-orange/20 text-brand-orange border border-brand-orange/30'
-                        }`}>
-                          {task.is_system ? t('dashboard.systemTask', 'SYSTEM') : t('dashboard.userTask', 'JOB')}
-                        </span>
-                        <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-[140px]" title={task.alias || task.name}>
-                          {task.alias || task.name}
-                        </span>
-                      </div>
-                      {task.schedule_cron && (
-                        <span className="text-[9px] font-mono text-[var(--text-primary)] opacity-70 block">
-                          cron: {task.schedule_cron}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-xs font-black font-mono text-brand-lime block">
-                        {formatRelativeNextRun(task.next_run, t)}
-                      </span>
-                      {task.next_run && (
-                        <span className="text-[8px] text-text-secondary font-mono block">
-                          {new Date(task.next_run).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </>
   );
 };
+
