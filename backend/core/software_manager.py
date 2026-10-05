@@ -208,7 +208,10 @@ class SoftwareManager:
         Aggregates complete status across all supported software engines,
         including $PATH audit, registered builds, and active dependent services.
         """
-        from database.models import SoftwareBuild, Service
+        from database.models import SoftwareBuild, Service, Storage
+
+        storage = db_session.query(Storage).first()
+        storage_base_dir = storage.path if storage else os.path.abspath("data")
 
         engines_res = {}
         for s_type, meta in SUPPORTED_ENGINES.items():
@@ -270,6 +273,7 @@ class SoftwareManager:
                 "installed_build_id": installed_build["id"] if installed_build else None,
                 "builds": builds_list,
                 "total_builds": len(builds_list),
+                "has_custom_icon": bool(self.get_engine_icon_path(s_type, storage_base_dir)),
             }
 
         return engines_res
