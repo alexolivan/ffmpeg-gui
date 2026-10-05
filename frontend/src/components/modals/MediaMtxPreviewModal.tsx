@@ -143,29 +143,83 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
     };
   }, [configuredPaths, activePathSlug, mtxCfg]);
 
-  // Ingest stream collision detection: inspect telemetry for any active FFmpeg processes routing to this MediaMTX path
-  const activePublishingProcess = useMemo(() => {
-    return telemetry.find((proc) => {
-      if (proc.status !== 'running' || proc.service_type !== 'ffmpeg_stream') return false;
-      const outputs = Array.isArray(proc.config?.outputs)
-        ? proc.config.outputs
-        : (proc.config?.output ? [proc.config.output] : []);
-      return outputs.some((out: any) => {
-        if (out.provider_service_id && Number(out.provider_service_id) === Number(currentProcess.id)) {
-          const outPath = out.path_id || (out.url && out.url.split('/').pop()?.replace('/whip', ''));
-          return outPath === activePathSlug;
-        }
-        return false;
-      });
-    });
-  }, [telemetry, currentProcess.id, activePathSlug]);
-
-  const isIngestActive = Boolean(activePublishingProcess || liveApiPaths.includes(activePathSlug));
-
   // Host resolver
   const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   const webScheme = mtxCfg.ssl_enabled || isHttps ? 'https' : 'http';
+
+  // Helper to cleanly extract target path slug from any output configuration or URL
+  const extractPathFromOutput = (out: any): string | null => {
+    if (!out) return null;
+    if (out.path_id) return out.path_id;
+    if (!out.url) return null;
+
+    // SRT streamid syntax: streamid=#!::r=path,m=publish or similar
+    const srtMatch = out.url.match(/[?&]streamid=#!::(?:[^,]+,)*r=([^,&#]+)/);
+    if (srtMatch) {
+      return srtMatch[1];
+    }
+
+    try {
+      const parsed = new URL(out.url);
+      let pathname = parsed.pathname.replace(/^\/+/, '');
+      if (pathname.endsWith('/whip')) pathname = pathname.slice(0, -5);
+      else if (pathname.endsWith('/whep')) pathname = pathname.slice(0, -5);
+      else if (pathname.endsWith('/index.m3u8')) pathname = pathname.slice(0, -11);
+      return pathname || null;
+    } catch {
+      const fallback = out.url.split('?')[0].split('/').filter(Boolean).pop();
+      return fallback ? fallback.replace('/whip', '').replace('/whep', '') : null;
+    }
+  };
+
+  // Find all processes/tasks in telemetry configured to publish to this MediaMTX path
+  const configuredPublishers = useMemo(() => {
+    return telemetry.filter((proc) => {
+      if (proc.id === currentProcess.id) return false;
+      const outputs = Array.isArray(proc.config?.outputs)
+        ? proc.config.outputs
+        : (proc.config?.output ? [proc.config.output] : []);
+      return outputs.some((out: any) => {
+        if (!out) return false;
+        const matchesProvider = out.provider_service_id && Number(out.provider_service_id) === Number(currentProcess.id);
+        const outPath = extractPathFromOutput(out);
+        if (matchesProvider && outPath === activePathSlug) return true;
+        
+        // Also check direct URL match against local MediaMTX ports
+        if (out.url && outPath === activePathSlug) {
+          const ports = [
+            String(mtxCfg.rtmp_port || 1935),
+            String(mtxCfg.srt_port || 8890),
+            String(mtxCfg.rtsp_port || 8554),
+            String(mtxCfg.webrtc_port || 8889),
+            String(mtxCfg.rtsps_port || 8322),
+            String(mtxCfg.rtmps_port || 1936),
+          ];
+          try {
+            const parsed = new URL(out.url);
+            if ((parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost' || parsed.hostname === host) && ports.includes(parsed.port)) {
+              return true;
+            }
+          } catch {}
+        }
+        return false;
+      });
+    });
+  }, [telemetry, currentProcess.id, activePathSlug, mtxCfg, host]);
+
+  // Active publishing process: running process matching the active path
+  const activePublishingProcess = useMemo(() => {
+    return configuredPublishers.find((proc) => proc.status === 'running') || null;
+  }, [configuredPublishers]);
+
+  // Contending publishers: other configured publishers excluding the currently active one
+  const contendingPublishers = useMemo(() => {
+    if (!activePublishingProcess) return configuredPublishers;
+    return configuredPublishers.filter((proc) => proc.id !== activePublishingProcess.id);
+  }, [configuredPublishers, activePublishingProcess]);
+
+  const isIngestActive = Boolean(activePublishingProcess || liveApiPaths.includes(activePathSlug));
 
   // Discover live active paths via MediaMTX REST API via backend proxy if running
   useEffect(() => {
@@ -671,21 +725,60 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
               </div>
             </div>
 
-            {/* Ingest Conflict Alert Banner */}
-            {isIngestActive && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2.5 animate-in fade-in duration-300">
-                <span className="text-base leading-none">⚠️</span>
-                <div className="text-xs space-y-0.5">
-                  <div className="font-bold text-amber-400">
-                    {t('services.mediamtx.connectionMatrix.ingestConflictTitle', 'Ingest Active on Path /{{path}}', { path: activePathSlug })}
+            {/* Unified Path Status & Contention Telemetry Card */}
+            {(isIngestActive || contendingPublishers.length > 1) && (
+              <div className="space-y-2 animate-in fade-in duration-300">
+                {/* 1. Positive Green Status: Active Live Stream */}
+                {isIngestActive && (
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 flex items-start gap-2.5">
+                    <span className="text-base leading-none">🟢</span>
+                    <div className="text-xs space-y-0.5 flex-1">
+                      <div className="font-bold text-emerald-400 flex items-center gap-2">
+                        <span>{t('services.mediamtx.connectionMatrix.pathActiveTitle', 'Live Ingest Active on /{{path}}', { path: activePathSlug })}</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      </div>
+                      <div className="text-[11px] text-[var(--text-secondary)]">
+                        {activePublishingProcess ? (
+                          <span>
+                            {t('services.mediamtx.connectionMatrix.publishedBy', 'Source')}: <strong className="text-[var(--text-primary)]">{activePublishingProcess.alias || activePublishingProcess.name}</strong>
+                            {activePublishingProcess.pid ? ` (PID: ${activePublishingProcess.pid})` : ''}
+                            {' · '}{activePublishingProcess.is_task ? t('common.task', 'Task') : t('common.service', 'Service')}
+                          </span>
+                        ) : (
+                          <span>
+                            {t('services.mediamtx.connectionMatrix.publishedByExternal', 'Source: External Encoder / Network Stream')}
+                            {currentProcess.active_leases && currentProcess.active_leases.length > 0
+                              ? ` (${t('services.mediamtx.connectionMatrix.activeLeasesBadge', 'Active leases')}: ${currentProcess.active_leases.map((l: string) => l.replace('peer:', '')).join(', ')})`
+                              : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[11px] text-[var(--text-secondary)]">
-                    {activePublishingProcess
-                      ? t('services.mediamtx.connectionMatrix.ingestConflictServiceDesc', 'Service "{{name}}" is currently publishing to this path. Publishing from another encoder may cause stream conflicts.', { name: activePublishingProcess.alias || activePublishingProcess.name })
-                      : t('services.mediamtx.connectionMatrix.ingestConflictExternalDesc', 'An active stream publisher is currently transmitting to this path. Publishing here may cause stream collisions.')
-                    }
+                )}
+
+                {/* 2. Amber Warning: Multi-Publisher Contention Detected */}
+                {contendingPublishers.length > 0 && (isIngestActive || contendingPublishers.length >= 2) && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2.5">
+                    <span className="text-base leading-none">⚠️</span>
+                    <div className="text-xs space-y-1 flex-1">
+                      <div className="font-bold text-amber-400">
+                        {t('services.mediamtx.connectionMatrix.contentionTitle', 'Contention Warning on /{{path}}', { path: activePathSlug })}
+                      </div>
+                      <div className="text-[11px] text-[var(--text-secondary)]">
+                        {t('services.mediamtx.connectionMatrix.contentionDesc', 'Other configured processes targeting this path could cause stream disruption if started concurrently:')}
+                      </div>
+                      <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-[var(--text-secondary)]">
+                        {contendingPublishers.map((proc: any) => (
+                          <li key={proc.id}>
+                            <strong className="text-amber-300">{proc.alias || proc.name}</strong>
+                            {' '}({proc.is_task ? t('common.task', 'Task') : t('common.service', 'Service')}, {proc.status === 'running' ? t('common.running', 'Running') : t('common.stopped', 'Stopped')})
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
