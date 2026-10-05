@@ -39,6 +39,7 @@ export interface SoftwareEngineData {
   installed_build_id: number | null;
   builds: SoftwareEngineBuild[];
   total_builds: number;
+  has_custom_icon?: boolean;
 }
 
 interface SoftwareEngineCardProps {
@@ -72,7 +73,11 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
   const [isDownloadingRelease, setIsDownloadingRelease] = useState(false);
 
   // Icon preview
-  const [hasCustomIcon, setHasCustomIcon] = useState(true);
+  const [hasCustomIcon, setHasCustomIcon] = useState(() => Boolean(engine.has_custom_icon));
+
+  React.useEffect(() => {
+    setHasCustomIcon(Boolean(engine.has_custom_icon));
+  }, [engine.has_custom_icon]);
 
   const showNotification = (msg: string, isError = false) => {
     if (isError) {

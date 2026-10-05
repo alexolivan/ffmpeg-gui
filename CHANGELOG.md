@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.34.2] - 2026-10-05
+
+### Fixed
+- **Session Cookie Support in `verify_token` Dependency**:
+  - Fixed `401 Unauthorized` response on `GET /api/hardware/health` when logged in using browser session cookies (`gui_session`), aligning the FastAPI `verify_token` dependency with `AuthBarrierMiddleware`.
+- **Software Engine Built-in Vector SVG Icons & Elimination of 404s**:
+  - Serves built-in high-quality vector SVGs (Chromium, Firefox, FFmpeg, MediaMTX, Icecast2) with HTTP 200 instead of returning HTTP 404 on `GET /api/settings/software/{type}/icon` when no custom icon has been uploaded on disk.
+  - Added `has_custom_icon` boolean telemetry flag to `GET /api/settings/software` and synchronized `SoftwareEngineCard` state so the delete/reset icon button is only presented when a custom icon is actually stored.
+
 ## [2.34.1] - 2026-10-05
 
 ### Added
