@@ -1337,6 +1337,11 @@ class FFmpegCommandBuilder:
                     cmd += ["-af", af_str]
                     
                 acodec = codec_cfg.get('acodec', 'aac')
+                if output_type == 'alsa' and (acodec == 'copy' or not (acodec and acodec.startswith('pcm_'))):
+                    logger.warning(
+                        f"ALSA output requires uncompressed PCM audio. Forcing 'pcm_s16le' instead of '{acodec}'."
+                    )
+                    acodec = 'pcm_s16le'
                 cmd += ["-c:a", acodec]
                 
                 audio_params = codec_cfg.get('audio_params', {})
