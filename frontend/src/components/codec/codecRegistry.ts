@@ -86,6 +86,10 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   alsa: {
     video: [],
     audio: ['pcm_s16le', 'pcm_s24le', 'copy']
+  },
+  rtsp: {
+    video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
+    audio: ['pcm_s16le', 'pcm_s24le', 'aac', 'libfdk_aac', 'libopus', 'libmp3lame', 'copy']
   }
 };
 
@@ -1001,10 +1005,29 @@ export interface SystemCapabilities {
   };
 }
 
+/**
+ * Evaluates whether an audio source delivers uncompressed raw PCM samples
+ * from hardware/generators, where 'copy' passthrough is invalid for streaming destinations.
+ */
+export function isRawHardwareAudioSource(inputType?: string): boolean {
+  if (!inputType) return false;
+  return ['alsa', 'decklink', 'lavfi_audio', 'pipewire'].includes(inputType);
+}
+
+/**
+ * Evaluates whether a video source delivers uncompressed raw pixel frames
+ * from hardware/generators, where 'copy' passthrough is invalid for streaming destinations.
+ */
+export function isRawHardwareVideoSource(inputType?: string): boolean {
+  if (!inputType) return false;
+  return ['desktop', 'decklink', 'v4l2', 'lavfi_video'].includes(inputType);
+}
+
 export function getAvailableVideoCodecs(
   buildOptions?: Record<string, boolean>,
   systemCapabilities?: SystemCapabilities,
-  outputType?: string
+  outputType?: string,
+  inputType?: string
 ): CodecDefinition[] {
   let codecs = VIDEO_CODECS;
   if (!buildOptions) {
@@ -1035,13 +1058,19 @@ export function getAvailableVideoCodecs(
     codecs = codecs.filter(c => allowed.includes(c.id));
   }
 
+  // If input is an uncompressed raw hardware source, exclude 'copy' (passthrough impossible)
+  if (isRawHardwareVideoSource(inputType)) {
+    codecs = codecs.filter(c => c.id !== 'copy');
+  }
+
   return codecs;
 }
 
 export function getAvailableAudioCodecs(
   buildOptions?: Record<string, boolean>,
   outputType?: string,
-  systemCapabilities?: SystemCapabilities
+  systemCapabilities?: SystemCapabilities,
+  inputType?: string
 ): CodecDefinition[] {
   let codecs = AUDIO_CODECS;
   
@@ -1068,6 +1097,11 @@ export function getAvailableAudioCodecs(
   if (outputType && OUTPUT_COMPATIBLE_CODECS[outputType]) {
     const allowed = OUTPUT_COMPATIBLE_CODECS[outputType].audio;
     codecs = codecs.filter(c => allowed.includes(c.id));
+  }
+
+  // If input is an uncompressed raw hardware source, exclude 'copy' (passthrough impossible)
+  if (isRawHardwareAudioSource(inputType)) {
+    codecs = codecs.filter(c => c.id !== 'copy');
   }
 
   return codecs;

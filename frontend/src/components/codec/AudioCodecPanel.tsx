@@ -12,6 +12,7 @@ interface AudioCodecPanelProps {
   params: Record<string, string | number | boolean>;
   buildOptions?: Record<string, boolean>;
   outputType?: string;
+  inputType?: string;
   systemCapabilities?: SystemCapabilities;
   onChange: (codecId: string, params: Record<string, string | number | boolean>) => void;
 }
@@ -21,14 +22,22 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
   params,
   buildOptions,
   outputType,
+  inputType,
   systemCapabilities,
   onChange,
 }) => {
   const { t } = useTranslation();
   const available = React.useMemo(() => {
-    return getAvailableAudioCodecs(buildOptions, outputType, systemCapabilities);
-  }, [buildOptions, outputType, systemCapabilities]);
+    return getAvailableAudioCodecs(buildOptions, outputType, systemCapabilities, inputType);
+  }, [buildOptions, outputType, systemCapabilities, inputType]);
   const selected = available.find(c => c.id === codecId) || available[0];
+
+  // Auto-heal selected codec if the current one becomes unavailable
+  React.useEffect(() => {
+    if (available.length > 0 && !available.some(c => c.id === codecId)) {
+      onChange(available[0].id, getDefaultParams(available[0]));
+    }
+  }, [available, codecId, onChange]);
 
   const handleCodecChange = (newCodecId: string) => {
     const codec = available.find(c => c.id === newCodecId);

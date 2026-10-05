@@ -4,7 +4,7 @@ import InputSourcePanel from './source/InputSourcePanel';
 import type { InputSourceConfig } from './source/InputSourcePanel';
 import VideoCodecPanel from './codec/VideoCodecPanel';
 import AudioCodecPanel from './codec/AudioCodecPanel';
-import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS, getAvailableVideoCodecs, getAvailableAudioCodecs } from './codec/codecRegistry';
+import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS, getAvailableVideoCodecs, getAvailableAudioCodecs, isRawHardwareAudioSource, isRawHardwareVideoSource } from './codec/codecRegistry';
 import type { SystemCapabilities } from './codec/codecRegistry';
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
@@ -808,17 +808,54 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         finalHasVideo = false;
         finalHasAudio = true;
       }
+      let finalVideoCodecId = prev.video_codec_id;
+      let finalVideoCodecParams = prev.video_codec_params;
+      let finalAudioCodecId = prev.audio_codec_id;
+      let finalAudioCodecParams = prev.audio_codec_params;
+
+      // Auto-heal video codec if switched to uncompressed raw video source
+      if (isRawHardwareVideoSource(input1.type) && finalVideoCodecId === 'copy') {
+        const fallback = VIDEO_CODECS[0];
+        finalVideoCodecId = fallback.id;
+        finalVideoCodecParams = getDefaultParams(fallback);
+      }
+
+      // Auto-heal audio codec if switched to uncompressed raw audio source (when not using secondary input)
+      if (!prev.use_secondary_input && isRawHardwareAudioSource(input1.type) && finalAudioCodecId === 'copy') {
+        const fallback = AUDIO_CODECS[0];
+        finalAudioCodecId = fallback.id;
+        finalAudioCodecParams = getDefaultParams(fallback);
+      }
+
       return {
         ...prev,
         input1,
         has_video: finalHasVideo,
         has_audio: finalHasAudio,
+        video_codec_id: finalVideoCodecId,
+        video_codec_params: finalVideoCodecParams,
+        audio_codec_id: finalAudioCodecId,
+        audio_codec_params: finalAudioCodecParams,
       };
     });
   }, [config.has_video]);
 
   const handleInput2Change = useCallback((input2: InputSourceConfig) => {
-    setConfig(prev => ({ ...prev, input2 }));
+    setConfig(prev => {
+      let finalAudioCodecId = prev.audio_codec_id;
+      let finalAudioCodecParams = prev.audio_codec_params;
+      if (prev.use_secondary_input && isRawHardwareAudioSource(input2.type) && finalAudioCodecId === 'copy') {
+        const fallback = AUDIO_CODECS[0];
+        finalAudioCodecId = fallback.id;
+        finalAudioCodecParams = getDefaultParams(fallback);
+      }
+      return {
+        ...prev,
+        input2,
+        audio_codec_id: finalAudioCodecId,
+        audio_codec_params: finalAudioCodecParams,
+      };
+    });
   }, []);
 
   const handleSyncAlsaAudio = useCallback((alsaDevice: string) => {
@@ -1113,11 +1150,21 @@ const hasNDICodecIncompatibility = isNDIOutput && (
           nextInput2 = { ...nextInput2, type: 'file' };
         }
       }
+      const effectiveAudioType = val ? nextInput2.type : nextInput1.type;
+      let finalAudioCodecId = prev.audio_codec_id;
+      let finalAudioCodecParams = prev.audio_codec_params;
+      if (isRawHardwareAudioSource(effectiveAudioType) && finalAudioCodecId === 'copy') {
+        const fallback = AUDIO_CODECS[0];
+        finalAudioCodecId = fallback.id;
+        finalAudioCodecParams = getDefaultParams(fallback);
+      }
       return {
         ...prev,
         use_secondary_input: val,
         input1: nextInput1,
-        input2: nextInput2
+        input2: nextInput2,
+        audio_codec_id: finalAudioCodecId,
+        audio_codec_params: finalAudioCodecParams,
       };
     });
   }, []);
@@ -1491,6 +1538,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                   buildOptions={selectedBuildOptions}
                   systemCapabilities={systemCapabilities}
                   outputType={config.output.type}
+                  inputType={config.input1?.type}
                   onChange={handleVideoCodecChange}
                 />
               </div>
@@ -1502,6 +1550,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                   params={config.audio_codec_params}
                   buildOptions={selectedBuildOptions}
                   outputType={config.output.type}
+                  inputType={config.use_secondary_input ? config.input2?.type : config.input1?.type}
                   systemCapabilities={systemCapabilities || undefined}
                   onChange={handleAudioCodecChange}
                 />
