@@ -313,6 +313,36 @@ class TestCommandGenerator(unittest.TestCase):
         cmd_str = " ".join(cmd)
 
         self.assertIn("-f alsa hw:0,0", cmd_str)
+        self.assertIn("-c:a pcm_s16le", cmd_str)
+
+    def test_alsa_output_forces_pcm_when_copy_or_non_pcm(self):
+        # 1. Test 'copy' is overridden to 'pcm_s16le'
+        proc = MagicMock()
+        proc.id = 303
+        proc.type = "service"
+        proc.input_config = {'type': 'http_audio', 'url': 'http://stream.example/audio.mp3', 'has_video': False, 'has_audio': True}
+        proc.codec_config = {'vcodec': 'none', 'acodec': 'copy'}
+        proc.filter_config = {}
+        proc.output_config = {'type': 'alsa', 'device': 'hw:0,0'}
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+        self.assertIn("-c:a pcm_s16le", cmd_str)
+        self.assertNotIn("-c:a copy", cmd_str)
+        self.assertIn("-f alsa hw:0,0", cmd_str)
+
+        # 2. Test non-pcm compressed codec (e.g. 'aac') is also overridden to 'pcm_s16le'
+        proc.codec_config['acodec'] = 'aac'
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+        self.assertIn("-c:a pcm_s16le", cmd_str)
+        self.assertNotIn("-c:a aac", cmd_str)
+
+        # 3. Test valid PCM codec ('pcm_s24le') is preserved
+        proc.codec_config['acodec'] = 'pcm_s24le'
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+        self.assertIn("-c:a pcm_s24le", cmd_str)
 
     def test_progress_telemetry_command_generation(self):
         proc = MagicMock()

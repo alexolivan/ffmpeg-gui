@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.34.3] - 2026-10-05
+
+### Fixed
+- **ALSA Hardware Output Codec Compatibility & Enforcement**:
+  - Excluded invalid `copy` (Audio Passthrough) option from ALSA destination compatible audio codecs in `codecRegistry.ts`, restricting choices strictly to uncompressed PCM (`pcm_s16le`, `pcm_s24le`).
+  - Added backend defense in `FFmpegCommandBuilder`: if an ALSA destination is configured with `copy` or a compressed/non-PCM codec, the generator automatically forces safe fallback to `pcm_s16le` to prevent FFmpeg subprocess crashes against Linux sound drivers.
+
 ## [2.34.2] - 2026-10-05
 
 ### Fixed

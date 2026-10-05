@@ -85,7 +85,7 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   },
   alsa: {
     video: [],
-    audio: ['pcm_s16le', 'pcm_s24le', 'copy']
+    audio: ['pcm_s16le', 'pcm_s24le']
   },
   rtsp: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
