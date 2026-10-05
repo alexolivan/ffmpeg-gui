@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.33.1] - 2026-10-05
+
+### Fixed
+- **MediaMTX Idle Path State Filtering**:
+  - Filtered out registered but idle paths in `MediaMtxPreviewModal` by validating `ready: true` and `source !== null` from MediaMTX's `/v3/paths/list` API response.
+  - Eliminated false-positive active stream status and external publisher misattribution for configured paths that have no active publisher.
+
 ## [2.33.0] - 2026-10-05
 
 ### Added

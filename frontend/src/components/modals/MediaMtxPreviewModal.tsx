@@ -233,7 +233,10 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
         if (res.ok) {
           const data = await res.json();
           if (data && Array.isArray(data.items)) {
-            const names = data.items.map((i: any) => i.name).filter(Boolean);
+            const names = data.items
+              .filter((i: any) => Boolean((i.ready === true || i.online === true || i.available === true) && i.source !== null))
+              .map((i: any) => i.name)
+              .filter(Boolean);
             setLiveApiPaths(names);
           }
         }
