@@ -265,7 +265,7 @@ class FFmpegCommandBuilder:
         
         if fps_mode == 'auto':
             output_type = output_cfg.get('type')
-            live_outputs = {'rtmp', 'srt', 'udp', 'hls', 'whip', 'icecast', 'decklink', 'ndi'}
+            live_outputs = {'rtmp', 'srt', 'udp', 'hls', 'whip', 'icecast', 'decklink', 'ndi', 'rtsp'}
             has_target_rate = bool(filter_cfg.get('framerate') or output_cfg.get('framerate'))
             if output_type in live_outputs and has_target_rate:
                 resolved_mode = 'cfr'
@@ -891,6 +891,23 @@ class FFmpegCommandBuilder:
                     cmd += ["-hls_segment_filename", segment_pattern]
 
             cmd += [path]
+        elif output_type == 'rtsp':
+            transport = output_cfg.get('rtsp_transport', 'tcp')
+            cmd += ["-rtsp_transport", transport]
+
+            url = output_cfg.get('url')
+            if not url:
+                host = output_cfg.get('host', '127.0.0.1')
+                port = output_cfg.get('port', '8554')
+                path = output_cfg.get('path_id') or output_cfg.get('path', 'live')
+                if path.startswith('/'):
+                    path = path[1:]
+                username = output_cfg.get('publish_user') or output_cfg.get('auth_user') or output_cfg.get('username')
+                password = output_cfg.get('publish_pass') or output_cfg.get('auth_pass') or output_cfg.get('password')
+                auth_part = f"{username}:{password}@" if username and password else ""
+                url = f"rtsp://{auth_part}{host}:{port}/{path}"
+
+            cmd += ["-f", "rtsp", url]
 
     @classmethod
     def build_cmd(cls, media_proc, ffmpeg_bin: str, limit_sec=None, execution_id=None, db_session_factory=None) -> list:

@@ -13,6 +13,7 @@ export interface OutputConfig {
   mode?: string;
   latency?: number;
   container?: string;
+  rtsp_transport?: 'tcp' | 'udp';
   icecast_mount?: string;
   icecast_password?: string;
   device?: string;
@@ -94,6 +95,7 @@ interface DestinationPanelProps {
 const OUTPUT_TYPES = [
   { value: 'udp', labelKey: 'destinations.types.udp', label: 'UDP Multicast (MPEG-TS)', requiresVideo: false },
   { value: 'srt', labelKey: 'destinations.types.srt', label: 'SRT Stream', requiresVideo: false },
+  { value: 'rtsp', labelKey: 'destinations.types.rtsp', label: 'RTSP Stream (MediaMTX / TCP)', requiresVideo: false },
   { value: 'rtmp', labelKey: 'destinations.types.rtmp', label: 'RTMP / RTMPS Push', requiresVideo: true },
   { value: 'whip', labelKey: 'destinations.types.whip', label: 'WHIP Push (WebRTC)', requiresVideo: false },
   { value: 'ndi', labelKey: 'destinations.types.ndi', label: 'NDI Output', requiresVideo: true },
@@ -470,6 +472,23 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           }
         }
       }
+    } else if (config.type === 'rtsp' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
+      if (!config.peer_node_id && config.mediamtx_target_type !== 'remote' && config.mediamtx_target_type !== 'external' && mediamtxProviders.length > 0) {
+        const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        if (prov) {
+          const pCfg = prov.config || {};
+          const isTls = Boolean(config.tls && pCfg.ssl_enabled && pCfg.rtsps_enabled);
+          const expectedPort = String(isTls ? (pCfg.rtsps_port || 8322) : (pCfg.rtsp_port || 8554));
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: config.host || '127.0.0.1',
+              rtsp_transport: config.rtsp_transport || 'tcp',
+            });
+          }
+        }
+      }
     } else if (config.type === 'whip' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
       if (!config.peer_node_id && config.mediamtx_target_type !== 'remote' && config.mediamtx_target_type !== 'external' && mediamtxProviders.length > 0) {
         const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
@@ -485,7 +504,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           }
         }
       }
-    } else if (config.type && !['srt', 'rtmp', 'whip', 'icecast'].includes(config.type) && (config.provider_service_id || config.mediamtx_mode || config.service_target)) {
+    } else if (config.type && !['srt', 'rtmp', 'rtsp', 'whip', 'icecast'].includes(config.type) && (config.provider_service_id || config.mediamtx_mode || config.service_target)) {
       update({
         provider_service_id: undefined,
         mediamtx_mode: false,
@@ -495,7 +514,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         stream_action: undefined,
       });
     }
-  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls]);
+  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls, config.rtsp_transport]);
 
   const parseFormatDescription = (desc: string) => {
     const resMatch = desc.match(/(\d+)x(\d+)/);
@@ -542,22 +561,26 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         name="type"
         className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-purple-400 transition-all"
         value={config.type}
-        onChange={e => update({
-          type: e.target.value,
-          host: '', port: '', path: '', url: '',
-          mode: 'caller', latency: 200,
-          container: 'mp4', icecast_mount: '', icecast_password: '',
-          hls_method: (storages || []).some((s: any) => s.type === 'hls') ? 'local' : 'PUT',
-          storage_id: (storages || []).find((s: any) => s.type === 'hls')?.id || null,
-          hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
-          hls_abr_enabled: false, hls_stream_name: 'stream', variants: [],
-          provider_service_id: undefined,
-          mediamtx_mode: false,
-          service_target: undefined,
-          mediamtx_target_type: undefined,
-          path_id: undefined,
-          stream_action: undefined,
-        })}
+        onChange={e => {
+          const newType = e.target.value;
+          update({
+            type: newType,
+            host: '', port: newType === 'rtsp' ? '8554' : '', path: '', url: '',
+            mode: 'caller', latency: 200,
+            rtsp_transport: newType === 'rtsp' ? 'tcp' : undefined,
+            container: 'mp4', icecast_mount: '', icecast_password: '',
+            hls_method: (storages || []).some((s: any) => s.type === 'hls') ? 'local' : 'PUT',
+            storage_id: (storages || []).find((s: any) => s.type === 'hls')?.id || null,
+            hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
+            hls_abr_enabled: false, hls_stream_name: 'stream', variants: [],
+            provider_service_id: undefined,
+            mediamtx_mode: false,
+            service_target: undefined,
+            mediamtx_target_type: undefined,
+            path_id: undefined,
+            stream_action: undefined,
+          });
+        }}
       >
         {availableTypes.map(tItem => (
           <option key={tItem.value} value={tItem.value}>{t(tItem.labelKey, tItem.label)}</option>
@@ -1412,6 +1435,576 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       <strong>Rendezvous Mode:</strong> {t('destinations.rendezvousDesc')}
                     </span>
                   )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {config.type === 'rtsp' && (() => {
+        const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+        const remoteMtxServices = remotePeers.flatMap(peer =>
+          (peer.cached_services || peer.cached_services_json || [])
+            .filter((s: any) => s.service_type === 'mediamtx_hub')
+            .map((s: any) => ({ peer, svc: s }))
+        );
+        const hasManagedProviders = mediamtxProviders.length > 0 || remoteMtxServices.length > 0;
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id || config.peer_node_id);
+        const isExternal = (config.mediamtx_target_type === 'external' || (config.mediamtx_target_type === 'remote' && !config.peer_node_id)) || (!config.provider_service_id && !config.peer_node_id && !hasManagedProviders);
+        const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+
+        // Active configuration resolution (Local Provider vs Federated Peer)
+        let activePathsDict: Record<string, any> = {};
+        let activeSecurity: any = {};
+        let activeMtxCfg: any = {};
+        let currentHost = '127.0.0.1';
+
+        if (config.peer_node_id) {
+          const peer = remotePeers.find(p => p.id === config.peer_node_id);
+          const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
+          const svc = services.find((s: any) => s.id === config.peer_service_id);
+          const protos = svc?.protocols || {};
+          activeSecurity = protos.security || {};
+          activeMtxCfg = {
+            ssl_enabled: protos.rtsps_enabled,
+            rtsps_enabled: protos.rtsps_enabled,
+            rtsps_port: protos.rtsps_port || 8322,
+            rtsp_port: protos.rtsp_port || 8554,
+          };
+          try {
+            currentHost = peer ? new URL(peer.base_url).hostname : '127.0.0.1';
+          } catch {
+            currentHost = peer ? peer.base_url.replace(/https?:\/\//, '').split(':')[0] : '127.0.0.1';
+          }
+          const paths = protos.paths || {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            activePathsDict = paths;
+          }
+        } else {
+          activeMtxCfg = selectedProvider?.config || {};
+          activeSecurity = activeMtxCfg.security || {};
+          const rawPaths = activeMtxCfg.paths || {};
+          if (Array.isArray(rawPaths)) {
+            for (const p of rawPaths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof rawPaths === 'object' && rawPaths !== null) {
+            activePathsDict = rawPaths;
+          }
+        }
+        const configuredPaths = Object.keys(activePathsDict);
+
+        const handleSelectProvider = (provId: number, isTls?: boolean) => {
+          const prov = mediamtxProviders.find(p => p.id === provId);
+          if (!prov) return;
+          const pCfg = prov.config || {};
+          const paths = pCfg.paths || {};
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = pathsDict[firstPath] || {};
+
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || pCfg.security?.publish_user || pCfg.publish_user || '';
+            pubPass = pathConf.publish_pass || pCfg.security?.publish_pass || pCfg.publish_pass || '';
+          }
+
+          const useTls = isTls !== undefined ? isTls : Boolean(pCfg.ssl_enabled && pCfg.rtsps_enabled && config.tls);
+          const port = useTls ? (pCfg.rtsps_port || 8322) : (pCfg.rtsp_port || 8554);
+          const scheme = useTls ? 'rtsps' : 'rtsp';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}127.0.0.1:${port}/${firstPath}`;
+
+          update({
+            provider_service_id: prov.id,
+            peer_node_id: undefined,
+            peer_service_id: undefined,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'managed',
+            host: '127.0.0.1',
+            port: String(port),
+            path_id: firstPath,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            mediamtx_mode: true,
+            tls: useTls,
+            rtsp_transport: config.rtsp_transport || 'tcp',
+            url: genUrl,
+          });
+        };
+
+        const handleSelectRemotePeer = (peerId: number, svcId: number, isTls?: boolean) => {
+          const peer = remotePeers.find(p => p.id === peerId);
+          if (!peer) return;
+          const services = peer.cached_services || peer.cached_services_json || [];
+          const svc = services.find((s: any) => s.id === svcId);
+          if (!svc) return;
+
+          let host = '127.0.0.1';
+          try {
+            host = new URL(peer.base_url).hostname;
+          } catch {
+            host = peer.base_url.replace(/https?:\/\//, '').split(':')[0];
+          }
+
+          const protos = svc.protocols || {};
+          const paths = protos.paths || {};
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = pathsDict[firstPath] || {};
+
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || protos.security?.publish_user || '';
+            pubPass = pathConf.publish_pass || protos.security?.publish_pass || '';
+          }
+
+          const useTls = isTls !== undefined ? isTls : Boolean(protos.rtsps_enabled && config.tls);
+          const port = useTls ? (protos.rtsps_port || 8322) : (protos.rtsp_port || 8554);
+          const scheme = useTls ? 'rtsps' : 'rtsp';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}${host}:${port}/${firstPath}`;
+
+          update({
+            peer_node_id: peer.id,
+            peer_service_id: svc.id,
+            provider_service_id: undefined,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'managed',
+            host: host,
+            port: String(port),
+            path_id: firstPath,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            mediamtx_mode: true,
+            tls: useTls,
+            rtsp_transport: config.rtsp_transport || 'tcp',
+            url: genUrl,
+          });
+        };
+
+        const handleSelectPath = (val: string) => {
+          const pathId = val === '__custom__' ? (config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '') : val;
+          const pathConf = activePathsDict[pathId] || {};
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || activeSecurity?.publish_user || '';
+            pubPass = pathConf.publish_pass || activeSecurity?.publish_pass || '';
+          }
+
+          const scheme = config.tls ? 'rtsps' : 'rtsp';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const port = config.port || (config.tls ? '8322' : '8554');
+          const genUrl = `${scheme}://${authPrefix}${currentHost}:${port}/${pathId || 'stream1'}`;
+
+          update({
+            path_id: pathId,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            url: genUrl,
+          });
+        };
+
+        return (
+          <div className="space-y-3">
+            {/* Connection Mode Switch */}
+            <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
+                  !isMediaMtxMode
+                    ? 'bg-amber-500/25 text-[var(--text-primary)] border border-amber-500/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => update({
+                  mediamtx_mode: false,
+                  service_target: 'manual',
+                  path_id: undefined,
+                  provider_service_id: undefined,
+                  peer_node_id: undefined,
+                  peer_service_id: undefined,
+                  mediamtx_target_type: undefined,
+                })}
+              >
+                {t('destinations.rtspManualDirect', 'Manual Direct RTSP')}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
+                  isMediaMtxMode
+                    ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  if (mediamtxProviders.length > 0) {
+                    const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                    handleSelectProvider(defaultProv.id);
+                  } else if (remoteMtxServices.length > 0) {
+                    handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
+                  } else {
+                    update({
+                      mediamtx_mode: true,
+                      mediamtx_target_type: 'external',
+                      service_target: 'mediamtx',
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8554',
+                      path_id: config.path_id || 'stream1',
+                      rtsp_transport: config.rtsp_transport || 'tcp',
+                      url: `rtsp://${config.host || '127.0.0.1'}:${config.port || '8554'}/${config.path_id || 'stream1'}`,
+                    });
+                  }
+                }}
+              >
+                <span>⚡</span>
+                {t('destinations.rtspMediaMtxHub', 'MediaMTX Hub Integration')}
+              </button>
+            </div>
+
+            {isMediaMtxMode ? (
+              <div className="space-y-2.5 bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-brand-lime tracking-wider flex items-center gap-1">
+                    <span>⚡</span> {t('destinations.rtspMediaMtxHub', 'MediaMTX Hub Integration')}
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime font-mono">
+                    {config.tls ? 'rtsps://' : 'rtsp://'}{currentHost}:{config.port || (config.tls ? '8322' : '8554')}
+                  </span>
+                </div>
+
+                {/* Sub-selector: Managed Service vs Manual External Server */}
+                <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                  <button
+                    type="button"
+                    disabled={!hasManagedProviders}
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      !isExternal && hasManagedProviders
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => {
+                      if (mediamtxProviders.length > 0) {
+                        const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                        if (defaultProv) handleSelectProvider(defaultProv.id);
+                      } else if (remoteMtxServices.length > 0) {
+                        handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
+                      }
+                    }}
+                  >
+                    <span>⚡</span> {t('destinations.managedService', 'Managed Service (Local & Peers)')} {!hasManagedProviders ? `(${t('common.none', 'None')})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      isExternal
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => update({
+                      mediamtx_target_type: 'external',
+                      provider_service_id: undefined,
+                      peer_node_id: undefined,
+                      peer_service_id: undefined,
+                      service_target: 'mediamtx',
+                      mediamtx_mode: true,
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8554',
+                      path_id: config.path_id || 'stream1',
+                      rtsp_transport: config.rtsp_transport || 'tcp',
+                    })}
+                  >
+                    <span>🌐</span> {t('destinations.externalServer', 'Manual External Server (Unfederated Host)')}
+                  </button>
+                </div>
+
+                {!isExternal && (selectedProvider || config.peer_node_id) ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.rtspProviderHub', 'MediaMTX Provider Instance')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val.startsWith('peer:')) {
+                              const [, pId, sId] = val.split(':');
+                              handleSelectRemotePeer(parseInt(pId), parseInt(sId));
+                            } else {
+                              handleSelectProvider(parseInt(val));
+                            }
+                          }}
+                        >
+                          {mediamtxProviders.length > 0 && (
+                            <optgroup label={t('destinations.localServices', 'Local Hubs (This Node)')}>
+                              {mediamtxProviders.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name} {p.alias ? `(${p.alias})` : ''} — Port {p.config?.rtsp_port || 8554}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {remoteMtxServices.length > 0 && (
+                            <optgroup label={t('destinations.remotePeers', 'Federated Remote Peers')}>
+                              {remoteMtxServices.map(({ peer, svc }) => (
+                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
+                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.rtspPathId', 'Target Stream Path')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
+                          onChange={e => handleSelectPath(e.target.value)}
+                        >
+                          {configuredPaths.map(pName => (
+                            <option key={pName} value={pName}>/{pName} {getOptionLockStatus('mediamtx', pName)}</option>
+                          ))}
+                          <option value="__custom__">✎ {t('destinations.customPathPrompt', 'Custom Path...')}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Transport & TLS controls */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.rtsp.transport', 'Transport Protocol')}
+                        </label>
+                        <select
+                          value={config.rtsp_transport || 'tcp'}
+                          onChange={e => update({ rtsp_transport: e.target.value as 'tcp' | 'udp' })}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                        >
+                          <option value="tcp">TCP ({t('destinations.rtsp.transportTcpRecommended', 'Recommended - Low Jitter')})</option>
+                          <option value="udp">UDP ({t('destinations.rtsp.transportUdp', 'UDP')})</option>
+                        </select>
+                      </div>
+
+                      {/* TLS / RTSPS toggle if supported by hub */}
+                      {activeMtxCfg.ssl_enabled && activeMtxCfg.rtsps_enabled && (
+                        <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg self-end">
+                          <div className="text-xs">
+                            <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                              🔒 {t('destinations.enableRtsps', 'Encrypted RTSPS (TLS)')}
+                            </span>
+                            <span className="text-[10px] text-[var(--text-secondary)] block">
+                              Port :{activeMtxCfg.rtsps_port || 8322}
+                            </span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(config.tls)}
+                            onChange={e => {
+                              if (config.peer_node_id && config.peer_service_id) {
+                                handleSelectRemotePeer(config.peer_node_id, config.peer_service_id, e.target.checked);
+                              } else if (selectedProvider) {
+                                handleSelectProvider(selectedProvider.id, e.target.checked);
+                              }
+                            }}
+                            className="accent-brand-lime cursor-pointer w-4 h-4"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {(!config.path_id || !configuredPaths.includes(config.path_id)) && (
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.customPathSlug', 'Custom Path Slug')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. live1, channel_master"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.path_id || ''}
+                          onChange={e => {
+                            const newPath = e.target.value.replace(/[^a-zA-Z0-9_\-\/]/g, '');
+                            const scheme = config.tls ? 'rtsps' : 'rtsp';
+                            const pubUser = config.publish_user || config.auth_user || '';
+                            const pubPass = config.publish_pass || config.auth_pass || '';
+                            const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+                            update({
+                              path_id: newPath,
+                              url: `${scheme}://${authPrefix}${currentHost}:${config.port || (config.tls ? 8322 : 8554)}/${newPath}`,
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Resource collision warning banner */}
+                    {renderCollisionWarning(getResourceLock('mediamtx', config.path_id || ''), config.path_id || '')}
+
+                    {/* Generated URL & Auto-computed field */}
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.generatedRtspUrl', 'Generated Target RTSP URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all cursor-pointer"
+                        value={config.url || ''}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Remote Hub Mode */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.remoteHostIp', 'Remote Host / IP')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. mediamtx.mycorp.lan"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.host || ''}
+                          onChange={e => {
+                            const h = e.target.value;
+                            const port = config.port || '8554';
+                            const path = config.path_id || 'stream1';
+                            update({ host: h, url: `rtsp://${h}:${port}/${path}` });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.port', 'Port')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="8554"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.port || '8554'}
+                          onChange={e => {
+                            const p = e.target.value;
+                            update({ port: p, url: `rtsp://${config.host || '127.0.0.1'}:${p}/${config.path_id || 'stream1'}` });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.rtsp.transport', 'Transport Protocol')}
+                      </label>
+                      <select
+                        value={config.rtsp_transport || 'tcp'}
+                        onChange={e => update({ rtsp_transport: e.target.value as 'tcp' | 'udp' })}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                      >
+                        <option value="tcp">TCP ({t('destinations.rtsp.transportTcpRecommended', 'Recommended - Low Jitter')})</option>
+                        <option value="udp">UDP ({t('destinations.rtsp.transportUdp', 'UDP')})</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.generatedRtspUrl', 'Generated Target RTSP URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all"
+                        value={config.url || ''}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Manual Standalone RTSP Mode */
+              <div className="space-y-2">
+                <div className="space-y-1.5">
+                  <label htmlFor="dest-rtsp-url" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                    {t('destinations.streamUrl')}<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="dest-rtsp-url"
+                    name="url"
+                    placeholder="RTSP URL (rtsp://server:8554/live)"
+                    className={`w-full bg-[var(--input-bg)] border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+                      validationErrors?.url
+                        ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                        : 'border-[var(--glass-border)] focus:border-purple-400'
+                    }`}
+                    value={config.url || ''}
+                    onChange={e => update({ url: e.target.value })}
+                  />
+                  {validationErrors?.url && (
+                    <span className="text-[10px] text-red-400 block mt-1">{validationErrors.url}</span>
+                  )}
+                </div>
+                <div>
+                  <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                    {t('destinations.rtsp.transport', 'Transport Protocol')}
+                  </label>
+                  <select
+                    value={config.rtsp_transport || 'tcp'}
+                    onChange={e => update({ rtsp_transport: e.target.value as 'tcp' | 'udp' })}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                  >
+                    <option value="tcp">TCP ({t('destinations.rtsp.transportTcpRecommended', 'Recommended - Low Jitter')})</option>
+                    <option value="udp">UDP ({t('destinations.rtsp.transportUdp', 'UDP')})</option>
+                  </select>
                 </div>
               </div>
             )}

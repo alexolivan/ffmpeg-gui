@@ -934,6 +934,76 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-map 0:v", cmd_str_paired)
         self.assertIn("-map 1:a", cmd_str_paired)
 
+    def test_rtsp_output_generation_audio_only_pcm(self):
+        """Test audio-only RTSP push using TCP transport and uncompressed PCM."""
+        proc = MagicMock()
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'alsa',
+            'device': 'hw:0,0',
+            'has_video': False,
+            'has_audio': True
+        }
+        proc.codec_config = {
+            'vcodec': 'none',
+            'acodec': 'pcm_s16le',
+            'video_params': {},
+            'audio_params': {'ar': '48000', 'ac': '2'}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'rtsp',
+            'host': '127.0.0.1',
+            'port': '8554',
+            'path_id': 'master_pcm',
+            'rtsp_transport': 'tcp'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f alsa -i hw:0,0", cmd_str)
+        self.assertIn("-vn", cmd_str)
+        self.assertIn("-c:a pcm_s16le", cmd_str)
+        self.assertIn("-rtsp_transport tcp", cmd_str)
+        self.assertIn("-f rtsp rtsp://127.0.0.1:8554/master_pcm", cmd_str)
+
+    def test_rtsp_output_generation_video_audio_with_credentials(self):
+        """Test video + audio RTSP push with transport and authentication."""
+        proc = MagicMock()
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'srt',
+            'host': '127.0.0.1',
+            'port': 9000,
+            'has_video': True,
+            'has_audio': True
+        }
+        proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'aac',
+            'video_params': {'b:v': '2500k'},
+            'audio_params': {'b:a': '128k'}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'rtsp',
+            'host': '192.168.1.100',
+            'port': '8554',
+            'path_id': 'studio/cam1',
+            'publish_user': 'admin',
+            'publish_pass': 'secret123',
+            'rtsp_transport': 'udp'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-c:v libx264", cmd_str)
+        self.assertIn("-c:a aac", cmd_str)
+        self.assertIn("-rtsp_transport udp", cmd_str)
+        self.assertIn("-f rtsp rtsp://admin:secret123@192.168.1.100:8554/studio/cam1", cmd_str)
+
 
 if __name__ == '__main__':
     unittest.main()
