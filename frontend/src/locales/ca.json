@@ -52,7 +52,10 @@
         "failsafeNotice": "Enllaç segur: Si la IP seleccionada no està disponible o canvia, el sistema recorrerà a 0.0.0.0 per evitar pèrdua d'accés.",
         "specificIpWarning": "Avís: El servei només serà accessible a través d'aquesta adreça IP específica ({{ip}}). Assegura't que l'enrutament de xarxa permeti assolir-la."
       }
-    }
+    },
+    "retryNow": "Reintentar ara (Forçar arrencada)",
+    "deactivate": "Desactivar servei (Cancel·lar reintents)",
+    "deactivateDesc": "Cancel·la els reintents automàtics i mou el servei a la llista d'inactius"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -317,7 +320,9 @@
     "startService": "Iniciar servei",
     "stopService": "Aturar servei",
     "restartService": "Reiniciar servei",
-    "exportProfile": "Exportar perfil"
+    "exportProfile": "Exportar perfil",
+    "activeHeaderDetailed": "SERVEIS ACTIUS ({{running}} en execució · {{retrying}} en reintent)",
+    "activeHeaderRunning": "SERVEIS ACTIUS ({{count}} en execució)"
   },
   "settings": {
     "title": "Configuració",
@@ -1646,7 +1651,9 @@
       "detected": "Bucle de reinicis detectat",
       "attempt": "Intent #{{count}}",
       "desc": "El procés finalitza immediatament després d'arrencar. El watchdog continua reintentant segons la configuració.",
-      "stopAndCancel": "Aturar servei i cancel·lar reintents"
+      "stopAndCancel": "Aturar servei i cancel·lar reintents",
+      "retryNow": "Reintentar ara",
+      "deactivateAndCancel": "Desactivar servei i cancel·lar reintents"
     },
     "telemetry": {
       "title": "Telemetria de Progrés (Snapshot)",

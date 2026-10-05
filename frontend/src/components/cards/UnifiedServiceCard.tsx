@@ -11,7 +11,8 @@ import {
   LightningIcon, 
   ShieldIcon,
   CalendarIcon,
-  ExportIcon
+  ExportIcon,
+  PowerIcon
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
 
@@ -384,7 +385,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           </button>
         )}
 
-        {/* Restart Button */}
+        {/* Restart Button (only when running) */}
         {isRunning && (
           <button
             disabled={isPending}
@@ -402,8 +403,37 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           </button>
         )}
 
-        {/* Start / Stop Button */}
-        {isRunning || isRetrying ? (
+        {/* Action Controls: Retrying (Dual: Retry Now / Deactivate) vs Running (Stop) vs Inactive (Start) */}
+        {isRetrying ? (
+          <>
+            {/* Retry Now / Force Start */}
+            <button
+              disabled={actionPending === 'starting' || actionPending === 'stopping'}
+              onClick={() => onStartService(service.id)}
+              className="w-9 h-9 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center border border-brand-lime/20 text-brand-lime transition-all hover:scale-105 disabled:opacity-50"
+              title={t('common.retryNow', 'Reintentar ahora')}
+            >
+              {actionPending === 'starting' ? (
+                <RefreshIcon size={16} className="animate-spin text-brand-lime" />
+              ) : (
+                <PlayIcon size={16} />
+              )}
+            </button>
+            {/* Deactivate Service / Cancel Retries */}
+            <button
+              disabled={actionPending === 'stopping'}
+              onClick={() => onStopService(service.id, service.name)}
+              className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50"
+              title={t('common.deactivate', 'Desactivar servicio')}
+            >
+              {actionPending === 'stopping' ? (
+                <RefreshIcon size={16} className="animate-spin text-brand-orange" />
+              ) : (
+                <PowerIcon size={16} />
+              )}
+            </button>
+          </>
+        ) : isRunning ? (
           <button
             disabled={actionPending === 'stopping'}
             onClick={() => onStopService(service.id, service.name)}

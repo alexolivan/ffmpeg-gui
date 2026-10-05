@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.34.0] - 2026-10-05
+
+### Added
+- **Dual Service Retry and Deactivate Controls (`PowerIcon`)**:
+  - Replaced ambiguous "Stop" and non-functional "Restart" buttons during `isRetrying` / crash-backoff states with explicit dual controls:
+    - **Retry Now / Force Start (`PlayIcon`)**: Immediately restarts dead processes without waiting for the watchdog backoff sleep timer.
+    - **Deactivate Service / Cancel Retries (`PowerIcon`)**: Formally deactivates the crashed service, aborts pending watchdog retries, resets restart counters, sets status to `stopped`, and moves the card to "Configured Services (Inactive)".
+  - Updated `FfmpegServiceCard` and `UnifiedServiceCard` to cleanly decouple active running controls (`Restart` + `Stop`) from retrying/crashed controls (`Retry Now` + `Deactivate`).
+  - Updated crash-loop banner in `FfmpegPreviewModal` with dual "Retry Now" and "Deactivate Service & Cancel Retries" action buttons.
+  - Enhanced `ServicesView` Active Services header to provide honest, real-time counters: distinguishes running processes from services undergoing watchdog crash-recovery backoff (`ACTIVE SERVICES (X running · Y retrying)`).
+  - Added new IEC 60417-5009 standard `PowerIcon` in `frontend/src/components/Icons.tsx`.
+
 ## [2.33.1] - 2026-10-05
 
 ### Fixed

@@ -52,7 +52,10 @@
         "failsafeNotice": "Enlace seguro: Si la IP seleccionada no está disponible o cambia, el sistema recurrirá a 0.0.0.0 para evitar pérdida de acceso.",
         "specificIpWarning": "Aviso: El servicio solo será accesible a través de esta dirección IP específica ({{ip}}). Asegúrate de que el enrutamiento de red permita alcanzarla."
       }
-    }
+    },
+    "retryNow": "Reintentar ahora (Forzar arranque)",
+    "deactivate": "Desactivar servicio (Cancelar reintentos)",
+    "deactivateDesc": "Cancela los reintentos automáticos y mueve el servicio a la lista de inactivos"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -317,7 +320,9 @@
     "startService": "Iniciar servicio",
     "stopService": "Detener servicio",
     "restartService": "Reiniciar servicio",
-    "exportProfile": "Exportar perfil"
+    "exportProfile": "Exportar perfil",
+    "activeHeaderDetailed": "SERVICIOS ACTIVOS ({{running}} en ejecución · {{retrying}} en reintento)",
+    "activeHeaderRunning": "SERVICIOS ACTIVOS ({{count}} en ejecución)"
   },
   "settings": {
     "title": "Configuración",
@@ -1646,7 +1651,9 @@
       "detected": "Bucle de reinicios detectado",
       "attempt": "Intento #{{count}}",
       "desc": "El proceso termina inmediatamente tras arrancar. El watchdog continúa reintentando según la configuración.",
-      "stopAndCancel": "Detener servicio y cancelar reintentos"
+      "stopAndCancel": "Detener servicio y cancelar reintentos",
+      "retryNow": "Reintentar ahora",
+      "deactivateAndCancel": "Desactivar servicio y cancelar reintentos"
     },
     "telemetry": {
       "title": "Telemetría de Progreso (Snapshot)",

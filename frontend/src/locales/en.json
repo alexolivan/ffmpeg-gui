@@ -52,7 +52,10 @@
         "failsafeNotice": "Safe bind: If the selected IP is down or changes, the system safely falls back to 0.0.0.0 to prevent access loss.",
         "specificIpWarning": "Notice: The service will only be accessible through this specific IP address ({{ip}}). Ensure your network routing allows reaching this address."
       }
-    }
+    },
+    "retryNow": "Retry Now (Force Start)",
+    "deactivate": "Deactivate Service (Cancel Retries)",
+    "deactivateDesc": "Cancel automatic retries and move service to inactive list"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -317,7 +320,9 @@
     "startService": "Start Service",
     "stopService": "Stop Service",
     "restartService": "Restart Service",
-    "exportProfile": "Export Profile"
+    "exportProfile": "Export Profile",
+    "activeHeaderDetailed": "ACTIVE SERVICES ({{running}} running · {{retrying}} retrying)",
+    "activeHeaderRunning": "ACTIVE SERVICES ({{count}} running)"
   },
   "settings": {
     "title": "Settings",
@@ -1646,7 +1651,9 @@
       "detected": "Crash-Loop Detected",
       "attempt": "Attempt #{{count}}",
       "desc": "The process exits immediately upon launch. The watchdog will continue retrying according to service policy.",
-      "stopAndCancel": "Stop service and cancel retries"
+      "stopAndCancel": "Stop service and cancel retries",
+      "retryNow": "Retry Now",
+      "deactivateAndCancel": "Deactivate service and cancel retries"
     },
     "telemetry": {
       "title": "Progress Telemetry (Snapshot)",
