@@ -838,6 +838,7 @@
     "node": "Nodo",
     "systemStats": "ESTADÍSTICAS DEL SISTEMA",
     "activeServices": "Servicios Activos",
+    "runningServices": "En Ejecución",
     "inactiveServices": "Servicios Inactivos",
     "activeTasks": "Tareas Activas",
     "scheduledTasks": "Tareas Programadas",

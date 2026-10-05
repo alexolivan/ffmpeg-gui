@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.34.1] - 2026-10-05
+
+### Added
+- **Tri-State Services Counter in Dashboard (`ServicesDashboardCard`)**:
+  - Replaced 2-column card with a 3-column metrics grid: **Active**, **Running**, and **Inactive**.
+  - Added visual degradation alert: if active services suffer an unexpected crash and are undergoing watchdog backoff (`runningCount < activeCount`), the card highlights with a red border (`border-red-500/30`), the **Running** counter glows in red with a pulse animation (`text-red-400 animate-pulse`), and the badge reflects the degradation instantly.
+
 ## [2.34.0] - 2026-10-05
 
 ### Added

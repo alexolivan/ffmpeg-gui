@@ -11,7 +11,9 @@ export const ServicesDashboardCard: React.FC<ServicesDashboardCardProps> = ({ te
 
   const services = telemetry.filter(p => p.type === 'service' || !p.type);
   const activeCount = services.filter(p => isActiveService(p)).length;
+  const runningCount = services.filter(p => p.status === 'running').length;
   const inactiveCount = services.length - activeCount;
+  const hasDegraded = runningCount < activeCount;
 
   // Breakdown by service_type
   const typeCounts = services.reduce((acc: Record<string, { total: number; active: number }>, s: any) => {
@@ -35,31 +37,56 @@ export const ServicesDashboardCard: React.FC<ServicesDashboardCardProps> = ({ te
   };
 
   return (
-    <div className="glass-card p-4 border-brand-lime/10 space-y-3">
+    <div className={`glass-card p-4 space-y-3 transition-colors ${
+      hasDegraded ? "border-red-500/30" : "border-brand-lime/10"
+    }`}>
       <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 mb-1">
         <h3 className="text-sm font-black text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-2">
           <span>⚙️</span>
           <span>{t('dashboard.servicesTitle', 'SERVICES')}</span>
         </h3>
-        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-brand-lime/10 border border-brand-lime/20 text-brand-lime">
+        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+          hasDegraded
+            ? "bg-red-500/15 border-red-500/30 text-red-400 animate-pulse"
+            : "bg-brand-lime/10 border-brand-lime/20 text-brand-lime"
+        }`}>
           {activeCount}/{services.length} {t('dashboard.activeCount', 'active')}
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2.5 text-center">
+      <div className="grid grid-cols-3 gap-2">
+        {/* Active (Configured active / attempting execution) */}
+        <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
           <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">
-            {t('dashboard.activeServices', 'Active Services')}
+            {t('dashboard.activeServices', 'Active')}
           </div>
-          <div className="font-black text-xl text-brand-lime">
+          <div className="font-black text-lg text-brand-lime">
             {activeCount}
           </div>
         </div>
-        <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2.5 text-center">
-          <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">
-            {t('dashboard.inactiveServices', 'Inactive Services')}
+
+        {/* Running (Truly healthy running PID) */}
+        <div className={`bg-[var(--input-bg)] border rounded-xl p-2 text-center transition-colors ${
+          hasDegraded ? "border-red-500/40 bg-red-500/5" : "border-[var(--glass-border)]"
+        }`}>
+          <div className={`text-[9px] uppercase font-bold mb-0.5 ${
+            hasDegraded ? "text-red-300" : "text-text-secondary"
+          }`}>
+            {t('dashboard.runningServices', 'Running')}
           </div>
-          <div className="font-black text-xl text-text-secondary">
+          <div className={`font-black text-lg ${
+            hasDegraded ? "text-red-400 animate-pulse" : "text-brand-lime"
+          }`}>
+            {runningCount}
+          </div>
+        </div>
+
+        {/* Inactive (Configured stopped) */}
+        <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-2 text-center">
+          <div className="text-[9px] uppercase font-bold text-text-secondary mb-0.5">
+            {t('dashboard.inactiveServices', 'Inactive')}
+          </div>
+          <div className="font-black text-lg text-text-secondary">
             {inactiveCount}
           </div>
         </div>
