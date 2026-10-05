@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.33.0] - 2026-10-05
+
+### Added
+- **RTSP Push Output & MediaMTX Hub Integration**:
+  - Added native `rtsp` output destination in `DestinationPanel` and FFmpeg command generator (`FFmpegCommandBuilder`).
+  - Implemented TCP-interleaved transport support (`-rtsp_transport tcp`) for jitter-free, robust network delivery.
+  - MediaMTX Hub integration supporting local and federated remote peer hubs, automated path selection, and TLS/RTSPS toggle.
+  - Enabled uncompressed PCM audio distribution (`pcm_s16le`, `pcm_s24le`) over RTSP for lossless master distribution across local broadcast infrastructure.
+- **Dynamic Codec Filtering & Auto-Healing**:
+  - Filtered out `copy` codec option when input is an uncompressed raw hardware or generator source (`alsa`, `decklink`, `v4l2`, `desktop`, `lavfi_*`, future `pipewire`), preventing FFmpeg startup crashes.
+  - Added reactive auto-healing in `ProcessConfigForm` and codec panels that automatically reverts invalid `copy` selection to standard default codecs (`libx264` / `aac`) when switching input sources.
+- **MediaMTX Telemetry & Multi-Publisher Contention Detection**:
+  - Enhanced path resolution for SRT URLs parsing `streamid=#!::r=<path>` parameters accurately.
+  - Replaced the erroneous false-alarm warning with a unified status card: silent when inactive and uncontended, positive green status (`🟢 Emisión en Vivo Activa`) when streaming with publisher process attribution, and an amber warning banner (`⚠️ Concurrencia Detectada`) listing contending processes whenever 2 or more configured publishers target the same path.
+
 ## [2.32.1] - 2026-10-02
 
 ### Fixed

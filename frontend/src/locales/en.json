@@ -207,7 +207,13 @@
         "copied": "✓ Copied",
         "ingestConflictTitle": "Ingest Conflict Detected",
         "ingestConflictServiceDesc": "Path is actively being published to by service: {{name}} (PID {{pid}}). Publishing to this path may cause stream disruption.",
-        "ingestConflictExternalDesc": "Path is currently receiving an external live stream. Publishing to this path may cause stream disruption."
+        "ingestConflictExternalDesc": "Path is currently receiving an external live stream. Publishing to this path may cause stream disruption.",
+        "pathActiveTitle": "Live Ingest Active on /{{path}}",
+        "publishedBy": "Source",
+        "publishedByExternal": "Source: External Encoder / Network Stream",
+        "activeLeasesBadge": "Active leases",
+        "contentionTitle": "Contention Warning on /{{path}}",
+        "contentionDesc": "Other configured processes targeting this path could cause stream disruption if started concurrently:"
       },
       "previewModal": {
         "subtitle": "Daemon Process Monitor & Real-Time Audit Logs",
@@ -1240,7 +1246,8 @@
       "icecast": "Icecast2 (Audio Stream)",
       "alsa": "ALSA Audio Device",
       "rtp": "RTP Stream",
-      "hls": "HLS Live Streaming"
+      "hls": "HLS Live Streaming",
+      "rtsp": "RTSP Stream (MediaMTX / TCP)"
     },
     "srtConnectionMode": "SRT Connection Mode",
     "callerMode": "Caller Mode",
@@ -1400,6 +1407,17 @@
       "inUseBy": "In use by",
       "warningTitle": "Resource In Use",
       "warningDesc": "This emission point ({{resource}}) is currently active and held by \"{{owner}}\". You can save this configuration, but concurrent startup will be blocked."
+    },
+    "rtspManualDirect": "Manual Direct RTSP",
+    "rtspMediaMtxHub": "MediaMTX Hub Integration",
+    "rtspProviderHub": "MediaMTX Hub",
+    "rtspPathId": "Path Slug",
+    "enableRtsps": "Encrypted RTSPS (TLS)",
+    "generatedRtspUrl": "Generated Target RTSP URL",
+    "rtsp": {
+      "transport": "Transport Protocol",
+      "transportTcpRecommended": "TCP (Recommended - Low Jitter)",
+      "transportUdp": "UDP"
     }
   },
   "filters": {

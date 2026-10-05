@@ -207,7 +207,13 @@
         "copied": "✓ Copiat",
         "ingestConflictTitle": "Conflicte d ingesta detectat",
         "ingestConflictServiceDesc": "El path està rebent publicació activa del servei: {{name}} (PID {{pid}}). Publicar en aquest path pot provocar interrupcions.",
-        "ingestConflictExternalDesc": "El path està rebent actualment una transmissió externa en directe. Publicar en aquest path pot provocar interrupcions."
+        "ingestConflictExternalDesc": "El path està rebent actualment una transmissió externa en directe. Publicar en aquest path pot provocar interrupcions.",
+        "pathActiveTitle": "Emissió en directe activa a /{{path}}",
+        "publishedBy": "Origen",
+        "publishedByExternal": "Origen: Transmissor extern / Ingesta de xarxa",
+        "activeLeasesBadge": "Leases actius",
+        "contentionTitle": "Advertència de concurrència a /{{path}}",
+        "contentionDesc": "Altres processos configurats contra aquest path podrien causar col·lisió si s'inicien de forma concurrent:"
       },
       "previewModal": {
         "subtitle": "Monitor de Procés Dimoni i Registre d'Auditoria en Temps Real",
@@ -1240,7 +1246,8 @@
       "icecast": "Icecast2 (Stream d'Àudio)",
       "alsa": "Dispositiu d'Àudio ALSA",
       "rtp": "Stream RTP",
-      "hls": "Streaming HLS en Directe"
+      "hls": "Streaming HLS en Directe",
+      "rtsp": "Flux RTSP (MediaMTX / TCP)"
     },
     "srtConnectionMode": "Mode de Connexió SRT",
     "callerMode": "Mode Caller",
@@ -1400,6 +1407,17 @@
       "inUseBy": "En ús per",
       "warningTitle": "Recurs en ús",
       "warningDesc": "Aquest punt d'emissió ({{resource}}) ja està sent utilitzat activament per \"{{owner}}\". Pots desar la configuració, però l'arrencada concurrent serà bloquejada."
+    },
+    "rtspManualDirect": "RTSP directe manual",
+    "rtspMediaMtxHub": "Integració amb Hub MediaMTX",
+    "rtspProviderHub": "Hub MediaMTX",
+    "rtspPathId": "Slug de ruta",
+    "enableRtsps": "RTSPS xifrat (TLS)",
+    "generatedRtspUrl": "URL RTSP de destí generada",
+    "rtsp": {
+      "transport": "Protocol de transport",
+      "transportTcpRecommended": "TCP (Recomanat - Baixa fluctuació)",
+      "transportUdp": "UDP"
     }
   },
   "filters": {

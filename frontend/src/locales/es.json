@@ -207,7 +207,13 @@
         "copied": "✓ Copiado",
         "ingestConflictTitle": "Conflicto de ingesta detectado",
         "ingestConflictServiceDesc": "El path está recibiendo publicación activa del servicio: {{name}} (PID {{pid}}). Publicar en este path puede causar interrupciones.",
-        "ingestConflictExternalDesc": "El path está recibiendo actualmente una transmisión externa en vivo. Publicar en este path puede causar interrupciones."
+        "ingestConflictExternalDesc": "El path está recibiendo actualmente una transmisión externa en vivo. Publicar en este path puede causar interrupciones.",
+        "pathActiveTitle": "Emisión en vivo activa en /{{path}}",
+        "publishedBy": "Origen",
+        "publishedByExternal": "Origen: Transmisor externo / Ingesta de red",
+        "activeLeasesBadge": "Leases activos",
+        "contentionTitle": "Advertencia de concurrencia en /{{path}}",
+        "contentionDesc": "Otros procesos configurados contra este path podrían causar colisión si se inician concurrentemente:"
       },
       "previewModal": {
         "subtitle": "Monitor de Proceso Demonio y Registro de Auditoría en Tiempo Real",
@@ -1240,7 +1246,8 @@
       "icecast": "Icecast2 (Stream de Audio)",
       "alsa": "Dispositivo de Audio ALSA",
       "rtp": "Stream RTP",
-      "hls": "Streaming HLS en Directo"
+      "hls": "Streaming HLS en Directo",
+      "rtsp": "Flujo RTSP (MediaMTX / TCP)"
     },
     "srtConnectionMode": "Modo de Conexión SRT",
     "callerMode": "Modo Caller",
@@ -1400,6 +1407,17 @@
       "inUseBy": "En uso por",
       "warningTitle": "Recurso en uso",
       "warningDesc": "Este punto de emisión ({{resource}}) ya está siendo utilizado activamente por \"{{owner}}\". Puedes guardar la configuración, pero el arranque concurrente será bloqueado."
+    },
+    "rtspManualDirect": "RTSP directo manual",
+    "rtspMediaMtxHub": "Integración con Hub MediaMTX",
+    "rtspProviderHub": "Hub MediaMTX",
+    "rtspPathId": "Slug de ruta",
+    "enableRtsps": "RTSPS cifrado (TLS)",
+    "generatedRtspUrl": "URL RTSP de destino generada",
+    "rtsp": {
+      "transport": "Protocolo de transporte",
+      "transportTcpRecommended": "TCP (Recomendado - Baja fluctuación)",
+      "transportUdp": "UDP"
     }
   },
   "filters": {
