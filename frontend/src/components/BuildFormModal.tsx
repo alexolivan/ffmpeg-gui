@@ -441,11 +441,11 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                 <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl space-y-1.5 animate-in fade-in duration-200">
                   <div className="flex items-center gap-2">
                     <span className="text-xs">⚡</span>
-                    <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">
+                    <span className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
                       {t('forge.pipewireOption', 'PipeWire Audio')}
                     </span>
                   </div>
-                  <p className="text-[10px] text-text-secondary leading-relaxed">
+                  <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
                     {t('forge.pipewireInfo', 'PipeWire is built using Meson/Ninja with native ALSA, D-Bus, and udev hardware support.')}
                   </p>
                 </div>
