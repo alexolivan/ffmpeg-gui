@@ -183,10 +183,12 @@ class SoftwareManager:
                 pw_match = re.search(r"(?:Compiled with libpipewire|libpipewire)\s+([0-9\.]+)", raw_out)
                 if pw_match:
                     version_str = pw_match.group(1)
-            elif v_match:
-                version_str = v_match.group(1)
-            else:
-                version_str = first_line[:30].strip() if first_line else "Unknown"
+
+            if not version_str:
+                if v_match:
+                    version_str = v_match.group(1)
+                else:
+                    version_str = first_line[:30].strip() if first_line else "Unknown"
         except Exception as e:
             logger.debug(f"Error probing version for {bin_path}: {e}")
             version_str = "Detected"
