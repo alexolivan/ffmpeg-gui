@@ -8,6 +8,7 @@ and AES67 RTP/SAP streams without probing physical ALSA devices.
 
 import json
 import os
+import re
 from typing import Any, Dict, List, Optional
 
 
@@ -29,7 +30,7 @@ class PipeWireConfigGenerator:
         if isinstance(val, dict):
             parts = []
             for k, v in val.items():
-                k_str = json.dumps(k) if any(c in k for c in " .[]{}=") else k
+                k_str = k if re.match(r"^[a-zA-Z0-9_\-]+$", k) else json.dumps(k)
                 parts.append(f"{k_str} = {PipeWireConfigGenerator._spa_val(v)}")
             return "{ " + ", ".join(parts) + " }"
         return json.dumps(str(val))
@@ -68,10 +69,10 @@ class PipeWireConfigGenerator:
         Returns:
             Formatted PipeWire SPA/JSON configuration string.
         """
-        sample_rate = config.get("sample_rate", 48000)
-        quantum = config.get("quantum", 1024)
-        min_quantum = config.get("min_quantum", 128)
-        max_quantum = config.get("max_quantum", 2048)
+        sample_rate = int(config.get("sample_rate", 48000))
+        quantum = int(config.get("quantum", 1024))
+        min_quantum = int(config.get("min_quantum", 128))
+        max_quantum = int(config.get("max_quantum", 2048))
         aes67_net = config.get("aes67_network", {})
         nic_ip = aes67_net.get("ip", "0.0.0.0")
         nic_name = aes67_net.get("interface")
@@ -93,21 +94,21 @@ class PipeWireConfigGenerator:
             "}",
             "",
             "context.modules = [",
-            "    { name = libpipewire-module-rt }",
+            "    { name = \"libpipewire-module-rt\" }",
             "    {",
-            "        name = libpipewire-module-protocol-native",
+            "        name = \"libpipewire-module-protocol-native\"",
             "        args = {",
             "            sockets = [ { name = \"pipewire-0\" } ]",
             "        }",
             "    }",
-            "    { name = libpipewire-module-client-node }",
-            "    { name = libpipewire-module-client-device }",
-            "    { name = libpipewire-module-adapter }",
-            "    { name = libpipewire-module-metadata }",
+            "    { name = \"libpipewire-module-client-node\" }",
+            "    { name = \"libpipewire-module-client-device\" }",
+            "    { name = \"libpipewire-module-adapter\" }",
+            "    { name = \"libpipewire-module-metadata\" }",
             "    {",
-            "        name = libpipewire-module-protocol-pulse",
+            "        name = \"libpipewire-module-protocol-pulse\"",
             "        args = {",
-            f"            server.address = [ \"unix:{pulse_socket}\" ]",
+            f"            server.address = [ {cls._spa_val(f'unix:{pulse_socket}')} ]",
             "        }",
             "    }",
         ]
@@ -117,7 +118,7 @@ class PipeWireConfigGenerator:
         for sink in virtual_sinks:
             sink_id = sink.get("id", "sink")
             sink_name = sink.get("name", sink_id)
-            channels = sink.get("channels", 2)
+            channels = max(1, int(sink.get("channels", 2)))
             pos_list = cls._get_channel_positions(channels)
             pos_formatted = cls._spa_val(pos_list)
 
@@ -139,7 +140,7 @@ class PipeWireConfigGenerator:
             # AES67 RTP Sink if enabled
             if sink.get("aes67_enabled", False):
                 dest_ip = sink.get("multicast_ip", "239.69.1.10")
-                dest_port = sink.get("rtp_port", 5004)
+                dest_port = int(sink.get("rtp_port", 5004))
                 sap_name = sink.get("sap_name", f"PipeWire {sink_id}")
 
                 rtp_args = [
@@ -186,7 +187,7 @@ class PipeWireConfigGenerator:
         runtime_dir: str
     ) -> str:
         """
-        Write generated PipeWire configuration to file.
+        Write generated PipeWire configuration to file atomically.
 
         Args:
             service_id: Unique identifier of the service.
@@ -198,7 +199,11 @@ class PipeWireConfigGenerator:
             target_path written.
         """
         config_content = cls.generate_config(service_id, config, runtime_dir)
-        os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
-        with open(target_path, "w", encoding="utf-8") as f:
+        target_abs = os.path.abspath(target_path)
+        target_dir = os.path.dirname(target_abs)
+        os.makedirs(target_dir, exist_ok=True)
+        temp_path = f"{target_abs}.tmp.{os.getpid()}"
+        with open(temp_path, "w", encoding="utf-8") as f:
             f.write(config_content)
-        return target_path
+        os.replace(temp_path, target_abs)
+        return target_abs

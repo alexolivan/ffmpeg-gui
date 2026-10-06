@@ -109,8 +109,8 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('sess.sap = true', res)
         self.assertIn('matches = [ { "node.name" = "aes67_pgm" } ]', res)
 
-    def test_write_config_file(self):
-        """Creates temp file and verifies content."""
+    def test_write_config_file_atomic(self):
+        """Creates temp file and verifies atomic write and content."""
         config = {
             "sample_rate": 96000,
             "quantum": 512,
@@ -119,12 +119,16 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
             ]
         }
         with tempfile.TemporaryDirectory() as tmpdir:
-            target_path = os.path.join(tmpdir, "pipewire.conf")
+            target_path = os.path.join(tmpdir, "nested", "pipewire.conf")
             runtime_dir = os.path.join(tmpdir, "run")
             written_path = PipeWireConfigGenerator.write_config_file(99, config, target_path, runtime_dir)
 
-            self.assertEqual(written_path, target_path)
+            self.assertEqual(written_path, os.path.abspath(target_path))
             self.assertTrue(os.path.exists(target_path))
+            # Temporary file pattern should not remain in directory
+            parent_dir = os.path.dirname(target_path)
+            temp_files = [f for f in os.listdir(parent_dir) if ".tmp." in f]
+            self.assertEqual(len(temp_files), 0)
 
             with open(target_path, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -132,6 +136,69 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
             self.assertIn("default.clock.rate = 96000", content)
             self.assertIn("default.clock.quantum = 512", content)
             self.assertIn('node.name = "test_sink"', content)
+
+    def test_string_numeric_values_casting(self):
+        """Checks string type numeric inputs are safely cast to integers."""
+        config = {
+            "sample_rate": "48000",
+            "quantum": "1024",
+            "min_quantum": "128",
+            "max_quantum": "2048",
+            "virtual_sinks": [
+                {
+                    "id": "stream_sink",
+                    "channels": "2",
+                    "aes67_enabled": True,
+                    "rtp_port": "5004"
+                }
+            ]
+        }
+        res = PipeWireConfigGenerator.generate_config(15, config, "/tmp/pw-15")
+        self.assertIn("default.clock.rate = 48000", res)
+        self.assertIn("default.clock.quantum = 1024", res)
+        self.assertIn("default.clock.min-quantum = 128", res)
+        self.assertIn("default.clock.max-quantum = 2048", res)
+        self.assertIn("audio.channels = 2", res)
+        self.assertIn("destination.port = 5004", res)
+
+    def test_special_characters_escaping(self):
+        """Checks quotes, backslashes, and special characters in descriptions and names are escaped."""
+        config = {
+            "virtual_sinks": [
+                {
+                    "id": "special_sink",
+                    "name": 'Main "Studio" Mix & Stream / Line 1',
+                    "aes67_enabled": True,
+                    "sap_name": 'SAP "Studio A" [Live]'
+                }
+            ]
+        }
+        res = PipeWireConfigGenerator.generate_config(20, config, "/tmp/pw-20")
+        self.assertIn(r'node.description = "Main \"Studio\" Mix & Stream / Line 1"', res)
+        self.assertIn(r'sess.name = "SAP \"Studio A\" [Live]"', res)
+
+    def test_channel_positions_layouts(self):
+        """Checks 1-channel (MONO), 4-channel, and 8-channel layouts."""
+        config_mono = {
+            "virtual_sinks": [{"id": "mono_sink", "channels": 1}]
+        }
+        res_mono = PipeWireConfigGenerator.generate_config(31, config_mono, "/tmp/pw-31")
+        self.assertIn('audio.channels = 1', res_mono)
+        self.assertIn('audio.position = [ "MONO" ]', res_mono)
+
+        config_quad = {
+            "virtual_sinks": [{"id": "quad_sink", "channels": 4}]
+        }
+        res_quad = PipeWireConfigGenerator.generate_config(34, config_quad, "/tmp/pw-34")
+        self.assertIn('audio.channels = 4', res_quad)
+        self.assertIn('audio.position = [ "FL", "FR", "RL", "RR" ]', res_quad)
+
+        config_octa = {
+            "virtual_sinks": [{"id": "octa_sink", "channels": 8}]
+        }
+        res_octa = PipeWireConfigGenerator.generate_config(38, config_octa, "/tmp/pw-38")
+        self.assertIn('audio.channels = 8', res_octa)
+        self.assertIn('audio.position = [ "FL", "FR", "FC", "LFE", "RL", "RR", "SL", "SR" ]', res_octa)
 
     def test_no_udev_probing(self):
         """Asserts module-udev or physical ALSA probing modules are absent from config."""
@@ -150,3 +217,4 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
