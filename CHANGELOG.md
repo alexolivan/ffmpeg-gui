@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.36.0] - 2026-10-06
+
+### Added
+- **PipeWire Hub Service Orchestration (`service_type: 'pipewire_hub'`)**:
+  - Implemented dynamic configuration generator `PipeWireConfigGenerator` creating ephemeral PipeWire SPA/JSON configuration in RAM (`/dev/shm/pipewire_{id}.conf`) with virtual null-audio-sink adapters and PulseAudio emulator socket (`pulse.sock`).
+  - Added runtime process isolation in `/tmp/ffmpeg-gui/pipewire-{id}` with strict permissions (`0o700`) preventing collisions with user-space PipeWire sessions.
+  - Implemented full service lifecycle management, auto-start, watchdog supervision, and on-demand lease reference counting (`acquire_lease`, `release_lease`) in `ProcessManager`.
+- **AES67 / Dante Audio-over-IP (Tx) Multicast & SAP Broadcast**:
+  - Implemented RTP multicast audio streaming (`libpipewire-module-rtp-sink`) and automatic SAP/SDP announcements (`239.255.255.255:9875`) for virtual audio sinks.
+  - Added dedicated physical network interface (NIC) reservation in `ResourceManager` to prevent network contention.
+  - Added network inspection endpoint (`GET /api/pipewire/network-audit`) detecting active physical interfaces, hardware timestamping via `ethtool`, and non-intrusive host `ptp4l` (IEEE 1588-2008) detection.
+- **Real-time Graph Nodes & Telemetry Inspection**:
+  - Implemented `GET /api/services/{id}/pipewire/nodes` querying the isolated PipeWire instance via `pw-dump` with subprocess timeout reaping and standardized telemetry responses.
+  - Added interactive `PipeWirePreviewModal` displaying live audio graph nodes, port routings, active links, and raw telemetry with auto-refresh.
+- **Frontend Services UI Integration**:
+  - Created `PipeWireConfigForm` with General Settings (Sample Rate, Quantum), Virtual Sinks Manager, and AES67 Network Module.
+  - Created `PipeWireServiceCard` with engine badges, live status, virtual sinks pills, AES67 Tx status, and 1-click Graph Inspector action.
+  - Maintained 100% key parity across English, Spanish, and Catalan locale files.
+
 ## [2.35.0] - 2026-10-06
 
 ### Added
