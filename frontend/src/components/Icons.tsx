@@ -617,13 +617,15 @@ export const PowerIcon: React.FC<IconProps> = ({ size = 16, className = '', ...p
   </svg>
 );
 
-export const PipewireLogoIcon: React.FC<IconProps> = ({ className = 'w-4 h-4', size }) => (
+export const PipewireLogoIcon: React.FC<IconProps> = ({ size = 16, className = '', ...props }) => (
   <svg
-    className={className}
-    style={size ? { width: size, height: size } : undefined}
+    width={size}
+    height={size}
     viewBox="0 0 100 100"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
+    className={`inline-block align-middle ${className}`}
+    {...props}
   >
     <circle cx="50" cy="50" r="45" stroke="#2563EB" strokeWidth="8" />
     <path
