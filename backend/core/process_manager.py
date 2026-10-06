@@ -402,11 +402,23 @@ class ProcessManager:
                         self.ephemeral_configs[process_id] = kiosk_profile_dir
                 elif svc_type == "pipewire_hub":
                     pipewire_bin = None
-                    build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    build_id = media_proc.ffmpeg_build_id or cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
                     if build_id:
                         pw_build = session.query(FfmpegBuild).get(build_id)
-                        if pw_build and pw_build.binary_path and os.path.exists(pw_build.binary_path):
-                            pipewire_bin = pw_build.binary_path
+                        if pw_build:
+                            cand_bin = pw_build.binary_path
+                            if not cand_bin and (getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None)):
+                                cand_root = getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None)
+                                test_bin = os.path.join(cand_root, "bin", "pipewire")
+                                if os.path.exists(test_bin):
+                                    cand_bin = test_bin
+                            if cand_bin and os.path.exists(cand_bin):
+                                pipewire_bin = cand_bin
+                                if not cfg.get("software_build_id"):
+                                    cfg["software_build_id"] = pw_build.id
+                                    cfg["ffmpeg_build_id"] = pw_build.id
+                                    media_proc.config = cfg
+
                     if not pipewire_bin:
                         from core.software_manager import software_manager
                         pipewire_bin = software_manager.get_active_binary("pipewire", session)
@@ -415,8 +427,17 @@ class ProcessManager:
                                 FfmpegBuild.software_type == 'pipewire',
                                 FfmpegBuild.binary_path == pipewire_bin
                             ).first()
+                            if not pw_build:
+                                # Also check if binary is within any build install directory
+                                for b in session.query(FfmpegBuild).filter(FfmpegBuild.software_type == 'pipewire', FfmpegBuild.status == 'ready').all():
+                                    b_root = getattr(b, "install_path", None) or getattr(b, "install_dir", None)
+                                    if b_root and pipewire_bin.startswith(b_root):
+                                        pw_build = b
+                                        break
+
                     if not pipewire_bin:
                         pipewire_bin = shutil.which("pipewire")
+
                     if not pipewire_bin:
                         raise FileNotFoundError("PipeWire binary not found. Please install PipeWire on the host system or compile it in Settings → Software Engine.")
 
@@ -503,17 +524,28 @@ class ProcessManager:
                             sub_env["PIPEWIRE_RUNTIME_DIR"] = pw_runtime_dir
                         if pw_config_path:
                             sub_env["PIPEWIRE_CONFIG_NAME"] = pw_config_path
-                        if pw_build and getattr(pw_build, "install_dir", None) and os.path.isdir(pw_build.install_dir):
+                        pw_root = getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None) if pw_build else None
+                        if pw_root and os.path.isdir(pw_root):
                             lib_dirs = [
-                                os.path.join(pw_build.install_dir, "lib"),
-                                os.path.join(pw_build.install_dir, "lib64"),
-                                os.path.join(pw_build.install_dir, "lib/x86_64-linux-gnu"),
-                                os.path.join(pw_build.install_dir, "lib/aarch64-linux-gnu")
+                                os.path.join(pw_root, "lib"),
+                                os.path.join(pw_root, "lib64"),
+                                os.path.join(pw_root, "lib/x86_64-linux-gnu"),
+                                os.path.join(pw_root, "lib/aarch64-linux-gnu")
                             ]
                             valid_libs = [p for p in lib_dirs if os.path.isdir(p)]
                             if valid_libs:
                                 cur_ld = sub_env.get("LD_LIBRARY_PATH", "")
                                 sub_env["LD_LIBRARY_PATH"] = ":".join(valid_libs + ([cur_ld] if cur_ld else []))
+
+                            # Export SPA plugin directory and PipeWire module directory if present in build
+                            for spa_cand in [os.path.join(pw_root, "lib/spa-0.2"), os.path.join(pw_root, "lib/x86_64-linux-gnu/spa-0.2")]:
+                                if os.path.isdir(spa_cand):
+                                    sub_env["SPA_PLUGIN_DIR"] = spa_cand
+                                    break
+                            for mod_cand in [os.path.join(pw_root, "lib/pipewire-0.3"), os.path.join(pw_root, "lib/x86_64-linux-gnu/pipewire-0.3")]:
+                                if os.path.isdir(mod_cand):
+                                    sub_env["PIPEWIRE_MODULE_DIR"] = mod_cand
+                                    break
                     # Decouple stdout to file descriptor so the daemon survives parent reloads without SIGPIPE
                     log_file_handle = open(log_path, "ab", buffering=0)
                     proc = await asyncio.create_subprocess_exec(

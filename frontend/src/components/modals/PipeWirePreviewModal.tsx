@@ -1,16 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
-import { RefreshIcon } from '../Icons';
+import { RefreshIcon, ClipboardIcon, CheckIcon } from '../Icons';
+import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 
 interface PipeWirePreviewModalProps {
   selectedProcess: any;
   telemetry: any[];
   actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
-  logs: any[];
+  logs?: any[];
   onClose: () => void;
   onEditProcess: (proc: any) => void;
-  onCloneProcess: (proc: any) => void;
+  onCloneProcess?: (proc: any) => void;
   onStartService: (id: number) => void;
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
@@ -76,7 +77,10 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const [graphData, setGraphData] = useState<GraphTelemetryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'raw'>('nodes');
+  const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw'>('nodes');
+  const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const fetchGraphTelemetry = async () => {
     if (!isRunning) return;
@@ -100,6 +104,46 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
     const interval = setInterval(fetchGraphTelemetry, 3000);
     return () => clearInterval(interval);
   }, [currentProcess.id, isRunning, autoRefresh]);
+
+  // Poll daemon execution logs from /api/processes/{id}/logs
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const res = await fetch(`${API}/api/processes/${currentProcess.id}/logs`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setDaemonLogs(data);
+          }
+        }
+      } catch {
+        // ignore polling network errors
+      }
+    };
+
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 2000);
+    return () => clearInterval(interval);
+  }, [currentProcess.id, API]);
+
+  // Auto-scroll virtual terminal
+  useEffect(() => {
+    if (processLogsContainerRef.current && isRunning) {
+      processLogsContainerRef.current.scrollTop = processLogsContainerRef.current.scrollHeight;
+    }
+  }, [daemonLogs, isRunning, activeTab]);
+
+  const handleCopyLogs = () => {
+    const text = daemonLogs
+      .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+      .join('\n');
+    universalCopy(text).then((success) => {
+      if (success) {
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      }
+    });
+  };
 
   const pwConfig = currentProcess.config?.pipewire_config || currentProcess.config || {};
   const virtualSinks = Array.isArray(pwConfig.virtual_sinks) ? pwConfig.virtual_sinks : [];
@@ -256,6 +300,16 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 {t('services.pipewire.linksTab', 'Links & Routes')} ({graphData?.links?.length || 0})
               </button>
               <button
+                onClick={() => setActiveTab('console')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'console'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                }`}
+              >
+                {t('services.pipewire.consoleTab', 'Console & Logs')} ({daemonLogs.length})
+              </button>
+              <button
                 onClick={() => setActiveTab('raw')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   activeTab === 'raw'
@@ -383,6 +437,83 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                   {t('services.pipewire.noLinksDetected', 'No active routing links detected in graph.')}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'console' && (
+            <div className="bg-black/60 border border-[var(--glass-border)] rounded-xl p-4 font-mono space-y-3">
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                  <span>📟</span>
+                  {t('services.pipewire.consoleTitle', 'PipeWire Hub Daemon Console')}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyLogs}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[9px] font-bold rounded uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    {copySuccess ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                    <span>{copySuccess ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = daemonLogs
+                        .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+                        .join('\n');
+                      const blob = new Blob([text], { type: 'text/plain' });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `pipewire_${currentProcess.id}_console.log`;
+                      a.click();
+                    }}
+                    className="px-2.5 py-1 bg-brand-lime/10 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/20 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    {t('services.pipewire.downloadLogs', 'Download Logs')}
+                  </button>
+                  <span className="text-[var(--text-secondary)] text-[10px] font-bold ml-1">
+                    {daemonLogs.length} {t('common.lines', 'lines')}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                ref={processLogsContainerRef}
+                className="h-80 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
+              >
+                {daemonLogs.length === 0 ? (
+                  <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-24 select-none">
+                    {isRunning
+                      ? t('services.pipewire.waitingLogs', 'Daemon active. Waiting for PipeWire audio routing output...')
+                      : t('services.pipewire.stoppedLogs', 'Daemon is stopped. Start service to view execution output.')}
+                  </div>
+                ) : (
+                  daemonLogs.map((log, i) => {
+                    const logMsg = typeof log === 'string' ? log : log.message || '';
+                    const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+                    const isErr = logMsg.toLowerCase().includes('err') || (typeof log === 'object' && log.level === 'ERROR');
+                    const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
+
+                    return (
+                      <div key={i} className="whitespace-pre-wrap flex items-start gap-2">
+                        {logTime && (
+                          <span className="text-[var(--text-secondary)] select-none shrink-0 opacity-70">
+                            [{logTime}]
+                          </span>
+                        )}
+                        <span
+                          className={`${
+                            isErr ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {logMsg}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           )}
 

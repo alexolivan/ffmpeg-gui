@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.36.1] - 2026-10-06
+
+### Fixed
+- **PipeWire Forge Execution & Environment Discovery**:
+  - Fixed binary resolution to handle `SoftwareBuild.install_path` fallback alongside `install_dir`.
+  - Added automatic detection and environment exports for `SPA_PLUGIN_DIR` (`lib/spa-0.2`, `lib/x86_64-linux-gnu/spa-0.2`) and `PIPEWIRE_MODULE_DIR` (`lib/pipewire-0.3`, `lib/x86_64-linux-gnu/pipewire-0.3`), ensuring null audio sinks and RTP modules load properly in isolated Forge builds.
+- **Service Card Visual Symmetry**:
+  - Removed redundant inspector button from `PipeWireServiceCard` action bar (retaining intuitive card-click modal trigger).
+  - Replaced expansive virtual sinks list on the card with an aggregated count badge (`N Sinks [RTP]`) to prevent card height blowup.
+
+### Added
+- **PipeWire Configuration Form Parity**:
+  - Added Binary Engine selector (`SoftwareBuild` vs system binary).
+  - Added service Alias (`alias`), Log Storage volume selector (`log_storage_id`), Boot Lifecycle controls (`auto_start`, `startup_order`, `startup_delay`), Watchdog & Crash Protection (`watchdog_enabled`, `watchdog_retries`), and Peer Federation (`is_shared_with_peers`, `allow_peer_lease`).
+- **Live Observability & Virtual Console**:
+  - Added dedicated "Console & Logs" tab to `PipeWirePreviewModal` with real-time log streaming (`/api/processes/{id}/logs`), auto-scroll, log copy, and log download.
+
 ## [2.36.0] - 2026-10-06
 
 ### Added

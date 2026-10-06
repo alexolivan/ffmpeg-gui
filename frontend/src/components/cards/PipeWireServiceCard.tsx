@@ -145,25 +145,18 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
             Q: {quantum}
           </span>
           <span className="opacity-20">|</span>
-          <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider">
-            {t('services.pipewire.virtualSinksTitle', 'Sinks')}:
-          </span>
-          {virtualSinks.length === 0 ? (
-            <span className="text-[10px] text-zinc-500 italic">None</span>
-          ) : (
-            virtualSinks.map((s: any, idx: number) => (
-              <span
-                key={idx}
-                className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px] flex items-center gap-1"
-              >
-                <span>{s.id}</span>
-                <span className="opacity-60 text-[9px]">({s.channels || 2}ch)</span>
-                {s.aes67_enabled && (
-                  <span className="text-[8px] bg-brand-lime/20 text-brand-lime px-1 rounded font-bold">RTP</span>
-                )}
+
+          {/* Aggregate Virtual Sinks Count Badge */}
+          <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px] font-bold flex items-center gap-1">
+            <span>
+              {virtualSinks.length} {virtualSinks.length === 1 ? 'Sink' : 'Sinks'}
+            </span>
+            {virtualSinks.some((s: any) => s.aes67_enabled) && (
+              <span className="text-[8px] bg-brand-lime/20 text-brand-lime px-1 rounded font-black">
+                RTP
               </span>
-            ))
-          )}
+            )}
+          </span>
 
           <span className="opacity-20">|</span>
 
@@ -208,15 +201,6 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
 
       {/* Right Iconic Action Button Bar */}
       <div className="flex items-center gap-1.5 mt-3 lg:mt-0 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-        {/* Graph Nodes Inspector Action */}
-        <button
-          onClick={() => onSelectedProcess(service)}
-          className="w-9 h-9 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center transition-all hover:scale-105"
-          title={t('services.pipewire.inspectGraph', 'Inspect Audio Graph & Nodes')}
-        >
-          <span className="text-sm">🔍</span>
-        </button>
-
         {/* Edit Button */}
         <button
           disabled={isPending}
