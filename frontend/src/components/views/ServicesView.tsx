@@ -9,6 +9,7 @@ import { MediaMtxServiceCard } from '../cards/MediaMtxServiceCard';
 import { IcecastServiceCard } from '../cards/IcecastServiceCard';
 import { DesktopServiceCard } from '../cards/DesktopServiceCard';
 import { KioskServiceCard } from '../cards/KioskServiceCard';
+import { PipeWireServiceCard } from '../cards/PipeWireServiceCard';
 import { hasVideo, type ServiceItem } from '../cards/UnifiedServiceCard';
 
 export { hasVideo };
@@ -157,7 +158,26 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         />
       );
     }
-    // PipeWire Audio Hub (and standard FFmpeg stream services) render with FfmpegServiceCard / UnifiedServiceCard
+    if (proc.service_type === 'pipewire_hub') {
+      return (
+        <PipeWireServiceCard
+          key={proc.id}
+          service={proc as ServiceItem}
+          telemetryItem={proc}
+          actionPending={actionPending[proc.id]}
+          onStartService={onStartService}
+          onStopService={onStopService}
+          onRestartService={onRestartService}
+          onEditProcess={onEditProcess}
+          onCloneProcess={onCloneProcess}
+          onDeleteProcess={onDeleteProcess}
+          onSelectedProcess={onSelectedProcess}
+          onExportProcess={handleExport}
+          API={API}
+        />
+      );
+    }
+    // Standard FFmpeg stream services render with FfmpegServiceCard / UnifiedServiceCard
     return (
       <FfmpegServiceCard
         key={proc.id}

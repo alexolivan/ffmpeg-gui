@@ -14,6 +14,7 @@ import { MediaMtxPreviewModal } from './modals/MediaMtxPreviewModal';
 import { IcecastPreviewModal } from './modals/IcecastPreviewModal';
 import { DesktopPreviewModal } from './modals/DesktopPreviewModal';
 import { KioskPreviewModal } from './modals/KioskPreviewModal';
+import { PipeWirePreviewModal } from './modals/PipeWirePreviewModal';
 import { ServiceTypePickerModal } from './modals/ServiceTypePickerModal';
 import { MediaMtxConfigForm } from './forms/MediaMtxConfigForm';
 import { IcecastConfigForm } from './forms/IcecastConfigForm';
@@ -685,6 +686,20 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
           />
         ) : selectedProcess.service_type === 'desktop' ? (
           <DesktopPreviewModal
+            selectedProcess={selectedProcess}
+            telemetry={telemetry}
+            actionPending={actionPending}
+            logs={logs}
+            onClose={() => setSelectedProcess(null)}
+            onEditProcess={setEditingProcess}
+            onCloneProcess={handleCloneProcess}
+            onStartService={handleStartService}
+            onStopService={handleStopService}
+            onRestartService={handleRestartService}
+            API={API}
+          />
+        ) : selectedProcess.service_type === 'pipewire_hub' ? (
+          <PipeWirePreviewModal
             selectedProcess={selectedProcess}
             telemetry={telemetry}
             actionPending={actionPending}
