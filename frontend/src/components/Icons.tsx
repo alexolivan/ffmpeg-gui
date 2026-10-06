@@ -617,3 +617,24 @@ export const PowerIcon: React.FC<IconProps> = ({ size = 16, className = '', ...p
   </svg>
 );
 
+export const PipewireLogoIcon: React.FC<IconProps> = ({ className = 'w-4 h-4', size }) => (
+  <svg
+    className={className}
+    style={size ? { width: size, height: size } : undefined}
+    viewBox="0 0 100 100"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle cx="50" cy="50" r="45" stroke="#2563EB" strokeWidth="8" />
+    <path
+      d="M 28 50 C 28 35, 40 28, 50 28 C 60 28, 72 35, 72 50 C 72 65, 60 72, 50 72"
+      stroke="#38BDF8"
+      strokeWidth="7"
+      strokeLinecap="round"
+      fill="none"
+    />
+    <circle cx="50" cy="50" r="10" fill="#38BDF8" />
+  </svg>
+);
+
+
