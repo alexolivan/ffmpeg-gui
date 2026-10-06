@@ -1,6 +1,9 @@
 import logging
 import os
+import re
+import shutil
 import socket
+import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 import psutil
 
@@ -366,5 +369,98 @@ def generate_firewall_rules(matrix: List[Dict[str, Any]]) -> Dict[str, List[str]
     return {
         "ufw": ufw_rules,
         "iptables": iptables_rules
+    }
+
+
+def audit_pipewire_network_capabilities() -> Dict[str, Any]:
+    """
+    Audita interfaces de red del host y capacidades PTP de hardware/software para PipeWire.
+    Valida nombres de interfaz, utiliza timeouts defensivos con ethtool y omite loopbacks.
+    """
+    try:
+        addrs = psutil.net_if_addrs() or {}
+    except Exception:
+        addrs = {}
+
+    try:
+        stats = psutil.net_if_stats() or {}
+    except Exception:
+        stats = {}
+
+    interfaces = []
+    for ifname, addr_list in addrs.items():
+        if ifname == "lo" or ifname.lower() == "lo":
+            continue
+
+        stat = stats.get(ifname)
+        if stat is not None and not stat.isup:
+            continue
+        if stat is not None and "loopback" in getattr(stat, "flags", ""):
+            continue
+
+        # Validar formato seguro de ifname antes de cualquier invocación de sistema
+        if not re.match(r'^[a-zA-Z0-9_.:-]+$', ifname) or ifname.startswith('-'):
+            continue
+
+        # Primer IPv4 no-loopback
+        ip = None
+        for addr in addr_list:
+            family = getattr(addr, "family", None)
+            if family == socket.AF_INET or family == 2:
+                addr_str = getattr(addr, "address", None)
+                if addr_str and not addr_str.startswith("127."):
+                    ip = addr_str
+                    break
+
+        is_up = bool(stat.isup) if stat is not None else True
+        speed = int(stat.speed) if (stat is not None and stat.speed is not None and stat.speed >= 0) else 0
+
+        # Chequear capacidades de timestamping de hardware PTP vía ethtool -T
+        ptp_hardware_capable = False
+        try:
+            res = subprocess.run(
+                ["ethtool", "-T", ifname],
+                capture_output=True,
+                text=True,
+                timeout=2.0
+            )
+            if res.returncode == 0:
+                out = res.stdout or ""
+                if ("hardware-transmit" in out and "hardware-receive" in out) or ("SOF_TIMESTAMPING_TX_HARDWARE" in out):
+                    ptp_hardware_capable = True
+        except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError, subprocess.SubprocessError, Exception):
+            ptp_hardware_capable = False
+
+        interfaces.append({
+            "name": ifname,
+            "ip": ip,
+            "is_up": is_up,
+            "speed": speed,
+            "ptp_hardware_capable": ptp_hardware_capable
+        })
+
+    ptp4l_installed = shutil.which("ptp4l") is not None
+
+    ptp4l_running = False
+    try:
+        for proc in psutil.process_iter(['name']):
+            try:
+                name = proc.info.get('name') if getattr(proc, 'info', None) else None
+                if not name and hasattr(proc, 'name'):
+                    name = proc.name()
+                if name and "ptp4l" in str(name):
+                    ptp4l_running = True
+                    break
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+    except Exception:
+        ptp4l_running = False
+
+    return {
+        "interfaces": interfaces,
+        "host_ptp": {
+            "ptp4l_installed": ptp4l_installed,
+            "ptp4l_running": ptp4l_running
+        }
     }
 

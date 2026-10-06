@@ -8375,83 +8375,11 @@ def get_resource_locks_endpoint(
 def get_pipewire_network_audit(user: str = Depends(verify_token)) -> dict:
     """Audita interfaces de red del host y capacidades PTP de hardware/software."""
     try:
-        addrs = psutil.net_if_addrs() or {}
-    except Exception:
-        addrs = {}
+        from core.network_inspector import audit_pipewire_network_capabilities
+    except ImportError:
+        from backend.core.network_inspector import audit_pipewire_network_capabilities
 
-    try:
-        stats = psutil.net_if_stats() or {}
-    except Exception:
-        stats = {}
-
-    interfaces = []
-    for ifname, addr_list in addrs.items():
-        if ifname == "lo" or ifname.lower() == "lo":
-            continue
-
-        stat = stats.get(ifname)
-        if stat is not None and not stat.isup:
-            continue
-        if stat is not None and "loopback" in getattr(stat, "flags", ""):
-            continue
-
-        # First IPv4 address
-        ip = None
-        for addr in addr_list:
-            family = getattr(addr, "family", None)
-            if family == socket.AF_INET or family == 2:
-                ip = getattr(addr, "address", None)
-                break
-
-        is_up = bool(stat.isup) if stat is not None else True
-        speed = int(stat.speed) if (stat is not None and stat.speed is not None and stat.speed >= 0) else 0
-
-        # Check PTP hardware timestamping capability via ethtool -T
-        ptp_hardware_capable = False
-        try:
-            res = subprocess.run(
-                ["ethtool", "-T", ifname],
-                capture_output=True,
-                text=True
-            )
-            out = (res.stdout or "") + (res.stderr or "")
-            if ("hardware-transmit" in out and "hardware-receive" in out) or ("SOF_TIMESTAMPING_TX_HARDWARE" in out):
-                ptp_hardware_capable = True
-        except (FileNotFoundError, PermissionError, subprocess.SubprocessError, Exception):
-            ptp_hardware_capable = False
-
-        interfaces.append({
-            "name": ifname,
-            "ip": ip,
-            "is_up": is_up,
-            "speed": speed,
-            "ptp_hardware_capable": ptp_hardware_capable
-        })
-
-    ptp4l_installed = shutil.which("ptp4l") is not None
-
-    ptp4l_running = False
-    try:
-        for proc in psutil.process_iter(['name']):
-            try:
-                name = proc.info.get('name') if getattr(proc, 'info', None) else None
-                if not name and hasattr(proc, 'name'):
-                    name = proc.name()
-                if name and "ptp4l" in str(name):
-                    ptp4l_running = True
-                    break
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                continue
-    except Exception:
-        ptp4l_running = False
-
-    return {
-        "interfaces": interfaces,
-        "host_ptp": {
-            "ptp4l_installed": ptp4l_installed,
-            "ptp4l_running": ptp4l_running
-        }
-    }
+    return audit_pipewire_network_capabilities()
 
 
 # Mounting static files and SPA fallback

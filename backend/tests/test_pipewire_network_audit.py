@@ -1,13 +1,29 @@
 import unittest
+import os
+import sys
 import socket
+import subprocess
 from collections import namedtuple
 from unittest.mock import patch, MagicMock
-from fastapi.testclient import TestClient
+
+# Ensure backend directory is in sys.path
+backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+try:
+    import core.network_inspector as ni_module
+    NI_TARGET = "core.network_inspector"
+except ImportError:
+    import backend.core.network_inspector as ni_module
+    NI_TARGET = "backend.core.network_inspector"
 
 try:
     from main import app, verify_token
 except ImportError:
     from backend.main import app, verify_token
+
+from fastapi.testclient import TestClient
 
 SnicAddr = namedtuple('snicaddr', ['family', 'address', 'netmask', 'broadcast', 'ptp'])
 SnicStats = namedtuple('snicstats', ['isup', 'duplex', 'speed', 'mtu', 'flags'])
@@ -31,11 +47,11 @@ class TestPipewireNetworkAudit(unittest.TestCase):
         res = self.client.get("/api/pipewire/network-audit")
         self.assertEqual(res.status_code, 401)
 
-    @patch("backend.main.psutil.process_iter")
-    @patch("backend.main.shutil.which")
-    @patch("backend.main.subprocess.run")
-    @patch("backend.main.psutil.net_if_stats")
-    @patch("backend.main.psutil.net_if_addrs")
+    @patch(f"{NI_TARGET}.psutil.process_iter")
+    @patch(f"{NI_TARGET}.shutil.which")
+    @patch(f"{NI_TARGET}.subprocess.run")
+    @patch(f"{NI_TARGET}.psutil.net_if_stats")
+    @patch(f"{NI_TARGET}.psutil.net_if_addrs")
     def test_network_audit_success_and_filtering(
         self,
         mock_addrs,
@@ -70,9 +86,10 @@ class TestPipewireNetworkAudit(unittest.TestCase):
             "down0": SnicStats(isup=False, duplex=0, speed=0, mtu=1500, flags="down")
         }
 
-        def mock_ethtool(cmd, capture_output=True, text=True):
+        def mock_ethtool(cmd, capture_output=True, text=True, timeout=2.0):
             iface = cmd[2]
             res = MagicMock()
+            res.returncode = 0
             if iface == "eth0":
                 res.stdout = "Capabilities:\n\thardware-transmit\n\thardware-receive\n"
                 res.stderr = ""
@@ -115,11 +132,11 @@ class TestPipewireNetworkAudit(unittest.TestCase):
         self.assertTrue(data["host_ptp"]["ptp4l_installed"])
         self.assertTrue(data["host_ptp"]["ptp4l_running"])
 
-    @patch("backend.main.psutil.process_iter")
-    @patch("backend.main.shutil.which")
-    @patch("backend.main.subprocess.run")
-    @patch("backend.main.psutil.net_if_stats")
-    @patch("backend.main.psutil.net_if_addrs")
+    @patch(f"{NI_TARGET}.psutil.process_iter")
+    @patch(f"{NI_TARGET}.shutil.which")
+    @patch(f"{NI_TARGET}.subprocess.run")
+    @patch(f"{NI_TARGET}.psutil.net_if_stats")
+    @patch(f"{NI_TARGET}.psutil.net_if_addrs")
     def test_ptp_sof_timestamping_fallback(
         self,
         mock_addrs,
@@ -139,6 +156,7 @@ class TestPipewireNetworkAudit(unittest.TestCase):
         }
 
         mock_res = MagicMock()
+        mock_res.returncode = 0
         mock_res.stdout = "Capabilities:\n\tSOF_TIMESTAMPING_TX_HARDWARE\n"
         mock_res.stderr = ""
         mock_run.return_value = mock_res
@@ -152,11 +170,11 @@ class TestPipewireNetworkAudit(unittest.TestCase):
         self.assertFalse(data["host_ptp"]["ptp4l_installed"])
         self.assertFalse(data["host_ptp"]["ptp4l_running"])
 
-    @patch("backend.main.psutil.process_iter")
-    @patch("backend.main.shutil.which")
-    @patch("backend.main.subprocess.run")
-    @patch("backend.main.psutil.net_if_stats")
-    @patch("backend.main.psutil.net_if_addrs")
+    @patch(f"{NI_TARGET}.psutil.process_iter")
+    @patch(f"{NI_TARGET}.shutil.which")
+    @patch(f"{NI_TARGET}.subprocess.run")
+    @patch(f"{NI_TARGET}.psutil.net_if_stats")
+    @patch(f"{NI_TARGET}.psutil.net_if_addrs")
     def test_ethtool_missing_or_error_fallback(
         self,
         mock_addrs,
@@ -177,7 +195,7 @@ class TestPipewireNetworkAudit(unittest.TestCase):
             "eth1": SnicStats(isup=True, duplex=2, speed=1000, mtu=1500, flags="up")
         }
 
-        def mock_ethtool_error(cmd, capture_output=True, text=True):
+        def mock_ethtool_error(cmd, capture_output=True, text=True, timeout=2.0):
             if cmd[2] == "eth0":
                 raise FileNotFoundError("ethtool not found")
             raise PermissionError("Operation not permitted")
@@ -193,11 +211,44 @@ class TestPipewireNetworkAudit(unittest.TestCase):
         self.assertFalse(data["interfaces"][0]["ptp_hardware_capable"])
         self.assertFalse(data["interfaces"][1]["ptp_hardware_capable"])
 
-    @patch("backend.main.psutil.process_iter")
-    @patch("backend.main.shutil.which")
-    @patch("backend.main.subprocess.run")
-    @patch("backend.main.psutil.net_if_stats")
-    @patch("backend.main.psutil.net_if_addrs")
+    @patch(f"{NI_TARGET}.psutil.process_iter")
+    @patch(f"{NI_TARGET}.shutil.which")
+    @patch(f"{NI_TARGET}.subprocess.run")
+    @patch(f"{NI_TARGET}.psutil.net_if_stats")
+    @patch(f"{NI_TARGET}.psutil.net_if_addrs")
+    def test_ethtool_timeout_expired_fallback(
+        self,
+        mock_addrs,
+        mock_stats,
+        mock_run,
+        mock_which,
+        mock_proc_iter
+    ):
+        """Verifica que subprocess.TimeoutExpired se maneja con gracia dejando ptp_hardware_capable en False."""
+        app.dependency_overrides[verify_token] = lambda: "admin"
+
+        mock_addrs.return_value = {
+            "eth0": [SnicAddr(family=socket.AF_INET, address="192.168.1.50", netmask=None, broadcast=None, ptp=None)]
+        }
+        mock_stats.return_value = {
+            "eth0": SnicStats(isup=True, duplex=2, speed=1000, mtu=1500, flags="up")
+        }
+
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd=["ethtool", "-T", "eth0"], timeout=2.0)
+        mock_which.return_value = None
+        mock_proc_iter.return_value = []
+
+        res = self.client.get("/api/pipewire/network-audit")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(len(data["interfaces"]), 1)
+        self.assertFalse(data["interfaces"][0]["ptp_hardware_capable"])
+
+    @patch(f"{NI_TARGET}.psutil.process_iter")
+    @patch(f"{NI_TARGET}.shutil.which")
+    @patch(f"{NI_TARGET}.subprocess.run")
+    @patch(f"{NI_TARGET}.psutil.net_if_stats")
+    @patch(f"{NI_TARGET}.psutil.net_if_addrs")
     def test_interface_without_ipv4(
         self,
         mock_addrs,
@@ -217,7 +268,7 @@ class TestPipewireNetworkAudit(unittest.TestCase):
         mock_stats.return_value = {
             "eth0": SnicStats(isup=True, duplex=2, speed=1000, mtu=1500, flags="up")
         }
-        mock_run.return_value = MagicMock(stdout="", stderr="")
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         mock_which.return_value = None
         mock_proc_iter.return_value = []
 
