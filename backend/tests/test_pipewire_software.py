@@ -1,11 +1,13 @@
 import os
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from fastapi.testclient import TestClient
 
 from database.models import Base, SoftwareBuild
 from core.software_manager import SoftwareManager, SUPPORTED_ENGINES
+from main import app, get_software_tags
 
 class TestPipewireSoftware(unittest.TestCase):
 
@@ -107,3 +109,42 @@ class TestPipewireSoftware(unittest.TestCase):
 
         deleted_build = self.db.query(SoftwareBuild).filter_by(software_type="pipewire").first()
         self.assertIsNone(deleted_build)
+
+
+class TestPipewireTags(unittest.IsolatedAsyncioTestCase):
+
+    def setUp(self):
+        self.client = TestClient(app)
+
+    @patch("main.build_manager.fetch_available_tags", new_callable=AsyncMock)
+    async def test_get_software_tags_pipewire_remote(self, mock_fetch):
+        mock_fetch.return_value = ["1.4.2", "1.4.1", "1.2.7"]
+        res = await get_software_tags("pipewire")
+        self.assertEqual(res, {"tags": ["1.4.2", "1.4.1", "1.2.7"]})
+        mock_fetch.assert_awaited_once_with("https://gitlab.freedesktop.org/pipewire/pipewire.git")
+
+    @patch("main.build_manager.fetch_available_tags", new_callable=AsyncMock)
+    async def test_get_software_tags_pipewire_fallback(self, mock_fetch):
+        mock_fetch.return_value = []
+        res = await get_software_tags("pipewire")
+        self.assertEqual(res, {"tags": ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7"]})
+        mock_fetch.assert_awaited_once_with("https://gitlab.freedesktop.org/pipewire/pipewire.git")
+
+    @patch("main.build_manager.fetch_available_tags", new_callable=AsyncMock)
+    def test_api_get_pipewire_tags_endpoint(self, mock_fetch):
+        mock_fetch.return_value = ["1.6.9", "1.4.2"]
+        resp = self.client.get("/builds/tags/pipewire")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"tags": ["1.6.9", "1.4.2"]})
+
+    @patch("main.build_manager.fetch_available_tags", new_callable=AsyncMock)
+    def test_api_get_pipewire_tags_endpoint_fallback(self, mock_fetch):
+        mock_fetch.return_value = []
+        resp = self.client.get("/builds/tags/pipewire")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"tags": ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7"]})
+
+
+if __name__ == "__main__":
+    unittest.main()
+

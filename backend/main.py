@@ -4243,6 +4243,11 @@ async def get_nvenc_tags():
     tags = await build_manager.fetch_available_tags("nvenc")
     return {"tags": tags}
 
+@app.get("/builds/tags/pipewire")
+async def get_pipewire_tags():
+    """List available PipeWire git tags from the remote repository."""
+    return await get_software_tags("pipewire")
+
 @app.get("/builds/tags/{software_type}")
 async def get_software_tags(software_type: str):
     """List available tags for the specified software type."""
@@ -4252,6 +4257,8 @@ async def get_software_tags(software_type: str):
         tags = await build_manager.fetch_available_tags("https://github.com/bluenviron/mediamtx.git")
     elif software_type == "kiosk_cog":
         tags = await build_manager.fetch_available_tags("https://github.com/Igalia/cog.git")
+    elif software_type == "pipewire":
+        tags = await build_manager.fetch_available_tags("https://gitlab.freedesktop.org/pipewire/pipewire.git")
     elif software_type == "decklink_tools":
         tags = ["1.0.1", "1.0.0"]
     else:
@@ -4265,6 +4272,8 @@ async def get_software_tags(software_type: str):
             tags = ["v1.9.0", "v1.8.0", "v1.7.0"]
         elif software_type == "kiosk_cog":
             tags = ["v0.18.0", "v0.16.0"]
+        elif software_type == "pipewire":
+            tags = ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7"]
         elif software_type == "decklink_tools":
             tags = ["1.0.1", "1.0.0"]
             
