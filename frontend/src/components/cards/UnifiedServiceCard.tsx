@@ -20,7 +20,7 @@ export interface ServiceItem {
   id: number;
   name: string;
   alias?: string | null;
-  service_type?: string; // 'ffmpeg_stream', 'icecast_server', 'kiosk_browser', 'mediamtx_hub'
+  service_type?: string; // 'ffmpeg_stream', 'icecast_server', 'kiosk_browser', 'mediamtx_hub', 'pipewire_hub', 'desktop'
   type?: string;
   status: string;
   pid?: number | null;
@@ -197,12 +197,16 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' 
               : serviceType === 'desktop'
               ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+              : serviceType === 'pipewire_hub'
+              ? 'bg-brand-lime/10 text-brand-lime border-brand-lime/30'
               : 'bg-purple-500/10 text-purple-400 border-purple-500/30'
           }`}>
             <EngineLogo
               softwareType={
                 serviceType === 'kiosk_browser'
                   ? (service.config?.kiosk_config?.engine_id || 'chromium')
+                  : serviceType === 'pipewire_hub'
+                  ? 'pipewire'
                   : serviceType
               }
               size={12}
@@ -218,6 +222,8 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               ? ((service.config?.kiosk_config?.engine_id || 'chromium') === 'firefox' ? 'Firefox Kiosk' : 'Chrome Kiosk')
               : serviceType === 'desktop'
               ? 'Desktop'
+              : serviceType === 'pipewire_hub'
+              ? 'PipeWire'
               : 'Service'}
           </span>
 

@@ -157,6 +157,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         />
       );
     }
+    // PipeWire Audio Hub (and standard FFmpeg stream services) render with FfmpegServiceCard / UnifiedServiceCard
     return (
       <FfmpegServiceCard
         key={proc.id}

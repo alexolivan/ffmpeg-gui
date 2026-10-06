@@ -19,6 +19,7 @@ import { MediaMtxConfigForm } from './forms/MediaMtxConfigForm';
 import { IcecastConfigForm } from './forms/IcecastConfigForm';
 import { DesktopConfigForm } from './forms/DesktopConfigForm';
 import { KioskConfigForm } from './forms/KioskConfigForm';
+import { PipeWireConfigForm } from './forms/PipeWireConfigForm';
 
 const API = '';
 
@@ -56,7 +57,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [selectedLinuxDistro, setSelectedLinuxDistro] = useState<'debian' | 'fedora' | 'arch'>('debian');
   const [creationServiceType, setCreationServiceType] = useState<
-    'ffmpeg_stream' | 'mediamtx_hub' | 'icecast_server' | 'desktop' | 'kiosk_browser'
+    'ffmpeg_stream' | 'mediamtx_hub' | 'icecast_server' | 'desktop' | 'kiosk_browser' | 'pipewire_hub'
   >('ffmpeg_stream');
   const [creationStep, setCreationStep] = useState<'picker' | 'form'>('picker');
 
@@ -260,7 +261,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
                 </button>
                 <span className="text-[var(--glass-border)]">|</span>
                 <h3 className="text-base font-bold tracking-wide uppercase">
-                  {t('services.addNewService')}: {creationServiceType === 'mediamtx_hub' ? 'MediaMTX Hub' : creationServiceType === 'icecast_server' ? 'Icecast2 Server' : creationServiceType === 'desktop' ? 'Virtual Desktop' : creationServiceType === 'kiosk_browser' ? 'Web Kiosk Display' : 'FFmpeg Stream'}
+                  {t('services.addNewService')}: {creationServiceType === 'mediamtx_hub' ? 'MediaMTX Hub' : creationServiceType === 'icecast_server' ? 'Icecast2 Server' : creationServiceType === 'desktop' ? 'Virtual Desktop' : creationServiceType === 'kiosk_browser' ? 'Web Kiosk Display' : creationServiceType === 'pipewire_hub' ? 'PipeWire Audio Hub' : 'FFmpeg Stream'}
                 </h3>
               </div>
             </div>
@@ -363,6 +364,32 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
                     } else {
                       const errData = await res.json();
                       alert(`Error creating Kiosk service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error: ${err.message || err}`);
+                  }
+                }}
+              />
+            ) : creationServiceType === 'pipewire_hub' ? (
+              <PipeWireConfigForm
+                API={API}
+                onCancel={() => {
+                  setShowAddModal(false);
+                  setCreationStep('picker');
+                }}
+                onSubmit={async (payload) => {
+                  try {
+                    const res = await fetch(`${API}/processes`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                      setShowAddModal(false);
+                      setCreationStep('picker');
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error creating PipeWire service: ${errData.detail || 'Unknown error'}`);
                     }
                   } catch (err: any) {
                     alert(`Network error: ${err.message || err}`);
@@ -519,6 +546,30 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
                     } else {
                       const errData = await res.json();
                       alert(`Error updating Kiosk service: ${errData.detail || 'Unknown error'}`);
+                    }
+                  } catch (err: any) {
+                    alert(`Network error updating service: ${err.message || err}`);
+                  }
+                }}
+              />
+            ) : editingProcess.service_type === 'pipewire_hub' ? (
+              <PipeWireConfigForm
+                API={API}
+                initialConfig={editingProcess}
+                isEditing={true}
+                onCancel={() => setEditingProcess(null)}
+                onSubmit={async (payload) => {
+                  try {
+                    const res = await fetch(`${API}/processes/${editingProcess.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload),
+                    });
+                    if (res.ok) {
+                      setEditingProcess(null);
+                    } else {
+                      const errData = await res.json();
+                      alert(`Error updating PipeWire service: ${errData.detail || 'Unknown error'}`);
                     }
                   } catch (err: any) {
                     alert(`Network error updating service: ${err.message || err}`);
