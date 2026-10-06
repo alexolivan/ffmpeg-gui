@@ -185,6 +185,10 @@ class TestPipewireForge(unittest.IsolatedAsyncioTestCase):
         self.assertIn("-Dudev=enabled", meson_call)
         self.assertNotIn("-Dpipewire-pulse=enabled", meson_call)
         self.assertNotIn("-Draop=disabled", meson_call)
+        # Verificar que si udevrulesdir está en las opciones, se aísla dentro de install_path
+        expected_udev = f"-Dudevrulesdir={os.path.join(install_path, 'lib', 'udev', 'rules.d')}"
+        # Como no lo pusimos en el mock de meson_options, no debe estar
+        self.assertNotIn(expected_udev, meson_call)
 
 
 if __name__ == "__main__":

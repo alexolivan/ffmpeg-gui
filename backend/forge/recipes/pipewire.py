@@ -82,6 +82,9 @@ class PipeWireRecipe(BaseRecipe):
             *opt("pipewire-pulse", "enabled"),
             *opt("pipewire-alsa", "enabled"),
             *opt("udev", "enabled"),
+            *opt("udevrulesdir", os.path.join(install_path, "lib", "udev", "rules.d")),
+            *opt("systemd-system-unit-dir", os.path.join(install_path, "lib", "systemd", "system")),
+            *opt("systemd-user-unit-dir", os.path.join(install_path, "lib", "systemd", "user")),
             *opt("raop", "disabled")
         ]
         await self.runner._run_logged_cmd(meson_cmd, log_callback, cwd=repo_dir)
