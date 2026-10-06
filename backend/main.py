@@ -6250,6 +6250,19 @@ async def get_service_preview(service_id: int, db: Session = Depends(get_db)):
         media_type="multipart/x-mixed-replace; boundary=ffmpeg"
     )
 
+@app.get("/api/services/{service_id}/pipewire/nodes")
+async def get_pipewire_service_nodes(
+    service_id: int,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.service_type != "pipewire_hub":
+        raise HTTPException(status_code=400, detail="Service is not a PipeWire Hub")
+    return await process_manager.get_pipewire_telemetry(service_id)
+
 @app.get("/api/services/{service_id}/dependencies")
 def list_service_dependencies(service_id: int, db: Session = Depends(get_db)):
     from database.models import ServiceDependency

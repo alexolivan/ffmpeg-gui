@@ -1,6 +1,7 @@
 import os
 import shutil
 import stat
+import asyncio
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 from sqlalchemy import create_engine
@@ -12,10 +13,16 @@ from core.resource_lock_manager import resource_manager, resource_lock_manager
 from core.dependency_manager import dependency_manager
 
 
+from sqlalchemy.pool import StaticPool
+
 class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
-        self.engine = create_engine("sqlite:///:memory:")
+        self.engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool
+        )
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
         self.pm = ProcessManager(db_session_factory=self.Session)
@@ -305,6 +312,165 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             updated = session.get(Service, 106)
             self.assertEqual(updated.status, "error")
             self.assertIn("not found", updated.last_error.lower())
+
+    async def test_get_pipewire_telemetry_not_running(self):
+        # Service not in active_processes
+        telemetry = await self.pm.get_pipewire_telemetry(999)
+        self.assertFalse(telemetry["active"])
+        self.assertEqual(telemetry["nodes"], [])
+        self.assertEqual(telemetry["streams"], [])
+        self.assertIn("not running", telemetry["error"])
+
+    @patch("shutil.which", return_value="/usr/bin/pw-dump")
+    @patch("asyncio.create_subprocess_exec")
+    async def test_get_pipewire_telemetry_success(self, mock_exec, mock_which):
+        # Service is in active_processes
+        self.pm.processes[101] = self._create_mock_proc(pid=10101)
+
+        mock_pw_dump_output = [
+            {
+                "id": 42,
+                "type": "PipeWire:Interface:Node",
+                "info": {
+                    "props": {
+                        "node.name": "alsa_output.pci-0000_00_1f.3.analog-stereo",
+                        "media.class": "Audio/Sink",
+                        "node.description": "Built-in Audio Analog Stereo"
+                    },
+                    "state": "running"
+                }
+            },
+            {
+                "id": 55,
+                "type": "PipeWire:Interface:Port",
+                "info": {
+                    "props": {
+                        "port.name": "playback_FL",
+                        "port.direction": "in",
+                        "node.id": 42,
+                        "audio.channel": "FL"
+                    }
+                }
+            },
+            {
+                "id": 60,
+                "type": "PipeWire:Interface:Link",
+                "info": {
+                    "output-node-id": 30,
+                    "output-port-id": 31,
+                    "input-node-id": 42,
+                    "input-port-id": 55,
+                    "state": "active"
+                }
+            }
+        ]
+        import json
+        dump_proc = MagicMock()
+        dump_proc.returncode = 0
+        dump_proc.communicate = AsyncMock(return_value=(json.dumps(mock_pw_dump_output).encode("utf-8"), b""))
+        mock_exec.return_value = dump_proc
+
+        telemetry = await self.pm.get_pipewire_telemetry(101)
+        self.assertTrue(telemetry["active"])
+        self.assertEqual(len(telemetry["nodes"]), 1)
+        self.assertEqual(telemetry["nodes"][0]["id"], 42)
+        self.assertEqual(telemetry["nodes"][0]["name"], "alsa_output.pci-0000_00_1f.3.analog-stereo")
+        self.assertEqual(telemetry["nodes"][0]["media_class"], "Audio/Sink")
+        self.assertEqual(telemetry["nodes"][0]["state"], "running")
+
+        self.assertEqual(len(telemetry["ports"]), 1)
+        self.assertEqual(telemetry["ports"][0]["id"], 55)
+        self.assertEqual(telemetry["ports"][0]["name"], "playback_FL")
+        self.assertEqual(telemetry["ports"][0]["node_id"], 42)
+
+        self.assertEqual(len(telemetry["links"]), 1)
+        self.assertEqual(telemetry["links"][0]["output_node_id"], 30)
+
+        self.assertEqual(telemetry["raw_summary"]["nodes_count"], 1)
+        self.assertEqual(telemetry["raw_summary"]["ports_count"], 1)
+        self.assertEqual(telemetry["raw_summary"]["links_count"], 1)
+
+    @patch("shutil.which", return_value="/usr/bin/pw-dump")
+    @patch("asyncio.create_subprocess_exec")
+    async def test_get_pipewire_telemetry_timeout(self, mock_exec, mock_which):
+        self.pm.processes[101] = self._create_mock_proc(pid=10101)
+
+        dump_proc = MagicMock()
+        dump_proc.communicate = AsyncMock(return_value=(b"[]", b""))
+        mock_exec.return_value = dump_proc
+
+        with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
+            telemetry = await self.pm.get_pipewire_telemetry(101)
+            self.assertTrue(telemetry["active"])
+            self.assertEqual(telemetry["nodes"], [])
+            self.assertIn("timed out", telemetry["error"].lower())
+
+    def test_pipewire_nodes_api_endpoint(self):
+        from fastapi.testclient import TestClient
+        try:
+            from main import app, verify_token, get_db, process_manager
+        except ImportError:
+            from backend.main import app, verify_token, get_db, process_manager
+
+        with self.Session() as session:
+            svc_hub = Service(
+                id=301,
+                name="Tele PipeWire Hub",
+                service_type="pipewire_hub",
+                status="running",
+                config={"pipewire_config": {}}
+            )
+            svc_ffmpeg = Service(
+                id=302,
+                name="Regular Stream",
+                service_type="direct",
+                status="running",
+                config={}
+            )
+            session.add_all([svc_hub, svc_ffmpeg])
+            session.commit()
+
+        def override_get_db():
+            db = self.Session()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        app.dependency_overrides[verify_token] = lambda: "test_user"
+        app.dependency_overrides[get_db] = override_get_db
+
+        client = TestClient(app)
+        try:
+            with patch.object(process_manager, "get_pipewire_telemetry", new_callable=AsyncMock) as mock_tele:
+                mock_tele.return_value = {
+                    "active": True,
+                    "nodes": [{"id": 1, "name": "dummy_node"}],
+                    "ports": [],
+                    "links": [],
+                    "streams": [{"id": 1, "name": "dummy_node"}],
+                    "raw_summary": {"nodes_count": 1, "ports_count": 0, "links_count": 0}
+                }
+
+                # 1. Successful request on pipewire_hub
+                res = client.get("/api/services/301/pipewire/nodes")
+                self.assertEqual(res.status_code, 200)
+                data = res.json()
+                self.assertTrue(data["active"])
+                self.assertEqual(len(data["nodes"]), 1)
+                self.assertEqual(data["nodes"][0]["name"], "dummy_node")
+                mock_tele.assert_awaited_once_with(301)
+
+                # 2. Non-pipewire service returns 400
+                res_bad = client.get("/api/services/302/pipewire/nodes")
+                self.assertEqual(res_bad.status_code, 400)
+                self.assertIn("not a PipeWire Hub", res_bad.json()["detail"])
+
+                # 3. Non-existent service returns 404
+                res_404 = client.get("/api/services/9999/pipewire/nodes")
+                self.assertEqual(res_404.status_code, 404)
+        finally:
+            app.dependency_overrides.clear()
 
 
 if __name__ == "__main__":

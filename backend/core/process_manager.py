@@ -1801,6 +1801,131 @@ class ProcessManager:
         cmd = [pipewire_bin, "-c", config_path]
         return cmd, config_path, runtime_dir
 
+    async def get_pipewire_telemetry(self, process_id: int) -> dict:
+        """
+        Gathers real-time telemetry from an active PipeWire Hub instance via pw-dump.
+        Returns active audio nodes, ports, links, and summary metrics.
+        """
+        if process_id not in self.active_processes:
+            return {"active": False, "nodes": [], "streams": [], "error": "Service is not running"}
+
+        pw_dump_bin = None
+        install_dir = None
+
+        if self.db_session_factory:
+            with self.db_session_factory() as session:
+                from database.models import Service, SoftwareBuild
+                svc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                if svc and svc.config:
+                    cfg = svc.config
+                    build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    if build_id:
+                        build = session.get(SoftwareBuild, build_id) if hasattr(session, "get") else session.query(SoftwareBuild).get(build_id)
+                        if build:
+                            cand_dir = getattr(build, "install_dir", None) or getattr(build, "install_path", None)
+                            if cand_dir:
+                                install_dir = cand_dir
+                                cand_bin = os.path.join(cand_dir, "bin", "pw-dump")
+                                if os.path.exists(cand_bin):
+                                    pw_dump_bin = cand_bin
+
+        if not pw_dump_bin:
+            pw_dump_bin = shutil.which("pw-dump")
+
+        if not pw_dump_bin:
+            return {"active": True, "nodes": [], "streams": [], "error": "pw-dump binary not found"}
+
+        runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
+        sub_env = {**os.environ, "PIPEWIRE_RUNTIME_DIR": runtime_dir}
+
+        if install_dir and os.path.isdir(install_dir):
+            lib_dirs = [
+                os.path.join(install_dir, "lib"),
+                os.path.join(install_dir, "lib64"),
+                os.path.join(install_dir, "lib/x86_64-linux-gnu"),
+                os.path.join(install_dir, "lib/aarch64-linux-gnu")
+            ]
+            valid_libs = [p for p in lib_dirs if os.path.isdir(p)]
+            if valid_libs:
+                cur_ld = sub_env.get("LD_LIBRARY_PATH", "")
+                sub_env["LD_LIBRARY_PATH"] = ":".join(valid_libs + ([cur_ld] if cur_ld else []))
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                pw_dump_bin,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=sub_env
+            )
+            stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+            if proc.returncode != 0:
+                err_msg = stderr_data.decode("utf-8", errors="replace").strip() if stderr_data else f"Exit code {proc.returncode}"
+                return {"active": True, "nodes": [], "streams": [], "error": err_msg}
+
+            items = json.loads(stdout_data.decode("utf-8", errors="replace"))
+            if not isinstance(items, list):
+                items = []
+
+            nodes = []
+            ports = []
+            links = []
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                itype = str(item.get("type", ""))
+                info = item.get("info") or {}
+                props = info.get("props") or {}
+                iid = item.get("id")
+
+                if itype.endswith(":Node") or itype == "PipeWire:Interface:Node":
+                    nodes.append({
+                        "id": iid,
+                        "name": props.get("node.name") or props.get("node.nick") or f"node-{iid}",
+                        "media_class": props.get("media.class", ""),
+                        "state": info.get("state", "unknown"),
+                        "description": props.get("node.description") or props.get("node.name", "")
+                    })
+                elif itype.endswith(":Port") or itype == "PipeWire:Interface:Port":
+                    ports.append({
+                        "id": iid,
+                        "name": props.get("port.name", f"port-{iid}"),
+                        "direction": props.get("port.direction", ""),
+                        "node_id": props.get("node.id") or info.get("node-id"),
+                        "audio_channel": props.get("audio.channel", "")
+                    })
+                elif itype.endswith(":Link") or itype == "PipeWire:Interface:Link":
+                    links.append({
+                        "id": iid,
+                        "output_node_id": info.get("output-node-id") or props.get("link.output.node"),
+                        "output_port_id": info.get("output-port-id") or props.get("link.output.port"),
+                        "input_node_id": info.get("input-node-id") or props.get("link.input.node"),
+                        "input_port_id": info.get("input-port-id") or props.get("link.input.port"),
+                        "state": info.get("state", "")
+                    })
+
+            return {
+                "active": True,
+                "nodes": nodes,
+                "ports": ports,
+                "links": links,
+                "streams": nodes,
+                "raw_summary": {
+                    "nodes_count": len(nodes),
+                    "ports_count": len(ports),
+                    "links_count": len(links)
+                }
+            }
+        except asyncio.TimeoutError:
+            self.logger.warning(f"PipeWire telemetry timed out for process {process_id}")
+            return {"active": True, "nodes": [], "streams": [], "error": "pw-dump query timed out (3.0s)"}
+        except json.JSONDecodeError as jde:
+            self.logger.warning(f"PipeWire telemetry failed to parse json for process {process_id}: {jde}")
+            return {"active": True, "nodes": [], "streams": [], "error": f"Invalid JSON from pw-dump: {jde}"}
+        except Exception as err:
+            self.logger.warning(f"PipeWire telemetry error for process {process_id}: {err}")
+            return {"active": True, "nodes": [], "streams": [], "error": str(err)}
+
     def _build_desktop_cmds(self, media_proc) -> Tuple[List[str], List[str], List[str], int, int]:
         """
         Builds command arguments for Xvfb, xset, and x11vnc for a virtual desktop service.
