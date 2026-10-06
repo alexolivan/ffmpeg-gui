@@ -514,26 +514,26 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
               {networkAudit && (
                 <div>
                   {networkAudit.host_ptp?.ptp4l_running ? (
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2.5">
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2.5">
                       <span className="text-base shrink-0">🟢</span>
                       <div>
                         <p className="font-bold">
-                          {t('services.pipewire.ptpSynchronized', 'PTPv2 Sincronizado (IEEE 1588-2008 activo)')}
+                          {t('services.pipewire.ptpSynchronized', 'PTPv2 Synchronized (IEEE 1588-2008 active)')}
                         </p>
-                        <p className="text-[10px] text-emerald-400/80 mt-0.5">
-                          {t('services.pipewire.ptpSynchronizedDesc', 'El demonio ptp4l está activo en el host proporcionando reloj maestro/esclavo PTP para alineación precisa de paquetes RTP.')}
+                        <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
+                          {t('services.pipewire.ptpSynchronizedDesc', 'Host ptp4l daemon active providing PTP master/slave clock for precise RTP packet alignment.')}
                         </p>
                       </div>
                     </div>
                   ) : (
-                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2.5">
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-300 text-xs flex items-center gap-2.5">
                       <span className="text-base shrink-0">ℹ️</span>
                       <div>
                         <p className="font-bold">
-                          {t('services.pipewire.ptpSoftwareClock', 'Modo Reloj de Software (Activo). Compatible con Dante Controller y SAP. Para sincronización de microsegundos en producción broadcast, instale opcionalmente linuxptp en el host.')}
+                          {t('services.pipewire.ptpSoftwareClock', 'Software Clock Mode (Active). Compatible with Dante Controller and SAP. For sub-microsecond synchronization in broadcast production, optionally install linuxptp on the host.')}
                         </p>
-                        <p className="text-[10px] text-amber-300/80 mt-0.5">
-                          {t('services.pipewire.ptpSoftwareClockDesc', 'Las transmisiones AES67 emitirán timestamps RTP basados en el reloj monótono del kernel. Suficiente para la mayoría de escuchas y mezcladores virtuales.')}
+                        <p className="text-[10px] text-amber-600/80 dark:text-amber-300/80 mt-0.5">
+                          {t('services.pipewire.ptpSoftwareClockDesc', 'AES67 streams will timestamp RTP packets using monotonic system clock. Sufficient for most listening and virtual mixers.')}
                         </p>
                       </div>
                     </div>

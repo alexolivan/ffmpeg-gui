@@ -47,7 +47,7 @@ const SERVICE_TYPE_DEFINITIONS: Record<string, { service_type: string; category:
   pipewire: {
     service_type: 'pipewire_hub',
     category: 'AUDIO HUB & AES67',
-    defaultDesc: 'Servidor de audio profesional con buses virtuales y difusión AES67/Dante por red.',
+    defaultDesc: 'Professional audio server with virtual mixing buses and AES67 / Dante network multicast streaming.',
   },
 };
 
@@ -155,7 +155,7 @@ export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
             category: 'AUDIO HUB & AES67',
             description: t(
               'services.pipewire.service_description',
-              'Servidor de audio profesional con buses virtuales y difusión AES67/Dante por red.'
+              'Professional audio server with virtual mixing buses and AES67 / Dante network multicast streaming.'
             ),
             is_enabled: true,
           },
