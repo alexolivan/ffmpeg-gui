@@ -8068,6 +8068,13 @@ DEFAULT_ENGINE_SVGS = {
         '<line x1="6" y1="18" x2="6.01" y2="18"/>'
         '</svg>'
     ),
+    "pipewire": (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">'
+        '<circle cx="50" cy="50" r="45" stroke="#2563EB" stroke-width="8" />'
+        '<path d="M 28 50 C 28 35, 40 28, 50 28 C 60 28, 72 35, 72 50 C 72 65, 60 72, 50 72" stroke="#38BDF8" stroke-width="7" stroke-linecap="round" fill="none" />'
+        '<circle cx="50" cy="50" r="10" fill="#38BDF8" />'
+        '</svg>'
+    ),
     "default": (
         '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
         '<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>'
@@ -8079,6 +8086,7 @@ DEFAULT_ENGINE_SVGS = {
 }
 
 
+@app.get("/api/software/icon/{software_type}")
 @app.get("/api/settings/software/{software_type}/icon")
 def get_software_icon(software_type: str, db: Session = Depends(get_db)):
     """Sirve el icono personalizado o el SVG por defecto del motor."""

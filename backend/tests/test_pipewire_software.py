@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from database.models import Base, SoftwareBuild
 from core.software_manager import SoftwareManager, SUPPORTED_ENGINES
-from main import app, get_software_tags
+from main import app, get_software_tags, DEFAULT_ENGINE_SVGS
 
 class TestPipewireSoftware(unittest.TestCase):
 
@@ -143,6 +143,24 @@ class TestPipewireTags(unittest.IsolatedAsyncioTestCase):
         resp = self.client.get("/builds/tags/pipewire")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json(), {"tags": ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7"]})
+
+    def test_pipewire_default_vector_svg_icon(self):
+        self.assertIn("pipewire", DEFAULT_ENGINE_SVGS)
+        svg = DEFAULT_ENGINE_SVGS["pipewire"]
+        self.assertIn("<svg", svg)
+        self.assertIn("viewBox", svg)
+        self.assertIn("</svg>", svg)
+
+        resp = self.client.get("/api/software/icon/pipewire")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers.get("content-type"), "image/svg+xml")
+        self.assertEqual(resp.text, svg)
+
+        # Also verify via /api/settings/software/pipewire/icon
+        resp_settings = self.client.get("/api/settings/software/pipewire/icon")
+        self.assertEqual(resp_settings.status_code, 200)
+        self.assertEqual(resp_settings.headers.get("content-type"), "image/svg+xml")
+        self.assertEqual(resp_settings.text, svg)
 
 
 if __name__ == "__main__":
