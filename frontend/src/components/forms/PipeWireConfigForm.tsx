@@ -30,7 +30,7 @@ export interface NetworkAuditData {
 
 interface PipeWireConfigFormProps {
   initialConfig?: any;
-  onSubmit: (data: { name: string; service_type: string; config: any; auto_start: boolean }) => void;
+  onSubmit: (data: any) => void;
   onCancel: () => void;
   isEditing?: boolean;
   API?: string;
@@ -47,13 +47,79 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
   const pwCfg = initialConfig?.config?.pipewire_config || initialConfig?.pipewire_config || initialConfig?.config || {};
 
-  // 1. General / Service Info
+  // 1. Identity & Engine
   const [name, setName] = useState<string>(initialConfig?.name || 'PipeWire Master Hub');
+  const [alias, setAlias] = useState<string>(initialConfig?.alias || '');
+  const [buildId, setBuildId] = useState<number | null>(
+    initialConfig?.ffmpeg_build_id ?? initialConfig?.config?.software_build_id ?? initialConfig?.config?.ffmpeg_build_id ?? null
+  );
+  const [availableBuilds, setAvailableBuilds] = useState<any[]>([]);
+
+  // Sample Rate & Quantum
+  const [sampleRate, setSampleRate] = useState<number>(Number(pwCfg.sample_rate) || 48000);
+  const [quantum, setQuantum] = useState<number>(Number(pwCfg.quantum) || 1024);
+
+  // Storage & Logging
+  const [storages, setStorages] = useState<any[]>([]);
+  const [logStorageId, setLogStorageId] = useState<number | null>(
+    initialConfig?.log_storage_id ?? initialConfig?.config?.log_storage_id ?? null
+  );
+
+  // Lifecycle & Watchdog
   const [autoStart, setAutoStart] = useState<boolean>(
     initialConfig?.auto_start ?? initialConfig?.config?.auto_start ?? false
   );
-  const [sampleRate, setSampleRate] = useState<number>(Number(pwCfg.sample_rate) || 48000);
-  const [quantum, setQuantum] = useState<number>(Number(pwCfg.quantum) || 1024);
+  const [startupOrder, setStartupOrder] = useState<number>(
+    initialConfig?.startup_order ?? initialConfig?.config?.startup_order ?? 1
+  );
+  const [startupDelay, setStartupDelay] = useState<number>(
+    initialConfig?.startup_delay ?? initialConfig?.config?.startup_delay ?? 0
+  );
+  const [watchdogEnabled, setWatchdogEnabled] = useState<boolean>(
+    initialConfig?.watchdog_enabled ?? initialConfig?.config?.watchdog_enabled !== false
+  );
+  const [watchdogRetries, setWatchdogRetries] = useState<number>(
+    initialConfig?.watchdog_retries ?? initialConfig?.config?.watchdog_retries ?? 5
+  );
+
+  // Peer Federation & Sharing
+  const [isSharedWithPeers, setIsSharedWithPeers] = useState<boolean>(
+    Boolean(initialConfig?.is_shared_with_peers)
+  );
+  const [allowPeerLease, setAllowPeerLease] = useState<boolean>(
+    Boolean(initialConfig?.allow_peer_lease)
+  );
+
+  // Fetch available PipeWire builds from Forge and Storage volumes
+  useEffect(() => {
+    fetch(`${API}/builds`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((builds) => {
+        const pwBuilds = builds.filter(
+          (b: any) => b.software_type === 'pipewire' && b.status === 'ready'
+        );
+        setAvailableBuilds(pwBuilds);
+        if (!buildId && pwBuilds.length > 0) {
+          const def = pwBuilds.find((b: any) => b.is_default);
+          if (def) setBuildId(def.id);
+        }
+      })
+      .catch(() => {});
+
+    fetch(`${API}/settings/storages`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setStorages(data);
+          const logsList = data.filter((s: any) => s.type === 'logs');
+          if (!logStorageId && logsList.length > 0) {
+            const defLog = logsList.find((s: any) => s.is_default);
+            setLogStorageId(defLog ? defLog.id : logsList[0].id);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [API]);
 
   // 2. Virtual Sinks Manager
   const defaultInitialSinks: VirtualSinkConfig[] = [
@@ -198,9 +264,27 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
     onSubmit({
       name: name.trim() || 'PipeWire Master Hub',
+      alias: alias.trim() || undefined,
+      type: 'service',
       service_type: 'pipewire_hub',
+      ffmpeg_build_id: buildId,
       auto_start: autoStart,
+      startup_order: Number(startupOrder) || 1,
+      startup_delay: Number(startupDelay) || 0,
+      watchdog_enabled: watchdogEnabled,
+      watchdog_retries: Number(watchdogRetries) || 5,
+      log_storage_id: logStorageId ? Number(logStorageId) : null,
+      is_shared_with_peers: isSharedWithPeers,
+      allow_peer_lease: allowPeerLease,
       config: {
+        auto_start: autoStart,
+        startup_order: Number(startupOrder) || 1,
+        startup_delay: Number(startupDelay) || 0,
+        watchdog_enabled: watchdogEnabled,
+        watchdog_retries: Number(watchdogRetries) || 5,
+        log_storage_id: logStorageId ? Number(logStorageId) : null,
+        software_build_id: buildId,
+        ffmpeg_build_id: buildId,
         pipewire_config: configPayload,
       },
     });
@@ -230,8 +314,8 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
             </label>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-            <div className="md:col-span-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            <div>
               <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
                 {t('services.pipewire.name', 'Service Name')} <span className="text-red-400">*</span>
               </label>
@@ -245,6 +329,42 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
               />
             </div>
 
+            <div>
+              <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                {t('services.pipewire.alias', 'Alias / Call-sign')}
+              </label>
+              <input
+                type="text"
+                value={alias}
+                onChange={(e) => setAlias(e.target.value)}
+                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors"
+                placeholder="p. ej. Hub-Principal"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+              {t('services.pipewire.engineBuild', 'PipeWire Software Engine')}
+            </label>
+            <select
+              value={buildId || ''}
+              onChange={(e) => setBuildId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
+            >
+              <option value="">{t('services.pipewire.systemDefault', 'Host System Binary ($PATH / pipewire)')}</option>
+              {availableBuilds.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} (v{b.version_tag || 'custom'}) {b.is_default ? `[${t('common.default', 'Default')}]` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-[var(--text-secondary)] mt-1">
+              {t('services.pipewire.engineHint', 'If you do not select a compiled build from Forge, the panel will use the system PipeWire binary.')}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1 border-t border-[var(--glass-border)]">
             <div>
               <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
                 {t('services.pipewire.sampleRate', 'Sample Rate (Hz)')}
@@ -542,6 +662,177 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
               )}
             </div>
           )}
+        </div>
+
+        {/* ── Section 4: Dedicated Log Storage Volume ── */}
+        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-3">
+          <div className="border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-orange-400" />
+            <h4 className="text-xs font-black uppercase tracking-wider text-orange-400">
+              4. {t('services.pipewire.logStorageTitle', 'Log Storage Volume')}
+            </h4>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+              {t('services.pipewire.logStorage', 'Log Storage Drive')}
+            </label>
+            <select
+              value={logStorageId || ''}
+              onChange={(e) => setLogStorageId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
+            >
+              <option value="">{t('common.default', 'Default (Host / data/logs)')}</option>
+              {storages.filter((s: any) => s.type === 'logs').map((s: any) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.path}) {s.is_default ? `[${t('common.default', 'Default')}]` : ''}
+                </option>
+              ))}
+            </select>
+            <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
+              {t('services.pipewire.logStorageDesc', 'Stores PipeWire process logs and stdout/stderr with automated log rotation.')}
+            </span>
+          </div>
+        </div>
+
+        {/* ── Section 5: Lifecycle, Boot Order & Watchdog ── */}
+        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-3">
+          <div className="border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <h4 className="text-xs font-black uppercase tracking-wider text-emerald-400">
+              5. {t('services.pipewire.lifecycleTitle', 'Lifecycle, Boot Order & Watchdog')}
+            </h4>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-4 text-xs">
+            <div className="flex items-center gap-6 flex-wrap">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoStart}
+                  onChange={(e) => setAutoStart(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 cursor-pointer"
+                />
+                <span className="font-bold uppercase tracking-wide text-xs">
+                  {t('services.autoStart', 'Auto-start on Boot')}
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={watchdogEnabled}
+                  onChange={(e) => setWatchdogEnabled(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 cursor-pointer"
+                />
+                <span className="font-bold uppercase tracking-wide text-xs">
+                  {t('services.watchdog', 'Watchdog Restart')}
+                </span>
+              </label>
+            </div>
+
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] uppercase font-bold text-[var(--text-secondary)] shrink-0">
+                  {t('services.startupOrder', 'Order')}:
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={startupOrder}
+                  onChange={(e) => setStartupOrder(Number(e.target.value))}
+                  className="w-14 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] uppercase font-bold text-[var(--text-secondary)] shrink-0">
+                  {t('services.startupDelay', 'Delay (s)')}:
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={300}
+                  value={startupDelay}
+                  onChange={(e) => setStartupDelay(Number(e.target.value))}
+                  className="w-14 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] uppercase font-bold text-[var(--text-secondary)] shrink-0">
+                  {t('common.retries', 'Reintentos')}:
+                </label>
+                <input
+                  type="number"
+                  min={-1}
+                  max={50}
+                  value={watchdogRetries}
+                  onChange={(e) => setWatchdogRetries(Number(e.target.value))}
+                  className="w-14 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-center font-mono focus:border-brand-lime outline-none"
+                  title="-1 para reintentos infinitos"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section 6: Peer Federation & Remote Sharing ── */}
+        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-3">
+          <div className="border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400" />
+            <h4 className="text-xs font-black uppercase tracking-wider text-cyan-400">
+              6. {t('services.federation.title', 'Peer Federation & Remote Sharing')}
+            </h4>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <label className="flex items-start gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isSharedWithPeers}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setIsSharedWithPeers(checked);
+                  if (!checked) {
+                    setAllowPeerLease(false);
+                  }
+                }}
+                className="mt-0.5 rounded text-cyan-400 cursor-pointer"
+              />
+              <div>
+                <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
+                  {t('services.federation.shareWithPeers', 'Share with Remote Peers')}
+                </span>
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {t('services.federation.shareWithPeersHelp', 'Exposes this PipeWire Hub in the federated catalog so remote peers can discover and route audio to it.')}
+                </span>
+              </div>
+            </label>
+
+            <label
+              className={`flex items-start gap-2.5 select-none transition-opacity ${
+                !isSharedWithPeers ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              }`}
+            >
+              <input
+                type="checkbox"
+                disabled={!isSharedWithPeers}
+                checked={isSharedWithPeers && allowPeerLease}
+                onChange={(e) => setAllowPeerLease(e.target.checked)}
+                className="mt-0.5 rounded text-cyan-400 disabled:cursor-not-allowed"
+              />
+              <div>
+                <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
+                  {t('services.federation.allowPeerLease', 'Allow Remote Lease (Auto-start & Keep-alive)')}
+                </span>
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {t('services.federation.allowPeerLeaseHelp', 'Allows processes on remote peers to automatically start and keep this PipeWire Hub active while transmitting.')}
+                </span>
+              </div>
+            </label>
+          </div>
         </div>
       </div>
 
