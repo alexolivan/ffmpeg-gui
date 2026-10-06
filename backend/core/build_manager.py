@@ -51,10 +51,12 @@ class BuildManager:
         # Define tools per engine
         core_deps = {
             "cmake": {"type": "required", "description": "Sistema de generación de builds (CMake)", "engines": ["ffmpeg"]},
-            "git": {"type": "required" if software_type == "ffmpeg" else "optional", "description": "Control de versiones para descargar código fuente", "engines": ["ffmpeg", "icecast2"]},
+            "git": {"type": "required" if software_type in ["ffmpeg", "pipewire"] else "optional", "description": "Control de versiones para descargar código fuente", "engines": ["ffmpeg", "icecast2", "pipewire"]},
             "make": {"type": "required", "description": "Herramienta de automatización de compilación", "engines": ["ffmpeg", "icecast2", "decklink_tools"]},
-            "gcc": {"type": "required", "description": "Compilador de código C/C++" if software_type != "decklink_tools" else "Compilador de código C++ (g++)", "engines": ["ffmpeg", "icecast2", "decklink_tools"]},
-            "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo", "engines": ["ffmpeg", "icecast2"]},
+            "gcc": {"type": "required", "description": "Compilador de código C/C++" if software_type != "decklink_tools" else "Compilador de código C++ (g++)", "engines": ["ffmpeg", "icecast2", "decklink_tools", "pipewire"]},
+            "pkg-config": {"type": "required", "description": "Gestor de metadatos de bibliotecas de desarrollo", "engines": ["ffmpeg", "icecast2", "pipewire"]},
+            "meson": {"type": "required", "description": "Sistema de generación de compilación Meson", "engines": ["pipewire"]},
+            "ninja": {"type": "required", "description": "Sistema de ejecución de compilación Ninja", "engines": ["pipewire"]},
             "curl": {"type": "required", "description": "Descarga de archivos fuente vía HTTP/HTTPS", "engines": ["icecast2"]},
             "clang": {"type": "optional", "description": "Compilador LLVM/Clang (requerido para filtros CUDA)", "engines": ["ffmpeg"]},
             "avahi-daemon": {"type": "optional", "description": "Servicio de descubrimiento mDNS/DNS-SD (requerido para runtime de NDI)", "engines": ["ffmpeg"]},
@@ -63,13 +65,17 @@ class BuildManager:
         
         results = {}
         for name, info in core_deps.items():
-            if software_type and software_type in ["ffmpeg", "icecast2", "decklink_tools"]:
+            if software_type and software_type in ["ffmpeg", "icecast2", "decklink_tools", "pipewire"]:
                 if software_type not in info["engines"]:
                     continue
 
-            installed = shutil.which(name) is not None
-            if name == "avahi-daemon" and not installed:
-                installed = os.path.exists("/usr/sbin/avahi-daemon")
+            if name == "ninja":
+                installed = shutil.which("ninja") is not None or shutil.which("ninja-build") is not None
+            elif name == "avahi-daemon":
+                installed = shutil.which(name) is not None or os.path.exists("/usr/sbin/avahi-daemon")
+            else:
+                installed = shutil.which(name) is not None
+
             results[name] = {
                 "installed": installed,
                 "type": info["type"],
@@ -102,6 +108,9 @@ class BuildManager:
             "libcurl": {"pkg": "libcurl", "type": "optional", "description": "Biblioteca cliente HTTP/URL auth (libcurl4-openssl-dev)", "engines": ["icecast2"]},
             "librhash": {"pkg": "librhash", "type": "required" if software_type == "icecast2" else "optional", "description": "Biblioteca para funciones hash criptográficas (librhash-dev, requerida por libigloo/Icecast 2.5)", "engines": ["icecast2"]},
             "libigloo": {"pkg": "igloo >= 0.9.4", "type": "optional", "description": "Framework C de base para Icecast 2.5+ (libigloo-dev, auto-compilado en la receta si falta)", "engines": ["icecast2"]},
+            "libasound2": {"pkg": "alsa", "type": "required", "description": "Biblioteca cliente ALSA para audio nativo (libasound2-dev)", "engines": ["pipewire"]},
+            "libdbus-1": {"pkg": "dbus-1", "type": "required", "description": "Biblioteca de bus de mensajes del sistema D-Bus (libdbus-1-dev)", "engines": ["pipewire"]},
+            "libudev": {"pkg": "libudev", "type": "required", "description": "Biblioteca de gestión de dispositivos hardware udev (libudev-dev)", "engines": ["pipewire"]},
             "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)", "engines": ["ffmpeg"]},
             "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)", "engines": ["ffmpeg"]},
             "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)", "engines": ["ffmpeg"]},
@@ -114,7 +123,7 @@ class BuildManager:
         has_pkg_config = results.get("pkg-config", {}).get("installed", False) or (shutil.which("pkg-config") is not None)
 
         for name, info in libs.items():
-            if software_type and software_type in ["ffmpeg", "icecast2", "decklink_tools"]:
+            if software_type and software_type in ["ffmpeg", "icecast2", "decklink_tools", "pipewire"]:
                 if software_type not in info["engines"]:
                     continue
 
