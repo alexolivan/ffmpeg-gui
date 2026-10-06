@@ -2,7 +2,7 @@ import unittest
 import os
 import shutil
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from forge.recipes import get_recipe
 from forge.recipes.pipewire import PipeWireRecipe
@@ -49,7 +49,7 @@ class TestPipewireForge(unittest.IsolatedAsyncioTestCase):
 
         # Fake creation of pipewire binary during ninja install
         async def fake_run_logged_cmd(cmd, callback, cwd=None):
-            if "ninja" in cmd:
+            if any("ninja" in str(arg) for arg in cmd):
                 bin_dir = os.path.join(install_path, "bin")
                 os.makedirs(bin_dir, exist_ok=True)
                 fake_bin = os.path.join(bin_dir, "pipewire")
@@ -77,7 +77,28 @@ class TestPipewireForge(unittest.IsolatedAsyncioTestCase):
         cmd_calls = [c[0][0] for c in self.runner._run_logged_cmd.call_args_list]
         self.assertTrue(any("git" in c[0] and "clone" in c for c in cmd_calls))
         self.assertTrue(any("meson" in c[0] and "setup" in c for c in cmd_calls))
-        self.assertTrue(any("ninja" in c[0] and "install" in c for c in cmd_calls))
+        self.assertTrue(any(any("ninja" in str(arg) for arg in c) and "install" in c for c in cmd_calls))
+
+    async def test_pipewire_recipe_compilation_failure_missing_binary(self):
+        recipe = PipeWireRecipe(self.builds_root, self.runner)
+        log_mock = AsyncMock()
+        install_path = os.path.join(self.builds_root, "1", "install")
+
+        # Do not create binary during fake command run
+        self.runner._run_logged_cmd.side_effect = AsyncMock(return_value=0)
+
+        res = await recipe.compile(
+            build_id=1,
+            version_tag="1.6.9",
+            options={},
+            sdk_paths=None,
+            install_path=install_path,
+            log_callback=log_mock
+        )
+
+        self.assertFalse(res["success"])
+        self.assertIsNone(res["binary_path"])
+        self.assertIn("PipeWire binary not found", res["error"])
 
     async def test_pipewire_recipe_validation(self):
         recipe = PipeWireRecipe(self.builds_root, self.runner)

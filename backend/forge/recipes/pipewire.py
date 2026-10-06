@@ -1,7 +1,5 @@
 import os
-import re
 import shutil
-import asyncio
 from .base import BaseRecipe
 
 class PipeWireRecipe(BaseRecipe):
@@ -54,6 +52,7 @@ class PipeWireRecipe(BaseRecipe):
         meson_cmd = [
             "meson", "setup", build_dir,
             f"--prefix={install_path}",
+            "--libdir=lib",
             "-Ddocs=disabled",
             "-Dman=disabled",
             "-Dtests=disabled",
@@ -68,28 +67,36 @@ class PipeWireRecipe(BaseRecipe):
 
         # ── Compilar e instalar con Ninja ──
         await log_callback("Compilando e instalando con Ninja...\n")
-        ninja_cmd = ["ninja", "-C", build_dir, "install"]
+        ninja_bin = shutil.which("ninja") or shutil.which("ninja-build") or "ninja"
+        ninja_cmd = [ninja_bin, "-C", build_dir, "install"]
         await self.runner._run_logged_cmd(ninja_cmd, log_callback, cwd=repo_dir)
 
         pipewire_bin = os.path.join(install_path, "bin", "pipewire")
+        if not os.path.exists(pipewire_bin):
+            return {
+                "success": False,
+                "error": f"PipeWire binary not found at {pipewire_bin}",
+                "binary_path": None,
+                "version_output": "",
+                "sdk_paths": sdk_paths
+            }
+
         version_output = ""
+        run_env = os.environ.copy()
+        lib_path = os.path.join(install_path, "lib")
+        lib64_path = os.path.join(install_path, "lib64")
+        run_env["LD_LIBRARY_PATH"] = f"{lib_path}:{lib64_path}:{run_env.get('LD_LIBRARY_PATH', '')}".strip(":")
 
-        if os.path.exists(pipewire_bin):
-            run_env = os.environ.copy()
-            lib_path = os.path.join(install_path, "lib")
-            lib64_path = os.path.join(install_path, "lib64")
-            run_env["LD_LIBRARY_PATH"] = f"{lib_path}:{lib64_path}:{run_env.get('LD_LIBRARY_PATH', '')}".strip(":")
+        try:
+            version_output = await self.runner._get_command_output([pipewire_bin, "--version"], env=run_env)
+        except Exception:
+            version_output = f"Compiled with libpipewire {clean_tag}\n"
 
-            try:
-                version_output = await self.runner._get_command_output([pipewire_bin, "--version"], env=run_env)
-            except Exception:
-                version_output = f"Compiled with libpipewire {clean_tag}\n"
-
-            await log_callback(f"\n━━━ VERIFICACIÓN DEL BINARIO (pipewire --version) ━━━\n{version_output}\n")
+        await log_callback(f"\n━━━ VERIFICACIÓN DEL BINARIO (pipewire --version) ━━━\n{version_output}\n")
 
         return {
             "success": True,
-            "binary_path": pipewire_bin if os.path.exists(pipewire_bin) else None,
+            "binary_path": pipewire_bin,
             "version_output": version_output,
             "sdk_paths": sdk_paths
         }
