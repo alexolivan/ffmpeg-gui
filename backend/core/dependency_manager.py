@@ -264,6 +264,8 @@ class DependencyManager:
                 elif cfg_type == 'icecast':
                     if conf.get('icecast_mode') == 'remote':
                         return None
+                elif cfg_type in ('pipewire', 'pipewire_hub', 'aes67'):
+                    pass
                 else:
                     return None
             else:
@@ -273,7 +275,7 @@ class DependencyManager:
                 elif cfg_type == 'icecast':
                     if conf.get('icecast_mode') == 'remote':
                         return None
-                elif cfg_type in ('desktop', 'x11grab'):
+                elif cfg_type in ('desktop', 'x11grab', 'pipewire', 'pipewire_hub', 'aes67'):
                     pass
                 else:
                     return None

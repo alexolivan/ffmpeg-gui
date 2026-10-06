@@ -47,9 +47,77 @@ class ProcessManager:
             return local_bin
         return "ffmpeg"
 
+    @property
+    def active_processes(self) -> Dict[int, Any]:
+        """Provides direct dictionary access to active processes for testing and inspection."""
+        return self.processes
+
     def get_service_ref_count(self, provider_id: int) -> int:
         from core.dependency_manager import dependency_manager
         return len(dependency_manager.get_active_leases(provider_id))
+
+    async def acquire_lease(
+        self,
+        provider_id: int,
+        consumer_type: str = "service",
+        consumer_id: Optional[int] = None,
+        allow_auto_start: bool = True
+    ) -> bool:
+        """Acquires a lease on a provider service (e.g. pipewire_hub, mediamtx, icecast)."""
+        from core.dependency_manager import dependency_manager
+        c_id = consumer_id if consumer_id is not None else provider_id
+        consumer_token = f"{consumer_type}:{c_id}"
+
+        # If provider is stopped and allow_auto_start is True, start it
+        is_running = provider_id in self.processes
+        if not is_running:
+            with self.db_session_factory() as session:
+                from database.models import Service
+                svc = session.get(Service, provider_id)
+                if svc and svc.status == "running":
+                    is_running = True
+
+        if not is_running:
+            if not allow_auto_start:
+                raise RuntimeError(f"Service {provider_id} is stopped and allow_auto_start is False.")
+            is_on_demand = not dependency_manager.is_pinned(provider_id)
+            await self.start_process(provider_id, is_restart=False, is_on_demand=is_on_demand)
+
+        with dependency_manager.state_lock:
+            if provider_id not in dependency_manager.active_leases:
+                dependency_manager.active_leases[provider_id] = set()
+            dependency_manager.active_leases[provider_id].add(consumer_token)
+
+        self.logger.info(f"Lease acquired on provider {provider_id} by {consumer_token}")
+        return True
+
+    async def release_lease(
+        self,
+        provider_id: int,
+        consumer_type: str = "service",
+        consumer_id: Optional[int] = None,
+        allow_auto_stop: bool = True
+    ) -> bool:
+        """Releases a lease on a provider service and triggers auto-stop when 0 if allowed."""
+        from core.dependency_manager import dependency_manager
+        c_id = consumer_id if consumer_id is not None else provider_id
+        consumer_token = f"{consumer_type}:{c_id}"
+
+        remaining = 0
+        with dependency_manager.state_lock:
+            if provider_id in dependency_manager.active_leases:
+                dependency_manager.active_leases[provider_id].discard(consumer_token)
+                remaining = len(dependency_manager.active_leases[provider_id])
+
+        self.logger.info(f"Lease released on provider {provider_id} by {consumer_token}. Remaining: {remaining}")
+
+        if remaining == 0:
+            if not dependency_manager.is_pinned(provider_id):
+                if allow_auto_stop:
+                    self.logger.info(f"Provider {provider_id} reached 0 leases and was On-Demand. Auto-stopping.")
+                    await self.stop_process(provider_id)
+
+        return True
 
     async def start_dependencies(self, process_id: int, allow_auto_start: bool = True):
         from core.dependency_manager import dependency_manager
@@ -217,6 +285,9 @@ class ProcessManager:
                             self.logger.warning(f"Failed to acquire remote lease on peer node {peer_node_id}: {e}")
             
             debug_mode = False
+            pw_runtime_dir = None
+            pw_config_path = None
+            pw_build = None
             
             # 1. Fetch config and prepare snap in a quick database transaction
             with self.db_session_factory() as session:
@@ -329,6 +400,28 @@ class ProcessManager:
                     k_mode = str((media_proc.config or {}).get("kiosk_config", {}).get("profile_mode", "ephemeral")).lower()
                     if k_mode != "persistent" and kiosk_profile_dir:
                         self.ephemeral_configs[process_id] = kiosk_profile_dir
+                elif svc_type == "pipewire_hub":
+                    pipewire_bin = None
+                    build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    if build_id:
+                        pw_build = session.query(FfmpegBuild).get(build_id)
+                        if pw_build and pw_build.binary_path and os.path.exists(pw_build.binary_path):
+                            pipewire_bin = pw_build.binary_path
+                    if not pipewire_bin:
+                        from core.software_manager import software_manager
+                        pipewire_bin = software_manager.get_active_binary("pipewire", session)
+                        if pipewire_bin and not pw_build:
+                            pw_build = session.query(FfmpegBuild).filter(
+                                FfmpegBuild.software_type == 'pipewire',
+                                FfmpegBuild.binary_path == pipewire_bin
+                            ).first()
+                    if not pipewire_bin:
+                        pipewire_bin = shutil.which("pipewire")
+                    if not pipewire_bin:
+                        raise FileNotFoundError("PipeWire binary not found. Please install PipeWire on the host system or compile it in Settings → Software Engine.")
+
+                    cmd, pw_config_path, pw_runtime_dir = self._build_pipewire_config_and_cmd(media_proc, pipewire_bin, session)
+                    self.ephemeral_configs[process_id] = pw_config_path
                 else:
                     # Determine which FFmpeg binary to use
                     ffmpeg_bin = self.ffmpeg_path  # Default fallback
@@ -404,7 +497,23 @@ class ProcessManager:
                 
             spawn_lock = self._get_spawn_lock()
             async with spawn_lock:
-                if svc_type in ("mediamtx_hub", "icecast_server"):
+                if svc_type in ("mediamtx_hub", "icecast_server", "pipewire_hub"):
+                    if svc_type == "pipewire_hub":
+                        if pw_runtime_dir:
+                            sub_env["PIPEWIRE_RUNTIME_DIR"] = pw_runtime_dir
+                        if pw_config_path:
+                            sub_env["PIPEWIRE_CONFIG_NAME"] = pw_config_path
+                        if pw_build and getattr(pw_build, "install_dir", None) and os.path.isdir(pw_build.install_dir):
+                            lib_dirs = [
+                                os.path.join(pw_build.install_dir, "lib"),
+                                os.path.join(pw_build.install_dir, "lib64"),
+                                os.path.join(pw_build.install_dir, "lib/x86_64-linux-gnu"),
+                                os.path.join(pw_build.install_dir, "lib/aarch64-linux-gnu")
+                            ]
+                            valid_libs = [p for p in lib_dirs if os.path.isdir(p)]
+                            if valid_libs:
+                                cur_ld = sub_env.get("LD_LIBRARY_PATH", "")
+                                sub_env["LD_LIBRARY_PATH"] = ":".join(valid_libs + ([cur_ld] if cur_ld else []))
                     # Decouple stdout to file descriptor so the daemon survives parent reloads without SIGPIPE
                     log_file_handle = open(log_path, "ab", buffering=0)
                     proc = await asyncio.create_subprocess_exec(
@@ -632,6 +741,21 @@ class ProcessManager:
             from core.resource_lock_manager import resource_lock_manager
             resource_lock_manager.release_lock("service", process_id)
             await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+            ephem = self.ephemeral_configs.pop(process_id, None)
+            if ephem and os.path.exists(ephem):
+                try:
+                    if os.path.isdir(ephem):
+                        shutil.rmtree(ephem, ignore_errors=True)
+                    else:
+                        os.remove(ephem)
+                except Exception:
+                    pass
+            pw_rdir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
+            if os.path.exists(pw_rdir):
+                try:
+                    shutil.rmtree(pw_rdir, ignore_errors=True)
+                except Exception:
+                    pass
             raise
 
     def notify_service_crash(self, process_id: int, process_name: str, exit_code: int = 1, is_initial_crash: bool = True):
@@ -877,6 +1001,14 @@ class ProcessManager:
                 except Exception:
                     pass
 
+            # Clean up PipeWire runtime directory and sockets if present
+            pw_runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
+            if os.path.exists(pw_runtime_dir):
+                try:
+                    shutil.rmtree(pw_runtime_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
             cleanup_rogue_processes(process_id=process_id)
 
             # Unmark pinned state if stopped intentionally
@@ -900,6 +1032,13 @@ class ProcessManager:
                     media_proc.last_stop = datetime.utcnow()
                     media_proc.restart_count = 0
                     session.commit()
+
+                    if media_proc.service_type == "pipewire_hub":
+                        pw_cfg = (media_proc.config or {}).get("pipewire_config") or media_proc.config or {}
+                        nic = pw_cfg.get("aes67_network", {}).get("interface")
+                        if nic:
+                            from core.resource_lock_manager import resource_manager
+                            resource_manager.release_resource("network_interface", nic, owner_type="service", owner_id=process_id)
 
             # Stop any auto-managed dependencies that are no longer needed
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
@@ -1620,6 +1759,47 @@ class ProcessManager:
             pass
 
         return [icecast_bin, "-c", ephem_file], ephem_file
+
+    def _build_pipewire_config_and_cmd(self, media_proc, pipewire_bin: str, session) -> Tuple[List[str], str, str]:
+        """
+        Builds PipeWire isolated runtime environment, generates config in ephemeral RAM (/dev/shm),
+        claims AES67 network interface if needed, and returns (cmd, config_path, runtime_dir).
+        """
+        from core.pipewire_config import PipeWireConfigGenerator
+        from core.resource_lock_manager import resource_manager
+
+        process_id = media_proc.id
+        runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
+        os.makedirs(runtime_dir, mode=0o700, exist_ok=True)
+        try:
+            os.chmod(runtime_dir, 0o700)
+        except Exception:
+            pass
+
+        shm_dir = "/dev/shm"
+        if os.path.isdir(shm_dir) and os.access(shm_dir, os.W_OK):
+            config_path = f"/dev/shm/pipewire_{process_id}.conf"
+        else:
+            config_path = os.path.join(runtime_dir, "pipewire.conf")
+
+        pw_cfg = (media_proc.config or {}).get("pipewire_config") or media_proc.config or {}
+        PipeWireConfigGenerator.write_config_file(process_id, pw_cfg, config_path, runtime_dir)
+
+        aes67_net = pw_cfg.get("aes67_network", {})
+        if aes67_net.get("enabled") and aes67_net.get("interface"):
+            iface = aes67_net["interface"]
+            ok_nic, err_nic, _ = resource_manager.claim_resource(
+                resource_type="network_interface",
+                identifier=iface,
+                owner_type="service",
+                owner_id=process_id,
+                owner_name=media_proc.name
+            )
+            if not ok_nic:
+                raise RuntimeError(err_nic or f"Network interface '{iface}' is already in use.")
+
+        cmd = [pipewire_bin, "-c", config_path]
+        return cmd, config_path, runtime_dir
 
     def _build_desktop_cmds(self, media_proc) -> Tuple[List[str], List[str], List[str], int, int]:
         """

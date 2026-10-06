@@ -199,6 +199,43 @@ class SoftwareManager:
             "version": version_str
         }
 
+    def get_active_binary(self, software_type: str, db_session: Optional[Session] = None) -> Optional[str]:
+        """
+        Resolves the active binary path for a given software engine.
+        Priority:
+        1. Default SoftwareBuild for the engine in DB (if status == 'ready' and binary_path exists).
+        2. Any ready SoftwareBuild for the engine in DB.
+        3. Host system binary via audit_system_binary / shutil.which.
+        """
+        if db_session:
+            from database.models import SoftwareBuild
+            default_build = db_session.query(SoftwareBuild).filter(
+                SoftwareBuild.software_type == software_type,
+                SoftwareBuild.status == 'ready',
+                SoftwareBuild.is_default == True
+            ).first()
+            if default_build and default_build.binary_path and os.path.exists(default_build.binary_path):
+                return default_build.binary_path
+
+            any_build = db_session.query(SoftwareBuild).filter(
+                SoftwareBuild.software_type == software_type,
+                SoftwareBuild.status == 'ready'
+            ).first()
+            if any_build and any_build.binary_path and os.path.exists(any_build.binary_path):
+                return any_build.binary_path
+
+        audit = self.audit_system_binary(software_type)
+        if audit.get("found") and audit.get("path") and os.path.exists(audit["path"]):
+            return audit["path"]
+
+        meta = SUPPORTED_ENGINES.get(software_type, {})
+        def_bin = meta.get("default_binary", software_type)
+        sys_which = shutil.which(def_bin)
+        if sys_which and os.path.exists(sys_which):
+            return sys_which
+
+        return None
+
     def validate_safety_invariants(self, software_type: str, proposed_config: Dict[str, bool]) -> None:
         """
         Ensures that an active software engine cannot have all its binary source types disabled simultaneously.
