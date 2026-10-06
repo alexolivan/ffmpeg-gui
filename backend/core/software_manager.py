@@ -76,6 +76,16 @@ SUPPORTED_ENGINES: Dict[str, Dict[str, Any]] = {
         "always_enabled": False,
         "version_cmd": ["--version"],
     },
+    "pipewire": {
+        "name": "PipeWire Audio Server",
+        "description": "Professional audio/multimedia graph engine with virtual buses and AES67/Dante support.",
+        "default_binary": "pipewire",
+        "supports_forge": True,
+        "supports_installed": True,
+        "supports_precompiled": False,
+        "always_enabled": False,
+        "version_cmd": ["--version"],
+    },
 }
 
 
@@ -108,6 +118,9 @@ class SoftwareManager:
             "firefox_enabled": True,
             "firefox_installed_enabled": True,
             "firefox_precompiled_enabled": True,
+            "pipewire_enabled": True,
+            "pipewire_installed_enabled": True,
+            "pipewire_forge_enabled": True,
         }
         self._cached_releases: Dict[str, Any] = {}
         self._cached_releases_time: Dict[str, float] = {}
@@ -166,7 +179,11 @@ class SoftwareManager:
             
             # Extract clean semver/version pattern (handles 3 or 4 segments like 130.0.6723.91, and suffixes like -esr / esr)
             v_match = re.search(r"(?:version\s*|v)?(\d+(?:\.\d+)+(?:-[a-zA-Z0-9.]+|esr)?|n\d+\.\d+)", first_line, re.IGNORECASE)
-            if v_match:
+            if software_type == "pipewire":
+                pw_match = re.search(r"(?:Compiled with libpipewire|libpipewire)\s+([0-9\.]+)", raw_out)
+                if pw_match:
+                    version_str = pw_match.group(1)
+            elif v_match:
                 version_str = v_match.group(1)
             else:
                 version_str = first_line[:30].strip() if first_line else "Unknown"
