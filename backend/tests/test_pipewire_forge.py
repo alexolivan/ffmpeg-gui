@@ -142,6 +142,50 @@ class TestPipewireForge(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("libvorbis", deps)
         self.assertNotIn("curl", deps)
 
+    async def test_pipewire_recipe_compilation_adapts_to_meson_options(self):
+        """Verifica que el recipe descarta flags no soportados según meson_options.txt."""
+        recipe = PipeWireRecipe(self.builds_root, self.runner)
+        log_mock = AsyncMock()
+        install_path = os.path.join(self.builds_root, "2", "install")
+        src_path = self.runner.get_src_path(2)
+        repo_dir = os.path.join(src_path, "pipewire-1.6.9")
+        os.makedirs(repo_dir, exist_ok=True)
+
+        # Crear un meson_options.txt moderno (sin pipewire-pulse, con udev y docs)
+        with open(os.path.join(repo_dir, "meson_options.txt"), "w") as f:
+            f.write("option('docs', type: 'feature')\n")
+            f.write("option('pipewire-alsa', type: 'feature')\n")
+            f.write("option('udev', type: 'feature')\n")
+
+        async def fake_cmd(cmd, callback, cwd=None):
+            if any("ninja" in str(arg) for arg in cmd):
+                bin_dir = os.path.join(install_path, "bin")
+                os.makedirs(bin_dir, exist_ok=True)
+                fake_bin = os.path.join(bin_dir, "pipewire")
+                with open(fake_bin, "w") as f:
+                    f.write("#!/bin/sh\necho pipewire 1.6.9\n")
+                os.chmod(fake_bin, 0o755)
+            return 0
+
+        self.runner._run_logged_cmd.side_effect = fake_cmd
+        res = await recipe.compile(
+            build_id=2,
+            version_tag="1.6.9",
+            options={},
+            sdk_paths=None,
+            install_path=install_path,
+            log_callback=log_mock
+        )
+
+        self.assertTrue(res["success"])
+        # Verificar que meson setup incluyó docs, pipewire-alsa y udev, pero NO pipewire-pulse ni raop
+        meson_call = next(c[0][0] for c in self.runner._run_logged_cmd.call_args_list if "meson" in c[0][0])
+        self.assertIn("-Ddocs=disabled", meson_call)
+        self.assertIn("-Dpipewire-alsa=enabled", meson_call)
+        self.assertIn("-Dudev=enabled", meson_call)
+        self.assertNotIn("-Dpipewire-pulse=enabled", meson_call)
+        self.assertNotIn("-Draop=disabled", meson_call)
+
 
 if __name__ == "__main__":
     unittest.main()

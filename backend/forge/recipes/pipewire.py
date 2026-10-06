@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from .base import BaseRecipe
 
@@ -49,19 +50,39 @@ class PipeWireRecipe(BaseRecipe):
 
         # ── Configurar build con Meson ──
         await log_callback("Configurando compilación con Meson...\n")
+
+        # Inspeccionar meson_options.txt para compatibilidad hacia atrás y adelante
+        available_options = set()
+        options_file = os.path.join(repo_dir, "meson_options.txt")
+        if os.path.exists(options_file):
+            try:
+                with open(options_file, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        m = re.search(r"option\(\s*'([^']+)'", line)
+                        if m:
+                            available_options.add(m.group(1))
+            except Exception:
+                pass
+
+        def opt(name: str, value: str) -> list[str]:
+            # Si no pudimos leer meson_options.txt, incluimos las opciones estándar
+            if not available_options or name in available_options:
+                return [f"-D{name}={value}"]
+            return []
+
         meson_cmd = [
             "meson", "setup", build_dir,
             f"--prefix={install_path}",
             "--libdir=lib",
-            "-Ddocs=disabled",
-            "-Dman=disabled",
-            "-Dtests=disabled",
-            "-Dexamples=disabled",
-            "-Dsession-managers=[]",
-            "-Dpipewire-pulse=enabled",
-            "-Dpipewire-alsa=enabled",
-            "-Dudev=enabled",
-            "-Draop=disabled"
+            *opt("docs", "disabled"),
+            *opt("man", "disabled"),
+            *opt("tests", "disabled"),
+            *opt("examples", "disabled"),
+            *opt("session-managers", "[]"),
+            *opt("pipewire-pulse", "enabled"),
+            *opt("pipewire-alsa", "enabled"),
+            *opt("udev", "enabled"),
+            *opt("raop", "disabled")
         ]
         await self.runner._run_logged_cmd(meson_cmd, log_callback, cwd=repo_dir)
 
