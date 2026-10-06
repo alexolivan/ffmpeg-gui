@@ -50,7 +50,12 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "nvidia-cuda-dev",
     "clang": "clang",
-    "libfdk_aac": "libfdk-aac-dev"
+    "libfdk_aac": "libfdk-aac-dev",
+    "meson": "meson",
+    "ninja": "ninja-build",
+    "libasound2": "libasound2-dev",
+    "libdbus-1": "libdbus-1-dev",
+    "libudev": "libudev-dev"
   },
   fedora: {
     "cmake": "cmake",
@@ -84,7 +89,12 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "cuda-toolkit",
     "clang": "clang",
-    "libfdk_aac": "fdk-aac-free-devel"
+    "libfdk_aac": "fdk-aac-free-devel",
+    "meson": "meson",
+    "ninja": "ninja-build",
+    "libasound2": "alsa-lib-devel",
+    "libdbus-1": "dbus-devel",
+    "libudev": "systemd-devel"
   },
   arch: {
     "cmake": "cmake",
@@ -118,7 +128,12 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "vainfo": "vainfo",
     "nvidia-cuda-dev": "cuda",
     "clang": "clang",
-    "libfdk_aac": "libfdk-aac"
+    "libfdk_aac": "libfdk-aac",
+    "meson": "meson",
+    "ninja": "ninja",
+    "libasound2": "alsa-lib",
+    "libdbus-1": "dbus",
+    "libudev": "systemd-libs"
   }
 };
 
@@ -168,7 +183,7 @@ interface ForgeViewProps {
   refreshDeps: (softwareType?: string) => Promise<void>;
   storages?: any[];
   API?: string;
-  initialSoftwareType?: 'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog';
+  initialSoftwareType?: 'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog' | 'pipewire';
 }
 
 export const ForgeView: React.FC<ForgeViewProps> = ({
@@ -211,7 +226,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   const [showSdksModal, setShowSdksModal] = React.useState(false);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
   const [installedSdks, setInstalledSdks] = React.useState<any[]>([]);
-  const [activeEngineTab, setActiveEngineTab] = React.useState<'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog'>(initialSoftwareType);
+  const [activeEngineTab, setActiveEngineTab] = React.useState<'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog' | 'pipewire'>(initialSoftwareType);
   const [softwareEngines, setSoftwareEngines] = React.useState<Record<string, any>>({});
 
   useEffect(() => {
@@ -314,6 +329,20 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         >
           <EngineLogo softwareType="decklink_tools" size={16} API={API} /> DeckLink Tools
         </button>
+
+        {(!softwareEngines.pipewire || (softwareEngines.pipewire.is_enabled && softwareEngines.pipewire.forge_enabled)) && (
+          <button
+            type="button"
+            onClick={() => setActiveEngineTab('pipewire')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shrink-0 ${
+              activeEngineTab === 'pipewire'
+                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30 shadow-sm'
+                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+            }`}
+          >
+            <EngineLogo softwareType="pipewire" size={16} API={API} /> {t('forge.pipewireOption', 'PipeWire Audio')}
+          </button>
+        )}
 
         {(!softwareEngines.icecast2 || (softwareEngines.icecast2.is_enabled && softwareEngines.icecast2.forge_enabled)) && (
           <button

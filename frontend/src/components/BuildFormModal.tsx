@@ -8,7 +8,7 @@ interface BuildFormModalProps {
   onSubmit: (data: BuildFormData) => void
   buildDeps: any
   onOpenSdksModal?: () => void
-  initialSoftwareType?: string
+  initialSoftwareType?: 'ffmpeg' | 'icecast2' | 'decklink_tools' | 'pipewire' | string
 }
 
 export interface BuildFormData {
@@ -19,6 +19,7 @@ export interface BuildFormData {
   sdk_paths: Record<string, string>
   auto_clean: boolean
   storage_id: number | null
+  software_type?: string
 }
 
 const API_BASE = '';
@@ -29,11 +30,13 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [softwareType] = useState(defaultSoftwareType)
   const [name, setName] = useState(editBuild?.name || (
     defaultSoftwareType === 'decklink_tools' ? 'DeckLink Tools (Production)' :
-    defaultSoftwareType === 'icecast2' ? 'Icecast Server (Production)' : ''
+    defaultSoftwareType === 'icecast2' ? 'Icecast Server (Production)' :
+    defaultSoftwareType === 'pipewire' ? t('forge.pipewireProfileDefault', 'PipeWire Standard (Meson/Ninja)') : ''
   ))
   const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || (
     defaultSoftwareType === 'decklink_tools' ? '1.0.0' :
-    defaultSoftwareType === 'icecast2' ? '2.4.4' : ''
+    defaultSoftwareType === 'icecast2' ? '2.4.4' :
+    defaultSoftwareType === 'pipewire' ? '1.6.9' : ''
   ))
   const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || (editBuild?.build_options as any)?.srt_version || '')
   const [autoClean, setAutoClean] = useState(editBuild?.auto_clean || false)
@@ -424,7 +427,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     </label>
                     <input
                       type="text"
-                      placeholder={softwareType === 'icecast2' ? '2.4.4' : '6.1.1'}
+                      placeholder={softwareType === 'icecast2' ? '2.4.4' : softwareType === 'pipewire' ? '1.6.9' : '6.1.1'}
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
                       value={ffmpegVersion}
                       onChange={e => setFfmpegVersion(e.target.value)}
@@ -432,6 +435,21 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                   </div>
                 )}
               </div>
+
+              {/* PipeWire Architecture Info Card */}
+              {softwareType === 'pipewire' && (
+                <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl space-y-1.5 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs">⚡</span>
+                    <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">
+                      {t('forge.pipewireOption', 'PipeWire Audio')}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-text-secondary leading-relaxed">
+                    {t('forge.pipewireInfo', 'PipeWire is built using Meson/Ninja with native ALSA, D-Bus, and udev hardware support.')}
+                  </p>
+                </div>
+              )}
 
               {/* Build Storage Selector */}
               <div>
