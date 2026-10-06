@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.35.0] - 2026-10-06
+
+### Added
+- **PipeWire Audio Engine Registration & Host System Audit**:
+  - Registered `pipewire` in `SUPPORTED_ENGINES` within `SoftwareManager` with automatic system binary auditing and `libpipewire <version>` parsing (`pipewire --version`).
+  - Added vector SVG fallback for PipeWire in backend software icon endpoints and fallback branding in `EngineLogo` and `Icons.tsx` (`PipewireLogoIcon`).
+- **PipeWire Forge Build Recipe (`PipeWireRecipe`) & Dependency Management**:
+  - Implemented Meson and Ninja compilation workflow in Forge for compiling PipeWire from official GitLab releases with custom configuration options (`--libdir=lib`, `-Dpipewire-pulse=enabled`, `-Dpipewire-alsa=enabled`, `-Dudev=enabled`).
+  - Added dependency detection for build tools (`meson`, `ninja` / `ninja-build`, `gcc`, `git`, `pkg-config`) and Linux system libraries (`libasound2`, `libdbus-1`, `libudev`).
+  - Added upstream GitLab release tag discovery endpoint (`GET /builds/tags/pipewire`) with resilient offline fallback tags.
+- **Frontend Forge UI Integration for PipeWire**:
+  - Added dedicated PipeWire compilation tab in `ForgeView.tsx` with dynamic OS package resolution for Debian, Fedora, and Arch.
+  - Added PipeWire configuration support to `BuildFormModal.tsx` with architecture details card, default profile name, and tag selector.
+  - Maintained 100% key parity across English, Spanish, and Catalan locale files.
+
 ## [2.34.3] - 2026-10-05
 
 ### Fixed
