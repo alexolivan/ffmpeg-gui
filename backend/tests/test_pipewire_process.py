@@ -318,7 +318,10 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
         telemetry = await self.pm.get_pipewire_telemetry(999)
         self.assertFalse(telemetry["active"])
         self.assertEqual(telemetry["nodes"], [])
+        self.assertEqual(telemetry["ports"], [])
+        self.assertEqual(telemetry["links"], [])
         self.assertEqual(telemetry["streams"], [])
+        self.assertEqual(telemetry["raw_summary"], {"nodes_count": 0, "ports_count": 0, "links_count": 0})
         self.assertIn("not running", telemetry["error"])
 
     @patch("shutil.which", return_value="/usr/bin/pw-dump")
@@ -372,6 +375,7 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
 
         telemetry = await self.pm.get_pipewire_telemetry(101)
         self.assertTrue(telemetry["active"])
+        self.assertIsNone(telemetry["error"])
         self.assertEqual(len(telemetry["nodes"]), 1)
         self.assertEqual(telemetry["nodes"][0]["id"], 42)
         self.assertEqual(telemetry["nodes"][0]["name"], "alsa_output.pci-0000_00_1f.3.analog-stereo")
@@ -392,18 +396,87 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
 
     @patch("shutil.which", return_value="/usr/bin/pw-dump")
     @patch("asyncio.create_subprocess_exec")
+    async def test_get_pipewire_telemetry_id_zero(self, mock_exec, mock_which):
+        self.pm.processes[101] = self._create_mock_proc(pid=10101)
+
+        mock_pw_dump_output = [
+            {
+                "id": 0,
+                "type": "PipeWire:Interface:Node",
+                "info": {
+                    "props": {
+                        "node.name": "node.zero",
+                        "media.class": "Audio/Sink"
+                    },
+                    "state": "running"
+                }
+            },
+            {
+                "id": 0,
+                "type": "PipeWire:Interface:Port",
+                "info": {
+                    "props": {
+                        "port.name": "port.zero",
+                        "node.id": 0
+                    }
+                }
+            },
+            {
+                "id": 0,
+                "type": "PipeWire:Interface:Link",
+                "info": {
+                    "output-node-id": 0,
+                    "output-port-id": 0,
+                    "input-node-id": 0,
+                    "input-port-id": 0,
+                    "state": "active"
+                }
+            }
+        ]
+        import json
+        dump_proc = MagicMock()
+        dump_proc.returncode = 0
+        dump_proc.communicate = AsyncMock(return_value=(json.dumps(mock_pw_dump_output).encode("utf-8"), b""))
+        mock_exec.return_value = dump_proc
+
+        telemetry = await self.pm.get_pipewire_telemetry(101)
+        self.assertTrue(telemetry["active"])
+        self.assertEqual(telemetry["nodes"][0]["id"], 0)
+        self.assertEqual(telemetry["ports"][0]["id"], 0)
+        self.assertEqual(telemetry["ports"][0]["node_id"], 0)
+        self.assertEqual(telemetry["links"][0]["output_node_id"], 0)
+        self.assertEqual(telemetry["links"][0]["input_node_id"], 0)
+        self.assertEqual(telemetry["links"][0]["output_port_id"], 0)
+        self.assertEqual(telemetry["links"][0]["input_port_id"], 0)
+
+    @patch("shutil.which", return_value="/usr/bin/pw-dump")
+    @patch("asyncio.create_subprocess_exec")
     async def test_get_pipewire_telemetry_timeout(self, mock_exec, mock_which):
         self.pm.processes[101] = self._create_mock_proc(pid=10101)
 
         dump_proc = MagicMock()
-        dump_proc.communicate = AsyncMock(return_value=(b"[]", b""))
+        dump_proc.returncode = None
+        dump_proc.communicate = AsyncMock()
+        dump_proc.kill = MagicMock(side_effect=lambda: setattr(dump_proc, "returncode", -9))
+        dump_proc.wait = AsyncMock(return_value=-9)
         mock_exec.return_value = dump_proc
 
-        with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError()):
+        async def fake_wait_for(fut, timeout=None):
+            if asyncio.iscoroutine(fut):
+                fut.close()
+            raise asyncio.TimeoutError()
+
+        with patch("asyncio.wait_for", side_effect=fake_wait_for):
             telemetry = await self.pm.get_pipewire_telemetry(101)
             self.assertTrue(telemetry["active"])
             self.assertEqual(telemetry["nodes"], [])
+            self.assertEqual(telemetry["ports"], [])
+            self.assertEqual(telemetry["links"], [])
+            self.assertEqual(telemetry["streams"], [])
+            self.assertEqual(telemetry["raw_summary"], {"nodes_count": 0, "ports_count": 0, "links_count": 0})
             self.assertIn("timed out", telemetry["error"].lower())
+            dump_proc.kill.assert_called_once()
+            dump_proc.wait.assert_awaited_once()
 
     def test_pipewire_nodes_api_endpoint(self):
         from fastapi.testclient import TestClient

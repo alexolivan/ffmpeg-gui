@@ -6256,7 +6256,7 @@ async def get_pipewire_service_nodes(
     user: str = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
-    svc = db.query(MediaProcess).get(service_id)
+    svc = db.get(MediaProcess, service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
     if svc.service_type != "pipewire_hub":

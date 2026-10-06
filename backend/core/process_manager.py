@@ -1806,8 +1806,17 @@ class ProcessManager:
         Gathers real-time telemetry from an active PipeWire Hub instance via pw-dump.
         Returns active audio nodes, ports, links, and summary metrics.
         """
+        empty_summary = {"nodes_count": 0, "ports_count": 0, "links_count": 0}
         if process_id not in self.active_processes:
-            return {"active": False, "nodes": [], "streams": [], "error": "Service is not running"}
+            return {
+                "active": False,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": "Service is not running"
+            }
 
         pw_dump_bin = None
         install_dir = None
@@ -1833,7 +1842,15 @@ class ProcessManager:
             pw_dump_bin = shutil.which("pw-dump")
 
         if not pw_dump_bin:
-            return {"active": True, "nodes": [], "streams": [], "error": "pw-dump binary not found"}
+            return {
+                "active": True,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": "pw-dump binary not found"
+            }
 
         runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
         sub_env = {**os.environ, "PIPEWIRE_RUNTIME_DIR": runtime_dir}
@@ -1850,6 +1867,7 @@ class ProcessManager:
                 cur_ld = sub_env.get("LD_LIBRARY_PATH", "")
                 sub_env["LD_LIBRARY_PATH"] = ":".join(valid_libs + ([cur_ld] if cur_ld else []))
 
+        proc = None
         try:
             proc = await asyncio.create_subprocess_exec(
                 pw_dump_bin,
@@ -1860,7 +1878,15 @@ class ProcessManager:
             stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=3.0)
             if proc.returncode != 0:
                 err_msg = stderr_data.decode("utf-8", errors="replace").strip() if stderr_data else f"Exit code {proc.returncode}"
-                return {"active": True, "nodes": [], "streams": [], "error": err_msg}
+                return {
+                    "active": True,
+                    "nodes": [],
+                    "ports": [],
+                    "links": [],
+                    "streams": [],
+                    "raw_summary": empty_summary,
+                    "error": err_msg
+                }
 
             items = json.loads(stdout_data.decode("utf-8", errors="replace"))
             if not isinstance(items, list):
@@ -1874,33 +1900,44 @@ class ProcessManager:
                 if not isinstance(item, dict):
                     continue
                 itype = str(item.get("type", ""))
-                info = item.get("info") or {}
-                props = info.get("props") or {}
+                info = item.get("info")
+                info = info if isinstance(info, dict) else {}
+                props = info.get("props")
+                props = props if isinstance(props, dict) else {}
                 iid = item.get("id")
 
                 if itype.endswith(":Node") or itype == "PipeWire:Interface:Node":
+                    node_name = props.get("node.name") if props.get("node.name") is not None else props.get("node.nick")
+                    if node_name is None:
+                        node_name = f"node-{iid}"
                     nodes.append({
                         "id": iid,
-                        "name": props.get("node.name") or props.get("node.nick") or f"node-{iid}",
+                        "name": node_name,
                         "media_class": props.get("media.class", ""),
                         "state": info.get("state", "unknown"),
-                        "description": props.get("node.description") or props.get("node.name", "")
+                        "description": props.get("node.description") if props.get("node.description") is not None else (props.get("node.name") or "")
                     })
                 elif itype.endswith(":Port") or itype == "PipeWire:Interface:Port":
+                    port_name = props.get("port.name") if props.get("port.name") is not None else f"port-{iid}"
+                    node_id = props.get("node.id") if props.get("node.id") is not None else info.get("node-id")
                     ports.append({
                         "id": iid,
-                        "name": props.get("port.name", f"port-{iid}"),
+                        "name": port_name,
                         "direction": props.get("port.direction", ""),
-                        "node_id": props.get("node.id") or info.get("node-id"),
+                        "node_id": node_id,
                         "audio_channel": props.get("audio.channel", "")
                     })
                 elif itype.endswith(":Link") or itype == "PipeWire:Interface:Link":
+                    output_node_id = info.get("output-node-id") if info.get("output-node-id") is not None else props.get("link.output.node")
+                    output_port_id = info.get("output-port-id") if info.get("output-port-id") is not None else props.get("link.output.port")
+                    input_node_id = info.get("input-node-id") if info.get("input-node-id") is not None else props.get("link.input.node")
+                    input_port_id = info.get("input-port-id") if info.get("input-port-id") is not None else props.get("link.input.port")
                     links.append({
                         "id": iid,
-                        "output_node_id": info.get("output-node-id") or props.get("link.output.node"),
-                        "output_port_id": info.get("output-port-id") or props.get("link.output.port"),
-                        "input_node_id": info.get("input-node-id") or props.get("link.input.node"),
-                        "input_port_id": info.get("input-port-id") or props.get("link.input.port"),
+                        "output_node_id": output_node_id,
+                        "output_port_id": output_port_id,
+                        "input_node_id": input_node_id,
+                        "input_port_id": input_port_id,
                         "state": info.get("state", "")
                     })
 
@@ -1914,17 +1951,49 @@ class ProcessManager:
                     "nodes_count": len(nodes),
                     "ports_count": len(ports),
                     "links_count": len(links)
-                }
+                },
+                "error": None
             }
         except asyncio.TimeoutError:
             self.logger.warning(f"PipeWire telemetry timed out for process {process_id}")
-            return {"active": True, "nodes": [], "streams": [], "error": "pw-dump query timed out (3.0s)"}
+            return {
+                "active": True,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": "pw-dump query timed out (3.0s)"
+            }
         except json.JSONDecodeError as jde:
             self.logger.warning(f"PipeWire telemetry failed to parse json for process {process_id}: {jde}")
-            return {"active": True, "nodes": [], "streams": [], "error": f"Invalid JSON from pw-dump: {jde}"}
+            return {
+                "active": True,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": f"Invalid JSON from pw-dump: {jde}"
+            }
         except Exception as err:
             self.logger.warning(f"PipeWire telemetry error for process {process_id}: {err}")
-            return {"active": True, "nodes": [], "streams": [], "error": str(err)}
+            return {
+                "active": True,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": str(err)
+            }
+        finally:
+            if proc and proc.returncode is None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
 
     def _build_desktop_cmds(self, media_proc) -> Tuple[List[str], List[str], List[str], int, int]:
         """
