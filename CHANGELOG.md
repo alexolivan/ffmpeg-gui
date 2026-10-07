@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.36.3] - 2026-10-07
+
+### Fixed
+- **PipeWire Service Card Symmetry & Platform Tag Parity**:
+  - Aligned `PipeWireServiceCard` with standard platform badge hierarchy (matching `MediaMtxServiceCard` and `IcecastServiceCard`).
+  - Added process status indicator dot with dynamic pulsing animation and service Alias display (`Alias [Original Name]`).
+  - Replaced arbitrary `AUTO` tag with standard `BOOT (#order | delay)` tag (`LightningIcon`).
+  - Added daemon `WATCHDOG` supervision badge displaying restart counts, `PENDING REBOOT` tag, and active `LEASES` counter.
+  - Removed redundant `RUNNING` text tag.
+- **PipeWire Config Form Cleanup**:
+  - Removed duplicate floating `Auto-Start Service` checkbox from Section 1 header, consolidating boot management exclusively in Section 5 (Boot Lifecycle, Order & Delay).
+
+### Changed
+- **PTP / AES67 Synchronization Guidance**:
+  - Clarified UI guidance in `PipeWireConfigForm` for clock modes: explicitly presents System Monotonic Clock as the default, safe, non-interfering mode for general network and software receiver use.
+  - Added dedicated amber technical warning for hardware PTP (`linuxptp`), warning that `ptp4l` should only be deployed by broadcast engineers in client-only mode (`slaveOnly=1`) to prevent accidental Grandmaster contention on production Dante/AES67 networks.
+
 ## [2.36.2] - 2026-10-07
 
 ### Fixed
