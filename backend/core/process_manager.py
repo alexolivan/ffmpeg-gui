@@ -1139,11 +1139,15 @@ class ProcessManager:
                         k_cfg = (media_proc.config or {}).get("kiosk_config", {})
                         target_desk_id = k_cfg.get("target_desktop_service_id") or k_cfg.get("desktop_service_id")
                         if target_desk_id:
-                            desk_svc = session.get(Service, int(target_desk_id)) if hasattr(session, "get") else session.query(Service).get(int(target_desk_id))
-                            if desk_svc:
-                                d_cfg = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
-                                if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
-                                    kiosk_pw_release_svc_id = d_cfg.get("pipewire_service_id")
+                            try:
+                                desk_svc_id_int = int(target_desk_id)
+                                desk_svc = session.get(Service, desk_svc_id_int) if hasattr(session, "get") else session.query(Service).get(desk_svc_id_int)
+                                if desk_svc:
+                                    d_cfg = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
+                                    if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                                        kiosk_pw_release_svc_id = d_cfg.get("pipewire_service_id")
+                            except (ValueError, TypeError):
+                                pass
 
             if pw_release_svc_id is not None:
                 try:
