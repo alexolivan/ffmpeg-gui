@@ -1770,7 +1770,7 @@
     "tab_logs": "Service Logs",
     "service_stopped_title": "Virtual Desktop is Stopped",
     "service_stopped_desc": "Start the virtual desktop service to initialize the Xvfb X11 screen and connect via interactive HTML5 VNC.",
-    "audio_settings": "Virtual Audio & ALSA Loopback Isolation",
+    "audio_settings": "Virtual Audio Subsystem",
     "loopback_missing_title": "ALSA Loopback module (snd-aloop) not detected",
     "loopback_missing_desc": "Virtual audio output will not be isolated until the snd-aloop kernel module is loaded on the host (sudo modprobe snd-aloop).",
     "alsa_subdevice_label": "ALSA Subdevice (Loopback Playout)",
@@ -1778,7 +1778,15 @@
     "alsa_subdevice_help": "Designates the snd-aloop virtual audio playback subdevice where Kiosk browsers will stream sound.",
     "subdevice_available": "Available",
     "subdevice_in_use": "In Use",
-    "subdevice_current": "Current"
+    "subdevice_current": "Current",
+    "audio_mode_alsa": "ALSA Loopback (snd-aloop)",
+    "audio_mode_pipewire": "PipeWire Audio Hub",
+    "pipewire_hub_label": "PipeWire Hub Service",
+    "pipewire_no_hubs": "No PipeWire Hub services found. Create a PipeWire Audio Hub service first in the Services tab.",
+    "pipewire_sink_label": "Target Virtual Audio Sink",
+    "pipewire_sink_help": "Virtual audio bus where browsers running on this display will stream sound.",
+    "pipewire_inherited_kiosk": "Inherited by Kiosks running on this Virtual Desktop (bypasses apulse)",
+    "pipewire_sink_select": "Select Virtual Sink..."
   },
   "kiosk": {
     "service_name": "Web Kiosk Display",

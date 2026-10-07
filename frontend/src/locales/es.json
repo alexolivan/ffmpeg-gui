@@ -1770,7 +1770,7 @@
     "tab_logs": "Registros del Servicio",
     "service_stopped_title": "El Escritorio Virtual está Detenido",
     "service_stopped_desc": "Inicia el servicio de escritorio virtual para inicializar la pantalla X11 Xvfb y conectar vía VNC interactivo HTML5.",
-    "audio_settings": "Audio Virtual y Aislamiento ALSA Loopback",
+    "audio_settings": "Subsistema de Audio Virtual",
     "loopback_missing_title": "Módulo ALSA Loopback (snd-aloop) no detectado",
     "loopback_missing_desc": "La salida de audio virtual no estará aislada hasta que se cargue el módulo de kernel snd-aloop en el sistema anfitrión (sudo modprobe snd-aloop).",
     "alsa_subdevice_label": "Subdispositivo ALSA (Reproducción Loopback)",
@@ -1778,7 +1778,15 @@
     "alsa_subdevice_help": "Designa el subdispositivo de reproducción virtual snd-aloop donde los navegadores Kiosk emitirán sonido.",
     "subdevice_available": "Disponible",
     "subdevice_in_use": "En uso",
-    "subdevice_current": "Actual"
+    "subdevice_current": "Actual",
+    "audio_mode_alsa": "ALSA Loopback (snd-aloop)",
+    "audio_mode_pipewire": "PipeWire Audio Hub",
+    "pipewire_hub_label": "Servicio PipeWire Hub",
+    "pipewire_no_hubs": "No se encontraron servicios PipeWire Hub. Crea un servicio PipeWire Audio Hub en la pestaña Servicios.",
+    "pipewire_sink_label": "Bus Virtual de Audio de Destino",
+    "pipewire_sink_help": "Bus de audio virtual donde emitirán sonido los navegadores de este escritorio.",
+    "pipewire_inherited_kiosk": "Heredado por los Kioskos de este escritorio virtual (prescinde de apulse)",
+    "pipewire_sink_select": "Seleccionar bus virtual..."
   },
   "kiosk": {
     "service_name": "Visualizador Kiosk Web",
