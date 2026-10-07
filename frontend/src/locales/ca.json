@@ -1843,6 +1843,8 @@
     "badge_profile_ephemeral": "Perfil: Efímer",
     "no_binaries_available": "Sense binari disponible (Sistema o Descarregat)",
     "no_browser_binary_warning": "No s'ha trobat cap executable per a aquest motor. Instal·la'l a l'amfitrió o descarrega una versió a Paràmetres → Programari.",
-    "invalid_binary_warning": "Selecciona un binari vàlid de navegador o descarrega'n un a Paràmetres → Programari."
+    "invalid_binary_warning": "Selecciona un binari vàlid de navegador o descarrega'n un a Paràmetres → Programari.",
+    "inherited_audio_label": "Sortida d'Àudio Heredada",
+    "inherited_audio_help": "L'enrutament d'àudio del navegador ve determinat per la configuració de l'escriptori virtual seleccionat."
   }
 }

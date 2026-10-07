@@ -1843,6 +1843,8 @@
     "badge_profile_ephemeral": "Perfil: Efímero",
     "no_binaries_available": "Sin binario disponible (Sistema o Descargado)",
     "no_browser_binary_warning": "No se encontró ningún ejecutable para este motor. Instálalo en el host o descarga una versión en Ajustes → Software.",
-    "invalid_binary_warning": "Selecciona un binario válido de navegador o descarga uno en Ajustes → Software."
+    "invalid_binary_warning": "Selecciona un binario válido de navegador o descarga uno en Ajustes → Software.",
+    "inherited_audio_label": "Salida de Audio Heredada",
+    "inherited_audio_help": "El enrutamiento de audio del navegador lo determina la configuración del escritorio virtual seleccionado."
   }
 }

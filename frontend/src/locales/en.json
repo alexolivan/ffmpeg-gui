@@ -1843,6 +1843,8 @@
     "badge_profile_ephemeral": "Profile: Ephemeral",
     "no_binaries_available": "No binary available (System or Downloaded)",
     "no_browser_binary_warning": "No executable binary found for this engine. Please install it on the host or provision an official release in Settings → Software.",
-    "invalid_binary_warning": "Please select a valid browser binary or install one in Settings → Software."
+    "invalid_binary_warning": "Please select a valid browser binary or install one in Settings → Software.",
+    "inherited_audio_label": "Inherited Audio Output",
+    "inherited_audio_help": "Browser audio routing is determined by the selected Virtual Desktop configuration."
   }
 }
