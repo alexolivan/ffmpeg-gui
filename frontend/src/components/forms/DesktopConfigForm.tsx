@@ -9,6 +9,13 @@ interface DesktopConfigFormProps {
   API?: string;
 }
 
+const getHubVirtualSinks = (hub: any): any[] => {
+  if (!hub?.config) return [];
+  if (Array.isArray(hub.config.virtual_sinks)) return hub.config.virtual_sinks;
+  if (Array.isArray(hub.config.pipewire_config?.virtual_sinks)) return hub.config.pipewire_config.virtual_sinks;
+  return [];
+};
+
 export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
   initialConfig,
   onCancel,
@@ -115,67 +122,62 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
 
   // Fetch available PipeWire Hub services
   useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
     setIsLoadingHubs(true);
-    fetch(`${API}/processes`)
+    fetch(`${API}/processes`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : []))
       .then((procs: any[]) => {
+        if (!isMounted) return;
         const hubs = Array.isArray(procs) ? procs.filter((p) => p.service_type === 'pipewire_hub') : [];
         setAvailablePipewireHubs(hubs);
         if (hubs.length > 0) {
           const initialHubId = deskCfg.pipewire_service_id ? Number(deskCfg.pipewire_service_id) : '';
-          const initialSinkId = deskCfg.pipewire_sink_id || '';
-          if (!initialHubId) {
-            const firstHub = hubs[0];
-            setPipewireServiceId(firstHub.id);
-            const sinks: any[] = Array.isArray(firstHub.config?.virtual_sinks)
-              ? firstHub.config.virtual_sinks
-              : Array.isArray(firstHub.config?.pipewire_config?.virtual_sinks)
-              ? firstHub.config.pipewire_config.virtual_sinks
-              : [];
-            setPipewireSinkId(sinks[0]?.id || 'mix_bus');
-          } else {
-            const matchingHub = hubs.find((h) => h.id === initialHubId);
-            if (matchingHub) {
-              const sinks: any[] = Array.isArray(matchingHub.config?.virtual_sinks)
-                ? matchingHub.config.virtual_sinks
-                : Array.isArray(matchingHub.config?.pipewire_config?.virtual_sinks)
-                ? matchingHub.config.pipewire_config.virtual_sinks
-                : [];
-              if (!initialSinkId || !sinks.some((s: any) => s.id === initialSinkId)) {
-                setPipewireSinkId(sinks[0]?.id || 'mix_bus');
-              }
+          const matchingHub = initialHubId ? hubs.find((h) => h.id === initialHubId) : null;
+          if (matchingHub) {
+            const sinks = getHubVirtualSinks(matchingHub);
+            const initialSinkId = deskCfg.pipewire_sink_id || '';
+            if (initialSinkId && sinks.some((s: any) => s.id === initialSinkId)) {
+              setPipewireSinkId(initialSinkId);
+            } else {
+              setPipewireSinkId(sinks[0]?.id || '');
             }
+          } else {
+            setPipewireServiceId(hubs[0].id);
+            setPipewireSinkId(getHubVirtualSinks(hubs[0])[0]?.id || '');
           }
         }
       })
-      .catch((err) => console.error('Error fetching PipeWire hubs:', err))
-      .finally(() => setIsLoadingHubs(false));
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          console.error('Error fetching PipeWire hubs:', err);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingHubs(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [API, deskCfg.pipewire_service_id, deskCfg.pipewire_sink_id]);
 
   const handlePipewireHubChange = (newHubId: number | '') => {
     setPipewireServiceId(newHubId);
-    if (!newHubId) return;
-    const hub = availablePipewireHubs.find((h) => h.id === Number(newHubId));
-    const sinks: any[] = hub
-      ? (Array.isArray(hub.config?.virtual_sinks)
-          ? hub.config.virtual_sinks
-          : Array.isArray(hub.config?.pipewire_config?.virtual_sinks)
-          ? hub.config.pipewire_config.virtual_sinks
-          : [])
-      : [];
-    if (!sinks.some((s: any) => s.id === pipewireSinkId)) {
-      setPipewireSinkId(sinks[0]?.id || 'mix_bus');
+    if (!newHubId) {
+      setPipewireSinkId('');
+      return;
     }
+    const hub = availablePipewireHubs.find((h) => h.id === Number(newHubId));
+    const nextSinks = getHubVirtualSinks(hub);
+    setPipewireSinkId(nextSinks[0]?.id || '');
   };
 
   const selectedHub = availablePipewireHubs.find((h) => h.id === Number(pipewireServiceId));
-  const currentHubSinks: any[] = selectedHub
-    ? (Array.isArray(selectedHub.config?.virtual_sinks)
-        ? selectedHub.config.virtual_sinks
-        : Array.isArray(selectedHub.config?.pipewire_config?.virtual_sinks)
-        ? selectedHub.config.pipewire_config.virtual_sinks
-        : [])
-    : [];
+  const currentHubSinks: any[] = getHubVirtualSinks(selectedHub);
 
   const handleAutoAssign = () => {
     setIsAllocating(true);
@@ -201,6 +203,9 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (audioBackend === 'pipewire_hub' && (!pipewireServiceId || !pipewireSinkId)) {
+      return;
+    }
     setIsSubmitting(true);
     try {
       const payload = {
@@ -399,9 +404,11 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
           </h3>
 
           {/* Segmented Mode Selector */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label={t('desktop.audio_settings', 'Virtual Audio Subsystem')}>
             <button
               type="button"
+              role="radio"
+              aria-checked={audioBackend === 'alsa_loopback'}
               onClick={() => setAudioBackend('alsa_loopback')}
               className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs font-semibold cursor-pointer transition-all ${
                 audioBackend === 'alsa_loopback'
@@ -415,6 +422,8 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
 
             <button
               type="button"
+              role="radio"
+              aria-checked={audioBackend === 'pipewire_hub'}
               onClick={() => setAudioBackend('pipewire_hub')}
               className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs font-semibold cursor-pointer transition-all ${
                 audioBackend === 'pipewire_hub'
@@ -430,7 +439,7 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
           {audioBackend === 'alsa_loopback' && (
             <div className="space-y-3">
               {hasLoopback === false && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-300">
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-600 dark:text-amber-300">
                   <span className="text-base leading-none">⚠️</span>
                   <div>
                     <p className="font-semibold">
@@ -495,7 +504,7 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
                   <span>{t('common.loading', 'Loading...')}</span>
                 </div>
               ) : availablePipewireHubs.length === 0 ? (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-300">
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-600 dark:text-amber-300">
                   <span className="text-base leading-none">⚠️</span>
                   <div>
                     <p className="font-semibold">
@@ -522,7 +531,7 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
                       >
                         {availablePipewireHubs.map((hub) => (
                           <option key={hub.id} value={hub.id}>
-                            {hub.name} ({hub.status === 'running' ? 'Active' : 'Inactive'})
+                            {hub.name} ({hub.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})
                           </option>
                         ))}
                       </select>
@@ -561,7 +570,7 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
                         'Virtual audio bus where browsers running on this display will stream sound.'
                       )}
                     </span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-300 border border-purple-500/30 whitespace-nowrap self-start sm:self-auto">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/30 whitespace-nowrap self-start sm:self-auto">
                       {t(
                         'desktop.pipewire_inherited_kiosk',
                         'Inherited by Kiosks running on this Virtual Desktop (bypasses apulse)'
@@ -577,7 +586,7 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
         {/* Reliability, Lifecycle & Watchdog Section */}
         <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <ShieldIcon size={14} className="text-purple-400" />
+            <ShieldIcon size={14} className="text-purple-600 dark:text-purple-300" />
             {t('desktop.lifecycle_watchdog', 'Service Lifecycle & Reliability Watchdog')}
           </h3>
 
@@ -696,7 +705,7 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || isAllocating || (audioBackend === 'pipewire_hub' && (!pipewireServiceId || !pipewireSinkId))}
           className="px-5 py-2 rounded-xl text-xs font-bold bg-brand-lime text-black hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-50"
         >
           {isSubmitting

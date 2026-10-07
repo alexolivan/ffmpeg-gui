@@ -10,6 +10,8 @@
     "status": "Estat",
     "enabled": "Habilitat",
     "disabled": "Deshabilitat",
+    "active": "Actiu",
+    "inactive": "Inactiu",
     "none": "Cap",
     "default": "Per defecte",
     "scan": "Escanejar",

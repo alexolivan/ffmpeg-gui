@@ -10,6 +10,8 @@
     "status": "Status",
     "enabled": "Enabled",
     "disabled": "Disabled",
+    "active": "Active",
+    "inactive": "Inactive",
     "none": "None",
     "default": "Default",
     "scan": "Scan",
