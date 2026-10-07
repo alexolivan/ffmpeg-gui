@@ -76,6 +76,10 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
   const resolution = deskCfg.resolution || '1920x1080';
   const framerate = deskCfg.framerate || 30;
   const colorDepth = deskCfg.color_depth || 24;
+  const audioBackend = deskCfg.audio_backend || 'alsa_loopback';
+  const pwServiceId = deskCfg.pipewire_service_id;
+  const pwSinkId = deskCfg.pipewire_sink_id;
+  const alsaSub = deskCfg.alsa_subdevice ?? 0;
 
   return (
     <div
@@ -180,6 +184,15 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
           <span className="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30 text-[10px] font-mono font-semibold flex items-center gap-1">
             🔑 x11vnc :{vncPort} (127.0.0.1 • WS RFB)
           </span>
+          {audioBackend === 'pipewire_hub' ? (
+            <span className="px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/30 text-[10px] font-mono font-bold flex items-center gap-1">
+              🌐 PW Hub #{pwServiceId || '?'} • {pwSinkId || 'mix_bus'}
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-semibold flex items-center gap-1">
+              🔊 ALSA hw:Loopback,0,{alsaSub}
+            </span>
+          )}
         </div>
 
         {/* Compact Telemetry Strip */}

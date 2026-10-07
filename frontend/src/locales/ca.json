@@ -10,6 +10,8 @@
     "status": "Estat",
     "enabled": "Habilitat",
     "disabled": "Deshabilitat",
+    "active": "Actiu",
+    "inactive": "Inactiu",
     "none": "Cap",
     "default": "Per defecte",
     "scan": "Escanejar",
@@ -1770,7 +1772,7 @@
     "tab_logs": "Registres del Servei",
     "service_stopped_title": "L'Escriptori Virtual està Aturat",
     "service_stopped_desc": "Inicia el servei d'escriptori virtual per inicialitzar la pantalla X11 Xvfb i connectar mitjançant VNC interactiu HTML5.",
-    "audio_settings": "Àudio Virtual i Aïllament ALSA Loopback",
+    "audio_settings": "Subsistema d'Àudio Virtual",
     "loopback_missing_title": "Mòdul ALSA Loopback (snd-aloop) no detectat",
     "loopback_missing_desc": "La sortida d'àudio virtual no estarà aïllada fins que es carregui el mòdul de kernel snd-aloop al sistema amfitrió (sudo modprobe snd-aloop).",
     "alsa_subdevice_label": "Subdispositiu ALSA (Reproducció Loopback)",
@@ -1778,7 +1780,15 @@
     "alsa_subdevice_help": "Designa el subdispositiu de reproducció virtual snd-aloop on els navegadors Kiosk emetran so.",
     "subdevice_available": "Disponible",
     "subdevice_in_use": "En ús",
-    "subdevice_current": "Actual"
+    "subdevice_current": "Actual",
+    "audio_mode_alsa": "ALSA Loopback (snd-aloop)",
+    "audio_mode_pipewire": "PipeWire Audio Hub",
+    "pipewire_hub_label": "Servei PipeWire Hub",
+    "pipewire_no_hubs": "No s'han trobat serveis PipeWire Hub. Creeu un servei PipeWire Audio Hub a la pestanya Serveis.",
+    "pipewire_sink_label": "Bus Virtual d'Àudio de Destinació",
+    "pipewire_sink_help": "Bus d'àudio virtual on emetran so els navegadors d'aquest escriptori.",
+    "pipewire_inherited_kiosk": "Heredat pels Quioscos d'aquest escriptori virtual (prescindeix d'apulse)",
+    "pipewire_sink_select": "Seleccionar bus virtual..."
   },
   "kiosk": {
     "service_name": "Visualitzador Kiosk Web",
@@ -1833,6 +1843,8 @@
     "badge_profile_ephemeral": "Perfil: Efímer",
     "no_binaries_available": "Sense binari disponible (Sistema o Descarregat)",
     "no_browser_binary_warning": "No s'ha trobat cap executable per a aquest motor. Instal·la'l a l'amfitrió o descarrega una versió a Paràmetres → Programari.",
-    "invalid_binary_warning": "Selecciona un binari vàlid de navegador o descarrega'n un a Paràmetres → Programari."
+    "invalid_binary_warning": "Selecciona un binari vàlid de navegador o descarrega'n un a Paràmetres → Programari.",
+    "inherited_audio_label": "Sortida d'Àudio Heredada",
+    "inherited_audio_help": "L'enrutament d'àudio del navegador ve determinat per la configuració de l'escriptori virtual seleccionat."
   }
 }

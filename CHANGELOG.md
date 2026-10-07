@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.36.3] - 2026-10-07
+## [2.37.0] - 2026-10-07
+
+### Added
+- **Virtual Desktop Dual Audio Subsystem (ALSA Loopback vs PipeWire Audio Hub)**:
+  - Added selectable audio backend in `DesktopConfigForm`: operators can toggle between traditional `ALSA Loopback (snd-aloop)` and `PipeWire Audio Hub`.
+  - Automatic discovery and selection of configured PipeWire Hub daemons and their target Virtual Audio Sinks (`mix_bus`, `kiosk_bus`, etc.).
+  - Visual badges indicating when target Virtual Sinks have active network AES67/Dante broadcast (Tx).
+  - Preserved 100% backward compatibility for existing ALSA Loopback setups (Chesterton's Fence).
+- **Automated PipeWire Hub On-Demand Lease Lifecycle for Desktops & Kiosks**:
+  - Virtual Desktops automatically acquire leases (`desktop:{id}`) on the target PipeWire Hub at startup and release them at shutdown.
+  - Kiosks automatically acquire dependent leases (`kiosk:{id}`) at startup and release them at shutdown.
+  - Restart guard: `allow_auto_stop=(not is_restart)` prevents provider bouncing during desktop or kiosk reboots.
+  - Lease operations execute safely outside database session contexts to eliminate SQLite lock contention.
+- **Native Browser Audio Streaming & `apulse` Bypass**:
+  - In PipeWire Hub mode, Firefox and Chromium connect natively to the isolated PulseAudio emulator socket (`PULSE_SERVER=unix:/tmp/ffmpeg-gui/pipewire-{id}/pulse.sock`) and `PULSE_SINK`.
+  - Bypasses the `apulse` wrapper requirement and emulation libraries for Firefox on PipeWire desktops.
+- **Audio Routing Telemetry & UI Indicators**:
+  - Added dedicated audio backend badge to `DesktopServiceCard` specifications strip (`🌐 PW Hub #{id} • {sink}` or `🔊 ALSA hw:Loopback,0,{sub}`).
+  - Added inherited audio output routing card to `KioskConfigForm`, providing instant visibility of browser audio destinations.
+
 
 ### Fixed
 - **PipeWire Service Card Symmetry & Platform Tag Parity**:

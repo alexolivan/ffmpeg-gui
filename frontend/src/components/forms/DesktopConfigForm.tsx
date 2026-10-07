@@ -9,6 +9,13 @@ interface DesktopConfigFormProps {
   API?: string;
 }
 
+const getHubVirtualSinks = (hub: any): any[] => {
+  if (!hub?.config) return [];
+  if (Array.isArray(hub.config.virtual_sinks)) return hub.config.virtual_sinks;
+  if (Array.isArray(hub.config.pipewire_config?.virtual_sinks)) return hub.config.pipewire_config.virtual_sinks;
+  return [];
+};
+
 export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
   initialConfig,
   onCancel,
@@ -39,6 +46,19 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
   const [occupiedSubdevices, setOccupiedSubdevices] = useState<Record<number, string>>({});
   const [nextAvailableSubdevice, setNextAvailableSubdevice] = useState<number>(0);
   const [hasLoopback, setHasLoopback] = useState<boolean | null>(null);
+
+  // Audio subsystem configuration
+  const [audioBackend, setAudioBackend] = useState<'alsa_loopback' | 'pipewire_hub'>(
+    deskCfg.audio_backend || 'alsa_loopback'
+  );
+  const [pipewireServiceId, setPipewireServiceId] = useState<number | ''>(
+    deskCfg.pipewire_service_id ? Number(deskCfg.pipewire_service_id) : ''
+  );
+  const [pipewireSinkId, setPipewireSinkId] = useState<string>(
+    deskCfg.pipewire_sink_id || ''
+  );
+  const [availablePipewireHubs, setAvailablePipewireHubs] = useState<any[]>([]);
+  const [isLoadingHubs, setIsLoadingHubs] = useState<boolean>(false);
 
   // Auto-start & Lifecycle
   const [autoStart, setAutoStart] = useState<boolean>(
@@ -100,6 +120,65 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
       .catch(() => setHasLoopback(null));
   }, [API]);
 
+  // Fetch available PipeWire Hub services
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+    setIsLoadingHubs(true);
+    fetch(`${API}/processes`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((procs: any[]) => {
+        if (!isMounted) return;
+        const hubs = Array.isArray(procs) ? procs.filter((p) => p.service_type === 'pipewire_hub') : [];
+        setAvailablePipewireHubs(hubs);
+        if (hubs.length > 0) {
+          const initialHubId = deskCfg.pipewire_service_id ? Number(deskCfg.pipewire_service_id) : '';
+          const matchingHub = initialHubId ? hubs.find((h) => h.id === initialHubId) : null;
+          if (matchingHub) {
+            const sinks = getHubVirtualSinks(matchingHub);
+            const initialSinkId = deskCfg.pipewire_sink_id || '';
+            if (initialSinkId && sinks.some((s: any) => s.id === initialSinkId)) {
+              setPipewireSinkId(initialSinkId);
+            } else {
+              setPipewireSinkId(sinks[0]?.id || '');
+            }
+          } else {
+            setPipewireServiceId(hubs[0].id);
+            setPipewireSinkId(getHubVirtualSinks(hubs[0])[0]?.id || '');
+          }
+        }
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          console.error('Error fetching PipeWire hubs:', err);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingHubs(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [API, deskCfg.pipewire_service_id, deskCfg.pipewire_sink_id]);
+
+  const handlePipewireHubChange = (newHubId: number | '') => {
+    setPipewireServiceId(newHubId);
+    if (!newHubId) {
+      setPipewireSinkId('');
+      return;
+    }
+    const hub = availablePipewireHubs.find((h) => h.id === Number(newHubId));
+    const nextSinks = getHubVirtualSinks(hub);
+    setPipewireSinkId(nextSinks[0]?.id || '');
+  };
+
+  const selectedHub = availablePipewireHubs.find((h) => h.id === Number(pipewireServiceId));
+  const currentHubSinks: any[] = getHubVirtualSinks(selectedHub);
+
   const handleAutoAssign = () => {
     setIsAllocating(true);
     const excludeId = initialConfig?.id ? `?exclude_service_id=${initialConfig.id}` : '';
@@ -124,6 +203,9 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (audioBackend === 'pipewire_hub' && (!pipewireServiceId || !pipewireSinkId)) {
+      return;
+    }
     setIsSubmitting(true);
     try {
       const payload = {
@@ -137,7 +219,12 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
             resolution,
             framerate: Number(framerate),
             color_depth: Number(colorDepth),
-            alsa_subdevice: alsaSubdevice === '' ? nextAvailableSubdevice : Number(alsaSubdevice),
+            audio_backend: audioBackend,
+            alsa_subdevice: audioBackend === 'alsa_loopback'
+              ? (alsaSubdevice === '' ? nextAvailableSubdevice : Number(alsaSubdevice))
+              : undefined,
+            pipewire_service_id: audioBackend === 'pipewire_hub' ? (pipewireServiceId ? Number(pipewireServiceId) : null) : undefined,
+            pipewire_sink_id: audioBackend === 'pipewire_hub' ? (pipewireSinkId || null) : undefined,
           },
           auto_start: autoStart,
           startup_order: Number(startupOrder),
@@ -309,74 +396,197 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
           </div>
         </div>
 
-        {/* Audio Isolation (ALSA Loopback) Section */}
+        {/* Virtual Audio Subsystem Section */}
         <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
             <span>🔊</span>
-            {t('desktop.audio_settings', 'Virtual Audio & ALSA Loopback Isolation')}
+            {t('desktop.audio_settings', 'Virtual Audio Subsystem')}
           </h3>
 
-          {hasLoopback === false && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-300">
-              <span className="text-base leading-none">⚠️</span>
+          {/* Segmented Mode Selector */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label={t('desktop.audio_settings', 'Virtual Audio Subsystem')}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={audioBackend === 'alsa_loopback'}
+              onClick={() => setAudioBackend('alsa_loopback')}
+              className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs font-semibold cursor-pointer transition-all ${
+                audioBackend === 'alsa_loopback'
+                  ? 'bg-brand-lime/10 border-brand-lime text-[var(--text-primary)] shadow-sm ring-1 ring-brand-lime/30'
+                  : 'bg-[var(--input-bg)] border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-brand-lime/30'
+              }`}
+            >
+              <span className="text-base leading-none">🔊</span>
+              <span>{t('desktop.audio_mode_alsa', 'ALSA Loopback (snd-aloop)')}</span>
+            </button>
+
+            <button
+              type="button"
+              role="radio"
+              aria-checked={audioBackend === 'pipewire_hub'}
+              onClick={() => setAudioBackend('pipewire_hub')}
+              className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs font-semibold cursor-pointer transition-all ${
+                audioBackend === 'pipewire_hub'
+                  ? 'bg-brand-lime/10 border-brand-lime text-[var(--text-primary)] shadow-sm ring-1 ring-brand-lime/30'
+                  : 'bg-[var(--input-bg)] border-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-brand-lime/30'
+              }`}
+            >
+              <span className="text-base leading-none">🌐</span>
+              <span>{t('desktop.audio_mode_pipewire', 'PipeWire Audio Hub')}</span>
+            </button>
+          </div>
+
+          {audioBackend === 'alsa_loopback' && (
+            <div className="space-y-3">
+              {hasLoopback === false && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-600 dark:text-amber-300">
+                  <span className="text-base leading-none">⚠️</span>
+                  <div>
+                    <p className="font-semibold">
+                      {t('desktop.loopback_missing_title', 'ALSA Loopback module (snd-aloop) not detected')}
+                    </p>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                      {t(
+                        'desktop.loopback_missing_desc',
+                        'Virtual audio output will not be isolated until the snd-aloop kernel module is loaded on the host (sudo modprobe snd-aloop).'
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div>
-                <p className="font-semibold">
-                  {t('desktop.loopback_missing_title', 'ALSA Loopback module (snd-aloop) not detected')}
-                </p>
-                <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  {t('desktop.alsa_subdevice_label', 'ALSA Subdevice (Loopback Playout)')}
+                </label>
+                <select
+                  value={alsaSubdevice}
+                  onChange={(e) => setAlsaSubdevice(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none font-mono cursor-pointer"
+                >
+                  <option value="">
+                    {t('desktop.alsa_subdevice_auto', 'Auto-Assign: Subdevice {{sub}} [Available]', {
+                      sub: nextAvailableSubdevice,
+                    })}
+                  </option>
+                  {[0, 1, 2, 3, 4, 5, 6, 7].map((s) => {
+                    const isOccupied = occupiedSubdevices[s] !== undefined;
+                    const occupantName = occupiedSubdevices[s];
+                    const isCurrent = initialConfig?.id && deskCfg.alsa_subdevice === s;
+                    let statusBadge = `[${t('desktop.subdevice_available', 'Available')}]`;
+                    if (isCurrent) {
+                      statusBadge = `[${t('desktop.subdevice_current', 'Current')}]`;
+                    } else if (isOccupied) {
+                      statusBadge = `[${t('desktop.subdevice_in_use', 'In Use')}: ${occupantName}]`;
+                    }
+                    return (
+                      <option key={s} value={s}>
+                        Subdevice {s} — {statusBadge} (hw:Loopback,0,{s})
+                      </option>
+                    );
+                  })}
+                </select>
+                <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
                   {t(
-                    'desktop.loopback_missing_desc',
-                    'Virtual audio output will not be isolated until the snd-aloop kernel module is loaded on the host (sudo modprobe snd-aloop).'
+                    'desktop.alsa_subdevice_help',
+                    'Designates the snd-aloop virtual audio playback subdevice where Kiosk browsers will stream sound.'
                   )}
-                </p>
+                </span>
               </div>
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-              {t('desktop.alsa_subdevice_label', 'ALSA Subdevice (Loopback Playout)')}
-            </label>
-            <select
-              value={alsaSubdevice}
-              onChange={(e) => setAlsaSubdevice(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none font-mono cursor-pointer"
-            >
-              <option value="">
-                {t('desktop.alsa_subdevice_auto', 'Auto-Assign: Subdevice {{sub}} [Available]', {
-                  sub: nextAvailableSubdevice,
-                })}
-              </option>
-              {[0, 1, 2, 3, 4, 5, 6, 7].map((s) => {
-                const isOccupied = occupiedSubdevices[s] !== undefined;
-                const occupantName = occupiedSubdevices[s];
-                const isCurrent = initialConfig?.id && deskCfg.alsa_subdevice === s;
-                let statusBadge = `[${t('desktop.subdevice_available', 'Available')}]`;
-                if (isCurrent) {
-                  statusBadge = `[${t('desktop.subdevice_current', 'Current')}]`;
-                } else if (isOccupied) {
-                  statusBadge = `[${t('desktop.subdevice_in_use', 'In Use')}: ${occupantName}]`;
-                }
-                return (
-                  <option key={s} value={s}>
-                    Subdevice {s} — {statusBadge} (hw:Loopback,0,{s})
-                  </option>
-                );
-              })}
-            </select>
-            <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
-              {t(
-                'desktop.alsa_subdevice_help',
-                'Designates the snd-aloop virtual audio playback subdevice where Kiosk browsers will stream sound.'
+          {audioBackend === 'pipewire_hub' && (
+            <div className="space-y-4">
+              {isLoadingHubs ? (
+                <div className="p-3 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                  <RefreshIcon size={14} className="animate-spin text-brand-lime" />
+                  <span>{t('common.loading', 'Loading...')}</span>
+                </div>
+              ) : availablePipewireHubs.length === 0 ? (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-start gap-2.5 text-xs text-amber-600 dark:text-amber-300">
+                  <span className="text-base leading-none">⚠️</span>
+                  <div>
+                    <p className="font-semibold">
+                      {t(
+                        'desktop.pipewire_no_hubs',
+                        'No PipeWire Hub services found. Create a PipeWire Audio Hub service first in the Services tab.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* PipeWire Hub Service Selector */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                        {t('desktop.pipewire_hub_label', 'PipeWire Hub Service')} <span className="text-red-400">*</span>
+                      </label>
+                      <select
+                        value={pipewireServiceId}
+                        onChange={(e) => handlePipewireHubChange(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none cursor-pointer"
+                        required
+                      >
+                        {availablePipewireHubs.map((hub) => (
+                          <option key={hub.id} value={hub.id}>
+                            {hub.name} ({hub.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Target Virtual Audio Sink Selector */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                        {t('desktop.pipewire_sink_label', 'Target Virtual Audio Sink')} <span className="text-red-400">*</span>
+                      </label>
+                      <select
+                        value={pipewireSinkId}
+                        onChange={(e) => setPipewireSinkId(e.target.value)}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none font-mono cursor-pointer"
+                        required
+                      >
+                        {currentHubSinks.length === 0 && (
+                          <option value="">
+                            {t('desktop.pipewire_sink_select', 'Select Virtual Sink...')}
+                          </option>
+                        )}
+                        {currentHubSinks.map((sink: any) => (
+                          <option key={sink.id} value={sink.id}>
+                            {sink.name || sink.id} ({sink.channels || 2}ch){sink.aes67_enabled ? ' [AES67 Tx]' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Informative Help & Badge */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1 text-xs">
+                    <span className="text-[11px] text-[var(--text-secondary)]">
+                      {t(
+                        'desktop.pipewire_sink_help',
+                        'Virtual audio bus where browsers running on this display will stream sound.'
+                      )}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/30 whitespace-nowrap self-start sm:self-auto">
+                      {t(
+                        'desktop.pipewire_inherited_kiosk',
+                        'Inherited by Kiosks running on this Virtual Desktop (bypasses apulse)'
+                      )}
+                    </span>
+                  </div>
+                </>
               )}
-            </span>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Reliability, Lifecycle & Watchdog Section */}
         <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-4">
           <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <ShieldIcon size={14} className="text-purple-400" />
+            <ShieldIcon size={14} className="text-purple-600 dark:text-purple-300" />
             {t('desktop.lifecycle_watchdog', 'Service Lifecycle & Reliability Watchdog')}
           </h3>
 
@@ -495,7 +705,7 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || isAllocating || (audioBackend === 'pipewire_hub' && (!pipewireServiceId || !pipewireSinkId))}
           className="px-5 py-2 rounded-xl text-xs font-bold bg-brand-lime text-black hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-50"
         >
           {isSubmitting

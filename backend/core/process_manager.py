@@ -52,41 +52,52 @@ class ProcessManager:
         """Provides direct dictionary access to active processes for testing and inspection."""
         return self.processes
 
-    def get_service_ref_count(self, provider_id: int) -> int:
+    @property
+    def dependency_manager(self):
         from core.dependency_manager import dependency_manager
-        return len(dependency_manager.get_active_leases(provider_id))
+        return dependency_manager
+
+    def get_service_ref_count(self, provider_id: int) -> int:
+        return len(self.dependency_manager.get_active_leases(provider_id))
 
     async def acquire_lease(
         self,
         provider_id: int,
         consumer_type: str = "service",
         consumer_id: Optional[int] = None,
-        allow_auto_start: bool = True
+        allow_auto_start: bool = True,
+        lease_holder: Optional[str] = None,
+        db: Optional[Any] = None
     ) -> bool:
         """Acquires a lease on a provider service (e.g. pipewire_hub, mediamtx, icecast)."""
-        from core.dependency_manager import dependency_manager
-        c_id = consumer_id if consumer_id is not None else provider_id
-        consumer_token = f"{consumer_type}:{c_id}"
+        consumer_token = str(lease_holder) if lease_holder else f"{consumer_type}:{consumer_id if consumer_id is not None else provider_id}"
 
         # If provider is stopped and allow_auto_start is True, start it
         is_running = provider_id in self.processes
         if not is_running:
-            with self.db_session_factory() as session:
+            def _check_db(sess):
                 from database.models import Service
-                svc = session.get(Service, provider_id)
-                if svc and svc.status == "running":
+                svc = sess.get(Service, provider_id)
+                return svc and svc.status == "running"
+
+            if db:
+                if _check_db(db):
                     is_running = True
+            else:
+                with self.db_session_factory() as session:
+                    if _check_db(session):
+                        is_running = True
 
         if not is_running:
             if not allow_auto_start:
                 raise RuntimeError(f"Service {provider_id} is stopped and allow_auto_start is False.")
-            is_on_demand = not dependency_manager.is_pinned(provider_id)
+            is_on_demand = not self.dependency_manager.is_pinned(provider_id)
             await self.start_process(provider_id, is_restart=False, is_on_demand=is_on_demand)
 
-        with dependency_manager.state_lock:
-            if provider_id not in dependency_manager.active_leases:
-                dependency_manager.active_leases[provider_id] = set()
-            dependency_manager.active_leases[provider_id].add(consumer_token)
+        with self.dependency_manager.state_lock:
+            if provider_id not in self.dependency_manager.active_leases:
+                self.dependency_manager.active_leases[provider_id] = set()
+            self.dependency_manager.active_leases[provider_id].add(consumer_token)
 
         self.logger.info(f"Lease acquired on provider {provider_id} by {consumer_token}")
         return True
@@ -96,23 +107,23 @@ class ProcessManager:
         provider_id: int,
         consumer_type: str = "service",
         consumer_id: Optional[int] = None,
-        allow_auto_stop: bool = True
+        allow_auto_stop: bool = True,
+        lease_holder: Optional[str] = None,
+        db: Optional[Any] = None
     ) -> bool:
         """Releases a lease on a provider service and triggers auto-stop when 0 if allowed."""
-        from core.dependency_manager import dependency_manager
-        c_id = consumer_id if consumer_id is not None else provider_id
-        consumer_token = f"{consumer_type}:{c_id}"
+        consumer_token = str(lease_holder) if lease_holder else f"{consumer_type}:{consumer_id if consumer_id is not None else provider_id}"
 
         remaining = 0
-        with dependency_manager.state_lock:
-            if provider_id in dependency_manager.active_leases:
-                dependency_manager.active_leases[provider_id].discard(consumer_token)
-                remaining = len(dependency_manager.active_leases[provider_id])
+        with self.dependency_manager.state_lock:
+            if provider_id in self.dependency_manager.active_leases:
+                self.dependency_manager.active_leases[provider_id].discard(consumer_token)
+                remaining = len(self.dependency_manager.active_leases[provider_id])
 
         self.logger.info(f"Lease released on provider {provider_id} by {consumer_token}. Remaining: {remaining}")
 
         if remaining == 0:
-            if not dependency_manager.is_pinned(provider_id):
+            if not self.dependency_manager.is_pinned(provider_id):
                 if allow_auto_stop:
                     self.logger.info(f"Provider {provider_id} reached 0 leases and was On-Demand. Auto-stopping.")
                     await self.stop_process(provider_id)
@@ -639,26 +650,49 @@ class ProcessManager:
                         except Exception as xset_err:
                             self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
 
+                    # 5. Acquire PipeWire Hub lease if desktop audio backend is pipewire_hub
+                    _cfg = cfg if 'cfg' in locals() and cfg is not None else getattr(self, 'processes_configs', {}).get(process_id, {})
+                    d_cfg = (_cfg or {}).get("desktop_config", _cfg or {})
+                    audio_backend = d_cfg.get("audio_backend")
+                    pw_svc_id = d_cfg.get("pipewire_service_id")
+                    if audio_backend == "pipewire_hub" and pw_svc_id:
+                        try:
+                            await self.acquire_lease(int(pw_svc_id), lease_holder=f"desktop:{process_id}")
+                        except Exception as pw_err:
+                            self.logger.warning(f"Failed to acquire PipeWire lease for desktop {process_id}: {pw_err}")
+
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 elif svc_type == "kiosk_browser":
                     log_file_handle = open(log_path, "ab", buffering=0)
                     target_desk_subdevice = None
+                    desktop_audio_backend = "alsa_loopback"
+                    desktop_pw_service_id = None
+                    desktop_pw_sink_id = None
                     with self.db_session_factory() as session:
                         from database.models import Service
                         s_obj = session.get(Service, int(process_id)) if hasattr(session, "get") else session.query(Service).get(int(process_id))
                         k_cfg = (s_obj.config or {}).get("kiosk_config", {}) if s_obj else {}
                         p_mode = str(k_cfg.get("profile_mode", "ephemeral")).lower()
-                        desk_id = k_cfg.get("target_desktop_service_id")
+                        desk_id = k_cfg.get("target_desktop_service_id") or k_cfg.get("desktop_service_id")
                         if desk_id:
                             desk_obj = session.get(Service, int(desk_id)) if hasattr(session, "get") else session.query(Service).get(int(desk_id))
                             if desk_obj:
                                 d_cfg = (desk_obj.config or {}).get("desktop_config", desk_obj.config or {})
+                                desktop_audio_backend = d_cfg.get("audio_backend", "alsa_loopback")
+                                desktop_pw_service_id = d_cfg.get("pipewire_service_id")
+                                desktop_pw_sink_id = d_cfg.get("pipewire_sink_id")
                                 if d_cfg.get("alsa_subdevice") is not None:
                                     try:
                                         target_desk_subdevice = int(d_cfg.get("alsa_subdevice"))
                                     except (ValueError, TypeError):
                                         pass
                     
+                    if desktop_audio_backend == "pipewire_hub" and desktop_pw_service_id:
+                        try:
+                            await self.acquire_lease(int(desktop_pw_service_id), lease_holder=f"kiosk:{process_id}")
+                        except Exception as pw_err:
+                            self.logger.warning(f"Failed to acquire PipeWire lease for kiosk {process_id}: {pw_err}")
+
                     if p_mode == "persistent":
                         kiosk_profile = os.path.abspath(f"data/kiosk_profiles/{process_id}")
                     else:
@@ -694,41 +728,53 @@ class ProcessManager:
                             except Exception:
                                 pass
 
-                    if is_chromium:
-                        # Chromium natively supports "disabled:" to suppress D-Bus autolaunch without error
-                        kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
-                    else:
-                        # For Firefox/Gecko, ensure any DBus session or AT-SPI addresses are purged so dbus-launch (dbus-x11) can autolaunch cleanly
-                        kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
-                        kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
+                    if desktop_audio_backend == "pipewire_hub" and desktop_pw_service_id:
+                        kiosk_sub_env["PULSE_SERVER"] = f"unix:/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}/pulse.sock"
+                        kiosk_sub_env["PIPEWIRE_RUNTIME_DIR"] = f"/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}"
+                        if desktop_pw_sink_id:
+                            kiosk_sub_env["PULSE_SINK"] = str(desktop_pw_sink_id)
 
-                        # Configure apulse audio routing to isolated ALSA Loopback subdevice
-                        if target_desk_subdevice is not None:
-                            alsa_subdevice = target_desk_subdevice
-                        elif os.path.exists(asound_cfg_file):
-                            try:
-                                with open(asound_cfg_file, "r", encoding="utf-8") as acf:
-                                    sub_match = re.search(r"hw:Loopback,0,(\d+)", acf.read())
-                                    alsa_subdevice = int(sub_match.group(1)) if sub_match else (int(display_num) % 8)
-                            except Exception:
-                                alsa_subdevice = int(display_num) % 8
+                        if is_chromium:
+                            kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
                         else:
-                            alsa_subdevice = int(display_num) % 8
+                            kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
+                            kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
+                    else:
+                        if is_chromium:
+                            # Chromium natively supports "disabled:" to suppress D-Bus autolaunch without error
+                            kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
+                        else:
+                            # For Firefox/Gecko, ensure any DBus session or AT-SPI addresses are purged so dbus-launch (dbus-x11) can autolaunch cleanly
+                            kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
+                            kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
 
-                        kiosk_sub_env["APULSE_PLAYBACK_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
-                        kiosk_sub_env["APULSE_CAPTURE_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+                            # Configure apulse audio routing to isolated ALSA Loopback subdevice
+                            if target_desk_subdevice is not None:
+                                alsa_subdevice = target_desk_subdevice
+                            elif os.path.exists(asound_cfg_file):
+                                try:
+                                    with open(asound_cfg_file, "r", encoding="utf-8") as acf:
+                                        sub_match = re.search(r"hw:Loopback,0,(\d+)", acf.read())
+                                        alsa_subdevice = int(sub_match.group(1)) if sub_match else (int(display_num) % 8)
+                                except Exception:
+                                    alsa_subdevice = int(display_num) % 8
+                            else:
+                                alsa_subdevice = int(display_num) % 8
 
-                        # Ensure LD_LIBRARY_PATH includes apulse multiarch libraries if present
-                        apulse_lib_dirs = [
-                            "/usr/lib/x86_64-linux-gnu/apulse",
-                            "/usr/lib/aarch64-linux-gnu/apulse",
-                            "/usr/lib/apulse",
-                            "/usr/local/lib/apulse",
-                        ]
-                        found_apulse_lib = next((p for p in apulse_lib_dirs if os.path.isdir(p)), None)
-                        if found_apulse_lib:
-                            existing_ld = kiosk_sub_env.get("LD_LIBRARY_PATH", "")
-                            kiosk_sub_env["LD_LIBRARY_PATH"] = f"{found_apulse_lib}:{existing_ld}".rstrip(":")
+                            kiosk_sub_env["APULSE_PLAYBACK_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+                            kiosk_sub_env["APULSE_CAPTURE_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+
+                            # Ensure LD_LIBRARY_PATH includes apulse multiarch libraries if present
+                            apulse_lib_dirs = [
+                                "/usr/lib/x86_64-linux-gnu/apulse",
+                                "/usr/lib/aarch64-linux-gnu/apulse",
+                                "/usr/lib/apulse",
+                                "/usr/local/lib/apulse",
+                            ]
+                            found_apulse_lib = next((p for p in apulse_lib_dirs if os.path.isdir(p)), None)
+                            if found_apulse_lib:
+                                existing_ld = kiosk_sub_env.get("LD_LIBRARY_PATH", "")
+                                kiosk_sub_env["LD_LIBRARY_PATH"] = f"{found_apulse_lib}:{existing_ld}".rstrip(":")
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
                         stdout=log_file_handle,
@@ -1059,6 +1105,8 @@ class ProcessManager:
                 dependency_manager.unmark_pinned(process_id)
 
             allow_stop_deps = True
+            pw_release_svc_id = None
+            kiosk_pw_release_svc_id = None
             with self.db_session_factory() as session:
                 from database.models import Service
                 media_proc = session.query(Service).get(process_id)
@@ -1081,6 +1129,37 @@ class ProcessManager:
                         if nic:
                             from core.resource_lock_manager import resource_manager
                             resource_manager.release_resource("network_interface", nic, owner_type="service", owner_id=process_id)
+
+                    if getattr(media_proc, "service_type", None) == "desktop":
+                        d_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
+                        if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                            pw_release_svc_id = d_cfg.get("pipewire_service_id")
+
+                    if getattr(media_proc, "service_type", None) == "kiosk_browser":
+                        k_cfg = (media_proc.config or {}).get("kiosk_config", {})
+                        target_desk_id = k_cfg.get("target_desktop_service_id") or k_cfg.get("desktop_service_id")
+                        if target_desk_id:
+                            try:
+                                desk_svc_id_int = int(target_desk_id)
+                                desk_svc = session.get(Service, desk_svc_id_int) if hasattr(session, "get") else session.query(Service).get(desk_svc_id_int)
+                                if desk_svc:
+                                    d_cfg = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
+                                    if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                                        kiosk_pw_release_svc_id = d_cfg.get("pipewire_service_id")
+                            except (ValueError, TypeError):
+                                pass
+
+            if pw_release_svc_id is not None:
+                try:
+                    await self.release_lease(int(pw_release_svc_id), lease_holder=f"desktop:{process_id}", allow_auto_stop=(not is_restart))
+                except Exception as pw_err:
+                    self.logger.warning(f"Failed to release PipeWire lease for desktop {process_id}: {pw_err}")
+
+            if kiosk_pw_release_svc_id is not None:
+                try:
+                    await self.release_lease(int(kiosk_pw_release_svc_id), lease_holder=f"kiosk:{process_id}", allow_auto_stop=(not is_restart))
+                except Exception as pw_err:
+                    self.logger.warning(f"Failed to release PipeWire lease for kiosk {process_id}: {pw_err}")
 
             # Stop any auto-managed dependencies that are no longer needed
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
@@ -2117,7 +2196,7 @@ class ProcessManager:
         k_cfg = cfg.get("kiosk_config", cfg)
 
         # 1. Resolve target Virtual Desktop and DISPLAY
-        desktop_id = k_cfg.get("desktop_service_id")
+        desktop_id = k_cfg.get("desktop_service_id") or k_cfg.get("target_desktop_service_id")
         if not desktop_id:
             raise ValueError(f"Kiosk service '{media_proc.name}' requires a linked Virtual Desktop (desktop_service_id).")
 
@@ -2169,8 +2248,10 @@ class ProcessManager:
                 f"Please install {engine_id} on the host system or provision an official release in Settings → Software."
             )
 
+        desktop_audio_backend = d_cfg.get("audio_backend", "alsa_loopback")
+
         apulse_bin = None
-        if engine_id == "firefox":
+        if engine_id == "firefox" and desktop_audio_backend != "pipewire_hub":
             apulse_bin = shutil.which("apulse")
             if not apulse_bin:
                 if not self._is_sound_server_available():

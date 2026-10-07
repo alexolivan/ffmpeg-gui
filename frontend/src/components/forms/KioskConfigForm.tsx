@@ -315,6 +315,35 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
               <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
                 {t('kiosk.target_desktop_help', 'The browser will attach full-screen to this virtual X11 display socket.')}
               </span>
+
+              {(() => {
+                const selectedDesktop = availableDesktops.find((d) => d.id === Number(desktopServiceId));
+                if (!selectedDesktop) return null;
+                const selDeskCfg = selectedDesktop?.config?.desktop_config || selectedDesktop?.desktop_config || {};
+                const isPipeWire = selDeskCfg.audio_backend === 'pipewire_hub';
+
+                return (
+                  <div className="mt-3 p-3 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                        {t('kiosk.inherited_audio_label', 'Inherited Audio Output')}
+                      </span>
+                      {isPipeWire ? (
+                        <span className="px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/30 text-[10px] font-mono font-bold flex items-center gap-1">
+                          🌐 PipeWire Hub #{selDeskCfg.pipewire_service_id || '?'} • {selDeskCfg.pipewire_sink_id || 'mix_bus'}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-semibold flex items-center gap-1">
+                          🔊 ALSA Loopback (hw:Loopback,0,{selDeskCfg.alsa_subdevice ?? 0})
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-[var(--text-secondary)]">
+                      {t('kiosk.inherited_audio_help', 'Browser audio routing is determined by the selected Virtual Desktop configuration.')}
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
