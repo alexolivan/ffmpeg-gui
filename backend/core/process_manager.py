@@ -61,21 +61,33 @@ class ProcessManager:
         provider_id: int,
         consumer_type: str = "service",
         consumer_id: Optional[int] = None,
-        allow_auto_start: bool = True
+        allow_auto_start: bool = True,
+        lease_holder: Optional[str] = None,
+        db: Optional[Any] = None
     ) -> bool:
         """Acquires a lease on a provider service (e.g. pipewire_hub, mediamtx, icecast)."""
         from core.dependency_manager import dependency_manager
-        c_id = consumer_id if consumer_id is not None else provider_id
-        consumer_token = f"{consumer_type}:{c_id}"
+        if lease_holder:
+            consumer_token = str(lease_holder)
+        else:
+            c_id = consumer_id if consumer_id is not None else provider_id
+            consumer_token = f"{consumer_type}:{c_id}"
 
         # If provider is stopped and allow_auto_start is True, start it
         is_running = provider_id in self.processes
         if not is_running:
-            with self.db_session_factory() as session:
+            def _check_db(sess):
                 from database.models import Service
-                svc = session.get(Service, provider_id)
-                if svc and svc.status == "running":
+                svc = sess.get(Service, provider_id)
+                return svc and svc.status == "running"
+
+            if db:
+                if _check_db(db):
                     is_running = True
+            else:
+                with self.db_session_factory() as session:
+                    if _check_db(session):
+                        is_running = True
 
         if not is_running:
             if not allow_auto_start:
@@ -96,12 +108,17 @@ class ProcessManager:
         provider_id: int,
         consumer_type: str = "service",
         consumer_id: Optional[int] = None,
-        allow_auto_stop: bool = True
+        allow_auto_stop: bool = True,
+        lease_holder: Optional[str] = None,
+        db: Optional[Any] = None
     ) -> bool:
         """Releases a lease on a provider service and triggers auto-stop when 0 if allowed."""
         from core.dependency_manager import dependency_manager
-        c_id = consumer_id if consumer_id is not None else provider_id
-        consumer_token = f"{consumer_type}:{c_id}"
+        if lease_holder:
+            consumer_token = str(lease_holder)
+        else:
+            c_id = consumer_id if consumer_id is not None else provider_id
+            consumer_token = f"{consumer_type}:{c_id}"
 
         remaining = 0
         with dependency_manager.state_lock:
@@ -639,6 +656,17 @@ class ProcessManager:
                         except Exception as xset_err:
                             self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
 
+                    # 5. Acquire PipeWire Hub lease if desktop audio backend is pipewire_hub
+                    _cfg = cfg if 'cfg' in locals() and cfg is not None else getattr(self, 'processes_configs', {}).get(process_id, {})
+                    d_cfg = (_cfg or {}).get("desktop_config", _cfg or {})
+                    if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                        pw_svc_id = d_cfg.get("pipewire_service_id")
+                        try:
+                            with self.db_session_factory() as session:
+                                await self.acquire_lease(int(pw_svc_id), lease_holder=f"desktop_{process_id}", db=session)
+                        except Exception as pw_err:
+                            self.logger.warning(f"Failed to acquire PipeWire lease for desktop {process_id}: {pw_err}")
+
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 elif svc_type == "kiosk_browser":
                     log_file_handle = open(log_path, "ab", buffering=0)
@@ -1081,6 +1109,15 @@ class ProcessManager:
                         if nic:
                             from core.resource_lock_manager import resource_manager
                             resource_manager.release_resource("network_interface", nic, owner_type="service", owner_id=process_id)
+
+                    if getattr(media_proc, "service_type", None) == "desktop":
+                        d_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
+                        if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                            pw_svc_id = d_cfg.get("pipewire_service_id")
+                            try:
+                                await self.release_lease(int(pw_svc_id), lease_holder=f"desktop_{process_id}", db=session)
+                            except Exception as pw_err:
+                                self.logger.warning(f"Failed to release PipeWire lease for desktop {process_id}: {pw_err}")
 
             # Stop any auto-managed dependencies that are no longer needed
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
