@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.36.2] - 2026-10-07
+
+### Fixed
+- **PipeWire Process Spawn & ORM Session Isolation**:
+  - Extracted scalar `pw_root` path within database session scope prior to commit, resolving `DetachedInstanceError` (`SoftwareBuild is not bound to a Session`) during environment preparation.
+  - Added binary path prefix fallback to detect install roots from executable paths (`.../bin/pipewire`).
+  - Modernized SQLAlchemy queries to `session.get(FfmpegBuild, build_id)` avoiding deprecated `Query.get()`.
+
+### Changed
+- **Dismantled PipeWire Peer Federation**:
+  - Clarified architectural scope: PipeWire Hub is a host-local audio engine operating on Unix domain sockets (`AF_UNIX`) and local multicast AoIP (AES67/SAP), not a remote-routable streaming server.
+  - Removed peer federation controls (`is_shared_with_peers`, `allow_peer_lease`) from `PipeWireConfigForm`.
+  - Filtered out `pipewire_hub` from `PeerManager.get_shared_catalog` so local PipeWire instances are never exposed in the remote peer catalog.
+
 ## [2.36.1] - 2026-10-06
 
 ### Fixed

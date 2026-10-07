@@ -82,14 +82,6 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     initialConfig?.watchdog_retries ?? initialConfig?.config?.watchdog_retries ?? 5
   );
 
-  // Peer Federation & Sharing
-  const [isSharedWithPeers, setIsSharedWithPeers] = useState<boolean>(
-    Boolean(initialConfig?.is_shared_with_peers)
-  );
-  const [allowPeerLease, setAllowPeerLease] = useState<boolean>(
-    Boolean(initialConfig?.allow_peer_lease)
-  );
-
   // Fetch available PipeWire builds from Forge and Storage volumes
   useEffect(() => {
     fetch(`${API}/builds`)
@@ -274,8 +266,8 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
       watchdog_enabled: watchdogEnabled,
       watchdog_retries: Number(watchdogRetries) || 5,
       log_storage_id: logStorageId ? Number(logStorageId) : null,
-      is_shared_with_peers: isSharedWithPeers,
-      allow_peer_lease: allowPeerLease,
+      is_shared_with_peers: false,
+      allow_peer_lease: false,
       config: {
         auto_start: autoStart,
         startup_order: Number(startupOrder) || 1,
@@ -775,63 +767,6 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                 />
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* ── Section 6: Peer Federation & Remote Sharing ── */}
-        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-3">
-          <div className="border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cyan-400" />
-            <h4 className="text-xs font-black uppercase tracking-wider text-cyan-400">
-              6. {t('services.federation.title', 'Peer Federation & Remote Sharing')}
-            </h4>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            <label className="flex items-start gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isSharedWithPeers}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  setIsSharedWithPeers(checked);
-                  if (!checked) {
-                    setAllowPeerLease(false);
-                  }
-                }}
-                className="mt-0.5 rounded text-cyan-400 cursor-pointer"
-              />
-              <div>
-                <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
-                  {t('services.federation.shareWithPeers', 'Share with Remote Peers')}
-                </span>
-                <span className="text-[11px] text-[var(--text-secondary)]">
-                  {t('services.federation.shareWithPeersHelp', 'Exposes this PipeWire Hub in the federated catalog so remote peers can discover and route audio to it.')}
-                </span>
-              </div>
-            </label>
-
-            <label
-              className={`flex items-start gap-2.5 select-none transition-opacity ${
-                !isSharedWithPeers ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
-              }`}
-            >
-              <input
-                type="checkbox"
-                disabled={!isSharedWithPeers}
-                checked={isSharedWithPeers && allowPeerLease}
-                onChange={(e) => setAllowPeerLease(e.target.checked)}
-                className="mt-0.5 rounded text-cyan-400 disabled:cursor-not-allowed"
-              />
-              <div>
-                <span className="font-bold uppercase tracking-wide text-xs block text-[var(--text-primary)]">
-                  {t('services.federation.allowPeerLease', 'Allow Remote Lease (Auto-start & Keep-alive)')}
-                </span>
-                <span className="text-[11px] text-[var(--text-secondary)]">
-                  {t('services.federation.allowPeerLeaseHelp', 'Allows processes on remote peers to automatically start and keep this PipeWire Hub active while transmitting.')}
-                </span>
-              </div>
-            </label>
           </div>
         </div>
       </div>
