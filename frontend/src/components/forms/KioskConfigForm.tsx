@@ -330,7 +330,7 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
                       </span>
                       {isPipeWire ? (
                         <span className="px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/30 text-[10px] font-mono font-bold flex items-center gap-1">
-                          🌐 PipeWire Hub #{selDeskCfg.pipewire_service_id} • {selDeskCfg.pipewire_sink_id || 'mix_bus'}
+                          🌐 PipeWire Hub #{selDeskCfg.pipewire_service_id || '?'} • {selDeskCfg.pipewire_sink_id || 'mix_bus'}
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-semibold flex items-center gap-1">
