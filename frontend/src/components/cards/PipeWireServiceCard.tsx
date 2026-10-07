@@ -9,6 +9,7 @@ import {
   ClipboardIcon,
   ExportIcon,
   LightningIcon,
+  ShieldIcon,
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
 import type { ServiceItem } from './UnifiedServiceCard';
@@ -56,6 +57,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
   onDeleteProcess,
   onSelectedProcess,
   onExportProcess,
+  API,
 }) => {
   const { t } = useTranslation();
   const isRunning = service.status === 'running';
@@ -79,44 +81,94 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
   return (
     <div
       onClick={() => onSelectedProcess(service)}
-      className={`group relative flex flex-col lg:flex-row lg:items-center justify-between p-4 rounded-xl border transition-all duration-200 cursor-pointer ${
+      className={`group relative flex flex-col lg:flex-row lg:items-center justify-between p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
         isRunning
-          ? 'bg-purple-500/5 border-purple-500/30 hover:bg-purple-500/10 hover:border-purple-500/50'
+          ? 'bg-purple-500/5 border-purple-500/20 hover:bg-purple-500/10 hover:border-purple-500/40'
           : service.status === 'error'
           ? 'bg-red-500/5 border-red-500/20 hover:bg-red-500/10 hover:border-red-500/40'
           : 'bg-white/2 hover:bg-white/5 border-[var(--glass-border)] opacity-85 hover:opacity-100'
       }`}
     >
       {/* Left Info Column */}
-      <div className="flex flex-col gap-2 min-w-0 flex-1 pr-4">
-        {/* Title & Engine Type Badges Row */}
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="flex items-center gap-2">
-            <EngineLogo softwareType="pipewire" size={20} />
-            <h4 className="font-bold text-base text-[var(--text-primary)] group-hover:text-purple-400 transition-colors truncate">
-              {service.name}
-            </h4>
-          </div>
+      <div className="flex flex-col gap-1.5 min-w-0 flex-1 pr-4">
+        {/* Title & Badges Row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Status Indicator Dot */}
+          <span
+            className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+              actionPending === 'starting'
+                ? 'bg-blue-500 animate-pulse'
+                : actionPending === 'stopping'
+                ? 'bg-brand-orange animate-pulse'
+                : actionPending === 'restarting'
+                ? 'bg-purple-500 animate-pulse'
+                : isRetrying
+                ? 'bg-brand-orange animate-pulse'
+                : isRunning
+                ? 'bg-purple-400 shadow-[0_0_6px_rgba(192,132,252,0.5)]'
+                : service.status === 'error'
+                ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]'
+                : 'bg-zinc-600'
+            }`}
+          />
 
-          <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
-            {t('services.pipewire.service_name', 'PipeWire Audio Hub')}
+          {/* Service Title & Alias */}
+          <span className="font-bold text-[var(--text-primary)] text-sm group-hover:text-purple-400 transition-colors truncate">
+            {service.alias || service.name}
+            {service.alias && (
+              <span className="text-xs font-normal text-[var(--text-secondary)] ml-1.5 opacity-80" title={`Original Name: ${service.name}`}>
+                [{service.name}]
+              </span>
+            )}
           </span>
 
-          {service.auto_start && (
-            <span
-              className="text-[9px] bg-brand-lime/10 text-brand-lime border border-brand-lime/20 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1"
-              title={t('services.autoStartEnabled', 'Auto-starts on system boot')}
-            >
-              <LightningIcon size={10} />
-              {t('services.auto', 'AUTO')}
+          {/* Service Type Tag */}
+          <span className="text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-bold flex items-center gap-1.5 bg-purple-500/10 text-purple-400 border-purple-500/30">
+            <EngineLogo softwareType="pipewire" size={12} API={API} />
+            PipeWire Hub
+          </span>
+
+          {/* Pending Changes Reboot */}
+          {service.pending_changes && (
+            <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse">
+              PENDING REBOOT
             </span>
           )}
 
-          {/* Running State Indicators */}
-          {isRunning && (
-            <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              {t('common.running', 'RUNNING')}
+          {/* Autostart on Boot */}
+          {service.auto_start && (
+            <span
+              className="text-[9px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+              title={`Auto-starts on boot (Order #${service.startup_order || 1}${service.startup_delay ? `, Delay ${service.startup_delay}s` : ''})`}
+            >
+              <LightningIcon size={10} /> BOOT (#{service.startup_order || 1}{service.startup_delay ? ` | ${service.startup_delay}s` : ''})
+            </span>
+          )}
+
+          {/* Watchdog */}
+          {service.watchdog_enabled && (
+            <span
+              className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+              title={`Monitored by daemon watchdog${service.restart_count ? ` (${t('services.restartCount', 'Restarts')}: ${service.restart_count})` : ''}`}
+            >
+              <ShieldIcon size={10} /> WATCHDOG{service.restart_count && service.restart_count > 0 ? ` (${service.restart_count})` : ''}
+            </span>
+          )}
+
+          {/* Active Consumers Leases Badge */}
+          {service.active_leases && service.active_leases.length > 0 ? (
+            <span
+              className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-black flex items-center gap-1 shadow-[0_0_8px_rgba(212,255,91,0.2)]"
+              title={`Active connected consumers: ${service.active_leases.join(', ')}`}
+            >
+              🔗 {service.active_leases.length} {service.active_leases.length === 1 ? 'LEASE' : 'LEASES'}
+            </span>
+          ) : (
+            <span
+              className="text-[9px] bg-white/5 text-[var(--text-secondary)] border border-white/10 px-2 py-0.5 rounded font-medium flex items-center gap-1"
+              title="No active tasks or services currently leasing this Hub."
+            >
+              🔗 0 LEASES
             </span>
           )}
 

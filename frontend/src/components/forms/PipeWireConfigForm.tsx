@@ -293,17 +293,6 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
               <span>🔊</span>
               {t('services.pipewire.generalSection', '1. General / Service Info')}
             </h4>
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={autoStart}
-                onChange={(e) => setAutoStart(e.target.checked)}
-                className="accent-brand-lime w-4 h-4 cursor-pointer"
-              />
-              <span className="text-xs font-semibold text-[var(--text-primary)]">
-                {t('services.pipewire.autoStart', 'Auto-Start Service')}
-              </span>
-            </label>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -638,15 +627,29 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-300 text-xs flex items-center gap-2.5">
-                      <span className="text-base shrink-0">ℹ️</span>
-                      <div>
-                        <p className="font-bold">
-                          {t('services.pipewire.ptpSoftwareClock', 'Software Clock Mode (Active). Compatible with Dante Controller and SAP. For sub-microsecond synchronization in broadcast production, optionally install linuxptp on the host.')}
-                        </p>
-                        <p className="text-[10px] text-amber-600/80 dark:text-amber-300/80 mt-0.5">
-                          {t('services.pipewire.ptpSoftwareClockDesc', 'AES67 streams will timestamp RTP packets using monotonic system clock. Sufficient for most listening and virtual mixers.')}
-                        </p>
+                    <div className="space-y-2">
+                      <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-600 dark:text-blue-300 text-xs flex items-start gap-2.5">
+                        <span className="text-base shrink-0 mt-0.5">ℹ️</span>
+                        <div>
+                          <p className="font-bold">
+                            {t('services.pipewire.ptpSoftwareClock', 'System Monotonic Clock Mode (Active)')}
+                          </p>
+                          <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
+                            {t('services.pipewire.ptpSoftwareClockDesc', 'AES67/Dante streams use the kernel local clock. Safe, autonomous, and zero risk of interference with existing network clocks. Fully compatible with SAP discovery, Dante Controller, and software receivers.')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-300 text-[11px] flex items-start gap-2">
+                        <span className="text-sm shrink-0">⚠️</span>
+                        <div>
+                          <p className="font-bold">
+                            {t('services.pipewire.ptpWarningTitle', 'Hardware PTP Synchronization (linuxptp)')}
+                          </p>
+                          <p className="text-[10px] text-amber-700/80 dark:text-amber-200/80 mt-0.5 leading-relaxed">
+                            {t('services.pipewire.ptpWarningDesc', 'Only recommended for dedicated broadcast integrations where a systems engineer explicitly configures ptp4l in client-only mode (slaveOnly=1) to track an existing network Grandmaster without destabilizing production clocks.')}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
