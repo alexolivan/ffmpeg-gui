@@ -52,9 +52,13 @@ class ProcessManager:
         """Provides direct dictionary access to active processes for testing and inspection."""
         return self.processes
 
-    def get_service_ref_count(self, provider_id: int) -> int:
+    @property
+    def dependency_manager(self):
         from core.dependency_manager import dependency_manager
-        return len(dependency_manager.get_active_leases(provider_id))
+        return dependency_manager
+
+    def get_service_ref_count(self, provider_id: int) -> int:
+        return len(self.dependency_manager.get_active_leases(provider_id))
 
     async def acquire_lease(
         self,
@@ -66,12 +70,7 @@ class ProcessManager:
         db: Optional[Any] = None
     ) -> bool:
         """Acquires a lease on a provider service (e.g. pipewire_hub, mediamtx, icecast)."""
-        from core.dependency_manager import dependency_manager
-        if lease_holder:
-            consumer_token = str(lease_holder)
-        else:
-            c_id = consumer_id if consumer_id is not None else provider_id
-            consumer_token = f"{consumer_type}:{c_id}"
+        consumer_token = str(lease_holder) if lease_holder else f"{consumer_type}:{consumer_id if consumer_id is not None else provider_id}"
 
         # If provider is stopped and allow_auto_start is True, start it
         is_running = provider_id in self.processes
@@ -92,13 +91,13 @@ class ProcessManager:
         if not is_running:
             if not allow_auto_start:
                 raise RuntimeError(f"Service {provider_id} is stopped and allow_auto_start is False.")
-            is_on_demand = not dependency_manager.is_pinned(provider_id)
+            is_on_demand = not self.dependency_manager.is_pinned(provider_id)
             await self.start_process(provider_id, is_restart=False, is_on_demand=is_on_demand)
 
-        with dependency_manager.state_lock:
-            if provider_id not in dependency_manager.active_leases:
-                dependency_manager.active_leases[provider_id] = set()
-            dependency_manager.active_leases[provider_id].add(consumer_token)
+        with self.dependency_manager.state_lock:
+            if provider_id not in self.dependency_manager.active_leases:
+                self.dependency_manager.active_leases[provider_id] = set()
+            self.dependency_manager.active_leases[provider_id].add(consumer_token)
 
         self.logger.info(f"Lease acquired on provider {provider_id} by {consumer_token}")
         return True
@@ -113,23 +112,18 @@ class ProcessManager:
         db: Optional[Any] = None
     ) -> bool:
         """Releases a lease on a provider service and triggers auto-stop when 0 if allowed."""
-        from core.dependency_manager import dependency_manager
-        if lease_holder:
-            consumer_token = str(lease_holder)
-        else:
-            c_id = consumer_id if consumer_id is not None else provider_id
-            consumer_token = f"{consumer_type}:{c_id}"
+        consumer_token = str(lease_holder) if lease_holder else f"{consumer_type}:{consumer_id if consumer_id is not None else provider_id}"
 
         remaining = 0
-        with dependency_manager.state_lock:
-            if provider_id in dependency_manager.active_leases:
-                dependency_manager.active_leases[provider_id].discard(consumer_token)
-                remaining = len(dependency_manager.active_leases[provider_id])
+        with self.dependency_manager.state_lock:
+            if provider_id in self.dependency_manager.active_leases:
+                self.dependency_manager.active_leases[provider_id].discard(consumer_token)
+                remaining = len(self.dependency_manager.active_leases[provider_id])
 
         self.logger.info(f"Lease released on provider {provider_id} by {consumer_token}. Remaining: {remaining}")
 
         if remaining == 0:
-            if not dependency_manager.is_pinned(provider_id):
+            if not self.dependency_manager.is_pinned(provider_id):
                 if allow_auto_stop:
                     self.logger.info(f"Provider {provider_id} reached 0 leases and was On-Demand. Auto-stopping.")
                     await self.stop_process(provider_id)
@@ -659,11 +653,11 @@ class ProcessManager:
                     # 5. Acquire PipeWire Hub lease if desktop audio backend is pipewire_hub
                     _cfg = cfg if 'cfg' in locals() and cfg is not None else getattr(self, 'processes_configs', {}).get(process_id, {})
                     d_cfg = (_cfg or {}).get("desktop_config", _cfg or {})
-                    if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
-                        pw_svc_id = d_cfg.get("pipewire_service_id")
+                    audio_backend = d_cfg.get("audio_backend")
+                    pw_svc_id = d_cfg.get("pipewire_service_id")
+                    if audio_backend == "pipewire_hub" and pw_svc_id:
                         try:
-                            with self.db_session_factory() as session:
-                                await self.acquire_lease(int(pw_svc_id), lease_holder=f"desktop_{process_id}", db=session)
+                            await self.acquire_lease(int(pw_svc_id), lease_holder=f"desktop:{process_id}")
                         except Exception as pw_err:
                             self.logger.warning(f"Failed to acquire PipeWire lease for desktop {process_id}: {pw_err}")
 
@@ -1087,6 +1081,7 @@ class ProcessManager:
                 dependency_manager.unmark_pinned(process_id)
 
             allow_stop_deps = True
+            pw_release_svc_id = None
             with self.db_session_factory() as session:
                 from database.models import Service
                 media_proc = session.query(Service).get(process_id)
@@ -1113,11 +1108,13 @@ class ProcessManager:
                     if getattr(media_proc, "service_type", None) == "desktop":
                         d_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
                         if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
-                            pw_svc_id = d_cfg.get("pipewire_service_id")
-                            try:
-                                await self.release_lease(int(pw_svc_id), lease_holder=f"desktop_{process_id}", db=session)
-                            except Exception as pw_err:
-                                self.logger.warning(f"Failed to release PipeWire lease for desktop {process_id}: {pw_err}")
+                            pw_release_svc_id = d_cfg.get("pipewire_service_id")
+
+            if pw_release_svc_id is not None:
+                try:
+                    await self.release_lease(int(pw_release_svc_id), lease_holder=f"desktop:{process_id}", allow_auto_stop=(not is_restart))
+                except Exception as pw_err:
+                    self.logger.warning(f"Failed to release PipeWire lease for desktop {process_id}: {pw_err}")
 
             # Stop any auto-managed dependencies that are no longer needed
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)

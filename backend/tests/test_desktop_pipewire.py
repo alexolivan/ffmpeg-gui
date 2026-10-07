@@ -67,8 +67,8 @@ class TestDesktopPipeWireLease(unittest.IsolatedAsyncioTestCase):
             mock_acquire_lease.assert_awaited_once()
             call_args, call_kwargs = mock_acquire_lease.await_args
             self.assertEqual(call_args[0], 88)
-            self.assertEqual(call_kwargs.get("lease_holder"), "desktop_10")
-            self.assertIsNotNone(call_kwargs.get("db"))
+            self.assertEqual(call_kwargs.get("lease_holder"), "desktop:10")
+            self.assertIsNone(call_kwargs.get("db"))
 
     @patch("shutil.which", return_value="/usr/bin/mock")
     async def test_stop_desktop_releases_pipewire_lease(self, mock_which):
@@ -97,8 +97,38 @@ class TestDesktopPipeWireLease(unittest.IsolatedAsyncioTestCase):
             mock_release_lease.assert_awaited_once()
             call_args, call_kwargs = mock_release_lease.await_args
             self.assertEqual(call_args[0], 88)
-            self.assertEqual(call_kwargs.get("lease_holder"), "desktop_20")
-            self.assertIsNotNone(call_kwargs.get("db"))
+            self.assertEqual(call_kwargs.get("lease_holder"), "desktop:20")
+            self.assertTrue(call_kwargs.get("allow_auto_stop"))
+
+    @patch("shutil.which", return_value="/usr/bin/mock")
+    async def test_stop_desktop_restart_disallows_auto_stop(self, mock_which):
+        with self.Session() as session:
+            svc = Service(
+                id=25,
+                name="Desktop PipeWire Restarting",
+                service_type="desktop",
+                status="running",
+                pid=25555,
+                config={
+                    "desktop_config": {
+                        "display_num": 99,
+                        "vnc_port": 5999,
+                        "audio_backend": "pipewire_hub",
+                        "pipewire_service_id": 88
+                    }
+                }
+            )
+            session.add(svc)
+            session.commit()
+
+        with patch.object(self.pm, "release_lease", new_callable=AsyncMock) as mock_release_lease:
+            await self.pm.stop_process(25, is_restart=True)
+
+            mock_release_lease.assert_awaited_once()
+            call_args, call_kwargs = mock_release_lease.await_args
+            self.assertEqual(call_args[0], 88)
+            self.assertEqual(call_kwargs.get("lease_holder"), "desktop:25")
+            self.assertFalse(call_kwargs.get("allow_auto_stop"))
 
     @patch("shutil.which", return_value="/usr/bin/mock")
     @patch("asyncio.create_subprocess_exec")
@@ -135,3 +165,42 @@ class TestDesktopPipeWireLease(unittest.IsolatedAsyncioTestCase):
             await self.pm.start_process(30)
 
             mock_acquire_lease.assert_not_called()
+
+    async def test_direct_pipewire_lease_with_desktop_holder(self):
+        with self.Session() as session:
+            svc = Service(
+                id=88,
+                name="PipeWire Hub Direct",
+                service_type="pipewire_hub",
+                status="running",
+                config={"pipewire_config": {"sample_rate": 48000}}
+            )
+            session.add(svc)
+            session.commit()
+
+        # Simulate running provider process in pm.processes
+        self.pm.processes[88] = MagicMock()
+
+        # 1. Acquire lease directly without mocks
+        ok = await self.pm.acquire_lease(88, lease_holder="desktop:10")
+        self.assertTrue(ok)
+        self.assertIn("desktop:10", self.pm.dependency_manager.active_leases.get(88, set()))
+        self.assertEqual(self.pm.get_service_ref_count(88), 1)
+
+        # 2. Release lease with allow_auto_stop=False (restart behavior)
+        with patch.object(self.pm, "stop_process", new_callable=AsyncMock) as mock_stop:
+            rel = await self.pm.release_lease(88, lease_holder="desktop:10", allow_auto_stop=False)
+            self.assertTrue(rel)
+            self.assertNotIn("desktop:10", self.pm.dependency_manager.active_leases.get(88, set()))
+            self.assertEqual(self.pm.get_service_ref_count(88), 0)
+            mock_stop.assert_not_called()
+
+        # 3. Re-acquire and release with allow_auto_stop=True (stop behavior triggering auto-stop)
+        await self.pm.acquire_lease(88, lease_holder="desktop:10")
+        self.assertIn("desktop:10", self.pm.dependency_manager.active_leases.get(88, set()))
+        with patch.object(self.pm, "stop_process", new_callable=AsyncMock) as mock_stop:
+            rel = await self.pm.release_lease(88, lease_holder="desktop:10", allow_auto_stop=True)
+            self.assertTrue(rel)
+            self.assertNotIn("desktop:10", self.pm.dependency_manager.active_leases.get(88, set()))
+            self.assertEqual(self.pm.get_service_ref_count(88), 0)
+            mock_stop.assert_awaited_once_with(88)
