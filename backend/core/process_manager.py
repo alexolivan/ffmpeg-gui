@@ -544,6 +544,8 @@ class ProcessManager:
                     if svc_type == "pipewire_hub":
                         if pw_runtime_dir:
                             sub_env["PIPEWIRE_RUNTIME_DIR"] = pw_runtime_dir
+                            sub_env["XDG_RUNTIME_DIR"] = pw_runtime_dir
+                            sub_env["PULSE_RUNTIME_PATH"] = pw_runtime_dir
                         if pw_config_path:
                             sub_env["PIPEWIRE_CONFIG_NAME"] = pw_config_path
                         if pw_root and os.path.isdir(pw_root):
@@ -731,6 +733,7 @@ class ProcessManager:
                     if desktop_audio_backend == "pipewire_hub" and desktop_pw_service_id:
                         kiosk_sub_env["PULSE_SERVER"] = f"unix:/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}/pulse.sock"
                         kiosk_sub_env["PIPEWIRE_RUNTIME_DIR"] = f"/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}"
+                        kiosk_sub_env["PULSE_RUNTIME_PATH"] = f"/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}"
                         if desktop_pw_sink_id:
                             kiosk_sub_env["PULSE_SINK"] = str(desktop_pw_sink_id)
 
@@ -1974,7 +1977,12 @@ class ProcessManager:
             }
 
         runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
-        sub_env = {**os.environ, "PIPEWIRE_RUNTIME_DIR": runtime_dir}
+        sub_env = {
+            **os.environ,
+            "PIPEWIRE_RUNTIME_DIR": runtime_dir,
+            "XDG_RUNTIME_DIR": runtime_dir,
+            "PULSE_RUNTIME_PATH": runtime_dir,
+        }
 
         if install_dir and os.path.isdir(install_dir):
             lib_dirs = [
