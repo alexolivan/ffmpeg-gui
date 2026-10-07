@@ -161,7 +161,10 @@ class PeerManager:
         from database.models import SoftwareBuild
         from core.builders.ffmpeg_builder import FFmpegCommandBuilder
 
-        query = db_session.query(Service).filter(Service.is_shared_with_peers == True)
+        query = db_session.query(Service).filter(
+            Service.is_shared_with_peers == True,
+            Service.service_type.in_(["mediamtx_hub", "icecast_server"])
+        )
         services = query.all()
         catalog = []
         for svc in services:

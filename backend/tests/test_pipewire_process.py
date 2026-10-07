@@ -124,6 +124,73 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(updated.status, "running")
                 self.assertEqual(updated.pid, 10101)
 
+    @patch("asyncio.create_subprocess_exec")
+    async def test_start_pipewire_hub_with_custom_forge_build(self, mock_exec):
+        import tempfile
+        mock_proc = self._create_mock_proc(pid=10999)
+        mock_exec.return_value = mock_proc
+
+        tmp_build_dir = tempfile.mkdtemp(prefix="pw_forge_test_")
+        self.cleanup_dirs.append(tmp_build_dir)
+        bin_dir = os.path.join(tmp_build_dir, "bin")
+        lib_dir = os.path.join(tmp_build_dir, "lib")
+        spa_dir = os.path.join(lib_dir, "spa-0.2")
+        mod_dir = os.path.join(lib_dir, "pipewire-0.3")
+        os.makedirs(bin_dir, exist_ok=True)
+        os.makedirs(spa_dir, exist_ok=True)
+        os.makedirs(mod_dir, exist_ok=True)
+        fake_pw_bin = os.path.join(bin_dir, "pipewire")
+        with open(fake_pw_bin, "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(fake_pw_bin, 0o755)
+
+        with self.Session() as session:
+            b = FfmpegBuild(
+                id=15,
+                software_type="pipewire",
+                name="PipeWire 1.6.9 Test",
+                version_tag="1.6.9",
+                status="ready",
+                install_path=tmp_build_dir,
+                binary_path=fake_pw_bin
+            )
+            svc = Service(
+                id=115,
+                name="Forge PipeWire Hub",
+                service_type="pipewire_hub",
+                status="stopped",
+                ffmpeg_build_id=15,
+                config={
+                    "software_build_id": 15,
+                    "pipewire_config": {
+                        "sample_rate": 48000,
+                        "aes67_network": {"enabled": False}
+                    }
+                }
+            )
+            session.add(b)
+            session.add(svc)
+            session.commit()
+
+        self.cleanup_dirs.append(f"/tmp/ffmpeg-gui/pipewire-115")
+        self.cleanup_files.append(f"/dev/shm/pipewire_115.conf")
+
+        with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
+             patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock):
+
+            await self.pm.start_process(115)
+
+            self.assertIn(115, self.pm.processes)
+            self.assertTrue(mock_exec.called)
+            cmd_args = mock_exec.call_args[0]
+            call_kwargs = mock_exec.call_args[1]
+
+            self.assertEqual(cmd_args[0], fake_pw_bin)
+            sub_env = call_kwargs.get("env", {})
+            self.assertEqual(sub_env.get("SPA_PLUGIN_DIR"), spa_dir)
+            self.assertEqual(sub_env.get("PIPEWIRE_MODULE_DIR"), mod_dir)
+            self.assertIn(lib_dir, sub_env.get("LD_LIBRARY_PATH", ""))
+
     @patch("shutil.which", return_value="/usr/bin/pipewire")
     @patch("asyncio.create_subprocess_exec")
     async def test_stop_pipewire_hub(self, mock_exec, mock_which):

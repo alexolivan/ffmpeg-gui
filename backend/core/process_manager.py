@@ -287,7 +287,7 @@ class ProcessManager:
             debug_mode = False
             pw_runtime_dir = None
             pw_config_path = None
-            pw_build = None
+            pw_root = None
             
             # 1. Fetch config and prepare snap in a quick database transaction
             with self.db_session_factory() as session:
@@ -404,11 +404,13 @@ class ProcessManager:
                     pipewire_bin = None
                     build_id = media_proc.ffmpeg_build_id or cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
                     if build_id:
-                        pw_build = session.query(FfmpegBuild).get(build_id)
+                        pw_build = session.get(FfmpegBuild, build_id)
                         if pw_build:
                             cand_bin = pw_build.binary_path
-                            if not cand_bin and (getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None)):
-                                cand_root = getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None)
+                            cand_root = getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None)
+                            if cand_root:
+                                pw_root = str(cand_root)
+                            if not cand_bin and cand_root:
                                 test_bin = os.path.join(cand_root, "bin", "pipewire")
                                 if os.path.exists(test_bin):
                                     cand_bin = test_bin
@@ -422,17 +424,21 @@ class ProcessManager:
                     if not pipewire_bin:
                         from core.software_manager import software_manager
                         pipewire_bin = software_manager.get_active_binary("pipewire", session)
-                        if pipewire_bin and not pw_build:
+                        if pipewire_bin:
                             pw_build = session.query(FfmpegBuild).filter(
                                 FfmpegBuild.software_type == 'pipewire',
                                 FfmpegBuild.binary_path == pipewire_bin
                             ).first()
-                            if not pw_build:
+                            if pw_build:
+                                cand_root = getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None)
+                                if cand_root:
+                                    pw_root = str(cand_root)
+                            else:
                                 # Also check if binary is within any build install directory
                                 for b in session.query(FfmpegBuild).filter(FfmpegBuild.software_type == 'pipewire', FfmpegBuild.status == 'ready').all():
                                     b_root = getattr(b, "install_path", None) or getattr(b, "install_dir", None)
                                     if b_root and pipewire_bin.startswith(b_root):
-                                        pw_build = b
+                                        pw_root = str(b_root)
                                         break
 
                     if not pipewire_bin:
@@ -440,6 +446,11 @@ class ProcessManager:
 
                     if not pipewire_bin:
                         raise FileNotFoundError("PipeWire binary not found. Please install PipeWire on the host system or compile it in Settings → Software Engine.")
+
+                    if not pw_root and pipewire_bin and os.path.isabs(pipewire_bin) and "/bin/" in pipewire_bin:
+                        cand_prefix = pipewire_bin.split("/bin/")[0]
+                        if os.path.isdir(os.path.join(cand_prefix, "lib")) or os.path.isdir(os.path.join(cand_prefix, "lib64")):
+                            pw_root = cand_prefix
 
                     cmd, pw_config_path, pw_runtime_dir = self._build_pipewire_config_and_cmd(media_proc, pipewire_bin, session)
                     self.ephemeral_configs[process_id] = pw_config_path
@@ -524,7 +535,6 @@ class ProcessManager:
                             sub_env["PIPEWIRE_RUNTIME_DIR"] = pw_runtime_dir
                         if pw_config_path:
                             sub_env["PIPEWIRE_CONFIG_NAME"] = pw_config_path
-                        pw_root = getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None) if pw_build else None
                         if pw_root and os.path.isdir(pw_root):
                             lib_dirs = [
                                 os.path.join(pw_root, "lib"),
