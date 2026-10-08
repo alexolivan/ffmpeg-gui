@@ -403,6 +403,25 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         if (fallbackRes.ok) {
           const flatList = await fallbackRes.json();
           setAlsaDevices(flatList || []);
+          // Synthesize cards from flat list if hierarchical failed
+          const cardsDict: Record<number, any> = {};
+          (flatList || []).forEach((d: any) => {
+            const m = String(d.device || '').match(/hw:(\d+)/);
+            const cardId = m ? parseInt(m[1], 10) : 0;
+            if (!cardsDict[cardId]) {
+              const cardName = (d.name || `Card ${cardId}`).split(' - ')[0];
+              cardsDict[cardId] = {
+                card_id: cardId,
+                card_name: cardName,
+                card_label: `${cardName} [Card ${cardId}]`,
+                devices: []
+              };
+            }
+            cardsDict[cardId].devices.push(d);
+          });
+          const synthesizedCards = Object.values(cardsDict);
+          deviceCache.alsaHierarchicalCards = synthesizedCards;
+          setAlsaCards(synthesizedCards);
         }
       } catch (fbErr) {
         console.error("Fallback ALSA query also failed:", fbErr);
@@ -417,28 +436,49 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
     fetchAlsa(false);
   }, [config.type, fetchAlsa]);
 
-  // Synchronize selectedCardId with current config.device
+  // Initial detection of manual vs assisted mode when loading or switching to ALSA
+  const alsaInitializedRef = React.useRef(false);
   React.useEffect(() => {
-    if (config.type !== 'alsa') return;
-    if (!config.device) {
+    if (config.type !== 'alsa') {
+      alsaInitializedRef.current = false;
       return;
     }
-    // Check if current device belongs to any card
+    if (alsaInitializedRef.current) return;
+    if (alsaCards.length === 0 && alsaDevices.length === 0) return;
+
+    alsaInitializedRef.current = true;
+    const curDev = (config.device || '').trim();
+    if (!curDev || curDev === 'default') {
+      setSelectedCardId('__default__');
+      setManualAlsaMode(false);
+      return;
+    }
+
+    const matchedCard = alsaCards.find(c => (c.devices || []).some((d: any) => d.device === curDev));
+    if (matchedCard) {
+      setSelectedCardId(matchedCard.card_id);
+      setManualAlsaMode(false);
+    } else {
+      setManualAlsaMode(true);
+    }
+  }, [config.type, alsaCards, alsaDevices]);
+
+  // Synchronize selectedCardId with current config.device without overriding manual mode
+  React.useEffect(() => {
+    if (config.type !== 'alsa') return;
+    const curDev = (config.device || '').trim();
+    if (!curDev || curDev === 'default') {
+      setSelectedCardId('__default__');
+      return;
+    }
     for (const card of alsaCards) {
-      const match = (card.devices || []).some((d: any) => d.device === config.device);
+      const match = (card.devices || []).some((d: any) => d.device === curDev);
       if (match) {
         setSelectedCardId(card.card_id);
         return;
       }
     }
-    // If not found in known cards and not manual, trigger manual mode if devices loaded
-    if (alsaCards.length > 0 && !manualAlsaMode) {
-      const foundInAny = alsaDevices.some((d: any) => d.device === config.device);
-      if (!foundInAny) {
-        setManualAlsaMode(true);
-      }
-    }
-  }, [config.type, config.device, alsaCards, alsaDevices, manualAlsaMode]);
+  }, [config.type, config.device, alsaCards]);
 
   const [providers, setProviders] = React.useState<any[]>([]);
   const [remotePeers, setRemotePeers] = React.useState<any[]>([]);
@@ -3412,99 +3452,155 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
       {config.type === 'alsa' && (
         <div className="space-y-2">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between mb-0.5">
-              <label htmlFor={`${idPrefix}-alsa-card`} className="text-[9px] text-text-secondary uppercase font-bold">
-                {t('sources.alsaDevice')}
-              </label>
-              <div className="flex items-center gap-2">
+          {/* Header with Title, Mode Segmented Selector, and Refresh Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-0.5">
+            <label htmlFor={`${idPrefix}-alsa-card`} className="text-[9px] text-text-secondary uppercase font-bold">
+              {t('sources.alsaDevice')}
+            </label>
+            <div className="flex items-center gap-1.5 self-end sm:self-auto">
+              {/* Segmented Mode Selector: Detected Devices vs Manual Input */}
+              <div className="inline-flex items-center bg-white/5 border border-glass-border rounded-lg p-0.5" role="radiogroup">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!manualAlsaMode}
+                  onClick={() => {
+                    setManualAlsaMode(false);
+                    const curDev = (config.device || '').trim();
+                    if (!curDev || curDev === 'default') {
+                      setSelectedCardId('__default__');
+                      update({ device: 'default' });
+                    } else {
+                      const matchCard = alsaCards.find(c => (c.devices || []).some((d: any) => d.device === curDev));
+                      if (matchCard) {
+                        setSelectedCardId(matchCard.card_id);
+                      } else if (alsaCards.length > 0 && alsaCards[0].devices?.length > 0) {
+                        setSelectedCardId(alsaCards[0].card_id);
+                        update({ device: alsaCards[0].devices[0].device });
+                      } else {
+                        setSelectedCardId('__default__');
+                        update({ device: 'default' });
+                      }
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                    !manualAlsaMode
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  🎛️ {t('sources.modeDetected', 'Detected Devices')}
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={manualAlsaMode}
+                  onClick={() => setManualAlsaMode(true)}
+                  className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                    manualAlsaMode
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  ✏️ {t('sources.modeManual', 'Manual Input')}
+                </button>
+              </div>
+
+              {/* Refresh Button: Shown only in detected mode */}
+              {!manualAlsaMode && (
                 <button
                   type="button"
                   title={t('sources.alsaRefresh')}
                   onClick={() => fetchAlsa(true)}
-                  className="text-[10px] text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
+                  disabled={loadingAlsaDevices}
+                  className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-glass-border text-text-secondary hover:text-text-primary text-[10px] transition-all flex items-center gap-1 disabled:opacity-50"
                 >
-                  🔄 <span className="hidden sm:inline">{t('common.refresh', 'Refresh')}</span>
+                  <span className={loadingAlsaDevices ? 'animate-spin inline-block' : 'inline-block'}>🔄</span>
+                  <span className="hidden sm:inline">{t('common.refresh', 'Refresh')}</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setManualAlsaMode(!manualAlsaMode)}
-                  className="text-[10px] text-purple-400 hover:text-purple-300 font-mono transition-colors"
-                >
-                  {manualAlsaMode ? `📋 ${t('common.list', 'List')}` : `✏️ ${t('sources.manualInput', 'Manual')}`}
-                </button>
-              </div>
+              )}
             </div>
+          </div>
 
-            {loadingAlsaDevices ? (
-              <div className="text-[10px] text-text-secondary animate-pulse py-2 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-                {t('sources.loadingAlsa')}
+          {loadingAlsaDevices ? (
+            <div className="text-[10px] text-text-secondary animate-pulse py-2 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+              {t('sources.loadingAlsa')}
+            </div>
+          ) : manualAlsaMode ? (
+            /* MANUAL MODE: Explicit Direct String Input */
+            <div className="space-y-1">
+              <input
+                type="text"
+                id={`${idPrefix}-alsa-device`}
+                name="device"
+                placeholder="hw:0,0 or default"
+                className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 font-mono transition-all"
+                value={config.device || ''}
+                onChange={e => update({ device: e.target.value })}
+              />
+              <span className="text-[10px] text-text-secondary block">
+                {t('sources.alsaDeviceManualHelp', 'Specify custom ALSA device string (e.g. hw:0,0, hw:2,0,1, plughw:1,0 or default).')}
+              </span>
+            </div>
+          ) : alsaCards.length === 0 && alsaDevices.length === 0 ? (
+            /* EMPTY HARDWARE DETECTED STATE */
+            <div className="space-y-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <div className="text-[10px] text-amber-500 font-medium">{t('sources.noAlsaDetected')}</div>
+              <input
+                type="text"
+                id={`${idPrefix}-alsa-device`}
+                name="device"
+                placeholder="ALSA Device ID (e.g. hw:0,0)"
+                className="w-full bg-input-bg border border-glass-border rounded-lg p-1.5 text-xs text-text-primary outline-none font-mono"
+                value={config.device || ''}
+                onChange={e => update({ device: e.target.value })}
+              />
+            </div>
+          ) : (
+            /* ASSISTED VISUAL MODE: Card Selector + Subdevice Selector */
+            <div className="space-y-2">
+              {/* Level 1: Sound Card / Host Hardware Selector */}
+              <div>
+                <label htmlFor={`${idPrefix}-alsa-card`} className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
+                  {t('sources.alsaSoundCard')}
+                </label>
+                <select
+                  id={`${idPrefix}-alsa-card`}
+                  className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer"
+                  value={selectedCardId !== '' ? String(selectedCardId) : (config.device === 'default' ? '__default__' : '')}
+                  onChange={e => {
+                    const newCardId = e.target.value;
+                    if (newCardId === '__default__') {
+                      setSelectedCardId('__default__');
+                      update({ device: 'default' });
+                      return;
+                    }
+                    setSelectedCardId(newCardId);
+                    if (newCardId === '') {
+                      update({ device: '' });
+                      return;
+                    }
+                    const card = alsaCards.find(c => String(c.card_id) === String(newCardId));
+                    if (card && card.devices && card.devices.length > 0) {
+                      update({ device: card.devices[0].device });
+                    } else {
+                      update({ device: '' });
+                    }
+                  }}
+                >
+                  <option value="__default__">🌟 {t('sources.defaultDevice', 'System Default (default)')}</option>
+                  <option value="">{t('sources.alsaSelectCard')}</option>
+                  {alsaCards.map(c => (
+                    <option key={`card-${c.card_id}`} value={String(c.card_id)}>
+                      🎛️ {c.card_label || `${c.card_name} [Card ${c.card_id}]`}
+                    </option>
+                  ))}
+                </select>
               </div>
-            ) : manualAlsaMode ? (
-              <div className="space-y-1">
-                <input
-                  type="text"
-                  id={`${idPrefix}-alsa-device`}
-                  name="device"
-                  placeholder="hw:0,0 or default"
-                  className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 font-mono transition-all"
-                  value={config.device || ''}
-                  onChange={e => update({ device: e.target.value })}
-                />
-                <span className="text-[10px] text-text-secondary block">
-                  {t('sources.alsaDeviceManualHelp', 'Specify custom ALSA device string (e.g. hw:0,0, hw:2,0,1, plughw:1,0 or default).')}
-                </span>
-              </div>
-            ) : alsaCards.length === 0 && alsaDevices.length === 0 ? (
-              <div className="space-y-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <div className="text-[10px] text-amber-500 font-medium">{t('sources.noAlsaDetected')}</div>
-                <input
-                  type="text"
-                  id={`${idPrefix}-alsa-device`}
-                  name="device"
-                  placeholder="ALSA Device ID (e.g. hw:0,0)"
-                  className="w-full bg-input-bg border border-glass-border rounded-lg p-1.5 text-xs text-text-primary outline-none font-mono"
-                  value={config.device || ''}
-                  onChange={e => update({ device: e.target.value })}
-                />
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {/* Level 1: Sound Card / Host Hardware Selector */}
-                <div>
-                  <label htmlFor={`${idPrefix}-alsa-card`} className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
-                    {t('sources.alsaSoundCard')}
-                  </label>
-                  <select
-                    id={`${idPrefix}-alsa-card`}
-                    className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer"
-                    value={selectedCardId !== '' ? String(selectedCardId) : ''}
-                    onChange={e => {
-                      const newCardId = e.target.value;
-                      setSelectedCardId(newCardId);
-                      if (newCardId === '') {
-                        update({ device: '' });
-                        return;
-                      }
-                      const card = alsaCards.find(c => String(c.card_id) === String(newCardId));
-                      if (card && card.devices && card.devices.length > 0) {
-                        update({ device: card.devices[0].device });
-                      } else {
-                        update({ device: '' });
-                      }
-                    }}
-                  >
-                    <option value="">{t('sources.alsaSelectCard')}</option>
-                    {alsaCards.map(c => (
-                      <option key={`card-${c.card_id}`} value={String(c.card_id)}>
-                        🎛️ {c.card_label || `${c.card_name} [Card ${c.card_id}]`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
 
-                {/* Level 2: Subdevice / Channel / Plug Selector */}
+              {/* Level 2: Subdevice / Channel / Plug Selector (Shown only when physical card is selected) */}
+              {selectedCardId !== '__default__' && (
                 <div>
                   <label htmlFor={`${idPrefix}-alsa-subdevice`} className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
                     {t('sources.alsaSubdevice')}
@@ -3531,9 +3627,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     );
                   })()}
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

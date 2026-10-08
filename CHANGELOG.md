@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.37.5] - 2026-10-08
+
+### Fixed
+- **ALSA Input and Playout Device Selector Mode Switching & Infinite Loop**:
+  - Replaced ambiguous toggle link with an explicit segmented mode selector (`Detected Devices` vs `Manual Input`) across both `InputSourcePanel` and `DestinationPanel`.
+  - Fixed infinite state reconciliation loop where clicking the list toggle repeatedly reverted back to manual mode and caused UI flicker when `config.device` held a non-hardware string (e.g. `default`).
+  - Strict separation of concerns: in `Detected Devices` mode, only hierarchical Sound Card and Subdevice dropdown selectors (along with `System Default (default)`) are displayed with no redundant manual text field; in `Manual Input` mode, only the custom string input is shown.
+  - Styled `Refresh` button with actionable background, border, and spinner, visible only in `Detected Devices` mode to avoid redundancy during manual typing.
+  - Added synthesized card hierarchy fallback if hierarchical device queries fail, ensuring card selectors populate from flat device lists.
+
 ## [2.37.4] - 2026-10-08
 
 ### Added

@@ -282,6 +282,25 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         if (fallbackRes.ok) {
           const flatList = await fallbackRes.json();
           setAlsaDevices(flatList || []);
+          // Synthesize cards from flat list if hierarchical failed
+          const cardsDict: Record<number, any> = {};
+          (flatList || []).forEach((d: any) => {
+            const m = String(d.device || '').match(/hw:(\d+)/);
+            const cardId = m ? parseInt(m[1], 10) : 0;
+            if (!cardsDict[cardId]) {
+              const cardName = (d.name || `Card ${cardId}`).split(' - ')[0];
+              cardsDict[cardId] = {
+                card_id: cardId,
+                card_name: cardName,
+                card_label: `${cardName} [Card ${cardId}]`,
+                devices: []
+              };
+            }
+            cardsDict[cardId].devices.push(d);
+          });
+          const synthesizedCards = Object.values(cardsDict);
+          destinationCache.alsaHierarchicalCards = synthesizedCards;
+          setAlsaCards(synthesizedCards);
         }
       } catch (fbErr) {
         console.error("Fallback ALSA playback query also failed:", fbErr);
@@ -296,27 +315,49 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     fetchAlsaPlayback(false);
   }, [config.type, fetchAlsaPlayback]);
 
-  // Synchronize selectedCardId with current config.device
+  // Initial detection of manual vs assisted mode when loading or switching to ALSA
+  const alsaInitializedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (config.type !== 'alsa') {
+      alsaInitializedRef.current = false;
+      return;
+    }
+    if (alsaInitializedRef.current) return;
+    if (alsaCards.length === 0 && alsaDevices.length === 0) return;
+
+    alsaInitializedRef.current = true;
+    const curDev = (config.device || '').trim();
+    if (!curDev || curDev === 'default') {
+      setSelectedCardId('__default__');
+      setManualAlsaMode(false);
+      return;
+    }
+
+    const matchedCard = alsaCards.find(c => (c.devices || []).some((d: any) => d.device === curDev));
+    if (matchedCard) {
+      setSelectedCardId(matchedCard.card_id);
+      setManualAlsaMode(false);
+    } else {
+      setManualAlsaMode(true);
+    }
+  }, [config.type, alsaCards, alsaDevices]);
+
+  // Synchronize selectedCardId with current config.device without overriding manual mode
   React.useEffect(() => {
     if (config.type !== 'alsa') return;
-    if (!config.device || config.device === 'default') {
-      setSelectedCardId('');
+    const curDev = (config.device || '').trim();
+    if (!curDev || curDev === 'default') {
+      setSelectedCardId('__default__');
       return;
     }
     for (const card of alsaCards) {
-      const match = (card.devices || []).some((d: any) => d.device === config.device);
+      const match = (card.devices || []).some((d: any) => d.device === curDev);
       if (match) {
         setSelectedCardId(card.card_id);
         return;
       }
     }
-    if (alsaCards.length > 0 && !manualAlsaMode) {
-      const foundInAny = alsaDevices.some((d: any) => d.device === config.device);
-      if (!foundInAny && config.device !== 'default') {
-        setManualAlsaMode(true);
-      }
-    }
-  }, [config.type, config.device, alsaCards, alsaDevices, manualAlsaMode]);
+  }, [config.type, config.device, alsaCards]);
 
   const [providers, setProviders] = React.useState<any[]>([]);
   const [remotePeers, setRemotePeers] = React.useState<any[]>([]);
@@ -4210,26 +4251,73 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'alsa' && (
         <div className="space-y-2 animate-in fade-in duration-200">
-          <div className="flex items-center justify-between mb-0.5">
+          {/* Header with Title, Mode Segmented Selector, and Refresh Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-0.5">
             <label htmlFor="dest-alsa-card" className="text-[9px] text-text-secondary uppercase font-bold block">
               {t('destinations.alsaPlayoutDevice')}<span className="text-red-500 ml-0.5">*</span>
             </label>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                title={t('destinations.alsaRefresh')}
-                onClick={() => fetchAlsaPlayback(true)}
-                className="text-[10px] text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
-              >
-                🔄 <span className="hidden sm:inline">{t('common.refresh', 'Refresh')}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setManualAlsaMode(!manualAlsaMode)}
-                className="text-[10px] text-purple-400 hover:text-purple-300 font-mono transition-colors"
-              >
-                {manualAlsaMode ? `📋 ${t('common.list', 'List')}` : `✏️ ${t('sources.manualInput', 'Manual')}`}
-              </button>
+            <div className="flex items-center gap-1.5 self-end sm:self-auto">
+              {/* Segmented Mode Selector: Detected Devices vs Manual Input */}
+              <div className="inline-flex items-center bg-white/5 border border-glass-border rounded-lg p-0.5" role="radiogroup">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!manualAlsaMode}
+                  onClick={() => {
+                    setManualAlsaMode(false);
+                    const curDev = (config.device || '').trim();
+                    if (!curDev || curDev === 'default') {
+                      setSelectedCardId('__default__');
+                      update({ device: 'default' });
+                    } else {
+                      const matchCard = alsaCards.find(c => (c.devices || []).some((d: any) => d.device === curDev));
+                      if (matchCard) {
+                        setSelectedCardId(matchCard.card_id);
+                      } else if (alsaCards.length > 0 && alsaCards[0].devices?.length > 0) {
+                        setSelectedCardId(alsaCards[0].card_id);
+                        update({ device: alsaCards[0].devices[0].device });
+                      } else {
+                        setSelectedCardId('__default__');
+                        update({ device: 'default' });
+                      }
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                    !manualAlsaMode
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  🎛️ {t('destinations.modeDetected', 'Detected Devices')}
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={manualAlsaMode}
+                  onClick={() => setManualAlsaMode(true)}
+                  className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                    manualAlsaMode
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  ✏️ {t('destinations.modeManual', 'Manual Input')}
+                </button>
+              </div>
+
+              {/* Refresh Button: Shown only in detected mode */}
+              {!manualAlsaMode && (
+                <button
+                  type="button"
+                  title={t('destinations.alsaRefresh')}
+                  onClick={() => fetchAlsaPlayback(true)}
+                  disabled={loadingAlsaDevices}
+                  className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-glass-border text-text-secondary hover:text-text-primary text-[10px] transition-all flex items-center gap-1 disabled:opacity-50"
+                >
+                  <span className={loadingAlsaDevices ? 'animate-spin inline-block' : 'inline-block'}>🔄</span>
+                  <span className="hidden sm:inline">{t('common.refresh', 'Refresh')}</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -4239,6 +4327,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               {t('sources.loadingAlsa')}
             </div>
           ) : manualAlsaMode ? (
+            /* MANUAL MODE: Explicit Direct String Input */
             <div className="space-y-1">
               <input
                 type="text"
@@ -4259,6 +4348,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               )}
             </div>
           ) : alsaCards.length === 0 && alsaDevices.length === 0 ? (
+            /* EMPTY HARDWARE DETECTED STATE */
             <div className="space-y-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
               <div className="text-[10px] text-amber-500 font-medium">{t('destinations.noAlsaPlaybackDetected')}</div>
               <input
@@ -4274,6 +4364,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               />
             </div>
           ) : (
+            /* ASSISTED VISUAL MODE: Card Selector + Subdevice Selector */
             <div className="space-y-2">
               {/* Level 1: Sound Card / Host Hardware Selector */}
               <div>
@@ -4287,7 +4378,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   onChange={e => {
                     const newCardId = e.target.value;
                     if (newCardId === '__default__') {
-                      setSelectedCardId('');
+                      setSelectedCardId('__default__');
                       update({ device: 'default' });
                       return;
                     }
@@ -4314,40 +4405,41 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 </select>
               </div>
 
-              {/* Level 2: Subdevice / Channel Selector */}
-              <div>
-                <label htmlFor="dest-alsa-device" className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
-                  {t('destinations.alsaSubdevice')}
-                </label>
-                {(() => {
-                  const currentCard = alsaCards.find(c => String(c.card_id) === String(selectedCardId));
-                  const subdevices = currentCard ? (currentCard.devices || []) : alsaDevices;
+              {/* Level 2: Subdevice / Channel Selector (Shown only when physical card is selected) */}
+              {selectedCardId !== '__default__' && (
+                <div>
+                  <label htmlFor="dest-alsa-device" className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
+                    {t('destinations.alsaSubdevice')}
+                  </label>
+                  {(() => {
+                    const currentCard = alsaCards.find(c => String(c.card_id) === String(selectedCardId));
+                    const subdevices = currentCard ? (currentCard.devices || []) : alsaDevices;
 
-                  return (
-                    <select
-                      id="dest-alsa-device"
-                      name="device"
-                      className={`w-full bg-input-bg border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer disabled:opacity-50 ${
-                        validationErrors?.device ? 'border-red-500/50 bg-red-500/5' : 'border-glass-border'
-                      }`}
-                      disabled={subdevices.length === 0 && config.device !== 'default'}
-                      value={config.device || ''}
-                      onChange={e => update({ device: e.target.value })}
-                    >
-                      <option value="default">{t('destinations.defaultDevice', 'System Default (default)')}</option>
-                      <option value="">{t('destinations.alsaSelectSubdevice')}</option>
-                      {subdevices.map((d: any) => (
-                        <option key={d.device} value={d.device}>
-                          {d.name} ({d.device})
-                        </option>
-                      ))}
-                    </select>
-                  );
-                })()}
-                {validationErrors?.device && (
-                  <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
-                )}
-              </div>
+                    return (
+                      <select
+                        id="dest-alsa-device"
+                        name="device"
+                        className={`w-full bg-input-bg border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer disabled:opacity-50 ${
+                          validationErrors?.device ? 'border-red-500/50 bg-red-500/5' : 'border-glass-border'
+                        }`}
+                        disabled={subdevices.length === 0}
+                        value={config.device || ''}
+                        onChange={e => update({ device: e.target.value })}
+                      >
+                        <option value="">{t('destinations.alsaSelectSubdevice')}</option>
+                        {subdevices.map((d: any) => (
+                          <option key={d.device} value={d.device}>
+                            {d.name} ({d.device})
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
+                  {validationErrors?.device && (
+                    <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
