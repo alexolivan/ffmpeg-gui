@@ -163,3 +163,102 @@ class TestStartupReattach(unittest.IsolatedAsyncioTestCase):
 
         resource_lock_manager.clear_all()
 
+    @patch("asyncio.create_task")
+    def test_reattach_process_restores_active_leases_for_desktop_and_kiosk(self, mock_create_task):
+        from core.dependency_manager import dependency_manager
+        with dependency_manager.state_lock:
+            dependency_manager.active_leases.clear()
+
+        pw_proc = MediaProcess(
+            id=100,
+            name="PipeWire Hub Test",
+            type="service",
+            service_type="pipewire_hub",
+            config={"pipewire_config": {"virtual_sinks": [{"id": "mix_bus"}]}},
+            status="running",
+            pid=88880
+        )
+        desk_proc = MediaProcess(
+            id=101,
+            name="Virtual Desktop Test",
+            type="service",
+            service_type="desktop",
+            config={"desktop_config": {"audio_backend": "pipewire_hub", "pipewire_service_id": 100, "pipewire_sink_id": "mix_bus"}},
+            status="running",
+            pid=88881
+        )
+        kiosk_proc = MediaProcess(
+            id=102,
+            name="Kiosk Test",
+            type="service",
+            service_type="kiosk_browser",
+            config={"kiosk_config": {"target_desktop_service_id": 101}},
+            status="running",
+            pid=88882
+        )
+        self.db.add_all([pw_proc, desk_proc, kiosk_proc])
+        self.db.commit()
+
+        # Reattach the desktop and kiosk
+        main.process_manager.reattach_process(desk_proc.id, 88881)
+        main.process_manager.reattach_process(kiosk_proc.id, 88882)
+
+        # Verify PipeWire hub has leases for both desktop and kiosk
+        pw_leases = dependency_manager.get_active_leases(100)
+        self.assertIn("desktop:101", pw_leases)
+        self.assertIn("kiosk:102", pw_leases)
+
+        # Verify Desktop has lease for kiosk
+        desk_leases = dependency_manager.get_active_leases(101)
+        self.assertIn("service:102", desk_leases)
+
+    def test_reconcile_active_leases_cold_boot(self):
+        from core.dependency_manager import dependency_manager
+        with dependency_manager.state_lock:
+            dependency_manager.active_leases.clear()
+
+        pw_proc = MediaProcess(
+            id=200,
+            name="PipeWire Hub Cold Boot",
+            type="service",
+            service_type="pipewire_hub",
+            config={"pipewire_config": {"virtual_sinks": [{"id": "mix_bus"}]}},
+            status="running",
+            pid=99990
+        )
+        desk_proc = MediaProcess(
+            id=201,
+            name="Virtual Desktop Cold Boot",
+            type="service",
+            service_type="desktop",
+            config={"desktop_config": {"audio_backend": "pipewire_hub", "pipewire_service_id": 200, "pipewire_sink_id": "mix_bus"}},
+            status="running",
+            pid=99991
+        )
+        kiosk_proc = MediaProcess(
+            id=202,
+            name="Kiosk Cold Boot",
+            type="service",
+            service_type="kiosk_browser",
+            config={"kiosk_config": {"target_desktop_service_id": 201}},
+            status="running",
+            pid=99992
+        )
+        self.db.add_all([pw_proc, desk_proc, kiosk_proc])
+        self.db.commit()
+
+        # Leases are initially empty
+        self.assertEqual(dependency_manager.get_active_leases(200), [])
+        self.assertEqual(dependency_manager.get_active_leases(201), [])
+
+        # Run reconciliation pass (simulating startup)
+        dependency_manager.reconcile_active_leases(self.db)
+
+        # Verify restored leases
+        pw_leases = dependency_manager.get_active_leases(200)
+        self.assertIn("desktop:201", pw_leases)
+        self.assertIn("kiosk:202", pw_leases)
+
+        desk_leases = dependency_manager.get_active_leases(201)
+        self.assertIn("service:202", desk_leases)
+

@@ -79,6 +79,99 @@ class DependencyManager:
         with self.state_lock:
             return list(self.active_leases.get(service_id, set()))
 
+    def reconcile_active_leases(self, db_session=None):
+        """
+        Reconstructs in-memory active_leases for all currently running services
+        and tasks (e.g. after daemon restart, reattachment, or process reload).
+        Ensures reference counting and telemetry remain completely consistent without
+        requiring manual service restarts.
+        """
+        self._ensure_initialized()
+
+        def _do_reconcile(session):
+            from database.models import Service, ServiceDependency
+
+            # Query all services currently marked as running in DB
+            running_services = session.query(Service).filter(Service.status == "running").all()
+            running_service_ids = {s.id for s in running_services}
+            running_by_id = {s.id: s for s in running_services}
+
+            # 1. Sync auto-dependencies in SQLite for all services
+            for s in session.query(Service).all():
+                try:
+                    self.sync_auto_dependencies('service', s.id, s.input_config, s.output_config, session)
+                except Exception as sync_err:
+                    self.logger.warning(f"Error syncing dependencies for service {s.id} during reconciliation: {sync_err}")
+
+            # 2. Rebuild active_leases dictionary under lock
+            with self.state_lock:
+                self.active_leases.clear()
+
+                # DB-managed ServiceDependency for running consumers
+                all_deps = session.query(ServiceDependency).all()
+                for dep in all_deps:
+                    if dep.consumer_type == 'service' and dep.consumer_id in running_service_ids:
+                        p_id = dep.provider_service_id
+                        if p_id not in self.active_leases:
+                            self.active_leases[p_id] = set()
+                        self.active_leases[p_id].add(f"service:{dep.consumer_id}")
+
+                # Desktops and Kiosks with PipeWire Hub and Virtual Desktop bindings
+                for s in running_services:
+                    svc_type = getattr(s, 'service_type', None)
+                    cfg = s.config or {}
+
+                    if svc_type == 'desktop':
+                        d_cfg = cfg.get("desktop_config", cfg)
+                        if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                            try:
+                                pw_id = int(d_cfg.get("pipewire_service_id"))
+                                if pw_id not in self.active_leases:
+                                    self.active_leases[pw_id] = set()
+                                self.active_leases[pw_id].add(f"desktop:{s.id}")
+                            except (ValueError, TypeError):
+                                pass
+
+                    elif svc_type == 'kiosk_browser':
+                        k_cfg = cfg.get("kiosk_config", cfg)
+                        desk_id_raw = (
+                            k_cfg.get("target_desktop_service_id") or
+                            k_cfg.get("desktop_service_id") or
+                            cfg.get("target_desktop_service_id") or
+                            cfg.get("desktop_service_id")
+                        )
+                        if desk_id_raw:
+                            try:
+                                desk_id = int(desk_id_raw)
+                                if desk_id in running_service_ids:
+                                    if desk_id not in self.active_leases:
+                                        self.active_leases[desk_id] = set()
+                                    self.active_leases[desk_id].add(f"service:{s.id}")
+
+                                    # Target desktop PipeWire audio check
+                                    target_desk = running_by_id.get(desk_id)
+                                    if not target_desk:
+                                        target_desk = session.get(Service, desk_id) if hasattr(session, "get") else session.query(Service).get(desk_id)
+                                    if target_desk:
+                                        td_cfg = (target_desk.config or {}).get("desktop_config", target_desk.config or {})
+                                        if td_cfg.get("audio_backend") == "pipewire_hub" and td_cfg.get("pipewire_service_id"):
+                                            pw_id = int(td_cfg.get("pipewire_service_id"))
+                                            if pw_id not in self.active_leases:
+                                                self.active_leases[pw_id] = set()
+                                            self.active_leases[pw_id].add(f"kiosk:{s.id}")
+                            except (ValueError, TypeError):
+                                pass
+
+            self.logger.info(
+                f"Active leases reconciled successfully. Providers with active leases: {list(self.active_leases.keys())}"
+            )
+
+        if db_session:
+            _do_reconcile(db_session)
+        elif self.db_session_factory:
+            with self.db_session_factory() as session:
+                _do_reconcile(session)
+
     async def acquire_dependencies(
         self,
         consumer_type: str,
@@ -307,13 +400,18 @@ class DependencyManager:
                 if k_pid:
                     detected_provider_ids.add(k_pid)
 
-        # Check kiosk_config for desktop_service_id
+        # Check kiosk_config for target_desktop_service_id or desktop_service_id
         if consumer_type == 'service':
             from database.models import Service
             consumer_svc = db_session.get(Service, consumer_id)
             if consumer_svc and getattr(consumer_svc, 'service_type', None) == 'kiosk_browser':
-                k_cfg = (consumer_svc.config or {}).get("kiosk_config", {})
-                d_id = k_cfg.get("desktop_service_id")
+                k_cfg = (consumer_svc.config or {}).get("kiosk_config", consumer_svc.config or {})
+                d_id = (
+                    k_cfg.get("target_desktop_service_id") or
+                    k_cfg.get("desktop_service_id") or
+                    (consumer_svc.config or {}).get("target_desktop_service_id") or
+                    (consumer_svc.config or {}).get("desktop_service_id")
+                )
                 if d_id:
                     try:
                         detected_provider_ids.add(int(d_id))

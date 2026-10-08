@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.37.3] - 2026-10-08
+
+### Fixed
+- **In-Memory Active Leases Loss on Backend Restart & Reattach**:
+  - Implemented `reconcile_active_leases()` in `DependencyManager` executed on startup to rebuild in-memory lease tracking for all active/running services (Virtual Desktops, Kiosks, FFmpeg streams, and PipeWire Hubs) without requiring manual service restarts.
+  - Re-registered active leases in `reattach_process()` so reattached services immediately restore their lease holder records on PipeWire Hub and Virtual Desktops.
+  - Fixed Kiosk dependency auto-detection in `sync_auto_dependencies()` to support `target_desktop_service_id` alongside legacy `desktop_service_id`.
+
 ## [2.37.2] - 2026-10-08
 
 ### Fixed

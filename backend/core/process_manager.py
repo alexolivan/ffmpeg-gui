@@ -3681,12 +3681,64 @@ class ProcessManager:
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
 
-        # Re-register with dependency manager as pinned so it will not be auto-stopped prematurely
+        # Re-register with dependency manager as pinned and restore active leases
         try:
             from core.dependency_manager import dependency_manager
             dependency_manager.mark_pinned(process_id)
+            with self.db_session_factory() as session:
+                from database.models import Service, ServiceDependency
+                proc_model = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                if proc_model:
+                    cfg_model = proc_model.config or {}
+                    if svc_type == "desktop":
+                        d_cfg = cfg_model.get("desktop_config", cfg_model)
+                        if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                            try:
+                                pw_id = int(d_cfg.get("pipewire_service_id"))
+                                with dependency_manager.state_lock:
+                                    if pw_id not in dependency_manager.active_leases:
+                                        dependency_manager.active_leases[pw_id] = set()
+                                    dependency_manager.active_leases[pw_id].add(f"desktop:{process_id}")
+                            except (ValueError, TypeError):
+                                pass
+                    elif svc_type == "kiosk_browser":
+                        k_cfg = cfg_model.get("kiosk_config", cfg_model)
+                        desk_id_raw = (
+                            k_cfg.get("target_desktop_service_id") or
+                            k_cfg.get("desktop_service_id") or
+                            cfg_model.get("target_desktop_service_id") or
+                            cfg_model.get("desktop_service_id")
+                        )
+                        if desk_id_raw:
+                            try:
+                                d_id = int(desk_id_raw)
+                                with dependency_manager.state_lock:
+                                    if d_id not in dependency_manager.active_leases:
+                                        dependency_manager.active_leases[d_id] = set()
+                                    dependency_manager.active_leases[d_id].add(f"service:{process_id}")
+                                desk_svc = session.get(Service, d_id) if hasattr(session, "get") else session.query(Service).get(d_id)
+                                if desk_svc:
+                                    td_cfg = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
+                                    if td_cfg.get("audio_backend") == "pipewire_hub" and td_cfg.get("pipewire_service_id"):
+                                        pw_id = int(td_cfg.get("pipewire_service_id"))
+                                        with dependency_manager.state_lock:
+                                            if pw_id not in dependency_manager.active_leases:
+                                                dependency_manager.active_leases[pw_id] = set()
+                                            dependency_manager.active_leases[pw_id].add(f"kiosk:{process_id}")
+                            except (ValueError, TypeError):
+                                pass
+                    elif svc_type in ("ffmpeg_stream", "stream"):
+                        deps = session.query(ServiceDependency).filter(
+                            ServiceDependency.consumer_type == 'service',
+                            ServiceDependency.consumer_id == process_id
+                        ).all()
+                        with dependency_manager.state_lock:
+                            for dep in deps:
+                                if dep.provider_service_id not in dependency_manager.active_leases:
+                                    dependency_manager.active_leases[dep.provider_service_id] = set()
+                                dependency_manager.active_leases[dep.provider_service_id].add(f"service:{process_id}")
         except Exception as pin_err:
-            self.logger.warning(f"Failed to pin reattached service {process_id}: {pin_err}")
+            self.logger.warning(f"Failed to pin/re-register leases for reattached service {process_id}: {pin_err}")
 
         # Re-acquire local publisher resource lock for the re-attached alive process
         try:

@@ -3903,18 +3903,17 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start LCD manager on startup: {e}")
 
-    # Synchronize and auto-detect dependencies for all existing services and tasks
+    # Synchronize dependencies and reconcile active leases for all running services
     try:
         with SessionLocal() as db:
             from core.dependency_manager import dependency_manager
-            from database.models import Service, ScheduledTask
-            for s in db.query(Service).all():
-                dependency_manager.sync_auto_dependencies('service', s.id, s.input_config, s.output_config, db)
+            from database.models import ScheduledTask
             for t in db.query(ScheduledTask).all():
                 dependency_manager.sync_auto_dependencies('task', t.id, t.input_config, t.output_config, db)
-            logger.info("Auto-synchronized service and task dependencies on startup.")
+            dependency_manager.reconcile_active_leases(db)
+            logger.info("Auto-synchronized service/task dependencies and reconciled active leases on startup.")
     except Exception as e:
-        logger.error(f"Failed to auto-sync dependencies on startup: {e}")
+        logger.error(f"Failed to reconcile dependencies/leases on startup: {e}")
 
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
