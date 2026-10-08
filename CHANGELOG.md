@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.37.1] - 2026-10-08
+
+### Added
+- **2-Level Hierarchical ALSA Audio Selector (Input & Playout)**:
+  - Added card and subdevice level selection for both capture (`InputSourcePanel`) and playout (`DestinationPanel`).
+  - Level 1: Sound Card / Host Hardware Selector (`HDA Intel`, `AudioScience ASI5810`, `ALSA Loopback`).
+  - Level 2: Subdevice / Channel Selector (`Line In 1`, `hw:2,0,0`, etc.).
+  - Added dedicated manual string input toggle (`✏️ Manual` / `📋 List`) with instant fallback to custom strings (`hw:...`, `plughw:...`, `default`).
+  - Added on-demand refresh button (`🔄`) allowing re-probing devices without page reloading.
+  - Hierarchical API endpoints `/alsa/devices-hierarchical` and `/alsa/playback-devices-hierarchical`.
+
+### Fixed
+- **PipeWire Graph & Node Inspector Preview Hang**:
+  - Loaded `libpipewire-module-spa-node-factory` and `libpipewire-module-link-factory` in the PipeWire daemon configuration, enabling PipeWire client registry synchronization (`pw-dump`) to complete without timing out.
+  - Hardened daemon telemetry queries with dedicated 5.0s timeouts and explicit process cleanup.
+- **FFmpeg Engine Binary Resolution & Recipe Import Sanitization**:
+  - Prevented non-FFmpeg engines (such as Icecast or MediaMTX) from being inadvertently executed with FFmpeg arguments when recipe build IDs mismatch target environments.
+  - Recipe import now sanitizes engine build IDs and automatically resynchronizes local managed Icecast provider credentials, resolving the 401 Unauthorized regression.
+- **ALSA Sound Card Disappearance with `snd-aloop`**:
+  - Replaced slow subprocess `arecord -l` / `aplay -l` scanning with direct kernel parsing of `/proc/asound/cards` and `/proc/asound/pcm*`, eliminating timeouts when `snd-aloop` is loaded alongside multi-channel cards.
+
 ## [2.37.0] - 2026-10-07
 
 ### Added
