@@ -53,6 +53,8 @@ export interface InputSourceConfig {
   draw_mouse?: number | boolean;
   offset_x?: number;
   offset_y?: number;
+  sink_id?: string;
+  pipewire_service_id?: number | null;
 }
 
 interface InputSourcePanelProps {
@@ -72,6 +74,7 @@ interface InputSourcePanelProps {
 const ALL_SOURCE_TYPES = [
   { value: 'file', labelKey: 'sources.types.file', label: 'Local File / VOD' },
   { value: 'desktop', labelKey: 'sources.types.desktop', label: 'Virtual Desktop (x11grab)' },
+  { value: 'pipewire', labelKey: 'sources.types.pipewire', label: 'PipeWire Audio Hub' },
   { value: 'srt', labelKey: 'sources.types.srt', label: 'SRT Stream' },
   { value: 'ndi', labelKey: 'sources.types.ndi', label: 'NDI Source' },
   { value: 'udp', labelKey: 'sources.types.udp', label: 'UDP / MPEG-TS' },
@@ -176,6 +179,43 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       });
     return () => { active = false; };
   }, []);
+
+  // PipeWire Audio Hub State
+  const [pipewireHubs, setPipewireHubs] = React.useState<any[]>([]);
+  const [loadingPipewireHubs, setLoadingPipewireHubs] = React.useState(false);
+
+  React.useEffect(() => {
+    let active = true;
+    setLoadingPipewireHubs(true);
+    fetch('/processes')
+      .then(res => res.ok ? res.json() : [])
+      .then((procs: any[]) => {
+        if (!active) return;
+        const hubList = procs.filter((p: any) => p.service_type === 'pipewire_hub');
+        setPipewireHubs(hubList);
+      })
+      .catch(err => {
+        console.error('Error fetching PipeWire hubs in InputSourcePanel:', err);
+        if (active) setPipewireHubs([]);
+      })
+      .finally(() => {
+        if (active) setLoadingPipewireHubs(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  React.useEffect(() => {
+    if (config.type === 'pipewire' && pipewireHubs.length > 0 && !config.provider_service_id) {
+      const firstHub = pipewireHubs[0];
+      const virtualSinks = firstHub.config?.virtual_sinks || firstHub.config?.pipewire_config?.virtual_sinks || [];
+      const firstSinkId = virtualSinks[0]?.id || 'mix_bus';
+      update({
+        provider_service_id: firstHub.id,
+        sink_id: firstSinkId,
+        device: `${firstSinkId}.monitor`
+      });
+    }
+  }, [config.type, pipewireHubs]);
 
   // NDI Scan State
   const [ndiSources, setNdiSources] = React.useState<string[]>([]);
@@ -609,6 +649,11 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               framerate: defaultDeskCfg.framerate !== undefined ? Number(defaultDeskCfg.framerate) : 30,
               provider_service_id: defaultDesk ? defaultDesk.id : null,
               draw_mouse: 0,
+            } : {}),
+            ...(newType === 'pipewire' ? {
+              provider_service_id: pipewireHubs[0]?.id || null,
+              sink_id: (pipewireHubs[0]?.config?.virtual_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.virtual_sinks?.[0]?.id) || 'mix_bus',
+              device: `${(pipewireHubs[0]?.config?.virtual_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.virtual_sinks?.[0]?.id) || 'mix_bus'}.monitor`
             } : {}),
             ...(!isHwSupported ? {
               hwaccel: 'none',
@@ -3632,6 +3677,113 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           )}
         </div>
       )}
+
+      {config.type === 'pipewire' && (() => {
+        const selectedHub = pipewireHubs.find(h => h.id === config.provider_service_id);
+        const virtualSinks: any[] = selectedHub?.config?.virtual_sinks || selectedHub?.config?.pipewire_config?.virtual_sinks || [];
+        const currentSinkId = config.sink_id || (config.device ? config.device.replace(/\.monitor$/, '') : 'mix_bus');
+
+        return (
+          <div className="space-y-3 p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🌐</span>
+                <span className="text-xs font-bold text-brand-lime uppercase tracking-wider">
+                  {t('sources.pipewire.title', 'PipeWire Audio Hub Ingest')}
+                </span>
+              </div>
+              {selectedHub && (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border ${
+                  selectedHub.status === 'running'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-zinc-500/10 border-zinc-500/30 text-[var(--text-secondary)]'
+                }`}>
+                  {selectedHub.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')}
+                </span>
+              )}
+            </div>
+
+            {loadingPipewireHubs ? (
+              <div className="text-xs text-[var(--text-secondary)] py-2 flex items-center gap-2">
+                <span className="animate-spin text-brand-lime">↻</span>
+                <span>{t('sources.pipewire.loadingHubs', 'Loading PipeWire Hub services...')}</span>
+              </div>
+            ) : pipewireHubs.length === 0 ? (
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
+                <span>⚠️</span>
+                <div>
+                  <p className="font-semibold">{t('sources.pipewire.noHubsTitle', 'No PipeWire Audio Hubs Found')}</p>
+                  <p className="text-[11px] text-amber-200/80 mt-0.5">
+                    {t('sources.pipewire.noHubs', 'Create and start a PipeWire Audio Hub service first in the Services tab.')}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {/* Selector 1: Hub Service */}
+                <div>
+                  <label htmlFor={`${idPrefix}-pw-provider`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('sources.pipewire.hubService', 'PipeWire Audio Hub Service')}
+                  </label>
+                  <select
+                    id={`${idPrefix}-pw-provider`}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
+                    value={config.provider_service_id || ''}
+                    onChange={e => {
+                      const nextHubId = Number(e.target.value);
+                      const nextHub = pipewireHubs.find(h => h.id === nextHubId);
+                      const nextSinks = nextHub?.config?.virtual_sinks || nextHub?.config?.pipewire_config?.virtual_sinks || [];
+                      const defaultSink = nextSinks[0]?.id || 'mix_bus';
+                      update({
+                        provider_service_id: nextHubId,
+                        sink_id: defaultSink,
+                        device: `${defaultSink}.monitor`
+                      });
+                    }}
+                  >
+                    <option value="">{t('sources.pipewire.selectHub', 'Select PipeWire Hub...')}</option>
+                    {pipewireHubs.map(h => (
+                      <option key={h.id} value={h.id}>
+                        {h.name} ({h.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Selector 2: Target Virtual Audio Bus Monitor */}
+                <div>
+                  <label htmlFor={`${idPrefix}-pw-sink`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('sources.pipewire.sinkMonitor', 'Audio Bus / Sink Monitor Target')}
+                  </label>
+                  <select
+                    id={`${idPrefix}-pw-sink`}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
+                    value={currentSinkId}
+                    onChange={e => {
+                      const selectedSink = e.target.value;
+                      update({
+                        sink_id: selectedSink,
+                        device: `${selectedSink}.monitor`
+                      });
+                    }}
+                  >
+                    <option value="default">🌟 {t('sources.pipewire.defaultMonitor', 'System Default (default.monitor)')}</option>
+                    {virtualSinks.map((s: any) => (
+                      <option key={s.id} value={s.id}>
+                        🎛️ {s.name || s.id} ({s.channels || 2}ch) [{s.id}.monitor]{s.aes67_enabled ? ' [AES67 Tx]' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-1">
+                    {t('sources.pipewire.sinkHelp', 'FFmpeg captures uncompressed audio directly from this PipeWire virtual bus monitor (.monitor).')}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {config.type === 'v4l2' && (
         <div className="space-y-2">
