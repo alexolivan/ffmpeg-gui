@@ -25,7 +25,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         res = PipeWireConfigGenerator.generate_config(1, config, runtime_dir)
 
         self.assertIn("core.daemon = true", res)
-        self.assertIn('core.name = "pipewire-1"', res)
+        self.assertIn('core.name = "pipewire-0"', res)
         self.assertIn("default.clock.rate = 48000", res)
         self.assertIn("default.clock.quantum = 1024", res)
         self.assertIn("default.clock.min-quantum = 128", res)
@@ -35,6 +35,8 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         # Context modules
         self.assertIn("libpipewire-module-rt", res)
         self.assertIn("libpipewire-module-protocol-native", res)
+        self.assertIn("libpipewire-module-access", res)
+        self.assertIn('pipewire-0 = "unrestricted"', res)
         self.assertIn('{ name = "pipewire-0" }', res)
         self.assertIn('{ name = "pipewire-0-manager" }', res)
         self.assertIn("libpipewire-module-spa-node-factory", res)
