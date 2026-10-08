@@ -290,7 +290,7 @@ class FFmpegCommandBuilder:
     def _append_input(cls, cmd: list, input_cfg: dict, ffmpeg_bin: str = "ffmpeg"):
         input_type = input_cfg.get('type')
         
-        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab', 'pipewire'}
         hwaccel = 'none'
         if input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
             hwaccel = input_cfg.get('hwaccel', 'none')
@@ -358,6 +358,10 @@ class FFmpegCommandBuilder:
         elif input_type == 'alsa':
             device = input_cfg.get('device', 'hw:0,0')
             cmd += ["-f", "alsa", "-i", device]
+        elif input_type == 'pipewire':
+            sink_id = input_cfg.get('sink_id') or input_cfg.get('device') or 'default'
+            monitor_dev = sink_id if (sink_id.endswith('.monitor') or sink_id == 'default') else f"{sink_id}.monitor"
+            cmd += ["-f", "pulse", "-i", monitor_dev]
         elif input_type == 'v4l2':
             device = input_cfg.get('device', '/dev/video0')
             pixel_format = input_cfg.get('pixel_format')
@@ -799,6 +803,9 @@ class FFmpegCommandBuilder:
         elif output_type == 'alsa':
             device = output_cfg.get('device', 'hw:0,0')
             cmd += ["-f", "alsa", device]
+        elif output_type == 'pipewire':
+            sink_id = output_cfg.get('sink_id') or output_cfg.get('device') or 'default'
+            cmd += ["-f", "pulse", sink_id]
         elif output_type == 'icecast':
             host = output_cfg.get('host', 'localhost')
             port = output_cfg.get('port', '7000')
@@ -977,7 +984,7 @@ class FFmpegCommandBuilder:
             if "-vaapi_device" not in cmd:
                 cmd += ["-vaapi_device", vaapi_dev]
 
-        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab', 'pipewire'}
         is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
         has_input_level_hwdec = False
@@ -1044,7 +1051,7 @@ class FFmpegCommandBuilder:
                 has_audio = False
 
         # Protect against audio-only primary inputs without secondary video source
-        if primary_input_type in ('alsa', 'lavfi_audio', 'http_audio') and not (is_new_format and use_secondary and 'input2' in input_cfg):
+        if primary_input_type in ('alsa', 'lavfi_audio', 'http_audio', 'pipewire') and not (is_new_format and use_secondary and 'input2' in input_cfg):
             if has_video:
                 logger.info(
                     f"Process '{getattr(media_proc, 'name', 'unnamed')}' has audio-only input ({primary_input_type}) without secondary video source. "
@@ -1052,9 +1059,9 @@ class FFmpegCommandBuilder:
                 )
                 has_video = False
 
-        # Protect against audio-only destinations (e.g. Icecast, ALSA output)
+        # Protect against audio-only destinations (e.g. Icecast, ALSA output, PipeWire output)
         output_type = output_cfg.get('type')
-        if output_type in ('icecast', 'alsa') and has_video:
+        if output_type in ('icecast', 'alsa', 'pipewire') and has_video:
             has_video = False
 
         variants = output_cfg.get('variants', [])
@@ -1063,7 +1070,7 @@ class FFmpegCommandBuilder:
         if is_abr:
             from core.filter_graph import FilterGraphBuilder
 
-            _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
+            _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab', 'pipewire'}
             is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
             frames_destination = 'cpu'
@@ -1238,7 +1245,7 @@ class FFmpegCommandBuilder:
             else:
                 from core.filter_graph import FilterGraphBuilder
                 
-                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
+                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab', 'pipewire'}
                 is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
                 frames_destination = 'cpu'
@@ -1337,11 +1344,24 @@ class FFmpegCommandBuilder:
                     cmd += ["-af", af_str]
                     
                 acodec = codec_cfg.get('acodec', 'aac')
-                if output_type == 'alsa' and (acodec == 'copy' or not (acodec and acodec.startswith('pcm_'))):
-                    logger.warning(
-                        f"ALSA output requires uncompressed PCM audio. Forcing 'pcm_s16le' instead of '{acodec}'."
-                    )
-                    acodec = 'pcm_s16le'
+                is_raw_audio_input = primary_input_type in ('alsa', 'pipewire', 'decklink', 'lavfi_audio')
+                if output_type in ('alsa', 'pipewire'):
+                    if acodec == 'copy':
+                        if af_str:
+                            logger.warning(
+                                f"{output_type.upper()} output with audio filters cannot use streamcopy. Forcing 'pcm_s16le'."
+                            )
+                            acodec = 'pcm_s16le'
+                        elif not is_raw_audio_input:
+                            logger.warning(
+                                f"{output_type.upper()} output requires uncompressed PCM audio from compressed input '{primary_input_type}'. Forcing 'pcm_s16le' instead of 'copy'."
+                            )
+                            acodec = 'pcm_s16le'
+                    elif not (acodec and acodec.startswith('pcm_')):
+                        logger.warning(
+                            f"{output_type.upper()} output requires uncompressed PCM audio. Forcing 'pcm_s16le' instead of '{acodec}'."
+                        )
+                        acodec = 'pcm_s16le'
                 cmd += ["-c:a", acodec]
                 
                 audio_params = codec_cfg.get('audio_params', {})

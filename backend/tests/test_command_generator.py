@@ -1034,6 +1034,135 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-rtsp_transport udp", cmd_str)
         self.assertIn("-f rtsp rtsp://admin:secret123@192.168.1.100:8554/studio/cam1", cmd_str)
 
+    def test_pipewire_input_command_generation(self):
+        """Test PipeWire input monitor capture with pure audio handling."""
+        proc = MagicMock()
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'pipewire',
+            'sink_id': 'master_bus'
+        }
+        proc.codec_config = {
+            'acodec': 'pcm_s16le',
+            'audio_params': {'ar': '48000', 'ac': '2'}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'alsa',
+            'device': 'hw:0,0'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f pulse -i master_bus.monitor", cmd_str)
+        self.assertIn("-vn", cmd_str)
+        self.assertIn("-c:a pcm_s16le", cmd_str)
+        self.assertIn("-f alsa hw:0,0", cmd_str)
+
+    def test_pipewire_output_command_generation(self):
+        """Test PipeWire output virtual sink injection with pure audio handling."""
+        proc = MagicMock()
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'alsa',
+            'device': 'hw:1,0'
+        }
+        proc.codec_config = {
+            'acodec': 'pcm_s16le',
+            'audio_params': {'ar': '48000', 'ac': '2'}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'pipewire',
+            'sink_id': 'kiosk_bus'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f alsa -i hw:1,0", cmd_str)
+        self.assertIn("-vn", cmd_str)
+        self.assertIn("-c:a pcm_s16le", cmd_str)
+        self.assertIn("-f pulse kiosk_bus", cmd_str)
+
+    def test_pipewire_to_icecast_cross_bridge(self):
+        """Test PipeWire monitor capture encoded to Icecast MP3."""
+        proc = MagicMock()
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'pipewire',
+            'sink_id': 'mix_bus'
+        }
+        proc.codec_config = {
+            'acodec': 'libmp3lame',
+            'audio_params': {'b:a': '192k'}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'icecast',
+            'host': '127.0.0.1',
+            'port': 8000,
+            'icecast_mount': '/stream.mp3'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f pulse -i mix_bus.monitor", cmd_str)
+        self.assertIn("-vn", cmd_str)
+        self.assertIn("-c:a libmp3lame", cmd_str)
+        self.assertIn("icecast://", cmd_str)
+
+    def test_pipewire_to_alsa_copy_passthrough(self):
+        """Test bit-perfect stream copy from PipeWire PCM input to ALSA output (0% CPU)."""
+        proc = MagicMock()
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'pipewire',
+            'sink_id': 'mix_bus'
+        }
+        proc.codec_config = {
+            'acodec': 'copy',
+            'audio_params': {}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'alsa',
+            'device': 'hw:0,0'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-f pulse -i mix_bus.monitor", cmd_str)
+        self.assertIn("-c:a copy", cmd_str)
+        self.assertIn("-f alsa hw:0,0", cmd_str)
+
+    def test_compressed_to_pipewire_forces_pcm(self):
+        """Test that compressed audio (RTSP AAC/MP3) targeting PipeWire forces pcm_s16le even if copy requested."""
+        proc = MagicMock()
+        proc.type = "service"
+        proc.input_config = {
+            'type': 'rtsp',
+            'path': 'rtsp://10.0.0.1:8554/live'
+        }
+        proc.codec_config = {
+            'acodec': 'copy',
+            'audio_params': {}
+        }
+        proc.filter_config = {}
+        proc.output_config = {
+            'type': 'pipewire',
+            'sink_id': 'mix_bus'
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertIn("-c:a pcm_s16le", cmd_str)
+        self.assertIn("-f pulse mix_bus", cmd_str)
+
 
 if __name__ == '__main__':
     unittest.main()
