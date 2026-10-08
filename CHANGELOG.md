@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.37.4] - 2026-10-08
+
+### Added
+- **Human-Readable Service & Task Aliases in Active Lease Badges**:
+  - Implemented `resolve_lease_display_name()` in `backend/main.py` resolving raw lease identifiers (`service:<id>`, `desktop:<id>`, `kiosk:<id>`, `task:<id>`, and `peer:<name>`) to human-readable process aliases or names.
+  - Exposed `active_leases_raw` alongside `active_leases` in both `/api/processes` and `/ws/telemetry` for backward compatibility.
+  - Updated hover tooltips across `DesktopServiceCard`, `PipeWireServiceCard`, `MediaMtxServiceCard`, `IcecastServiceCard`, `MediaMtxPreviewModal`, and `IcecastPreviewModal` to display localized strings with process aliases (e.g., `Active connected consumers: Tac12 Kiosk, CTE Agenda Kiosk`).
+  - Added localized translation keys `common.activeConnectedConsumers` and `common.activeConnectedBroadcasters` across English, Spanish, and Catalan.
+
 ## [2.37.3] - 2026-10-08
 
 ### Fixed

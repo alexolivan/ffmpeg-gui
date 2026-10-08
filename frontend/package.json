@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "2.37.3",
+  "version": "2.37.4",
   "type": "module",
   "scripts": {
     "dev": "vite",

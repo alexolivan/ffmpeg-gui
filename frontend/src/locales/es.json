@@ -44,6 +44,8 @@
     "lines": "líneas",
     "activeConsumer": "Consumidor Activo",
     "activeConsumers": "Consumidores Activos",
+    "activeConnectedConsumers": "Consumidores activos conectados",
+    "activeConnectedBroadcasters": "Emisores y consumidores activos conectados",
     "idle": "0 Leases (Inactivo)",
     "network": {
       "interfaceSelector": {

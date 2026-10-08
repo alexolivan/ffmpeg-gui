@@ -262,3 +262,21 @@ class TestStartupReattach(unittest.IsolatedAsyncioTestCase):
         desk_leases = dependency_manager.get_active_leases(201)
         self.assertIn("service:202", desk_leases)
 
+    def test_resolve_lease_display_name(self):
+        from main import resolve_lease_display_name
+        services_lookup = {
+            10: "Tac12 Desk Alias",
+            11: "Kiosk Tac12 Directe",
+            12: "MediaMTX Hub"
+        }
+        tasks_lookup = {
+            2: "Daily Backup Task"
+        }
+
+        self.assertEqual(resolve_lease_display_name("desktop:10", services_lookup, tasks_lookup), "Tac12 Desk Alias")
+        self.assertEqual(resolve_lease_display_name("kiosk:11", services_lookup, tasks_lookup), "Kiosk Tac12 Directe")
+        self.assertEqual(resolve_lease_display_name("service:12", services_lookup, tasks_lookup), "MediaMTX Hub")
+        self.assertEqual(resolve_lease_display_name("task:2", services_lookup, tasks_lookup), "Daily Backup Task")
+        self.assertEqual(resolve_lease_display_name("peer:remote-node-1", services_lookup, tasks_lookup), "Peer: remote-node-1")
+        self.assertEqual(resolve_lease_display_name("service:999", services_lookup, tasks_lookup), "Service #999")
+

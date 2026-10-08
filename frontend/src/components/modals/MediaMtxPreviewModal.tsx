@@ -385,7 +385,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
                 {currentProcess.active_leases && currentProcess.active_leases.length > 0 ? (
                   <span
                     className="text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-black bg-brand-lime/20 text-brand-lime border-brand-lime/30 flex items-center gap-1 shadow-[0_0_8px_rgba(212,255,91,0.2)]"
-                    title={`Active connected consumers: ${currentProcess.active_leases.join(', ')}`}
+                    title={`${t('common.activeConnectedConsumers', 'Active connected consumers')}: ${currentProcess.active_leases.join(', ')}`}
                   >
                     🔗 {currentProcess.active_leases.length} {currentProcess.active_leases.length === 1 ? 'LEASE' : 'LEASES'}
                   </span>

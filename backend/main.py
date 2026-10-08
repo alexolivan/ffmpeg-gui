@@ -3328,6 +3328,32 @@ async def websocket_telemetry(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
+def resolve_lease_display_name(token: str, services_lookup: dict, tasks_lookup: dict) -> str:
+    """
+    Resolves an internal lease token ('service:1', 'desktop:10', 'kiosk:11', 'task:2', 'peer:xyz')
+    to its human-readable alias or process name for UI display.
+    """
+    if not token or not isinstance(token, str):
+        return str(token)
+    if ":" in token:
+        prefix, raw_id = token.split(":", 1)
+        prefix_clean = prefix.strip().lower()
+        if prefix_clean == "peer":
+            return f"Peer: {raw_id.strip()}"
+        try:
+            item_id = int(raw_id)
+            if prefix_clean in ("service", "desktop", "kiosk"):
+                if item_id in services_lookup:
+                    return services_lookup[item_id]
+                return f"{prefix.capitalize()} #{item_id}"
+            elif prefix_clean == "task":
+                if item_id in tasks_lookup:
+                    return tasks_lookup[item_id]
+                return f"Task #{item_id}"
+        except (ValueError, TypeError):
+            pass
+    return token
+
 async def telemetry_broadcast_loop():
     gpu_sensor = GPUSensor()
     psutil.cpu_percent(interval=None)
@@ -3372,13 +3398,16 @@ async def telemetry_broadcast_loop():
                 ]
 
                 processes = db.query(MediaProcess).all()
+                services_lookup = {p.id: ((getattr(p, 'alias', None) or '').strip() or p.name) for p in processes}
+                tasks_lookup = {t.id: ((getattr(t, 'alias', None) or '').strip() or t.name) for t in db.query(ScheduledTask).all()}
                 processes_data = []
                 for p in processes:
                     p_deps = list(deps_by_proc.get(p.id, []))
                     fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
                     if fed_dep:
                         p_deps.append(fed_dep)
-                    p_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+                    raw_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+                    p_leases = [resolve_lease_display_name(l, services_lookup, tasks_lookup) for l in raw_leases]
                     processes_data.append({
                         "id": p.id,
                         "name": p.name,
@@ -3410,6 +3439,7 @@ async def telemetry_broadcast_loop():
                         "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
                         "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
                         "active_leases": p_leases,
+                        "active_leases_raw": raw_leases,
                         "is_pinned": dependency_manager.is_pinned(p.id),
                         "dependencies": p_deps,
                         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
@@ -4869,13 +4899,17 @@ def list_processes(db: Session = Depends(get_db)):
             "is_auto_managed": d.is_auto_managed
         })
 
+    from database.models import ScheduledTask
+    services_lookup = {p.id: ((getattr(p, 'alias', None) or '').strip() or p.name) for p in processes}
+    tasks_lookup = {t.id: ((getattr(t, 'alias', None) or '').strip() or t.name) for t in db.query(ScheduledTask).all()}
     processes_data = []
     for p in processes:
         p_deps = list(deps_by_consumer.get(('service', p.id), []))
         fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
         if fed_dep:
             p_deps.append(fed_dep)
-        p_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+        raw_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+        p_leases = [resolve_lease_display_name(l, services_lookup, tasks_lookup) for l in raw_leases]
         processes_data.append({
             "id": p.id,
             "name": p.name,
@@ -4906,6 +4940,7 @@ def list_processes(db: Session = Depends(get_db)):
             "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
             "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
             "active_leases": p_leases,
+            "active_leases_raw": raw_leases,
             "is_pinned": dependency_manager.is_pinned(p.id),
             "dependencies": p_deps,
             "pending_changes": p.pending_changes,

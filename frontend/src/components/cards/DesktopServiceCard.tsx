@@ -146,7 +146,7 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
           {service.active_leases && service.active_leases.length > 0 ? (
             <span
               className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-black flex items-center gap-1 shadow-[0_0_8px_rgba(212,255,91,0.2)]"
-              title={`Active connected consumers: ${service.active_leases.join(', ')}`}
+              title={`${t('common.activeConnectedConsumers', 'Active connected consumers')}: ${service.active_leases.join(', ')}`}
             >
               🔗 {service.active_leases.length} {service.active_leases.length === 1 ? 'LEASE' : 'LEASES'}
             </span>
