@@ -612,6 +612,97 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
         finally:
             app.dependency_overrides.clear()
 
+    @patch("shutil.which", return_value="/usr/bin/ffmpeg")
+    @patch("asyncio.create_subprocess_exec")
+    async def test_ffmpeg_service_pipewire_lease_lifecycle(self, mock_exec, mock_which):
+        """Test that starting an FFmpeg service with PipeWire input acquires a lease and injects PULSE_SERVER/PIPEWIRE_RUNTIME_DIR."""
+        mock_proc = self._create_mock_proc(pid=6060)
+        mock_exec.return_value = mock_proc
+
+        with self.Session() as session:
+            hub = Service(
+                id=501,
+                name="PW Hub 501",
+                service_type="pipewire_hub",
+                status="running",
+                config={"pipewire_config": {"sample_rate": 48000}}
+            )
+            consumer = Service(
+                id=502,
+                name="FFmpeg PipeWire Consumer",
+                service_type="ffmpeg_stream",
+                status="stopped",
+                config={
+                    "input_config": {
+                        "type": "pipewire",
+                        "provider_service_id": 501,
+                        "sink_id": "mix_bus"
+                    },
+                    "codec_config": {"acodec": "pcm_s16le"},
+                    "output_config": {"type": "alsa", "device": "hw:0,0"}
+                }
+            )
+            session.add_all([hub, consumer])
+            session.commit()
+
+        with patch.object(self.pm, "_watchdog", new_callable=AsyncMock), \
+             patch.object(self.pm, "_log_reader", new_callable=AsyncMock):
+
+            await self.pm.start_process(502)
+
+            # Check that lease was acquired on Hub 501 by service:502
+            self.assertIn(501, dependency_manager.active_leases)
+            self.assertIn("service:502", dependency_manager.active_leases[501])
+
+            # Check environment variables passed to asyncio.create_subprocess_exec
+            self.assertTrue(mock_exec.called)
+            kwargs = mock_exec.call_args[1]
+            env = kwargs.get("env", {})
+            self.assertEqual(env.get("PULSE_SERVER"), "unix:/tmp/ffmpeg-gui/pipewire-501/pulse.sock")
+            self.assertEqual(env.get("PIPEWIRE_RUNTIME_DIR"), "/tmp/ffmpeg-gui/pipewire-501")
+
+            # Stopping the consumer should release the lease
+            await self.pm.stop_process(502)
+            active_for_501 = dependency_manager.active_leases.get(501, set())
+            self.assertNotIn("service:502", active_for_501)
+
+    def test_dependency_manager_sync_pipewire_stream(self):
+        """Test that sync_auto_dependencies detects PipeWire provider_service_id in input and output config."""
+        from database.models import ServiceDependency
+        with self.Session() as session:
+            consumer = Service(
+                id=601,
+                name="Stream 601",
+                service_type="ffmpeg_stream",
+                status="stopped",
+                config={}
+            )
+            hub = Service(
+                id=602,
+                name="Hub 602",
+                service_type="pipewire_hub",
+                status="running",
+                config={}
+            )
+            session.add_all([consumer, hub])
+            session.commit()
+
+            inp_cfg = {
+                "input1": {
+                    "type": "pipewire",
+                    "provider_service_id": 602,
+                    "sink_id": "master_bus"
+                }
+            }
+            out_cfg = {"type": "icecast", "host": "127.0.0.1"}
+
+            p_ids = dependency_manager.sync_auto_dependencies("service", 601, inp_cfg, out_cfg, session)
+            self.assertIn(602, p_ids)
+
+            deps = session.query(ServiceDependency).filter_by(consumer_type="service", consumer_id=601).all()
+            self.assertEqual(len(deps), 1)
+            self.assertEqual(deps[0].provider_service_id, 602)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -347,6 +347,8 @@ class DependencyManager:
             val = conf.get("provider_service_id")
             if val is None and cfg_type in ('desktop', 'x11grab'):
                 val = conf.get("desktop_service_id")
+            if val is None and cfg_type in ('pipewire', 'pipewire_hub', 'aes67'):
+                val = conf.get("pipewire_service_id")
             if val is None:
                 return None
             if is_output:

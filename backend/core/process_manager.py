@@ -28,6 +28,9 @@ class ProcessManager:
         self.watchdog_stalled_since: Dict[int, Optional[datetime]] = {}
         self.watchdog_low_speed_since: Dict[int, Optional[datetime]] = {}
         self.db_session_factory = db_session_factory
+        if db_session_factory:
+            self.dependency_manager.db_session_factory = db_session_factory
+            self.dependency_manager.process_manager = self
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
         self._spawn_lock: Optional[asyncio.Lock] = None
@@ -525,6 +528,28 @@ class ProcessManager:
                     cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
 
                 proc_name = media_proc.name
+                
+                # Check if this FFmpeg process consumes or produces to a PipeWire Hub
+                pw_provider_id = None
+                if svc_type not in ("mediamtx_hub", "icecast_server", "pipewire_hub", "desktop", "kiosk_browser"):
+                    inp_c = cfg.get("input_config", {})
+                    out_c = cfg.get("output_config", {})
+                    check_targets = [inp_c, out_c]
+                    if isinstance(inp_c, dict):
+                        if "input1" in inp_c:
+                            check_targets.append(inp_c.get("input1"))
+                        if "input2" in inp_c:
+                            check_targets.append(inp_c.get("input2"))
+                    for c in check_targets:
+                        if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                            cand_id = c.get("provider_service_id") or c.get("pipewire_service_id")
+                            if cand_id:
+                                try:
+                                    pw_provider_id = int(cand_id)
+                                    break
+                                except (ValueError, TypeError):
+                                    pass
+
                 session.commit()  # Save changes and release write lock immediately!
                 
             # Ensure log directory exists and prepare file permissions for progress/preview files
@@ -535,6 +560,10 @@ class ProcessManager:
             # 2. Spawn subprocess (outside of any database session locks)
             self.logger.info(f"Starting service '{proc_name}' ({svc_type}): {shlex.join(cmd)}")
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
+            if pw_provider_id:
+                sub_env["PULSE_SERVER"] = f"unix:/tmp/ffmpeg-gui/pipewire-{pw_provider_id}/pulse.sock"
+                sub_env["PIPEWIRE_RUNTIME_DIR"] = f"/tmp/ffmpeg-gui/pipewire-{pw_provider_id}"
+                sub_env["PULSE_RUNTIME_PATH"] = f"/tmp/ffmpeg-gui/pipewire-{pw_provider_id}"
             
             try:
                 raw_cmd_str = shlex.join(cmd)
