@@ -85,7 +85,11 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   },
   alsa: {
     video: [],
-    audio: ['pcm_s16le', 'pcm_s24le']
+    audio: ['pcm_s16le', 'pcm_s24le', 'copy']
+  },
+  pipewire: {
+    video: [],
+    audio: ['pcm_s16le', 'pcm_s24le', 'copy']
   },
   rtsp: {
     video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
@@ -1099,8 +1103,18 @@ export function getAvailableAudioCodecs(
     codecs = codecs.filter(c => allowed.includes(c.id));
   }
 
-  // If input is an uncompressed raw hardware source, exclude 'copy' (passthrough impossible)
-  if (isRawHardwareAudioSource(inputType)) {
+  // Audio streamcopy ('copy') matrix:
+  // - Raw hardware/virtual sources (alsa, pipewire, decklink, lavfi) CAN streamcopy to raw audio destinations
+  //   (alsa, pipewire) and containers supporting PCM (file, rtsp, rtp).
+  // - Raw sources CANNOT streamcopy to compressed streaming destinations (icecast, rtmp, whip, hls).
+  // - Compressed sources CANNOT streamcopy into raw PCM destinations (alsa, pipewire) without transcoding.
+  const isRawInput = isRawHardwareAudioSource(inputType);
+  const isCompressedDest = outputType ? ['icecast', 'rtmp', 'whip', 'hls'].includes(outputType) : false;
+  const isRawDest = outputType ? ['alsa', 'pipewire'].includes(outputType) : false;
+
+  if (isRawInput && isCompressedDest) {
+    codecs = codecs.filter(c => c.id !== 'copy');
+  } else if (!isRawInput && isRawDest) {
     codecs = codecs.filter(c => c.id !== 'copy');
   }
 

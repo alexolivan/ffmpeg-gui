@@ -6400,7 +6400,7 @@ def remove_service_dependency(service_id: int, provider_service_id: int, db: Ses
 def list_available_dependency_providers(db: Session = Depends(get_db)):
     """List auxiliary services that can act as stream routing or protocol hubs (MediaMTX, Icecast) or virtual desktops."""
     providers = db.query(MediaProcess).filter(
-        MediaProcess.service_type.in_(["mediamtx_hub", "icecast_server", "desktop"])
+        MediaProcess.service_type.in_(["mediamtx_hub", "icecast_server", "desktop", "pipewire_hub"])
     ).all()
     
     result = []
@@ -6408,7 +6408,7 @@ def list_available_dependency_providers(db: Session = Depends(get_db)):
     from core.builders.ffmpeg_builder import FFmpegCommandBuilder
     for p in providers:
         cfg = p.config or {}
-        prov_cfg = dict(cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg.get("desktop_config") or cfg)
+        prov_cfg = dict(cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg.get("desktop_config") or cfg.get("pipewire_config") or cfg)
         is_legacy = False
         software_version = None
         if p.service_type == "icecast_server":

@@ -63,6 +63,8 @@ export interface OutputConfig {
   ice_public?: boolean;
   legacy_icecast?: boolean;
   tls?: boolean;
+  sink_id?: string;
+  pipewire_service_id?: number | null;
 }
 
 export const isLegacyIcecastStr = (versionStr?: string | null): boolean => {
@@ -103,6 +105,7 @@ const OUTPUT_TYPES = [
   { value: 'file', labelKey: 'destinations.types.file', label: 'Local Recording', requiresVideo: false },
   { value: 'icecast', labelKey: 'destinations.types.icecast', label: 'Icecast2 (Audio Stream)', requiresVideo: false },
   { value: 'alsa', labelKey: 'destinations.types.alsa', label: 'ALSA Audio Device', requiresVideo: false },
+  { value: 'pipewire', labelKey: 'destinations.types.pipewire', label: 'PipeWire Audio Hub', requiresVideo: false },
   { value: 'rtp', labelKey: 'destinations.types.rtp', label: 'RTP Stream', requiresVideo: false },
   { value: 'hls', labelKey: 'destinations.types.hls', label: 'HLS Live Streaming', requiresVideo: false },
 ];
@@ -152,6 +155,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     if (t.requiresVideo && !hasVideo) return false;
     if (t.value === 'icecast' && !hasAudio) return false;
     if (t.value === 'alsa' && !hasAudio) return false;
+    if (t.value === 'pipewire' && !hasAudio) return false;
     return true;
   });
 
@@ -576,7 +580,26 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           }
         }
       }
-    } else if (config.type && !['srt', 'rtmp', 'rtsp', 'whip', 'icecast'].includes(config.type) && (config.provider_service_id || config.mediamtx_mode || config.service_target)) {
+    } else if (config.type === 'pipewire') {
+      const pipewireProviders = providers.filter(p => p.service_type === 'pipewire_hub');
+      if (pipewireProviders.length > 0) {
+        const prov = pipewireProviders.find(p => p.id === config.provider_service_id) || pipewireProviders[0];
+        if (prov) {
+          const sinks = prov.config?.virtual_sinks || prov.config?.pipewire_config?.virtual_sinks || [];
+          const defaultSink = sinks[0]?.id || 'mix_bus';
+          const currentSink = config.sink_id || (config.device || '');
+          const validSink = sinks.some((s: any) => s.id === currentSink) ? currentSink : defaultSink;
+          if (config.provider_service_id !== prov.id || config.sink_id !== validSink || config.device !== validSink) {
+            update({
+              provider_service_id: prov.id,
+              pipewire_service_id: prov.id,
+              sink_id: validSink,
+              device: validSink,
+            });
+          }
+        }
+      }
+    } else if (config.type && !['srt', 'rtmp', 'rtsp', 'whip', 'icecast', 'pipewire'].includes(config.type) && (config.provider_service_id || config.mediamtx_mode || config.service_target)) {
       update({
         provider_service_id: undefined,
         mediamtx_mode: false,
@@ -586,7 +609,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         stream_action: undefined,
       });
     }
-  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls, config.rtsp_transport]);
+  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls, config.rtsp_transport, config.sink_id, config.device]);
 
   const parseFormatDescription = (desc: string) => {
     const resMatch = desc.match(/(\d+)x(\d+)/);
@@ -640,12 +663,28 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             host: '', port: newType === 'rtsp' ? '8554' : '', path: '', url: '',
             mode: 'caller', latency: 200,
             rtsp_transport: newType === 'rtsp' ? 'tcp' : undefined,
-            container: 'mp4', icecast_mount: '', icecast_password: '',
+            container: newType === 'pipewire' || newType === 'alsa' ? undefined : 'mp4',
+            icecast_mount: '', icecast_password: '',
             hls_method: (storages || []).some((s: any) => s.type === 'hls') ? 'local' : 'PUT',
             storage_id: (storages || []).find((s: any) => s.type === 'hls')?.id || null,
             hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
             hls_abr_enabled: false, hls_stream_name: 'stream', variants: [],
-            provider_service_id: undefined,
+            ...(newType === 'pipewire' ? (() => {
+              const pwProviders = providers.filter(p => p.service_type === 'pipewire_hub');
+              const firstHub = pwProviders[0];
+              const sinks = firstHub?.config?.virtual_sinks || firstHub?.config?.pipewire_config?.virtual_sinks || [];
+              const firstSink = sinks[0]?.id || 'mix_bus';
+              return {
+                provider_service_id: firstHub?.id || null,
+                pipewire_service_id: firstHub?.id || null,
+                sink_id: firstSink,
+                device: firstSink,
+              };
+            })() : {
+              provider_service_id: undefined,
+              pipewire_service_id: undefined,
+              sink_id: undefined,
+            }),
             mediamtx_mode: false,
             service_target: undefined,
             mediamtx_target_type: undefined,
@@ -4445,6 +4484,113 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         </div>
       )}
 
+      {config.type === 'pipewire' && (() => {
+        const pipewireProviders = providers.filter(p => p.service_type === 'pipewire_hub');
+        const selectedHub = pipewireProviders.find(p => p.id === config.provider_service_id) || pipewireProviders[0];
+        const virtualSinks: any[] = selectedHub?.config?.virtual_sinks || selectedHub?.config?.pipewire_config?.virtual_sinks || [];
+        const currentSinkId = config.sink_id || config.device || (virtualSinks[0]?.id || 'mix_bus');
+
+        return (
+          <div className="space-y-3 p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl animate-in fade-in duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🌐</span>
+                <span className="text-xs font-bold text-brand-lime uppercase tracking-wider">
+                  {t('destinations.pipewire.title', 'PipeWire Audio Hub Output')}
+                </span>
+              </div>
+              {selectedHub && (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border ${
+                  selectedHub.status === 'running'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-zinc-500/10 border-zinc-500/30 text-[var(--text-secondary)]'
+                }`}>
+                  {selectedHub.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')}
+                </span>
+              )}
+            </div>
+
+            {pipewireProviders.length === 0 ? (
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
+                <span>⚠️</span>
+                <div>
+                  <p className="font-semibold">{t('destinations.pipewire.noHubsTitle', 'No PipeWire Audio Hubs Found')}</p>
+                  <p className="text-[11px] text-amber-200/80 mt-0.5">
+                    {t('destinations.pipewire.noHubs', 'Create and start a PipeWire Audio Hub service first in the Services tab.')}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {/* Selector 1: Hub Service */}
+                <div>
+                  <label htmlFor="dest-pw-provider" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.pipewire.hubService', 'PipeWire Audio Hub Service')}
+                  </label>
+                  <select
+                    id="dest-pw-provider"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
+                    value={config.provider_service_id || ''}
+                    onChange={e => {
+                      const nextHubId = Number(e.target.value);
+                      const nextHub = pipewireProviders.find(h => h.id === nextHubId);
+                      const nextSinks = nextHub?.config?.virtual_sinks || nextHub?.config?.pipewire_config?.virtual_sinks || [];
+                      const defaultSink = nextSinks[0]?.id || 'mix_bus';
+                      update({
+                        provider_service_id: nextHubId,
+                        pipewire_service_id: nextHubId,
+                        sink_id: defaultSink,
+                        device: defaultSink,
+                      });
+                    }}
+                  >
+                    <option value="">{t('destinations.pipewire.selectHub', 'Select PipeWire Hub...')}</option>
+                    {pipewireProviders.map(h => (
+                      <option key={h.id} value={h.id}>
+                        {h.name} ({h.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Selector 2: Target Virtual Audio Sink */}
+                <div>
+                  <label htmlFor="dest-pw-sink" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.pipewire.sinkTarget', 'Target Virtual Audio Sink')}
+                  </label>
+                  <select
+                    id="dest-pw-sink"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
+                    value={currentSinkId}
+                    onChange={e => {
+                      const selectedSink = e.target.value;
+                      update({
+                        sink_id: selectedSink,
+                        device: selectedSink,
+                      });
+                    }}
+                  >
+                    {virtualSinks.length === 0 ? (
+                      <option value="default">{t('destinations.pipewire.defaultSink', 'System Default (default)')}</option>
+                    ) : (
+                      virtualSinks.map((s: any) => (
+                        <option key={s.id} value={s.id}>
+                          🎛️ {s.name || s.id} ({s.channels || 2}ch) [{s.id}]{s.aes67_enabled ? ' [AES67 Tx]' : ''}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-1">
+                    {t('destinations.pipewire.sinkHelp', 'FFmpeg injects uncompressed audio directly into this PipeWire virtual sink via the PulseAudio socket.')}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── Recommended Broadcast Recipe Card ── */}
       {renderBroadcastRecipe(config.type, t)}
     </div>
@@ -4529,6 +4675,13 @@ const renderBroadcastRecipe = (type: string, t: any) => {
       audio: "AAC / Opus / PCM",
       container: "RTP Session",
       details: "Flujo unicast directo sin contenedor de transporte pesado, comúnmente utilizado para contribuciones de bajísima latencia o integraciones con sistemas legacy."
+    },
+    pipewire: {
+      title: "PipeWire Audio Hub (Virtual Audio Bus)",
+      video: "Ninguno (Solo Audio)",
+      audio: "PCM (16/24-bit / Direct Stream Copy)",
+      container: "PulseAudio Emulation Socket",
+      details: "Inyección directa hacia un bus virtual de PipeWire. El audio inyectado se puede enrutar hacia salidas físicas locales o retransmitir por red mediante multidifusión AES67 / Dante."
     }
   };
 
