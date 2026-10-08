@@ -66,9 +66,13 @@ To allow the Python application to bind to port 80/443 and monitor Intel GPU met
 
 ---
 
-## 3. Virtual Desktop Audio Loopback (`snd-aloop`)
+## 3. Virtual Audio Routing: ALSA Loopback (`snd-aloop`) & PipeWire Audio Hub
 
-To route audio played inside Virtual Desktops (e.g., Kiosk browsers like Chromium or Firefox) into FFmpeg pipelines without third-party audio daemons (PulseAudio/PipeWire), the Linux kernel's `snd-aloop` virtual soundcard driver is utilized.
+Virtual Desktops and Kiosk browsers can route audio into FFmpeg pipelines via two backends:
+1. **ALSA Loopback (`snd-aloop`)**: Zero-daemon kernel virtual soundcard utilizing `apulse` emulation wrappers for Firefox and Chromium.
+2. **PipeWire Audio Hub**: Dedicated daemon-orchestrated virtual audio buses running in ephemeral RAM (`/tmp/ffmpeg-gui/pipewire-{id}`) with native PulseAudio socket emulation, per-sink channel configuration, and optional AES67 multicast network broadcasting.
+
+When using ALSA Loopback, the Linux kernel's `snd-aloop` virtual soundcard driver is utilized.
 
 ### Verification
 Check if the module and virtual card are registered:

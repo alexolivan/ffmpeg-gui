@@ -18,7 +18,7 @@ import PreviewCmdModal from './modals/PreviewCmdModal';
 import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
 
 const VIDEO_ALLOWED_TYPES = ['file', 'desktop', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
-const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls'];
+const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls', 'pipewire'];
 
 interface ProcessConfig {
   name: string;
@@ -341,6 +341,21 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     } else if (out.type === 'alsa') {
       if (!(out.device || '').trim()) {
         errors.device = 'ALSA device is required';
+      }
+    } else if (out.type === 'pipewire') {
+      if (!out.provider_service_id && !out.pipewire_service_id) {
+        errors.provider_service_id = 'PipeWire Hub Service is required';
+      }
+    }
+
+    if (config.input1.type === 'pipewire') {
+      if (!config.input1.provider_service_id && !config.input1.pipewire_service_id) {
+        errors.input1 = 'PipeWire Hub Service is required';
+      }
+    }
+    if (config.use_secondary_input && config.input2.type === 'pipewire') {
+      if (!config.input2.provider_service_id && !config.input2.pipewire_service_id) {
+        errors.input2 = 'PipeWire Hub Service is required';
       }
     }
 
@@ -795,12 +810,14 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   };
 
   const handleInput1Change = useCallback((input1: InputSourceConfig) => {
-    const isPureAudio = input1.type === 'alsa' || input1.type === 'lavfi_audio' || input1.type === 'http_audio';
+    const isPureAudio = input1.type === 'alsa' || input1.type === 'lavfi_audio' || input1.type === 'http_audio' || input1.type === 'pipewire';
     if (isPureAudio && config.has_video) {
       const label = input1.type === 'http_audio' 
         ? 'Icecast/HTTP Audio' 
         : input1.type === 'lavfi_audio' 
         ? 'Generador de audio' 
+        : input1.type === 'pipewire'
+        ? 'PipeWire Audio Hub'
         : 'ALSA';
       const proceed = window.confirm(
         `La entrada seleccionada (${label}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
@@ -827,8 +844,9 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         finalVideoCodecParams = getDefaultParams(fallback);
       }
 
-      // Auto-heal audio codec if switched to uncompressed raw audio source (when not using secondary input)
-      if (!prev.use_secondary_input && isRawHardwareAudioSource(input1.type) && finalAudioCodecId === 'copy') {
+      // Auto-heal audio codec if switched to uncompressed raw audio source with incompatible compressed destination
+      const isCompressedDest = ['icecast', 'rtmp', 'whip', 'hls'].includes(prev.output.type);
+      if (!prev.use_secondary_input && isRawHardwareAudioSource(input1.type) && isCompressedDest && finalAudioCodecId === 'copy') {
         const fallback = AUDIO_CODECS[0];
         finalAudioCodecId = fallback.id;
         finalAudioCodecParams = getDefaultParams(fallback);
@@ -851,7 +869,8 @@ const hasNDICodecIncompatibility = isNDIOutput && (
     setConfig(prev => {
       let finalAudioCodecId = prev.audio_codec_id;
       let finalAudioCodecParams = prev.audio_codec_params;
-      if (prev.use_secondary_input && isRawHardwareAudioSource(input2.type) && finalAudioCodecId === 'copy') {
+      const isCompressedDest = ['icecast', 'rtmp', 'whip', 'hls'].includes(prev.output.type);
+      if (prev.use_secondary_input && isRawHardwareAudioSource(input2.type) && isCompressedDest && finalAudioCodecId === 'copy') {
         const fallback = AUDIO_CODECS[0];
         finalAudioCodecId = fallback.id;
         finalAudioCodecParams = getDefaultParams(fallback);
@@ -934,9 +953,10 @@ const hasNDICodecIncompatibility = isNDIOutput && (
     const oldType = config.output.type;
     const newType = output.type;
 
-    if (oldType !== newType && (newType === 'icecast' || newType === 'alsa') && config.has_video) {
+    if (oldType !== newType && (newType === 'icecast' || newType === 'alsa' || newType === 'pipewire') && config.has_video) {
+      const label = newType === 'icecast' ? 'Icecast' : newType === 'alsa' ? 'ALSA' : 'PipeWire Audio Hub';
       const proceed = window.confirm(
-        `La salida seleccionada (${newType === 'icecast' ? 'Icecast' : 'ALSA'}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
+        `La salida seleccionada (${label}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
       );
       if (!proceed) return;
     }
@@ -977,6 +997,9 @@ const hasNDICodecIncompatibility = isNDIOutput && (
       finalOutput.device = '';
       finalHasVideo = false;
       finalHasAudio = true;
+    } else if (newType === 'pipewire') {
+      finalHasVideo = false;
+      finalHasAudio = true;
     } else if (newType === 'rtmp') {
       finalOutput.url = '';
     } else if (newType === 'whip') {
@@ -985,7 +1008,8 @@ const hasNDICodecIncompatibility = isNDIOutput && (
 
     // Check codec compatibility
     const availableVideo = getAvailableVideoCodecs(selectedBuildOptions, systemCapabilities, newType);
-    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType, systemCapabilities || undefined);
+    const effectiveInputType = config.use_secondary_input ? config.input2.type : config.input1.type;
+    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType, systemCapabilities || undefined, effectiveInputType);
 
     const videoIncompatible = finalHasVideo && !availableVideo.some(c => c.id === config.video_codec_id);
     const audioIncompatible = finalHasAudio && !availableAudio.some(c => c.id === config.audio_codec_id);
@@ -1053,8 +1077,8 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   }, []);
 
   const handleHasVideoChange = useCallback((val: boolean) => {
-    const isPureAudioInput = config.input1.type === 'alsa' || config.input1.type === 'lavfi_audio' || config.input1.type === 'http_audio';
-    const isPureAudioOutput = config.output.type === 'icecast' || config.output.type === 'alsa';
+    const isPureAudioInput = config.input1.type === 'alsa' || config.input1.type === 'lavfi_audio' || config.input1.type === 'http_audio' || config.input1.type === 'pipewire';
+    const isPureAudioOutput = config.output.type === 'icecast' || config.output.type === 'alsa' || config.output.type === 'pipewire';
 
     if (val && (isPureAudioInput || isPureAudioOutput)) {
       const proceed = window.confirm(
@@ -1078,6 +1102,9 @@ const hasNDICodecIncompatibility = isNDIOutput && (
           nextInput2.device = (prev.input1 as any).device || '';
           nextInput2.path = prev.input1.path || '';
           (nextInput2 as any).url = (prev.input1 as any).url || '';
+          (nextInput2 as any).sink_id = (prev.input1 as any).sink_id || '';
+          (nextInput2 as any).provider_service_id = (prev.input1 as any).provider_service_id || null;
+          (nextInput2 as any).pipewire_service_id = (prev.input1 as any).pipewire_service_id || null;
 
           // Reset input1 to file
           nextInput1.type = 'file';

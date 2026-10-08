@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.38.0] - 2026-10-08
+
+### Added
+- **PipeWire Universal Audio Matrix (Inputs & Outputs)**:
+  - Phase 4 of PipeWire roadmap: full input and output audio integration for FFmpeg streams and scheduled tasks.
+  - **FFmpeg Command Generation**:
+    - Input: captures uncompressed audio directly from PipeWire virtual monitors (`-f pulse -i <sink>.monitor`).
+    - Output: injects uncompressed audio into PipeWire virtual sinks (`-f pulse <sink>`).
+    - Pure audio protections: automatically suppresses video stream maps (`-vn`) and disables secondary video preview commands for audio-only PipeWire processes to prevent FFmpeg crashes.
+  - **Direct Stream Copy (`-c:a copy`) Audio Matrix**:
+    - Preserves bit-perfect 0% CPU PCM passthrough between raw audio sources and destinations (`pipewire` ↔ `alsa`, `pipewire` ↔ `pipewire`, `pipewire` ↔ `file`/`rtsp`/`rtp`).
+    - Excludes `copy` when routing uncompressed raw sources to compressed destinations (`icecast`, `rtmp`, `whip`, `hls`).
+    - Excludes `copy` when routing compressed inputs to raw PCM destinations (`alsa`, `pipewire`), forcing `pcm_s16le`.
+  - **On-Demand Subprocess Leasing & Environment Variable Injection**:
+    - Automatic lease acquisition (`acquire_lease(pw_id, lease_holder=f"service:{process_id}")`) on PipeWire Hub daemons when FFmpeg processes start.
+    - Automatic lease release with auto-stop on process shutdown.
+    - Subprocess environment injection: `PULSE_SERVER=unix:/tmp/ffmpeg-gui/pipewire-{pw_id}/pulse.sock` and `PIPEWIRE_RUNTIME_DIR=/tmp/ffmpeg-gui/pipewire-{pw_id}` into FFmpeg workers and scheduled task runners.
+    - Dependency manager automatic stream linking via `extract_provider_id`.
+  - **UI / Frontend Integration**:
+    - `InputSourcePanel`: integrated PipeWire Audio Hub input source with Hub dropdown, Virtual Audio Bus monitor target selector (`.monitor`), and active status badges.
+    - `DestinationPanel`: integrated PipeWire Audio Hub output destination with Hub dropdown, Target Virtual Audio Sink selector (displaying channels and AES67 multicast status), and broadcast recipe guide.
+    - `ProcessConfigForm`: added `pipewire` to `AUDIO_ALLOWED_TYPES`, pure audio toggling rules, form validation, and secondary input migration.
+    - Localized translations across English, Spanish, and Catalan with 100% key parity.
+
 ## [2.37.5] - 2026-10-08
 
 ### Fixed

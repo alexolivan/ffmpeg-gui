@@ -1169,7 +1169,19 @@
       "lavfi_audio": "Internal Generator (Audio)",
       "http_audio": "HTTP Audio Stream (Icecast/Shoutcast)",
       "rtmp": "RTMP Stream",
-      "hls": "HLS Stream"
+      "hls": "HLS Stream",
+      "pipewire": "PipeWire Audio Hub"
+    },
+    "pipewire": {
+      "title": "PipeWire Audio Hub Ingest",
+      "loadingHubs": "Loading PipeWire Hub services...",
+      "noHubsTitle": "No PipeWire Audio Hubs Found",
+      "noHubs": "Create and start a PipeWire Audio Hub service first in the Services tab.",
+      "hubService": "PipeWire Audio Hub Service",
+      "sinkMonitor": "Audio Bus / Sink Monitor Target",
+      "selectHub": "Select PipeWire Hub...",
+      "defaultMonitor": "System Default (default.monitor)",
+      "sinkHelp": "FFmpeg captures uncompressed audio directly from this PipeWire virtual bus monitor (.monitor)."
     },
     "desktop": {
       "title": "Virtual Desktop Ingest (x11grab)",
@@ -1333,6 +1345,7 @@
       "file": "Local Recording",
       "icecast": "Icecast2 (Audio Stream)",
       "alsa": "ALSA Audio Device",
+      "pipewire": "PipeWire Audio Hub",
       "rtp": "RTP Stream",
       "hls": "HLS Live Streaming",
       "rtsp": "RTSP Stream (MediaMTX / TCP)"
@@ -1421,6 +1434,16 @@
     "modeDetected": "Detected Devices",
     "modeManual": "Manual Input",
     "noAlsaPlaybackDetected": "No ALSA audio playback devices detected",
+    "pipewire": {
+      "title": "PipeWire Audio Hub Output",
+      "noHubsTitle": "No PipeWire Audio Hubs Found",
+      "noHubs": "Create and start a PipeWire Audio Hub service first in the Services tab.",
+      "hubService": "PipeWire Audio Hub Service",
+      "sinkTarget": "Target Virtual Audio Sink",
+      "selectHub": "Select PipeWire Hub...",
+      "defaultSink": "System Default (default)",
+      "sinkHelp": "FFmpeg injects uncompressed audio directly into this PipeWire virtual sink via the PulseAudio socket."
+    },
     "hubPresetTitle": "Route to Auxiliary Hub",
     "selectHubPreset": "-- Select Provider Hub --",
     "srtManualDirect": "Manual Direct SRT",

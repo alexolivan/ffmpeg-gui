@@ -108,33 +108,44 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Graphic EQ & Dynamics Compressor](docs/assets/screenshot7.png)
 
-### 🛡️ 8. Decoupled Watchdog Recovery
+### 🎚️ 8. PipeWire Audio Hub & Universal Audio Matrix
+- **Isolated Daemon Orchestration**: Deploy dedicated PipeWire server daemons running entirely in ephemeral RAM directories (`/tmp/ffmpeg-gui/pipewire-{id}`) with custom quantum and sample rate (48000 Hz) isolation.
+- **Virtual Audio Sinks & AES67 Multicast Broadcast**: Configure custom multi-channel virtual audio sinks (`mix_bus`, `kiosk_audio`, etc.) with optional AES67 / Dante multicast broadcast output over physical network interfaces with PTP clock domain support.
+- **Desktop & Web Kiosk Native Audio Routing**: Route Virtual Desktop and Kiosk audio directly to PipeWire sinks via native PulseAudio emulation sockets (`PULSE_SERVER`), completely bypassing legacy `apulse` or `snd-aloop` constraints.
+- **Universal FFmpeg Audio Matrix**:
+  - Ingest directly from virtual bus monitors (`-f pulse -i <sink>.monitor`).
+  - Playout directly into virtual sinks (`-f pulse <sink>`).
+  - Bit-perfect 0% CPU Stream Copy (`-c:a copy`) passthrough between raw sources/destinations (ALSA, PipeWire, RTSP, RTP, file recording).
+  - Automated lease management keeping the PipeWire daemon alive while active consumers stream and stopping cleanly on idle.
+- **Real-Time Graph & Node Inspector**: Telemetry modal providing real-time audio graph visualization (`pw-dump`), listing all active nodes, ports, links, and execution states.
+
+### 🛡️ 9. Decoupled Watchdog Recovery
 - **Automatic Auto-Start**: Recovers crashed or disconnected streams automatically.
 - **Freeze Protection**: Actively monitors process FPS, bitrate, and outputs, force-restarting streams if frames freeze or connection drops.
 - **Jittered Backoff**: Uses exponential backoff delays combined with randomized jitter to break lockstep recovery loops and reduce server resource peaks during network outages.
 
-### ⏰ 9. Task Scheduler & Bilateral Cloning
+### ⏰ 10. Task Scheduler & Bilateral Cloning
 - **Automation Jobs**: Schedule recurring (cron-like) or one-shot encoding tasks (e.g., recording daily broadcasts, scheduled stream dumps).
 - **Safety Runtime Limits**: Define max duration timers to automatically clean up active tasks.
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
 
 ![Scheduled Tasks & Cron Automation](docs/assets/screenshot4.png)
 
-### 🔒 10. HTTPS & Let's Encrypt SSL Manager
+### 🔒 11. HTTPS & Let's Encrypt SSL Manager
 - **Automated SSL/TLS Certificates**: Request and renew Let's Encrypt certificates directly from the GUI panel.
 - **ACME Challenge Handler**: Integrated HTTP-01 challenge router (`/.well-known/acme-challenge/*`) for automated domain verification.
 - **Status & Monitoring**: Real-time display of certificate validity, domain bindings, and automated expiration warnings.
 
-### 💾 11. Granular Backup & Restore
+### 💾 12. Granular Backup & Restore
 - **Selective Section Toggles**: Export and import specific configuration parts (e.g., backing up media services, virtual desktops, web kiosks, scheduled tasks, storage volumes, software engines, and peer federation credentials while leaving SMTP credentials or network port configs unchanged).
 - **Format Verification & SSOT Synchronization**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions (`SystemSettings`) and configuration file updates. Dynamic desktop-name re-resolution ensures web kiosks bind correctly to restored parent virtual desktops.
 
-### 🗄️ 12. Storage, HTTP HLS Routes, Log Retention & Branding
+### 🗄️ 13. Storage, HTTP HLS Routes, Log Retention & Branding
 - **Storage Management & HTTP HLS Delivery**: Configure local or mounted storage volumes, monitor disk space usage in real time, and map custom HTTP route paths (`/route_path -> HLS Storage`) with CORS and video caching headers to serve live and archived HLS manifests (`.m3u8`) and segments (`.ts`) directly through the web engine.
 - **Decoupled Logging & Automated Rotation**: Decouples application server logs (`ffmpeg-gui.log`) from HTTP access logs (`access.log`), with noise suppression for media chunks and copytruncate rotation with configurable retention periods.
 - **Branding Customization**: Customize the application name, panel headers, and console branding directly from the interface settings.
 
-### 🔔 13. State-Based SMTP Notifications
+### 🔔 14. State-Based SMTP Notifications
 - **Alert Fatigue Prevention**: Stateful notification queue that filters redundant alerts. Emails are dispatched exclusively on initial stream crashes, recovery success, and final retry exhaustion.
 - **System Health Checks**: Active warnings for pending SSL/TLS certificate expirations, disk space utilization exceeding 90%, and debounced hardware thermal overheating and throttling events.
 

@@ -1169,7 +1169,19 @@
       "lavfi_audio": "Generador Interno (Audio)",
       "http_audio": "Stream de Audio HTTP (Icecast/Shoutcast)",
       "rtmp": "Stream RTMP",
-      "hls": "Stream HLS"
+      "hls": "Stream HLS",
+      "pipewire": "PipeWire Audio Hub"
+    },
+    "pipewire": {
+      "title": "Ingesta PipeWire Audio Hub",
+      "loadingHubs": "Cargando servicios PipeWire Hub...",
+      "noHubsTitle": "No se encontraron PipeWire Audio Hubs",
+      "noHubs": "Crea e inicia primero un servicio PipeWire Audio Hub en la pestaña Servicios.",
+      "hubService": "Servicio PipeWire Audio Hub",
+      "sinkMonitor": "Bus de Audio / Monitor de Destino",
+      "selectHub": "Seleccionar PipeWire Hub...",
+      "defaultMonitor": "Por defecto del sistema (default.monitor)",
+      "sinkHelp": "FFmpeg captura audio sin comprimir directamente desde el monitor de este bus virtual PipeWire (.monitor)."
     },
     "desktop": {
       "title": "Captura de Escritorio Virtual (x11grab)",
@@ -1333,6 +1345,7 @@
       "file": "Grabación Local",
       "icecast": "Icecast2 (Stream de Audio)",
       "alsa": "Dispositivo de Audio ALSA",
+      "pipewire": "PipeWire Audio Hub",
       "rtp": "Stream RTP",
       "hls": "Streaming HLS en Directo",
       "rtsp": "Flujo RTSP (MediaMTX / TCP)"
@@ -1421,6 +1434,16 @@
     "modeDetected": "Dispositivos Detectados",
     "modeManual": "Entrada Manual",
     "noAlsaPlaybackDetected": "No se detectaron dispositivos de reproducción de audio ALSA",
+    "pipewire": {
+      "title": "Salida PipeWire Audio Hub",
+      "noHubsTitle": "No se encontraron PipeWire Audio Hubs",
+      "noHubs": "Crea e inicia primero un servicio PipeWire Audio Hub en la pestaña Servicios.",
+      "hubService": "Servicio PipeWire Audio Hub",
+      "sinkTarget": "Bus Virtual de Audio de Destino",
+      "selectHub": "Seleccionar PipeWire Hub...",
+      "defaultSink": "Por defecto del sistema (default)",
+      "sinkHelp": "FFmpeg inyecta audio sin comprimir directamente en este bus virtual de PipeWire a través del socket PulseAudio."
+    },
     "hubPresetTitle": "Enrutar a Hub Auxiliar",
     "selectHubPreset": "-- Seleccionar Hub Proveedor --",
     "srtManualDirect": "SRT Directo Manual",

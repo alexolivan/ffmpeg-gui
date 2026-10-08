@@ -1169,7 +1169,19 @@
       "lavfi_audio": "Generador Intern (Àudio)",
       "http_audio": "Stream d'Àudio HTTP (Icecast/Shoutcast)",
       "rtmp": "Stream RTMP",
-      "hls": "Stream HLS"
+      "hls": "Stream HLS",
+      "pipewire": "PipeWire Audio Hub"
+    },
+    "pipewire": {
+      "title": "Ingesta PipeWire Audio Hub",
+      "loadingHubs": "Carregant serveis PipeWire Hub...",
+      "noHubsTitle": "No s'han trobat serveis PipeWire Audio Hub",
+      "noHubs": "Creeu i inicieu primer un servei PipeWire Audio Hub a la pestanya Serveis.",
+      "hubService": "Servei PipeWire Audio Hub",
+      "sinkMonitor": "Bus d'Àudio / Monitor de Destinació",
+      "selectHub": "Seleccionar PipeWire Hub...",
+      "defaultMonitor": "Per defecte del sistema (default.monitor)",
+      "sinkHelp": "FFmpeg captura àudio sense comprimir directament des del monitor d'aquest bus virtual PipeWire (.monitor)."
     },
     "desktop": {
       "title": "Captura d'Escriptori Virtual (x11grab)",
@@ -1333,6 +1345,7 @@
       "file": "Enregistrament Local",
       "icecast": "Icecast2 (Stream d'Àudio)",
       "alsa": "Dispositiu d'Àudio ALSA",
+      "pipewire": "PipeWire Audio Hub",
       "rtp": "Stream RTP",
       "hls": "Streaming HLS en Directe",
       "rtsp": "Flux RTSP (MediaMTX / TCP)"
@@ -1421,6 +1434,16 @@
     "modeDetected": "Dispositius Detectats",
     "modeManual": "Entrada Manual",
     "noAlsaPlaybackDetected": "No s'han detectat dispositius de reproducció d'àudio ALSA",
+    "pipewire": {
+      "title": "Sortida PipeWire Audio Hub",
+      "noHubsTitle": "No s'han trobat serveis PipeWire Audio Hub",
+      "noHubs": "Creeu i inicieu primer un servei PipeWire Audio Hub a la pestanya Serveis.",
+      "hubService": "Servei PipeWire Audio Hub",
+      "sinkTarget": "Bus Virtual d'Àudio de Destinació",
+      "selectHub": "Seleccionar PipeWire Hub...",
+      "defaultSink": "Per defecte del sistema (default)",
+      "sinkHelp": "FFmpeg injecta àudio sense comprimir directament en aquest bus virtual de PipeWire mitjançant el sòcol PulseAudio."
+    },
     "hubPresetTitle": "Encaminar a Hub Auxiliar",
     "selectHubPreset": "-- Seleccionar Hub Proveïdor --",
     "srtManualDirect": "SRT Directe Manual",
