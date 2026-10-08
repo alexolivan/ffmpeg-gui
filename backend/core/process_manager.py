@@ -1980,6 +1980,7 @@ class ProcessManager:
         sub_env = {
             **os.environ,
             "PIPEWIRE_RUNTIME_DIR": runtime_dir,
+            "PIPEWIRE_REMOTE": "pipewire-0",
             "XDG_RUNTIME_DIR": runtime_dir,
             "PULSE_RUNTIME_PATH": runtime_dir,
         }
@@ -2004,7 +2005,7 @@ class ProcessManager:
                 stderr=asyncio.subprocess.PIPE,
                 env=sub_env
             )
-            stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+            stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=5.0)
             if proc.returncode != 0:
                 err_msg = stderr_data.decode("utf-8", errors="replace").strip() if stderr_data else f"Exit code {proc.returncode}"
                 return {
@@ -2085,6 +2086,12 @@ class ProcessManager:
             }
         except asyncio.TimeoutError:
             self.logger.warning(f"PipeWire telemetry timed out for process {process_id}")
+            if proc:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
             return {
                 "active": True,
                 "nodes": [],
@@ -2092,7 +2099,7 @@ class ProcessManager:
                 "links": [],
                 "streams": [],
                 "raw_summary": empty_summary,
-                "error": "pw-dump query timed out (3.0s)"
+                "error": "pw-dump query timed out (5.0s)"
             }
         except json.JSONDecodeError as jde:
             self.logger.warning(f"PipeWire telemetry failed to parse json for process {process_id}: {jde}")

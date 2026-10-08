@@ -101,8 +101,10 @@ class PipeWireConfigGenerator:
             "            sockets = [ { name = \"pipewire-0\" } ]",
             "        }",
             "    }",
+            "    { name = \"libpipewire-module-spa-node-factory\" }",
             "    { name = \"libpipewire-module-client-node\" }",
             "    { name = \"libpipewire-module-client-device\" }",
+            "    { name = \"libpipewire-module-link-factory\" }",
             "    { name = \"libpipewire-module-adapter\" }",
             "    { name = \"libpipewire-module-metadata\" }",
             "    {",
@@ -110,7 +112,7 @@ class PipeWireConfigGenerator:
             "        args = {",
             f"            server.address = [ {cls._spa_val(f'unix:{pulse_socket}')} ]",
             "        }",
-            "    }",
+            "    },",
         ]
 
         # Virtual Sinks
