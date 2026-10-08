@@ -1991,6 +1991,9 @@ class ProcessManager:
             "PIPEWIRE_REMOTE": "pipewire-0",
             "XDG_RUNTIME_DIR": runtime_dir,
             "PULSE_RUNTIME_PATH": runtime_dir,
+            "PIPEWIRE_NO_DBUS": "1",
+            "PIPEWIRE_NO_RT": "1",
+            "DBUS_SESSION_BUS_ADDRESS": "none",
         }
 
         if install_dir and os.path.isdir(install_dir):

@@ -180,6 +180,22 @@ class PipeWireConfigGenerator:
         lines.extend([
             "]",
             "",
+            "context.objects = [",
+            "    { factory = metadata",
+            "        args = {",
+            "            metadata.name = default",
+            "        }",
+            "    }",
+            "    { factory = spa-node-factory",
+            "        args = {",
+            "            factory.name    = support.node.driver",
+            "            node.name       = Dummy-Driver",
+            "            node.group      = pipewire.dummy",
+            "            priority.driver = 20000",
+            "        }",
+            "    }",
+            "]",
+            "",
         ])
 
         return "\n".join(lines)
