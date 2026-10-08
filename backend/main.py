@@ -62,7 +62,7 @@ try:
 except ImportError:
     from backend.core.update_checker import get_git_metadata, check_latest_release
 from utils.gpu_sensor import GPUSensor
-from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
+from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices, get_alsa_devices_hierarchical
 import psutil
 import logging
 import asyncio
@@ -2962,9 +2962,19 @@ async def get_alsa_devices_route():
     return await get_alsa_devices()
 
 
+@app.get("/alsa/devices-hierarchical")
+async def get_alsa_devices_hierarchical_route():
+    return await get_alsa_devices_hierarchical(stream_type="capture")
+
+
 @app.get("/alsa/playback-devices")
 async def get_alsa_playback_devices_route():
     return await get_alsa_playback_devices()
+
+
+@app.get("/alsa/playback-devices-hierarchical")
+async def get_alsa_playback_devices_hierarchical_route():
+    return await get_alsa_devices_hierarchical(stream_type="playback")
 
 
 

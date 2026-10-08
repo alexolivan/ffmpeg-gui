@@ -99,8 +99,8 @@ class TestUpdateChecker(unittest.TestCase):
     def test_api_check_updates_endpoint(self, mock_urlopen):
         mock_response = MagicMock()
         payload = {
-            "tag_name": "v2.35.0",
-            "html_url": "https://github.com/alexolivan/ffmpeg-gui/releases/tag/v2.35.0"
+            "tag_name": "v2.99.0",
+            "html_url": "https://github.com/alexolivan/ffmpeg-gui/releases/tag/v2.99.0"
         }
         mock_response.read.return_value = json.dumps(payload).encode("utf-8")
         mock_response.__enter__.return_value = mock_response
@@ -110,7 +110,7 @@ class TestUpdateChecker(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertTrue(data["update_available"])
-        self.assertEqual(data["latest_release"], "2.35.0")
+        self.assertEqual(data["latest_release"], "2.99.0")
 
 
 if __name__ == "__main__":

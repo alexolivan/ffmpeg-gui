@@ -215,7 +215,177 @@ async def get_v4l2_devices() -> List[dict]:
 
     return devices
 
+def _get_alsa_devices_from_proc(stream_type: str = "capture") -> List[dict]:
+    """
+    Directly parse /proc/asound/cards and /proc/asound/pcm* to detect cards and subdevices.
+    Extremely fast (< 2ms) and avoids subprocess timeouts when snd-aloop has 16+ subdevices.
+    """
+    cards_map: Dict[int, dict] = {}
+    proc_cards_path = "/proc/asound/cards"
+    if not os.path.exists(proc_cards_path):
+        return []
+
+    try:
+        with open(proc_cards_path, "r", errors="replace") as f:
+            content = f.read()
+        lines = content.strip().split("\n")
+        for i in range(0, len(lines), 2):
+            line = lines[i]
+            match = re.match(r"^\s*(\d+)\s*\[([^\]]+)\]:\s*(.+)$", line)
+            if match:
+                card_idx = int(match.group(1))
+                card_id_str = match.group(2).strip()
+                card_desc = match.group(3).strip()
+                if " - " in card_desc:
+                    card_desc = card_desc.split(" - ", 1)[1].strip()
+                cards_map[card_idx] = {
+                    "card_index": card_idx,
+                    "card_id": card_id_str,
+                    "name": card_desc,
+                    "devices": []
+                }
+    except Exception as e:
+        logger.error(f"Error reading /proc/asound/cards: {e}")
+        return []
+
+    # Stream suffix: capture -> 'c', playback -> 'p'
+    stream_suffix = "c" if stream_type == "capture" else "p"
+    
+    # Iterate cards
+    for card_idx, card_info in cards_map.items():
+        # Find PCM directories for this card: /proc/asound/cardX/pcmYc (or pcmYp)
+        pcm_pattern = f"/proc/asound/card{card_idx}/pcm*{stream_suffix}"
+        pcm_dirs = glob.glob(pcm_pattern)
+        
+        # Natural sort on device id
+        def _get_dev_num(path):
+            m = re.search(r"pcm(\d+)", os.path.basename(path))
+            return int(m.group(1)) if m else 0
+        pcm_dirs.sort(key=_get_dev_num)
+
+        is_loopback = "loopback" in card_info["card_id"].lower() or "loopback" in card_info["name"].lower()
+
+        for pcm_dir in pcm_dirs:
+            m_dev = re.search(r"pcm(\d+)", os.path.basename(pcm_dir))
+            if not m_dev:
+                continue
+            dev_idx = int(m_dev.group(1))
+            
+            # Read PCM name if available
+            pcm_name = ""
+            info_file = os.path.join(pcm_dir, "info")
+            if os.path.exists(info_file):
+                try:
+                    with open(info_file, "r", errors="replace") as f_info:
+                        for line in f_info:
+                            if line.startswith("name:"):
+                                pcm_name = line.split(":", 1)[1].strip()
+                                break
+                except Exception:
+                    pass
+            if not pcm_name:
+                pcm_name = f"PCM {dev_idx}"
+
+            # Check subdevices
+            sub_dirs = glob.glob(os.path.join(pcm_dir, "sub*"))
+            sub_indices = []
+            for s in sub_dirs:
+                m_sub = re.search(r"sub(\d+)", os.path.basename(s))
+                if m_sub:
+                    sub_indices.append(int(m_sub.group(1)))
+            sub_indices.sort()
+
+            if is_loopback:
+                side_label = "Playback" if dev_idx == 0 else "Capture"
+                sub_list = sub_indices if sub_indices else [0]
+                for sub in sub_list:
+                    card_info["devices"].append({
+                        "device": f"hw:{card_idx},{dev_idx},{sub}",
+                        "name": f"ALSA Loopback - {side_label} Subdevice {sub} (hw:{card_idx},{dev_idx},{sub})",
+                        "device_index": dev_idx,
+                        "subdevice_index": sub,
+                        "channels": 2
+                    })
+            else:
+                friendly_name = f"{card_info['name']} - {pcm_name}"
+                if len(sub_indices) > 1:
+                    for sub in sub_indices:
+                        card_info["devices"].append({
+                            "device": f"hw:{card_idx},{dev_idx},{sub}",
+                            "name": f"{friendly_name} (Subdevice #{sub})",
+                            "device_index": dev_idx,
+                            "subdevice_index": sub,
+                            "channels": 2
+                        })
+                else:
+                    card_info["devices"].append({
+                        "device": f"hw:{card_idx},{dev_idx}",
+                        "name": friendly_name,
+                        "device_index": dev_idx,
+                        "subdevice_index": 0 if sub_indices else None,
+                        "channels": 2
+                    })
+
+    return [c for c in cards_map.values() if len(c["devices"]) > 0]
+
+
+async def get_alsa_devices_hierarchical(stream_type: str = "capture") -> List[dict]:
+    """
+    Returns hierarchical sound card and subdevice structure:
+    [
+      {
+        "card_id": 0,
+        "card_name": "HDA Intel PCH",
+        "card_label": "HDA Intel PCH [Card 0]",
+        "devices": [
+          { "device": "hw:0,0", "name": "ALC892 Analog", "channels": 2 }
+        ]
+      }
+    ]
+    """
+    # 1. Try reading directly from /proc/asound (instant, robust)
+    proc_cards = _get_alsa_devices_from_proc(stream_type=stream_type)
+    if proc_cards:
+        results = []
+        for c in proc_cards:
+            results.append({
+                "card_id": c["card_index"],
+                "card_name": c["name"],
+                "card_label": f"{c['name']} [Card {c['card_index']}]",
+                "devices": c["devices"]
+            })
+        return results
+
+    # 2. Fallback to CLI parsing if /proc/asound is unavailable
+    flat_devices = await (get_alsa_devices() if stream_type == "capture" else get_alsa_playback_devices())
+    cards_dict: Dict[int, dict] = {}
+    for d in flat_devices:
+        dev_str = d.get("device", "")
+        m = re.match(r"hw:(\d+)", dev_str)
+        card_id = int(m.group(1)) if m else 0
+        if card_id not in cards_dict:
+            card_name = d.get("name", f"Card {card_id}").split(" - ")[0]
+            cards_dict[card_id] = {
+                "card_id": card_id,
+                "card_name": card_name,
+                "card_label": f"{card_name} [Card {card_id}]",
+                "devices": []
+            }
+        cards_dict[card_id]["devices"].append(d)
+
+    return list(cards_dict.values())
+
+
 async def get_alsa_devices() -> List[dict]:
+    # 1. Fast proc-based resolution
+    proc_cards = _get_alsa_devices_from_proc(stream_type="capture")
+    if proc_cards:
+        flat = []
+        for c in proc_cards:
+            flat.extend(c["devices"])
+        return flat
+
+    # 2. Fallback to arecord -l with 10.0s timeout
     if not shutil.which("arecord"):
         return []
     try:
@@ -224,13 +394,22 @@ async def get_alsa_devices() -> List[dict]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
         return parse_arecord_output(stdout.decode('utf-8', errors='replace'))
     except Exception as e:
         logger.error(f"Error querying ALSA devices: {e}")
         return []
 
 async def get_alsa_playback_devices() -> List[dict]:
+    # 1. Fast proc-based resolution
+    proc_cards = _get_alsa_devices_from_proc(stream_type="playback")
+    if proc_cards:
+        flat = []
+        for c in proc_cards:
+            flat.extend(c["devices"])
+        return flat
+
+    # 2. Fallback to aplay -l with 10.0s timeout
     if not shutil.which("aplay"):
         return []
     try:
@@ -239,7 +418,7 @@ async def get_alsa_playback_devices() -> List[dict]:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
         return parse_arecord_output(stdout.decode('utf-8', errors='replace'))
     except Exception as e:
         logger.error(f"Error querying ALSA playback devices: {e}")

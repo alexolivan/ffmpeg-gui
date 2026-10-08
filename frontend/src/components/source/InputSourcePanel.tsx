@@ -92,12 +92,14 @@ const deviceCache: {
   v4l2Devices: any[] | null;
   v4l2Formats: Record<string, any[]>;
   alsaDevices: any[] | null;
+  alsaHierarchicalCards: any[] | null;
 } = {
   decklinkDevices: null,
   decklinkFormats: {},
   v4l2Devices: null,
   v4l2Formats: {},
   alsaDevices: null,
+  alsaHierarchicalCards: null,
 };
 
 const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
@@ -144,6 +146,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
   // ALSA State
   const [alsaDevices, setAlsaDevices] = React.useState<any[]>([]);
+  const [alsaCards, setAlsaCards] = React.useState<any[]>([]);
+  const [selectedCardId, setSelectedCardId] = React.useState<string | number>('');
   const [loadingAlsaDevices, setLoadingAlsaDevices] = React.useState(false);
   const [manualAlsaMode, setManualAlsaMode] = React.useState(false);
 
@@ -366,47 +370,75 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   }, [config.type, config.device, manualV4l2Mode]);
 
   // Fetch ALSA devices
-  React.useEffect(() => {
-    if (config.type !== 'alsa') return;
-    let active = true;
-
-    if (deviceCache.alsaDevices !== null) {
-      setAlsaDevices(deviceCache.alsaDevices);
-      if (deviceCache.alsaDevices.length > 0) {
-        const found = deviceCache.alsaDevices.some((d: any) => d.device === config.device);
-        if (!found && config.device) {
-          setManualAlsaMode(true);
-        }
-      }
+  const fetchAlsa = React.useCallback(async (force = false) => {
+    if (!force && deviceCache.alsaHierarchicalCards !== null) {
+      setAlsaCards(deviceCache.alsaHierarchicalCards);
+      const allDevs: any[] = [];
+      deviceCache.alsaHierarchicalCards.forEach((c: any) => {
+        if (Array.isArray(c.devices)) allDevs.push(...c.devices);
+      });
+      setAlsaDevices(allDevs);
       return;
     }
 
-    const fetchAlsa = async () => {
-      setLoadingAlsaDevices(true);
+    setLoadingAlsaDevices(true);
+    try {
+      const res = await fetch('/alsa/devices-hierarchical');
+      if (!res.ok) throw new Error("Failed to fetch hierarchical ALSA devices");
+      const cardsList = await res.json();
+      const hierarchical = Array.isArray(cardsList) ? cardsList : [];
+      deviceCache.alsaHierarchicalCards = hierarchical;
+      setAlsaCards(hierarchical);
+      const allDevs: any[] = [];
+      hierarchical.forEach((c: any) => {
+        if (Array.isArray(c.devices)) allDevs.push(...c.devices);
+      });
+      deviceCache.alsaDevices = allDevs;
+      setAlsaDevices(allDevs);
+    } catch (err) {
+      console.error("Error fetching ALSA devices:", err);
+      // Fallback to flat /alsa/devices
       try {
-        const res = await fetch('/alsa/devices');
-        if (!res.ok) throw new Error("Failed to fetch ALSA devices");
-        const data = await res.json();
-        const devicesList = data || [];
-        deviceCache.alsaDevices = devicesList;
-        if (active) {
-          setAlsaDevices(devicesList);
-          if (devicesList.length > 0) {
-            const found = devicesList.some((d: any) => d.device === config.device);
-            if (!found && config.device) {
-              setManualAlsaMode(true);
-            }
-          }
+        const fallbackRes = await fetch('/alsa/devices');
+        if (fallbackRes.ok) {
+          const flatList = await fallbackRes.json();
+          setAlsaDevices(flatList || []);
         }
-      } catch (err) {
-        console.error("Error fetching ALSA devices:", err);
-      } finally {
-        if (active) setLoadingAlsaDevices(false);
+      } catch (fbErr) {
+        console.error("Fallback ALSA query also failed:", fbErr);
       }
-    };
-    fetchAlsa();
-    return () => { active = false; };
-  }, [config.type]);
+    } finally {
+      setLoadingAlsaDevices(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (config.type !== 'alsa') return;
+    fetchAlsa(false);
+  }, [config.type, fetchAlsa]);
+
+  // Synchronize selectedCardId with current config.device
+  React.useEffect(() => {
+    if (config.type !== 'alsa') return;
+    if (!config.device) {
+      return;
+    }
+    // Check if current device belongs to any card
+    for (const card of alsaCards) {
+      const match = (card.devices || []).some((d: any) => d.device === config.device);
+      if (match) {
+        setSelectedCardId(card.card_id);
+        return;
+      }
+    }
+    // If not found in known cards and not manual, trigger manual mode if devices loaded
+    if (alsaCards.length > 0 && !manualAlsaMode) {
+      const foundInAny = alsaDevices.some((d: any) => d.device === config.device);
+      if (!foundInAny) {
+        setManualAlsaMode(true);
+      }
+    }
+  }, [config.type, config.device, alsaCards, alsaDevices, manualAlsaMode]);
 
   const [providers, setProviders] = React.useState<any[]>([]);
   const [remotePeers, setRemotePeers] = React.useState<any[]>([]);
@@ -3380,72 +3412,124 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
 
       {config.type === 'alsa' && (
         <div className="space-y-2">
-          <div>
-            <label htmlFor={`${idPrefix}-alsa-device`} className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">{t('sources.alsaDevice')}</label>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between mb-0.5">
+              <label htmlFor={`${idPrefix}-alsa-card`} className="text-[9px] text-text-secondary uppercase font-bold">
+                {t('sources.alsaDevice')}
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  title={t('sources.alsaRefresh')}
+                  onClick={() => fetchAlsa(true)}
+                  className="text-[10px] text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
+                >
+                  🔄 <span className="hidden sm:inline">{t('common.refresh', 'Refresh')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualAlsaMode(!manualAlsaMode)}
+                  className="text-[10px] text-purple-400 hover:text-purple-300 font-mono transition-colors"
+                >
+                  {manualAlsaMode ? `📋 ${t('common.list', 'List')}` : `✏️ ${t('sources.manualInput', 'Manual')}`}
+                </button>
+              </div>
+            </div>
+
             {loadingAlsaDevices ? (
-              <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingAlsa')}</div>
-            ) : alsaDevices.length === 0 ? (
-              <div className="space-y-1.5">
+              <div className="text-[10px] text-text-secondary animate-pulse py-2 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                {t('sources.loadingAlsa')}
+              </div>
+            ) : manualAlsaMode ? (
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  id={`${idPrefix}-alsa-device`}
+                  name="device"
+                  placeholder="hw:0,0 or default"
+                  className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 font-mono transition-all"
+                  value={config.device || ''}
+                  onChange={e => update({ device: e.target.value })}
+                />
+                <span className="text-[10px] text-text-secondary block">
+                  {t('sources.alsaDeviceManualHelp', 'Specify custom ALSA device string (e.g. hw:0,0, hw:2,0,1, plughw:1,0 or default).')}
+                </span>
+              </div>
+            ) : alsaCards.length === 0 && alsaDevices.length === 0 ? (
+              <div className="space-y-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
                 <div className="text-[10px] text-amber-500 font-medium">{t('sources.noAlsaDetected')}</div>
                 <input
                   type="text"
                   id={`${idPrefix}-alsa-device`}
                   name="device"
                   placeholder="ALSA Device ID (e.g. hw:0,0)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                  className="w-full bg-input-bg border border-glass-border rounded-lg p-1.5 text-xs text-text-primary outline-none font-mono"
                   value={config.device || ''}
                   onChange={e => update({ device: e.target.value })}
                 />
               </div>
             ) : (
-              <div className="space-y-1.5">
-                <div className="flex gap-1.5">
-                  {!manualAlsaMode ? (
-                    <select
-                      id={`${idPrefix}-alsa-device`}
-                      name="device"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-                      value={config.device || ''}
-                      onChange={e => {
-                        if (e.target.value === '__manual__') {
-                          setManualAlsaMode(true);
-                          update({ device: '' });
-                        } else {
-                          update({ device: e.target.value });
-                        }
-                      }}
-                    >
-                      <option value="">{t('sources.selectAlsa')}</option>
-                      {alsaDevices.map(d => (
-                        <option key={d.device} value={d.device}>{d.name} ({d.device})</option>
-                      ))}
-                      <option value="__manual__">{t('sources.manualInput')}</option>
-                    </select>
-                  ) : (
-                    <div className="flex flex-col w-full gap-1.5">
-                      <div className="flex w-full gap-1.5">
-                        <input
-                          type="text"
-                          id={`${idPrefix}-alsa-device`}
-                          name="device"
-                          placeholder="ALSA Device ID (e.g. hw:0,0)"
-                          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
-                          value={config.device || ''}
-                          onChange={e => update({ device: e.target.value })}
-                        />
-                        <button
-                          type="button"
-                          className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
-                          onClick={() => {
-                            setManualAlsaMode(false);
-                            update({ device: alsaDevices[0]?.device || '' });
-                          }}
-                        >
-                          {t('common.list')}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+              <div className="space-y-2">
+                {/* Level 1: Sound Card / Host Hardware Selector */}
+                <div>
+                  <label htmlFor={`${idPrefix}-alsa-card`} className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
+                    {t('sources.alsaSoundCard')}
+                  </label>
+                  <select
+                    id={`${idPrefix}-alsa-card`}
+                    className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer"
+                    value={selectedCardId !== '' ? String(selectedCardId) : ''}
+                    onChange={e => {
+                      const newCardId = e.target.value;
+                      setSelectedCardId(newCardId);
+                      if (newCardId === '') {
+                        update({ device: '' });
+                        return;
+                      }
+                      const card = alsaCards.find(c => String(c.card_id) === String(newCardId));
+                      if (card && card.devices && card.devices.length > 0) {
+                        update({ device: card.devices[0].device });
+                      } else {
+                        update({ device: '' });
+                      }
+                    }}
+                  >
+                    <option value="">{t('sources.alsaSelectCard')}</option>
+                    {alsaCards.map(c => (
+                      <option key={`card-${c.card_id}`} value={String(c.card_id)}>
+                        🎛️ {c.card_label || `${c.card_name} [Card ${c.card_id}]`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Level 2: Subdevice / Channel / Plug Selector */}
+                <div>
+                  <label htmlFor={`${idPrefix}-alsa-subdevice`} className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
+                    {t('sources.alsaSubdevice')}
+                  </label>
+                  {(() => {
+                    const currentCard = alsaCards.find(c => String(c.card_id) === String(selectedCardId));
+                    const subdevices = currentCard ? (currentCard.devices || []) : alsaDevices;
+
+                    return (
+                      <select
+                        id={`${idPrefix}-alsa-subdevice`}
+                        className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer disabled:opacity-50"
+                        disabled={subdevices.length === 0}
+                        value={config.device || ''}
+                        onChange={e => update({ device: e.target.value })}
+                      >
+                        <option value="">{t('sources.alsaSelectSubdevice')}</option>
+                        {subdevices.map((d: any) => (
+                          <option key={d.device} value={d.device}>
+                            {d.name} ({d.device})
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
                 </div>
               </div>
             )}
