@@ -74,6 +74,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
   const sampleRate = pwConfig.sample_rate || 48000;
   const quantum = pwConfig.quantum || 1024;
   const virtualSinks = Array.isArray(pwConfig.virtual_sinks) ? pwConfig.virtual_sinks : [];
+  const rtpCount = virtualSinks.filter((s: any) => s.aes67_enabled).length;
   const aes67Net = pwConfig.aes67_network || {};
   const isAes67Enabled = !!aes67Net.enabled;
   const aes67Interface = aes67Net.interface || null;
@@ -202,12 +203,8 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
           <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px] font-bold flex items-center gap-1">
             <span>
               {virtualSinks.length} {virtualSinks.length === 1 ? 'Sink' : 'Sinks'}
+              {rtpCount > 0 ? ` (RTP: ${rtpCount})` : ''}
             </span>
-            {virtualSinks.some((s: any) => s.aes67_enabled) && (
-              <span className="text-[8px] bg-brand-lime/20 text-brand-lime px-1 rounded font-black">
-                RTP
-              </span>
-            )}
           </span>
 
           <span className="opacity-20">|</span>
