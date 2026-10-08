@@ -583,7 +583,14 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     fetch('/builds')
       .then(r => r.json())
       .then(builds => {
-        const ready = builds.filter((b: any) => b.status === 'ready' && (b.software_type === 'ffmpeg' || !b.software_type));
+        const ready = builds.filter((b: any) => {
+          if (b.status !== 'ready') return false;
+          const swType = b.software_type || 'ffmpeg';
+          if (swType !== 'ffmpeg') return false;
+          const bin = (b.ffmpeg_binary || b.binary_path || '').split('/').pop() || '';
+          if (bin && !bin.startsWith('ffmpeg')) return false;
+          return true;
+        });
         setAvailableBuilds(ready);
         
         const currentBuildId = initialConfig?.ffmpeg_build_id ?? null;

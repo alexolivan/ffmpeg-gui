@@ -471,9 +471,17 @@ class ProcessManager:
                     ffmpeg_build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
                     if ffmpeg_build_id:
                         build = session.query(FfmpegBuild).get(ffmpeg_build_id)
-                        if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
-                            ffmpeg_bin = build.ffmpeg_binary
-                            self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
+                        if build:
+                            cand_bin = getattr(build, "ffmpeg_binary", None)
+                            if cand_bin and os.path.exists(cand_bin):
+                                ffmpeg_bin = cand_bin
+                                self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
+                            else:
+                                self.logger.warning(
+                                    f"Build ID {ffmpeg_build_id} is not a valid FFmpeg build "
+                                    f"(software_type='{getattr(build, 'software_type', 'unknown')}', path='{getattr(build, 'binary_path', None)}'). "
+                                    f"Falling back to default FFmpeg binary: {ffmpeg_bin}"
+                                )
 
                     # Resolve and validate paths before starting
                     import copy

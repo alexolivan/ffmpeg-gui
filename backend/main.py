@@ -5770,14 +5770,33 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
 
     # 4. Gracefully resolve missing or invalid Software / Build IDs
     from database.models import SoftwareBuild
+    expected_sw_type = profile.get("software_type") or (
+        "ffmpeg" if service_type == "ffmpeg_stream" else
+        "mediamtx" if service_type == "mediamtx_hub" else
+        "icecast2" if service_type == "icecast_server" else
+        "pipewire" if service_type == "pipewire_hub" else
+        None
+    )
     build_id = profile.get("ffmpeg_build_id") or profile.get("software_build_id")
     if build_id:
         build_exists = db.query(SoftwareBuild).filter(SoftwareBuild.id == build_id).first()
-        if not build_exists:
-            sw_type = profile.get("software_type") or ("ffmpeg" if service_type == "ffmpeg_stream" else "mediamtx" if service_type == "mediamtx_hub" else "icecast2" if service_type == "icecast_server" else None)
+        is_valid_engine = False
+        if build_exists and build_exists.status == "ready":
+            b_type = getattr(build_exists, "software_type", None) or "ffmpeg"
+            if expected_sw_type is None or b_type == expected_sw_type:
+                if expected_sw_type == "ffmpeg":
+                    cand = getattr(build_exists, "ffmpeg_binary", None)
+                    if cand and os.path.exists(cand):
+                        is_valid_engine = True
+                else:
+                    cand = getattr(build_exists, "binary_path", None)
+                    if cand and os.path.exists(cand):
+                        is_valid_engine = True
+
+        if not is_valid_engine:
             fallback_query = db.query(SoftwareBuild).filter(SoftwareBuild.status == 'ready')
-            if sw_type:
-                fallback_query = fallback_query.filter(SoftwareBuild.software_type == sw_type)
+            if expected_sw_type:
+                fallback_query = fallback_query.filter(SoftwareBuild.software_type == expected_sw_type)
             default_build = fallback_query.filter(SoftwareBuild.is_default == True).first() or fallback_query.first()
             if default_build:
                 profile["ffmpeg_build_id"] = default_build.id
@@ -5822,6 +5841,13 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
                     p_exists = db.query(Service).filter(Service.id == int(prov_id)).first()
                     if not p_exists:
                         cfg_dict.pop("provider_service_id", None)
+                    else:
+                        # Auto-sync credentials for local managed Icecast provider to prevent 401 Unauthorized
+                        if p_exists.service_type == "icecast_server":
+                            p_cfg = (p_exists.config or {}).get("icecast_config", p_exists.config or {})
+                            real_source_pass = p_cfg.get("source_password")
+                            if real_source_pass and cfg_dict.get("icecast_password") != real_source_pass:
+                                cfg_dict["icecast_password"] = real_source_pass
                 except Exception:
                     cfg_dict.pop("provider_service_id", None)
                     

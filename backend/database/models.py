@@ -69,7 +69,12 @@ class SoftwareBuild(Base):
 
     @property
     def ffmpeg_binary(self):
-        return self.binary_path
+        if self.software_type in (None, "ffmpeg") and self.binary_path:
+            import os
+            base = os.path.basename(self.binary_path)
+            if base.startswith("ffmpeg"):
+                return self.binary_path
+        return None
 
     @ffmpeg_binary.setter
     def ffmpeg_binary(self, val):
@@ -77,7 +82,7 @@ class SoftwareBuild(Base):
 
     @property
     def ffprobe_binary(self):
-        if self.binary_path:
+        if self.software_type in (None, "ffmpeg") and self.binary_path:
             import os
             parent = os.path.dirname(self.binary_path)
             candidate = os.path.join(parent, "ffprobe")

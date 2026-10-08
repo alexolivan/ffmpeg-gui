@@ -220,6 +220,74 @@ class TestServiceImportExport(unittest.TestCase):
         self.db.delete(imported_task)
         self.db.commit()
 
+    def test_import_ffmpeg_service_sanitizes_mismatched_engine_build_and_icecast_auth(self):
+        # 1. Create an Icecast build (Build that should NEVER be used as FFmpeg binary)
+        icecast_build = SoftwareBuild(
+            name="Icecast 2.5 Engine",
+            software_type="icecast2",
+            version_tag="2.5.0",
+            binary_path="/usr/bin/icecast2",
+            status="ready",
+            is_default=True
+        )
+        self.db.add(icecast_build)
+
+        # 2. Create a local Icecast server service with secret password
+        icecast_service = Service(
+            name="Local Studio Icecast",
+            service_type="icecast_server",
+            config={
+                "icecast_config": {
+                    "source_password": "RealLocalSecurePassword123"
+                }
+            }
+        )
+        self.db.add(icecast_service)
+        self.db.commit()
+
+        # 3. Import profile of an FFmpeg service from another machine having:
+        # - ffmpeg_build_id pointing to icecast_build.id (engine mismatch!)
+        # - provider_service_id pointing to local icecast_service.id
+        # - outdated/mismatched icecast_password ('ForeignStalePassword')
+        foreign_profile = {
+            "version": 2,
+            "profile": {
+                "name": "Radio Stream Transcoder",
+                "service_type": "ffmpeg_stream",
+                "ffmpeg_build_id": icecast_build.id,
+                "software_build_id": icecast_build.id,
+                "input_config": {"type": "alsa", "device": "hw:0,0"},
+                "output_config": {
+                    "type": "icecast",
+                    "provider_service_id": icecast_service.id,
+                    "icecast_mode": "local",
+                    "icecast_mount": "/master.ogg",
+                    "icecast_password": "ForeignStalePassword"
+                }
+            }
+        }
+
+        res = self.client.post("/processes/import", json=foreign_profile)
+        self.assertEqual(res.status_code, 200)
+
+        imported = self.db.query(Service).filter(Service.name == "Imported: Radio Stream Transcoder").first()
+        self.assertIsNotNone(imported)
+
+        # Build must NOT be the Icecast build, must fallback to ffmpeg build
+        self.assertNotEqual(imported.config.get("ffmpeg_build_id"), icecast_build.id)
+        self.assertEqual(imported.config.get("ffmpeg_build_id"), self.ffmpeg_build.id)
+
+        # Icecast password must be automatically synchronized to the local provider's source_password
+        self.assertEqual(
+            imported.config.get("output_config", {}).get("icecast_password"),
+            "RealLocalSecurePassword123"
+        )
+
+        self.db.delete(icecast_build)
+        self.db.delete(icecast_service)
+        self.db.delete(imported)
+        self.db.commit()
+
 
 if __name__ == "__main__":
     unittest.main()
