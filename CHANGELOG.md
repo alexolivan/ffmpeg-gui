@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.37.2] - 2026-10-08
+
+### Fixed
+- **Process Manager `spawn_lock` Deadlock on On-Demand PipeWire Hub Leases**:
+  - Moved PipeWire Hub lease acquisition for Virtual Desktops and Kiosks to execute *before* acquiring `spawn_lock`. This prevents non-reentrant `asyncio.Lock` deadlocks when starting desktop/kiosk consumers with the PipeWire Hub initially stopped.
+  - Removed duplicate lease acquisition blocks under `spawn_lock`.
+- **Service Pinning Loss on Backend Restart / Reattach**:
+  - Automatically marks alive reattached processes as pinned (`dependency_manager.mark_pinned(process_id)`) upon backend startup. This prevents provider daemons (such as PipeWire Hub) from being auto-stopped prematurely when an associated consumer desktop or kiosk is stopped.
+  - Added PipeWire Hub to startup log tailing on reattachment.
+- **Stale X11 Display Lock Recovery for Virtual Desktops**:
+  - Added pre-launch detection and removal of dead `/tmp/.X{display_num}-lock` and `/tmp/.X11-unix/X{display_num}` sockets before spawning Xvfb, eliminating startup failures after unexpected service terminations.
+
 ## [2.37.1] - 2026-10-08
 
 ### Added

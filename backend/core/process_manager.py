@@ -246,6 +246,37 @@ class ProcessManager:
             # Start auto-managed dependencies first
             await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
 
+            # Acquire on-demand PipeWire Hub lease before acquiring spawn_lock to prevent deadlock
+            with self.db_session_factory() as session:
+                from database.models import Service
+                cur_svc = session.get(Service, process_id)
+                if cur_svc:
+                    cur_svc_type = getattr(cur_svc, "service_type", None)
+                    if cur_svc_type == "desktop":
+                        d_cfg_chk = (cur_svc.config or {}).get("desktop_config", cur_svc.config or {})
+                        if d_cfg_chk.get("audio_backend") == "pipewire_hub" and d_cfg_chk.get("pipewire_service_id"):
+                            pw_svc_id = d_cfg_chk.get("pipewire_service_id")
+                            try:
+                                await self.acquire_lease(int(pw_svc_id), lease_holder=f"desktop:{process_id}")
+                            except Exception as pw_err:
+                                self.logger.warning(f"Failed to acquire PipeWire lease for desktop {process_id}: {pw_err}")
+                    elif cur_svc_type == "kiosk_browser":
+                        k_cfg_chk = (cur_svc.config or {}).get("kiosk_config", {})
+                        desk_id_chk = k_cfg_chk.get("target_desktop_service_id") or k_cfg_chk.get("desktop_service_id")
+                        if desk_id_chk:
+                            try:
+                                desk_svc = session.get(Service, int(desk_id_chk)) if hasattr(session, "get") else session.query(Service).get(int(desk_id_chk))
+                                if desk_svc:
+                                    d_cfg_chk = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
+                                    if d_cfg_chk.get("audio_backend") == "pipewire_hub" and d_cfg_chk.get("pipewire_service_id"):
+                                        pw_svc_id = d_cfg_chk.get("pipewire_service_id")
+                                        try:
+                                            await self.acquire_lease(int(pw_svc_id), lease_holder=f"kiosk:{process_id}")
+                                        except Exception as pw_err:
+                                            self.logger.warning(f"Failed to acquire PipeWire lease for kiosk {process_id}: {pw_err}")
+                            except (ValueError, TypeError):
+                                pass
+
             # Check and acquire exclusive resource lock for publisher outputs
             from core.resource_lock_manager import resource_lock_manager
             with self.db_session_factory() as session:
@@ -593,6 +624,35 @@ class ProcessManager:
                     self.processes[process_id] = proc
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 elif svc_type == "desktop":
+                    # Clean up stale X11 lock file and socket if previous Xvfb crashed
+                    x_lock_path = f"/tmp/.X{display_num}-lock"
+                    x_sock_path = f"/tmp/.X11-unix/X{display_num}"
+                    if os.path.exists(x_lock_path):
+                        stale = False
+                        try:
+                            with open(x_lock_path, "r") as lf:
+                                lpid_str = lf.read().strip()
+                                if lpid_str:
+                                    lpid = int(lpid_str)
+                                    if not psutil.pid_exists(lpid):
+                                        stale = True
+                                else:
+                                    stale = True
+                        except Exception:
+                            stale = True
+
+                        if stale:
+                            self.logger.warning(f"Cleaning stale X11 lock {x_lock_path} for display :{display_num}")
+                            try:
+                                os.remove(x_lock_path)
+                            except Exception:
+                                pass
+                            if os.path.exists(x_sock_path):
+                                try:
+                                    os.remove(x_sock_path)
+                                except Exception:
+                                    pass
+
                     log_file_handle = open(log_path, "ab", buffering=0)
                     desktop_sub_env = {**sub_env, "DISPLAY": f":{display_num}"}
                     # 1. Spawn Xvfb
@@ -660,17 +720,6 @@ class ProcessManager:
                         except Exception as xset_err:
                             self.logger.warning(f"xset screensaver notice for display :{display_num}: {xset_err}")
 
-                    # 5. Acquire PipeWire Hub lease if desktop audio backend is pipewire_hub
-                    _cfg = cfg if 'cfg' in locals() and cfg is not None else getattr(self, 'processes_configs', {}).get(process_id, {})
-                    d_cfg = (_cfg or {}).get("desktop_config", _cfg or {})
-                    audio_backend = d_cfg.get("audio_backend")
-                    pw_svc_id = d_cfg.get("pipewire_service_id")
-                    if audio_backend == "pipewire_hub" and pw_svc_id:
-                        try:
-                            await self.acquire_lease(int(pw_svc_id), lease_holder=f"desktop:{process_id}")
-                        except Exception as pw_err:
-                            self.logger.warning(f"Failed to acquire PipeWire lease for desktop {process_id}: {pw_err}")
-
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                 elif svc_type == "kiosk_browser":
                     log_file_handle = open(log_path, "ab", buffering=0)
@@ -696,12 +745,6 @@ class ProcessManager:
                                         target_desk_subdevice = int(d_cfg.get("alsa_subdevice"))
                                     except (ValueError, TypeError):
                                         pass
-                    
-                    if desktop_audio_backend == "pipewire_hub" and desktop_pw_service_id:
-                        try:
-                            await self.acquire_lease(int(desktop_pw_service_id), lease_holder=f"kiosk:{process_id}")
-                        except Exception as pw_err:
-                            self.logger.warning(f"Failed to acquire PipeWire lease for kiosk {process_id}: {pw_err}")
 
                     if p_mode == "persistent":
                         kiosk_profile = os.path.abspath(f"data/kiosk_profiles/{process_id}")
@@ -3634,9 +3677,16 @@ class ProcessManager:
         else:
             self.auxiliary_pids[process_id] = []
 
-        if svc_type in ("mediamtx_hub", "icecast_server", "desktop"):
+        if svc_type in ("mediamtx_hub", "icecast_server", "desktop", "pipewire_hub"):
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
+
+        # Re-register with dependency manager as pinned so it will not be auto-stopped prematurely
+        try:
+            from core.dependency_manager import dependency_manager
+            dependency_manager.mark_pinned(process_id)
+        except Exception as pin_err:
+            self.logger.warning(f"Failed to pin reattached service {process_id}: {pin_err}")
 
         # Re-acquire local publisher resource lock for the re-attached alive process
         try:
