@@ -134,32 +134,11 @@ class PipeWireConfigGenerator:
             "    },",
         ]
 
-        # Virtual Sinks
+        # AES67 RTP Sinks in context.modules if enabled
         virtual_sinks = config.get("virtual_sinks", [])
         for sink in virtual_sinks:
-            sink_id = sink.get("id", "sink")
-            sink_name = sink.get("name", sink_id)
-            channels = max(1, int(sink.get("channels", 2)))
-            pos_list = cls._get_channel_positions(channels)
-            pos_formatted = cls._spa_val(pos_list)
-
-            lines.extend([
-                "    {",
-                "        name = \"libpipewire-module-adapter\"",
-                "        args = {",
-                "            factory.name = \"support.null-audio-sink\"",
-                f"            node.name = {cls._spa_val(sink_id)}",
-                f"            node.description = {cls._spa_val(sink_name)}",
-                "            media.class = \"Audio/Sink\"",
-                f"            audio.position = {pos_formatted}",
-                f"            audio.channels = {channels}",
-                f"            audio.rate = {sample_rate}",
-                "        }",
-                "    },",
-            ])
-
-            # AES67 RTP Sink if enabled
             if sink.get("aes67_enabled", False):
+                sink_id = sink.get("id", "sink")
                 dest_ip = sink.get("multicast_ip", "239.69.1.10")
                 dest_port = int(sink.get("rtp_port", 5004))
                 sap_name = sink.get("sap_name", f"PipeWire {sink_id}")
@@ -209,6 +188,31 @@ class PipeWireConfigGenerator:
             "            priority.driver = 20000",
             "        }",
             "    }",
+        ])
+
+        # Virtual Sinks (Nodes created via adapter factory)
+        for sink in virtual_sinks:
+            sink_id = sink.get("id", "sink")
+            sink_name = sink.get("name", sink_id)
+            channels = max(1, int(sink.get("channels", 2)))
+            pos_list = cls._get_channel_positions(channels)
+            pos_formatted = cls._spa_val(pos_list)
+
+            lines.extend([
+                "    { factory = adapter",
+                "        args = {",
+                "            factory.name = support.null-audio-sink",
+                f"            node.name = {cls._spa_val(sink_id)}",
+                f"            node.description = {cls._spa_val(sink_name)}",
+                "            media.class = \"Audio/Sink\"",
+                f"            audio.position = {pos_formatted}",
+                f"            audio.channels = {channels}",
+                f"            audio.rate = {sample_rate}",
+                "        }",
+                "    }",
+            ])
+
+        lines.extend([
             "]",
             "",
         ])

@@ -72,7 +72,8 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         }
         res = PipeWireConfigGenerator.generate_config(42, config, "/tmp/pipewire-42")
 
-        self.assertIn('factory.name = "support.null-audio-sink"', res)
+        self.assertIn('{ factory = adapter', res)
+        self.assertIn('factory.name = support.null-audio-sink', res)
         self.assertIn('node.name = "mix_bus"', res)
         self.assertIn('node.description = "Main Mix Bus"', res)
         self.assertIn('media.class = "Audio/Sink"', res)

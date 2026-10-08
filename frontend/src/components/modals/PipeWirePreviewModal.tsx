@@ -82,10 +82,10 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const [copySuccess, setCopySuccess] = useState(false);
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const fetchGraphTelemetry = async () => {
+  const fetchGraphTelemetry = async (isManual = false) => {
     if (!isRunning) return;
     try {
-      setLoading(true);
+      if (isManual || !graphData) setLoading(true);
       const res = await fetch(`${API}/api/services/${currentProcess.id}/pipewire/nodes`);
       if (res.ok) {
         const data = await res.json();
@@ -94,19 +94,20 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
     } catch {
       // ignore network errors on polling
     } finally {
-      setLoading(false);
+      if (isManual || !graphData) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchGraphTelemetry();
     if (!autoRefresh || !isRunning) return;
-    const interval = setInterval(fetchGraphTelemetry, 3000);
+    const interval = setInterval(() => fetchGraphTelemetry(false), 3000);
     return () => clearInterval(interval);
   }, [currentProcess.id, isRunning, autoRefresh]);
 
-  // Poll daemon execution logs from /api/processes/{id}/logs
+  // Poll daemon execution logs only when console tab is active
   useEffect(() => {
+    if (activeTab !== 'console' || !isRunning) return;
     const fetchLogs = async () => {
       try {
         const res = await fetch(`${API}/api/processes/${currentProcess.id}/logs`);
@@ -124,7 +125,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
     fetchLogs();
     const interval = setInterval(fetchLogs, 2000);
     return () => clearInterval(interval);
-  }, [currentProcess.id, API]);
+  }, [currentProcess.id, API, activeTab, isRunning]);
 
   // Auto-scroll virtual terminal
   useEffect(() => {
@@ -214,7 +215,10 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
               </button>
             )}
             <button
-              onClick={() => onEditProcess(currentProcess)}
+              onClick={() => {
+                onClose();
+                onEditProcess(currentProcess);
+              }}
               className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1.5 px-3 border border-white/10 text-[var(--text-primary)]"
             >
               {t('common.edit', 'Edit')}
@@ -332,7 +336,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 <span>{t('common.autoRefresh', 'Auto-refresh (3s)')}</span>
               </label>
               <button
-                onClick={fetchGraphTelemetry}
+                onClick={() => fetchGraphTelemetry(true)}
                 disabled={loading || !isRunning}
                 className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 text-[var(--text-primary)] disabled:opacity-30"
                 title={t('common.refresh', 'Refresh')}
