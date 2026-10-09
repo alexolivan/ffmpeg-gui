@@ -108,7 +108,8 @@ class BuildManager:
             "libcurl": {"pkg": "libcurl", "type": "optional", "description": "Biblioteca cliente HTTP/URL auth (libcurl4-openssl-dev)", "engines": ["icecast2"]},
             "librhash": {"pkg": "librhash", "type": "required" if software_type == "icecast2" else "optional", "description": "Biblioteca para funciones hash criptográficas (librhash-dev, requerida por libigloo/Icecast 2.5)", "engines": ["icecast2"]},
             "libigloo": {"pkg": "igloo >= 0.9.4", "type": "optional", "description": "Framework C de base para Icecast 2.5+ (libigloo-dev, auto-compilado en la receta si falta)", "engines": ["icecast2"]},
-            "libasound2": {"pkg": "alsa", "type": "required", "description": "Biblioteca cliente ALSA para audio nativo (libasound2-dev)", "engines": ["pipewire"]},
+            "libasound2": {"pkg": "alsa", "type": "required", "description": "Biblioteca cliente ALSA para audio nativo (libasound2-dev)", "engines": ["ffmpeg", "pipewire"]},
+            "libpulse": {"pkg": "libpulse", "type": "required", "description": "Biblioteca cliente PulseAudio/PipeWire para captura y salida de audio (-f pulse)", "engines": ["ffmpeg"]},
             "libdbus-1": {"pkg": "dbus-1", "type": "required", "description": "Biblioteca de bus de mensajes del sistema D-Bus (libdbus-1-dev)", "engines": ["pipewire"]},
             "libudev": {"pkg": "libudev", "type": "required", "description": "Biblioteca de gestión de dispositivos hardware udev (libudev-dev)", "engines": ["pipewire"]},
             "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)", "engines": ["ffmpeg"]},
@@ -144,6 +145,11 @@ class BuildManager:
                         break
             elif not installed and name == "libvorbis":
                 for h_path in ["/usr/include/vorbis/codec.h", "/usr/local/include/vorbis/codec.h"]:
+                    if os.path.exists(h_path):
+                        installed = True
+                        break
+            elif not installed and name == "libpulse":
+                for h_path in ["/usr/include/pulse/pulseaudio.h", "/usr/local/include/pulse/pulseaudio.h"]:
                     if os.path.exists(h_path):
                         installed = True
                         break

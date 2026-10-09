@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.38.0] - 2026-10-08
+## [2.39.0] - 2026-10-09
+
+### Added
+- **First-Class PulseAudio / PipeWire Client Integration (`-f pulse`)**:
+  - Elevated PulseAudio / PipeWire client library (`libpulse`) to core system requirement alongside ALSA (`libasound2`).
+  - Added `libpulse-dev` (Debian/Ubuntu), `pulseaudio-libs-devel` (Fedora), and `libpulse` (Arch) to `install.sh` system dependencies and `INSTALL.md`.
+  - Added `libpulse` dependency verification (`pkg-config --exists libpulse` with `/usr/include/pulse/pulseaudio.h` fallback) in `BuildManager`.
+  - Added `--enable-libpulse` compilation flag in `FfmpegRecipe` to build both `pulse` input device (`-f pulse -i <sink>.monitor`) and `pulse` output device (`-f pulse <sink>`) in custom Forge FFmpeg builds.
+  - Added `libpulse` package mappings for Debian, Fedora, and Arch in `ForgeView.tsx`.
+
 
 ### Added
 - **PipeWire Universal Audio Matrix (Inputs & Outputs)**:

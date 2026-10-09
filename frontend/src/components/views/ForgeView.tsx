@@ -54,6 +54,7 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "meson": "meson",
     "ninja": "ninja-build",
     "libasound2": "libasound2-dev",
+    "libpulse": "libpulse-dev",
     "libdbus-1": "libdbus-1-dev",
     "libudev": "libudev-dev"
   },
@@ -93,6 +94,7 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "meson": "meson",
     "ninja": "ninja-build",
     "libasound2": "alsa-lib-devel",
+    "libpulse": "pulseaudio-libs-devel",
     "libdbus-1": "dbus-devel",
     "libudev": "systemd-devel"
   },
@@ -132,6 +134,7 @@ const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string
     "meson": "meson",
     "ninja": "ninja",
     "libasound2": "alsa-lib",
+    "libpulse": "libpulse",
     "libdbus-1": "dbus",
     "libudev": "systemd-libs"
   }

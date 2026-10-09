@@ -9,7 +9,7 @@ This guide details the installation, dependency setup, and upgrade workflow for 
 - **Operating System**: Linux (Ubuntu 20.04+ or Debian 11+ recommended).
 - **Python**: Version 3.10 or higher (with `venv` support).
 - **Node.js**: Version 18 or higher (with `npm`).
-- **Compiler Tools & Libraries**: `gcc`, `make`, `pkg-config`, `yasm`/`nasm`, and development headers (`libx264-dev`, `libx265-dev`, `libssl-dev`, `libfdk-aac-dev`, `libmp3lame-dev`, `libvorbis-dev`, `libopus-dev`, `libasound2-dev`, `libxml2-dev`, `libxslt1-dev`) required to compile custom FFmpeg and Icecast2 binaries.
+- **Compiler Tools & Libraries**: `gcc`, `make`, `pkg-config`, `yasm`/`nasm`, and development headers (`libx264-dev`, `libx265-dev`, `libssl-dev`, `libfdk-aac-dev`, `libmp3lame-dev`, `libvorbis-dev`, `libopus-dev`, `libasound2-dev`, `libpulse-dev`, `libxml2-dev`, `libxslt1-dev`) required to compile custom FFmpeg and Icecast2 binaries.
 - **Audio & System Utilities**: `alsa-utils` (provides `amixer`, required for soundcard mixer controls and AudioScience matrix routing), `libasound2-plugins` (installed automatically by `install.sh --system`), and `apulse` (PulseAudio emulation wrapper for ALSA, enabling audio playback in Firefox Kiosks without running PulseAudio/PipeWire daemons).
 - **ALSA Loopback Kernel Driver (`snd-aloop`)**: Required for capturing Virtual Desktop and Web Kiosk audio into FFmpeg pipelines without PulseAudio/PipeWire. Automatically loaded and persisted by `install.sh --system`.
 - **Optional System Packages**: Standard `icecast2` package (`sudo apt install icecast2`) can be installed directly from Debian/Ubuntu repositories if source compilation via Forge is not desired.
