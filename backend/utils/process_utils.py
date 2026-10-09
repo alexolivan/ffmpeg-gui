@@ -82,13 +82,20 @@ def get_ffmpeg_version(binary_path: str = "ffmpeg") -> float:
     try:
         res = subprocess.run([binary_path, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
         first_line = res.stdout.split('\n')[0]
-        # Match pattern like "ffmpeg version 4.4" or "version 5.1-css"
-        match = re.search(r'version\s+([0-9]+\.[0-9]+)', first_line)
+        # Match pattern like "ffmpeg version 7.1", "version n7.0.2", "version v6.1", "version 5.1-css"
+        match = re.search(r'version\s+(?:v|n|git-)?([0-9]+(?:\.[0-9]+)?)', first_line, re.IGNORECASE)
         if match:
             return float(match.group(1))
+        # Secondary fallback: search for major.minor anywhere in first line
+        match_secondary = re.search(r'([0-9]+\.[0-9]+)', first_line)
+        if match_secondary:
+            return float(match_secondary.group(1))
+        # If it's a git snapshot or trunk build (e.g. N-118000...), modern FFmpeg is guaranteed
+        if "version" in first_line:
+            return 7.0
     except Exception:
         pass
-    return 4.4  # Default fallback
+    return 7.0  # Default fallback for modern systems (FFmpeg 5.1+ uses -fps_mode)
 
 def prepare_process_file_permissions(process_id: int = None, execution_id: int = None, logger=None):
     """

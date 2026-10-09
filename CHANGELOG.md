@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.39.1] - 2026-10-09
+
+### Fixed
+- **FFmpeg Version Detection & Deprecated `-vsync` Resolution**:
+  - Fixed `get_ffmpeg_version` regex to support Git tag prefix `n` (e.g. `n7.1`, `n9.0.2`), version prefix `v`, and Git snapshots (`N-118000`).
+  - Resolved `Unrecognized option 'vsync'` crash on FFmpeg 7+ by correctly detecting versions >= 5.1 and generating `-fps_mode` instead of the removed legacy `-vsync` flag.
+  - Updated modern default fallback from legacy 4.4 to 7.0 for future-proof compatibility with modern FFmpeg releases.
+
 ## [2.39.0] - 2026-10-09
 
 ### Added
