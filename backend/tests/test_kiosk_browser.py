@@ -89,6 +89,55 @@ class TestKioskBrowser(unittest.TestCase):
         self.assertEqual(profile_dir, f"/tmp/kiosk_cr_{kiosk.id}")
 
     @patch("shutil.which")
+    def test_chromium_launcher_strategy_pipewire_hub(self, mock_which):
+        mock_which.return_value = "/bin/sh"
+
+        pw_desktop = Service(
+            name="Virtual Desktop PipeWire",
+            type="service",
+            service_type="desktop",
+            status="running",
+            config={
+                "desktop_config": {
+                    "display_num": 100,
+                    "resolution": "1920x1080",
+                    "vnc_port": 6000,
+                    "audio_backend": "pipewire_hub",
+                    "pipewire_service_id": 14,
+                    "pipewire_sink_id": "kiosk_bus"
+                }
+            }
+        )
+        self.db.add(pw_desktop)
+        self.db.commit()
+
+        kiosk = Service(
+            name="Kiosk Chrome PW",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": pw_desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertEqual(display_num, 100)
+        self.assertFalse(any(isinstance(arg, str) and arg.startswith("--alsa-output-device=") for arg in cmd))
+        self.assertIn("--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees,AudioServiceSandbox", cmd)
+        asound_path = os.path.join(profile_dir, "asound.conf")
+        asoundrc_path = os.path.join(profile_dir, ".asoundrc")
+        self.assertFalse(os.path.exists(asound_path))
+        self.assertFalse(os.path.exists(asoundrc_path))
+
+    @patch("shutil.which")
     def test_firefox_launcher_strategy(self, mock_which):
         real_sh = shutil.which("sh") or "/bin/sh"
         def side_which(cmd_name):

@@ -816,6 +816,7 @@ class ProcessManager:
                         kiosk_sub_env["PULSE_RUNTIME_PATH"] = f"/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}"
                         if desktop_pw_sink_id:
                             kiosk_sub_env["PULSE_SINK"] = str(desktop_pw_sink_id)
+                        kiosk_sub_env["PULSE_PROP"] = f"application.name=kiosk_{'chromium' if is_chromium else 'firefox'}_{process_id}"
 
                         if is_chromium:
                             kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
@@ -2395,23 +2396,24 @@ class ProcessManager:
             alsa_subdevice = int(display_num) % 8
 
         # Generate sandboxed asound.conf and .asoundrc pointing to hw:Loopback,0,<subdevice>
-        asound_content = (
-            f"pcm.!default {{\n"
-            f"    type plug\n"
-            f"    slave.pcm \"hw:Loopback,0,{alsa_subdevice}\"\n"
-            f"}}\n"
-            f"ctl.!default {{\n"
-            f"    type hw\n"
-            f"    card \"Loopback\"\n"
-            f"}}\n"
-        )
-        for fname in ("asound.conf", ".asoundrc"):
-            fpath = os.path.join(profile_dir, fname)
-            try:
-                with open(fpath, "w", encoding="utf-8") as af:
-                    af.write(asound_content)
-            except Exception as a_err:
-                self.logger.warning(f"Failed to write ALSA sandbox config {fname} in {profile_dir}: {a_err}")
+        if desktop_audio_backend != "pipewire_hub":
+            asound_content = (
+                f"pcm.!default {{\n"
+                f"    type plug\n"
+                f"    slave.pcm \"hw:Loopback,0,{alsa_subdevice}\"\n"
+                f"}}\n"
+                f"ctl.!default {{\n"
+                f"    type hw\n"
+                f"    card \"Loopback\"\n"
+                f"}}\n"
+            )
+            for fname in ("asound.conf", ".asoundrc"):
+                fpath = os.path.join(profile_dir, fname)
+                try:
+                    with open(fpath, "w", encoding="utf-8") as af:
+                        af.write(asound_content)
+                except Exception as a_err:
+                    self.logger.warning(f"Failed to write ALSA sandbox config {fname} in {profile_dir}: {a_err}")
 
         # Resolve Cache Mode: 'ram', 'disabled', or 'custom'
         # Backwards compatibility: disk_cache_disabled maps to cache_mode='disabled'
@@ -2430,12 +2432,17 @@ class ProcessManager:
             cmd = [
                 browser_bin,
                 f"--user-data-dir={profile_dir}",
-                f"--alsa-output-device=plughw:Loopback,0,{alsa_subdevice}",
+            ]
+            if desktop_audio_backend != "pipewire_hub":
+                cmd.append(f"--alsa-output-device=plughw:Loopback,0,{alsa_subdevice}")
+                cmd.append("--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees")
+            else:
+                cmd.append("--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees,AudioServiceSandbox")
+            cmd.extend([
                 "--no-first-run",
                 "--noerrdialogs",
                 "--disable-session-crashed-bubble",
                 "--disable-translate",
-                "--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees",
                 "--autoplay-policy=no-user-gesture-required",
                 "--disable-dev-shm-usage",
                 "--disable-crash-reporter",
@@ -2460,7 +2467,7 @@ class ProcessManager:
                 "--start-fullscreen",
                 "--start-maximized",
                 "--kiosk",
-            ]
+            ])
 
             # In Chromium profile: write Preferences to disable translate popup
             default_pref_dir = os.path.join(profile_dir, "Default")
