@@ -386,7 +386,16 @@
       "stoppedLogs": "El dimoni està aturat. Inicieu el servei per veure la sortida d'execució.",
       "noNodesDetected": "No s'han detectat nodes actius al graf de PipeWire.",
       "serviceStopped": "El servei PipeWire està actualment aturat.",
-      "noLinksDetected": "No s'han detectat rutes d'enllaç actives al graf."
+      "noLinksDetected": "No s'han detectat rutes d'enllaç actives al graf.",
+      "matrixRoutesTitle": "Rutes Dinàmiques de la Matriu d'Àudio",
+      "matrixRoutesHelp": "Rutes d'àudio en temps real mantingudes pel supervisor PipeWireMatrixSupervisor",
+      "reconcileMatrix": "Reconciliar Ara",
+      "reconciling": "Reconciliant...",
+      "rawLinksTitle": "Enllaços Actius del Graf (pw-dump)",
+      "routeLinked": "Enllaçat",
+      "routePendingSource": "Esperant Origen (Silenciat / Buffering)",
+      "routePendingTarget": "Esperant Destinació (Bus Inactiu)",
+      "routeLinking": "Enllaçant..."
     },
     "startService": "Iniciar servei",
     "stopService": "Aturar servei",

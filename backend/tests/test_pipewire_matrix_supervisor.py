@@ -337,3 +337,107 @@ class TestPipeWireMatrixSupervisor(unittest.IsolatedAsyncioTestCase):
 
         self.pm.notify_pipewire_matrix_change(self.hub_id)
         self.assertTrue(self.supervisor._trigger_event.is_set())
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_watchdog_triggers_restart_when_ffmpeg_node_missing_for_four_ticks(self, mock_exec):
+        """Tests that supervisor watchdog requests restart when an active FFmpeg process misses its node in PipeWire for 4 ticks."""
+        with self.Session() as session:
+            hub = Service(
+                id=self.hub_id,
+                name="PipeWire Test Hub",
+                service_type="pipewire_hub",
+                status="running",
+                config={"virtual_sinks": [{"id": "master_bus"}]}
+            )
+            ffmpeg_svc = Service(
+                id=1,
+                name="FFmpeg Output",
+                service_type="ffmpeg_stream",
+                status="running",
+                config={"input_config": {"type": "pipewire", "provider_service_id": self.hub_id, "sink_id": "master_bus"}}
+            )
+            session.add_all([hub, ffmpeg_svc])
+            session.commit()
+
+        # Active in pm.processes
+        mock_proc = MagicMock()
+        mock_proc.returncode = None
+        self.pm.processes[1] = mock_proc
+
+        # pw-link outputs: master_bus is present, but ffmpeg_service_1 is missing!
+        proc_l = MagicMock()
+        proc_l.communicate = AsyncMock(return_value=(b"", b""))
+
+        proc_o = MagicMock()
+        proc_o.communicate = AsyncMock(return_value=(b"master_bus:monitor_FL\nmaster_bus:monitor_FR\n", b""))
+
+        proc_i = MagicMock()
+        proc_i.communicate = AsyncMock(return_value=(b"", b""))  # No ffmpeg ports!
+
+        mock_exec.side_effect = [proc_l, proc_o, proc_i] * 5
+
+        self.pm.restart_process = AsyncMock()
+
+        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=("/usr/bin/pw-link", None)):
+            # First 3 ticks: count reaches 3, no restart yet
+            for i in range(3):
+                await self.supervisor.reconcile()
+                self.assertEqual(self.supervisor._missing_node_counts.get(1), i + 1)
+                self.pm.restart_process.assert_not_called()
+
+            # 4th tick: count reaches 4, restart is triggered!
+            await self.supervisor.reconcile()
+            self.pm.restart_process.assert_called_once_with(1)
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_watchdog_does_not_trigger_for_kiosks(self, mock_exec):
+        """Tests that kiosks muted/buffering do NOT trigger automatic restart watchdog."""
+        with self.Session() as session:
+            hub = Service(
+                id=self.hub_id,
+                name="PipeWire Test Hub",
+                service_type="pipewire_hub",
+                status="running",
+                config={"virtual_sinks": [{"id": "master_bus"}]}
+            )
+            desktop = Service(
+                id=10,
+                name="Studio Desktop",
+                service_type="desktop",
+                status="running",
+                config={"desktop_config": {"audio_backend": "pipewire_hub", "pipewire_service_id": self.hub_id}}
+            )
+            kiosk = Service(
+                id=13,
+                name="Kiosk",
+                service_type="kiosk_browser",
+                status="running",
+                config={"kiosk_config": {"target_desktop_service_id": 10}}
+            )
+            session.add_all([hub, desktop, kiosk])
+            session.commit()
+
+        # Active kiosk process
+        mock_kiosk_proc = MagicMock()
+        mock_kiosk_proc.returncode = None
+        self.pm.processes[13] = mock_kiosk_proc
+
+        proc_l = MagicMock()
+        proc_l.communicate = AsyncMock(return_value=(b"", b""))
+        proc_o = MagicMock()
+        proc_o.communicate = AsyncMock(return_value=(b"", b""))  # No kiosk ports (muted)
+        proc_i = MagicMock()
+        proc_i.communicate = AsyncMock(return_value=(b"master_bus:playback_FL\nmaster_bus:playback_FR\n", b""))
+
+        mock_exec.side_effect = [proc_l, proc_o, proc_i] * 5
+
+        self.pm.restart_process = AsyncMock()
+
+        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=("/usr/bin/pw-link", None)):
+            for _ in range(5):
+                await self.supervisor.reconcile()
+
+            # Kiosks must never be restarted by missing node watchdog
+            self.pm.restart_process.assert_not_called()
+            self.assertNotIn(13, self.supervisor._missing_node_counts)
+

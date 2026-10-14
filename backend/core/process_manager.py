@@ -658,6 +658,7 @@ class ProcessManager:
                         supervisor = PipeWireMatrixSupervisor(process_id, self)
                         self.pipewire_supervisors[process_id] = supervisor
                         await supervisor.start()
+                        asyncio.create_task(self._restart_dependent_ffmpeg_consumers(process_id))
                 elif svc_type == "desktop":
                     # Clean up stale X11 lock file and socket if previous Xvfb crashed
                     x_lock_path = f"/tmp/.X{display_num}-lock"
@@ -1313,6 +1314,89 @@ class ProcessManager:
             self.logger.debug(f"Final rogue process cleanup sweep encountered: {e}")
 
         self.logger.info("ProcessManager: All child processes have been stopped cleanly.")
+
+    async def restart_process(self, process_id: int):
+        """Restarts a process cleanly preserving its pinned state and logs."""
+        await self.stop_process(process_id, is_restart=True)
+        await asyncio.sleep(0.5)
+        await self.start_process(process_id, is_restart=True)
+
+    async def _restart_dependent_ffmpeg_consumers(self, hub_id: int):
+        """
+        Restarts running FFmpeg processes that consume or publish audio to this PipeWire Hub,
+        allowing them to reconnect to the newly spawned PulseAudio socket.
+        """
+        pulse_sock = f"/tmp/ffmpeg-gui/pipewire-{hub_id}/pulse.sock"
+        for _ in range(30):
+            if os.path.exists(pulse_sock):
+                break
+            await asyncio.sleep(0.1)
+
+        dependent_pids: List[int] = []
+        try:
+            with self.db_session_factory() as session:
+                from database.models import Service, ServiceDependency
+
+                deps = session.query(ServiceDependency).filter(
+                    ServiceDependency.provider_service_id == hub_id,
+                    ServiceDependency.consumer_type == "service"
+                ).all()
+                for dep in deps:
+                    if dep.consumer_id != hub_id and dep.consumer_id in self.processes:
+                        proc = self.processes.get(dep.consumer_id)
+                        if proc and proc.returncode is None:
+                            c_svc = session.get(Service, dep.consumer_id) if hasattr(session, "get") else session.query(Service).get(dep.consumer_id)
+                            if c_svc and getattr(c_svc, "service_type", None) not in (
+                                "mediamtx_hub", "icecast_server", "pipewire_hub", "desktop", "kiosk_browser"
+                            ):
+                                if dep.consumer_id not in dependent_pids:
+                                    dependent_pids.append(dep.consumer_id)
+
+                candidate_ids = [pid for pid in self.processes.keys() if pid != hub_id and pid not in dependent_pids]
+                if candidate_ids:
+                    running_svcs = session.query(Service).filter(
+                        Service.id.in_(candidate_ids),
+                        ~Service.service_type.in_(["mediamtx_hub", "icecast_server", "pipewire_hub", "desktop", "kiosk_browser"])
+                    ).all()
+                    for svc in running_svcs:
+                        cfg = svc.config or {}
+                        inp_c = cfg.get("input_config", {})
+                        out_c = cfg.get("output_config", {})
+                        check_targets = [inp_c, out_c]
+                        if isinstance(inp_c, dict):
+                            if "input1" in inp_c:
+                                check_targets.append(inp_c.get("input1"))
+                            if "input2" in inp_c:
+                                check_targets.append(inp_c.get("input2"))
+                        for c in check_targets:
+                            if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                                cand_id = c.get("provider_service_id") or c.get("pipewire_service_id")
+                                if cand_id:
+                                    try:
+                                        if int(cand_id) == hub_id:
+                                            proc = self.processes.get(svc.id)
+                                            if proc and proc.returncode is None:
+                                                dependent_pids.append(svc.id)
+                                            break
+                                    except (ValueError, TypeError):
+                                        pass
+        except Exception as q_err:
+            self.logger.warning(f"Error querying dependent FFmpeg consumers for hub {hub_id}: {q_err}")
+
+        if not dependent_pids:
+            return
+
+        self.logger.info(
+            f"[ProcessManager] Reconnecting {len(dependent_pids)} running FFmpeg consumer(s) "
+            f"to restarted PipeWire Hub #{hub_id}: {dependent_pids}"
+        )
+
+        for c_id in dependent_pids:
+            try:
+                self.logger.info(f"[ProcessManager] Cascading restart for FFmpeg service #{c_id} (PipeWire Hub #{hub_id})")
+                await self.restart_process(c_id)
+            except Exception as c_err:
+                self.logger.warning(f"[ProcessManager] Failed restarting dependent FFmpeg service #{c_id}: {c_err}")
 
     def _resolve_storage_path(self, storage_id: Optional[int], relative_path: Optional[str]) -> Optional[str]:
         if not storage_id:
@@ -2177,6 +2261,19 @@ class ProcessManager:
                         "input_port_id": input_port_id,
                         "state": info.get("state", "")
                     })
+
+            node_map = {n["id"]: n for n in nodes if "id" in n}
+            port_map = {p["id"]: p for p in ports if "id" in p}
+            for link in links:
+                out_node = node_map.get(link.get("output_node_id"))
+                out_port = port_map.get(link.get("output_port_id"))
+                in_node = node_map.get(link.get("input_node_id"))
+                in_port = port_map.get(link.get("input_port_id"))
+
+                link["output_node_name"] = out_node["name"] if out_node else f"Node #{link.get('output_node_id')}"
+                link["output_port_name"] = out_port["name"] if out_port else f"Port #{link.get('output_port_id')}"
+                link["input_node_name"] = in_node["name"] if in_node else f"Node #{link.get('input_node_id')}"
+                link["input_port_name"] = in_port["name"] if in_port else f"Port #{link.get('input_port_id')}"
 
             sup = self.pipewire_supervisors.get(process_id)
             matrix_data = sup.get_matrix_status() if sup else None

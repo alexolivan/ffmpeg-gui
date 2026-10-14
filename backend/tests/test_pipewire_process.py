@@ -768,6 +768,70 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
         sup1.trigger_reconcile.assert_called_once()
         sup2.trigger_reconcile.assert_called_once()
 
+    async def test_restart_dependent_ffmpeg_consumers_on_pipewire_hub_start(self):
+        """Verify that _restart_dependent_ffmpeg_consumers cascades restart only to running FFmpeg services."""
+        with self.Session() as session:
+            # 1. PipeWire Hub 14
+            hub = Service(
+                id=14,
+                name="PipeWire Audio Hub",
+                service_type="pipewire_hub",
+                status="running",
+                config={"virtual_sinks": [{"id": "master_bus"}]}
+            )
+            # 2. FFmpeg consumer service 1 depending on Hub 14
+            ffmpeg_svc = Service(
+                id=1,
+                name="Tac12 Output",
+                service_type="ffmpeg_stream",
+                status="running",
+                config={
+                    "input_config": {
+                        "type": "pipewire_hub",
+                        "provider_service_id": 14,
+                        "sink_id": "master_bus"
+                    }
+                }
+            )
+            # 3. Desktop service 2 (not FFmpeg)
+            desktop_svc = Service(
+                id=2,
+                name="Desktop 2",
+                service_type="desktop",
+                status="running",
+                config={
+                    "desktop_config": {
+                        "audio_backend": "pipewire_hub",
+                        "pipewire_service_id": 14
+                    }
+                }
+            )
+            session.add_all([hub, ffmpeg_svc, desktop_svc])
+            session.commit()
+
+        # Mock running processes in ProcessManager
+        mock_ffmpeg_proc = MagicMock()
+        mock_ffmpeg_proc.returncode = None
+        mock_desktop_proc = MagicMock()
+        mock_desktop_proc.returncode = None
+
+        self.pm.processes[1] = mock_ffmpeg_proc
+        self.pm.processes[2] = mock_desktop_proc
+
+        # Mock pulse.sock existence
+        sock_path = f"/tmp/ffmpeg-gui/pipewire-14/pulse.sock"
+        os.makedirs(os.path.dirname(sock_path), exist_ok=True)
+        with open(sock_path, "w") as f:
+            f.write("")
+        self.cleanup_files.append(sock_path)
+        self.cleanup_dirs.append(os.path.dirname(sock_path))
+
+        with patch.object(self.pm, "restart_process", new_callable=AsyncMock) as mock_restart:
+            await self.pm._restart_dependent_ffmpeg_consumers(14)
+            # Service 1 (FFmpeg) must be restarted
+            mock_restart.assert_awaited_once_with(1)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -80,6 +80,8 @@ class PipeWireMatrixSupervisor:
             "routes": []
         }
         self._logged_established: Set[Tuple[str, str]] = set()
+        self._missing_node_counts: Dict[int, int] = {}
+        self._last_reconnect_attempt: Dict[int, float] = {}
 
     async def start(self):
         """Starts the supervisor background task."""
@@ -191,7 +193,7 @@ class PipeWireMatrixSupervisor:
                                         target_ports=[f"{target_sink}:playback_FL", f"{target_sink}:playback_FR"],
                                         link_type="playback",
                                         description=f"Kiosk #{kiosk.id} -> {target_sink}",
-                                        source_entity_type="service",
+                                        source_entity_type="kiosk",
                                         source_entity_id=kiosk.id,
                                         target_entity_type="sink",
                                         source_aliases=["Chromium", "Firefox", "chrome", "firefox", "cubeb"]
@@ -483,6 +485,18 @@ class PipeWireMatrixSupervisor:
                 "target_ports": resolved_dst_ports if dst_ready else dl.target_ports,
             })
 
+            # Watchdog for running FFmpeg services: if alive in OS but missing from PipeWire graph
+            if dl.target_entity_type == "service" and dl.target_entity_id:
+                if dst_ready:
+                    self._missing_node_counts.pop(dl.target_entity_id, None)
+                else:
+                    self._check_and_trigger_ffmpeg_reconnect(dl.target_entity_id, "consumer")
+            elif dl.source_entity_type == "service" and dl.source_entity_id:
+                if src_ready:
+                    self._missing_node_counts.pop(dl.source_entity_id, None)
+                else:
+                    self._check_and_trigger_ffmpeg_reconnect(dl.source_entity_id, "producer")
+
         self._matrix_status.update({
             "hub_id": self.hub_id,
             "running": True,
@@ -491,6 +505,40 @@ class PipeWireMatrixSupervisor:
             "pending_links_count": pending_count,
             "routes": routes_telemetry
         })
+
+    def _check_and_trigger_ffmpeg_reconnect(self, svc_id: int, role: str):
+        """
+        Detects if a running FFmpeg service is missing its PipeWire audio port/node
+        (e.g. after a PipeWire restart or severed Pulse socket) and triggers reconnect.
+        """
+        if not self.pm or not hasattr(self.pm, "processes"):
+            return
+        proc = self.pm.processes.get(svc_id)
+        if not proc or getattr(proc, "returncode", None) is not None:
+            self._missing_node_counts.pop(svc_id, None)
+            return
+
+        count = self._missing_node_counts.get(svc_id, 0) + 1
+        self._missing_node_counts[svc_id] = count
+
+        try:
+            loop = asyncio.get_running_loop()
+            now_t = loop.time()
+        except RuntimeError:
+            now_t = 0.0
+
+        last_t = self._last_reconnect_attempt.get(svc_id, 0.0)
+
+        # After >= 4 consecutive ticks (~6 seconds) and >= 30 seconds cooldown
+        if count >= 4 and (now_t - last_t > 30.0):
+            self._last_reconnect_attempt[svc_id] = now_t
+            self._missing_node_counts[svc_id] = 0
+            logger.info(
+                f"[PipeWireSupervisor #{self.hub_id}] Active FFmpeg {role} service #{svc_id} missing "
+                f"from PipeWire graph after {count * 1.5:.1f}s. Requesting reconnection restart..."
+            )
+            if hasattr(self.pm, "restart_process"):
+                asyncio.create_task(self.pm.restart_process(svc_id))
 
     @staticmethod
     def _match_ports(

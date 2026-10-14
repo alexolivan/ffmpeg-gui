@@ -386,7 +386,16 @@
       "stoppedLogs": "El demonio está detenido. Inicie el servicio para ver la salida de ejecución.",
       "noNodesDetected": "No se detectaron nodos activos en el grafo de PipeWire.",
       "serviceStopped": "El servicio PipeWire está actualmente detenido.",
-      "noLinksDetected": "No se detectaron rutas de enlace activas en el grafo."
+      "noLinksDetected": "No se detectaron rutas de enlace activas en el grafo.",
+      "matrixRoutesTitle": "Rutas Dinámicas de la Matriz de Audio",
+      "matrixRoutesHelp": "Rutas de audio en tiempo real mantenidas por el supervisor PipeWireMatrixSupervisor",
+      "reconcileMatrix": "Reconciliar Ahora",
+      "reconciling": "Reconciliando...",
+      "rawLinksTitle": "Enlaces Activos del Grafo (pw-dump)",
+      "routeLinked": "Enlazado",
+      "routePendingSource": "Esperando Origen (Muteado / Buffering)",
+      "routePendingTarget": "Esperando Destino (Bus Inactivo)",
+      "routeLinking": "Enlazando..."
     },
     "startService": "Iniciar servicio",
     "stopService": "Detener servicio",

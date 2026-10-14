@@ -386,7 +386,16 @@
       "stoppedLogs": "Daemon is stopped. Start service to view execution output.",
       "noNodesDetected": "No active nodes detected in PipeWire graph.",
       "serviceStopped": "PipeWire service is currently stopped.",
-      "noLinksDetected": "No active routing links detected in graph."
+      "noLinksDetected": "No active routing links detected in graph.",
+      "matrixRoutesTitle": "Dynamic Patchbay Matrix Routes",
+      "matrixRoutesHelp": "Real-time audio routes maintained by PipeWireMatrixSupervisor companion",
+      "reconcileMatrix": "Reconcile Now",
+      "reconciling": "Reconciling...",
+      "rawLinksTitle": "Active Graph Links (pw-dump)",
+      "routeLinked": "Linked",
+      "routePendingSource": "Pending Source (Muted / Buffering)",
+      "routePendingTarget": "Pending Target (Sink Offline)",
+      "routeLinking": "Linking..."
     },
     "startService": "Start Service",
     "stopService": "Stop Service",

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.41.1] - 2026-10-14
+
+### Added
+- **Human-Readable PipeWire Links & Dynamic Matrix Routes UI (`PipeWirePreviewModal.tsx`)**:
+  - Enriched graph telemetry resolving node names and port names for all active links (`master_bus:monitor_FL → ffmpeg_service_1:input_FL`).
+  - Added dedicated **Dynamic Patchbay Matrix Routes** section in the Links tab displaying high-level routing pairs (`Kiosk #13 -> master_bus`, `master_bus.monitor -> FFmpeg Service #1`) with real-time status pills (`Linked`, `Pending Source`, `Pending Target`, `Linking`).
+  - Added manual **Reconcile Now** action button triggering immediate patchbay convergence.
+  - Multi-language translation support (`en.json`, `es.json`, `ca.json`) with 100% key parity and strict CSS theme tokens.
+
+- **FFmpeg Auto-Reconnect & Cascading Restart on PipeWire Hub Lifecycle**:
+  - Implemented `ProcessManager._restart_dependent_ffmpeg_consumers` to automatically cascade a graceful restart to running FFmpeg services when their PipeWire Hub provider starts or restarts.
+  - Added active connection watchdog in `PipeWireMatrixSupervisor` that monitors running FFmpeg transcode processes and triggers reconnection if their PulseAudio node disappears from the PipeWire graph for $\ge 6$ seconds (with 30-second cooldown protection).
+  - Explicitly preserved Virtual Desktop and Kiosk processes without unnecessary restarts (kiosks reconnect to PulseAudio sockets automatically once unmuted).
+  - Added unit test coverage in `test_pipewire_process.py` and `test_pipewire_matrix_supervisor.py`.
+
 ## [2.41.0] - 2026-10-14
 
 ### Added

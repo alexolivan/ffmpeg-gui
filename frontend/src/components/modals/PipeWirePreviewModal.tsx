@@ -43,6 +43,30 @@ interface TelemetryLink {
   output_port_id: number;
   input_node_id: number;
   input_port_id: number;
+  output_node_name?: string;
+  output_port_name?: string;
+  input_node_name?: string;
+  input_port_name?: string;
+  state?: string;
+}
+
+interface MatrixRoute {
+  source: string;
+  target: string;
+  description: string;
+  type: string;
+  status: 'linked' | 'pending_source' | 'pending_target' | 'linking';
+  source_ports: string[];
+  target_ports: string[];
+}
+
+interface MatrixTelemetry {
+  hub_id: number;
+  running: boolean;
+  desired_links_count: number;
+  active_links_count: number;
+  pending_links_count: number;
+  routes: MatrixRoute[];
 }
 
 interface GraphTelemetryData {
@@ -50,6 +74,7 @@ interface GraphTelemetryData {
   nodes: TelemetryNode[];
   ports: TelemetryPort[];
   links: TelemetryLink[];
+  matrix?: MatrixTelemetry | null;
   raw_summary: {
     nodes_count: number;
     ports_count: number;
@@ -80,7 +105,26 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw'>('nodes');
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const handleReconcileMatrix = async () => {
+    if (!currentProcess?.id || isReconciling) return;
+    setIsReconciling(true);
+    try {
+      await fetch(`${API}/api/services/${currentProcess.id}/pipewire/matrix/reconcile`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
+      await fetchGraphTelemetry(true);
+    } catch (err) {
+      console.error('Failed to reconcile PipeWire matrix:', err);
+    } finally {
+      setIsReconciling(false);
+    }
+  };
 
   const fetchGraphTelemetry = async (isManual = false) => {
     if (!isRunning) return;
@@ -408,39 +452,164 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
           )}
 
           {activeTab === 'links' && (
-            <div className="space-y-2">
-              {graphData?.links && graphData.links.length > 0 ? (
-                <div className="overflow-x-auto rounded-xl border border-[var(--glass-border)]">
-                  <table className="w-full text-left text-xs font-mono">
-                    <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
-                      <tr>
-                        <th className="p-2.5">Link ID</th>
-                        <th className="p-2.5">Output (Source)</th>
-                        <th className="p-2.5 text-center">Direction</th>
-                        <th className="p-2.5">Input (Target)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[var(--glass-border)]">
-                      {graphData.links.map((link) => (
-                        <tr key={link.id} className="hover:bg-white/2 transition-colors">
-                          <td className="p-2.5 text-zinc-500">#{link.id}</td>
-                          <td className="p-2.5 text-[var(--text-primary)] font-bold">
-                            Node #{link.output_node_id} (Port #{link.output_port_id})
-                          </td>
-                          <td className="p-2.5 text-center text-brand-lime font-bold">→</td>
-                          <td className="p-2.5 text-[var(--text-primary)] font-bold">
-                            Node #{link.input_node_id} (Port #{link.input_port_id})
-                          </td>
+            <div className="space-y-4">
+              {/* 1. Dynamic Matrix Routes (from Supervisor) */}
+              {graphData?.matrix?.routes && graphData.matrix.routes.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-1.5">
+                        <span>🎛️</span>
+                        <span>{t('services.pipewire.matrixRoutesTitle', 'Dynamic Patchbay Matrix Routes')}</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/15 text-purple-300 font-mono">
+                          {graphData.matrix.active_links_count}/{graphData.matrix.desired_links_count}
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-[var(--text-secondary)]">
+                        {t('services.pipewire.matrixRoutesHelp', 'Real-time audio routes maintained by PipeWireMatrixSupervisor companion')}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleReconcileMatrix}
+                      disabled={isReconciling || !isRunning}
+                      className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1 px-2.5 border border-white/10 text-brand-lime font-bold flex items-center gap-1 disabled:opacity-40"
+                    >
+                      <RefreshIcon size={12} className={isReconciling ? 'animate-spin' : ''} />
+                      <span>{isReconciling ? t('services.pipewire.reconciling', 'Reconciling...') : t('services.pipewire.reconcileMatrix', 'Reconcile Now')}</span>
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-[var(--glass-border)] bg-black/10">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                        <tr>
+                          <th className="p-2.5">Route</th>
+                          <th className="p-2.5">Source (Output)</th>
+                          <th className="p-2.5 text-center">Direction</th>
+                          <th className="p-2.5">Target (Input)</th>
+                          <th className="p-2.5 text-right">Status</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="py-8 text-center text-xs text-[var(--text-secondary)] border border-dashed border-white/10 rounded-xl">
-                  {t('services.pipewire.noLinksDetected', 'No active routing links detected in graph.')}
+                      </thead>
+                      <tbody className="divide-y divide-[var(--glass-border)]">
+                        {graphData.matrix.routes.map((route, idx) => (
+                          <tr key={idx} className="hover:bg-white/2 transition-colors">
+                            <td className="p-2.5 font-sans font-semibold text-[var(--text-primary)]">
+                              {route.description || `${route.source} → ${route.target}`}
+                            </td>
+                            <td className="p-2.5">
+                              <div className="flex flex-col">
+                                <span className="font-bold text-purple-300">{route.source}</span>
+                                {route.source_ports && route.source_ports.length > 0 && (
+                                  <span className="text-[10px] text-zinc-400">
+                                    {route.source_ports.join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-center text-brand-lime font-bold">→</td>
+                            <td className="p-2.5">
+                              <div className="flex flex-col">
+                                <span className="font-bold text-cyan-300">{route.target}</span>
+                                {route.target_ports && route.target_ports.length > 0 && (
+                                  <span className="text-[10px] text-zinc-400">
+                                    {route.target_ports.join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-right">
+                              {route.status === 'linked' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  {t('services.pipewire.routeLinked', 'Linked')}
+                                </span>
+                              ) : route.status === 'pending_source' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1">
+                                  <span>⏳</span>
+                                  {t('services.pipewire.routePendingSource', 'Pending Source (Muted / Buffering)')}
+                                </span>
+                              ) : route.status === 'pending_target' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                                  {t('services.pipewire.routePendingTarget', 'Pending Target (Sink Offline)')}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                  {t('services.pipewire.routeLinking', 'Linking...')}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
+
+              {/* 2. Low-level PipeWire Graph Links */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+                  <span>🔗</span>
+                  <span>{t('services.pipewire.rawLinksTitle', 'Active Graph Links (pw-dump)')}</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">({graphData?.links?.length || 0})</span>
+                </h4>
+
+                {graphData?.links && graphData.links.length > 0 ? (
+                  <div className="overflow-x-auto rounded-xl border border-[var(--glass-border)]">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                        <tr>
+                          <th className="p-2.5">Link ID</th>
+                          <th className="p-2.5">Output (Source Port)</th>
+                          <th className="p-2.5 text-center">Direction</th>
+                          <th className="p-2.5">Input (Target Port)</th>
+                          <th className="p-2.5 text-right">State</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--glass-border)]">
+                        {graphData.links.map((link) => (
+                          <tr key={link.id} className="hover:bg-white/2 transition-colors">
+                            <td className="p-2.5 text-zinc-500 font-bold">#{link.id}</td>
+                            <td className="p-2.5">
+                              <div className="flex flex-col">
+                                <span className="text-[var(--text-primary)] font-bold">
+                                  {link.output_node_name || `Node #${link.output_node_id}`} :{' '}
+                                  <span className="text-purple-400">{link.output_port_name || `Port #${link.output_port_id}`}</span>
+                                </span>
+                                <span className="text-[10px] text-zinc-500">
+                                  Node #{link.output_node_id} · Port #{link.output_port_id}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-center text-brand-lime font-bold">→</td>
+                            <td className="p-2.5">
+                              <div className="flex flex-col">
+                                <span className="text-[var(--text-primary)] font-bold">
+                                  {link.input_node_name || `Node #${link.input_node_id}`} :{' '}
+                                  <span className="text-cyan-400">{link.input_port_name || `Port #${link.input_port_id}`}</span>
+                                </span>
+                                <span className="text-[10px] text-zinc-500">
+                                  Node #{link.input_node_id} · Port #{link.input_port_id}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-right">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                {link.state || 'active'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="py-8 text-center text-xs text-[var(--text-secondary)] border border-dashed border-white/10 rounded-xl">
+                    {t('services.pipewire.noLinksDetected', 'No active routing links detected in graph.')}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
