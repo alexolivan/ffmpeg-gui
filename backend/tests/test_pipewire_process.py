@@ -703,6 +703,96 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(deps), 1)
             self.assertEqual(deps[0].provider_service_id, 602)
 
+    @patch("asyncio.create_subprocess_exec")
+    async def test_ensure_pipewire_links_success(self, mock_exec):
+        """Test that _ensure_pipewire_links discovers client ports and links them to the target sink."""
+        query_proc = MagicMock()
+        query_proc.communicate = AsyncMock(return_value=(
+            b"master_bus:monitor_FL\nmaster_bus:monitor_FR\nChromium:output_FL\nChromium:output_FR\n",
+            b""
+        ))
+        link_proc = MagicMock()
+        link_proc.communicate = AsyncMock(return_value=(b"", b""))
+
+        mock_exec.side_effect = [query_proc, link_proc, link_proc]
+
+        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=("/usr/bin/pw-link", None)):
+            with self.assertLogs(self.pm.logger, level="INFO") as log_capture:
+                await self.pm._ensure_pipewire_links(
+                    hub_service_id=14,
+                    target_sink="master_bus",
+                    client_type="browser",
+                    client_name="Chromium",
+                    entity_type="service",
+                    entity_id=99,
+                    max_duration=2.0,
+                    poll_interval=0.05
+                )
+
+        link_calls = [call for call in mock_exec.call_args_list if len(call[0]) >= 3 and call[0][0] == "/usr/bin/pw-link"]
+        self.assertEqual(len(link_calls), 2)
+        self.assertEqual(link_calls[0][0], ("/usr/bin/pw-link", "Chromium:output_FL", "master_bus:playback_FL"))
+        self.assertEqual(link_calls[1][0], ("/usr/bin/pw-link", "Chromium:output_FR", "master_bus:playback_FR"))
+
+        self.assertTrue(any("[PipeWireLinker] Successfully linked" in msg for msg in log_capture.output))
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_ensure_pipewire_links_timeout_bounded(self, mock_exec):
+        """Test that _ensure_pipewire_links terminates cleanly after timeout and emits single warning."""
+        empty_proc = MagicMock()
+        empty_proc.communicate = AsyncMock(return_value=(b"master_bus:monitor_FL\nmaster_bus:monitor_FR\n", b""))
+        mock_exec.return_value = empty_proc
+
+        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=("/usr/bin/pw-link", None)):
+            with self.assertLogs(self.pm.logger, level="WARNING") as log_capture:
+                await self.pm._ensure_pipewire_links(
+                    hub_service_id=14,
+                    target_sink="master_bus",
+                    client_type="browser",
+                    client_name="Chromium",
+                    entity_type="service",
+                    entity_id=102,
+                    max_duration=0.2,
+                    poll_interval=0.05
+                )
+
+        warning_msgs = [m for m in log_capture.output if "[PipeWireLinker] Timeout" in m]
+        self.assertEqual(len(warning_msgs), 1)
+
+    async def test_ensure_pipewire_links_aborts_on_client_exit(self):
+        """Test that _ensure_pipewire_links aborts immediately when client process terminates."""
+        mock_client = MagicMock()
+        mock_client.returncode = 1
+        self.pm.processes[888] = mock_client
+
+        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=("/usr/bin/pw-link", None)):
+            with self.assertLogs(self.pm.logger, level="INFO") as log_capture:
+                await self.pm._ensure_pipewire_links(
+                    hub_service_id=14,
+                    target_sink="master_bus",
+                    client_type="browser",
+                    client_name="Chromium",
+                    entity_type="service",
+                    entity_id=888,
+                    max_duration=5.0,
+                    poll_interval=0.1
+                )
+
+        self.assertTrue(any("terminated with code 1; stopping linker" in msg for msg in log_capture.output))
+
+    async def test_ensure_pipewire_links_missing_binary(self):
+        """Test that _ensure_pipewire_links warns and returns immediately when pw-link is absent."""
+        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=(None, None)):
+            with self.assertLogs(self.pm.logger, level="WARNING") as log_capture:
+                await self.pm._ensure_pipewire_links(
+                    hub_service_id=14,
+                    target_sink="master_bus",
+                    entity_type="service",
+                    entity_id=999
+                )
+
+        self.assertTrue(any("pw-link binary not found" in msg for msg in log_capture.output))
+
 
 if __name__ == "__main__":
     unittest.main()

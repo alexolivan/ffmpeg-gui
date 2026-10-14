@@ -873,6 +873,17 @@ class ProcessManager:
                         pass
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                     asyncio.create_task(self._ensure_kiosk_fullscreen(display_num))
+                    if desktop_audio_backend == "pipewire_hub" and desktop_pw_service_id:
+                        asyncio.create_task(
+                            self._ensure_pipewire_links(
+                                hub_service_id=int(desktop_pw_service_id),
+                                target_sink=desktop_pw_sink_id or "master_bus",
+                                client_type="browser",
+                                client_name="Chromium" if is_chromium else "Firefox",
+                                entity_type="service",
+                                entity_id=process_id
+                            )
+                        )
                 else:
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
@@ -2006,6 +2017,35 @@ class ProcessManager:
         cmd = [pipewire_bin, "-c", config_path]
         return cmd, config_path, runtime_dir
 
+    def _get_pipewire_tool_binary(self, hub_service_id: int, tool_name: str = "pw-link") -> Tuple[Optional[str], Optional[str]]:
+        """Resolves binary path and install_dir for PipeWire CLI tools (pw-link, pw-dump, pw-cli)."""
+        tool_bin = None
+        install_dir = None
+        if self.db_session_factory:
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service, SoftwareBuild
+                    svc = session.get(Service, hub_service_id) if hasattr(session, "get") else session.query(Service).get(hub_service_id)
+                    if svc and svc.config:
+                        cfg = svc.config
+                        build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                        if build_id:
+                            build = session.get(SoftwareBuild, build_id) if hasattr(session, "get") else session.query(SoftwareBuild).get(build_id)
+                            if build:
+                                cand_dir = getattr(build, "install_dir", None) or getattr(build, "install_path", None)
+                                if cand_dir:
+                                    cand_bin = os.path.join(cand_dir, "bin", tool_name)
+                                    if os.path.exists(cand_bin):
+                                        tool_bin = cand_bin
+                                        install_dir = cand_dir
+            except Exception as e:
+                self.logger.debug(f"[PipeWireLinker] Error resolving {tool_name} from DB for hub {hub_service_id}: {e}")
+
+        if not tool_bin:
+            tool_bin = shutil.which(tool_name)
+
+        return tool_bin, install_dir
+
     async def get_pipewire_telemetry(self, process_id: int) -> dict:
         """
         Gathers real-time telemetry from an active PipeWire Hub instance via pw-dump.
@@ -2023,29 +2063,7 @@ class ProcessManager:
                 "error": "Service is not running"
             }
 
-        pw_dump_bin = None
-        install_dir = None
-
-        if self.db_session_factory:
-            with self.db_session_factory() as session:
-                from database.models import Service, SoftwareBuild
-                svc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
-                if svc and svc.config:
-                    cfg = svc.config
-                    build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
-                    if build_id:
-                        build = session.get(SoftwareBuild, build_id) if hasattr(session, "get") else session.query(SoftwareBuild).get(build_id)
-                        if build:
-                            cand_dir = getattr(build, "install_dir", None) or getattr(build, "install_path", None)
-                            if cand_dir:
-                                install_dir = cand_dir
-                                cand_bin = os.path.join(cand_dir, "bin", "pw-dump")
-                                if os.path.exists(cand_bin):
-                                    pw_dump_bin = cand_bin
-
-        if not pw_dump_bin:
-            pw_dump_bin = shutil.which("pw-dump")
-
+        pw_dump_bin, install_dir = self._get_pipewire_tool_binary(process_id, "pw-dump")
         if not pw_dump_bin:
             return {
                 "active": True,
@@ -2214,6 +2232,140 @@ class ProcessManager:
                     await proc.wait()
                 except Exception:
                     pass
+
+    async def _ensure_pipewire_links(
+        self,
+        hub_service_id: int,
+        target_sink: str,
+        client_type: str = "browser",
+        client_name: str = "Chromium",
+        entity_type: str = "service",
+        entity_id: Optional[int] = None,
+        max_duration: float = 10.0,
+        poll_interval: float = 0.3
+    ):
+        """
+        Asynchronously discovers and links output audio ports of a client application
+        (such as Chromium or Firefox) to the designated virtual sink's playback ports in PipeWire Hub.
+        Bounded polling loop: terminates upon successful link, client termination, or timeout (10s max).
+        """
+        pw_link_bin, install_dir = self._get_pipewire_tool_binary(hub_service_id, "pw-link")
+        if not pw_link_bin:
+            self.logger.warning(
+                f"[PipeWireLinker] pw-link binary not found on host; cannot auto-link {client_name} -> {target_sink} (Hub #{hub_service_id})"
+            )
+            return
+
+        runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{hub_service_id}"
+        sub_env = {
+            **os.environ,
+            "PIPEWIRE_RUNTIME_DIR": runtime_dir,
+            "PIPEWIRE_REMOTE": "pipewire-0",
+            "XDG_RUNTIME_DIR": runtime_dir,
+            "PULSE_RUNTIME_PATH": runtime_dir,
+        }
+        if install_dir:
+            lib_dir = os.path.join(install_dir, "lib")
+            existing_ld = sub_env.get("LD_LIBRARY_PATH", "")
+            sub_env["LD_LIBRARY_PATH"] = f"{lib_dir}:{existing_ld}".rstrip(":")
+
+        dst_fl = f"{target_sink}:playback_FL"
+        dst_fr = f"{target_sink}:playback_FR"
+
+        self.logger.debug(
+            f"[PipeWireLinker] Starting auto-linker for {client_name} -> {dst_fl}/{dst_fr} "
+            f"({entity_type} #{entity_id}, Hub #{hub_service_id}, timeout {max_duration}s)"
+        )
+
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
+        linked_success = False
+
+        while (loop.time() - start_time) < max_duration:
+            # If the client process has died or was stopped, abort immediately
+            if entity_type == "service" and entity_id:
+                client_proc = self.processes.get(entity_id)
+                if client_proc and client_proc.returncode is not None:
+                    self.logger.info(
+                        f"[PipeWireLinker] Client {entity_type} #{entity_id} terminated with code {client_proc.returncode}; stopping linker."
+                    )
+                    return
+
+            try:
+                # Query available output ports
+                proc = await asyncio.create_subprocess_exec(
+                    pw_link_bin, "-o",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=sub_env
+                )
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=1.0)
+                output_lines = stdout.decode("utf-8", errors="replace").splitlines() if stdout else []
+
+                # Find source ports matching client_name (e.g. Chromium, chrome, Firefox, cubeb)
+                # Look for left and right channel ports
+                src_fl = None
+                src_fr = None
+
+                c_lower = client_name.lower()
+                for line in output_lines:
+                    line_clean = line.strip()
+                    if not line_clean:
+                        continue
+                    l_lower = line_clean.lower()
+                    # Check if port belongs to client or browser engine
+                    matches_client = (
+                        c_lower in l_lower
+                        or ("chrom" in l_lower if "chrom" in c_lower else False)
+                        or ("firefo" in l_lower if "firefo" in c_lower else False)
+                    )
+                    if matches_client:
+                        if any(ch in l_lower for ch in ("_fl", ":output_0", ":output_1", ":output_l")) or line_clean.endswith("_FL"):
+                            if not src_fl:
+                                src_fl = line_clean
+                        elif any(ch in l_lower for ch in ("_fr", ":output_2", ":output_r")) or line_clean.endswith("_FR"):
+                            if not src_fr:
+                                src_fr = line_clean
+
+                # If found, attempt linking
+                if src_fl and src_fr:
+                    link_res_fl = await asyncio.create_subprocess_exec(
+                        pw_link_bin, src_fl, dst_fl,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=sub_env
+                    )
+                    await asyncio.wait_for(link_res_fl.communicate(), timeout=1.0)
+
+                    link_res_fr = await asyncio.create_subprocess_exec(
+                        pw_link_bin, src_fr, dst_fr,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=sub_env
+                    )
+                    await asyncio.wait_for(link_res_fr.communicate(), timeout=1.0)
+
+                    elapsed = round(loop.time() - start_time, 2)
+                    self.logger.info(
+                        f"[PipeWireLinker] Successfully linked {src_fl} -> {dst_fl} and {src_fr} -> {dst_fr} "
+                        f"in {elapsed}s for {entity_type} #{entity_id}"
+                    )
+                    linked_success = True
+                    break
+
+            except asyncio.TimeoutError:
+                pass
+            except Exception as poll_err:
+                self.logger.debug(f"[PipeWireLinker] Poll attempt error: {poll_err}")
+
+            await asyncio.sleep(poll_interval)
+
+        if not linked_success:
+            elapsed = round(loop.time() - start_time, 1)
+            self.logger.warning(
+                f"[PipeWireLinker] Timeout ({elapsed}s) waiting for ports to link {client_name} -> {target_sink} "
+                f"({entity_type} #{entity_id}, Hub #{hub_service_id})"
+            )
 
     def _build_desktop_cmds(self, media_proc) -> Tuple[List[str], List[str], List[str], int, int]:
         """
