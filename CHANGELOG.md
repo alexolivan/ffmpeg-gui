@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.40.0] - 2026-10-14
+
+### Added
+- **Asynchronous Headless PipeWire Linker (`ProcessManager._ensure_pipewire_links`)**:
+  - Automatically queries active audio ports via `pw-link -o` and dynamically links browser audio ports (`Chromium:output_FL/FR`, `Firefox:output_FL/FR`) directly to virtual sink playback ports (`<sink>:playback_FL/FR`).
+  - Implements fast bounded polling loop (<100ms first check, 10s maximum duration) that prevents browser audio buffer stalls and stream suspensions without a standalone session manager daemon.
+  - Zero log spam: emits clean structured telemetry logs (`[PipeWireLinker]`) and terminates gracefully without infinite loops upon successful link or client process exit.
+  - Reusable CLI binary resolution helper (`_get_pipewire_tool_binary`) supporting both custom Forge build directories and host system PATH.
+
+### Changed
+- **Headless PipeWire Minimalist SPA Architecture**:
+  - Removed redundant modules (`libpipewire-module-session-manager`, `libpipewire-module-client-device`, and `libpipewire-module-spa-device-factory`) from headless daemon configuration to ensure fast startup and clean socket initialization without D-Bus contention.
+  - Added `stream.properties = { adapter.auto-port-config = { mode = dsp } }` and sink adapter monitor properties for native port mapping.
+  - Injected deterministic client `-name` (`ffmpeg_<type>_<id>`) and `-stream_name` for all FFmpeg PulseAudio demuxers and muxers.
+
+### Fixed
+- **Chromium Kiosk Audio Isolation under PipeWire**:
+  - Omitted `--alsa-output-device` and bypassed ALSA loopback `.asoundrc` generation when Virtual Desktop audio backend is set to `pipewire_hub`.
+  - Added `AudioServiceSandbox` to `--disable-features` in Chromium launch arguments, allowing seamless native connection to headless PipeWire pulse socket without root D-Bus requirements.
+
 ## [2.39.1] - 2026-10-09
 
 ### Fixed

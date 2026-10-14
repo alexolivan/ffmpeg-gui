@@ -265,9 +265,12 @@ class TestDesktopPipeWireLease(unittest.IsolatedAsyncioTestCase):
 
             # 2. Subprocess command & environment verified
             mock_exec.assert_called()
-            exec_args, exec_kwargs = mock_exec.call_args
-            cmd_spawned = exec_args
-            env_spawned = exec_kwargs.get("env", {})
+            browser_call = next(
+                (c for c in mock_exec.call_args_list if any("firefox" in str(arg).lower() or "--kiosk" in str(arg) for arg in c.args)),
+                mock_exec.call_args_list[0]
+            )
+            cmd_spawned = browser_call.args
+            env_spawned = browser_call.kwargs.get("env", {})
 
             # Does NOT prepend apulse
             self.assertNotIn("apulse", cmd_spawned[0].lower())
