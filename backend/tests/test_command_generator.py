@@ -1037,6 +1037,8 @@ class TestCommandGenerator(unittest.TestCase):
     def test_pipewire_input_command_generation(self):
         """Test PipeWire input monitor capture with pure audio handling."""
         proc = MagicMock()
+        proc.id = 42
+        proc.name = "PW Input"
         proc.type = "service"
         proc.input_config = {
             'type': 'pipewire',
@@ -1055,7 +1057,10 @@ class TestCommandGenerator(unittest.TestCase):
         cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
         cmd_str = " ".join(cmd)
 
-        self.assertIn("-f pulse -i master_bus.monitor", cmd_str)
+        self.assertIn("-f pulse", cmd_str)
+        self.assertIn("-name ffmpeg_service_42", cmd_str)
+        self.assertIn("-stream_name PW Input", cmd_str)
+        self.assertIn("-i master_bus.monitor", cmd_str)
         self.assertIn("-vn", cmd_str)
         self.assertIn("-c:a pcm_s16le", cmd_str)
         self.assertIn("-f alsa hw:0,0", cmd_str)
@@ -1063,6 +1068,8 @@ class TestCommandGenerator(unittest.TestCase):
     def test_pipewire_output_command_generation(self):
         """Test PipeWire output virtual sink injection with pure audio handling."""
         proc = MagicMock()
+        proc.id = 43
+        proc.name = "PW Output"
         proc.type = "service"
         proc.input_config = {
             'type': 'alsa',
@@ -1084,11 +1091,16 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-f alsa -i hw:1,0", cmd_str)
         self.assertIn("-vn", cmd_str)
         self.assertIn("-c:a pcm_s16le", cmd_str)
-        self.assertIn("-f pulse kiosk_bus", cmd_str)
+        self.assertIn("-f pulse", cmd_str)
+        self.assertIn("-name ffmpeg_service_43", cmd_str)
+        self.assertIn("-stream_name PW Output", cmd_str)
+        self.assertIn("kiosk_bus", cmd_str)
 
     def test_pipewire_to_icecast_cross_bridge(self):
         """Test PipeWire monitor capture encoded to Icecast MP3."""
         proc = MagicMock()
+        proc.id = 44
+        proc.name = "PW to Icecast"
         proc.type = "service"
         proc.input_config = {
             'type': 'pipewire',
@@ -1109,7 +1121,10 @@ class TestCommandGenerator(unittest.TestCase):
         cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
         cmd_str = " ".join(cmd)
 
-        self.assertIn("-f pulse -i mix_bus.monitor", cmd_str)
+        self.assertIn("-f pulse", cmd_str)
+        self.assertIn("-name ffmpeg_service_44", cmd_str)
+        self.assertIn("-stream_name PW to Icecast", cmd_str)
+        self.assertIn("-i mix_bus.monitor", cmd_str)
         self.assertIn("-vn", cmd_str)
         self.assertIn("-c:a libmp3lame", cmd_str)
         self.assertIn("icecast://", cmd_str)
@@ -1117,6 +1132,8 @@ class TestCommandGenerator(unittest.TestCase):
     def test_pipewire_to_alsa_copy_passthrough(self):
         """Test bit-perfect stream copy from PipeWire PCM input to ALSA output (0% CPU)."""
         proc = MagicMock()
+        proc.id = 45
+        proc.name = "PW to ALSA"
         proc.type = "service"
         proc.input_config = {
             'type': 'pipewire',
@@ -1135,13 +1152,18 @@ class TestCommandGenerator(unittest.TestCase):
         cmd = self.pm._build_ffmpeg_cmd(proc, "ffmpeg")
         cmd_str = " ".join(cmd)
 
-        self.assertIn("-f pulse -i mix_bus.monitor", cmd_str)
+        self.assertIn("-f pulse", cmd_str)
+        self.assertIn("-name ffmpeg_service_45", cmd_str)
+        self.assertIn("-stream_name PW to ALSA", cmd_str)
+        self.assertIn("-i mix_bus.monitor", cmd_str)
         self.assertIn("-c:a copy", cmd_str)
         self.assertIn("-f alsa hw:0,0", cmd_str)
 
     def test_compressed_to_pipewire_forces_pcm(self):
         """Test that compressed audio (RTSP AAC/MP3) targeting PipeWire forces pcm_s16le even if copy requested."""
         proc = MagicMock()
+        proc.id = 46
+        proc.name = "RTSP to PW"
         proc.type = "service"
         proc.input_config = {
             'type': 'rtsp',
@@ -1161,7 +1183,10 @@ class TestCommandGenerator(unittest.TestCase):
         cmd_str = " ".join(cmd)
 
         self.assertIn("-c:a pcm_s16le", cmd_str)
-        self.assertIn("-f pulse mix_bus", cmd_str)
+        self.assertIn("-f pulse", cmd_str)
+        self.assertIn("-name ffmpeg_service_46", cmd_str)
+        self.assertIn("-stream_name RTSP to PW", cmd_str)
+        self.assertIn("mix_bus", cmd_str)
 
 
 if __name__ == '__main__':

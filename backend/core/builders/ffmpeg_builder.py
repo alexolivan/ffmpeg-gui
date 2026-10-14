@@ -11,6 +11,14 @@ class FFmpegCommandBuilder:
     into an executable FFmpeg command-line argument list.
     """
 
+    @staticmethod
+    def _is_real_value(val):
+        if val is None:
+            return False
+        if hasattr(val, '_mock_name') or hasattr(val, '_mock_methods') or 'Mock' in type(val).__name__:
+            return False
+        return isinstance(val, (int, str)) and str(val).strip() != ""
+
     @classmethod
     def _resolve_storage_path(cls, storage_id: int, relative_path: str, db_session_factory=None) -> str:
         if not storage_id or not db_session_factory:
@@ -287,7 +295,7 @@ class FFmpegCommandBuilder:
                 cmd += ["-vsync", vsync_map[resolved_mode]]
 
     @classmethod
-    def _append_input(cls, cmd: list, input_cfg: dict, ffmpeg_bin: str = "ffmpeg"):
+    def _append_input(cls, cmd: list, input_cfg: dict, ffmpeg_bin: str = "ffmpeg", media_proc=None):
         input_type = input_cfg.get('type')
         
         _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab', 'pipewire'}
@@ -361,7 +369,24 @@ class FFmpegCommandBuilder:
         elif input_type == 'pipewire':
             sink_id = input_cfg.get('sink_id') or input_cfg.get('device') or 'default'
             monitor_dev = sink_id if (sink_id.endswith('.monitor') or sink_id == 'default') else f"{sink_id}.monitor"
-            cmd += ["-f", "pulse", "-i", monitor_dev]
+            cmd += ["-f", "pulse"]
+            client_name = input_cfg.get('client_name')
+            if not client_name and media_proc:
+                p_id = getattr(media_proc, 'id', None) or (media_proc.get('id') if isinstance(media_proc, dict) else None)
+                p_type = getattr(media_proc, 'type', None) or (media_proc.get('type') if isinstance(media_proc, dict) else 'proc')
+                if cls._is_real_value(p_id):
+                    t_str = str(p_type) if cls._is_real_value(p_type) else 'proc'
+                    client_name = f"ffmpeg_{t_str}_{p_id}"
+            if client_name and cls._is_real_value(client_name):
+                cmd += ["-name", str(client_name)]
+            stream_name = input_cfg.get('stream_name')
+            if not stream_name and media_proc:
+                name_val = getattr(media_proc, 'name', None) or (media_proc.get('name') if isinstance(media_proc, dict) else None)
+                if cls._is_real_value(name_val):
+                    stream_name = str(name_val)
+            if stream_name and cls._is_real_value(stream_name):
+                cmd += ["-stream_name", str(stream_name)]
+            cmd += ["-i", monitor_dev]
         elif input_type == 'v4l2':
             device = input_cfg.get('device', '/dev/video0')
             pixel_format = input_cfg.get('pixel_format')
@@ -693,7 +718,7 @@ class FFmpegCommandBuilder:
                 cmd += [f"-vbr:a:{idx}", params['vbr']]
 
     @classmethod
-    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None, ffmpeg_bin: str = "ffmpeg"):
+    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None, ffmpeg_bin: str = "ffmpeg", media_proc=None):
         output_type = output_cfg.get('type')
         
         is_mpegts = (
@@ -805,7 +830,24 @@ class FFmpegCommandBuilder:
             cmd += ["-f", "alsa", device]
         elif output_type == 'pipewire':
             sink_id = output_cfg.get('sink_id') or output_cfg.get('device') or 'default'
-            cmd += ["-f", "pulse", sink_id]
+            cmd += ["-f", "pulse"]
+            client_name = output_cfg.get('client_name')
+            if not client_name and media_proc:
+                p_id = getattr(media_proc, 'id', None) or (media_proc.get('id') if isinstance(media_proc, dict) else None)
+                p_type = getattr(media_proc, 'type', None) or (media_proc.get('type') if isinstance(media_proc, dict) else 'proc')
+                if cls._is_real_value(p_id):
+                    t_str = str(p_type) if cls._is_real_value(p_type) else 'proc'
+                    client_name = f"ffmpeg_{t_str}_{p_id}"
+            if client_name and cls._is_real_value(client_name):
+                cmd += ["-name", str(client_name)]
+            stream_name = output_cfg.get('stream_name')
+            if not stream_name and media_proc:
+                name_val = getattr(media_proc, 'name', None) or (media_proc.get('name') if isinstance(media_proc, dict) else None)
+                if cls._is_real_value(name_val):
+                    stream_name = str(name_val)
+            if stream_name and cls._is_real_value(stream_name):
+                cmd += ["-stream_name", str(stream_name)]
+            cmd += [sink_id]
         elif output_type == 'icecast':
             host = output_cfg.get('host', 'localhost')
             port = output_cfg.get('port', '7000')
@@ -1030,16 +1072,16 @@ class FFmpegCommandBuilder:
             has_audio = input_cfg.get('has_audio', True)
             use_secondary = input_cfg.get('use_secondary_input', False)
             
-            cls._append_input(cmd, input_cfg['input1'], ffmpeg_bin)
+            cls._append_input(cmd, input_cfg['input1'], ffmpeg_bin, media_proc=media_proc)
             if use_secondary and 'input2' in input_cfg:
                 if tqs and int(tqs) > 0:
                     cmd += ["-thread_queue_size", str(int(tqs))]
-                cls._append_input(cmd, input_cfg['input2'], ffmpeg_bin)
+                cls._append_input(cmd, input_cfg['input2'], ffmpeg_bin, media_proc=media_proc)
         else:
             has_video = input_cfg.get('has_video', True)
             has_audio = input_cfg.get('has_audio', True)
             use_secondary = False
-            cls._append_input(cmd, input_cfg, ffmpeg_bin)
+            cls._append_input(cmd, input_cfg, ffmpeg_bin, media_proc=media_proc)
 
         # Protect against desktop / x11grab input without secondary audio source
         if primary_input_type in ('desktop', 'x11grab') and not (is_new_format and use_secondary and 'input2' in input_cfg):
@@ -1369,7 +1411,7 @@ class FFmpegCommandBuilder:
                     cls._append_audio_codec_params(cmd, acodec, audio_params)
 
             cls._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
-            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec, ffmpeg_bin=ffmpeg_bin)
+            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec, ffmpeg_bin=ffmpeg_bin, media_proc=media_proc)
             
         is_service = getattr(media_proc, 'type', 'service') == 'service'
         
