@@ -189,6 +189,8 @@ class TaskManager:
             )
             self.running_processes[execution_id] = proc
             self.last_activity[execution_id] = datetime.utcnow()
+            if self.process_manager and hasattr(self.process_manager, "notify_pipewire_matrix_change"):
+                self.process_manager.notify_pipewire_matrix_change()
             
             # 3. Update execution PID and status in a second short transaction
             with self.db_session_factory() as session:
@@ -526,6 +528,8 @@ class TaskManager:
             self.running_processes.pop(execution_id, None)
             self.last_activity.pop(execution_id, None)
             cleanup_task_progress_files(execution_id)
+            if self.process_manager and hasattr(self.process_manager, "notify_pipewire_matrix_change"):
+                self.process_manager.notify_pipewire_matrix_change()
             
             if not should_retry:
                 from core.resource_lock_manager import resource_lock_manager

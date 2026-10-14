@@ -704,94 +704,69 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(deps[0].provider_service_id, 602)
 
     @patch("asyncio.create_subprocess_exec")
-    async def test_ensure_pipewire_links_success(self, mock_exec):
-        """Test that _ensure_pipewire_links discovers client ports and links them to the target sink."""
-        query_proc = MagicMock()
-        query_proc.communicate = AsyncMock(return_value=(
-            b"master_bus:monitor_FL\nmaster_bus:monitor_FR\nChromium:output_FL\nChromium:output_FR\n",
-            b""
-        ))
-        link_proc = MagicMock()
-        link_proc.communicate = AsyncMock(return_value=(b"", b""))
+    async def test_start_pipewire_hub_creates_supervisor(self, mock_exec):
+        """Test that starting a pipewire_hub service creates and starts its companion PipeWireMatrixSupervisor."""
+        mock_proc = self._create_mock_proc(pid=12345)
+        mock_exec.return_value = mock_proc
 
-        mock_exec.side_effect = [query_proc, link_proc, link_proc]
+        with self.Session() as session:
+            svc = Service(
+                id=14,
+                name="PipeWire Audio Hub",
+                service_type="pipewire_hub",
+                config={"virtual_sinks": [{"id": "master_bus"}]}
+            )
+            session.add(svc)
+            session.commit()
 
-        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=("/usr/bin/pw-link", None)):
-            with self.assertLogs(self.pm.logger, level="INFO") as log_capture:
-                await self.pm._ensure_pipewire_links(
-                    hub_service_id=14,
-                    target_sink="master_bus",
-                    client_type="browser",
-                    client_name="Chromium",
-                    entity_type="service",
-                    entity_id=99,
-                    max_duration=2.0,
-                    poll_interval=0.05
-                )
-
-        link_calls = [call for call in mock_exec.call_args_list if len(call[0]) >= 3 and call[0][0] == "/usr/bin/pw-link"]
-        self.assertEqual(len(link_calls), 2)
-        self.assertEqual(link_calls[0][0], ("/usr/bin/pw-link", "Chromium:output_FL", "master_bus:playback_FL"))
-        self.assertEqual(link_calls[1][0], ("/usr/bin/pw-link", "Chromium:output_FR", "master_bus:playback_FR"))
-
-        self.assertTrue(any("[PipeWireLinker] Successfully linked" in msg for msg in log_capture.output))
+        with patch("shutil.which", return_value="/usr/bin/pipewire"):
+            with patch("core.pipewire_matrix_supervisor.PipeWireMatrixSupervisor.start", new_callable=AsyncMock) as mock_start:
+                await self.pm.start_process(14)
+                mock_start.assert_awaited_once()
+                self.assertIn(14, self.pm.pipewire_supervisors)
 
     @patch("asyncio.create_subprocess_exec")
-    async def test_ensure_pipewire_links_timeout_bounded(self, mock_exec):
-        """Test that _ensure_pipewire_links terminates cleanly after timeout and emits single warning."""
-        empty_proc = MagicMock()
-        empty_proc.communicate = AsyncMock(return_value=(b"master_bus:monitor_FL\nmaster_bus:monitor_FR\n", b""))
-        mock_exec.return_value = empty_proc
+    async def test_stop_pipewire_hub_stops_supervisor(self, mock_exec):
+        """Test that stopping a pipewire_hub service stops and cleans up its supervisor."""
+        mock_sup = MagicMock()
+        mock_sup.stop = AsyncMock()
+        self.pm.pipewire_supervisors[14] = mock_sup
+        mock_proc = self._create_mock_proc(pid=12345)
+        self.pm.processes[14] = mock_proc
 
-        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=("/usr/bin/pw-link", None)):
-            with self.assertLogs(self.pm.logger, level="WARNING") as log_capture:
-                await self.pm._ensure_pipewire_links(
-                    hub_service_id=14,
-                    target_sink="master_bus",
-                    client_type="browser",
-                    client_name="Chromium",
-                    entity_type="service",
-                    entity_id=102,
-                    max_duration=0.2,
-                    poll_interval=0.05
-                )
+        with self.Session() as session:
+            svc = Service(
+                id=14,
+                name="PipeWire Audio Hub",
+                service_type="pipewire_hub",
+                status="running",
+                config={"virtual_sinks": [{"id": "master_bus"}]}
+            )
+            session.add(svc)
+            session.commit()
 
-        warning_msgs = [m for m in log_capture.output if "[PipeWireLinker] Timeout" in m]
-        self.assertEqual(len(warning_msgs), 1)
+        await self.pm.stop_process(14)
+        mock_sup.stop.assert_awaited_once()
+        self.assertNotIn(14, self.pm.pipewire_supervisors)
 
-    async def test_ensure_pipewire_links_aborts_on_client_exit(self):
-        """Test that _ensure_pipewire_links aborts immediately when client process terminates."""
-        mock_client = MagicMock()
-        mock_client.returncode = 1
-        self.pm.processes[888] = mock_client
+    def test_notify_pipewire_matrix_change_dispatches_to_supervisors(self):
+        """Test that notify_pipewire_matrix_change triggers reconcile on active supervisors."""
+        sup1 = MagicMock()
+        sup2 = MagicMock()
+        self.pm.pipewire_supervisors[14] = sup1
+        self.pm.pipewire_supervisors[15] = sup2
 
-        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=("/usr/bin/pw-link", None)):
-            with self.assertLogs(self.pm.logger, level="INFO") as log_capture:
-                await self.pm._ensure_pipewire_links(
-                    hub_service_id=14,
-                    target_sink="master_bus",
-                    client_type="browser",
-                    client_name="Chromium",
-                    entity_type="service",
-                    entity_id=888,
-                    max_duration=5.0,
-                    poll_interval=0.1
-                )
+        # Notify specific hub
+        self.pm.notify_pipewire_matrix_change(14)
+        sup1.trigger_reconcile.assert_called_once()
+        sup2.trigger_reconcile.assert_not_called()
 
-        self.assertTrue(any("terminated with code 1; stopping linker" in msg for msg in log_capture.output))
-
-    async def test_ensure_pipewire_links_missing_binary(self):
-        """Test that _ensure_pipewire_links warns and returns immediately when pw-link is absent."""
-        with patch.object(self.pm, "_get_pipewire_tool_binary", return_value=(None, None)):
-            with self.assertLogs(self.pm.logger, level="WARNING") as log_capture:
-                await self.pm._ensure_pipewire_links(
-                    hub_service_id=14,
-                    target_sink="master_bus",
-                    entity_type="service",
-                    entity_id=999
-                )
-
-        self.assertTrue(any("pw-link binary not found" in msg for msg in log_capture.output))
+        # Notify all hubs
+        sup1.reset_mock()
+        sup2.reset_mock()
+        self.pm.notify_pipewire_matrix_change()
+        sup1.trigger_reconcile.assert_called_once()
+        sup2.trigger_reconcile.assert_called_once()
 
 
 if __name__ == "__main__":

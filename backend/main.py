@@ -6238,6 +6238,10 @@ def create_service(svc_in: ServiceCreate, db: Session = Depends(get_db)):
     db.add(svc)
     db.commit()
     db.refresh(svc)
+    try:
+        process_manager.notify_pipewire_matrix_change()
+    except Exception:
+        pass
     return svc
 
 @app.get("/api/services/{service_id}")
@@ -6270,6 +6274,10 @@ def update_service(service_id: int, svc_in: ServiceUpdate, db: Session = Depends
         svc.allow_peer_lease = svc_in.allow_peer_lease
     db.commit()
     db.refresh(svc)
+    try:
+        process_manager.notify_pipewire_matrix_change()
+    except Exception:
+        pass
     return svc
 
 @app.delete("/api/services/{service_id}")
@@ -6281,6 +6289,10 @@ def delete_service(service_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Cannot delete a running service")
     db.delete(svc)
     db.commit()
+    try:
+        process_manager.notify_pipewire_matrix_change()
+    except Exception:
+        pass
     return {"detail": "Service deleted"}
 
 @app.post("/api/services/{service_id}/start")
@@ -6332,6 +6344,43 @@ async def get_pipewire_service_nodes(
     if svc.service_type != "pipewire_hub":
         raise HTTPException(status_code=400, detail="Service is not a PipeWire Hub")
     return await process_manager.get_pipewire_telemetry(service_id)
+
+@app.get("/api/services/{service_id}/pipewire/matrix")
+async def get_pipewire_service_matrix(
+    service_id: int,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    svc = db.get(MediaProcess, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.service_type != "pipewire_hub":
+        raise HTTPException(status_code=400, detail="Service is not a PipeWire Hub")
+    sup = process_manager.pipewire_supervisors.get(service_id)
+    if not sup:
+        return {
+            "hub_id": service_id,
+            "running": False,
+            "desired_links_count": 0,
+            "active_links_count": 0,
+            "pending_links_count": 0,
+            "routes": []
+        }
+    return sup.get_matrix_status()
+
+@app.post("/api/services/{service_id}/pipewire/matrix/reconcile")
+async def trigger_pipewire_service_matrix_reconcile(
+    service_id: int,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    svc = db.get(MediaProcess, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.service_type != "pipewire_hub":
+        raise HTTPException(status_code=400, detail="Service is not a PipeWire Hub")
+    process_manager.notify_pipewire_matrix_change(service_id)
+    return {"status": "reconciling", "hub_id": service_id}
 
 @app.get("/api/services/{service_id}/dependencies")
 def list_service_dependencies(service_id: int, db: Session = Depends(get_db)):

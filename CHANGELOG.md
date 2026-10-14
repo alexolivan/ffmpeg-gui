@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.40.0] - 2026-10-14
+## [2.41.0] - 2026-10-14
+
+### Added
+- **Dedicated Companion PipeWire Matrix Supervisor (`PipeWireMatrixSupervisor`)**:
+  - Independent 1:1 background companion worker bound to the lifecycle of each active `pipewire_hub` instance.
+  - Automatically reconciles dynamic audio patchbay routing between browser outputs (Kiosk/Desktop), virtual null sinks, and FFmpeg recording/playout streams in real time.
+  - Resilient port matching algorithm (`_match_ports`) with directional separation (outputs vs inputs) supporting exact names, client aliases (`Chromium`, `Firefox`, `cubeb`), and channel index tokens (`output_0`/`output_1`, `FL`/`FR`).
+  - Hot routing without restarts: dynamically reconciles connections on service create, update, delete, start, and stop events without interrupting active PipeWire daemons.
+  - REST API endpoints for matrix observability: `GET /api/services/{id}/pipewire/matrix` and `POST /api/services/{id}/pipewire/matrix/reconcile`.
+  - Comprehensive unit test suite (`test_pipewire_matrix_supervisor.py`).
+
+### Changed
+- **Replaced Myopic 10-Second Linker**:
+  - Replaced the previous 10-second bounded polling method (`_ensure_pipewire_links`) in `ProcessManager` with event-driven notifications (`notify_pipewire_matrix_change()`) dispatched to the active hub companion supervisor.
+  - Browser audio ports appearing late (e.g. after user unmutes web players or finishes buffering) are now immediately captured and connected at any point during process execution.
+  - Ingest from virtual sink monitors (`<sink>.monitor`) to FFmpeg playout and capture streams is automatically established and maintained.
 
 ### Added
 - **Asynchronous Headless PipeWire Linker (`ProcessManager._ensure_pipewire_links`)**:

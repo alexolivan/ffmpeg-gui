@@ -37,6 +37,7 @@ class ProcessManager:
         self.ephemeral_configs: Dict[int, str] = {}
         self.auxiliary_processes: Dict[int, List[asyncio.subprocess.Process]] = {}
         self.auxiliary_pids: Dict[int, List[int]] = {}
+        self.pipewire_supervisors: Dict[int, Any] = {}
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -652,6 +653,11 @@ class ProcessManager:
                         pass
                     self.processes[process_id] = proc
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                    if svc_type == "pipewire_hub":
+                        from core.pipewire_matrix_supervisor import PipeWireMatrixSupervisor
+                        supervisor = PipeWireMatrixSupervisor(process_id, self)
+                        self.pipewire_supervisors[process_id] = supervisor
+                        await supervisor.start()
                 elif svc_type == "desktop":
                     # Clean up stale X11 lock file and socket if previous Xvfb crashed
                     x_lock_path = f"/tmp/.X{display_num}-lock"
@@ -816,7 +822,7 @@ class ProcessManager:
                         kiosk_sub_env["PULSE_RUNTIME_PATH"] = f"/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}"
                         if desktop_pw_sink_id:
                             kiosk_sub_env["PULSE_SINK"] = str(desktop_pw_sink_id)
-                        kiosk_sub_env["PULSE_PROP"] = f"application.name=kiosk_{'chromium' if is_chromium else 'firefox'}_{process_id}"
+                        kiosk_sub_env["PULSE_PROP"] = f"node.name=kiosk_{process_id} application.name=kiosk_{process_id} media.role=browser"
 
                         if is_chromium:
                             kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
@@ -873,17 +879,6 @@ class ProcessManager:
                         pass
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                     asyncio.create_task(self._ensure_kiosk_fullscreen(display_num))
-                    if desktop_audio_backend == "pipewire_hub" and desktop_pw_service_id:
-                        asyncio.create_task(
-                            self._ensure_pipewire_links(
-                                hub_service_id=int(desktop_pw_service_id),
-                                target_sink=desktop_pw_sink_id or "master_bus",
-                                client_type="browser",
-                                client_name="Chromium" if is_chromium else "Firefox",
-                                entity_type="service",
-                                entity_id=process_id
-                            )
-                        )
                 else:
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
@@ -917,6 +912,7 @@ class ProcessManager:
             
             # Start watchdog task
             self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, proc))
+            self.notify_pipewire_matrix_change()
             
         except Exception as e:
             self.logger.exception(f"Failed to start process {process_id} ({svc_name})")
@@ -1256,8 +1252,17 @@ class ProcessManager:
                 except Exception as pw_err:
                     self.logger.warning(f"Failed to release PipeWire lease for kiosk {process_id}: {pw_err}")
 
+            # Stop associated PipeWireMatrixSupervisor if stopping a pipewire_hub
+            pw_sup = self.pipewire_supervisors.pop(process_id, None)
+            if pw_sup:
+                try:
+                    await pw_sup.stop()
+                except Exception as sup_err:
+                    self.logger.warning(f"Error stopping PipeWire supervisor for hub {process_id}: {sup_err}")
+
             # Stop any auto-managed dependencies that are no longer needed
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
+            self.notify_pipewire_matrix_change()
 
             # Release remote peer lease if configured
             if not is_restart:
@@ -2173,12 +2178,16 @@ class ProcessManager:
                         "state": info.get("state", "")
                     })
 
+            sup = self.pipewire_supervisors.get(process_id)
+            matrix_data = sup.get_matrix_status() if sup else None
+
             return {
                 "active": True,
                 "nodes": nodes,
                 "ports": ports,
                 "links": links,
                 "streams": nodes,
+                "matrix": matrix_data,
                 "raw_summary": {
                     "nodes_count": len(nodes),
                     "ports_count": len(ports),
@@ -2233,139 +2242,15 @@ class ProcessManager:
                 except Exception:
                     pass
 
-    async def _ensure_pipewire_links(
-        self,
-        hub_service_id: int,
-        target_sink: str,
-        client_type: str = "browser",
-        client_name: str = "Chromium",
-        entity_type: str = "service",
-        entity_id: Optional[int] = None,
-        max_duration: float = 10.0,
-        poll_interval: float = 0.3
-    ):
-        """
-        Asynchronously discovers and links output audio ports of a client application
-        (such as Chromium or Firefox) to the designated virtual sink's playback ports in PipeWire Hub.
-        Bounded polling loop: terminates upon successful link, client termination, or timeout (10s max).
-        """
-        pw_link_bin, install_dir = self._get_pipewire_tool_binary(hub_service_id, "pw-link")
-        if not pw_link_bin:
-            self.logger.warning(
-                f"[PipeWireLinker] pw-link binary not found on host; cannot auto-link {client_name} -> {target_sink} (Hub #{hub_service_id})"
-            )
-            return
-
-        runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{hub_service_id}"
-        sub_env = {
-            **os.environ,
-            "PIPEWIRE_RUNTIME_DIR": runtime_dir,
-            "PIPEWIRE_REMOTE": "pipewire-0",
-            "XDG_RUNTIME_DIR": runtime_dir,
-            "PULSE_RUNTIME_PATH": runtime_dir,
-        }
-        if install_dir:
-            lib_dir = os.path.join(install_dir, "lib")
-            existing_ld = sub_env.get("LD_LIBRARY_PATH", "")
-            sub_env["LD_LIBRARY_PATH"] = f"{lib_dir}:{existing_ld}".rstrip(":")
-
-        dst_fl = f"{target_sink}:playback_FL"
-        dst_fr = f"{target_sink}:playback_FR"
-
-        self.logger.debug(
-            f"[PipeWireLinker] Starting auto-linker for {client_name} -> {dst_fl}/{dst_fr} "
-            f"({entity_type} #{entity_id}, Hub #{hub_service_id}, timeout {max_duration}s)"
-        )
-
-        loop = asyncio.get_running_loop()
-        start_time = loop.time()
-        linked_success = False
-
-        while (loop.time() - start_time) < max_duration:
-            # If the client process has died or was stopped, abort immediately
-            if entity_type == "service" and entity_id:
-                client_proc = self.processes.get(entity_id)
-                if client_proc and client_proc.returncode is not None:
-                    self.logger.info(
-                        f"[PipeWireLinker] Client {entity_type} #{entity_id} terminated with code {client_proc.returncode}; stopping linker."
-                    )
-                    return
-
-            try:
-                # Query available output ports
-                proc = await asyncio.create_subprocess_exec(
-                    pw_link_bin, "-o",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    env=sub_env
-                )
-                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=1.0)
-                output_lines = stdout.decode("utf-8", errors="replace").splitlines() if stdout else []
-
-                # Find source ports matching client_name (e.g. Chromium, chrome, Firefox, cubeb)
-                # Look for left and right channel ports
-                src_fl = None
-                src_fr = None
-
-                c_lower = client_name.lower()
-                for line in output_lines:
-                    line_clean = line.strip()
-                    if not line_clean:
-                        continue
-                    l_lower = line_clean.lower()
-                    # Check if port belongs to client or browser engine
-                    matches_client = (
-                        c_lower in l_lower
-                        or ("chrom" in l_lower if "chrom" in c_lower else False)
-                        or ("firefo" in l_lower if "firefo" in c_lower else False)
-                    )
-                    if matches_client:
-                        if any(ch in l_lower for ch in ("_fl", ":output_0", ":output_1", ":output_l")) or line_clean.endswith("_FL"):
-                            if not src_fl:
-                                src_fl = line_clean
-                        elif any(ch in l_lower for ch in ("_fr", ":output_2", ":output_r")) or line_clean.endswith("_FR"):
-                            if not src_fr:
-                                src_fr = line_clean
-
-                # If found, attempt linking
-                if src_fl and src_fr:
-                    link_res_fl = await asyncio.create_subprocess_exec(
-                        pw_link_bin, src_fl, dst_fl,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                        env=sub_env
-                    )
-                    await asyncio.wait_for(link_res_fl.communicate(), timeout=1.0)
-
-                    link_res_fr = await asyncio.create_subprocess_exec(
-                        pw_link_bin, src_fr, dst_fr,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                        env=sub_env
-                    )
-                    await asyncio.wait_for(link_res_fr.communicate(), timeout=1.0)
-
-                    elapsed = round(loop.time() - start_time, 2)
-                    self.logger.info(
-                        f"[PipeWireLinker] Successfully linked {src_fl} -> {dst_fl} and {src_fr} -> {dst_fr} "
-                        f"in {elapsed}s for {entity_type} #{entity_id}"
-                    )
-                    linked_success = True
-                    break
-
-            except asyncio.TimeoutError:
-                pass
-            except Exception as poll_err:
-                self.logger.debug(f"[PipeWireLinker] Poll attempt error: {poll_err}")
-
-            await asyncio.sleep(poll_interval)
-
-        if not linked_success:
-            elapsed = round(loop.time() - start_time, 1)
-            self.logger.warning(
-                f"[PipeWireLinker] Timeout ({elapsed}s) waiting for ports to link {client_name} -> {target_sink} "
-                f"({entity_type} #{entity_id}, Hub #{hub_service_id})"
-            )
+    def notify_pipewire_matrix_change(self, hub_id: Optional[int] = None):
+        """Notifies active PipeWireMatrixSupervisor(s) to immediately re-evaluate and reconcile connections."""
+        if hub_id is not None:
+            sup = self.pipewire_supervisors.get(int(hub_id))
+            if sup:
+                sup.trigger_reconcile()
+        else:
+            for sup in self.pipewire_supervisors.values():
+                sup.trigger_reconcile()
 
     def _build_desktop_cmds(self, media_proc) -> Tuple[List[str], List[str], List[str], int, int]:
         """
