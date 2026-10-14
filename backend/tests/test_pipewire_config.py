@@ -36,18 +36,19 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("libpipewire-module-rt", res)
         self.assertIn("libpipewire-module-protocol-native", res)
         self.assertIn("libpipewire-module-access", res)
-        self.assertIn('pipewire-0 = "unrestricted"', res)
-        self.assertIn('{ name = "pipewire-0" }', res)
-        self.assertIn('{ name = "pipewire-0-manager" }', res)
         self.assertIn("libpipewire-module-spa-node-factory", res)
         self.assertIn("libpipewire-module-client-node", res)
-        self.assertIn("libpipewire-module-client-device", res)
-        self.assertIn("libpipewire-module-session-manager", res)
+        self.assertNotIn("libpipewire-module-client-device", res)
+        self.assertNotIn("libpipewire-module-session-manager", res)
         self.assertIn("libpipewire-module-link-factory", res)
         self.assertIn("libpipewire-module-adapter", res)
         self.assertIn("libpipewire-module-metadata", res)
         self.assertIn("libpipewire-module-protocol-pulse", res)
         self.assertIn(f'server.address = [ "unix:{runtime_dir}/pulse.sock" ]', res)
+
+        # Stream properties and auto-port-config
+        self.assertIn("stream.properties = {", res)
+        self.assertIn("adapter.auto-port-config = { mode = dsp }", res)
 
         # No null audio sinks
         self.assertNotIn("support.null-audio-sink", res)
