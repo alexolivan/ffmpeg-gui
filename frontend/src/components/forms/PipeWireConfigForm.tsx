@@ -541,13 +541,194 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
           </div>
         </div>
 
-        {/* ── Section 2: Virtual Sinks Manager ── */}
+        {/* ── Section 2: AES67 / Dante Broadcast (Tx) Network Module ── */}
+        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-4">
+          <div className="border-b border-[var(--glass-border)] pb-2 flex items-center justify-between">
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-brand-lime flex items-center gap-2">
+                <span>🌐</span>
+                {t('services.pipewire.aes67Section', '2. AES67 / Dante Broadcast (Tx) Network Module')}
+              </h4>
+              <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
+                {t('services.pipewire.aes67Help', 'Stream low-latency uncompressed audio across the LAN to Dante and AES67 receivers with SAP announce.')}
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={aes67Enabled}
+                onChange={(e) => setAes67Enabled(e.target.checked)}
+                className="accent-brand-lime w-4 h-4 cursor-pointer"
+              />
+              <span className="text-xs font-bold text-[var(--text-primary)]">
+                {t('services.pipewire.enableAes67', 'Enable AES67 Network Tx')}
+              </span>
+            </label>
+          </div>
+
+          {aes67Enabled && (
+            <div className="space-y-4 pt-1">
+              {/* NIC Selector */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                  {t('services.pipewire.networkInterface', 'Dedicated Audio Network Interface (NIC)')}
+                </label>
+                {isLoadingAudit ? (
+                  <div className="text-xs text-[var(--text-secondary)] py-2">
+                    {t('common.loading', 'Loading network audit...')}
+                  </div>
+                ) : auditError ? (
+                  <div className="text-xs text-red-400 py-1">{auditError}</div>
+                ) : (
+                  <select
+                    value={selectedInterface}
+                    onChange={(e) => handleInterfaceChange(e.target.value)}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
+                  >
+                    {networkAudit?.interfaces && networkAudit.interfaces.length > 0 ? (
+                      networkAudit.interfaces.map((iface) => {
+                        const inUseBy = reservedNics[iface.name];
+                        return (
+                          <option key={iface.name} value={iface.name} disabled={Boolean(inUseBy)}>
+                            {iface.name} ({iface.ip || 'No IPv4'}) {iface.ptp_hardware_capable ? '· [PTP Hardware]' : ''} {inUseBy ? `— [${t('services.pipewire.nicReservedBy', 'Reserved by: {{name}}', { name: inUseBy.serviceName })}]` : ''}
+                          </option>
+                        );
+                      })
+                    ) : (
+                      <option value="">{t('services.pipewire.noInterfaces', 'No physical interfaces detected')}</option>
+                    )}
+                  </select>
+                )}
+                <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
+                  {t('services.pipewire.nicHelp', 'Select the physical LAN port connected to the Dante/AES67 audio subnet.')}
+                </span>
+
+                {isNicConflict && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-start gap-2.5 mt-2 animate-in fade-in duration-200">
+                    <span className="text-base shrink-0 mt-0.5">⚠️</span>
+                    <div>
+                      <p className="font-bold">
+                        {t('services.pipewire.nicConflictTitle', 'Network Interface In Use')}
+                      </p>
+                      <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
+                        {t(
+                          'services.pipewire.nicConflictDesc',
+                          'The interface {{iface}} is already reserved by {{name}} for AES67 broadcast. In a single host, AES67 must be managed from a single Hub to avoid PTP clock and SAP port conflicts. Please add virtual sinks to the existing service or choose another interface.',
+                          { iface: selectedInterface, name: reservedNics[selectedInterface].serviceName }
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Base Multicast Prefix & Host Node Identifier */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                    {t('services.pipewire.baseMulticastPrefix', 'Base Multicast Prefix (AES67 / Dante 239.69.X)')}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      required
+                      value={baseMulticastPrefix}
+                      onChange={(e) => setBaseMulticastPrefix(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors"
+                      placeholder="239.69.1"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRecalculateRoutes}
+                      title={t('services.pipewire.recalculatePrefixTitle', 'Recalculate canonical prefix from NIC and re-seed all sink routes')}
+                      className="px-3 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] text-xs font-medium hover:border-brand-lime text-[var(--text-secondary)] hover:text-brand-lime whitespace-nowrap cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
+                    >
+                      <span>↻</span>
+                      <span>{t('services.pipewire.recalc', 'Recalc')}</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-[10px] text-[var(--text-secondary)] block">
+                      {t('services.pipewire.baseMulticastHelp', 'Canonical 239.69.X range derived from host NIC IP to guarantee zero collisions between nodes.')}
+                    </span>
+                    {recalcFeedback && (
+                      <span className="text-[10px] text-brand-lime font-mono font-bold animate-pulse">
+                        ✓ {t('services.pipewire.recalcDone', 'Synchronized ({{prefix}}.X)', { prefix: recalcFeedback })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                    {t('services.pipewire.nodeHostname', 'Host Node Identifier')}
+                  </label>
+                  <div className="px-3 py-2 rounded-lg bg-[var(--bg-card)]/60 border border-[var(--glass-border)] text-xs font-mono text-brand-lime font-bold flex items-center gap-2">
+                    <span>🖥️</span>
+                    <span>{hostName}</span>
+                  </div>
+                  <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
+                    {t('services.pipewire.hostnameHelp', 'Locked hostname prefix automatically prepended to SAP announcements.')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Informative Clock Status Banner */}
+              {networkAudit && (
+                <div>
+                  {networkAudit.host_ptp?.ptp4l_running ? (
+                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2.5">
+                      <span className="text-base shrink-0">🟢</span>
+                      <div>
+                        <p className="font-bold">
+                          {t('services.pipewire.ptpSynchronized', 'PTPv2 Synchronized (IEEE 1588-2008 active)')}
+                        </p>
+                        <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
+                          {t('services.pipewire.ptpSynchronizedDesc', 'Host ptp4l daemon active providing PTP master/slave clock for precise RTP packet alignment.')}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-600 dark:text-blue-300 text-xs flex items-start gap-2.5">
+                        <span className="text-base shrink-0 mt-0.5">ℹ️</span>
+                        <div>
+                          <p className="font-bold">
+                            {t('services.pipewire.ptpSoftwareClock', 'System Monotonic Clock Mode (Active)')}
+                          </p>
+                          <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
+                            {t('services.pipewire.ptpSoftwareClockDesc', 'AES67/Dante streams use the kernel local clock. Safe, autonomous, and zero risk of interference with existing network clocks. Fully compatible with SAP discovery, Dante Controller, and software receivers.')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-300 text-[11px] flex items-start gap-2">
+                        <span className="text-sm shrink-0">⚠️</span>
+                        <div>
+                          <p className="font-bold">
+                            {t('services.pipewire.ptpWarningTitle', 'Hardware PTP Synchronization (linuxptp)')}
+                          </p>
+                          <p className="text-[10px] text-amber-700/80 dark:text-amber-200/80 mt-0.5 leading-relaxed">
+                            {t('services.pipewire.ptpWarningDesc', 'Only recommended for dedicated broadcast integrations where a systems engineer explicitly configures ptp4l in client-only mode (slaveOnly=1) to track an existing network Grandmaster without destabilizing production clocks.')}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Section 3: Virtual Sinks Manager ── */}
         <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-4">
           <div className="border-b border-[var(--glass-border)] pb-2 flex items-center justify-between">
             <div>
               <h4 className="text-xs font-black uppercase tracking-wider text-brand-lime flex items-center gap-2">
                 <span>🎚️</span>
-                {t('services.pipewire.virtualSinksSection', '2. Virtual Sinks Manager')}
+                {t('services.pipewire.virtualSinksSection', '3. Virtual Sinks Manager')}
               </h4>
               <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
                 {t('services.pipewire.virtualSinksHelp', 'Virtual audio endpoints available for routing, application capture, and broadcast distribution.')}
@@ -767,187 +948,6 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                   {internalCollisions.map(([key]) => key).join(', ')}
                 </p>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── Section 3: AES67 / Dante Broadcast (Tx) Network Module ── */}
-        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-4">
-          <div className="border-b border-[var(--glass-border)] pb-2 flex items-center justify-between">
-            <div>
-              <h4 className="text-xs font-black uppercase tracking-wider text-brand-lime flex items-center gap-2">
-                <span>🌐</span>
-                {t('services.pipewire.aes67Section', '3. AES67 / Dante Broadcast (Tx) Network Module')}
-              </h4>
-              <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
-                {t('services.pipewire.aes67Help', 'Stream low-latency uncompressed audio across the LAN to Dante and AES67 receivers with SAP announce.')}
-              </p>
-            </div>
-
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={aes67Enabled}
-                onChange={(e) => setAes67Enabled(e.target.checked)}
-                className="accent-brand-lime w-4 h-4 cursor-pointer"
-              />
-              <span className="text-xs font-bold text-[var(--text-primary)]">
-                {t('services.pipewire.enableAes67', 'Enable AES67 Network Tx')}
-              </span>
-            </label>
-          </div>
-
-          {aes67Enabled && (
-            <div className="space-y-4 pt-1">
-              {/* NIC Selector */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                  {t('services.pipewire.networkInterface', 'Dedicated Audio Network Interface (NIC)')}
-                </label>
-                {isLoadingAudit ? (
-                  <div className="text-xs text-[var(--text-secondary)] py-2">
-                    {t('common.loading', 'Loading network audit...')}
-                  </div>
-                ) : auditError ? (
-                  <div className="text-xs text-red-400 py-1">{auditError}</div>
-                ) : (
-                  <select
-                    value={selectedInterface}
-                    onChange={(e) => handleInterfaceChange(e.target.value)}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
-                  >
-                    {networkAudit?.interfaces && networkAudit.interfaces.length > 0 ? (
-                      networkAudit.interfaces.map((iface) => {
-                        const inUseBy = reservedNics[iface.name];
-                        return (
-                          <option key={iface.name} value={iface.name} disabled={Boolean(inUseBy)}>
-                            {iface.name} ({iface.ip || 'No IPv4'}) {iface.ptp_hardware_capable ? '· [PTP Hardware]' : ''} {inUseBy ? `— [${t('services.pipewire.nicReservedBy', 'Reserved by: {{name}}', { name: inUseBy.serviceName })}]` : ''}
-                          </option>
-                        );
-                      })
-                    ) : (
-                      <option value="">{t('services.pipewire.noInterfaces', 'No physical interfaces detected')}</option>
-                    )}
-                  </select>
-                )}
-                <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
-                  {t('services.pipewire.nicHelp', 'Select the physical LAN port connected to the Dante/AES67 audio subnet.')}
-                </span>
-
-                {isNicConflict && (
-                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-start gap-2.5 mt-2 animate-in fade-in duration-200">
-                    <span className="text-base shrink-0 mt-0.5">⚠️</span>
-                    <div>
-                      <p className="font-bold">
-                        {t('services.pipewire.nicConflictTitle', 'Network Interface In Use')}
-                      </p>
-                      <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
-                        {t(
-                          'services.pipewire.nicConflictDesc',
-                          'The interface {{iface}} is already reserved by {{name}} for AES67 broadcast. In a single host, AES67 must be managed from a single Hub to avoid PTP clock and SAP port conflicts. Please add virtual sinks to the existing service or choose another interface.',
-                          { iface: selectedInterface, name: reservedNics[selectedInterface].serviceName }
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Base Multicast Prefix & Host Node Identifier */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                    {t('services.pipewire.baseMulticastPrefix', 'Base Multicast Prefix (AES67 / Dante 239.69.X)')}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      required
-                      value={baseMulticastPrefix}
-                      onChange={(e) => setBaseMulticastPrefix(e.target.value)}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors"
-                      placeholder="239.69.1"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleRecalculateRoutes}
-                      title={t('services.pipewire.recalculatePrefixTitle', 'Recalculate canonical prefix from NIC and re-seed all sink routes')}
-                      className="px-3 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] text-xs font-medium hover:border-brand-lime text-[var(--text-secondary)] hover:text-brand-lime whitespace-nowrap cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
-                    >
-                      <span>↻</span>
-                      <span>{t('services.pipewire.recalc', 'Recalc')}</span>
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-[10px] text-[var(--text-secondary)] block">
-                      {t('services.pipewire.baseMulticastHelp', 'Canonical 239.69.X range derived from host NIC IP to guarantee zero collisions between nodes.')}
-                    </span>
-                    {recalcFeedback && (
-                      <span className="text-[10px] text-brand-lime font-mono font-bold animate-pulse">
-                        ✓ {t('services.pipewire.recalcDone', 'Synchronized ({{prefix}}.X)', { prefix: recalcFeedback })}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                    {t('services.pipewire.nodeHostname', 'Host Node Identifier')}
-                  </label>
-                  <div className="px-3 py-2 rounded-lg bg-[var(--bg-card)]/60 border border-[var(--glass-border)] text-xs font-mono text-brand-lime font-bold flex items-center gap-2">
-                    <span>🖥️</span>
-                    <span>{hostName}</span>
-                  </div>
-                  <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
-                    {t('services.pipewire.hostnameHelp', 'Locked hostname prefix automatically prepended to SAP announcements.')}
-                  </span>
-                </div>
-              </div>
-
-              {/* Informative Clock Status Banner */}
-              {networkAudit && (
-                <div>
-                  {networkAudit.host_ptp?.ptp4l_running ? (
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2.5">
-                      <span className="text-base shrink-0">🟢</span>
-                      <div>
-                        <p className="font-bold">
-                          {t('services.pipewire.ptpSynchronized', 'PTPv2 Synchronized (IEEE 1588-2008 active)')}
-                        </p>
-                        <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
-                          {t('services.pipewire.ptpSynchronizedDesc', 'Host ptp4l daemon active providing PTP master/slave clock for precise RTP packet alignment.')}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-600 dark:text-blue-300 text-xs flex items-start gap-2.5">
-                        <span className="text-base shrink-0 mt-0.5">ℹ️</span>
-                        <div>
-                          <p className="font-bold">
-                            {t('services.pipewire.ptpSoftwareClock', 'System Monotonic Clock Mode (Active)')}
-                          </p>
-                          <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
-                            {t('services.pipewire.ptpSoftwareClockDesc', 'AES67/Dante streams use the kernel local clock. Safe, autonomous, and zero risk of interference with existing network clocks. Fully compatible with SAP discovery, Dante Controller, and software receivers.')}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-300 text-[11px] flex items-start gap-2">
-                        <span className="text-sm shrink-0">⚠️</span>
-                        <div>
-                          <p className="font-bold">
-                            {t('services.pipewire.ptpWarningTitle', 'Hardware PTP Synchronization (linuxptp)')}
-                          </p>
-                          <p className="text-[10px] text-amber-700/80 dark:text-amber-200/80 mt-0.5 leading-relaxed">
-                            {t('services.pipewire.ptpWarningDesc', 'Only recommended for dedicated broadcast integrations where a systems engineer explicitly configures ptp4l in client-only mode (slaveOnly=1) to track an existing network Grandmaster without destabilizing production clocks.')}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>

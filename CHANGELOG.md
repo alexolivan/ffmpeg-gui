@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added dedicated `[ ↻ Recalc Sinks ]` button in the Virtual Sinks Manager header.
   - Auto-adapts `selectedInterface` when loading imported configurations where the original NIC does not exist on the local host, preventing state/select desynchronization.
   - Added animated visual feedback badges (`✓ Synchronized (239.69.X.X)`) on route recalculation.
+  - Reordered form sections so that **AES67 / Dante Broadcast Network Module** appears as Section 2 (immediately after General Info) and **Virtual Sinks Manager** as Section 3, ensuring network interface, PTP clock, and base multicast prefix are configured before declaring virtual sinks.
 
 ## [2.43.0] - 2026-10-15
 
