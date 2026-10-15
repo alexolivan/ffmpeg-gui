@@ -18,6 +18,7 @@ import os
 import re
 import shlex
 import logging
+import psutil
 from typing import Dict, List, Optional, Set, Tuple, Any
 
 logger = logging.getLogger("PipeWireSupervisor")
@@ -193,7 +194,11 @@ class PipeWireMatrixSupervisor:
                         if desk_id and int(desk_id) in pw_desktops:
                             target_sink = pw_desktops[int(desk_id)]
                             source_node = f"kiosk_{kiosk.id}"
-                            is_active = (kiosk.id in self.pm.processes) or (kiosk.status == "running")
+                            is_active = (
+                                (kiosk.id in getattr(self.pm, "processes", {}))
+                                or (kiosk.id in getattr(self.pm, "reattached_pids", {}))
+                                or (kiosk.status == "running")
+                            )
                             if is_active:
                                 kiosk_label = kiosk.alias or kiosk.name or f"Kiosk #{kiosk.id}"
                                 target_sink_label = sink_name_map.get(target_sink, target_sink)
@@ -221,7 +226,11 @@ class PipeWireMatrixSupervisor:
                 ).all()
 
                 for svc in ffmpeg_services:
-                    is_active = (svc.id in self.pm.processes) or (svc.status == "running")
+                    is_active = (
+                        (svc.id in getattr(self.pm, "processes", {}))
+                        or (svc.id in getattr(self.pm, "reattached_pids", {}))
+                        or (svc.status == "running")
+                    )
                     if not is_active:
                         continue
                     cfg = svc.config or {}
@@ -580,10 +589,12 @@ class PipeWireMatrixSupervisor:
         Detects if a running FFmpeg service is missing its PipeWire audio port/node
         (e.g. after a PipeWire restart or severed Pulse socket) and triggers reconnect.
         """
-        if not self.pm or not hasattr(self.pm, "processes"):
+        if not self.pm:
             return
-        proc = self.pm.processes.get(svc_id)
-        if not proc or getattr(proc, "returncode", None) is not None:
+        target_pid = getattr(self.pm, "reattached_pids", {}).get(svc_id)
+        proc = getattr(self.pm, "processes", {}).get(svc_id)
+        is_alive = (proc is not None and getattr(proc, "returncode", None) is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
+        if not is_alive:
             self._missing_node_counts.pop(svc_id, None)
             return
 

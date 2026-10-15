@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.41.4] - 2026-10-15
+
+### Fixed
+- **PipeWire Hub & Matrix Supervisor Resilience Across Warm Reloads (`update.sh`)**:
+  - Automatically re-instantiates and launches `PipeWireMatrixSupervisor` during `reattach_process` when the backend restarts via `update.sh` or systemd service reload.
+  - Implemented self-healing `get_or_create_pipewire_supervisor` across telemetries, REST matrix inspection, and startup reconciliation, ensuring surviving PipeWire hub daemons are never orphaned without an active patchbay supervisor.
+  - Resolved missing node detection in `_resolve_desired_links` and `_check_and_trigger_ffmpeg_reconnect` by checking liveness across both active subprocess instances and `reattached_pids` via `psutil.pid_exists`.
+- **Automatic Kiosk Browser Audio Recovery & Socket Refresh**:
+  - Extended cascading consumer restart (`_restart_dependent_pipewire_consumers`) to detect both active and reattached Kiosk browser processes targeting a Virtual Desktop with PipeWire audio.
+  - Ensures Chromium and Firefox automatically refresh their PulseAudio unix socket (`/tmp/ffmpeg-gui/pipewire-{id}/pulse.sock`) after PipeWire daemon restarts, preventing dead audio pipelines without disrupting the X11 display.
+
 ## [2.41.3] - 2026-10-15
 
 ### Added

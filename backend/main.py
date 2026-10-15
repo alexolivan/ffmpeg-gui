@@ -3958,6 +3958,12 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to reconcile dependencies/leases on startup: {e}")
 
+    # Reconcile PipeWire matrix connections for any surviving or reattached hubs
+    try:
+        process_manager.notify_pipewire_matrix_change()
+    except Exception as e:
+        logger.warning(f"Failed to reconcile PipeWire patchbay on startup: {e}")
+
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
     asyncio.create_task(peer_federation_sync_loop())
@@ -6369,7 +6375,7 @@ async def get_pipewire_service_matrix(
         raise HTTPException(status_code=404, detail="Service not found")
     if svc.service_type != "pipewire_hub":
         raise HTTPException(status_code=400, detail="Service is not a PipeWire Hub")
-    sup = process_manager.pipewire_supervisors.get(service_id)
+    sup = process_manager.get_or_create_pipewire_supervisor(service_id)
     if not sup:
         return {
             "hub_id": service_id,

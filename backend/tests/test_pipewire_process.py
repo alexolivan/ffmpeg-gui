@@ -831,7 +831,84 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             # Service 1 (FFmpeg) must be restarted
             mock_restart.assert_awaited_once_with(1)
 
+    async def test_restart_dependent_consumers_includes_kiosk_and_reattached_pids(self):
+        with self.Session() as session:
+            hub = Service(
+                id=20,
+                name="Hub 20",
+                service_type="pipewire_hub",
+                status="running",
+                config={"pipewire_config": {"virtual_sinks": [{"id": "mix_bus"}]}}
+            )
+            desktop = Service(
+                id=21,
+                name="Desktop 21",
+                service_type="desktop",
+                status="running",
+                config={"desktop_config": {"audio_backend": "pipewire_hub", "pipewire_service_id": 20}}
+            )
+            kiosk = Service(
+                id=22,
+                name="Kiosk 22",
+                service_type="kiosk_browser",
+                status="running",
+                config={"kiosk_config": {"target_desktop_service_id": 21}}
+            )
+            ffmpeg_svc = Service(
+                id=23,
+                name="FFmpeg 23",
+                service_type="ffmpeg_stream",
+                status="running",
+                config={"input_config": {"type": "pipewire_hub", "provider_service_id": 20}}
+            )
+            session.add_all([hub, desktop, kiosk, ffmpeg_svc])
+            session.commit()
+
+        # Both kiosk 22 and ffmpeg 23 are reattached PIDs, not in self.pm.processes
+        self.pm.reattached_pids[22] = 99922
+        self.pm.reattached_pids[23] = 99923
+
+        sock_path = f"/tmp/ffmpeg-gui/pipewire-20/pulse.sock"
+        os.makedirs(os.path.dirname(sock_path), exist_ok=True)
+        with open(sock_path, "w") as f:
+            f.write("")
+        self.cleanup_files.append(sock_path)
+        self.cleanup_dirs.append(os.path.dirname(sock_path))
+
+        with patch("psutil.pid_exists", return_value=True), \
+             patch.object(self.pm, "restart_process", new_callable=AsyncMock) as mock_restart:
+            await self.pm._restart_dependent_pipewire_consumers(20)
+            restarted = [call.args[0] for call in mock_restart.await_args_list]
+            self.assertIn(22, restarted)  # Kiosk restarted
+            self.assertIn(23, restarted)  # FFmpeg restarted
+            self.assertNotIn(21, restarted) # Desktop NOT restarted
+
+    async def test_get_or_create_pipewire_supervisor_self_heals_reattached_hub(self):
+        with self.Session() as session:
+            hub = Service(
+                id=30,
+                name="Reattached Hub 30",
+                service_type="pipewire_hub",
+                status="running",
+                config={"pipewire_config": {"virtual_sinks": [{"id": "mix_bus"}]}}
+            )
+            session.add(hub)
+            session.commit()
+
+        self.pm.reattached_pids[30] = 99930
+        self.assertNotIn(30, self.pm.pipewire_supervisors)
+
+        with patch("psutil.pid_exists", return_value=True):
+            sup = self.pm.get_or_create_pipewire_supervisor(30)
+            self.assertIsNotNone(sup)
+            self.assertIn(30, self.pm.pipewire_supervisors)
+            # Second call returns existing instance
+            sup2 = self.pm.get_or_create_pipewire_supervisor(30)
+            self.assertIs(sup, sup2)
+            sup.stop()
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

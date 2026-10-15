@@ -666,7 +666,7 @@ class ProcessManager:
                         supervisor = PipeWireMatrixSupervisor(process_id, self)
                         self.pipewire_supervisors[process_id] = supervisor
                         await supervisor.start()
-                        asyncio.create_task(self._restart_dependent_ffmpeg_consumers(process_id))
+                        asyncio.create_task(self._restart_dependent_pipewire_consumers(process_id))
                 elif svc_type == "desktop":
                     # Clean up stale X11 lock file and socket if previous Xvfb crashed
                     x_lock_path = f"/tmp/.X{display_num}-lock"
@@ -1329,9 +1329,9 @@ class ProcessManager:
         await asyncio.sleep(0.5)
         await self.start_process(process_id, is_restart=True)
 
-    async def _restart_dependent_ffmpeg_consumers(self, hub_id: int):
+    async def _restart_dependent_pipewire_consumers(self, hub_id: int):
         """
-        Restarts running FFmpeg processes that consume or publish audio to this PipeWire Hub,
+        Restarts running FFmpeg processes and Kiosk browsers that consume or publish audio to this PipeWire Hub,
         allowing them to reconnect to the newly spawned PulseAudio socket.
         """
         pulse_sock = f"/tmp/ffmpeg-gui/pipewire-{hub_id}/pulse.sock"
@@ -1341,70 +1341,92 @@ class ProcessManager:
             await asyncio.sleep(0.1)
 
         dependent_pids: List[int] = []
+
+        def is_alive(proc_id: int) -> bool:
+            proc = self.processes.get(proc_id)
+            target_pid = self.reattached_pids.get(proc_id)
+            return (proc is not None and getattr(proc, "returncode", None) is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
+
         try:
             with self.db_session_factory() as session:
                 from database.models import Service, ServiceDependency
 
+                all_hubs = session.query(Service).filter(Service.service_type == "pipewire_hub").all()
+                is_single_hub = (len(all_hubs) == 1 and all_hubs[0].id == hub_id)
+
+                # 1. Dependency table query
                 deps = session.query(ServiceDependency).filter(
                     ServiceDependency.provider_service_id == hub_id,
                     ServiceDependency.consumer_type == "service"
                 ).all()
                 for dep in deps:
-                    if dep.consumer_id != hub_id and dep.consumer_id in self.processes:
-                        proc = self.processes.get(dep.consumer_id)
-                        if proc and proc.returncode is None:
-                            c_svc = session.get(Service, dep.consumer_id) if hasattr(session, "get") else session.query(Service).get(dep.consumer_id)
-                            if c_svc and getattr(c_svc, "service_type", None) not in (
-                                "mediamtx_hub", "icecast_server", "pipewire_hub", "desktop", "kiosk_browser"
-                            ):
-                                if dep.consumer_id not in dependent_pids:
-                                    dependent_pids.append(dep.consumer_id)
+                    if dep.consumer_id != hub_id and is_alive(dep.consumer_id):
+                        c_svc = session.get(Service, dep.consumer_id) if hasattr(session, "get") else session.query(Service).get(dep.consumer_id)
+                        if c_svc and getattr(c_svc, "service_type", None) not in (
+                            "mediamtx_hub", "icecast_server", "pipewire_hub", "desktop"
+                        ):
+                            if dep.consumer_id not in dependent_pids:
+                                dependent_pids.append(dep.consumer_id)
 
-                candidate_ids = [pid for pid in self.processes.keys() if pid != hub_id and pid not in dependent_pids]
+                # 2. Config query across all active processes
+                active_ids = {pid for pid in list(self.processes.keys()) + list(self.reattached_pids.keys()) if is_alive(pid) and pid != hub_id}
+                candidate_ids = [pid for pid in active_ids if pid not in dependent_pids]
                 if candidate_ids:
                     running_svcs = session.query(Service).filter(
                         Service.id.in_(candidate_ids),
-                        ~Service.service_type.in_(["mediamtx_hub", "icecast_server", "pipewire_hub", "desktop", "kiosk_browser"])
+                        ~Service.service_type.in_(["mediamtx_hub", "icecast_server", "pipewire_hub", "desktop"])
                     ).all()
                     for svc in running_svcs:
-                        cfg = svc.config or {}
-                        inp_c = cfg.get("input_config", {})
-                        out_c = cfg.get("output_config", {})
-                        check_targets = [inp_c, out_c]
-                        if isinstance(inp_c, dict):
-                            if "input1" in inp_c:
-                                check_targets.append(inp_c.get("input1"))
-                            if "input2" in inp_c:
-                                check_targets.append(inp_c.get("input2"))
-                        for c in check_targets:
-                            if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
-                                cand_id = c.get("provider_service_id") or c.get("pipewire_service_id")
-                                if cand_id:
-                                    try:
-                                        if int(cand_id) == hub_id:
-                                            proc = self.processes.get(svc.id)
-                                            if proc and proc.returncode is None:
+                        s_type = getattr(svc, "service_type", "ffmpeg_stream")
+                        if s_type == "kiosk_browser":
+                            k_cfg = (svc.config or {}).get("kiosk_config", svc.config or {})
+                            desk_id = k_cfg.get("target_desktop_service_id") or k_cfg.get("desktop_service_id")
+                            if desk_id:
+                                desk_svc = session.get(Service, int(desk_id)) if hasattr(session, "get") else session.query(Service).get(int(desk_id))
+                                if desk_svc:
+                                    d_cfg = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
+                                    if d_cfg.get("audio_backend") == "pipewire_hub":
+                                        pw_id = d_cfg.get("pipewire_service_id")
+                                        if (pw_id and int(pw_id) == hub_id) or (not pw_id and is_single_hub):
+                                            if svc.id not in dependent_pids:
                                                 dependent_pids.append(svc.id)
-                                            break
-                                    except (ValueError, TypeError):
-                                        pass
+                        else:
+                            cfg = svc.config or {}
+                            inp_c = cfg.get("input_config", {})
+                            out_c = cfg.get("output_config", {})
+                            check_targets = [inp_c, out_c]
+                            if isinstance(inp_c, dict):
+                                if "input1" in inp_c:
+                                    check_targets.append(inp_c.get("input1"))
+                                if "input2" in inp_c:
+                                    check_targets.append(inp_c.get("input2"))
+                            for c in check_targets:
+                                if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                                    cand_id = c.get("provider_service_id") or c.get("pipewire_service_id")
+                                    if (cand_id and int(cand_id) == hub_id) or (not cand_id and is_single_hub):
+                                        if svc.id not in dependent_pids:
+                                            dependent_pids.append(svc.id)
+                                        break
         except Exception as q_err:
-            self.logger.warning(f"Error querying dependent FFmpeg consumers for hub {hub_id}: {q_err}")
+            self.logger.warning(f"Error querying dependent PipeWire consumers for hub {hub_id}: {q_err}")
 
         if not dependent_pids:
             return
 
         self.logger.info(
-            f"[ProcessManager] Reconnecting {len(dependent_pids)} running FFmpeg consumer(s) "
+            f"[ProcessManager] Reconnecting {len(dependent_pids)} running consumer(s) "
             f"to restarted PipeWire Hub #{hub_id}: {dependent_pids}"
         )
 
         for c_id in dependent_pids:
             try:
-                self.logger.info(f"[ProcessManager] Cascading restart for FFmpeg service #{c_id} (PipeWire Hub #{hub_id})")
+                self.logger.info(f"[ProcessManager] Cascading restart for consumer service #{c_id} (PipeWire Hub #{hub_id})")
                 await self.restart_process(c_id)
             except Exception as c_err:
-                self.logger.warning(f"[ProcessManager] Failed restarting dependent FFmpeg service #{c_id}: {c_err}")
+                self.logger.warning(f"[ProcessManager] Failed restarting dependent consumer service #{c_id}: {c_err}")
+
+    # Backward compatibility alias
+    _restart_dependent_ffmpeg_consumers = _restart_dependent_pipewire_consumers
 
     def _resolve_storage_path(self, storage_id: Optional[int], relative_path: Optional[str]) -> Optional[str]:
         if not storage_id:
@@ -2221,7 +2243,7 @@ class ProcessManager:
             if not isinstance(items, list):
                 items = []
 
-            sup = self.pipewire_supervisors.get(process_id)
+            sup = self.get_or_create_pipewire_supervisor(process_id)
             matrix_data = sup.get_matrix_status() if sup else None
 
             # Query services, tasks, and hub sinks for human entity resolution
@@ -2345,7 +2367,7 @@ class ProcessManager:
                 link["input_node_label"] = (in_node.get("human_label") or in_node["name"]) if in_node else f"Node #{link.get('input_node_id')}"
                 link["input_port_name"] = in_port["name"] if in_port else f"Port #{link.get('input_port_id')}"
 
-            sup = self.pipewire_supervisors.get(process_id)
+            sup = self.get_or_create_pipewire_supervisor(process_id)
             matrix_data = sup.get_matrix_status() if sup else None
 
             return {
@@ -2409,14 +2431,52 @@ class ProcessManager:
                 except Exception:
                     pass
 
+    def get_or_create_pipewire_supervisor(self, hub_id: int):
+        """
+        Retrieves the active PipeWireMatrixSupervisor for hub_id, or instantiates and
+        starts it on-demand if the parent PipeWire process is alive in OS (self-healing).
+        """
+        hub_key = int(hub_id)
+        sup = self.pipewire_supervisors.get(hub_key)
+        if sup:
+            return sup
+
+        # Verify hub liveness in OS (either normal subprocess or reattached PID)
+        target_pid = self.reattached_pids.get(hub_key)
+        proc = self.processes.get(hub_key)
+        is_alive = (proc is not None and getattr(proc, "returncode", None) is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
+        if is_alive:
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service
+                    s_obj = session.get(Service, hub_key) if hasattr(session, "get") else session.query(Service).get(hub_key)
+                    if s_obj and getattr(s_obj, "service_type", None) == "pipewire_hub":
+                        from core.pipewire_matrix_supervisor import PipeWireMatrixSupervisor
+                        sup = PipeWireMatrixSupervisor(hub_key, self)
+                        self.pipewire_supervisors[hub_key] = sup
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(sup.start())
+                        except RuntimeError:
+                            asyncio.create_task(sup.start())
+                        self.logger.info(f"Self-healed missing PipeWireMatrixSupervisor for running hub #{hub_key}")
+                        return sup
+            except Exception as e:
+                self.logger.error(f"Failed to auto-heal supervisor for hub #{hub_key}: {e}")
+        return None
+
     def notify_pipewire_matrix_change(self, hub_id: Optional[int] = None):
         """Notifies active PipeWireMatrixSupervisor(s) to immediately re-evaluate and reconcile connections."""
         if hub_id is not None:
-            sup = self.pipewire_supervisors.get(int(hub_id))
+            sup = self.get_or_create_pipewire_supervisor(int(hub_id))
             if sup:
                 sup.trigger_reconcile()
         else:
-            for sup in self.pipewire_supervisors.values():
+            # Check all running processes to ensure any surviving hubs have supervisors
+            all_active_keys = set(list(self.processes.keys()) + list(self.reattached_pids.keys()))
+            for p_id in all_active_keys:
+                self.get_or_create_pipewire_supervisor(p_id)
+            for sup in list(self.pipewire_supervisors.values()):
                 sup.trigger_reconcile()
 
     def _build_desktop_cmds(self, media_proc) -> Tuple[List[str], List[str], List[str], int, int]:
@@ -3920,6 +3980,9 @@ class ProcessManager:
         if svc_type in ("mediamtx_hub", "icecast_server", "desktop", "pipewire_hub"):
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
+
+        if svc_type == "pipewire_hub":
+            self.get_or_create_pipewire_supervisor(process_id)
 
         # Re-register with dependency manager as pinned and restore active leases
         try:
