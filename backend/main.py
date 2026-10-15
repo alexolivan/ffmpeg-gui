@@ -5944,7 +5944,11 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
             from backend.core.pipewire_config import PipeWireConfigGenerator
             from backend.core.network_inspector import get_network_interfaces
 
-        aes67_net = cfg.get("aes67_network")
+        pw_cfg = cfg.get("pipewire_config") if isinstance(cfg.get("pipewire_config"), dict) else cfg
+        aes67_net = pw_cfg.get("aes67_network")
+        if not isinstance(aes67_net, dict) and "aes67_network" in cfg and isinstance(cfg["aes67_network"], dict):
+            aes67_net = cfg["aes67_network"]
+
         if isinstance(aes67_net, dict) and aes67_net.get("enabled"):
             try:
                 available_ifaces = get_network_interfaces()
@@ -5977,18 +5981,32 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
             if not imported_base_prefix or imported_base_prefix != local_canonical_prefix:
                 aes67_net["base_multicast_prefix"] = local_canonical_prefix
 
+            pw_cfg["aes67_network"] = aes67_net
             cfg["aes67_network"] = aes67_net
+            if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):
+                cfg["pipewire_config"]["aes67_network"] = aes67_net
 
             try:
                 local_hostname = socket.gethostname().split(".")[0]
             except Exception:
                 local_hostname = "host"
 
-            virtual_sinks = cfg.get("virtual_sinks", [])
+            virtual_sinks = pw_cfg.get("virtual_sinks")
+            if not isinstance(virtual_sinks, list) and "virtual_sinks" in cfg and isinstance(cfg["virtual_sinks"], list):
+                virtual_sinks = cfg["virtual_sinks"]
+            if not isinstance(virtual_sinks, list):
+                virtual_sinks = []
+
             for idx, sink in enumerate(virtual_sinks, start=1):
                 if sink.get("aes67_enabled"):
                     sink_ip = sink.get("multicast_ip")
-                    if not sink_ip or (old_prefix and sink_ip.startswith(f"{old_prefix}.")):
+                    # Re-seed if empty, matching old prefix, or starting with foreign 239.69.X
+                    is_foreign_ip = (
+                        not sink_ip
+                        or (old_prefix and sink_ip.startswith(f"{old_prefix}."))
+                        or (sink_ip.startswith("239.69.") and not sink_ip.startswith(f"{local_canonical_prefix}."))
+                    )
+                    if is_foreign_ip:
                         sink["multicast_ip"] = PipeWireConfigGenerator.get_canonical_sink_multicast_ip(local_canonical_prefix, idx)
 
                     raw_sap = sink.get("sap_name") or sink.get("name") or sink.get("id") or "sink"
@@ -5997,6 +6015,11 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
                         sink["sap_name"] = f"{local_hostname} {parts[1]}"
                     else:
                         sink["sap_name"] = PipeWireConfigGenerator.format_sap_name(raw_sap, local_hostname)
+
+            pw_cfg["virtual_sinks"] = virtual_sinks
+            cfg["virtual_sinks"] = virtual_sinks
+            if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):
+                cfg["pipewire_config"]["virtual_sinks"] = virtual_sinks
                     
     return profile
 
