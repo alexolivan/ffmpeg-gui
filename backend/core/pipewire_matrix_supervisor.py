@@ -362,8 +362,40 @@ class PipeWireMatrixSupervisor:
                                     source_label=task_label,
                                     target_label=sink_label,
                                     source_aliases=[f"ffmpeg_task_{task.id}", f"ffmpeg_proc_{task.id}", f"ffmpeg_{task.id}", f"ffmpeg_task_{exec_item.id}", "ffmpeg"]
-                                )
+                                 )
                             )
+
+                # 5. AES67 Network Transmitters (rtp-sink consuming from virtual sink monitor)
+                for s in sinks:
+                    if s.get("aes67_enabled", False) and s.get("id"):
+                        s_id = s.get("id")
+                        s_name = sink_name_map.get(s_id, s_id)
+                        tx_node = f"rtp_tx_{s_id}"
+                        m_ip = s.get("multicast_ip", "239.69.1.10")
+                        r_port = s.get("rtp_port", 5004)
+                        channels = max(1, int(s.get("channels", 2)))
+                        if channels == 1:
+                            src_ports = [f"{s_id}:monitor_0"]
+                            tgt_ports = [f"{tx_node}:input_0"]
+                        else:
+                            src_ports = [f"{s_id}:monitor_FL", f"{s_id}:monitor_FR"]
+                            tgt_ports = [f"{tx_node}:input_FL", f"{tx_node}:input_FR"]
+                        description = f"{s_name}.monitor → AES67 Tx ({m_ip}:{r_port})"
+                        desired.append(
+                            DesiredLink(
+                                source_id=f"{s_id}.monitor",
+                                target_id=tx_node,
+                                source_ports=src_ports,
+                                target_ports=tgt_ports,
+                                link_type="monitor_capture",
+                                description=description,
+                                source_entity_type="sink",
+                                target_entity_type="aes67_sink",
+                                source_label=f"{s_name}.monitor",
+                                target_label=f"AES67 Tx ({m_ip}:{r_port})",
+                                target_aliases=[tx_node, f"rtp_sender_{s_id}", "rtp-sink", s_id]
+                            )
+                        )
 
         except Exception as e:
             logger.warning(f"[PipeWireSupervisor #{self.hub_id}] Error resolving desired links: {e}")
@@ -391,11 +423,21 @@ class PipeWireMatrixSupervisor:
             "PIPEWIRE_REMOTE": "pipewire-0",
             "XDG_RUNTIME_DIR": self.runtime_dir,
             "PULSE_RUNTIME_PATH": self.runtime_dir,
+            "PIPEWIRE_NO_DBUS": "1",
+            "PIPEWIRE_NO_RT": "1",
+            "DBUS_SESSION_BUS_ADDRESS": "none",
         }
         if install_dir and os.path.isdir(install_dir):
-            lib_dir = os.path.join(install_dir, "lib")
-            existing_ld = sub_env.get("LD_LIBRARY_PATH", "")
-            sub_env["LD_LIBRARY_PATH"] = f"{lib_dir}:{existing_ld}".rstrip(":")
+            lib_dirs = [
+                os.path.join(install_dir, "lib"),
+                os.path.join(install_dir, "lib64"),
+                os.path.join(install_dir, "lib/x86_64-linux-gnu"),
+                os.path.join(install_dir, "lib/aarch64-linux-gnu")
+            ]
+            valid_libs = [p for p in lib_dirs if os.path.isdir(p)]
+            if valid_libs:
+                cur_ld = sub_env.get("LD_LIBRARY_PATH", "")
+                sub_env["LD_LIBRARY_PATH"] = ":".join(valid_libs + ([cur_ld] if cur_ld else []))
 
         # 1. Query current links (-l), output ports (-o), and input ports (-i)
         try:
@@ -405,7 +447,11 @@ class PipeWireMatrixSupervisor:
                 stderr=asyncio.subprocess.PIPE,
                 env=sub_env
             )
-            stdout_l, _ = await asyncio.wait_for(proc_l.communicate(), timeout=2.0)
+            stdout_l, stderr_l = await asyncio.wait_for(proc_l.communicate(), timeout=2.0)
+            if isinstance(proc_l.returncode, int) and proc_l.returncode != 0:
+                err_msg = stderr_l.decode("utf-8", errors="replace").strip() if stderr_l else f"exit code {proc_l.returncode}"
+                logger.debug(f"[PipeWireSupervisor #{self.hub_id}] pw-link -l query notice: {err_msg}")
+                return
             lines_l = stdout_l.decode("utf-8", errors="replace").splitlines() if stdout_l else []
         except Exception as err:
             logger.debug(f"[PipeWireSupervisor #{self.hub_id}] Error querying pw-link -l: {err}")
@@ -568,12 +614,12 @@ class PipeWireMatrixSupervisor:
                 if dst_ready:
                     self._missing_node_counts.pop(dl.target_entity_id, None)
                 else:
-                    self._check_and_trigger_ffmpeg_reconnect(dl.target_entity_id, "consumer")
+                    self._check_and_trigger_consumer_reconnect(dl.target_entity_id, "consumer")
             elif dl.source_entity_type == "service" and dl.source_entity_id:
                 if src_ready:
                     self._missing_node_counts.pop(dl.source_entity_id, None)
                 else:
-                    self._check_and_trigger_ffmpeg_reconnect(dl.source_entity_id, "producer")
+                    self._check_and_trigger_consumer_reconnect(dl.source_entity_id, "producer")
 
         self._matrix_status.update({
             "hub_id": self.hub_id,
@@ -584,9 +630,9 @@ class PipeWireMatrixSupervisor:
             "routes": routes_telemetry
         })
 
-    def _check_and_trigger_ffmpeg_reconnect(self, svc_id: int, role: str):
+    def _check_and_trigger_consumer_reconnect(self, svc_id: int, role: str):
         """
-        Detects if a running FFmpeg service is missing its PipeWire audio port/node
+        Detects if a running service or kiosk is missing its PipeWire audio port/node
         (e.g. after a PipeWire restart or severed Pulse socket) and triggers reconnect.
         """
         if not self.pm:
@@ -614,11 +660,14 @@ class PipeWireMatrixSupervisor:
             self._last_reconnect_attempt[svc_id] = now_t
             self._missing_node_counts[svc_id] = 0
             logger.info(
-                f"[PipeWireSupervisor #{self.hub_id}] Active FFmpeg {role} service #{svc_id} missing "
+                f"[PipeWireSupervisor #{self.hub_id}] Active {role} service #{svc_id} missing "
                 f"from PipeWire graph after {count * 1.5:.1f}s. Requesting reconnection restart..."
             )
             if hasattr(self.pm, "restart_process"):
                 asyncio.create_task(self.pm.restart_process(svc_id))
+
+    # Backward compatibility alias
+    _check_and_trigger_ffmpeg_reconnect = _check_and_trigger_consumer_reconnect
 
     @staticmethod
     def _match_ports(
