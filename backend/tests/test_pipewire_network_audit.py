@@ -278,6 +278,174 @@ class TestPipewireNetworkAudit(unittest.TestCase):
         self.assertEqual(len(data["interfaces"]), 1)
         self.assertIsNone(data["interfaces"][0]["ip"])
 
+    def test_validate_multicast_route_valid_and_ranges(self):
+        """Verifica validación sintáctica, rango AoIP estándar y detección de rangos de control."""
+        app.dependency_overrides[verify_token] = lambda: "admin"
+
+        # 1. Valid AoIP stream
+        res1 = self.client.post("/api/pipewire/validate-multicast", json={
+            "multicast_ip": "239.69.11.1",
+            "rtp_port": 5004
+        })
+        self.assertEqual(res1.status_code, 200)
+        d1 = res1.json()
+        self.assertTrue(d1["valid"])
+        self.assertTrue(d1["in_aes67_range"])
+        self.assertFalse(d1["is_reserved"])
+        self.assertFalse(d1["collision"])
+
+        # 2. Reserved control range 224.0.0.X (e.g. SAP announcement address 224.0.0.56)
+        res2 = self.client.post("/api/pipewire/validate-multicast", json={
+            "multicast_ip": "224.0.0.56",
+            "rtp_port": 9875
+        })
+        self.assertEqual(res2.status_code, 200)
+        d2 = res2.json()
+        self.assertFalse(d2["valid"])
+        self.assertTrue(d2["is_reserved"])
+        self.assertIn("reserved", d2["message"].lower())
+
+        # 3. Not multicast
+        res3 = self.client.post("/api/pipewire/validate-multicast", json={
+            "multicast_ip": "192.168.1.100",
+            "rtp_port": 5004
+        })
+        self.assertEqual(res3.status_code, 200)
+        d3 = res3.json()
+        self.assertFalse(d3["valid"])
+        self.assertIn("multicast range", d3["message"].lower())
+
+    def test_validate_multicast_route_collision_detection(self):
+        """Verifica detección de colisiones contra servicios de la base de datos."""
+        app.dependency_overrides[verify_token] = lambda: "admin"
+
+        from database.db import SessionLocal
+        from database.models import Service
+
+        with SessionLocal() as db:
+            # Crear un servicio pipewire con un sink AES67 en 239.69.55.1:5004
+            svc = Service(
+                name="Existing AES67 Hub",
+                service_type="pipewire_hub",
+                status="stopped",
+                config={
+                    "virtual_sinks": [
+                        {
+                            "id": "sink_active",
+                            "name": "Active Stream",
+                            "aes67_enabled": True,
+                            "multicast_ip": "239.69.55.1",
+                            "rtp_port": 5004
+                        }
+                    ]
+                }
+            )
+            db.add(svc)
+            db.commit()
+            db.refresh(svc)
+            svc_id = svc.id
+
+        try:
+            # Intentar usar la misma IP y puerto desde otro servicio -> colisión
+            res_coll = self.client.post("/api/pipewire/validate-multicast", json={
+                "service_id": svc_id + 999,
+                "sink_id": "other_sink",
+                "multicast_ip": "239.69.55.1",
+                "rtp_port": 5004
+            })
+            self.assertEqual(res_coll.status_code, 200)
+            d_coll = res_coll.json()
+            self.assertFalse(d_coll["valid"])
+            self.assertTrue(d_coll["collision"])
+            self.assertIn("Collides with service 'Existing AES67 Hub'", d_coll["message"])
+
+            # Misma IP pero diferente puerto -> válido pero con aviso de IGMP snooping
+            res_advisory = self.client.post("/api/pipewire/validate-multicast", json={
+                "service_id": svc_id + 999,
+                "sink_id": "other_sink",
+                "multicast_ip": "239.69.55.1",
+                "rtp_port": 5010
+            })
+            self.assertEqual(res_advisory.status_code, 200)
+            d_adv = res_advisory.json()
+            self.assertTrue(d_adv["valid"])
+            self.assertTrue(d_adv["advisory_same_ip"])
+            self.assertIn("IGMP snooping", d_adv["message"])
+
+            # Mismo servicio y mismo sink (auto-edición) -> no colisiona consigo mismo
+            res_self = self.client.post("/api/pipewire/validate-multicast", json={
+                "service_id": svc_id,
+                "sink_id": "sink_active",
+                "multicast_ip": "239.69.55.1",
+                "rtp_port": 5004
+            })
+            self.assertEqual(res_self.status_code, 200)
+            d_self = res_self.json()
+            self.assertTrue(d_self["valid"])
+            self.assertFalse(d_self["collision"])
+        finally:
+            with SessionLocal() as db:
+                db.query(Service).filter(Service.id == svc_id).delete()
+                db.commit()
+
+    def test_pipewire_profile_import_sanitization(self):
+        """Verifica que migrate_and_validate_profile sanitiza NICs, IP multicast canónicas y SAP names."""
+        from database.db import SessionLocal
+        try:
+            from main import migrate_and_validate_profile
+        except ImportError:
+            from backend.main import migrate_and_validate_profile
+
+        with SessionLocal() as db:
+            foreign_payload = {
+                "profile": {
+                    "name": "Imported Studio Hub",
+                    "service_type": "pipewire_hub",
+                    "software_type": "pipewire",
+                    "software_build_id": 999999,  # Non-existent foreign build
+                    "config": {
+                        "sample_rate": 48000,
+                        "aes67_network": {
+                            "enabled": True,
+                            "interface": "foreign_nonexistent_nic_0",
+                            "ip": "192.168.99.11",
+                            "base_multicast_prefix": "239.69.11"
+                        },
+                        "virtual_sinks": [
+                            {
+                                "id": "pgm_bus",
+                                "name": "PGM Audio",
+                                "aes67_enabled": True,
+                                "multicast_ip": "239.69.11.1",
+                                "rtp_port": 5004,
+                                "sap_name": "test1 pgm_bus"
+                            }
+                        ]
+                    }
+                }
+            }
+
+            sanitized = migrate_and_validate_profile(foreign_payload, db)
+            cfg = sanitized.get("config", {})
+            net = cfg.get("aes67_network", {})
+            sinks = cfg.get("virtual_sinks", [])
+
+            # 1. Sinks list is preserved
+            self.assertEqual(len(sinks), 1)
+
+            # 2. Base multicast prefix matches local canonical prefix derived from resolved IP
+            local_prefix = net.get("base_multicast_prefix")
+            self.assertTrue(local_prefix.startswith("239.69."))
+
+            # 3. Sink multicast IP reflects local canonical prefix
+            sink_ip = sinks[0].get("multicast_ip")
+            self.assertTrue(sink_ip.startswith(f"{local_prefix}."))
+
+            # 4. SAP name is prefixed with local hostname rather than foreign 'test1'
+            local_hostname = socket.gethostname().split(".")[0]
+            self.assertTrue(sinks[0].get("sap_name").startswith(f"{local_hostname} "))
+            self.assertIn("pgm_bus", sinks[0].get("sap_name"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5785,6 +5785,10 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
             service_type = "icecast_server"
         elif "kiosk_config" in profile or "kiosk_config" in cfg:
             service_type = "kiosk_browser"
+        elif "desktop_config" in profile or "desktop_config" in cfg:
+            service_type = "desktop"
+        elif "virtual_sinks" in cfg or "pipewire_config" in cfg or "virtual_sinks" in profile:
+            service_type = "pipewire_hub"
         else:
             service_type = "ffmpeg_stream"
     profile["service_type"] = service_type
@@ -5799,6 +5803,15 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
     elif service_type in ["kiosk_browser", "kiosk_cog"]:
         if "kiosk_config" in profile and "kiosk_config" not in cfg:
             cfg["kiosk_config"] = profile["kiosk_config"]
+    elif service_type == "desktop":
+        if "desktop_config" in profile and "desktop_config" not in cfg:
+            cfg["desktop_config"] = profile["desktop_config"]
+    elif service_type == "pipewire_hub":
+        if "pipewire_config" in profile and "pipewire_config" not in cfg:
+            cfg["pipewire_config"] = profile["pipewire_config"]
+        for pw_key in ["virtual_sinks", "aes67_network", "sample_rate", "quantum", "min_quantum", "max_quantum"]:
+            if pw_key in profile and pw_key not in cfg:
+                cfg[pw_key] = profile[pw_key]
     else:
         # ffmpeg_stream
         input_cfg = profile.get("input_config", {})
@@ -5921,6 +5934,69 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
                                 cfg_dict["icecast_password"] = real_source_pass
                 except Exception:
                     cfg_dict.pop("provider_service_id", None)
+
+    # 7. PipeWire Hub AoIP Network, Multicast & SAP Sanitization
+    if service_type == "pipewire_hub":
+        try:
+            from core.pipewire_config import PipeWireConfigGenerator
+            from core.network_inspector import get_network_interfaces
+        except ImportError:
+            from backend.core.pipewire_config import PipeWireConfigGenerator
+            from backend.core.network_inspector import get_network_interfaces
+
+        aes67_net = cfg.get("aes67_network")
+        if isinstance(aes67_net, dict) and aes67_net.get("enabled"):
+            try:
+                available_ifaces = get_network_interfaces()
+            except Exception:
+                available_ifaces = []
+
+            active_ipv4_ifaces = [
+                i for i in available_ifaces
+                if i.get("is_up") and not i.get("is_loopback") and i.get("ipv4_addresses")
+            ]
+            current_iface_name = aes67_net.get("interface")
+            matching_iface = next((i for i in active_ipv4_ifaces if i["name"] == current_iface_name), None)
+
+            if not matching_iface:
+                if active_ipv4_ifaces:
+                    best_iface = active_ipv4_ifaces[0]
+                    aes67_net["interface"] = best_iface["name"]
+                    aes67_net["ip"] = best_iface["ipv4_addresses"][0]["address"]
+            else:
+                # Update IP to actual local interface address
+                local_ip = matching_iface["ipv4_addresses"][0]["address"]
+                aes67_net["ip"] = local_ip
+
+            local_ip = aes67_net.get("ip", "0.0.0.0")
+            local_canonical_prefix = PipeWireConfigGenerator.get_canonical_base_multicast_prefix(local_ip)
+            imported_base_prefix = aes67_net.get("base_multicast_prefix")
+
+            # Check if imported base prefix should be updated to local canonical
+            old_prefix = imported_base_prefix
+            if not imported_base_prefix or imported_base_prefix != local_canonical_prefix:
+                aes67_net["base_multicast_prefix"] = local_canonical_prefix
+
+            cfg["aes67_network"] = aes67_net
+
+            try:
+                local_hostname = socket.gethostname().split(".")[0]
+            except Exception:
+                local_hostname = "host"
+
+            virtual_sinks = cfg.get("virtual_sinks", [])
+            for idx, sink in enumerate(virtual_sinks, start=1):
+                if sink.get("aes67_enabled"):
+                    sink_ip = sink.get("multicast_ip")
+                    if not sink_ip or (old_prefix and sink_ip.startswith(f"{old_prefix}.")):
+                        sink["multicast_ip"] = PipeWireConfigGenerator.get_canonical_sink_multicast_ip(local_canonical_prefix, idx)
+
+                    raw_sap = sink.get("sap_name") or sink.get("name") or sink.get("id") or "sink"
+                    parts = raw_sap.split(" ", 1)
+                    if len(parts) == 2 and parts[0] != local_hostname:
+                        sink["sap_name"] = f"{local_hostname} {parts[1]}"
+                    else:
+                        sink["sap_name"] = PipeWireConfigGenerator.format_sap_name(raw_sap, local_hostname)
                     
     return profile
 
@@ -8529,16 +8605,151 @@ def get_resource_locks_endpoint(
     return {"locks": local_locks}
 
 
-# ── PipeWire Network Audit Endpoint ───────────────────────────────────
+# ── PipeWire Network Audit & Multicast Collision Guard ────────────────
+class MulticastValidationRequest(BaseModel):
+    service_id: Optional[int] = None
+    sink_id: Optional[str] = None
+    multicast_ip: str
+    rtp_port: int = 5004
+
+
 @app.get("/api/pipewire/network-audit")
-def get_pipewire_network_audit(user: str = Depends(verify_token)) -> dict:
-    """Audita interfaces de red del host y capacidades PTP de hardware/software."""
+def get_pipewire_network_audit(
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+) -> dict:
+    """Audita interfaces de red del host, prefijos multicast canónicos, flujos activos y capacidades PTP."""
     try:
+        from core.pipewire_config import PipeWireConfigGenerator
         from core.network_inspector import audit_pipewire_network_capabilities
     except ImportError:
+        from backend.core.pipewire_config import PipeWireConfigGenerator
         from backend.core.network_inspector import audit_pipewire_network_capabilities
 
-    return audit_pipewire_network_capabilities()
+    audit_data = audit_pipewire_network_capabilities()
+
+    # Enriquecer interfaces con prefijo base multicast canónico según su IPv4
+    for iface in audit_data.get("interfaces", []):
+        iface["canonical_base_multicast_prefix"] = PipeWireConfigGenerator.get_canonical_base_multicast_prefix(iface.get("ip"))
+
+    try:
+        audit_data["hostname"] = socket.gethostname().split(".")[0]
+    except Exception:
+        audit_data["hostname"] = "host"
+
+    # Enumerar flujos activos multicast configurados en la BD
+    active_streams = []
+    try:
+        from database.models import Service
+        pw_services = db.query(Service).filter(Service.service_type == "pipewire_hub").all()
+        for svc in pw_services:
+            cfg = svc.config or {}
+            for s in cfg.get("virtual_sinks", []):
+                if s.get("aes67_enabled"):
+                    active_streams.append({
+                        "service_id": svc.id,
+                        "service_name": svc.name,
+                        "sink_id": s.get("id"),
+                        "sink_name": s.get("name") or s.get("id"),
+                        "multicast_ip": s.get("multicast_ip"),
+                        "rtp_port": int(s.get("rtp_port", 5004)),
+                        "sap_name": s.get("sap_name")
+                    })
+    except Exception as e:
+        logger.warning(f"Error enumerating active pipewire streams: {e}")
+
+    audit_data["active_streams"] = active_streams
+    return audit_data
+
+
+@app.post("/api/pipewire/validate-multicast")
+def validate_multicast_route(
+    payload: MulticastValidationRequest,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+) -> dict:
+    """Valida sintaxis, rango estándar AoIP/AES67 y ausencia de colisiones en la red local."""
+    ip = (payload.multicast_ip or "").strip()
+    port = int(payload.rtp_port or 5004)
+
+    # 1. Validación de formato IPv4
+    parts = ip.split(".")
+    if len(parts) != 4 or not all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+        return {
+            "valid": False,
+            "in_aes67_range": False,
+            "is_reserved": False,
+            "collision": False,
+            "message": "Invalid IPv4 address format"
+        }
+
+    octets = [int(p) for p in parts]
+    first = octets[0]
+
+    # 2. Rango multicast general (224.0.0.0 - 239.255.255.255)
+    if not (224 <= first <= 239):
+        return {
+            "valid": False,
+            "in_aes67_range": False,
+            "is_reserved": False,
+            "collision": False,
+            "message": "IP address is outside the multicast range (224.0.0.0 - 239.255.255.255)"
+        }
+
+    # 3. Rango de control reservado: 224.0.0.0/24 (SAP, PTP, IGMP, OSPF, etc.)
+    is_reserved = (octets[0] == 224 and octets[1] == 0 and octets[2] == 0)
+
+    # 4. Rango estándar AoIP / AES67 (RFC 2365 / AES67: 239.69.0.0/16)
+    in_aes67_range = (octets[0] == 239 and octets[1] == 69)
+
+    # 5. Detección de colisiones contra servicios de la base de datos
+    collision = False
+    collision_details = None
+    advisory_same_ip = False
+
+    from database.models import Service
+    pw_services = db.query(Service).filter(Service.service_type == "pipewire_hub").all()
+    for svc in pw_services:
+        cfg = svc.config or {}
+        for s in cfg.get("virtual_sinks", []):
+            if not s.get("aes67_enabled"):
+                continue
+
+            # Omitir el mismo sink del mismo servicio si se está editando
+            if payload.service_id and svc.id == payload.service_id and payload.sink_id and s.get("id") == payload.sink_id:
+                continue
+
+            s_ip = (s.get("multicast_ip") or "").strip()
+            s_port = int(s.get("rtp_port", 5004))
+
+            if s_ip == ip:
+                if s_port == port:
+                    collision = True
+                    collision_details = f"Collides with service '{svc.name}' (sink '{s.get('name') or s.get('id')}') on {ip}:{port}"
+                    break
+                else:
+                    advisory_same_ip = True
+
+        if collision:
+            break
+
+    message = "OK"
+    if is_reserved:
+        message = "Warning: 224.0.0.0/24 is reserved for local network control protocols (SAP, PTP, IGMP). Do not stream audio here."
+    elif collision:
+        message = collision_details
+    elif advisory_same_ip:
+        message = f"Notice: IP {ip} is already used with a different port. L2 IGMP snooping switches cannot filter streams by UDP port."
+
+    return {
+        "valid": not is_reserved and not collision,
+        "in_aes67_range": in_aes67_range,
+        "is_reserved": is_reserved,
+        "collision": collision,
+        "collision_details": collision_details,
+        "advisory_same_ip": advisory_same_ip,
+        "message": message
+    }
 
 
 # Mounting static files and SPA fallback

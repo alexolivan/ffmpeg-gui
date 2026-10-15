@@ -9,6 +9,7 @@ and AES67 RTP/SAP streams without probing physical ALSA devices.
 import json
 import os
 import re
+import socket
 from typing import Any, Dict, List, Optional
 
 
@@ -52,6 +53,52 @@ class PipeWireConfigGenerator:
         return [f"AUX{i}" for i in range(channels)]
 
     @classmethod
+    def get_canonical_base_multicast_prefix(cls, nic_ip: Optional[str] = None) -> str:
+        """
+        Derive canonical AES67 base multicast prefix (RFC 2365 / AES67 239.69.x).
+        Uses the last octet of the host NIC IP to guarantee zero collisions between
+        distinct hosts in the same broadcast domain.
+        Example: 192.168.99.11 -> '239.69.11'
+                 192.168.99.13 -> '239.69.13'
+        """
+        if nic_ip and nic_ip != "0.0.0.0":
+            parts = str(nic_ip).strip().split(".")
+            if len(parts) == 4 and all(p.isdigit() for p in parts):
+                last_octet = int(parts[3])
+                if 1 <= last_octet <= 254:
+                    return f"239.69.{last_octet}"
+        return "239.69.1"
+
+    @classmethod
+    def get_canonical_sink_multicast_ip(cls, base_prefix: str, sink_index: int) -> str:
+        """
+        Derive canonical multicast IP for a specific sink index within the base prefix.
+        Example: ('239.69.11', 1) -> '239.69.11.1'
+        """
+        clean_prefix = str(base_prefix).strip().rstrip(".")
+        idx = max(1, min(254, int(sink_index)))
+        return f"{clean_prefix}.{idx}"
+
+    @classmethod
+    def format_sap_name(cls, raw_name: str, hostname: Optional[str] = None) -> str:
+        """
+        Format SAP session name with host prefix to guarantee uniqueness across nodes.
+        Example: raw_name='aes_bus', hostname='test1' -> 'test1 aes_bus'
+                 raw_name='test1 aes_bus', hostname='test1' -> 'test1 aes_bus'
+        """
+        if not hostname:
+            try:
+                hostname = socket.gethostname().split(".")[0]
+            except Exception:
+                hostname = "host"
+        clean = (raw_name or "").strip()
+        if not clean:
+            clean = "stream"
+        if not clean.startswith(f"{hostname} "):
+            return f"{hostname} {clean}"
+        return clean
+
+    @classmethod
     def generate_config(
         cls,
         service_id: int,
@@ -76,6 +123,7 @@ class PipeWireConfigGenerator:
         aes67_net = config.get("aes67_network", {})
         nic_ip = aes67_net.get("ip", "0.0.0.0")
         nic_name = aes67_net.get("interface")
+        base_prefix = aes67_net.get("base_multicast_prefix") or cls.get_canonical_base_multicast_prefix(nic_ip)
 
         pulse_socket = os.path.join(runtime_dir, "pulse.sock")
 
@@ -141,16 +189,19 @@ class PipeWireConfigGenerator:
                 "    },",
             ])
 
-        for sink in virtual_sinks:
+        for idx, sink in enumerate(virtual_sinks, start=1):
             if sink.get("aes67_enabled", False):
                 sink_id = sink.get("id", "sink")
                 sink_name = sink.get("name", sink_id)
                 channels = max(1, int(sink.get("channels", 2)))
                 pos_list = cls._get_channel_positions(channels)
                 pos_formatted = cls._spa_val(pos_list)
-                dest_ip = sink.get("multicast_ip", "239.69.1.10")
+                dest_ip = sink.get("multicast_ip")
+                if not dest_ip:
+                    dest_ip = cls.get_canonical_sink_multicast_ip(base_prefix, idx)
                 dest_port = int(sink.get("rtp_port", 5004))
-                sap_name = sink.get("sap_name", f"PipeWire {sink_id}")
+                raw_sap = sink.get("sap_name") or sink.get("name") or sink_id
+                sap_name = cls.format_sap_name(raw_sap)
 
                 rtp_args = []
                 if nic_name:

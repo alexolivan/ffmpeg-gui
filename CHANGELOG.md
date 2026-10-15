@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.43.0] - 2026-10-15
+
+### Added
+- **Canonical AoIP (AES67 / Dante) Multicast Addressing (`239.69.<host_ip_last_octet>.<sink_index>`)**:
+  - Implemented deterministic canonical multicast address calculation in `PipeWireConfigGenerator.get_canonical_base_multicast_prefix()` and `get_canonical_sink_multicast_ip()`, mapping each host's IPv4 last octet into the RFC 2365 / AES67 `239.69.X.X` administrative multicast range.
+  - Automatically avoids multicast IP collisions across distinct nodes in the same broadcast domain (e.g. `test1` on `.11` streams on `239.69.11.1+`, while `test3` on `.13` streams on `239.69.13.1+`), ensuring Layer 2 IGMP Snooping switches isolate audio streams without flooding.
+  - Retained full manual operator editability for custom multicast base prefixes and individual sink IP/port assignments.
+- **Intelligent Service Profile Import Sanitizer (`migrate_and_validate_profile`)**:
+  - Automatically sanitizes imported PipeWire Hub JSON profiles across environments (e.g. importing profiles from `test1` to `test3`).
+  - Resolves foreign or missing physical network interface names (`interface`) to local host active IPv4 adapters, updating local IP addresses seamlessly.
+  - Re-seeds canonical base multicast prefixes and sink multicast IPs if they originated from a foreign host IP, while preserving user-defined custom multicast routes.
+  - Dynamically updates SAP session names (`sap_name`) to replace foreign hostnames with local host identifiers without duplicating strings (`test1 aes_bus` -> `test3 aes_bus`).
+  - Validates PipeWire software builds (`software_build_id`), gracefully resolving to local ready PipeWire engines if the foreign build ID does not exist.
+- **Multicast Validation & Active Collision Detection Endpoint (`/api/pipewire/validate-multicast`)**:
+  - Added REST endpoint to validate multicast IPv4 syntax, standard AES67 range compliance (`239.69.0.0/16`), and reserved control protocol range warnings (`224.0.0.0/24` for SAP, PTP, IGMP).
+  - Queries active database services to alert operators of route collisions against other local PipeWire Hubs, providing IGMP advisory warnings if duplicate multicast IPs share different UDP ports.
+- **UI Collision Guard & Locked SAP Hostname Badging (`PipeWireConfigForm.tsx`)**:
+  - Added Base Multicast Prefix input field with a one-click `[ ↻ Recalc ]` button to re-derive canonical prefixes directly from the selected NIC.
+  - Locked the machine hostname prefix visually (`[ 🖥️ test1 ]`) next to the editable sink suffix with live SDP session preview (`s=test1 aes_bus`), preventing operator naming confusion.
+  - Enforced zero-lag in-memory duplicate route validation and asynchronous `onBlur` network validation, displaying error banners and disabling submission when internal collisions exist.
+- **Multi-Language Parity (i18n)**:
+  - Added translation keys for canonical base prefixes, recalculation, SAP locked host badges, and collision alerts in `en.json`, `es.json`, and `ca.json` with 100% key parity.
+
 ## [2.42.1] - 2026-10-15
 
 ### Fixed
