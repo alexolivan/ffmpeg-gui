@@ -148,6 +148,32 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   const [networkAudit, setNetworkAudit] = useState<NetworkAuditData | null>(null);
   const [isLoadingAudit, setIsLoadingAudit] = useState<boolean>(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [reservedNics, setReservedNics] = useState<Record<string, { serviceId: number; serviceName: string }>>({});
+
+  // Query existing services to detect NICs already claimed by another PipeWire Hub for AES67
+  useEffect(() => {
+    fetch(`${API}/processes`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((procs) => {
+        if (!Array.isArray(procs)) return;
+        const currentServiceId = initialConfig?.id;
+        const reserved: Record<string, { serviceId: number; serviceName: string }> = {};
+        for (const p of procs) {
+          if (p.service_type === 'pipewire_hub' && p.id !== currentServiceId) {
+            const cfg = p.config?.pipewire_config || p.config || {};
+            const aesNet = cfg.aes67_network;
+            if (aesNet?.enabled && aesNet?.interface) {
+              reserved[aesNet.interface] = {
+                serviceId: p.id,
+                serviceName: p.alias || p.name || `PipeWire Hub #${p.id}`,
+              };
+            }
+          }
+        }
+        setReservedNics(reserved);
+      })
+      .catch(() => {});
+  }, [API, initialConfig?.id]);
 
   // Fetch Network Audit when AES67 is enabled or on mount if already enabled
   useEffect(() => {
@@ -168,9 +194,12 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
         // Auto-select first active physical NIC if none selected
         if (!selectedInterface && Array.isArray(data.interfaces) && data.interfaces.length > 0) {
-          const firstUp = data.interfaces.find((iface) => iface.is_up && iface.ip) || data.interfaces[0];
-          if (firstUp) {
-            setSelectedInterface(firstUp.name);
+          const firstAvailable =
+            data.interfaces.find((iface) => iface.is_up && iface.ip && !reservedNics[iface.name]) ||
+            data.interfaces.find((iface) => !reservedNics[iface.name]) ||
+            data.interfaces[0];
+          if (firstAvailable) {
+            setSelectedInterface(firstAvailable.name);
           }
         }
       })
@@ -185,7 +214,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [aes67Enabled, API]);
+  }, [aes67Enabled, API, reservedNics, selectedInterface]);
 
   // Virtual Sink actions
   const handleAddSink = () => {
@@ -223,9 +252,12 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     });
   };
 
+  const isNicConflict = aes67Enabled && Boolean(selectedInterface && reservedNics[selectedInterface]);
+
   // Form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isNicConflict) return;
 
     // Find selected interface IP for aes67_network payload
     const activeIface = networkAudit?.interfaces?.find((i) => i.name === selectedInterface);
@@ -596,11 +628,14 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
                   >
                     {networkAudit?.interfaces && networkAudit.interfaces.length > 0 ? (
-                      networkAudit.interfaces.map((iface) => (
-                        <option key={iface.name} value={iface.name}>
-                          {iface.name} ({iface.ip || 'No IPv4'}) {iface.ptp_hardware_capable ? '· [PTP Hardware]' : ''}
-                        </option>
-                      ))
+                      networkAudit.interfaces.map((iface) => {
+                        const inUseBy = reservedNics[iface.name];
+                        return (
+                          <option key={iface.name} value={iface.name} disabled={Boolean(inUseBy)}>
+                            {iface.name} ({iface.ip || 'No IPv4'}) {iface.ptp_hardware_capable ? '· [PTP Hardware]' : ''} {inUseBy ? `— [${t('services.pipewire.nicReservedBy', 'Reserved by: {{name}}', { name: inUseBy.serviceName })}]` : ''}
+                          </option>
+                        );
+                      })
                     ) : (
                       <option value="">{t('services.pipewire.noInterfaces', 'No physical interfaces detected')}</option>
                     )}
@@ -609,6 +644,24 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                 <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
                   {t('services.pipewire.nicHelp', 'Select the physical LAN port connected to the Dante/AES67 audio subnet.')}
                 </span>
+
+                {isNicConflict && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-start gap-2.5 mt-2 animate-in fade-in duration-200">
+                    <span className="text-base shrink-0 mt-0.5">⚠️</span>
+                    <div>
+                      <p className="font-bold">
+                        {t('services.pipewire.nicConflictTitle', 'Network Interface In Use')}
+                      </p>
+                      <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
+                        {t(
+                          'services.pipewire.nicConflictDesc',
+                          'The interface {{iface}} is already reserved by {{name}} for AES67 broadcast. In a single host, AES67 must be managed from a single Hub to avoid PTP clock and SAP port conflicts. Please add virtual sinks to the existing service or choose another interface.',
+                          { iface: selectedInterface, name: reservedNics[selectedInterface].serviceName }
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Informative Clock Status Banner */}
@@ -785,7 +838,8 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-brand-lime text-black hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-50"
+          disabled={isNicConflict}
+          className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-brand-lime text-black hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {isEditing
             ? t('common.save', 'Save Changes')

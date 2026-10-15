@@ -4332,9 +4332,17 @@ async def get_software_tags(software_type: str):
         elif software_type == "kiosk_cog":
             tags = ["v0.18.0", "v0.16.0"]
         elif software_type == "pipewire":
-            tags = ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7"]
+            tags = ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7", "1.0.5"]
         elif software_type == "decklink_tools":
             tags = ["1.0.1", "1.0.0"]
+    elif software_type == "pipewire":
+        # Ensure only modern PipeWire versions (>= 1.0.0) with modular rtp-sap/rtp-sink are offered
+        filtered_pw = []
+        for t in tags:
+            m = re.search(r"^v?(\d+)\.(\d+)(?:\.(\d+))?", str(t).strip())
+            if m and int(m.group(1)) >= 1:
+                filtered_pw.append(t)
+        tags = filtered_pw or ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7", "1.0.5"]
             
     return {"tags": tags}
 

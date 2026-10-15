@@ -118,37 +118,66 @@ class PipeWireConfigGenerator:
             "    },",
         ]
 
-        # AES67 RTP Sinks in context.modules if enabled
+        # AES67 RTP and SAP modules in context.modules if enabled
         virtual_sinks = config.get("virtual_sinks", [])
+        has_aes67 = any(sink.get("aes67_enabled", False) for sink in virtual_sinks)
+
+        if has_aes67:
+            sap_args = [
+                "            sap.ip = \"224.0.0.56\"",
+                "            sap.port = 9875",
+            ]
+            if nic_name:
+                sap_args.append(f"            local.ifname = {cls._spa_val(nic_name)}")
+            if nic_ip and nic_ip != "0.0.0.0":
+                sap_args.append(f"            source.ip = {cls._spa_val(nic_ip)}")
+
+            lines.extend([
+                "    {",
+                "        name = \"libpipewire-module-rtp-sap\",",
+                "        args = {",
+                *sap_args,
+                "        }",
+                "    },",
+            ])
+
         for sink in virtual_sinks:
             if sink.get("aes67_enabled", False):
                 sink_id = sink.get("id", "sink")
+                sink_name = sink.get("name", sink_id)
+                channels = max(1, int(sink.get("channels", 2)))
+                pos_list = cls._get_channel_positions(channels)
+                pos_formatted = cls._spa_val(pos_list)
                 dest_ip = sink.get("multicast_ip", "239.69.1.10")
                 dest_port = int(sink.get("rtp_port", 5004))
                 sap_name = sink.get("sap_name", f"PipeWire {sink_id}")
 
-                rtp_args = [
-                    f"            source.ip = {cls._spa_val(nic_ip)}",
-                    f"            destination.ip = {cls._spa_val(dest_ip)}",
-                    f"            destination.port = {dest_port}",
-                ]
+                rtp_args = []
                 if nic_name:
-                    rtp_args.append(f"            net.ifname = {cls._spa_val(nic_name)}")
+                    rtp_args.append(f"            local.ifname = {cls._spa_val(nic_name)}")
+                if nic_ip and nic_ip != "0.0.0.0":
+                    rtp_args.append(f"            source.ip = {cls._spa_val(nic_ip)}")
 
                 rtp_args.extend([
-                    "            stream.rules = [",
-                    "                {",
-                    f"                    matches = [ {{ \"node.name\" = {cls._spa_val(sink_id)} }} ]",
-                    "                    actions = { \"create-stream\" = {} }",
-                    "                }",
-                    "            ]",
+                    f"            destination.ip = {cls._spa_val(dest_ip)}",
+                    f"            destination.port = {dest_port}",
                     f"            sess.name = {cls._spa_val(sap_name)}",
-                    "            sess.sap = true",
+                    "            sess.media = \"audio\"",
+                    "            audio.format = \"S24BE\"",
+                    f"            audio.rate = {sample_rate}",
+                    f"            audio.channels = {channels}",
+                    f"            audio.position = {pos_formatted}",
+                    "            stream.props = {",
+                    "                media.class = \"Audio/Sink\"",
+                    f"                node.name = {cls._spa_val(sink_id)}",
+                    f"                node.description = {cls._spa_val(sink_name)}",
+                    "                sess.sap.announce = true",
+                    "            }",
                 ])
 
                 lines.extend([
                     "    {",
-                    "        name = \"libpipewire-module-rtp-sink\"",
+                    "        name = \"libpipewire-module-rtp-sink\",",
                     "        args = {",
                     *rtp_args,
                     "        }",
@@ -178,8 +207,10 @@ class PipeWireConfigGenerator:
             "    }",
         ])
 
-        # Virtual Sinks (Nodes created via adapter factory)
+        # Virtual Sinks (Nodes created via adapter factory for local non-AES67 sinks)
         for sink in virtual_sinks:
+            if sink.get("aes67_enabled", False):
+                continue
             sink_id = sink.get("id", "sink")
             sink_name = sink.get("name", sink_id)
             channels = max(1, int(sink.get("channels", 2)))

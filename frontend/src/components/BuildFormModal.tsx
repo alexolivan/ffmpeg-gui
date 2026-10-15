@@ -283,8 +283,14 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     setIsSubmitting(false)
   }
 
+  const isPipewireSub1 = softwareType === 'pipewire' && (() => {
+    const match = ffmpegVersion.trim().match(/^v?(\d+)\.(\d+)/);
+    return match ? Number(match[1]) < 1 : false;
+  })();
+
   const isValid = name.trim().length > 0 && 
                   ffmpegVersion.length > 0 && 
+                  !isPipewireSub1 &&
                   (softwareType === 'decklink_tools' ? (decklinkSdks.length > 0 && (!!sdkPaths.decklink || decklinkSdks.length > 0)) :
                    softwareType !== 'ffmpeg' || (
                     (!options.decklink || !!sdkPaths.decklink) && 
@@ -432,6 +438,12 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                       value={ffmpegVersion}
                       onChange={e => setFfmpegVersion(e.target.value)}
                     />
+                    {isPipewireSub1 && (
+                      <p className="text-[10px] text-red-400 font-semibold mt-1 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>{t('forge.pipewireVersionTooOld', 'PipeWire < 1.0.0 is not supported. ffmpeg-gui requires PipeWire >= 1.0.0 for AES67 modular RTP/SAP architecture.')}</span>
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -444,9 +456,13 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     <span className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
                       {t('forge.pipewireOption', 'PipeWire Audio')}
                     </span>
+                    <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[9px] font-mono font-bold">
+                      {t('forge.pipewireMinVersionBadge', 'Requires >= 1.0.0')}
+                    </span>
                   </div>
                   <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
-                    {t('forge.pipewireInfo', 'PipeWire is built using Meson/Ninja with native ALSA, D-Bus, and udev hardware support.')}
+                    {t('forge.pipewireInfo', 'PipeWire is built using Meson/Ninja with native ALSA, D-Bus, and udev hardware support.')}{' '}
+                    {t('forge.pipewireModularNotice', 'Versions >= 1.0.0 decouple RTP streaming and SAP announcement modules for broadcast-grade AES67.')}
                   </p>
                 </div>
               )}

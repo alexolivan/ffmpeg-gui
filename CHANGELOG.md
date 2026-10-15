@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.42.0] - 2026-10-15
+
+### Added
+- **Native PipeWire 1.x Modular AES67 Architecture (`libpipewire-module-rtp-sap` & `libpipewire-module-rtp-sink`)**:
+  - Refactored `PipeWireConfigGenerator` to generate decoupled modern PipeWire 1.x network audio modules.
+  - Automatically loads `libpipewire-module-rtp-sap` with multicast announcement parameters (`224.0.0.56:9875` on `local.ifname`) whenever AES67 is enabled on any virtual bus.
+  - Configures AES67 sinks directly via `libpipewire-module-rtp-sink` using `local.ifname`, `source.ip`, `destination.ip`, `destination.port`, `audio.format = "S24BE"`, and `stream.props = { media.class = "Audio/Sink", sess.sap.announce = true }`, bypassing redundant null-audio-sink collision.
+- **Hardware NIC Conflict Prevention & Multi-Hub In-Use Detection**:
+  - Extended `PipeWireConfigForm.tsx` to detect and audit active network interfaces currently held by other running PipeWire Hubs for AES67 broadcast.
+  - Disabled and annotated occupied interfaces in the dedicated audio NIC dropdown (`[In use by: Hub #{id}]`), and introduced an informative conflict banner with submit button lock to prevent PTP clock and SAP port contention on single-NIC hosts.
+- **PipeWire Version Guard in Software Forge (`>= 1.0.0`)**:
+  - Filtered remote git tags in `GET /builds/tags/pipewire` to offer only supported modular versions (`>= 1.0.0`).
+  - Added frontend compile validation in `BuildFormModal.tsx` that warns and blocks compilation of legacy `0.3.x` branches.
+  - Enforced server-side validation in `PipeWireRecipe.compile()` to abort compilation early if sub-1.0 tags are requested.
+- **Multi-Language Parity (i18n)**:
+  - Added translation keys for Forge PipeWire minimum version requirements and NIC in-use conflict banners across `en.json`, `es.json`, and `ca.json` with 100% key parity.
+
 ## [2.41.4] - 2026-10-15
 
 ### Fixed

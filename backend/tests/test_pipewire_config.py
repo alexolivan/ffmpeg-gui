@@ -87,7 +87,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('audio.position = [ "FL", "FR", "FC", "LFE", "RL", "RR" ]', res)
 
     def test_aes67_rtp_sink_generation(self):
-        """Checks libpipewire-module-rtp-sink, destination.ip, destination.port, sess.sap=true, net.ifname, sess.name."""
+        """Checks libpipewire-module-rtp-sap, libpipewire-module-rtp-sink, local.ifname, and stream.props."""
         config = {
             "sample_rate": 48000,
             "aes67_network": {
@@ -103,19 +103,37 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
                     "multicast_ip": "239.69.10.1",
                     "rtp_port": 5004,
                     "sap_name": "PGM Stream"
+                },
+                {
+                    "id": "local_bus",
+                    "name": "Local Mix Bus",
+                    "channels": 2,
+                    "aes67_enabled": False
                 }
             ]
         }
         res = PipeWireConfigGenerator.generate_config(7, config, "/tmp/pipewire-7")
 
+        # 1. SAP Announcement module loaded
+        self.assertIn('name = "libpipewire-module-rtp-sap"', res)
+        self.assertIn('sap.ip = "224.0.0.56"', res)
+        self.assertIn('sap.port = 9875', res)
+        self.assertIn('local.ifname = "eth0"', res)
+
+        # 2. RTP Sink module loaded for aes67_pgm
         self.assertIn('name = "libpipewire-module-rtp-sink"', res)
         self.assertIn('source.ip = "192.168.1.50"', res)
         self.assertIn('destination.ip = "239.69.10.1"', res)
         self.assertIn('destination.port = 5004', res)
-        self.assertIn('net.ifname = "eth0"', res)
         self.assertIn('sess.name = "PGM Stream"', res)
-        self.assertIn('sess.sap = true', res)
-        self.assertIn('matches = [ { "node.name" = "aes67_pgm" } ]', res)
+        self.assertIn('audio.format = "S24BE"', res)
+        self.assertIn('node.name = "aes67_pgm"', res)
+        self.assertIn('sess.sap.announce = true', res)
+
+        # 3. Only local_bus is in context.objects as null-audio-sink; aes67_pgm is created by rtp-sink
+        self.assertIn('node.name = "local_bus"', res)
+        # null-audio-sink should NOT be created for aes67_pgm to avoid duplicate node collision
+        self.assertNotIn('factory.name = support.null-audio-sink\n            node.name = "aes67_pgm"', res)
 
     def test_write_config_file_atomic(self):
         """Creates temp file and verifies atomic write and content."""

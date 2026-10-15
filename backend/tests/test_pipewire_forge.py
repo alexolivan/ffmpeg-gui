@@ -190,6 +190,26 @@ class TestPipewireForge(unittest.IsolatedAsyncioTestCase):
         # Como no lo pusimos en el mock de meson_options, no debe estar
         self.assertNotIn(expected_udev, meson_call)
 
+    async def test_pipewire_recipe_rejects_sub_1_0_versions(self):
+        recipe = PipeWireRecipe(self.builds_root, self.runner)
+        log_mock = AsyncMock()
+        install_path = os.path.join(self.builds_root, "3", "install")
+
+        res = await recipe.compile(
+            build_id=3,
+            version_tag="0.3.85",
+            options={},
+            sdk_paths=None,
+            install_path=install_path,
+            log_callback=log_mock
+        )
+
+        self.assertFalse(res["success"])
+        self.assertIn("requiere PipeWire >= 1.0.0", res["error"])
+        # Should not execute git clone
+        self.assertEqual(self.runner._run_logged_cmd.call_count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -32,6 +32,25 @@ class PipeWireRecipe(BaseRecipe):
         await log_callback("━━━ PIPEWIRE SOURCE BUILD ━━━\n")
 
         clean_tag = version_tag.strip() if version_tag else "1.6.9"
+        
+        # Validar versión mínima requerida (>= 1.0.0 para arquitectura modular rtp-sap / rtp-sink)
+        ver_match = re.search(r"^v?(\d+)\.(\d+)(?:\.(\d+))?", clean_tag)
+        if ver_match:
+            major = int(ver_match.group(1))
+            if major < 1:
+                err_msg = (
+                    f"Versión no soportada ({clean_tag}). ffmpeg-gui requiere PipeWire >= 1.0.0 "
+                    "debido a la arquitectura modular rtp-sap y rtp-sink para transmisión y recepción AES67."
+                )
+                await log_callback(f"❌ ERROR: {err_msg}\n")
+                return {
+                    "success": False,
+                    "error": err_msg,
+                    "binary_path": None,
+                    "version_output": "",
+                    "sdk_paths": sdk_paths
+                }
+
         repo_dir = os.path.join(src_path, f"pipewire-{clean_tag}")
         build_dir = os.path.join(repo_dir, "builddir")
 
