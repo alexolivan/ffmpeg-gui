@@ -168,10 +168,12 @@ class PipeWireConfigGenerator:
                     f"            audio.channels = {channels}",
                     f"            audio.position = {pos_formatted}",
                     "            stream.props = {",
-                    "                media.class = \"Audio/Sink\"",
-                    f"                node.name = {cls._spa_val(sink_id)}",
-                    f"                node.description = {cls._spa_val(sink_name)}",
+                    f"                node.name = {cls._spa_val(f'rtp_tx_{sink_id}')}",
+                    f"                node.description = {cls._spa_val(f'AES67 Tx for {sink_name}')}",
+                    f"                target.object = {cls._spa_val(sink_id)}",
                     "                sess.sap.announce = true",
+                    "                stream.dont-remix = true",
+                    "                node.passive = true",
                     "            }",
                 ])
 
@@ -207,10 +209,8 @@ class PipeWireConfigGenerator:
             "    }",
         ])
 
-        # Virtual Sinks (Nodes created via adapter factory for local non-AES67 sinks)
+        # Virtual Sinks (Nodes created via adapter factory for all virtual sinks to provide playback and monitor ports)
         for sink in virtual_sinks:
-            if sink.get("aes67_enabled", False):
-                continue
             sink_id = sink.get("id", "sink")
             sink_name = sink.get("name", sink_id)
             channels = max(1, int(sink.get("channels", 2)))

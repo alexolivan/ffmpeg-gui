@@ -187,6 +187,41 @@ class TestPipeWireMatrixSupervisor(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(t_link.source_id, "master_bus.monitor")
         self.assertEqual(t_link.link_type, "monitor_capture")
 
+    def test_resolve_desired_links_aes67_transmitter(self):
+        """Tests that AES67 enabled virtual sinks resolve a monitor_capture link to their RTP transmitter node."""
+        with self.Session() as session:
+            hub = Service(
+                id=self.hub_id,
+                name="PipeWire AES67 Hub",
+                service_type="pipewire_hub",
+                status="running",
+                config={
+                    "virtual_sinks": [
+                        {
+                            "id": "aes_bus",
+                            "name": "AES Bus",
+                            "channels": 2,
+                            "aes67_enabled": True,
+                            "multicast_ip": "239.69.1.13",
+                            "rtp_port": 5010
+                        }
+                    ]
+                }
+            )
+            session.add(hub)
+            session.commit()
+
+        links = self.supervisor._resolve_desired_links()
+        self.assertEqual(len(links), 1)
+        tx_link = links[0]
+        self.assertEqual(tx_link.source_id, "aes_bus.monitor")
+        self.assertEqual(tx_link.target_id, "rtp_tx_aes_bus")
+        self.assertEqual(tx_link.source_ports, ["aes_bus:monitor_FL", "aes_bus:monitor_FR"])
+        self.assertEqual(tx_link.target_ports, ["rtp_tx_aes_bus:input_FL", "rtp_tx_aes_bus:input_FR"])
+        self.assertEqual(tx_link.link_type, "monitor_capture")
+        self.assertEqual(tx_link.target_entity_type, "aes67_sink")
+        self.assertIn("AES Bus.monitor → AES67 Tx (239.69.1.13:5010)", tx_link.description)
+
     @patch("asyncio.create_subprocess_exec")
     async def test_reconcile_links_established(self, mock_exec):
         """Tests that reconcile identifies missing routes and connects them via pw-link."""

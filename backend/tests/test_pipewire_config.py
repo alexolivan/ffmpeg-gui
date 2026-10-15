@@ -126,14 +126,14 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('destination.ip = "239.69.10.1"', res)
         self.assertIn('destination.port = 5004', res)
         self.assertIn('sess.name = "PGM Stream"', res)
-        self.assertIn('audio.format = "S24BE"', res)
-        self.assertIn('node.name = "aes67_pgm"', res)
+        self.assertIn('node.name = "rtp_tx_aes67_pgm"', res)
+        self.assertIn('target.object = "aes67_pgm"', res)
         self.assertIn('sess.sap.announce = true', res)
 
-        # 3. Only local_bus is in context.objects as null-audio-sink; aes67_pgm is created by rtp-sink
+        # 3. Both local_bus and aes67_pgm are in context.objects as null-audio-sink to provide monitor ports
         self.assertIn('node.name = "local_bus"', res)
-        # null-audio-sink should NOT be created for aes67_pgm to avoid duplicate node collision
-        self.assertNotIn('factory.name = support.null-audio-sink\n            node.name = "aes67_pgm"', res)
+        self.assertIn('node.name = "aes67_pgm"', res)
+        self.assertIn('factory.name = support.null-audio-sink\n            node.name = "aes67_pgm"', res)
 
     def test_write_config_file_atomic(self):
         """Creates temp file and verifies atomic write and content."""

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.42.1] - 2026-10-15
+
+### Fixed
+- **AES67 Virtual Sink Monitoring & PulseAudio Capture Parity**:
+  - Maintained `support.null-audio-sink` instantiation in `context.objects` for all virtual sinks (including AES67 buses) with `adapter.auto-port-config = { mode = dsp, monitor = true, position = preserve }`. This ensures local consumers capturing from `<sink_id>.monitor` via `-f pulse` or ALSA bridge receive audio frames reliably without timing out.
+  - Decoupled `libpipewire-module-rtp-sink` as a dedicated network transmitter stream (`node.name = rtp_tx_<sink_id>`) using `target.object = <sink_id>`, `sess.sap.announce = true`, `stream.dont-remix = true`, and `node.passive = true` without overriding `media.class = "Audio/Sink"`.
+- **Multi-Architecture Library Path Resolution for PipeWire CLI Tools (`pw-link`)**:
+  - Expanded `LD_LIBRARY_PATH` resolution in `PipeWireMatrixSupervisor` to check multi-arch library directories (`lib`, `lib64`, `lib/x86_64-linux-gnu`, `lib/aarch64-linux-gnu`) alongside `PIPEWIRE_NO_DBUS = 1` and `PIPEWIRE_NO_RT = 1`, preventing shared object loading errors (`libpipewire-0.3.so.0`) on Debian/Ubuntu systems during background matrix reconciliation.
+- **Explicit AES67 Transmitter Desired Link & Matrix Telemetry**:
+  - Added explicit routing reconciliation for `sink.monitor -> rtp_tx_<sink_id>` in `PipeWireMatrixSupervisor._resolve_desired_links()`, ensuring active patchbay verification and real-time visualization of network broadcast routes in the UI graph inspector modal.
+
 ## [2.42.0] - 2026-10-15
 
 ### Added
