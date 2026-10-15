@@ -40,7 +40,9 @@ class DesiredLink:
         target_entity_id: Optional[int] = None,
         source_aliases: Optional[List[str]] = None,
         target_aliases: Optional[List[str]] = None,
-        client_name_aliases: Optional[List[str]] = None
+        client_name_aliases: Optional[List[str]] = None,
+        source_label: Optional[str] = None,
+        target_label: Optional[str] = None
     ):
         self.source_id = source_id
         self.target_id = target_id
@@ -54,6 +56,8 @@ class DesiredLink:
         self.target_entity_id = target_entity_id
         self.source_aliases = source_aliases or client_name_aliases or []
         self.target_aliases = target_aliases or []
+        self.source_label = source_label or source_id
+        self.target_label = target_label or target_id
         # Maintain backward compatibility attribute
         self.client_name_aliases = self.source_aliases
 
@@ -157,9 +161,11 @@ class PipeWireMatrixSupervisor:
                 h_cfg = hub_svc.config or {}
                 pw_cfg = h_cfg.get("pipewire_config", h_cfg)
                 sinks = pw_cfg.get("virtual_sinks", [])
+                sink_name_map: Dict[str, str] = {s.get("id"): (s.get("name") or s.get("id")) for s in sinks if s.get("id")}
                 valid_sink_ids = {s.get("id") for s in sinks if s.get("id")}
                 if not valid_sink_ids:
                     valid_sink_ids.add("master_bus")
+                    sink_name_map["master_bus"] = "Master Bus"
 
                 default_sink = next(iter(valid_sink_ids), "master_bus")
 
@@ -189,6 +195,9 @@ class PipeWireMatrixSupervisor:
                             source_node = f"kiosk_{kiosk.id}"
                             is_active = (kiosk.id in self.pm.processes) or (kiosk.status == "running")
                             if is_active:
+                                kiosk_label = kiosk.alias or kiosk.name or f"Kiosk #{kiosk.id}"
+                                target_sink_label = sink_name_map.get(target_sink, target_sink)
+                                description = f"{kiosk_label} → {target_sink_label}"
                                 desired.append(
                                     DesiredLink(
                                         source_id=source_node,
@@ -196,10 +205,12 @@ class PipeWireMatrixSupervisor:
                                         source_ports=[f"{source_node}:output_FL", f"{source_node}:output_FR"],
                                         target_ports=[f"{target_sink}:playback_FL", f"{target_sink}:playback_FR"],
                                         link_type="playback",
-                                        description=f"Kiosk #{kiosk.id} -> {target_sink}",
+                                        description=description,
                                         source_entity_type="kiosk",
                                         source_entity_id=kiosk.id,
                                         target_entity_type="sink",
+                                        source_label=kiosk_label,
+                                        target_label=target_sink_label,
                                         source_aliases=["Chromium", "Firefox", "chrome", "firefox", "cubeb"]
                                     )
                                 )
@@ -216,6 +227,7 @@ class PipeWireMatrixSupervisor:
                     cfg = svc.config or {}
                     inp_cfg = cfg.get("input_config", {})
                     out_cfg = cfg.get("output_config", {})
+                    svc_label = svc.alias or svc.name or f"FFmpeg Service #{svc.id}"
 
                     # A. Ingest from PipeWire (FFmpeg captures from sink.monitor)
                     check_inputs = [inp_cfg]
@@ -232,6 +244,8 @@ class PipeWireMatrixSupervisor:
                                 sink_id = inp.get("sink_id") or inp.get("device") or default_sink
                                 clean_sink = sink_id.replace(".monitor", "")
                                 consumer_node = f"ffmpeg_service_{svc.id}"
+                                sink_label = sink_name_map.get(clean_sink, clean_sink)
+                                description = f"{sink_label}.monitor → {svc_label}"
                                 desired.append(
                                     DesiredLink(
                                         source_id=f"{clean_sink}.monitor",
@@ -239,10 +253,12 @@ class PipeWireMatrixSupervisor:
                                         source_ports=[f"{clean_sink}:monitor_FL", f"{clean_sink}:monitor_FR"],
                                         target_ports=[f"{consumer_node}:input_FL", f"{consumer_node}:input_FR"],
                                         link_type="monitor_capture",
-                                        description=f"{clean_sink}.monitor -> FFmpeg Service #{svc.id}",
+                                        description=description,
                                         source_entity_type="sink",
                                         target_entity_type="service",
                                         target_entity_id=svc.id,
+                                        source_label=f"{sink_label}.monitor",
+                                        target_label=svc_label,
                                         target_aliases=[f"ffmpeg_service_{svc.id}", f"ffmpeg_proc_{svc.id}", f"ffmpeg_{svc.id}", svc.name, "ffmpeg"]
                                     )
                                 )
@@ -254,6 +270,8 @@ class PipeWireMatrixSupervisor:
                             sink_id = out_cfg.get("sink_id") or out_cfg.get("device") or default_sink
                             clean_sink = sink_id.replace(".monitor", "")
                             producer_node = f"ffmpeg_service_{svc.id}"
+                            sink_label = sink_name_map.get(clean_sink, clean_sink)
+                            description = f"{svc_label} → {sink_label}"
                             desired.append(
                                 DesiredLink(
                                     source_id=producer_node,
@@ -261,10 +279,12 @@ class PipeWireMatrixSupervisor:
                                     source_ports=[f"{producer_node}:output_FL", f"{producer_node}:output_FR"],
                                     target_ports=[f"{clean_sink}:playback_FL", f"{clean_sink}:playback_FR"],
                                     link_type="playback",
-                                    description=f"FFmpeg Service #{svc.id} -> {clean_sink}",
+                                    description=description,
                                     source_entity_type="service",
                                     source_entity_id=svc.id,
                                     target_entity_type="sink",
+                                    source_label=svc_label,
+                                    target_label=sink_label,
                                     source_aliases=[f"ffmpeg_service_{svc.id}", f"ffmpeg_proc_{svc.id}", f"ffmpeg_{svc.id}", svc.name, "ffmpeg"]
                                 )
                             )
@@ -276,6 +296,7 @@ class PipeWireMatrixSupervisor:
                     if not task:
                         continue
                     inp_cfg = task.input_config or {}
+                    task_label = task.alias or task.name or f"FFmpeg Task #{task.id}"
                     check_task_inputs = [inp_cfg]
                     if isinstance(inp_cfg, dict):
                         if "input1" in inp_cfg:
@@ -290,6 +311,8 @@ class PipeWireMatrixSupervisor:
                                 sink_id = inp.get("sink_id") or inp.get("device") or default_sink
                                 clean_sink = sink_id.replace(".monitor", "")
                                 consumer_node = f"ffmpeg_task_{task.id}"
+                                sink_label = sink_name_map.get(clean_sink, clean_sink)
+                                description = f"{sink_label}.monitor → {task_label}"
                                 desired.append(
                                     DesiredLink(
                                         source_id=f"{clean_sink}.monitor",
@@ -297,10 +320,12 @@ class PipeWireMatrixSupervisor:
                                         source_ports=[f"{clean_sink}:monitor_FL", f"{clean_sink}:monitor_FR"],
                                         target_ports=[f"{consumer_node}:input_FL", f"{consumer_node}:input_FR"],
                                         link_type="monitor_capture",
-                                        description=f"{clean_sink}.monitor -> FFmpeg Task #{task.id}",
+                                        description=description,
                                         source_entity_type="sink",
                                         target_entity_type="task",
                                         target_entity_id=task.id,
+                                        source_label=f"{sink_label}.monitor",
+                                        target_label=task_label,
                                         target_aliases=[f"ffmpeg_task_{task.id}", f"ffmpeg_proc_{task.id}", f"ffmpeg_{task.id}", f"ffmpeg_task_{exec_item.id}", "ffmpeg"]
                                     )
                                 )
@@ -312,6 +337,8 @@ class PipeWireMatrixSupervisor:
                             sink_id = out_task_cfg.get("sink_id") or out_task_cfg.get("device") or default_sink
                             clean_sink = sink_id.replace(".monitor", "")
                             producer_node = f"ffmpeg_task_{task.id}"
+                            sink_label = sink_name_map.get(clean_sink, clean_sink)
+                            description = f"{task_label} → {sink_label}"
                             desired.append(
                                 DesiredLink(
                                     source_id=producer_node,
@@ -319,10 +346,12 @@ class PipeWireMatrixSupervisor:
                                     source_ports=[f"{producer_node}:output_FL", f"{producer_node}:output_FR"],
                                     target_ports=[f"{clean_sink}:playback_FL", f"{clean_sink}:playback_FR"],
                                     link_type="playback",
-                                    description=f"FFmpeg Task #{task.id} -> {clean_sink}",
+                                    description=description,
                                     source_entity_type="task",
                                     source_entity_id=task.id,
                                     target_entity_type="sink",
+                                    source_label=task_label,
+                                    target_label=sink_label,
                                     source_aliases=[f"ffmpeg_task_{task.id}", f"ffmpeg_proc_{task.id}", f"ffmpeg_{task.id}", f"ffmpeg_task_{exec_item.id}", "ffmpeg"]
                                 )
                             )
@@ -511,12 +540,18 @@ class PipeWireMatrixSupervisor:
 
             routes_telemetry.append({
                 "source": dl.source_id,
+                "source_label": dl.source_label or dl.source_id,
                 "target": dl.target_id,
+                "target_label": dl.target_label or dl.target_id,
                 "description": dl.description,
                 "type": dl.link_type,
                 "status": status_str,
                 "source_ports": resolved_src_ports if src_ready else dl.source_ports,
                 "target_ports": resolved_dst_ports if dst_ready else dl.target_ports,
+                "source_entity_type": dl.source_entity_type,
+                "source_entity_id": dl.source_entity_id,
+                "target_entity_type": dl.target_entity_type,
+                "target_entity_id": dl.target_entity_id,
             })
 
             # Watchdog for running FFmpeg services: if alive in OS but missing from PipeWire graph

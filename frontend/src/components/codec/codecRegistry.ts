@@ -1019,6 +1019,17 @@ export function isRawHardwareAudioSource(inputType?: string): boolean {
 }
 
 /**
+ * Evaluates whether an uncompressed PCM stream can be passed through without transcoding
+ * between raw hardware/virtual audio sources and raw sinks (e.g. PipeWire -> ALSA, ALSA -> PipeWire, etc.).
+ */
+export function isPcmPassthroughViable(inputType?: string, outputType?: string): boolean {
+  if (!inputType || !outputType) return false;
+  const isRawInput = isRawHardwareAudioSource(inputType);
+  const isRawDest = ['alsa', 'pipewire'].includes(outputType);
+  return isRawInput && isRawDest;
+}
+
+/**
  * Evaluates whether a video source delivers uncompressed raw pixel frames
  * from hardware/generators, where 'copy' passthrough is invalid for streaming destinations.
  */
@@ -1116,6 +1127,16 @@ export function getAvailableAudioCodecs(
     codecs = codecs.filter(c => c.id !== 'copy');
   } else if (!isRawInput && isRawDest) {
     codecs = codecs.filter(c => c.id !== 'copy');
+  }
+
+  // When both input and output are raw PCM (e.g. PipeWire -> ALSA, ALSA -> PipeWire),
+  // prioritize streamcopy ('copy') at the top of the list
+  if (isPcmPassthroughViable(inputType, outputType)) {
+    codecs = [...codecs].sort((a, b) => {
+      if (a.id === 'copy') return -1;
+      if (b.id === 'copy') return 1;
+      return 0;
+    });
   }
 
   return codecs;

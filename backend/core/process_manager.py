@@ -2221,6 +2221,49 @@ class ProcessManager:
             if not isinstance(items, list):
                 items = []
 
+            sup = self.pipewire_supervisors.get(process_id)
+            matrix_data = sup.get_matrix_status() if sup else None
+
+            # Query services, tasks, and hub sinks for human entity resolution
+            entity_lookup: Dict[str, Dict[str, Any]] = {}
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service, ScheduledTask
+                    hub_svc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                    if hub_svc:
+                        h_cfg = hub_svc.config or {}
+                        pw_cfg = h_cfg.get("pipewire_config", h_cfg)
+                        for vs in pw_cfg.get("virtual_sinks", []):
+                            if vs.get("id"):
+                                s_label = vs.get("name") or vs.get("id")
+                                entity_lookup[vs.get("id").lower()] = {"label": s_label, "type": "sink", "id": None}
+                                entity_lookup[f"{vs.get('id').lower()}.monitor"] = {"label": f"{s_label} (Monitor)", "type": "sink", "id": None}
+
+                    for s in session.query(Service).all():
+                        s_label = s.alias or s.name or f"Service #{s.id}"
+                        info_dict = {"label": s_label, "type": s.service_type, "id": s.id}
+                        entity_lookup[f"ffmpeg_service_{s.id}"] = info_dict
+                        entity_lookup[f"ffmpeg_proc_{s.id}"] = info_dict
+                        entity_lookup[f"ffmpeg_{s.id}"] = info_dict
+                        entity_lookup[f"kiosk_{s.id}"] = info_dict
+                        entity_lookup[f"desktop_{s.id}"] = info_dict
+                        if s.name:
+                            entity_lookup[s.name.lower()] = info_dict
+                        if s.alias:
+                            entity_lookup[s.alias.lower()] = info_dict
+
+                    for t in session.query(ScheduledTask).all():
+                        t_label = t.alias or t.name or f"Task #{t.id}"
+                        t_dict = {"label": t_label, "type": "task", "id": t.id}
+                        entity_lookup[f"ffmpeg_task_{t.id}"] = t_dict
+                        entity_lookup[f"ffmpeg_{t.id}"] = t_dict
+                        if t.name:
+                            entity_lookup[t.name.lower()] = t_dict
+                        if t.alias:
+                            entity_lookup[t.alias.lower()] = t_dict
+            except Exception as e:
+                self.logger.debug(f"Failed to build entity lookup for telemetry: {e}")
+
             nodes = []
             ports = []
             links = []
@@ -2239,9 +2282,26 @@ class ProcessManager:
                     node_name = props.get("node.name") if props.get("node.name") is not None else props.get("node.nick")
                     if node_name is None:
                         node_name = f"node-{iid}"
+
+                    matched_info = entity_lookup.get(node_name.lower())
+                    if not matched_info:
+                        app_name = props.get("application.name") or props.get("media.name") or props.get("node.description")
+                        if app_name and app_name.lower() in entity_lookup:
+                            matched_info = entity_lookup[app_name.lower()]
+
+                    if not matched_info and node_name.lower() in ("chromium", "firefox", "chrome", "cubeb"):
+                        if matrix_data and isinstance(matrix_data.get("routes"), list):
+                            for r in matrix_data["routes"]:
+                                if r.get("source_entity_type") == "kiosk" and r.get("status") in ("linked", "linking"):
+                                    matched_info = {"label": r.get("source_label"), "type": "kiosk", "id": r.get("source_entity_id")}
+                                    break
+
                     nodes.append({
                         "id": iid,
                         "name": node_name,
+                        "human_label": matched_info.get("label") if matched_info else (props.get("node.description") if props.get("node.description") and props.get("node.description") != node_name else None),
+                        "entity_type": matched_info.get("type") if matched_info else None,
+                        "entity_id": matched_info.get("id") if matched_info else None,
                         "media_class": props.get("media.class", ""),
                         "state": info.get("state", "unknown"),
                         "description": props.get("node.description") if props.get("node.description") is not None else (props.get("node.name") or "")
@@ -2279,8 +2339,10 @@ class ProcessManager:
                 in_port = port_map.get(link.get("input_port_id"))
 
                 link["output_node_name"] = out_node["name"] if out_node else f"Node #{link.get('output_node_id')}"
+                link["output_node_label"] = (out_node.get("human_label") or out_node["name"]) if out_node else f"Node #{link.get('output_node_id')}"
                 link["output_port_name"] = out_port["name"] if out_port else f"Port #{link.get('output_port_id')}"
                 link["input_node_name"] = in_node["name"] if in_node else f"Node #{link.get('input_node_id')}"
+                link["input_node_label"] = (in_node.get("human_label") or in_node["name"]) if in_node else f"Node #{link.get('input_node_id')}"
                 link["input_port_name"] = in_port["name"] if in_port else f"Port #{link.get('input_port_id')}"
 
             sup = self.pipewire_supervisors.get(process_id)

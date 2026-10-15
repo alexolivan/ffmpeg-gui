@@ -395,7 +395,8 @@
       "routeLinked": "Linked",
       "routePendingSource": "Pending Source (Muted / Buffering)",
       "routePendingTarget": "Pending Target (Sink Offline)",
-      "routeLinking": "Linking..."
+      "routeLinking": "Linking...",
+      "nodeNameEntity": "Node / Entity Name"
     },
     "startService": "Start Service",
     "stopService": "Stop Service",
@@ -1133,6 +1134,12 @@
     "autoFixCompatible": "Auto-Fix Settings to Compatible Values",
     "decklinkIncompatNotice": "DeckLink outputs require raw uncompressed YUV video or compatible broadcast formats.",
     "ndiIncompatNotice": "NDI outputs automatically wrap video into NDI YUV/RGBA frames.",
+    "aliasRequired": "LCD Display Alias is required (max 12 alphanumeric characters)",
+    "lcdAliasTitle": "LCD Display Alias (Required, max 12 alphanumeric characters, spaces, hyphens, underscores)",
+    "pcmCopyRecommendationTitle": "PCM Passthrough Available",
+    "pcmCopyRecommendationText": "Both input and output are uncompressed PCM sources. Using Stream Copy (-c:a copy) eliminates CPU transcoding overhead and minimizes latency.",
+    "useStreamCopy": "⚡ Use Stream Copy",
+    "pcmCopyActive": "⚡ PCM Direct Passthrough Active (Zero Transcoding Latency)",
     "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
     "targetDecklinkSdk": "Target DeckLink SDK",
     "noDecklinkSdkUploaded": "No DeckLink SDK uploaded yet.",

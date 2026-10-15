@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.41.2] - 2026-10-15
+## [2.41.3] - 2026-10-15
+
+### Added
+- **Human-Friendly Aliases in PipeWire Preview Modal & Graph Inspector**:
+  - Extended `PipeWireMatrixSupervisor` and `ProcessManager.get_pipewire_telemetry` with database entity lookup, resolving human-readable service aliases and task names for dynamic sinks, FFmpeg streams, and Kiosk browsers.
+  - Updated `PipeWirePreviewModal.tsx` to prominently display human entity labels alongside `#{id}` badges across Audio Nodes, Dynamic Patchbay Matrix Routes, and Active Graph Links, demoting raw node IDs (`kiosk_13`, `ffmpeg_service_15`) to secondary monospace details.
+- **Intelligent PCM-to-PCM Codec Copy Auto-Suggestion**:
+  - Introduced `isPcmPassthroughViable` in `codecRegistry.ts` to identify lossless passthrough viability between uncompressed audio sources (`alsa`, `pipewire`, `decklink`, `lavfi_audio`) and sinks (`alsa`, `pipewire`).
+  - Prioritized streamcopy (`-c:a copy`) at the top of available audio codecs for PCM routes to eliminate CPU transcoding overhead, prevent resampling artifacts, and minimize latency.
+  - Added contextual recommendation and status banners in `AudioCodecPanel.tsx` and `ProcessConfigForm.tsx` with a 1-click action button (`[⚡ Use Stream Copy]`).
+  - Automatically defaults audio codec to `copy` when configuring routes between uncompressed PCM endpoints.
+- **Mandatory LCD Alias & Real-Time Auto-Suggestion**:
+  - In `ProcessConfigForm.tsx`, typing a service or task name automatically suggests an LCD alias (sanitized to 12 alphanumeric characters, spaces, hyphens, and underscores).
+  - Enforced mandatory alias validation in the Forge compiler form to ensure all processes have clean labels for hardware displays and PipeWire patchbay routing.
+- **Multi-Language Parity (i18n)**:
+  - Registered translation keys for node entity labels, alias validation, and PCM passthrough banners in `en.json`, `es.json`, and `ca.json` with 100% key parity.
 
 ### Fixed
 - **PipeWire & AES67 Output Configuration Persistence**:

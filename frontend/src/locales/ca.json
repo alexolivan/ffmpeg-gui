@@ -395,7 +395,8 @@
       "routeLinked": "Enllaçat",
       "routePendingSource": "Esperant Origen (Silenciat / Buffering)",
       "routePendingTarget": "Esperant Destinació (Bus Inactiu)",
-      "routeLinking": "Enllaçant..."
+      "routeLinking": "Enllaçant...",
+      "nodeNameEntity": "Nom de Node / Entitat"
     },
     "startService": "Iniciar servei",
     "stopService": "Aturar servei",
@@ -1133,6 +1134,12 @@
     "autoFixCompatible": "Auto-Corregir Paràmetres a Valors Compatibles",
     "decklinkIncompatNotice": "Les eixides DeckLink requereixen vídeo YUV sense comprimir o formats d'emissió compatibles.",
     "ndiIncompatNotice": "Les eixides NDI empaqueten automàticament el vídeo en quadres NDI YUV/RGBA.",
+    "aliasRequired": "L'àlies per a LCD és obligatori (màx. 12 caràcters alfanumèrics)",
+    "lcdAliasTitle": "Àlies per a Pantalla LCD (Obligatori, màx. 12 caràcters alfanumèrics, espais, guions o guions baixos)",
+    "pcmCopyRecommendationTitle": "Passthrough PCM Disponible",
+    "pcmCopyRecommendationText": "Tant l'entrada com la sortida són fonts PCM sense comprimir. Utilitzar Stream Copy (-c:a copy) elimina la sobrecàrrega de CPU per transcodificació i minimitza la latència.",
+    "useStreamCopy": "⚡ Utilitzar Stream Copy",
+    "pcmCopyActive": "⚡ Passthrough Directe PCM Actiu (Zero Latència de Transcodificació)",
     "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
     "targetDecklinkSdk": "SDK DeckLink de Destí",
     "noDecklinkSdkUploaded": "Encara no s'ha pujat cap SDK de DeckLink.",

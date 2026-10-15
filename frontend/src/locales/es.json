@@ -395,7 +395,8 @@
       "routeLinked": "Enlazado",
       "routePendingSource": "Esperando Origen (Muteado / Buffering)",
       "routePendingTarget": "Esperando Destino (Bus Inactivo)",
-      "routeLinking": "Enlazando..."
+      "routeLinking": "Enlazando...",
+      "nodeNameEntity": "Nombre de Nodo / Entidad"
     },
     "startService": "Iniciar servicio",
     "stopService": "Detener servicio",
@@ -1133,6 +1134,12 @@
     "autoFixCompatible": "Auto-Corregir Parámetros a Valores Compatibles",
     "decklinkIncompatNotice": "Las salidas DeckLink requieren vídeo YUV sin comprimir o formatos de emisión compatibles.",
     "ndiIncompatNotice": "Las salidas NDI empaquetan automáticamente el vídeo en cuadros NDI YUV/RGBA.",
+    "aliasRequired": "El alias para LCD es obligatorio (máx. 12 caracteres alfanuméricos)",
+    "lcdAliasTitle": "Alias para Pantalla LCD (Obligatorio, máx. 12 caracteres alfanuméricos, espacios, guiones o guiones bajos)",
+    "pcmCopyRecommendationTitle": "Passthrough PCM Disponible",
+    "pcmCopyRecommendationText": "Tanto la entrada como la salida son fuentes PCM sin comprimir. Usar Stream Copy (-c:a copy) elimina la sobrecarga de CPU por transcodificación y minimiza la latencia.",
+    "useStreamCopy": "⚡ Usar Stream Copy",
+    "pcmCopyActive": "⚡ Passthrough Directo PCM Activo (Cero Latencia de Transcodificación)",
     "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
     "targetDecklinkSdk": "SDK DeckLink de Destino",
     "noDecklinkSdkUploaded": "Aún no se ha subido ningún SDK de DeckLink.",

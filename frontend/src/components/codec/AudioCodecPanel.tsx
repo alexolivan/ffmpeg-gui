@@ -5,6 +5,7 @@ import {
   getAvailableAudioCodecs,
   getDefaultParams,
   isParamVisible,
+  isPcmPassthroughViable,
 } from './codecRegistry';
 
 interface AudioCodecPanelProps {
@@ -31,6 +32,10 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
     return getAvailableAudioCodecs(buildOptions, outputType, systemCapabilities, inputType);
   }, [buildOptions, outputType, systemCapabilities, inputType]);
   const selected = available.find(c => c.id === codecId) || available[0];
+
+  const isPcmViable = React.useMemo(() => {
+    return isPcmPassthroughViable(inputType, outputType);
+  }, [inputType, outputType]);
 
   // Auto-heal selected codec if the current one becomes unavailable
   React.useEffect(() => {
@@ -90,6 +95,29 @@ const AudioCodecPanel: React.FC<AudioCodecPanelProps> = ({
           </option>
         ))}
       </select>
+
+      {isPcmViable && selected.id === 'copy' && (
+        <div className="flex items-center gap-2 p-2 rounded-lg bg-brand-lime/10 border border-brand-lime/30 text-brand-lime text-xs font-semibold animate-in fade-in">
+          <span>⚡</span>
+          <span>{t('forge.pcmCopyActive', 'PCM Direct Passthrough Active (Zero Transcoding Latency)')}</span>
+        </div>
+      )}
+
+      {isPcmViable && selected.id !== 'copy' && (
+        <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs animate-in fade-in">
+          <div className="flex items-center gap-1.5">
+            <span>💡</span>
+            <span>{t('forge.pcmCopyRecommendationText', 'Input and output are raw PCM. Stream copy eliminates CPU transcode.')}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleCodecChange('copy')}
+            className="flex-shrink-0 px-2 py-1 rounded bg-brand-lime hover:bg-brand-lime/80 text-black font-bold text-[11px] transition-colors"
+          >
+            {t('forge.useStreamCopy', '⚡ Use Stream Copy')}
+          </button>
+        </div>
+      )}
 
       {selected.params.length > 0 && (
         <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-white/5">

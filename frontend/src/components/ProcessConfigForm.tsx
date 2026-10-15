@@ -4,7 +4,7 @@ import InputSourcePanel from './source/InputSourcePanel';
 import type { InputSourceConfig } from './source/InputSourcePanel';
 import VideoCodecPanel from './codec/VideoCodecPanel';
 import AudioCodecPanel from './codec/AudioCodecPanel';
-import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS, getAvailableVideoCodecs, getAvailableAudioCodecs, isRawHardwareAudioSource, isRawHardwareVideoSource } from './codec/codecRegistry';
+import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS, getAvailableVideoCodecs, getAvailableAudioCodecs, isRawHardwareAudioSource, isRawHardwareVideoSource, isPcmPassthroughViable } from './codec/codecRegistry';
 import type { SystemCapabilities } from './codec/codecRegistry';
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
@@ -244,6 +244,11 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     // 1. General name is required
     if (!config.name.trim()) {
       errors.name = 'General name is required';
+    }
+
+    // 1b. LCD Alias is required (max 12 chars)
+    if (!config.alias || !config.alias.trim()) {
+      errors.alias = t('forge.aliasRequired', 'El alias para LCD es obligatorio (máx. 12 caracteres)');
     }
 
     // 2. Output validations based on type
@@ -850,6 +855,9 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         const fallback = AUDIO_CODECS[0];
         finalAudioCodecId = fallback.id;
         finalAudioCodecParams = getDefaultParams(fallback);
+      } else if (!prev.use_secondary_input && isPcmPassthroughViable(input1.type, prev.output.type)) {
+        finalAudioCodecId = 'copy';
+        finalAudioCodecParams = {};
       }
 
       return {
@@ -874,6 +882,9 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         const fallback = AUDIO_CODECS[0];
         finalAudioCodecId = fallback.id;
         finalAudioCodecParams = getDefaultParams(fallback);
+      } else if (prev.use_secondary_input && isPcmPassthroughViable(input2.type, prev.output.type)) {
+        finalAudioCodecId = 'copy';
+        finalAudioCodecParams = {};
       }
       return {
         ...prev,
@@ -1040,18 +1051,25 @@ const hasNDICodecIncompatibility = isNDIOutput && (
           patch.video_codec_id = availableVideo[0].id;
           patch.video_codec_params = getDefaultParams(availableVideo[0]);
         }
-        if (audioIncompatible && availableAudio.length > 0) {
+        const isPcmViable = isPcmPassthroughViable(effectiveInputType, newType);
+        if (isPcmViable) {
+          patch.audio_codec_id = 'copy';
+          patch.audio_codec_params = {};
+        } else if (audioIncompatible && availableAudio.length > 0) {
           patch.audio_codec_id = availableAudio[0].id;
           patch.audio_codec_params = getDefaultParams(availableAudio[0]);
         }
         return patch as ProcessConfig;
       });
     } else {
+      const isPcmViable = isPcmPassthroughViable(effectiveInputType, newType);
       setConfig(prev => ({ 
         ...prev, 
         output: finalOutput,
         has_video: finalHasVideo,
-        has_audio: finalHasAudio
+        has_audio: finalHasAudio,
+        audio_codec_id: isPcmViable ? 'copy' : prev.audio_codec_id,
+        audio_codec_params: isPcmViable ? {} : prev.audio_codec_params,
       }));
     }
   }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort]);
@@ -1249,7 +1267,16 @@ const hasNDICodecIncompatibility = isNDIOutput && (
               }`}
               placeholder={isTask ? "Task name (e.g. Daily Transcode of Stream)" : "Service name (e.g. Primary Encoder Node-01)"}
               value={config.name}
-              onChange={e => setConfig({ ...config, name: e.target.value })}
+              onChange={e => {
+                const newName = e.target.value;
+                const prevExpectedAlias = config.name.slice(0, 12).replace(/[^a-zA-Z0-9\s-_]/g, '');
+                const autoAlias = newName.slice(0, 12).replace(/[^a-zA-Z0-9\s-_]/g, '');
+                if (!config.alias || config.alias === prevExpectedAlias) {
+                  setConfig({ ...config, name: newName, alias: autoAlias });
+                } else {
+                  setConfig({ ...config, name: newName });
+                }
+              }}
             />
           </div>
           <div className="w-[140px] flex-shrink-0">
@@ -1258,9 +1285,13 @@ const hasNDICodecIncompatibility = isNDIOutput && (
               id="process-alias"
               name="alias"
               maxLength={12}
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium text-brand-lime placeholder-white/20"
-              placeholder="LCD Alias"
-              title="Alias for LCD display (max 12 alphanumeric characters, spaces, hyphens, underscores)"
+              className={`w-full bg-white/5 border rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium text-brand-lime placeholder-white/20 ${
+                validationErrors.alias
+                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                  : 'border-white/10'
+              }`}
+              placeholder="LCD Alias *"
+              title={t('forge.lcdAliasTitle', 'LCD Display Alias (Required, max 12 alphanumeric characters, spaces, hyphens, underscores)')}
               value={config.alias}
               onChange={e => {
                 const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
@@ -1437,6 +1468,41 @@ const hasNDICodecIncompatibility = isNDIOutput && (
           </button>
         </div>
       )}
+
+      {/* PCM Passthrough Recommendation Banner */}
+      {(() => {
+        const effectiveAudioInput = config.use_secondary_input ? config.input2?.type : config.input1?.type;
+        const isPcmViable = isPcmPassthroughViable(effectiveAudioInput, config.output?.type);
+        if (isPcmViable && config.has_audio && config.audio_codec_id !== 'copy') {
+          return (
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-brand-lime/10 border border-brand-lime/20 rounded-2xl text-xs text-brand-lime mb-3 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex items-start gap-2.5">
+                <span className="text-sm mt-0.5 text-brand-lime font-bold">
+                  ⚡
+                </span>
+                <div>
+                  <strong>{t('forge.pcmCopyRecommendationTitle', 'PCM Passthrough Available:')}</strong>{' '}
+                  {t('forge.pcmCopyRecommendationText', 'Both input and output are uncompressed PCM sources. Using Stream Copy (-c:a copy) eliminates CPU transcoding overhead and minimizes latency.')}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfig(prev => ({
+                    ...prev,
+                    audio_codec_id: 'copy',
+                    audio_codec_params: {},
+                  }));
+                }}
+                className="flex-shrink-0 flex items-center gap-1.5 bg-brand-lime hover:bg-brand-lime/80 text-black font-black px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
+              >
+                {t('forge.useStreamCopy', '⚡ Use Stream Copy')}
+              </button>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* ── Scrollable content ── */}
       <div className="flex-1 overflow-y-auto pr-3 space-y-4 min-h-0 custom-scrollbar">

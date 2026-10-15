@@ -21,6 +21,9 @@ interface PipeWirePreviewModalProps {
 interface TelemetryNode {
   id: number;
   name: string;
+  human_label?: string | null;
+  entity_type?: string | null;
+  entity_id?: number | null;
   nick?: string;
   media_class?: string;
   state?: string;
@@ -44,20 +47,28 @@ interface TelemetryLink {
   input_node_id: number;
   input_port_id: number;
   output_node_name?: string;
+  output_node_label?: string;
   output_port_name?: string;
   input_node_name?: string;
+  input_node_label?: string;
   input_port_name?: string;
   state?: string;
 }
 
 interface MatrixRoute {
   source: string;
+  source_label?: string;
   target: string;
+  target_label?: string;
   description: string;
   type: string;
   status: 'linked' | 'pending_source' | 'pending_target' | 'linking';
   source_ports: string[];
   target_ports: string[];
+  source_entity_type?: string;
+  source_entity_id?: number;
+  target_entity_type?: string;
+  target_entity_id?: number;
 }
 
 interface MatrixTelemetry {
@@ -399,7 +410,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                       <tr>
                         <th className="p-2.5">ID</th>
-                        <th className="p-2.5">Name</th>
+                        <th className="p-2.5">{t('services.pipewire.nodeNameEntity', 'Node / Entity Name')}</th>
                         <th className="p-2.5">Media Class</th>
                         <th className="p-2.5">State</th>
                         <th className="p-2.5">Format</th>
@@ -410,7 +421,25 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       {graphData.nodes.map((node) => (
                         <tr key={node.id} className="hover:bg-white/2 transition-colors">
                           <td className="p-2.5 text-zinc-500">#{node.id}</td>
-                          <td className="p-2.5 font-bold text-[var(--text-primary)]">{node.name}</td>
+                          <td className="p-2.5">
+                            <div className="flex flex-col">
+                              {node.human_label ? (
+                                <>
+                                  <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                                    {node.human_label}
+                                    {node.entity_id && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-lime/10 text-brand-lime border border-brand-lime/30 font-mono font-semibold">
+                                        #{node.entity_id}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="text-[10px] text-zinc-500 font-mono">{node.name}</span>
+                                </>
+                              ) : (
+                                <span className="font-bold text-[var(--text-primary)]">{node.name}</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="p-2.5">
                             <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/10 text-purple-300 border border-purple-500/20">
                               {node.media_class || 'Node'}
@@ -495,11 +524,16 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                         {graphData.matrix.routes.map((route, idx) => (
                           <tr key={idx} className="hover:bg-white/2 transition-colors">
                             <td className="p-2.5 font-sans font-semibold text-[var(--text-primary)]">
-                              {route.description || `${route.source} → ${route.target}`}
+                              {route.description || `${route.source_label || route.source} → ${route.target_label || route.target}`}
                             </td>
                             <td className="p-2.5">
                               <div className="flex flex-col">
-                                <span className="font-bold text-purple-300">{route.source}</span>
+                                <span className="font-bold text-purple-300">
+                                  {route.source_label || route.source}
+                                </span>
+                                {route.source_label && route.source_label !== route.source && (
+                                  <span className="text-[10px] text-zinc-500 font-mono">({route.source})</span>
+                                )}
                                 {route.source_ports && route.source_ports.length > 0 && (
                                   <span className="text-[10px] text-zinc-400">
                                     {route.source_ports.join(', ')}
@@ -510,7 +544,12 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                             <td className="p-2.5 text-center text-brand-lime font-bold">→</td>
                             <td className="p-2.5">
                               <div className="flex flex-col">
-                                <span className="font-bold text-cyan-300">{route.target}</span>
+                                <span className="font-bold text-cyan-300">
+                                  {route.target_label || route.target}
+                                </span>
+                                {route.target_label && route.target_label !== route.target && (
+                                  <span className="text-[10px] text-zinc-500 font-mono">({route.target})</span>
+                                )}
                                 {route.target_ports && route.target_ports.length > 0 && (
                                   <span className="text-[10px] text-zinc-400">
                                     {route.target_ports.join(', ')}
@@ -574,11 +613,11 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                             <td className="p-2.5">
                               <div className="flex flex-col">
                                 <span className="text-[var(--text-primary)] font-bold">
-                                  {link.output_node_name || `Node #${link.output_node_id}`} :{' '}
+                                  {link.output_node_label || link.output_node_name || `Node #${link.output_node_id}`} :{' '}
                                   <span className="text-purple-400">{link.output_port_name || `Port #${link.output_port_id}`}</span>
                                 </span>
                                 <span className="text-[10px] text-zinc-500">
-                                  Node #{link.output_node_id} · Port #{link.output_port_id}
+                                  {link.output_node_name && link.output_node_label && link.output_node_name !== link.output_node_label ? `${link.output_node_name} · ` : ''}Node #{link.output_node_id} · Port #{link.output_port_id}
                                 </span>
                               </div>
                             </td>
@@ -586,11 +625,11 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                             <td className="p-2.5">
                               <div className="flex flex-col">
                                 <span className="text-[var(--text-primary)] font-bold">
-                                  {link.input_node_name || `Node #${link.input_node_id}`} :{' '}
+                                  {link.input_node_label || link.input_node_name || `Node #${link.input_node_id}`} :{' '}
                                   <span className="text-cyan-400">{link.input_port_name || `Port #${link.input_port_id}`}</span>
                                 </span>
                                 <span className="text-[10px] text-zinc-500">
-                                  Node #{link.input_node_id} · Port #{link.input_port_id}
+                                  {link.input_node_name && link.input_node_label && link.input_node_name !== link.input_node_label ? `${link.input_node_name} · ` : ''}Node #{link.input_node_id} · Port #{link.input_port_id}
                                 </span>
                               </div>
                             </td>
