@@ -18,10 +18,21 @@ export interface NetworkAuditInterface {
   is_up: boolean;
   speed: number;
   ptp_hardware_capable: boolean;
+  canonical_base_multicast_prefix?: string;
 }
 
 export interface NetworkAuditData {
   interfaces: NetworkAuditInterface[];
+  hostname?: string;
+  active_streams?: {
+    service_id: number;
+    service_name: string;
+    sink_id: string;
+    sink_name: string;
+    multicast_ip: string;
+    rtp_port: number;
+    sap_name?: string;
+  }[];
   host_ptp: {
     ptp4l_installed: boolean;
     ptp4l_running: boolean;
@@ -145,10 +156,24 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   const aesNetCfg = pwCfg.aes67_network || {};
   const [aes67Enabled, setAes67Enabled] = useState<boolean>(Boolean(aesNetCfg.enabled));
   const [selectedInterface, setSelectedInterface] = useState<string>(aesNetCfg.interface || '');
+  const [baseMulticastPrefix, setBaseMulticastPrefix] = useState<string>(
+    aesNetCfg.base_multicast_prefix || '239.69.1'
+  );
+  const [hostName, setHostName] = useState<string>('host');
   const [networkAudit, setNetworkAudit] = useState<NetworkAuditData | null>(null);
   const [isLoadingAudit, setIsLoadingAudit] = useState<boolean>(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [reservedNics, setReservedNics] = useState<Record<string, { serviceId: number; serviceName: string }>>({});
+  const [sinkValidationFeedback, setSinkValidationFeedback] = useState<Record<number, any>>({});
+
+  const cleanSapSuffix = (rawSap: string | undefined, host: string, fallbackId: string): string => {
+    if (!rawSap) return fallbackId;
+    const trimmed = rawSap.trim();
+    if (trimmed.startsWith(`${host} `)) {
+      return trimmed.slice(host.length + 1);
+    }
+    return trimmed;
+  };
 
   // Query existing services to detect NICs already claimed by another PipeWire Hub for AES67
   useEffect(() => {
@@ -191,6 +216,9 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
       .then((data: NetworkAuditData) => {
         if (!isMounted) return;
         setNetworkAudit(data);
+        if (data.hostname) {
+          setHostName(data.hostname);
+        }
 
         // Auto-select first active physical NIC if none selected
         if (!selectedInterface && Array.isArray(data.interfaces) && data.interfaces.length > 0) {
@@ -200,6 +228,14 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
             data.interfaces[0];
           if (firstAvailable) {
             setSelectedInterface(firstAvailable.name);
+            if (!aesNetCfg.base_multicast_prefix && firstAvailable.canonical_base_multicast_prefix) {
+              setBaseMulticastPrefix(firstAvailable.canonical_base_multicast_prefix);
+            }
+          }
+        } else if (selectedInterface && !aesNetCfg.base_multicast_prefix) {
+          const currentIface = data.interfaces?.find((i) => i.name === selectedInterface);
+          if (currentIface?.canonical_base_multicast_prefix) {
+            setBaseMulticastPrefix(currentIface.canonical_base_multicast_prefix);
           }
         }
       })
@@ -214,20 +250,29 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [aes67Enabled, API, reservedNics, selectedInterface]);
+  }, [aes67Enabled, API, reservedNics, selectedInterface, aesNetCfg.base_multicast_prefix]);
+
+  const handleInterfaceChange = (newIface: string) => {
+    setSelectedInterface(newIface);
+    const target = networkAudit?.interfaces?.find((i) => i.name === newIface);
+    if (target?.canonical_base_multicast_prefix) {
+      setBaseMulticastPrefix(target.canonical_base_multicast_prefix);
+    }
+  };
 
   // Virtual Sink actions
   const handleAddSink = () => {
     const nextIndex = virtualSinks.length + 1;
     const newId = `bus_${nextIndex}`;
+    const cleanPrefix = baseMulticastPrefix.trim().replace(/\.$/, '') || '239.69.1';
     const newSink: VirtualSinkConfig = {
       id: newId,
       name: `Aux Mix Bus ${nextIndex}`,
       channels: 2,
       aes67_enabled: false,
-      multicast_ip: `239.69.1.${10 + nextIndex}`,
-      rtp_port: 5004 + (nextIndex * 2),
-      sap_name: `PipeWire ${newId}`,
+      multicast_ip: `${cleanPrefix}.${nextIndex}`,
+      rtp_port: 5004,
+      sap_name: `${hostName} aes_${newId}`,
     };
     setVirtualSinks([...virtualSinks, newSink]);
   };
@@ -236,6 +281,39 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     if (virtualSinks.length <= 1) return;
     setVirtualSinks(virtualSinks.filter((_, i) => i !== index));
   };
+
+  const validateSinkMulticast = (idx: number, ip: string | undefined, port: number | undefined) => {
+    if (!API || !ip) return;
+    fetch(`${API}/api/pipewire/validate-multicast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id: initialConfig?.id,
+        sink_id: virtualSinks[idx]?.id,
+        multicast_ip: ip.trim(),
+        rtp_port: Number(port) || 5004,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setSinkValidationFeedback((prev) => ({ ...prev, [idx]: data }));
+        }
+      })
+      .catch(() => {});
+  };
+
+  const internalCollisions = React.useMemo(() => {
+    const map: Record<string, number[]> = {};
+    virtualSinks.forEach((s, idx) => {
+      if (aes67Enabled && s.aes67_enabled && s.multicast_ip) {
+        const key = `${s.multicast_ip.trim()}:${s.rtp_port || 5004}`;
+        if (!map[key]) map[key] = [];
+        map[key].push(idx);
+      }
+    });
+    return Object.entries(map).filter(([_, indices]) => indices.length > 1);
+  }, [virtualSinks, aes67Enabled]);
 
   const handleSinkChange = (index: number, field: keyof VirtualSinkConfig, value: any) => {
     setVirtualSinks((prev) => {
@@ -257,21 +335,26 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   // Form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isNicConflict) return;
+    if (isNicConflict || internalCollisions.length > 0) return;
 
     // Find selected interface IP for aes67_network payload
     const activeIface = networkAudit?.interfaces?.find((i) => i.name === selectedInterface);
     const selectedIp = activeIface?.ip || aesNetCfg.ip || '0.0.0.0';
+    const cleanPrefix = baseMulticastPrefix.trim().replace(/\.$/, '') || '239.69.1';
 
-    const cleanSinks = virtualSinks.map((s) => ({
-      id: s.id.trim(),
-      name: s.name.trim(),
-      channels: Number(s.channels) || 2,
-      aes67_enabled: aes67Enabled && Boolean(s.aes67_enabled),
-      multicast_ip: s.multicast_ip?.trim() || '239.69.1.10',
-      rtp_port: Number(s.rtp_port) || 5004,
-      sap_name: s.sap_name?.trim() || `PipeWire ${s.id.trim()}`,
-    }));
+    const cleanSinks = virtualSinks.map((s, idx) => {
+      const suffix = cleanSapSuffix(s.sap_name, hostName, s.id.trim());
+      const fullSap = `${hostName} ${suffix}`.trim();
+      return {
+        id: s.id.trim(),
+        name: s.name.trim(),
+        channels: Number(s.channels) || 2,
+        aes67_enabled: aes67Enabled && Boolean(s.aes67_enabled),
+        multicast_ip: s.multicast_ip?.trim() || `${cleanPrefix}.${idx + 1}`,
+        rtp_port: Number(s.rtp_port) || 5004,
+        sap_name: fullSap,
+      };
+    });
 
     const configPayload = {
       sample_rate: Number(sampleRate),
@@ -283,6 +366,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
         enabled: aes67Enabled,
         interface: aes67Enabled ? selectedInterface : null,
         ip: aes67Enabled ? selectedIp : '0.0.0.0',
+        base_multicast_prefix: aes67Enabled ? cleanPrefix : null,
       },
     };
 
@@ -529,49 +613,82 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                     </label>
 
                     {sink.aes67_enabled && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                            {t('services.pipewire.multicastIp', 'Multicast IP')}
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={sink.multicast_ip || '239.69.1.10'}
-                            onChange={(e) => handleSinkChange(idx, 'multicast_ip', e.target.value)}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
-                            placeholder="239.69.1.10"
-                          />
-                        </div>
+                      <div className="space-y-2 pt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                              {t('services.pipewire.multicastIp', 'Multicast IP')}
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={sink.multicast_ip || `${baseMulticastPrefix.trim().replace(/\.$/, '')}.${idx + 1}`}
+                              onChange={(e) => handleSinkChange(idx, 'multicast_ip', e.target.value)}
+                              onBlur={() => validateSinkMulticast(idx, sink.multicast_ip, sink.rtp_port)}
+                              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                              placeholder="239.69.1.10"
+                            />
+                            {sinkValidationFeedback[idx] && (
+                              <div className="mt-1">
+                                {sinkValidationFeedback[idx].collision ? (
+                                  <p className="text-[10px] text-red-500 font-bold leading-tight">
+                                    🚫 {sinkValidationFeedback[idx].message}
+                                  </p>
+                                ) : sinkValidationFeedback[idx].is_reserved ? (
+                                  <p className="text-[10px] text-red-400 font-bold leading-tight">
+                                    ⚠️ {sinkValidationFeedback[idx].message}
+                                  </p>
+                                ) : sinkValidationFeedback[idx].advisory_same_ip ? (
+                                  <p className="text-[10px] text-amber-500 font-medium leading-tight">
+                                    ℹ️ {sinkValidationFeedback[idx].message}
+                                  </p>
+                                ) : !sinkValidationFeedback[idx].valid ? (
+                                  <p className="text-[10px] text-red-400 font-bold leading-tight">
+                                    ❌ {sinkValidationFeedback[idx].message}
+                                  </p>
+                                ) : null}
+                              </div>
+                            )}
+                          </div>
 
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                            {t('services.pipewire.rtpPort', 'RTP Port')}
-                          </label>
-                          <input
-                            type="number"
-                            required
-                            min={1024}
-                            max={65535}
-                            value={sink.rtp_port || 5004}
-                            onChange={(e) => handleSinkChange(idx, 'rtp_port', Number(e.target.value))}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
-                            placeholder="5004"
-                          />
-                        </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                              {t('services.pipewire.rtpPort', 'RTP Port')}
+                            </label>
+                            <input
+                              type="number"
+                              required
+                              min={1024}
+                              max={65535}
+                              value={sink.rtp_port || 5004}
+                              onChange={(e) => handleSinkChange(idx, 'rtp_port', Number(e.target.value))}
+                              onBlur={() => validateSinkMulticast(idx, sink.multicast_ip, sink.rtp_port)}
+                              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                              placeholder="5004"
+                            />
+                          </div>
 
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                            {t('services.pipewire.sapName', 'SAP Broadcast Name')}
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={sink.sap_name || `PipeWire ${sink.id}`}
-                            onChange={(e) => handleSinkChange(idx, 'sap_name', e.target.value)}
-                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
-                            placeholder={`PipeWire ${sink.id}`}
-                          />
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                              {t('services.pipewire.sapName', 'SAP Broadcast Name')}
+                            </label>
+                            <div className="flex items-center">
+                              <span className="px-2.5 py-1 bg-[var(--bg-card)] border border-r-0 border-[var(--glass-border)] rounded-l-lg text-xs font-mono font-bold text-brand-lime flex items-center gap-1 select-none whitespace-nowrap">
+                                🖥️ {hostName}
+                              </span>
+                              <input
+                                type="text"
+                                required
+                                value={cleanSapSuffix(sink.sap_name, hostName, sink.id)}
+                                onChange={(e) => handleSinkChange(idx, 'sap_name', `${hostName} ${e.target.value}`.trim())}
+                                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-r-lg px-2 py-1 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                                placeholder={`aes_${sink.id}`}
+                              />
+                            </div>
+                            <div className="text-[10px] font-mono text-[var(--text-secondary)] mt-0.5 truncate">
+                              {t('services.pipewire.sdpSessionPreview', 'SDP Session')}: <span className="text-brand-lime font-bold">s={hostName} {cleanSapSuffix(sink.sap_name, hostName, sink.id) || sink.id}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -580,6 +697,20 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
               </div>
             ))}
           </div>
+
+          {internalCollisions.length > 0 && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-xs flex items-start gap-2.5 mt-2 animate-in fade-in duration-200">
+              <span className="text-base shrink-0">🚫</span>
+              <div>
+                <p className="font-bold">
+                  {t('services.pipewire.internalCollisionError', 'Duplicate Multicast IP / Port route detected within this Hub. Each AES67 stream must have a unique destination IP.')}
+                </p>
+                <p className="text-[11px] opacity-80 mt-0.5 font-mono">
+                  {internalCollisions.map(([key]) => key).join(', ')}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Section 3: AES67 / Dante Broadcast (Tx) Network Module ── */}
@@ -624,7 +755,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                 ) : (
                   <select
                     value={selectedInterface}
-                    onChange={(e) => setSelectedInterface(e.target.value)}
+                    onChange={(e) => handleInterfaceChange(e.target.value)}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
                   >
                     {networkAudit?.interfaces && networkAudit.interfaces.length > 0 ? (
@@ -662,6 +793,57 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Base Multicast Prefix & Host Node Identifier */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                    {t('services.pipewire.baseMulticastPrefix', 'Base Multicast Prefix (AES67 / Dante 239.69.X)')}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      required
+                      value={baseMulticastPrefix}
+                      onChange={(e) => setBaseMulticastPrefix(e.target.value)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors"
+                      placeholder="239.69.1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const activeIface = networkAudit?.interfaces?.find((i) => i.name === selectedInterface);
+                        if (activeIface?.canonical_base_multicast_prefix) {
+                          setBaseMulticastPrefix(activeIface.canonical_base_multicast_prefix);
+                        } else if (activeIface?.ip) {
+                          const parts = activeIface.ip.split('.');
+                          if (parts.length === 4) setBaseMulticastPrefix(`239.69.${parts[3]}`);
+                        }
+                      }}
+                      title={t('services.pipewire.recalculatePrefixTitle', 'Recalculate prefix from selected NIC IP')}
+                      className="px-3 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] text-xs font-medium hover:border-brand-lime text-[var(--text-secondary)] hover:text-brand-lime whitespace-nowrap cursor-pointer transition-colors shadow-sm"
+                    >
+                      ↻ {t('services.pipewire.recalc', 'Recalc')}
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
+                    {t('services.pipewire.baseMulticastHelp', 'Canonical 239.69.X range derived from host NIC IP to guarantee zero collisions between nodes.')}
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                    {t('services.pipewire.nodeHostname', 'Host Node Identifier')}
+                  </label>
+                  <div className="px-3 py-2 rounded-lg bg-[var(--bg-card)]/60 border border-[var(--glass-border)] text-xs font-mono text-brand-lime font-bold flex items-center gap-2">
+                    <span>🖥️</span>
+                    <span>{hostName}</span>
+                  </div>
+                  <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
+                    {t('services.pipewire.hostnameHelp', 'Locked hostname prefix automatically prepended to SAP announcements.')}
+                  </span>
+                </div>
               </div>
 
               {/* Informative Clock Status Banner */}
@@ -838,7 +1020,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isNicConflict}
+          disabled={isNicConflict || internalCollisions.length > 0}
           className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-brand-lime text-black hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {isEditing
