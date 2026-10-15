@@ -446,6 +446,79 @@ class TestPipewireNetworkAudit(unittest.TestCase):
             self.assertTrue(sinks[0].get("sap_name").startswith(f"{local_hostname} "))
             self.assertIn("pgm_bus", sinks[0].get("sap_name"))
 
+    def test_pipewire_profile_import_sanitization_nested_config(self):
+        """Verifica que migrate_and_validate_profile sanitiza correctamente cuando pipewire_config está anidado."""
+        from database.db import SessionLocal
+        try:
+            from main import migrate_and_validate_profile
+        except ImportError:
+            from backend.main import migrate_and_validate_profile
+
+        with SessionLocal() as db:
+            nested_payload = {
+                "profile": {
+                    "name": "Exported PipeWire Hub",
+                    "service_type": "pipewire_hub",
+                    "software_type": "pipewire",
+                    "software_build_id": 999999,
+                    "config": {
+                        "auto_start": True,
+                        "pipewire_config": {
+                            "sample_rate": 48000,
+                            "quantum": 1024,
+                            "aes67_network": {
+                                "enabled": True,
+                                "interface": "enp9s0_nonexistent_on_test2",
+                                "ip": "192.168.99.11",
+                                "base_multicast_prefix": "239.69.11"
+                            },
+                            "virtual_sinks": [
+                                {
+                                    "id": "mix_bus",
+                                    "name": "Master Mix Bus",
+                                    "aes67_enabled": True,
+                                    "multicast_ip": "239.69.11.1",
+                                    "rtp_port": 5004,
+                                    "sap_name": "test1 aes_mix_bus"
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+
+            with patch(f"{NI_TARGET}.get_network_interfaces") as mock_ifaces:
+                mock_ifaces.return_value = [
+                    {
+                        "name": "exp7s0",
+                        "is_up": True,
+                        "is_loopback": False,
+                        "ipv4_addresses": [{"address": "192.168.99.13", "netmask": "255.255.255.0"}]
+                    }
+                ]
+                sanitized = migrate_and_validate_profile(nested_payload, db)
+
+            cfg = sanitized.get("config", {})
+            pw_cfg = cfg.get("pipewire_config", {})
+            net = pw_cfg.get("aes67_network", {})
+            sinks = pw_cfg.get("virtual_sinks", [])
+
+            self.assertEqual(len(sinks), 1)
+            # 1. Interface adapted to exp7s0
+            self.assertEqual(net.get("interface"), "exp7s0")
+            self.assertEqual(net.get("ip"), "192.168.99.13")
+
+            # 2. Base multicast prefix updated to 239.69.13
+            self.assertEqual(net.get("base_multicast_prefix"), "239.69.13")
+
+            # 3. Sink multicast IP migrated to 239.69.13.1
+            sink_ip = sinks[0].get("multicast_ip")
+            self.assertEqual(sink_ip, "239.69.13.1")
+
+            local_hostname = socket.gethostname().split(".")[0]
+            self.assertTrue(sinks[0].get("sap_name").startswith(f"{local_hostname} "))
+
 
 if __name__ == "__main__":
     unittest.main()
+

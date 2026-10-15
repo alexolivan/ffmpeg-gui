@@ -165,6 +165,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   const [auditError, setAuditError] = useState<string | null>(null);
   const [reservedNics, setReservedNics] = useState<Record<string, { serviceId: number; serviceName: string }>>({});
   const [sinkValidationFeedback, setSinkValidationFeedback] = useState<Record<number, any>>({});
+  const [recalcFeedback, setRecalcFeedback] = useState<string | null>(null);
 
   const cleanSapSuffix = (rawSap: string | undefined, host: string, fallbackId: string): string => {
     if (!rawSap) return fallbackId;
@@ -173,6 +174,49 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
       return trimmed.slice(host.length + 1);
     }
     return trimmed;
+  };
+
+  // Recalculate canonical base multicast prefix from active NIC and re-seed all virtual sinks
+  const handleRecalculateRoutes = () => {
+    const activeIface =
+      networkAudit?.interfaces?.find((i) => i.name === selectedInterface) ||
+      networkAudit?.interfaces?.find((i) => i.is_up && i.ip && !reservedNics[i.name]) ||
+      networkAudit?.interfaces?.[0];
+
+    if (!activeIface) return;
+
+    if (activeIface.name !== selectedInterface) {
+      setSelectedInterface(activeIface.name);
+    }
+
+    let calculatedPrefix = activeIface.canonical_base_multicast_prefix;
+    if (!calculatedPrefix && activeIface.ip) {
+      const parts = activeIface.ip.split('.');
+      if (parts.length === 4) calculatedPrefix = `239.69.${parts[3]}`;
+    }
+    const cleanPrefix = (calculatedPrefix || baseMulticastPrefix || '239.69.1').trim().replace(/\.$/, '');
+
+    setBaseMulticastPrefix(cleanPrefix);
+
+    setVirtualSinks((prev) =>
+      prev.map((sink, idx) => {
+        const nextIp = `${cleanPrefix}.${idx + 1}`;
+        const nextPort = 5004 + idx * 2;
+        const currentSuffix = cleanSapSuffix(sink.sap_name, hostName, sink.id);
+        return {
+          ...sink,
+          multicast_ip: nextIp,
+          rtp_port: nextPort,
+          sap_name: `${hostName} ${currentSuffix}`.trim(),
+        };
+      })
+    );
+
+    setSinkValidationFeedback({});
+    setRecalcFeedback(cleanPrefix);
+    setTimeout(() => {
+      setRecalcFeedback(null);
+    }, 3000);
   };
 
   // Query existing services to detect NICs already claimed by another PipeWire Hub for AES67
@@ -220,15 +264,16 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
           setHostName(data.hostname);
         }
 
-        // Auto-select first active physical NIC if none selected
-        if (!selectedInterface && Array.isArray(data.interfaces) && data.interfaces.length > 0) {
+        // Auto-select first active physical NIC if none selected or if selectedInterface does not exist locally
+        const ifaceExists = data.interfaces?.some((iface) => iface.name === selectedInterface);
+        if ((!selectedInterface || !ifaceExists) && Array.isArray(data.interfaces) && data.interfaces.length > 0) {
           const firstAvailable =
             data.interfaces.find((iface) => iface.is_up && iface.ip && !reservedNics[iface.name]) ||
             data.interfaces.find((iface) => !reservedNics[iface.name]) ||
             data.interfaces[0];
           if (firstAvailable) {
             setSelectedInterface(firstAvailable.name);
-            if (!aesNetCfg.base_multicast_prefix && firstAvailable.canonical_base_multicast_prefix) {
+            if ((!ifaceExists || !aesNetCfg.base_multicast_prefix) && firstAvailable.canonical_base_multicast_prefix) {
               setBaseMulticastPrefix(firstAvailable.canonical_base_multicast_prefix);
             }
           }
@@ -509,14 +554,27 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleAddSink}
-              className="px-2.5 py-1.5 rounded-lg bg-brand-lime/10 text-brand-lime hover:bg-brand-lime/20 border border-brand-lime/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <PlusIcon size={13} />
-              {t('services.pipewire.addSink', 'Add Virtual Sink')}
-            </button>
+            <div className="flex items-center gap-2">
+              {aes67Enabled && (
+                <button
+                  type="button"
+                  onClick={handleRecalculateRoutes}
+                  title={t('services.pipewire.recalculatePrefixTitle', 'Recalculate canonical prefix from NIC and re-seed all sink routes')}
+                  className="px-2.5 py-1.5 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] hover:border-brand-lime text-xs font-mono font-medium text-[var(--text-secondary)] hover:text-brand-lime transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  <span>↻</span>
+                  <span>{t('services.pipewire.recalcAllSinks', 'Recalc Sinks')}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleAddSink}
+                className="px-2.5 py-1.5 rounded-lg bg-brand-lime/10 text-brand-lime hover:bg-brand-lime/20 border border-brand-lime/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <PlusIcon size={13} />
+                {t('services.pipewire.addSink', 'Add Virtual Sink')}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -812,24 +870,24 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        const activeIface = networkAudit?.interfaces?.find((i) => i.name === selectedInterface);
-                        if (activeIface?.canonical_base_multicast_prefix) {
-                          setBaseMulticastPrefix(activeIface.canonical_base_multicast_prefix);
-                        } else if (activeIface?.ip) {
-                          const parts = activeIface.ip.split('.');
-                          if (parts.length === 4) setBaseMulticastPrefix(`239.69.${parts[3]}`);
-                        }
-                      }}
-                      title={t('services.pipewire.recalculatePrefixTitle', 'Recalculate prefix from selected NIC IP')}
-                      className="px-3 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] text-xs font-medium hover:border-brand-lime text-[var(--text-secondary)] hover:text-brand-lime whitespace-nowrap cursor-pointer transition-colors shadow-sm"
+                      onClick={handleRecalculateRoutes}
+                      title={t('services.pipewire.recalculatePrefixTitle', 'Recalculate canonical prefix from NIC and re-seed all sink routes')}
+                      className="px-3 py-2 rounded-lg bg-[var(--bg-card)] border border-[var(--glass-border)] text-xs font-medium hover:border-brand-lime text-[var(--text-secondary)] hover:text-brand-lime whitespace-nowrap cursor-pointer transition-colors shadow-sm flex items-center gap-1.5"
                     >
-                      ↻ {t('services.pipewire.recalc', 'Recalc')}
+                      <span>↻</span>
+                      <span>{t('services.pipewire.recalc', 'Recalc')}</span>
                     </button>
                   </div>
-                  <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
-                    {t('services.pipewire.baseMulticastHelp', 'Canonical 239.69.X range derived from host NIC IP to guarantee zero collisions between nodes.')}
-                  </span>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-[10px] text-[var(--text-secondary)] block">
+                      {t('services.pipewire.baseMulticastHelp', 'Canonical 239.69.X range derived from host NIC IP to guarantee zero collisions between nodes.')}
+                    </span>
+                    {recalcFeedback && (
+                      <span className="text-[10px] text-brand-lime font-mono font-bold animate-pulse">
+                        ✓ {t('services.pipewire.recalcDone', 'Synchronized ({{prefix}}.X)', { prefix: recalcFeedback })}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div>

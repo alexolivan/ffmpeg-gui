@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.43.1] - 2026-10-15
+
+### Fixed
+- **PipeWire Hub Nested Config Profile Import Sanitization (`migrate_and_validate_profile`)**:
+  - Fixed profile import sanitization when `aes67_network` and `virtual_sinks` are nested under `config.pipewire_config` (standard payload structure from UI export).
+  - Automatically resolves foreign physical network interfaces (`interface`) to local active IPv4 interfaces, re-seeding the IP address, base multicast prefix (`239.69.X`), and all virtual sink multicast destination IPs.
+  - Detects foreign `239.69.X.Y` multicast destination IPs and re-seeds them to the local node's canonical prefix (`PipeWireConfigGenerator.get_canonical_sink_multicast_ip()`), preventing silent collisions when cloning configurations across nodes.
+- **Frontend Multicast Recalculation & Missing Interface Auto-Adaptation (`PipeWireConfigForm.tsx`)**:
+  - Fixed Recalc button behavior: now re-derives canonical base multicast prefix from the active local NIC and automatically re-seeds ALL virtual sinks' multicast IPs (`${newPrefix}.${index + 1}`) and sequential RTP ports (`5004 + index * 2`), updating SAP names with the local node identifier.
+  - Added dedicated `[ ↻ Recalc Sinks ]` button in the Virtual Sinks Manager header.
+  - Auto-adapts `selectedInterface` when loading imported configurations where the original NIC does not exist on the local host, preventing state/select desynchronization.
+  - Added animated visual feedback badges (`✓ Synchronized (239.69.X.X)`) on route recalculation.
+
 ## [2.43.0] - 2026-10-15
 
 ### Added
