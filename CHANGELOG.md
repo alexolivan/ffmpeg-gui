@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.41.1] - 2026-10-14
+## [2.41.2] - 2026-10-15
+
+### Fixed
+- **PipeWire & AES67 Output Configuration Persistence**:
+  - Whitelisted `'pipewire'`, `'pipewire_hub'`, and `'aes67'` output types in `sanitize_output_config_data` (`backend/main.py`) to prevent `provider_service_id` and `pipewire_service_id` from being stripped on save, service update, and database daemon boot sanitization.
+  - Hardened `DependencyManager.sync_auto_dependencies` to protect PipeWire/AES67 outputs from having their provider keys purged during reconciliation.
+- **Deterministic Service Naming in FFmpeg Command Builder**:
+  - Updated `FFmpegCommandBuilder` (`_append_input` and `_append_output`) to inspect `.service_type` on SQLAlchemy `Service` models, resolving deterministic `-name ffmpeg_service_{id}` (instead of falling back to `ffmpeg_proc_{id}`).
+- **Implicit PipeWire Hub Fallback & Multi-Alias Port Resolution**:
+  - Added single-hub fallback in `PipeWireMatrixSupervisor._resolve_desired_links`, `ProcessManager.start_process`, and `TaskManager.start_task_process`: if only one PipeWire Hub exists in the system, services and tasks with PipeWire inputs/outputs automatically bind to that hub even if `provider_service_id` was omitted.
+  - Expanded port resolution aliases in `PipeWireMatrixSupervisor` to match `ffmpeg_service_{id}`, `ffmpeg_proc_{id}`, `ffmpeg_{id}`, the service display name, and generic client tokens.
+  - Added support for ScheduledTasks producing/publishing audio directly to PipeWire virtual sinks.
+
 
 ### Added
 - **Human-Readable PipeWire Links & Dynamic Matrix Routes UI (`PipeWirePreviewModal.tsx`)**:

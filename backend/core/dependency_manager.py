@@ -349,6 +349,15 @@ class DependencyManager:
                 val = conf.get("desktop_service_id")
             if val is None and cfg_type in ('pipewire', 'pipewire_hub', 'aes67'):
                 val = conf.get("pipewire_service_id")
+            if val is None and cfg_type in ('pipewire', 'pipewire_hub', 'aes67'):
+                try:
+                    from database.models import Service
+                    pw_hubs = db_session.query(Service).filter(Service.service_type == "pipewire_hub").all()
+                    if len(pw_hubs) == 1:
+                        val = pw_hubs[0].id
+                        conf["provider_service_id"] = val
+                except Exception:
+                    pass
             if val is None:
                 return None
             if is_output:
@@ -385,12 +394,13 @@ class DependencyManager:
             detected_provider_ids.add(out_pid)
         elif output_config and isinstance(output_config, dict) and output_config.get("provider_service_id") is not None:
             # Stale provider fields in non-auxiliary output
-            output_config.pop("provider_service_id", None)
-            output_config.pop("mediamtx_mode", None)
-            output_config.pop("service_target", None)
-            output_config.pop("mediamtx_target_type", None)
-            output_config.pop("path_id", None)
-            output_config.pop("stream_action", None)
+            if output_config.get("type") not in ('pipewire', 'pipewire_hub', 'aes67'):
+                output_config.pop("provider_service_id", None)
+                output_config.pop("mediamtx_mode", None)
+                output_config.pop("service_target", None)
+                output_config.pop("mediamtx_target_type", None)
+                output_config.pop("path_id", None)
+                output_config.pop("stream_action", None)
 
         # Check input configs
         inp_pid = extract_provider_id(input_config, is_output=False)

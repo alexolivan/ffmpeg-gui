@@ -163,6 +163,10 @@ class PipeWireMatrixSupervisor:
 
                 default_sink = next(iter(valid_sink_ids), "master_bus")
 
+                # Detect if this is the only PipeWire Hub in DB for implicit binding fallback
+                all_hubs = session.query(Service).filter(Service.service_type == "pipewire_hub").all()
+                is_single_hub = (len(all_hubs) == 1 and all_hubs[0].id == self.hub_id)
+
                 # 2. Virtual Desktops & Kiosks routing to this Hub
                 desktops = session.query(Service).filter(Service.service_type == "desktop").all()
                 pw_desktops: Dict[int, str] = {}
@@ -170,7 +174,7 @@ class PipeWireMatrixSupervisor:
                     d_cfg = (desk.config or {}).get("desktop_config", desk.config or {})
                     if d_cfg.get("audio_backend") == "pipewire_hub":
                         pw_id = d_cfg.get("pipewire_service_id")
-                        if pw_id and int(pw_id) == self.hub_id:
+                        if (pw_id and int(pw_id) == self.hub_id) or (not pw_id and is_single_hub):
                             target_sink = d_cfg.get("pipewire_sink_id") or default_sink
                             pw_desktops[desk.id] = target_sink
 
@@ -224,7 +228,7 @@ class PipeWireMatrixSupervisor:
                     for inp in check_inputs:
                         if isinstance(inp, dict) and inp.get("type") in ("pipewire", "pipewire_hub"):
                             cand_id = inp.get("provider_service_id") or inp.get("pipewire_service_id")
-                            if cand_id and int(cand_id) == self.hub_id:
+                            if (cand_id and int(cand_id) == self.hub_id) or (not cand_id and is_single_hub):
                                 sink_id = inp.get("sink_id") or inp.get("device") or default_sink
                                 clean_sink = sink_id.replace(".monitor", "")
                                 consumer_node = f"ffmpeg_service_{svc.id}"
@@ -239,14 +243,14 @@ class PipeWireMatrixSupervisor:
                                         source_entity_type="sink",
                                         target_entity_type="service",
                                         target_entity_id=svc.id,
-                                        target_aliases=[f"ffmpeg_{svc.id}", "ffmpeg"]
+                                        target_aliases=[f"ffmpeg_service_{svc.id}", f"ffmpeg_proc_{svc.id}", f"ffmpeg_{svc.id}", svc.name, "ffmpeg"]
                                     )
                                 )
 
                     # B. Publish to PipeWire (FFmpeg outputs sound to virtual sink)
                     if isinstance(out_cfg, dict) and out_cfg.get("type") in ("pipewire", "pipewire_hub"):
                         cand_id = out_cfg.get("provider_service_id") or out_cfg.get("pipewire_service_id")
-                        if cand_id and int(cand_id) == self.hub_id:
+                        if (cand_id and int(cand_id) == self.hub_id) or (not cand_id and is_single_hub):
                             sink_id = out_cfg.get("sink_id") or out_cfg.get("device") or default_sink
                             clean_sink = sink_id.replace(".monitor", "")
                             producer_node = f"ffmpeg_service_{svc.id}"
@@ -261,35 +265,65 @@ class PipeWireMatrixSupervisor:
                                     source_entity_type="service",
                                     source_entity_id=svc.id,
                                     target_entity_type="sink",
-                                    source_aliases=[f"ffmpeg_{svc.id}", "ffmpeg"]
+                                    source_aliases=[f"ffmpeg_service_{svc.id}", f"ffmpeg_proc_{svc.id}", f"ffmpeg_{svc.id}", svc.name, "ffmpeg"]
                                 )
                             )
 
-                # 4. FFmpeg Tasks (Ingest from PipeWire)
+                # 4. FFmpeg Tasks (Ingest from PipeWire or Publish to PipeWire)
                 running_execs = session.query(TaskExecution).filter(TaskExecution.status == "running").all()
                 for exec_item in running_execs:
                     task = exec_item.task or session.get(ScheduledTask, exec_item.task_id)
                     if not task:
                         continue
                     inp_cfg = task.input_config or {}
-                    if isinstance(inp_cfg, dict) and inp_cfg.get("type") in ("pipewire", "pipewire_hub"):
-                        cand_id = inp_cfg.get("provider_service_id") or inp_cfg.get("pipewire_service_id")
-                        if cand_id and int(cand_id) == self.hub_id:
-                            sink_id = inp_cfg.get("sink_id") or default_sink
+                    check_task_inputs = [inp_cfg]
+                    if isinstance(inp_cfg, dict):
+                        if "input1" in inp_cfg:
+                            check_task_inputs.append(inp_cfg.get("input1"))
+                        if "input2" in inp_cfg:
+                            check_task_inputs.append(inp_cfg.get("input2"))
+
+                    for inp in check_task_inputs:
+                        if isinstance(inp, dict) and inp.get("type") in ("pipewire", "pipewire_hub"):
+                            cand_id = inp.get("provider_service_id") or inp.get("pipewire_service_id")
+                            if (cand_id and int(cand_id) == self.hub_id) or (not cand_id and is_single_hub):
+                                sink_id = inp.get("sink_id") or inp.get("device") or default_sink
+                                clean_sink = sink_id.replace(".monitor", "")
+                                consumer_node = f"ffmpeg_task_{task.id}"
+                                desired.append(
+                                    DesiredLink(
+                                        source_id=f"{clean_sink}.monitor",
+                                        target_id=consumer_node,
+                                        source_ports=[f"{clean_sink}:monitor_FL", f"{clean_sink}:monitor_FR"],
+                                        target_ports=[f"{consumer_node}:input_FL", f"{consumer_node}:input_FR"],
+                                        link_type="monitor_capture",
+                                        description=f"{clean_sink}.monitor -> FFmpeg Task #{task.id}",
+                                        source_entity_type="sink",
+                                        target_entity_type="task",
+                                        target_entity_id=task.id,
+                                        target_aliases=[f"ffmpeg_task_{task.id}", f"ffmpeg_proc_{task.id}", f"ffmpeg_{task.id}", f"ffmpeg_task_{exec_item.id}", "ffmpeg"]
+                                    )
+                                )
+
+                    out_task_cfg = task.output_config or {}
+                    if isinstance(out_task_cfg, dict) and out_task_cfg.get("type") in ("pipewire", "pipewire_hub"):
+                        cand_id = out_task_cfg.get("provider_service_id") or out_task_cfg.get("pipewire_service_id")
+                        if (cand_id and int(cand_id) == self.hub_id) or (not cand_id and is_single_hub):
+                            sink_id = out_task_cfg.get("sink_id") or out_task_cfg.get("device") or default_sink
                             clean_sink = sink_id.replace(".monitor", "")
-                            consumer_node = f"ffmpeg_task_{task.id}"
+                            producer_node = f"ffmpeg_task_{task.id}"
                             desired.append(
                                 DesiredLink(
-                                    source_id=f"{clean_sink}.monitor",
-                                    target_id=consumer_node,
-                                    source_ports=[f"{clean_sink}:monitor_FL", f"{clean_sink}:monitor_FR"],
-                                    target_ports=[f"{consumer_node}:input_FL", f"{consumer_node}:input_FR"],
-                                    link_type="monitor_capture",
-                                    description=f"{clean_sink}.monitor -> FFmpeg Task #{task.id}",
-                                    source_entity_type="sink",
-                                    target_entity_type="task",
-                                    target_entity_id=task.id,
-                                    target_aliases=[f"ffmpeg_{task.id}", f"ffmpeg_task_{exec_item.id}", "ffmpeg"]
+                                    source_id=producer_node,
+                                    target_id=clean_sink,
+                                    source_ports=[f"{producer_node}:output_FL", f"{producer_node}:output_FR"],
+                                    target_ports=[f"{clean_sink}:playback_FL", f"{clean_sink}:playback_FR"],
+                                    link_type="playback",
+                                    description=f"FFmpeg Task #{task.id} -> {clean_sink}",
+                                    source_entity_type="task",
+                                    source_entity_id=task.id,
+                                    target_entity_type="sink",
+                                    source_aliases=[f"ffmpeg_task_{task.id}", f"ffmpeg_proc_{task.id}", f"ffmpeg_{task.id}", f"ffmpeg_task_{exec_item.id}", "ffmpeg"]
                                 )
                             )
 

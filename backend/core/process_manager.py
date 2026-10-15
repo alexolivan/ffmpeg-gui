@@ -551,6 +551,14 @@ class ProcessManager:
                                 except (ValueError, TypeError):
                                     pass
 
+                    if not pw_provider_id:
+                        for c in check_targets:
+                            if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                                pw_hubs = session.query(Service).filter(Service.service_type == "pipewire_hub").all()
+                                if len(pw_hubs) == 1:
+                                    pw_provider_id = pw_hubs[0].id
+                                    break
+
                 session.commit()  # Save changes and release write lock immediately!
                 
             # Ensure log directory exists and prepare file permissions for progress/preview files

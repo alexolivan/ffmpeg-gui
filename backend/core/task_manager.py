@@ -175,6 +175,19 @@ class TaskManager:
                         except (ValueError, TypeError):
                             pass
 
+            if not pw_provider_id:
+                for c in check_targets:
+                    if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                        try:
+                            with self.db_session_factory() as session:
+                                from database.models import Service
+                                pw_hubs = session.query(Service).filter(Service.service_type == "pipewire_hub").all()
+                                if len(pw_hubs) == 1:
+                                    pw_provider_id = pw_hubs[0].id
+                                    break
+                        except Exception:
+                            pass
+
             sub_env = {**os.environ, "FFMPEG_GUI_EXECUTION_ID": str(execution_id)}
             if pw_provider_id:
                 sub_env["PULSE_SERVER"] = f"unix:/tmp/ffmpeg-gui/pipewire-{pw_provider_id}/pulse.sock"

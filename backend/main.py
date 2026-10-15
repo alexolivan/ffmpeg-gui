@@ -3752,8 +3752,8 @@ def sanitize_output_config_data(output_config: dict) -> bool:
     is_dirty = False
     out_type = output_config.get("type")
 
-    # Only srt, rtmp, whip, icecast can possibly connect to auxiliary providers
-    if out_type not in ('srt', 'rtmp', 'whip', 'icecast'):
+    # Only srt, rtmp, whip, icecast, pipewire, pipewire_hub, aes67 can possibly connect to auxiliary providers
+    if out_type not in ('srt', 'rtmp', 'whip', 'icecast', 'pipewire', 'pipewire_hub', 'aes67'):
         for key in ('provider_service_id', 'mediamtx_mode', 'service_target', 'mediamtx_target_type', 'path_id', 'stream_action'):
             if key in output_config:
                 output_config.pop(key, None)
@@ -3769,6 +3769,19 @@ def sanitize_output_config_data(output_config: dict) -> bool:
             if 'provider_service_id' in output_config:
                 output_config.pop('provider_service_id', None)
                 is_dirty = True
+    elif out_type in ('pipewire', 'pipewire_hub', 'aes67'):
+        p_id = output_config.get('provider_service_id') or output_config.get('pipewire_service_id')
+        if p_id is not None:
+            try:
+                p_id_int = int(p_id)
+                if output_config.get('provider_service_id') != p_id_int:
+                    output_config['provider_service_id'] = p_id_int
+                    is_dirty = True
+                if output_config.get('pipewire_service_id') != p_id_int:
+                    output_config['pipewire_service_id'] = p_id_int
+                    is_dirty = True
+            except (ValueError, TypeError):
+                pass
 
     return is_dirty
 

@@ -373,9 +373,14 @@ class FFmpegCommandBuilder:
             client_name = input_cfg.get('client_name')
             if not client_name and media_proc:
                 p_id = getattr(media_proc, 'id', None) or (media_proc.get('id') if isinstance(media_proc, dict) else None)
-                p_type = getattr(media_proc, 'type', None) or (media_proc.get('type') if isinstance(media_proc, dict) else 'proc')
+                p_type = getattr(media_proc, 'service_type', None) or getattr(media_proc, 'type', None) or (media_proc.get('service_type') or media_proc.get('type') if isinstance(media_proc, dict) else None)
                 if cls._is_real_value(p_id):
-                    t_str = str(p_type) if cls._is_real_value(p_type) else 'proc'
+                    if p_type in ('ffmpeg_stream', 'stream', 'service') or hasattr(media_proc, 'service_type'):
+                        t_str = 'service'
+                    elif p_type in ('task', 'task_execution') or getattr(media_proc, 'task_id', None) or execution_id:
+                        t_str = 'task'
+                    else:
+                        t_str = 'service'
                     client_name = f"ffmpeg_{t_str}_{p_id}"
             if client_name and cls._is_real_value(client_name):
                 cmd += ["-name", str(client_name)]
@@ -834,9 +839,14 @@ class FFmpegCommandBuilder:
             client_name = output_cfg.get('client_name')
             if not client_name and media_proc:
                 p_id = getattr(media_proc, 'id', None) or (media_proc.get('id') if isinstance(media_proc, dict) else None)
-                p_type = getattr(media_proc, 'type', None) or (media_proc.get('type') if isinstance(media_proc, dict) else 'proc')
+                p_type = getattr(media_proc, 'service_type', None) or getattr(media_proc, 'type', None) or (media_proc.get('service_type') or media_proc.get('type') if isinstance(media_proc, dict) else None)
                 if cls._is_real_value(p_id):
-                    t_str = str(p_type) if cls._is_real_value(p_type) else 'proc'
+                    if p_type in ('ffmpeg_stream', 'stream', 'service') or hasattr(media_proc, 'service_type'):
+                        t_str = 'service'
+                    elif p_type in ('task', 'task_execution') or getattr(media_proc, 'task_id', None) or execution_id:
+                        t_str = 'task'
+                    else:
+                        t_str = 'service'
                     client_name = f"ffmpeg_{t_str}_{p_id}"
             if client_name and cls._is_real_value(client_name):
                 cmd += ["-name", str(client_name)]

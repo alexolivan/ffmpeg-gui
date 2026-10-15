@@ -441,3 +441,121 @@ class TestPipeWireMatrixSupervisor(unittest.IsolatedAsyncioTestCase):
             self.pm.restart_process.assert_not_called()
             self.assertNotIn(13, self.supervisor._missing_node_counts)
 
+    def test_resolve_desired_links_single_hub_implicit_fallback(self):
+        """Tests that single PipeWire Hub in DB provides implicit binding fallback when provider_service_id is omitted."""
+        with self.Session() as session:
+            hub = Service(
+                id=self.hub_id,
+                name="PipeWire Single Hub",
+                service_type="pipewire_hub",
+                status="running",
+                config={
+                    "virtual_sinks": [
+                        {"id": "master_bus", "name": "Master Bus", "channels": 2},
+                        {"id": "aux_bus", "name": "Aux Bus", "channels": 2}
+                    ]
+                }
+            )
+            # Service publishing audio to PipeWire without explicit provider_service_id
+            pub_svc = Service(
+                id=20,
+                name="Stream Icecast to PW",
+                service_type="ffmpeg_stream",
+                status="running",
+                config={
+                    "input_config": {"type": "icecast", "url": "http://stream.example.com/audio"},
+                    "output_config": {"type": "pipewire", "sink_id": "aux_bus"}
+                }
+            )
+            # Service consuming audio from PipeWire without explicit provider_service_id
+            sub_svc = Service(
+                id=21,
+                name="Stream PW to ALSA",
+                service_type="ffmpeg_stream",
+                status="running",
+                config={
+                    "input_config": {"type": "pipewire", "sink_id": "aux_bus"},
+                    "output_config": {"type": "alsa", "device": "hw:0,0"}
+                }
+            )
+            session.add_all([hub, pub_svc, sub_svc])
+            session.commit()
+
+        self.pm.processes[20] = MagicMock(returncode=None)
+        self.pm.processes[21] = MagicMock(returncode=None)
+
+        desired = self.supervisor._resolve_desired_links()
+        self.assertEqual(len(desired), 2)
+
+        pub_link = next((d for d in desired if d.source_entity_id == 20), None)
+        self.assertIsNotNone(pub_link)
+        self.assertEqual(pub_link.source_id, "ffmpeg_service_20")
+        self.assertEqual(pub_link.target_id, "aux_bus")
+        self.assertEqual(pub_link.link_type, "playback")
+        self.assertIn("ffmpeg_proc_20", pub_link.source_aliases)
+
+        sub_link = next((d for d in desired if d.target_entity_id == 21), None)
+        self.assertIsNotNone(sub_link)
+        self.assertEqual(sub_link.source_id, "aux_bus.monitor")
+        self.assertEqual(sub_link.target_id, "ffmpeg_service_21")
+        self.assertEqual(sub_link.link_type, "monitor_capture")
+        self.assertIn("ffmpeg_proc_21", sub_link.target_aliases)
+
+    def test_match_ports_with_proc_and_service_aliases(self):
+        """Tests that _match_ports matches FFmpeg whether ports are named ffmpeg_proc_ or ffmpeg_service_."""
+        candidate = "ffmpeg_service_20"
+        desired_ports = ["ffmpeg_service_20:output_FL", "ffmpeg_service_20:output_FR"]
+        aliases = ["ffmpeg_service_20", "ffmpeg_proc_20", "ffmpeg_20", "ffmpeg"]
+
+        # Case 1: FFmpeg registered with ffmpeg_proc_20:output_FL / FR
+        available_proc = {"ffmpeg_proc_20:output_FL", "ffmpeg_proc_20:output_FR", "master_bus:playback_FL"}
+        matched = self.supervisor._match_ports(candidate, desired_ports, aliases, available_proc)
+        self.assertEqual(matched, ["ffmpeg_proc_20:output_FL", "ffmpeg_proc_20:output_FR"])
+
+        # Case 2: FFmpeg registered with ffmpeg_service_20:output_FL / FR
+        available_service = {"ffmpeg_service_20:output_FL", "ffmpeg_service_20:output_FR", "master_bus:playback_FL"}
+        matched = self.supervisor._match_ports(candidate, desired_ports, aliases, available_service)
+        self.assertEqual(matched, ["ffmpeg_service_20:output_FL", "ffmpeg_service_20:output_FR"])
+
+    def test_sanitize_output_config_preserves_pipewire(self):
+        """Tests that sanitize_output_config_data preserves provider_service_id for pipewire outputs."""
+        import main
+        out_cfg = {
+            "type": "pipewire",
+            "sink_id": "master_bus",
+            "provider_service_id": 14
+        }
+        main.sanitize_output_config_data(out_cfg)
+        self.assertEqual(out_cfg.get("provider_service_id"), 14)
+        self.assertEqual(out_cfg.get("pipewire_service_id"), 14)
+
+        # For file output, provider_service_id should be stripped
+        file_cfg = {
+            "type": "file",
+            "path": "/tmp/test.mp4",
+            "provider_service_id": 14
+        }
+        main.sanitize_output_config_data(file_cfg)
+        self.assertNotIn("provider_service_id", file_cfg)
+
+    def test_dependency_manager_sync_pipewire_output(self):
+        """Tests that dependency_manager registers ServiceDependency for PipeWire outputs."""
+        from core.dependency_manager import dependency_manager
+        from database.models import ServiceDependency
+
+        with self.Session() as session:
+            out_cfg = {
+                "type": "pipewire",
+                "sink_id": "master_bus",
+                "provider_service_id": self.hub_id
+            }
+            dependency_manager.sync_auto_dependencies("service", 25, None, out_cfg, session)
+
+            dep = session.query(ServiceDependency).filter(
+                ServiceDependency.consumer_type == "service",
+                ServiceDependency.consumer_id == 25
+            ).first()
+            self.assertIsNotNone(dep)
+            self.assertEqual(dep.provider_service_id, self.hub_id)
+
+
