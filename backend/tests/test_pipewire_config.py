@@ -125,7 +125,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('source.ip = "192.168.1.50"', res)
         self.assertIn('destination.ip = "239.69.10.1"', res)
         self.assertIn('destination.port = 5004', res)
-        self.assertIn('sess.name = "PGM Stream"', res)
+        self.assertIn('PGM Stream"', res)
         self.assertIn('node.name = "rtp_tx_aes67_pgm"', res)
         self.assertIn('target.object = "aes67_pgm"', res)
         self.assertIn('sess.sap.announce = true', res)
@@ -201,7 +201,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         }
         res = PipeWireConfigGenerator.generate_config(20, config, "/tmp/pw-20")
         self.assertIn(r'node.description = "Main \"Studio\" Mix & Stream / Line 1"', res)
-        self.assertIn(r'sess.name = "SAP \"Studio A\" [Live]"', res)
+        self.assertIn(r'SAP \"Studio A\" [Live]"', res)
 
     def test_channel_positions_layouts(self):
         """Checks 1-channel (MONO), 4-channel, and 8-channel layouts."""
@@ -239,6 +239,62 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertNotIn("libpipewire-module-udevrules", res)
         self.assertNotIn("api.alsa.enum.udev", res)
         self.assertNotIn("libpipewire-module-spa-device-factory", res)
+
+    def test_canonical_base_multicast_prefix(self):
+        """Verifies derivation of canonical 239.69.X base multicast prefix from host IP."""
+        # Standard IPv4 NICs
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_base_multicast_prefix("192.168.99.11"), "239.69.11")
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_base_multicast_prefix("192.168.99.13"), "239.69.13")
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_base_multicast_prefix("10.0.0.1"), "239.69.1")
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_base_multicast_prefix("172.16.50.254"), "239.69.254")
+
+        # Fallbacks for empty, 0.0.0.0, or invalid
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_base_multicast_prefix("0.0.0.0"), "239.69.1")
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_base_multicast_prefix(None), "239.69.1")
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_base_multicast_prefix("invalid-ip"), "239.69.1")
+
+    def test_canonical_sink_multicast_ip(self):
+        """Verifies derivation of per-sink multicast IP from base prefix and sink index."""
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_sink_multicast_ip("239.69.11", 1), "239.69.11.1")
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_sink_multicast_ip("239.69.11", 2), "239.69.11.2")
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_sink_multicast_ip("239.69.13", 1), "239.69.13.1")
+        self.assertEqual(PipeWireConfigGenerator.get_canonical_sink_multicast_ip("239.69.50.", 5), "239.69.50.5")
+
+    def test_format_sap_name(self):
+        """Verifies host prefixing in SAP announcement session names."""
+        formatted = PipeWireConfigGenerator.format_sap_name("aes_bus", hostname="test1")
+        self.assertEqual(formatted, "test1 aes_bus")
+
+        already_prefixed = PipeWireConfigGenerator.format_sap_name("test1 aes_bus", hostname="test1")
+        self.assertEqual(already_prefixed, "test1 aes_bus")
+
+        fallback = PipeWireConfigGenerator.format_sap_name("", hostname="test3")
+        self.assertEqual(fallback, "test3 stream")
+
+    def test_aes67_automatic_multicast_derivation(self):
+        """Verifies that missing multicast_ip in sink automatically derives from base_multicast_prefix."""
+        config = {
+            "aes67_network": {
+                "ip": "192.168.99.11",
+                "base_multicast_prefix": "239.69.11",
+                "interface": "enp9s0"
+            },
+            "virtual_sinks": [
+                {
+                    "id": "sink_a",
+                    "channels": 2,
+                    "aes67_enabled": True
+                },
+                {
+                    "id": "sink_b",
+                    "channels": 2,
+                    "aes67_enabled": True
+                }
+            ]
+        }
+        res = PipeWireConfigGenerator.generate_config(12, config, "/tmp/pw-12")
+        self.assertIn('destination.ip = "239.69.11.1"', res)
+        self.assertIn('destination.ip = "239.69.11.2"', res)
 
 
 if __name__ == "__main__":
