@@ -344,12 +344,18 @@ class PipeWireConfigGenerator:
         auto_inhibit = bool(ptp_cfg.get("auto_inhibit", True))
         profile = str(ptp_cfg.get("profile", "aes67")).lower()
 
-        # If auto_inhibit is False, node forces itself as Master Only (masterOnly 1).
-        # If auto_inhibit is True, node allows BMCA negotiation (masterOnly 0) to avoid clock collisions.
-        master_only = 0 if auto_inhibit else 1
+        # If auto_inhibit is False, node forces itself as Server/Master Only (serverOnly 1).
+        # If auto_inhibit is True, node allows BMCA negotiation (serverOnly 0) to avoid clock collisions.
+        # (serverOnly is the standard IEEE 1588-2019 directive replacing deprecated masterOnly in linuxptp).
+        server_only = 0 if auto_inhibit else 1
 
         is_hw = (ptp_support == "hardware")
         ts_mode = "hardware" if is_hw else "software"
+
+        # Dedicated ephemeral UDS IPC socket paths in /dev/shm (or /tmp) to prevent permission errors in /var/run
+        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
+        uds_path = os.path.join(shm_dir, f"ptp4l_{service_id}.uds")
+        uds_ro_path = os.path.join(shm_dir, f"ptp4lro_{service_id}.uds")
 
         # AES67 specifies 8 sync packets per second (logSyncInterval -3), logAnnounceInterval 0 (1s)
         log_sync = -3 if profile == "aes67" else 0
@@ -372,7 +378,9 @@ class PipeWireConfigGenerator:
             "offsetScaledLogVariance 0xFFFF",
             "free_running            0",
             "freq_est_interval       1",
-            f"masterOnly              {master_only}",
+            f"serverOnly              {server_only}",
+            f"uds_address             {uds_path}",
+            f"uds_ro_address          {uds_ro_path}",
             f"logSyncInterval         {log_sync}",
             f"logAnnounceInterval     {log_announce}",
             f"logMinDelayReqInterval  {log_delay}",

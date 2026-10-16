@@ -313,7 +313,9 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         )
         self.assertIn("domainNumber            0", conf)
         self.assertIn("priority1               128", conf)
-        self.assertIn("masterOnly              0", conf)  # Auto-inhibition allows BMCA coexistence
+        self.assertIn("serverOnly              0", conf)  # Auto-inhibition allows BMCA coexistence
+        self.assertIn("uds_address", conf)
+        self.assertIn("uds_ro_address", conf)
         self.assertIn("logSyncInterval         -3", conf)  # 8 packets/sec for AES67
         self.assertIn("logAnnounceInterval     0", conf)
         self.assertIn("dscp_event              46", conf)
@@ -323,7 +325,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("network_transport       UDPv4", conf)
 
     def test_generate_ptp4l_config_ieee1588_hardware_force_master(self):
-        """Verifies ptp4l.conf generation with IEEE 1588, hardware timestamping, and forced masterOnly."""
+        """Verifies ptp4l.conf generation with IEEE 1588, hardware timestamping, and forced serverOnly."""
         ptp_cfg = {
             "enabled": True,
             "auto_inhibit": False,
@@ -339,7 +341,9 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         )
         self.assertIn("domainNumber            1", conf)
         self.assertIn("priority1               64", conf)
-        self.assertIn("masterOnly              1", conf)  # Forced master only
+        self.assertIn("serverOnly              1", conf)  # Forced master/server only
+        self.assertIn("uds_address", conf)
+        self.assertIn("uds_ro_address", conf)
         self.assertIn("logSyncInterval         0", conf)  # 1 packet/sec for standard IEEE 1588
         self.assertIn("time_stamping           hardware", conf)
         self.assertIn("[eth1]", conf)

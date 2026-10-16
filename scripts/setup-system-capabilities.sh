@@ -33,21 +33,27 @@ if [ -f "$SYSTEM_SERVICE" ]; then
     # Ensure CapabilityBoundingSet contains all required capabilities
     if grep -q "^CapabilityBoundingSet=" "$SYSTEM_SERVICE"; then
         CURRENT_BOUNDING=$(grep "^CapabilityBoundingSet=" "$SYSTEM_SERVICE" | cut -d= -f2)
-        if ! grep -q "CAP_PERFMON" "$SYSTEM_SERVICE" || ! grep -q "CAP_SYS_ADMIN" "$SYSTEM_SERVICE"; then
-            echo "--> Updating CapabilityBoundingSet to include CAP_PERFMON and CAP_SYS_ADMIN..."
-            sed -i 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_PERFMON CAP_SYS_ADMIN/' "$SYSTEM_SERVICE"
+        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE"; then
+            echo "--> Updating CapabilityBoundingSet to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME, CAP_PERFMON, CAP_SYS_ADMIN..."
+            sed -i 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_PERFMON CAP_SYS_ADMIN/' "$SYSTEM_SERVICE"
             CHANGED=1
         fi
     else
         echo "--> Injecting CapabilityBoundingSet into $SYSTEM_SERVICE..."
-        sed -i '/\[Service\]/a CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_PERFMON CAP_SYS_ADMIN' "$SYSTEM_SERVICE"
+        sed -i '/\[Service\]/a CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_PERFMON CAP_SYS_ADMIN' "$SYSTEM_SERVICE"
         CHANGED=1
     fi
 
-    # Ensure AmbientCapabilities contains CAP_NET_BIND_SERVICE
-    if ! grep -q "^AmbientCapabilities=CAP_NET_BIND_SERVICE" "$SYSTEM_SERVICE"; then
+    # Ensure AmbientCapabilities contains network and timing capabilities
+    if grep -q "^AmbientCapabilities=" "$SYSTEM_SERVICE"; then
+        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE"; then
+            echo "--> Updating AmbientCapabilities to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME..."
+            sed -i 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME/' "$SYSTEM_SERVICE"
+            CHANGED=1
+        fi
+    else
         echo "--> Injecting AmbientCapabilities into $SYSTEM_SERVICE..."
-        sed -i '/\[Service\]/a AmbientCapabilities=CAP_NET_BIND_SERVICE' "$SYSTEM_SERVICE"
+        sed -i '/\[Service\]/a AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME' "$SYSTEM_SERVICE"
         CHANGED=1
     fi
 
@@ -83,6 +89,26 @@ if [ -n "$INTEL_GPU_TOP" ] && [ -x "$INTEL_GPU_TOP" ] && command -v setcap >/dev
     fi
 else
     echo "--> Note: intel_gpu_top not found. If running on an Intel GPU host, install intel-gpu-tools for hardware telemetry."
+fi
+
+# ------------------------------------------------------------------------------
+# 4. PTP Clock Synchronization Capabilities (CAP_NET_BIND_SERVICE, CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME)
+# ------------------------------------------------------------------------------
+PTP4L_BIN="$(command -v ptp4l 2>/dev/null || true)"
+if [ -z "$PTP4L_BIN" ] && [ -x "/usr/sbin/ptp4l" ]; then
+    PTP4L_BIN="/usr/sbin/ptp4l"
+fi
+if [ -n "$PTP4L_BIN" ] && [ -x "$PTP4L_BIN" ] && command -v setcap >/dev/null 2>&1; then
+    REAL_PTP4L="$(readlink -f "$PTP4L_BIN")"
+    echo "--> Detected ptp4l at $REAL_PTP4L"
+    echo "--> Setting capabilities cap_net_bind_service,cap_net_admin,cap_net_raw,cap_sys_time=+ep for non-root PTP clock..."
+    if setcap cap_net_bind_service,cap_net_admin,cap_net_raw,cap_sys_time=+ep "$REAL_PTP4L" 2>/dev/null; then
+        echo "--> Applied capabilities successfully to $REAL_PTP4L: $(getcap "$REAL_PTP4L")"
+    else
+        echo "Warning: Failed to set capabilities on $REAL_PTP4L. Root or elevated permissions may be needed."
+    fi
+else
+    echo "--> Note: ptp4l not found. If running PipeWire PTP Master Clocks, install linuxptp system package."
 fi
 
 echo "================================================================="

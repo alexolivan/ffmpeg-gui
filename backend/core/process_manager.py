@@ -1225,6 +1225,14 @@ class ProcessManager:
                     os.remove(ptp_ephem)
                 except Exception:
                     pass
+            # Clean up ephemeral UDS sockets created for ptp4l in /dev/shm or /tmp
+            shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
+            for uds_f in [os.path.join(shm_dir, f"ptp4l_{process_id}.uds"), os.path.join(shm_dir, f"ptp4lro_{process_id}.uds")]:
+                if os.path.exists(uds_f):
+                    try:
+                        os.remove(uds_f)
+                    except Exception:
+                        pass
 
             cleanup_rogue_processes(process_id=process_id)
 

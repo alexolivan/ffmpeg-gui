@@ -385,8 +385,8 @@ ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=2
 KillMode=process
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_PERFMON CAP_SYS_ADMIN
-AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_PERFMON CAP_SYS_ADMIN
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME
 
 [Install]
 WantedBy=multi-user.target

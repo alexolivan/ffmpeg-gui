@@ -384,10 +384,11 @@ def find_system_binary(bin_name: str) -> Optional[str]:
     return None
 
 
-def probe_network_ptp_master(ifname: str, if_ip: Optional[str] = None, timeout: float = 0.25) -> Dict[str, Any]:
+def probe_network_ptp_master(ifname: str, if_ip: Optional[str] = None, timeout: float = 0.35) -> Dict[str, Any]:
     """
     Attempts to detect an active PTPv2 Grandmaster on the local broadcast domain by listening
-    briefly for PTP Announce / Sync packets on multicast 224.0.1.129 (UDP port 320).
+    briefly for PTP Sync (port 319, 8 pkts/s in AES67) or Announce (port 320, 1 pkt/s) packets
+    on multicast 224.0.1.129.
     Safely handles unprivileged environments, timeouts, and permission errors without failing.
     """
     result = {
@@ -395,45 +396,48 @@ def probe_network_ptp_master(ifname: str, if_ip: Optional[str] = None, timeout: 
         "source_ip": None,
         "is_local": False
     }
-    sock = None
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if hasattr(socket, "SO_REUSEPORT"):
-            try:
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            except Exception:
-                pass
-        sock.settimeout(max(0.05, min(timeout, 1.0)))
-        sock.bind(('0.0.0.0', 320))
+    # Check port 319 (event/sync: 8 pkts/sec in AES67) first for instant detection, then port 320 (announce)
+    for port in (319, 320):
+        sock = None
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except Exception:
+                    pass
+            sock.settimeout(max(0.1, min(timeout, 1.0)))
+            sock.bind(('0.0.0.0', port))
 
-        if if_ip and if_ip not in ("0.0.0.0", "127.0.0.1"):
-            try:
-                mreq = struct.pack('4s4s', socket.inet_aton('224.0.1.129'), socket.inet_aton(if_ip))
-                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-            except Exception:
+            if if_ip and if_ip not in ("0.0.0.0", "127.0.0.1"):
+                try:
+                    mreq = struct.pack('4s4s', socket.inet_aton('224.0.1.129'), socket.inet_aton(if_ip))
+                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+                except Exception:
+                    mreq = struct.pack('4sl', socket.inet_aton('224.0.1.129'), socket.INADDR_ANY)
+                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            else:
                 mreq = struct.pack('4sl', socket.inet_aton('224.0.1.129'), socket.INADDR_ANY)
                 sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-        else:
-            mreq = struct.pack('4sl', socket.inet_aton('224.0.1.129'), socket.INADDR_ANY)
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
-        data, (sender_ip, _) = sock.recvfrom(1024)
-        if data and len(data) >= 34:
-            msg_type = data[0] & 0x0F
-            version = data[1] & 0x0F
-            if version == 2 and msg_type in (0x0, 0xB):
-                result["detected"] = True
-                result["source_ip"] = sender_ip
-                result["is_local"] = (sender_ip == if_ip) if if_ip else (sender_ip in ("127.0.0.1", "0.0.0.0"))
-    except (OSError, socket.timeout, Exception):
-        pass
-    finally:
-        if sock:
-            try:
-                sock.close()
-            except Exception:
-                pass
+            data, (sender_ip, _) = sock.recvfrom(1024)
+            if data and len(data) >= 34:
+                msg_type = data[0] & 0x0F
+                version = data[1] & 0x0F
+                if version == 2 and msg_type in (0x0, 0x1, 0x8, 0x9, 0xA, 0xB):
+                    result["detected"] = True
+                    result["source_ip"] = sender_ip
+                    result["is_local"] = (sender_ip == if_ip) if if_ip else (sender_ip in ("127.0.0.1", "0.0.0.0"))
+                    break
+        except (OSError, socket.timeout, Exception):
+            pass
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
     return result
 
 
@@ -525,7 +529,7 @@ def audit_pipewire_network_capabilities(probe_network_ptp: bool = True) -> Dict[
             "is_local": False
         }
         if probe_network_ptp:
-            active_master = probe_network_ptp_master(ifname, ip, timeout=0.15)
+            active_master = probe_network_ptp_master(ifname, ip, timeout=0.25)
 
         interfaces.append({
             "name": ifname,
