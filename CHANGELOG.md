@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.44.0] - 2026-10-16
+
+### Added
+- **NIC PTP Capability Tri-State Audit (`ethtool -T`)**:
+  - Implemented automatic network interface timestamping audit classifying adapters into three clear tiers:
+    - 🟢 `hardware`: Hardware timestamping supported (`SOF_TIMESTAMPING_TX_HARDWARE` / `/dev/ptpX`).
+    - ⚠️ `software`: Software timestamping supported (`SOF_TIMESTAMPING_TX_SOFTWARE`).
+    - 🔴 `none`: No PTP timestamping support detected.
+  - Added visual status badges directly in the PipeWire Hub network interface selector and card displays.
+- **Active Network PTP Master Discovery**:
+  - Added non-intrusive multicast probe listening on `224.0.1.129:320` to detect active PTP Announce packets from external Grandmasters on the local subnet.
+  - Returns `active_ptp_master` with detected state and source IP in network capability audit.
+- **Managed `ptp4l` Master Clock Sidecar with BMCA Auto-Inhibition**:
+  - Integrated `ptp4l` as an auxiliary daemon tied directly to the PipeWire Hub lifecycle in `ProcessManager`.
+  - Configured ephemeral configurations safely stored in `/dev/shm/ptp4l_{id}.conf` with strict file permissions (`0o600`).
+  - Added BMCA auto-inhibition toggle (`ptp_auto_inhibit`, default: `true`):
+    - When enabled, `ptp4l` runs in standard BMCA negotiation mode, yielding smoothly if an external Grandmaster is present.
+    - When disabled, enforces `masterOnly=1` with visual collision alarms if another Grandmaster is active.
+  - Added intercompatibility tuning parameters: `priority1` (0-255, default 128), `domain` (0-127, default 0), and profile selection (`aes67` [8 sync/s, DSCP 46/34] vs `ieee1588` [1 sync/s]).
+- **Profile Import PTP Sanitization (`migrate_and_validate_profile`)**:
+  - Automatically resets `auto_inhibit = True` and elevates `priority1 >= 200` (backup slave mode) on imported service configurations to guarantee newly cloned nodes do not disrupt existing broadcast Grandmasters.
+- **System Dependencies**:
+  - Added `ethtool` and `linuxptp` to Debian/Ubuntu, RHEL/Fedora, and Arch installation scripts (`install.sh`) and documentation (`INSTALL.md`).
+
 ## [2.43.1] - 2026-10-15
 
 ### Fixed

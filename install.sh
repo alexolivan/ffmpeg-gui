@@ -91,7 +91,7 @@ install_debian_deps() {
                        libfdk-aac-dev libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
                        libavahi-client-dev libavahi-common-dev libasound2-dev libpulse-dev alsa-utils libasound2-plugins \
                        libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
-                       intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base xdotool dbus-x11 apulse \
+                       intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base xdotool dbus-x11 apulse ethtool linuxptp \
                        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
                        libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
                        libgbm1 libpango-1.0-0 libcairo2 libasound2
@@ -105,7 +105,7 @@ install_rhel_deps() {
                    x264-devel x265-devel openssl-devel libva-devel libdrm-devel \
                    fdk-aac-free-devel lame-devel libvorbis-devel opus-devel libvpx-devel \
                    avahi-devel alsa-lib-devel pulseaudio-libs-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel \
-                   intel-gpu-tools xorg-x11-server-Xvfb x11vnc xorg-x11-server-utils xdotool dbus-x11 \
+                   intel-gpu-tools xorg-x11-server-Xvfb x11vnc xorg-x11-server-utils xdotool dbus-x11 ethtool linuxptp \
                    nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon \
                    libXcomposite libXdamage libXfixes libXrandr mesa-libgbm pango cairo alsa-lib alsa-utils
 }
@@ -117,7 +117,7 @@ install_arch_deps() {
                                  x264 x265 openssl libva libdrm \
                                  libfdk-aac lame libvorbis opus libvpx \
                                  avahi alsa-lib libpulse freetype2 harfbuzz fontconfig fribidi \
-                                 intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm xdotool apulse \
+                                 intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm xdotool apulse ethtool linuxptp \
                                  nss nspr atk at-spi2-atk cups libdrm libxkbcommon \
                                  libxcomposite libxdamage libxfixes libxrandr mesa pango cairo alsa-lib alsa-utils
 }

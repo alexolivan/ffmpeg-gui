@@ -5981,6 +5981,20 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
             if not imported_base_prefix or imported_base_prefix != local_canonical_prefix:
                 aes67_net["base_multicast_prefix"] = local_canonical_prefix
 
+            # Sanitize PTP Master Clock settings on imported profiles
+            ptp_cfg = aes67_net.get("ptp")
+            if isinstance(ptp_cfg, dict) and ptp_cfg.get("enabled"):
+                # Avoid Grandmaster conflict when importing profiles between machines:
+                # Ensure auto_inhibit is active and set priority1 to at least 200 (Secondary/Backup Master)
+                ptp_cfg["auto_inhibit"] = True
+                try:
+                    cur_prio = int(ptp_cfg.get("priority1", 128))
+                except Exception:
+                    cur_prio = 128
+                if cur_prio < 200:
+                    ptp_cfg["priority1"] = 200
+                aes67_net["ptp"] = ptp_cfg
+
             pw_cfg["aes67_network"] = aes67_net
             cfg["aes67_network"] = aes67_net
             if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):

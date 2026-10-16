@@ -667,6 +667,14 @@ class ProcessManager:
                         self.pipewire_supervisors[process_id] = supervisor
                         await supervisor.start()
                         asyncio.create_task(self._restart_dependent_pipewire_consumers(process_id))
+
+                        # Managed PTP Master Clock sidecar (ptp4l)
+                        pw_full_cfg = cfg.get("pipewire_config") or cfg
+                        aes_net = pw_full_cfg.get("aes67_network", {})
+                        if aes_net.get("enabled") and aes_net.get("interface"):
+                            ptp_cfg = aes_net.get("ptp", {})
+                            if ptp_cfg.get("enabled"):
+                                await self._start_ptp4l_sidecar(process_id, aes_net["interface"], ptp_cfg, logs_dir)
                 elif svc_type == "desktop":
                     # Clean up stale X11 lock file and socket if previous Xvfb crashed
                     x_lock_path = f"/tmp/.X{display_num}-lock"
@@ -944,6 +952,13 @@ class ProcessManager:
                     shutil.rmtree(pw_rdir, ignore_errors=True)
                 except Exception:
                     pass
+            ptp_conf = f"/dev/shm/ptp4l_{process_id}.conf"
+            if os.path.exists(ptp_conf):
+                try:
+                    os.remove(ptp_conf)
+                except Exception:
+                    pass
+            self.ephemeral_configs.pop(f"ptp_{process_id}", None)
             raise
 
     def notify_service_crash(self, process_id: int, process_name: str, exit_code: int = 1, is_initial_crash: bool = True):
@@ -1194,6 +1209,20 @@ class ProcessManager:
             if os.path.exists(pw_runtime_dir):
                 try:
                     shutil.rmtree(pw_runtime_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
+            # Clean up ptp4l configuration if present
+            ptp_conf = f"/dev/shm/ptp4l_{process_id}.conf"
+            if os.path.exists(ptp_conf):
+                try:
+                    os.remove(ptp_conf)
+                except Exception:
+                    pass
+            ptp_ephem = self.ephemeral_configs.pop(f"ptp_{process_id}", None)
+            if ptp_ephem and os.path.exists(ptp_ephem):
+                try:
+                    os.remove(ptp_ephem)
                 except Exception:
                     pass
 
@@ -2135,6 +2164,75 @@ class ProcessManager:
 
         cmd = [pipewire_bin, "-c", config_path]
         return cmd, config_path, runtime_dir
+
+    async def _start_ptp4l_sidecar(self, process_id: int, iface: str, ptp_cfg: Dict[str, Any], logs_dir: str):
+        """
+        Launches managed ptp4l master clock daemon as an auxiliary process tied to PipeWire Hub service.
+        Generates /dev/shm/ptp4l_{process_id}.conf in ephemeral RAM and applies proper timestamping flags.
+        """
+        from core.network_inspector import find_system_binary, audit_pipewire_network_capabilities
+        from core.pipewire_config import PipeWireConfigGenerator
+
+        ptp4l_bin = find_system_binary("ptp4l")
+        if not ptp4l_bin:
+            self.logger.warning(
+                f"[PipeWire Hub #{process_id}] ptp4l binary not found on host. "
+                f"PTP Master Clock could not be started for interface '{iface}'."
+            )
+            return
+
+        # Audit NIC capability for this specific interface
+        try:
+            audit_info = audit_pipewire_network_capabilities(probe_network_ptp=False)
+            matched = next((i for i in audit_info.get("interfaces", []) if i.get("name") == iface), None)
+            ptp_support = matched.get("ptp_support", "software") if matched else "software"
+        except Exception as e:
+            self.logger.warning(f"[PipeWire Hub #{process_id}] Failed to audit NIC for PTP: {e}. Defaulting to software.")
+            ptp_support = "software"
+
+        if ptp_support == "none":
+            self.logger.warning(
+                f"[PipeWire Hub #{process_id}] Network interface '{iface}' has no PTP timestamping support. "
+                f"Skipping ptp4l master clock start."
+            )
+            return
+
+        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
+        ptp_conf_path = os.path.join(shm_dir, f"ptp4l_{process_id}.conf")
+
+        PipeWireConfigGenerator.write_ptp4l_config_file(
+            service_id=process_id,
+            ptp_cfg=ptp_cfg,
+            iface=iface,
+            target_path=ptp_conf_path,
+            ptp_support=ptp_support
+        )
+        self.ephemeral_configs[f"ptp_{process_id}"] = ptp_conf_path
+
+        ptp_cmd = [ptp4l_bin, "-f", ptp_conf_path, "-i", iface, "-m"]
+        if ptp_support == "software":
+            ptp_cmd.append("-S")
+
+        self.logger.info(
+            f"[PipeWire Hub #{process_id}] Spawning managed PTP master clock ({ptp_support}): {' '.join(ptp_cmd)}"
+        )
+        try:
+            ptp_log_path = os.path.join(logs_dir, f"ptp4l_{process_id}.log")
+            ptp_log_file = open(ptp_log_path, "ab", buffering=0)
+            ptp_proc = await asyncio.create_subprocess_exec(
+                *ptp_cmd,
+                stdout=ptp_log_file,
+                stderr=asyncio.subprocess.STDOUT,
+                stdin=asyncio.subprocess.DEVNULL
+            )
+            try:
+                ptp_log_file.close()
+            except Exception:
+                pass
+
+            self.auxiliary_processes.setdefault(process_id, []).append(ptp_proc)
+        except Exception as e:
+            self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch ptp4l sidecar: {e}")
 
     def _get_pipewire_tool_binary(self, hub_service_id: int, tool_name: str = "pw-link") -> Tuple[Optional[str], Optional[str]]:
         """Resolves binary path and install_dir for PipeWire CLI tools (pw-link, pw-dump, pw-cli)."""

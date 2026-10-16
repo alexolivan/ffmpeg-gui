@@ -907,6 +907,66 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             self.assertIs(sup, sup2)
             sup.stop()
 
+    async def test_start_ptp4l_sidecar_spawns_process_and_cleans_up(self):
+        """Verifies that ptp4l master clock is spawned as an auxiliary process and cleaned up on stop."""
+        with self.Session() as session:
+            hub = Service(
+                id=40,
+                name="PTP PipeWire Hub 40",
+                service_type="pipewire_hub",
+                status="stopped",
+                config={
+                    "pipewire_config": {
+                        "aes67_network": {
+                            "enabled": True,
+                            "interface": "enp9s0",
+                            "ptp": {
+                                "enabled": True,
+                                "auto_inhibit": True,
+                                "priority1": 128,
+                                "domain": 0,
+                                "profile": "aes67"
+                            }
+                        },
+                        "virtual_sinks": [{"id": "aes_sink"}]
+                    }
+                }
+            )
+            session.add(hub)
+            session.commit()
+
+        mock_pw_proc = self._create_mock_proc(pid=40001)
+        mock_ptp_proc = self._create_mock_proc(pid=40002)
+
+        def mock_exec(*cmd, **kwargs):
+            if "ptp4l" in cmd[0]:
+                return mock_ptp_proc
+            return mock_pw_proc
+
+        with patch("asyncio.create_subprocess_exec", side_effect=mock_exec) as mock_spawn, \
+             patch("core.network_inspector.find_system_binary", return_value="/usr/sbin/ptp4l"), \
+             patch("core.network_inspector.audit_pipewire_network_capabilities", return_value={
+                 "interfaces": [{"name": "enp9s0", "ptp_support": "software"}]
+             }), \
+             patch("os.path.exists", side_effect=lambda p: True if "ptp4l" in str(p) or "pipewire" in str(p) else False), \
+             patch("shutil.which", return_value="/usr/bin/pipewire"), \
+             patch.object(self.pm, "_watchdog", new_callable=AsyncMock):
+
+            await self.pm.start_process(40)
+
+            # Check that ptp4l was spawned
+            spawn_calls = [c[0] for c in mock_spawn.call_args_list]
+            ptp_call = next((c for c in spawn_calls if any("ptp4l" in str(arg) for arg in c)), None)
+            self.assertIsNotNone(ptp_call)
+            self.assertIn("-i", ptp_call)
+            self.assertIn("enp9s0", ptp_call)
+            self.assertIn("-S", ptp_call)  # software timestamping
+            self.assertIn(mock_ptp_proc, self.pm.auxiliary_processes.get(40, []))
+
+            # Stop process and verify auxiliary cleanup
+            await self.pm.stop_process(40)
+            mock_ptp_proc.terminate.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main()

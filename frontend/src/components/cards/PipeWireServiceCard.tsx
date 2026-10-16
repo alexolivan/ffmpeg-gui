@@ -211,10 +211,21 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
 
           {/* AES67 Status Pill */}
           {isAes67Enabled ? (
-            <span className="px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 text-[10px] font-bold flex items-center gap-1">
-              <span>AES67 Tx</span>
-              {aes67Interface && <span className="opacity-70 font-normal">@{aes67Interface}</span>}
-            </span>
+            <>
+              <span className="px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 text-[10px] font-bold flex items-center gap-1">
+                <span>AES67 Tx</span>
+                {aes67Interface && <span className="opacity-70 font-normal">@{aes67Interface}</span>}
+              </span>
+              {aes67Net.ptp?.enabled && (
+                <span
+                  className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold flex items-center gap-1"
+                  title={`PTP Master Clock active (BMCA Priority ${aes67Net.ptp?.priority1 ?? 128}, Domain ${aes67Net.ptp?.domain ?? 0})`}
+                >
+                  <span>⏱️ PTP Master</span>
+                  <span className="opacity-70 font-normal text-[9px]">(Prio {aes67Net.ptp?.priority1 ?? 128})</span>
+                </span>
+              )}
+            </>
           ) : (
             <span className="px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 border border-white/10 text-[10px]">
               {t('services.pipewire.localOnly', 'Local RAM Only')}
