@@ -127,7 +127,7 @@ class TestPipewireTags(unittest.IsolatedAsyncioTestCase):
     async def test_get_software_tags_pipewire_fallback(self, mock_fetch):
         mock_fetch.return_value = []
         res = await get_software_tags("pipewire")
-        self.assertEqual(res, {"tags": ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7"]})
+        self.assertEqual(res, {"tags": ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7", "1.0.5"]})
         mock_fetch.assert_awaited_once_with("https://gitlab.freedesktop.org/pipewire/pipewire.git")
 
     @patch("main.build_manager.fetch_available_tags", new_callable=AsyncMock)
@@ -142,7 +142,7 @@ class TestPipewireTags(unittest.IsolatedAsyncioTestCase):
         mock_fetch.return_value = []
         resp = self.client.get("/builds/tags/pipewire")
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json(), {"tags": ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7"]})
+        self.assertEqual(resp.json(), {"tags": ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7", "1.0.5"]})
 
     def test_pipewire_default_vector_svg_icon(self):
         self.assertIn("pipewire", DEFAULT_ENGINE_SVGS)

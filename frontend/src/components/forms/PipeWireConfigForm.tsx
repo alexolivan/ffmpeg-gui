@@ -17,8 +17,16 @@ export interface NetworkAuditInterface {
   ip: string | null;
   is_up: boolean;
   speed: number;
+  ptp_support?: 'hardware' | 'software' | 'none';
+  ptp_device?: string | null;
   ptp_hardware_capable: boolean;
+  ptp_software_capable?: boolean;
   canonical_base_multicast_prefix?: string;
+  active_ptp_master?: {
+    detected: boolean;
+    source_ip?: string | null;
+    is_local: boolean;
+  };
 }
 
 export interface NetworkAuditData {
@@ -35,7 +43,9 @@ export interface NetworkAuditData {
   }[];
   host_ptp: {
     ptp4l_installed: boolean;
+    ptp4l_bin?: string | null;
     ptp4l_running: boolean;
+    active_master_detected?: boolean;
   };
 }
 
@@ -166,6 +176,22 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   const [reservedNics, setReservedNics] = useState<Record<string, { serviceId: number; serviceName: string }>>({});
   const [sinkValidationFeedback, setSinkValidationFeedback] = useState<Record<number, any>>({});
   const [recalcFeedback, setRecalcFeedback] = useState<string | null>(null);
+
+  // PTP Master Clock State
+  const initialPtp = aesNetCfg.ptp || {};
+  const [ptpEnabled, setPtpEnabled] = useState<boolean>(Boolean(initialPtp.enabled));
+  const [ptpAutoInhibit, setPtpAutoInhibit] = useState<boolean>(
+    initialPtp.auto_inhibit !== undefined ? Boolean(initialPtp.auto_inhibit) : true
+  );
+  const [ptpPriority1, setPtpPriority1] = useState<number>(
+    initialPtp.priority1 !== undefined ? Number(initialPtp.priority1) : 128
+  );
+  const [ptpDomain, setPtpDomain] = useState<number>(
+    initialPtp.domain !== undefined ? Number(initialPtp.domain) : 0
+  );
+  const [ptpProfile, setPtpProfile] = useState<string>(
+    initialPtp.profile || 'aes67'
+  );
 
   const cleanSapSuffix = (rawSap: string | undefined, host: string, fallbackId: string): string => {
     if (!rawSap) return fallbackId;
@@ -377,6 +403,14 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
   const isNicConflict = aes67Enabled && Boolean(selectedInterface && reservedNics[selectedInterface]);
 
+  // Derived PTP capabilities & detection flags
+  const selectedIfaceObj = networkAudit?.interfaces?.find((i) => i.name === selectedInterface);
+  const currentNicPtpSupport = selectedIfaceObj?.ptp_support || (selectedIfaceObj?.ptp_hardware_capable ? 'hardware' : (selectedIfaceObj?.ptp_software_capable ? 'software' : 'none'));
+  const isPtpInstalled = Boolean(networkAudit?.host_ptp?.ptp4l_installed);
+  const canEnableMasterClock = isPtpInstalled && currentNicPtpSupport !== 'none';
+  const isExternalMasterDetected = Boolean(selectedIfaceObj?.active_ptp_master?.detected || networkAudit?.host_ptp?.active_master_detected);
+  const detectedMasterIp = selectedIfaceObj?.active_ptp_master?.source_ip || 'LAN';
+
   // Form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -412,6 +446,13 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
         interface: aes67Enabled ? selectedInterface : null,
         ip: aes67Enabled ? selectedIp : '0.0.0.0',
         base_multicast_prefix: aes67Enabled ? cleanPrefix : null,
+        ptp: aes67Enabled ? {
+          enabled: Boolean(ptpEnabled && canEnableMasterClock),
+          auto_inhibit: Boolean(ptpAutoInhibit),
+          priority1: Math.max(0, Math.min(255, Number(ptpPriority1) || 128)),
+          domain: Math.max(0, Math.min(127, Number(ptpDomain) || 0)),
+          profile: ptpProfile || 'aes67',
+        } : undefined,
       },
     };
 
@@ -589,9 +630,14 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                     {networkAudit?.interfaces && networkAudit.interfaces.length > 0 ? (
                       networkAudit.interfaces.map((iface) => {
                         const inUseBy = reservedNics[iface.name];
+                        const ptpBadge = (iface.ptp_support === 'hardware' || iface.ptp_hardware_capable)
+                          ? `🟢 ${t('services.pipewire.nicPtpHardware', 'PTP HW')}`
+                          : (iface.ptp_support === 'software' || iface.ptp_software_capable)
+                          ? `⚠️ ${t('services.pipewire.nicPtpSoftware', 'Software Clock')}`
+                          : `🔴 ${t('services.pipewire.nicPtpNone', 'No PTP')}`;
                         return (
                           <option key={iface.name} value={iface.name} disabled={Boolean(inUseBy)}>
-                            {iface.name} ({iface.ip || 'No IPv4'}) {iface.ptp_hardware_capable ? '· [PTP Hardware]' : ''} {inUseBy ? `— [${t('services.pipewire.nicReservedBy', 'Reserved by: {{name}}', { name: inUseBy.serviceName })}]` : ''}
+                            {iface.name} ({iface.ip || 'No IPv4'}) · [{ptpBadge}] {inUseBy ? `— [${t('services.pipewire.nicReservedBy', 'Reserved by: {{name}}', { name: inUseBy.serviceName })}]` : ''}
                           </option>
                         );
                       })
@@ -603,6 +649,29 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                 <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
                   {t('services.pipewire.nicHelp', 'Select the physical LAN port connected to the Dante/AES67 audio subnet.')}
                 </span>
+
+                {/* Selected NIC Capability Badge */}
+                {selectedIfaceObj && (
+                  <div className="flex items-center gap-2 mt-2 text-[11px]">
+                    <span className="text-[var(--text-secondary)] font-mono text-[10px] uppercase font-bold">{selectedIfaceObj.name}:</span>
+                    {(selectedIfaceObj.ptp_support === 'hardware' || selectedIfaceObj.ptp_hardware_capable) ? (
+                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 font-semibold flex items-center gap-1 text-[10px]">
+                        <span>🟢</span>
+                        <span>{t('services.pipewire.nicPtpHardware', 'PTP HW')} ({selectedIfaceObj.ptp_device || 'SOF_TIMESTAMPING_TX_HARDWARE'})</span>
+                      </span>
+                    ) : (selectedIfaceObj.ptp_support === 'software' || selectedIfaceObj.ptp_software_capable) ? (
+                      <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/30 font-semibold flex items-center gap-1 text-[10px]">
+                        <span>⚠️</span>
+                        <span>{t('services.pipewire.nicPtpSoftware', 'Software Clock')} (SOF_TIMESTAMPING_TX_SOFTWARE)</span>
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-500 border border-red-500/30 font-semibold flex items-center gap-1 text-[10px]">
+                        <span>🔴</span>
+                        <span>{t('services.pipewire.nicPtpNone', 'No PTP')}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {isNicConflict && (
                   <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-start gap-2.5 mt-2 animate-in fade-in duration-200">
@@ -674,50 +743,155 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                 </div>
               </div>
 
-              {/* Informative Clock Status Banner */}
-              {networkAudit && (
-                <div>
-                  {networkAudit.host_ptp?.ptp4l_running ? (
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2.5">
-                      <span className="text-base shrink-0">🟢</span>
-                      <div>
-                        <p className="font-bold">
-                          {t('services.pipewire.ptpSynchronized', 'PTPv2 Synchronized (IEEE 1588-2008 active)')}
-                        </p>
-                        <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-0.5">
-                          {t('services.pipewire.ptpSynchronizedDesc', 'Host ptp4l daemon active providing PTP master/slave clock for precise RTP packet alignment.')}
-                        </p>
+              {/* PTPv2 Master Clock & Synchronization Section */}
+              <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--glass-border)] space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
+                      <span>⏱️</span>
+                      <span>{t('services.pipewire.ptpMasterSection', 'PTPv2 Master Clock & Synchronization')}</span>
+                    </h5>
+                    <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
+                      {t('services.pipewire.ptpMasterHelp', 'Synchronize AoIP broadcast streams using precision PTPv2 (IEEE 1588-2008 / AES67).')}
+                    </p>
+                  </div>
+
+                  {/* Toggle 1: Enable PTP Master Clock */}
+                  <label className={`relative inline-flex items-center cursor-pointer ${!canEnableMasterClock ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <input
+                      type="checkbox"
+                      disabled={!canEnableMasterClock}
+                      checked={ptpEnabled && canEnableMasterClock}
+                      onChange={(e) => setPtpEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
+                  </label>
+                </div>
+
+                {!isPtpInstalled ? (
+                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-300 text-[11px] flex items-center gap-2">
+                    <span className="text-sm shrink-0">⚠️</span>
+                    <span>{t('services.pipewire.ptpNotInstalled', 'ptp4l utility not found on host. Install linuxptp system package to enable PTP Master Clock.')}</span>
+                  </div>
+                ) : currentNicPtpSupport === 'none' ? (
+                  <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/25 text-red-600 dark:text-red-300 text-[11px] flex items-center gap-2">
+                    <span className="text-sm shrink-0">🔴</span>
+                    <span>{t('services.pipewire.ptpNicNotSupported', 'Selected network interface does not support PTP timestamping.')}</span>
+                  </div>
+                ) : null}
+
+                {ptpEnabled && canEnableMasterClock && (
+                  <div className="space-y-3 pt-2 border-t border-[var(--glass-border)]">
+                    {/* Toggle 2: Auto-inhibition (BMCA) */}
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                      <div className="pr-4">
+                        <label className="text-xs font-semibold text-[var(--text-primary)] block cursor-pointer">
+                          {t('services.pipewire.ptpAutoInhibit', 'Auto-inhibit if another Master is detected (BMCA)')}
+                        </label>
+                        <span className="text-[10px] text-[var(--text-secondary)] block mt-0.5 leading-relaxed">
+                          {t('services.pipewire.ptpAutoInhibitHelp', 'Enables Best Master Clock Algorithm negotiation. Prevents clock collisions by yielding if an external Grandmaster is present on the network.')}
+                        </span>
                       </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={ptpAutoInhibit}
+                          onChange={(e) => setPtpAutoInhibit(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-brand-lime"></div>
+                      </label>
                     </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-600 dark:text-blue-300 text-xs flex items-start gap-2.5">
-                        <span className="text-base shrink-0 mt-0.5">ℹ️</span>
+
+                    {/* Dynamic Master Detection Status Banners (Green / Amber / Red) */}
+                    {!isExternalMasterDetected ? (
+                      <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2">
+                        <span className="text-sm shrink-0">🟢</span>
+                        <span>{t('services.pipewire.ptpStatusFree', 'Network free of external clock collisions. This node will act as Grandmaster.')}</span>
+                      </div>
+                    ) : ptpAutoInhibit ? (
+                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-center gap-2">
+                        <span className="text-sm shrink-0">⚠️</span>
+                        <span>
+                          {t(
+                            'services.pipewire.ptpStatusPassive',
+                            'Active PTP Grandmaster detected on LAN ({{ip}}). With auto-inhibition enabled, this node will remain in passive standby and only take over if the external Master fails.',
+                            { ip: detectedMasterIp }
+                          )}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-lg bg-red-500/15 border border-red-500/40 text-red-600 dark:text-red-400 text-xs flex items-start gap-2 animate-in fade-in duration-200">
+                        <span className="text-base shrink-0">🚨</span>
                         <div>
                           <p className="font-bold">
-                            {t('services.pipewire.ptpSoftwareClock', 'System Monotonic Clock Mode (Active)')}
-                          </p>
-                          <p className="text-[11px] text-[var(--text-secondary)] mt-1 leading-relaxed">
-                            {t('services.pipewire.ptpSoftwareClockDesc', 'AES67/Dante streams use the kernel local clock. Safe, autonomous, and zero risk of interference with existing network clocks. Fully compatible with SAP discovery, Dante Controller, and software receivers.')}
+                            {t(
+                              'services.pipewire.ptpStatusDanger',
+                              'CLOCK COLLISION RISK: Auto-inhibition is disabled while another Grandmaster ({{ip}}) is broadcasting. This will cause packet jitter and packet loss on AES67/Dante receivers unless domain or priority is isolated.',
+                              { ip: detectedMasterIp }
+                            )}
                           </p>
                         </div>
+                      </div>
+                    )}
+
+                    {/* 3 Intercompatibility Parameters */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      {/* Priority 1 */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.pipewire.ptpPriority1', 'Priority 1 (BMCA)')}
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={255}
+                          value={ptpPriority1}
+                          onChange={(e) => setPtpPriority1(Math.max(0, Math.min(255, Number(e.target.value) || 0)))}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                        />
+                        <span className="text-[9px] text-[var(--text-secondary)] mt-0.5 block leading-tight">
+                          {t('services.pipewire.ptpPriority1Help', 'BMCA preference (0-255). 128 is default; 64 for primary, 200 for backup.')}
+                        </span>
                       </div>
 
-                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-300 text-[11px] flex items-start gap-2">
-                        <span className="text-sm shrink-0">⚠️</span>
-                        <div>
-                          <p className="font-bold">
-                            {t('services.pipewire.ptpWarningTitle', 'Hardware PTP Synchronization (linuxptp)')}
-                          </p>
-                          <p className="text-[10px] text-amber-700/80 dark:text-amber-200/80 mt-0.5 leading-relaxed">
-                            {t('services.pipewire.ptpWarningDesc', 'Only recommended for dedicated broadcast integrations where a systems engineer explicitly configures ptp4l in client-only mode (slaveOnly=1) to track an existing network Grandmaster without destabilizing production clocks.')}
-                          </p>
-                        </div>
+                      {/* Domain */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.pipewire.ptpDomain', 'PTP Domain')}
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={127}
+                          value={ptpDomain}
+                          onChange={(e) => setPtpDomain(Math.max(0, Math.min(127, Number(e.target.value) || 0)))}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                        />
+                        <span className="text-[9px] text-[var(--text-secondary)] mt-0.5 block leading-tight">
+                          {t('services.pipewire.ptpDomainHelp', 'PTP domain (0-127). Domain 0 is AES67 / Dante default.')}
+                        </span>
+                      </div>
+
+                      {/* Profile */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.pipewire.ptpProfile', 'PTP Profile')}
+                        </label>
+                        <select
+                          value={ptpProfile}
+                          onChange={(e) => setPtpProfile(e.target.value)}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime cursor-pointer"
+                        >
+                          <option value="aes67">{t('services.pipewire.ptpProfileAes67', 'AES67 Media (8 sync/s · DSCP 46/34)')}</option>
+                          <option value="ieee1588">{t('services.pipewire.ptpProfileIeee1588', 'IEEE 1588 Default (1 sync/s)')}</option>
+                        </select>
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
