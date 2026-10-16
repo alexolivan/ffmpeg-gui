@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.44.1] - 2026-10-16
+
+### Fixed
+- **PipeWire `ptp4l` IPC UDS Sockets Permission Denied in `/var/run` (`PipeWireConfigGenerator`)**:
+  - Explicitly configured `uds_address /dev/shm/ptp4l_{service_id}.uds` and `uds_ro_address /dev/shm/ptp4lro_{service_id}.uds` in `ptp4l.conf`.
+  - Prevents `ptp4l` from attempting to create sockets in root-owned `/var/run/` (`uds: bind failed: Permission denied`), allowing unprivileged `ffmpeg-gui` execution without marking ports as `FAULTY`.
+  - Added cleanup of lingering `.uds` socket files in `ProcessManager` upon service shutdown.
+- **Modern IEEE 1588-2019 Server Directive**:
+  - Replaced deprecated `masterOnly` directive with modern standard `serverOnly` in `ptp4l.conf`, resolving linuxptp deprecation warnings.
+- **Linux Kernel Capabilities for Non-Root PTP Execution (`setup-system-capabilities.sh`, `install.sh`)**:
+  - Added automatic capability assignment on `/usr/sbin/ptp4l`: `cap_net_bind_service,cap_net_admin,cap_net_raw,cap_sys_time=+ep`.
+  - Extended systemd service unit `CapabilityBoundingSet` and `AmbientCapabilities` to include `CAP_NET_ADMIN`, `CAP_NET_RAW`, and `CAP_SYS_TIME`.
+- **Fast Multicast PTP Detection Probe (`network_inspector.py`)**:
+  - Enhanced `probe_network_ptp_master()` to probe both port 319 (Sync events, sent at 8 packets/sec in AES67) and port 320 (Announce).
+  - Enables instant and reliable passive discovery of active Grandmasters across nodes without missing transmission windows.
+
 ## [2.44.0] - 2026-10-16
 
 ### Added
