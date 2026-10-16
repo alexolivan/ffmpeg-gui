@@ -518,6 +518,99 @@ class TestPipewireNetworkAudit(unittest.TestCase):
             local_hostname = socket.gethostname().split(".")[0]
             self.assertTrue(sinks[0].get("sap_name").startswith(f"{local_hostname} "))
 
+    @patch(f"{NI_TARGET}.probe_network_ptp_master")
+    @patch(f"{NI_TARGET}.psutil.process_iter")
+    @patch(f"{NI_TARGET}.shutil.which")
+    @patch(f"{NI_TARGET}.subprocess.run")
+    @patch(f"{NI_TARGET}.psutil.net_if_stats")
+    @patch(f"{NI_TARGET}.psutil.net_if_addrs")
+    def test_ptp_tri_state_classification(
+        self,
+        mock_addrs,
+        mock_stats,
+        mock_run,
+        mock_which,
+        mock_proc_iter,
+        mock_probe
+    ):
+        """Verifica la clasificación precisa en tri-estado: hardware, software y none."""
+        app.dependency_overrides[verify_token] = lambda: "admin"
+
+        mock_addrs.return_value = {
+            "eth_hw": [SnicAddr(family=socket.AF_INET, address="192.168.1.10", netmask="255.255.255.0", broadcast=None, ptp=None)],
+            "eth_sw": [SnicAddr(family=socket.AF_INET, address="192.168.1.20", netmask="255.255.255.0", broadcast=None, ptp=None)],
+            "eth_none": [SnicAddr(family=socket.AF_INET, address="192.168.1.30", netmask="255.255.255.0", broadcast=None, ptp=None)]
+        }
+        mock_stats.return_value = {
+            "eth_hw": SnicStats(isup=True, duplex=2, speed=1000, mtu=1500, flags="up"),
+            "eth_sw": SnicStats(isup=True, duplex=2, speed=1000, mtu=1500, flags="up"),
+            "eth_none": SnicStats(isup=True, duplex=2, speed=1000, mtu=1500, flags="up")
+        }
+
+        def mock_ethtool(cmd, capture_output=True, text=True, timeout=2.0):
+            iface = cmd[2]
+            res = MagicMock()
+            res.returncode = 0
+            if iface == "eth_hw":
+                res.stdout = "Capabilities:\n\thardware-transmit\n\thardware-receive\nPTP Hardware Clock: 1\n"
+            elif iface == "eth_sw":
+                # Typical test1 NIC output
+                res.stdout = "Capabilities:\n\tsoftware-transmit\n\tsoftware-receive\n\tsoftware-system-clock\nPTP Hardware Clock: none\n"
+            else:
+                res.stdout = "Capabilities:\n\tnone\n"
+            res.stderr = ""
+            return res
+
+        mock_run.side_effect = mock_ethtool
+        mock_which.return_value = "/usr/sbin/ptp4l"
+        mock_proc_iter.return_value = []
+        mock_probe.return_value = {"detected": False, "source_ip": None, "is_local": False}
+
+        res = self.client.get("/api/pipewire/network-audit")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+
+        hw_iface = next(i for i in data["interfaces"] if i["name"] == "eth_hw")
+        self.assertEqual(hw_iface["ptp_support"], "hardware")
+        self.assertEqual(hw_iface["ptp_device"], "/dev/ptp1")
+        self.assertTrue(hw_iface["ptp_hardware_capable"])
+        self.assertFalse(hw_iface["ptp_software_capable"])
+
+        sw_iface = next(i for i in data["interfaces"] if i["name"] == "eth_sw")
+        self.assertEqual(sw_iface["ptp_support"], "software")
+        self.assertIsNone(sw_iface["ptp_device"])
+        self.assertFalse(sw_iface["ptp_hardware_capable"])
+        self.assertTrue(sw_iface["ptp_software_capable"])
+
+        none_iface = next(i for i in data["interfaces"] if i["name"] == "eth_none")
+        self.assertEqual(none_iface["ptp_support"], "none")
+        self.assertIsNone(none_iface["ptp_device"])
+        self.assertFalse(none_iface["ptp_hardware_capable"])
+        self.assertFalse(none_iface["ptp_software_capable"])
+
+    @patch(f"{NI_TARGET}.socket.socket")
+    def test_probe_network_ptp_master(self, mock_socket_cls):
+        """Verifica la detección pasiva de un PTP Master en la red mediante mensaje Announce."""
+        mock_sock = MagicMock()
+        mock_socket_cls.return_value = mock_sock
+
+        # Mock PTPv2 Announce packet (version=2, msg_type=0xB)
+        ptp_announce_header = bytearray(44)
+        ptp_announce_header[0] = 0x0B  # Announce msgType
+        ptp_announce_header[1] = 0x02  # Version 2
+        mock_sock.recvfrom.return_value = (bytes(ptp_announce_header), ("192.168.99.13", 320))
+
+        detected = ni_module.probe_network_ptp_master("exp7s0", "192.168.99.11", timeout=0.1)
+        self.assertTrue(detected["detected"])
+        self.assertEqual(detected["source_ip"], "192.168.99.13")
+        self.assertFalse(detected["is_local"])
+
+        # Local source
+        mock_sock.recvfrom.return_value = (bytes(ptp_announce_header), ("192.168.99.11", 320))
+        local_detected = ni_module.probe_network_ptp_master("exp7s0", "192.168.99.11", timeout=0.1)
+        self.assertTrue(local_detected["detected"])
+        self.assertTrue(local_detected["is_local"])
+
 
 if __name__ == "__main__":
     unittest.main()

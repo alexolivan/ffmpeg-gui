@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import socket
+import struct
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 import psutil
@@ -372,10 +373,75 @@ def generate_firewall_rules(matrix: List[Dict[str, Any]]) -> Dict[str, List[str]
     }
 
 
-def audit_pipewire_network_capabilities() -> Dict[str, Any]:
+def find_system_binary(bin_name: str) -> Optional[str]:
+    """Finds binary in PATH or standard system binary paths (/usr/sbin, /sbin, /usr/local/sbin)."""
+    cand = shutil.which(bin_name)
+    if cand:
+        return cand
+    for p in [f"/usr/sbin/{bin_name}", f"/sbin/{bin_name}", f"/usr/local/sbin/{bin_name}", f"/usr/bin/{bin_name}"]:
+        if os.path.exists(p) and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def probe_network_ptp_master(ifname: str, if_ip: Optional[str] = None, timeout: float = 0.25) -> Dict[str, Any]:
+    """
+    Attempts to detect an active PTPv2 Grandmaster on the local broadcast domain by listening
+    briefly for PTP Announce / Sync packets on multicast 224.0.1.129 (UDP port 320).
+    Safely handles unprivileged environments, timeouts, and permission errors without failing.
+    """
+    result = {
+        "detected": False,
+        "source_ip": None,
+        "is_local": False
+    }
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except Exception:
+                pass
+        sock.settimeout(max(0.05, min(timeout, 1.0)))
+        sock.bind(('0.0.0.0', 320))
+
+        if if_ip and if_ip not in ("0.0.0.0", "127.0.0.1"):
+            try:
+                mreq = struct.pack('4s4s', socket.inet_aton('224.0.1.129'), socket.inet_aton(if_ip))
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            except Exception:
+                mreq = struct.pack('4sl', socket.inet_aton('224.0.1.129'), socket.INADDR_ANY)
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+        else:
+            mreq = struct.pack('4sl', socket.inet_aton('224.0.1.129'), socket.INADDR_ANY)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+        data, (sender_ip, _) = sock.recvfrom(1024)
+        if data and len(data) >= 34:
+            msg_type = data[0] & 0x0F
+            version = data[1] & 0x0F
+            if version == 2 and msg_type in (0x0, 0xB):
+                result["detected"] = True
+                result["source_ip"] = sender_ip
+                result["is_local"] = (sender_ip == if_ip) if if_ip else (sender_ip in ("127.0.0.1", "0.0.0.0"))
+    except (OSError, socket.timeout, Exception):
+        pass
+    finally:
+        if sock:
+            try:
+                sock.close()
+            except Exception:
+                pass
+    return result
+
+
+def audit_pipewire_network_capabilities(probe_network_ptp: bool = True) -> Dict[str, Any]:
     """
     Audita interfaces de red del host y capacidades PTP de hardware/software para PipeWire.
-    Valida nombres de interfaz, utiliza timeouts defensivos con ethtool y omite loopbacks.
+    Clasifica cada interfaz en tri-estado PTP ('hardware' | 'software' | 'none'),
+    extrae el reloj PTP de hardware (/dev/ptpX si existe) y detecta masters activos.
     """
     try:
         addrs = psutil.net_if_addrs() or {}
@@ -386,6 +452,9 @@ def audit_pipewire_network_capabilities() -> Dict[str, Any]:
         stats = psutil.net_if_stats() or {}
     except Exception:
         stats = {}
+
+    ethtool_bin = find_system_binary("ethtool")
+    ptp4l_bin = find_system_binary("ptp4l")
 
     interfaces = []
     for ifname, addr_list in addrs.items():
@@ -415,31 +484,62 @@ def audit_pipewire_network_capabilities() -> Dict[str, Any]:
         is_up = bool(stat.isup) if stat is not None else True
         speed = int(stat.speed) if (stat is not None and stat.speed is not None and stat.speed >= 0) else 0
 
-        # Chequear capacidades de timestamping de hardware PTP vía ethtool -T
-        ptp_hardware_capable = False
+        # Chequear capacidades de timestamping PTP vía ethtool -T
+        ptp_support = "none"  # "hardware" | "software" | "none"
+        ptp_device = None
+
+        ethtool_cmd = ethtool_bin or "ethtool"
         try:
             res = subprocess.run(
-                ["ethtool", "-T", ifname],
+                [ethtool_cmd, "-T", ifname],
                 capture_output=True,
                 text=True,
                 timeout=2.0
             )
             if res.returncode == 0:
                 out = res.stdout or ""
-                if ("hardware-transmit" in out and "hardware-receive" in out) or ("SOF_TIMESTAMPING_TX_HARDWARE" in out):
-                    ptp_hardware_capable = True
+
+                # Extraer dispositivo PTP de hardware (/dev/ptpX) si está presente
+                clk_match = re.search(r"PTP Hardware Clock:\s*(\d+)", out)
+                if clk_match:
+                    ptp_device = f"/dev/ptp{clk_match.group(1)}"
+
+                has_hw = (("hardware-transmit" in out and "hardware-receive" in out) or
+                          ("SOF_TIMESTAMPING_TX_HARDWARE" in out))
+                has_sw = (("software-transmit" in out and "software-receive" in out) or
+                          ("SOF_TIMESTAMPING_TX_SOFTWARE" in out) or
+                          ("software-system-clock" in out))
+
+                if has_hw:
+                    ptp_support = "hardware"
+                elif has_sw:
+                    ptp_support = "software"
+                else:
+                    ptp_support = "none"
         except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError, subprocess.SubprocessError, Exception):
-            ptp_hardware_capable = False
+            ptp_support = "none"
+
+        active_master = {
+            "detected": False,
+            "source_ip": None,
+            "is_local": False
+        }
+        if probe_network_ptp:
+            active_master = probe_network_ptp_master(ifname, ip, timeout=0.15)
 
         interfaces.append({
             "name": ifname,
             "ip": ip,
             "is_up": is_up,
             "speed": speed,
-            "ptp_hardware_capable": ptp_hardware_capable
+            "ptp_support": ptp_support,
+            "ptp_device": ptp_device,
+            "ptp_hardware_capable": (ptp_support == "hardware"),
+            "ptp_software_capable": (ptp_support == "software"),
+            "active_ptp_master": active_master
         })
 
-    ptp4l_installed = shutil.which("ptp4l") is not None
+    ptp4l_installed = ptp4l_bin is not None
 
     ptp4l_running = False
     try:
@@ -456,11 +556,17 @@ def audit_pipewire_network_capabilities() -> Dict[str, Any]:
     except Exception:
         ptp4l_running = False
 
+    active_master_detected = ptp4l_running or any(
+        bool(iface.get("active_ptp_master", {}).get("detected")) for iface in interfaces
+    )
+
     return {
         "interfaces": interfaces,
         "host_ptp": {
             "ptp4l_installed": ptp4l_installed,
-            "ptp4l_running": ptp4l_running
+            "ptp4l_bin": ptp4l_bin,
+            "ptp4l_running": ptp4l_running,
+            "active_master_detected": active_master_detected
         }
     }
 
