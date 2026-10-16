@@ -411,6 +411,13 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   const isExternalMasterDetected = Boolean(selectedIfaceObj?.active_ptp_master?.detected || networkAudit?.host_ptp?.active_master_detected);
   const detectedMasterIp = selectedIfaceObj?.active_ptp_master?.source_ip || 'LAN';
 
+  // Auto-seed priority 200 on new service if an external Grandmaster clock is detected
+  useEffect(() => {
+    if (!isEditing && !initialConfig?.id && isExternalMasterDetected && ptpPriority1 === 128) {
+      setPtpPriority1(200);
+    }
+  }, [isExternalMasterDetected, isEditing, initialConfig?.id]);
+
   // Form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -811,15 +818,35 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                         <span>{t('services.pipewire.ptpStatusFree', 'Network free of external clock collisions. This node will act as Grandmaster.')}</span>
                       </div>
                     ) : ptpAutoInhibit ? (
-                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex items-center gap-2">
-                        <span className="text-sm shrink-0">⚠️</span>
-                        <span>
-                          {t(
-                            'services.pipewire.ptpStatusPassive',
-                            'Active PTP Grandmaster detected on LAN ({{ip}}). With auto-inhibition enabled, this node will remain in passive standby and only take over if the external Master fails.',
-                            { ip: detectedMasterIp }
-                          )}
-                        </span>
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-start gap-2">
+                          <span className="text-sm shrink-0 mt-0.5">⚠️</span>
+                          <div>
+                            <p className="font-bold leading-snug">
+                              {t(
+                                'services.pipewire.ptpStatusPassive',
+                                'Active PTP Grandmaster detected on LAN ({{ip}}). With auto-inhibition enabled, this node will remain in passive standby and only take over if the external Master fails.',
+                                { ip: detectedMasterIp }
+                              )}
+                            </p>
+                            {ptpPriority1 >= 200 && (
+                              <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold">
+                                ✓ {t('services.pipewire.ptpBackupPrioBadge', 'Backup Node (Priority 200)')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {ptpPriority1 < 200 && (
+                          <button
+                            type="button"
+                            onClick={() => setPtpPriority1(200)}
+                            title={t('services.pipewire.ptpSetBackupTitle', 'Set priority to 200 to ensure this node acts as a non-intrusive backup slave')}
+                            className="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto shadow-sm"
+                          >
+                            <span>🛡️</span>
+                            <span>{t('services.pipewire.ptpSetBackupBtn', 'Set Backup Priority (200)')}</span>
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <div className="p-3 rounded-lg bg-red-500/15 border border-red-500/40 text-red-600 dark:text-red-400 text-xs flex items-start gap-2 animate-in fade-in duration-200">
@@ -840,9 +867,16 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                       {/* Priority 1 */}
                       <div>
-                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                          {t('services.pipewire.ptpPriority1', 'Priority 1 (BMCA)')}
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)]">
+                            {t('services.pipewire.ptpPriority1', 'Priority 1 (BMCA)')}
+                          </label>
+                          {ptpPriority1 >= 200 && (
+                            <span className="text-[9px] font-mono text-emerald-500 font-bold">
+                              [Backup]
+                            </span>
+                          )}
+                        </div>
                         <input
                           type="number"
                           min={0}

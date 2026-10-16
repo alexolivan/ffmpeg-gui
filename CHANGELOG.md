@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.44.2] - 2026-10-16
+
+### Added
+- **PTP Backup Priority 1-Click Action & Auto-Seed (`PipeWireConfigForm.tsx`)**:
+  - Automatically seeds `priority1 = 200` (Backup Master mode) when configuring a new PipeWire service on an interface where an external Grandmaster is already detected.
+  - Added responsive 1-click action button `[ 🛡️ Set Backup Priority (200) ]` directly inside the amber status banner when another Grandmaster is detected and local priority is `< 200`.
+  - Added visual badge `✓ Backup Node (Priority 200)` next to the Priority 1 input and in the status banner when priority is 200 or higher.
+  - Decoupled clock priority adjustment completely from the multicast IP prefix `Recalc` button.
+  - Added translation keys with 100% key parity across `en.json`, `es.json`, and `ca.json`.
+
 ## [2.44.1] - 2026-10-16
 
 ### Fixed
