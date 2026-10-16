@@ -323,3 +323,94 @@ class PipeWireConfigGenerator:
             f.write(config_content)
         os.replace(temp_path, target_abs)
         return target_abs
+
+    @classmethod
+    def generate_ptp4l_config(
+        cls,
+        service_id: int,
+        ptp_cfg: Dict[str, Any],
+        iface: str,
+        ptp_support: str = "software"
+    ) -> str:
+        """
+        Generates ptp4l configuration file content according to IEEE 1588-2008 / AES67 standards.
+        Supports hardware and software timestamping, auto-inhibition (BMCA masterOnly flag),
+        priority1, domain, and transport profiles.
+        """
+        priority1 = int(ptp_cfg.get("priority1", 128))
+        priority1 = max(0, min(255, priority1))
+        domain = int(ptp_cfg.get("domain", 0))
+        domain = max(0, min(127, domain))
+        auto_inhibit = bool(ptp_cfg.get("auto_inhibit", True))
+        profile = str(ptp_cfg.get("profile", "aes67")).lower()
+
+        # If auto_inhibit is False, node forces itself as Master Only (masterOnly 1).
+        # If auto_inhibit is True, node allows BMCA negotiation (masterOnly 0) to avoid clock collisions.
+        master_only = 0 if auto_inhibit else 1
+
+        is_hw = (ptp_support == "hardware")
+        ts_mode = "hardware" if is_hw else "software"
+
+        # AES67 specifies 8 sync packets per second (logSyncInterval -3), logAnnounceInterval 0 (1s)
+        log_sync = -3 if profile == "aes67" else 0
+        log_announce = 0 if profile == "aes67" else 1
+        log_delay = -3 if profile == "aes67" else 0
+        dscp_event = 46 if profile == "aes67" else 0
+        dscp_general = 34 if profile == "aes67" else 0
+
+        clean_iface = re.sub(r'[^a-zA-Z0-9_.:-]', '', str(iface or "eth0"))
+
+        lines = [
+            f"# Generated ptp4l configuration for PipeWire Hub service #{service_id}",
+            "# Profile: " + ("AES67 Media" if profile == "aes67" else "IEEE 1588 Default"),
+            "[global]",
+            f"domainNumber            {domain}",
+            f"priority1               {priority1}",
+            "priority2               128",
+            "clockClass              248",
+            "clockAccuracy           0xFE",
+            "offsetScaledLogVariance 0xFFFF",
+            "free_running            0",
+            "freq_est_interval       1",
+            f"masterOnly              {master_only}",
+            f"logSyncInterval         {log_sync}",
+            f"logAnnounceInterval     {log_announce}",
+            f"logMinDelayReqInterval  {log_delay}",
+            f"dscp_event              {dscp_event}",
+            f"dscp_general            {dscp_general}",
+            f"time_stamping           {ts_mode}",
+            "tx_timestamp_timeout    10",
+            "summary_interval        1",
+            "",
+            f"[{clean_iface}]",
+            "network_transport       UDPv4",
+            "delay_mechanism         E2E",
+            ""
+        ]
+        return "\n".join(lines)
+
+    @classmethod
+    def write_ptp4l_config_file(
+        cls,
+        service_id: int,
+        ptp_cfg: Dict[str, Any],
+        iface: str,
+        target_path: str,
+        ptp_support: str = "software"
+    ) -> str:
+        """
+        Writes generated ptp4l configuration file to disk/RAM atomically with 0o600 permissions.
+        """
+        content = cls.generate_ptp4l_config(service_id, ptp_cfg, iface, ptp_support)
+        target_abs = os.path.abspath(target_path)
+        target_dir = os.path.dirname(target_abs)
+        os.makedirs(target_dir, exist_ok=True)
+        temp_path = f"{target_abs}.tmp.{os.getpid()}"
+        with open(temp_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        try:
+            os.chmod(temp_path, 0o600)
+        except Exception:
+            pass
+        os.replace(temp_path, target_abs)
+        return target_abs

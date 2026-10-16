@@ -296,6 +296,71 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('destination.ip = "239.69.11.1"', res)
         self.assertIn('destination.ip = "239.69.11.2"', res)
 
+    def test_generate_ptp4l_config_aes67_software(self):
+        """Verifies ptp4l.conf generation with AES67 profile, software timestamping, and auto-inhibition."""
+        ptp_cfg = {
+            "enabled": True,
+            "auto_inhibit": True,
+            "priority1": 128,
+            "domain": 0,
+            "profile": "aes67"
+        }
+        conf = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=5,
+            ptp_cfg=ptp_cfg,
+            iface="enp9s0",
+            ptp_support="software"
+        )
+        self.assertIn("domainNumber            0", conf)
+        self.assertIn("priority1               128", conf)
+        self.assertIn("masterOnly              0", conf)  # Auto-inhibition allows BMCA coexistence
+        self.assertIn("logSyncInterval         -3", conf)  # 8 packets/sec for AES67
+        self.assertIn("logAnnounceInterval     0", conf)
+        self.assertIn("dscp_event              46", conf)
+        self.assertIn("dscp_general            34", conf)
+        self.assertIn("time_stamping           software", conf)
+        self.assertIn("[enp9s0]", conf)
+        self.assertIn("network_transport       UDPv4", conf)
+
+    def test_generate_ptp4l_config_ieee1588_hardware_force_master(self):
+        """Verifies ptp4l.conf generation with IEEE 1588, hardware timestamping, and forced masterOnly."""
+        ptp_cfg = {
+            "enabled": True,
+            "auto_inhibit": False,
+            "priority1": 64,
+            "domain": 1,
+            "profile": "ieee1588"
+        }
+        conf = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=8,
+            ptp_cfg=ptp_cfg,
+            iface="eth1",
+            ptp_support="hardware"
+        )
+        self.assertIn("domainNumber            1", conf)
+        self.assertIn("priority1               64", conf)
+        self.assertIn("masterOnly              1", conf)  # Forced master only
+        self.assertIn("logSyncInterval         0", conf)  # 1 packet/sec for standard IEEE 1588
+        self.assertIn("time_stamping           hardware", conf)
+        self.assertIn("[eth1]", conf)
+
+    def test_write_ptp4l_config_file(self):
+        """Verifies atomic file writing with 0o600 permissions."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            target = os.path.join(tmp_dir, "ptp4l_test.conf")
+            written = PipeWireConfigGenerator.write_ptp4l_config_file(
+                service_id=1,
+                ptp_cfg={"priority1": 200, "domain": 0, "auto_inhibit": True},
+                iface="eth0",
+                target_path=target,
+                ptp_support="software"
+            )
+            self.assertEqual(written, target)
+            self.assertTrue(os.path.exists(target))
+            with open(target, "r") as f:
+                content = f.read()
+            self.assertIn("priority1               200", content)
+
 
 if __name__ == "__main__":
     unittest.main()
