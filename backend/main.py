@@ -7683,7 +7683,18 @@ def check_pid_using_alsa_card(pid: Optional[int], card_index: int) -> Optional[b
 
 
 def analyze_alsa_process_info(cmd_str: str, config_json_str: str, pid: Optional[int] = None, card_index: Optional[int] = None) -> Dict[str, Any]:
-    # Check kernel /proc/{pid}/fd first if available
+    cmd_lower = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
+
+    # Capture vs Playout detection
+    has_input = bool(re.search(r'-f\s+alsa[^\n\r]*?-i\b', cmd_lower) or re.search(r'-i\s+(?:hw|plughw|dsnoop|dmix|alsa):', cmd_lower))
+    has_output = bool(re.search(r'-f\s+alsa\s+(?:hw|plughw|dsnoop|dmix):', cmd_lower) or re.search(r'(?:hw|plughw|dsnoop|dmix):\d+[^\s]*\s*$', cmd_lower))
+
+    direction = "both" if (has_input and has_output) else ("capture" if has_input else "playout")
+    pcm_index: Optional[int] = None
+    subdev_index: Optional[int] = None
+    device_target = ""
+
+    # 1. Check kernel /proc/{pid}/fd first if PID and card_index are provided
     if pid and card_index is not None:
         try:
             fd_dir = f"/proc/{pid}/fd"
@@ -7695,42 +7706,62 @@ def analyze_alsa_process_info(cmd_str: str, config_json_str: str, pid: Optional[
                             base = os.path.basename(target)
                             m = re.match(r"pcmC(\d+)D(\d+)([pc])", base)
                             if m and int(m.group(1)) == card_index:
-                                pcm_idx = int(m.group(2))
-                                direction = "playout" if m.group(3) == "p" else "capture"
-                                return {
-                                    "direction": direction,
-                                    "device_target": f"hw:{card_index},{pcm_idx}",
-                                    "pcm_index": pcm_idx,
-                                    "subdevice_index": None
-                                }
+                                pcm_index = int(m.group(2))
+                                dir_char = m.group(3)
+                                direction = "playout" if dir_char == "p" else "capture"
+
+                                # Check kernel /proc/asound for exact subdevice owned by this PID
+                                pcm_proc_dir = f"/proc/asound/card{card_index}/pcm{pcm_index}{dir_char}"
+                                if os.path.isdir(pcm_proc_dir):
+                                    try:
+                                        for sub_name in os.listdir(pcm_proc_dir):
+                                            if sub_name.startswith("sub"):
+                                                status_file = os.path.join(pcm_proc_dir, sub_name, "status")
+                                                try:
+                                                    with open(status_file, "r") as sf:
+                                                        status_txt = sf.read()
+                                                    if re.search(rf"\bowner_pid\s*:\s*{pid}\b", status_txt):
+                                                        m_sub = re.match(r"sub(\d+)", sub_name)
+                                                        if m_sub:
+                                                            subdev_index = int(m_sub.group(1))
+                                                            break
+                                                except Exception:
+                                                    pass
+                                    except Exception:
+                                        pass
+                                break
                     except (OSError, FileNotFoundError):
                         continue
         except Exception:
             pass
 
-    cmd_lower = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
-
-    # Capture vs Playout detection
-    has_input = bool(re.search(r'-f\s+alsa[^\n\r]*?-i\b', cmd_lower) or re.search(r'-i\s+(?:hw|plughw|dsnoop|dmix|alsa):', cmd_lower))
-    has_output = bool(re.search(r'-f\s+alsa\s+(?:hw|plughw|dsnoop|dmix):', cmd_lower) or re.search(r'(?:hw|plughw|dsnoop|dmix):\d+[^\s]*\s*$', cmd_lower))
-
-    direction = "both" if (has_input and has_output) else ("capture" if has_input else "playout")
-
+    # 2. Extract or refine device target, pcm, and subdevice from command line & JSON config
     matches = list(re.finditer(r'(?:hw|plughw|dsnoop|dmix):(?:card=)?([a-zA-Z0-9_\-]+)(?:,(\d+))?(?:,(\d+))?', cmd_lower))
-    device_target = ""
-    pcm_index = None
-    subdev_index = None
-
     for m in matches:
         card = m.group(1)
         pcm = int(m.group(2)) if m.group(2) is not None else 0
-        subdev = int(m.group(3)) if m.group(3) is not None else 0
+        subdev = int(m.group(3)) if m.group(3) is not None else None
+
         if card_index is None or card == str(card_index) or not device_target:
-            pcm_index = pcm
-            subdev_index = subdev
-            device_target = f"hw:{card},{pcm},{subdev}"
+            if pcm_index is None:
+                pcm_index = pcm
+            if subdev_index is None and subdev is not None:
+                subdev_index = subdev
             if card_index is not None and card == str(card_index):
                 break
+
+    # 3. Format authoritative device_target string
+    if card_index is not None and pcm_index is not None:
+        if subdev_index is not None:
+            device_target = f"hw:{card_index},{pcm_index},{subdev_index}"
+        else:
+            device_target = f"hw:{card_index},{pcm_index}"
+    elif matches:
+        first_m = matches[0]
+        c = first_m.group(1)
+        p = first_m.group(2) or "0"
+        s = first_m.group(3)
+        device_target = f"hw:{c},{p},{s}" if s is not None else f"hw:{c},{p}"
 
     return {
         "direction": direction,
@@ -7972,7 +8003,7 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
     alsa_manager.active_mixer_ws_count += 1
     # Check if this card is an AudioScience adapter to throttle interval and protect the DSP mailbox
     is_asihpi = alsa_manager.is_card_asihpi(card_index)
-    sleep_interval = 0.50 if is_asihpi else 0.25  # 2 Hz for AudioScience (prevents mailbox saturation), 4 Hz otherwise
+    sleep_interval = 0.10 if is_asihpi else 0.05  # 10 Hz for AudioScience (compromise: fluid vumeters without mailbox saturation), 20 Hz otherwise
     try:
         while True:
             telemetry = await asyncio.to_thread(alsa_manager.read_realtime_telemetry, card_index)

@@ -76,7 +76,7 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
 
   const grpName = group.name.toLowerCase();
   const numMatch = group.name.match(/\d+/);
-  const grpIndex = numMatch ? parseInt(numMatch[0], 10) : null;
+  const grpIndex = numMatch ? parseInt(numMatch[0], 10) : (group.subdevice_index ?? null);
 
   const isPlayoutQuadrant = group.category === 'virtual_playout';
   const isCaptureQuadrant = group.category === 'virtual_capture';
@@ -86,44 +86,66 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
     if (isPlayoutQuadrant && proc.direction === 'capture') return false;
     if (isCaptureQuadrant && proc.direction === 'playout') return false;
 
-    // 2. Direct Explicit Name Match (e.g., alias/cmd contains "PCM 0", "PCM 1", etc.)
     const target = (proc.device_target || '').toLowerCase();
     const cmd = (proc.cmd || '').toLowerCase();
     const alias = (proc.alias || '').toLowerCase();
 
-    if (target.includes(grpName) || cmd.includes(grpName) || alias.includes(grpName)) {
-      return true;
+    // 2. Direct exact pcm_device match (e.g., group.pcm_device === "hw:0,0,1" and target === "hw:0,0,1")
+    if (group.pcm_device && target) {
+      if (group.pcm_device.toLowerCase() === target) {
+        return true;
+      }
     }
 
-    // 3. Channel Index Matching (Handling AudioScience and Loopback stream hierarchy)
-    if (grpIndex !== null) {
-      let effectiveChanIdx: number | null = null;
+    // 3. Subdevice Index Matching (AudioScience & Loopback virtual stream channels)
+    const effectiveGrpSub = group.subdevice_index !== undefined && group.subdevice_index !== null
+      ? group.subdevice_index
+      : grpIndex;
+
+    if (effectiveGrpSub !== null && effectiveGrpSub !== undefined) {
+      // If the process has an explicit subdevice index, require EXACT match!
       if (proc.subdevice_index !== null && proc.subdevice_index !== undefined) {
-        effectiveChanIdx = proc.subdevice_index;
-      } else if (proc.pcm_index !== null && proc.pcm_index !== undefined) {
-        effectiveChanIdx = proc.pcm_index;
+        return proc.subdevice_index === effectiveGrpSub;
       }
 
-      if (effectiveChanIdx !== null) {
-        return effectiveChanIdx === grpIndex;
-      }
-
-      // Regex fallback matching hw:card,device,grpIndex or hw:card,grpIndex
-      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):[a-zA-Z0-9_\\-]+,(?:\\d+,)?${grpIndex}\\b`, 'i');
+      // Regex fallback matching hw:card,device,effectiveGrpSub or hw:card,effectiveGrpSub
+      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):[a-zA-Z0-9_\\-]+,(?:\\d+,)?${effectiveGrpSub}\\b`, 'i');
       if (subdevRegex.test(target) || subdevRegex.test(cmd)) {
         return true;
       }
-    } else {
-      // 4. Non-digitized group names (HDA Intel / Standard cards with "PCM", "Master", "Analog", "Front")
-      // If proc.pcm_index is 0 or unassigned, it maps to standard primary playout groups ("pcm", "master", "analog", "playback", "front")
-      const isStandardPrimaryGroup = /pcm|master|analog|playback|front/i.test(group.name);
-      if (isStandardPrimaryGroup && (proc.pcm_index === 0 || proc.pcm_index === null || proc.pcm_index === undefined)) {
+    }
+
+    // 4. Multi-PCM card matching (e.g. Intel HDMI PCM 3, PCM 7, PCM 8 where subdevices are not used)
+    if (grpIndex !== null && (proc.subdevice_index === null || proc.subdevice_index === undefined)) {
+      if (proc.pcm_index !== null && proc.pcm_index !== undefined) {
+        if (proc.pcm_index === grpIndex) {
+          return true;
+        }
+      }
+    }
+
+    // 5. Named group matching (avoid false positives from generic words like "pcm" in "pcm_s16le")
+    const isGenericKeyword = /^(pcm|master|front|line|capture|playback|aux)$/i.test(grpName);
+    if (!isGenericKeyword) {
+      if (target.includes(grpName) || alias.includes(grpName)) {
+        return true;
+      }
+      const grpRegex = new RegExp(`\\b${grpName}\\b`, 'i');
+      if (grpRegex.test(alias)) {
         return true;
       }
     }
 
-    // 5. Default fallback for single process without explicit subdevice on PCM 0
-    if (grpIndex === 0 && activeProcesses.length === 1) {
+    // 6. Non-digitized primary groups (HDA Intel / Single-PCM cards with "PCM" or "Master" on PCM 0)
+    if (grpIndex === null && (effectiveGrpSub === null || effectiveGrpSub === undefined)) {
+      const isStandardPrimaryGroup = /^(pcm|master|analog|playback|front)$/i.test(group.name);
+      if (isStandardPrimaryGroup && (proc.pcm_index === 0 || proc.pcm_index === null || proc.pcm_index === undefined) && (proc.subdevice_index === null || proc.subdevice_index === undefined)) {
+        return true;
+      }
+    }
+
+    // 7. Default fallback for single process without explicit target on primary group (grpIndex 0)
+    if (grpIndex === 0 && activeProcesses.length === 1 && (proc.subdevice_index === null || proc.subdevice_index === undefined)) {
       if (cmd.includes("default") || target.includes("default") || (cmd.includes("-f alsa") && (proc.pcm_index === null || proc.pcm_index === undefined))) {
         return true;
       }

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.45.4] - 2026-10-19
+
+### Fixed
+- **ALSA Process Subdevice Binding Regression (`backend/main.py`, `backend/core/alsa_manager.py`, `AlsaAudioSettingsCard.tsx`)**:
+  - Fixed premature early return in `analyze_alsa_process_info()` that set `subdevice_index = None`, which previously caused all active FFmpeg playout services sharing `pcmC0D0p` (such as AudioScience `hw:0,0,0`, `hw:0,0,1`, `hw:0,0,2` or snd-aloop subdevices) to falsely clump together into `PCM 0`.
+  - Added kernel `/proc/asound/card{c}/pcm{d}{dir}/sub*/status` inspection reading `owner_pid` to accurately detect the active subdevice directly from ALSA procfs, with fallback to CLI device parsing (`hw:card,dev,sub`).
+  - Added `subdevice_index` and `pcm_device` metadata extraction for `PCM <index>` groups in `AlsaManager.get_card_topology()`.
+  - Hardened frontend `getGroupProcesses()` to perform exact `pcm_device` and `subdevice_index` matching, preventing false keyword matches on generic terms (like `pcm` matching `pcm_s16le` codec names).
+- **ALSA Vumeter Polling Frequency Compromise (`backend/main.py`)**:
+  - Tuned `sleep_interval` in `/ws/alsa/meters/{card_index}` from 0.50s (2 Hz) to 0.10s (10 Hz) for AudioScience cards, providing fluid, responsive visual level animations while remaining safely protected under single bulk `amixer contents` execution and `audio_hw_lock`.
+
 ## [2.45.3] - 2026-10-19
 
 ### Fixed

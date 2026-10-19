@@ -85,7 +85,75 @@ class TestAlsaProcessBinding(unittest.TestCase):
         self.assertFalse(is_cmd_using_alsa_card("", stale_config_json, card_index=0, card_id="NVidia"))
         self.assertTrue(is_cmd_using_alsa_card("", stale_config_json, card_index=1, card_id="Generic"))
 
+    def test_analyze_alsa_process_info_multi_subdevice(self):
+        """Processes targeting different subdevices on the same card/pcm must be differentiated."""
+        cmd0 = "/usr/bin/ffmpeg -i stream1.mp3 -f alsa hw:0,0,0"
+        cmd1 = "/usr/bin/ffmpeg -i stream2.mp3 -f alsa hw:0,0,1"
+        cmd2 = "/usr/bin/ffmpeg -i stream3.mp3 -f alsa hw:0,0,2"
+
+        res0 = analyze_alsa_process_info(cmd0, "{}", pid=1001, card_index=0)
+        res1 = analyze_alsa_process_info(cmd1, "{}", pid=1002, card_index=0)
+        res2 = analyze_alsa_process_info(cmd2, "{}", pid=1003, card_index=0)
+
+        self.assertEqual(res0["subdevice_index"], 0)
+        self.assertEqual(res0["device_target"], "hw:0,0,0")
+
+        self.assertEqual(res1["subdevice_index"], 1)
+        self.assertEqual(res1["device_target"], "hw:0,0,1")
+
+        self.assertEqual(res2["subdevice_index"], 2)
+        self.assertEqual(res2["device_target"], "hw:0,0,2")
+
+    @patch("builtins.open")
+    @patch("os.listdir")
+    @patch("os.path.isdir")
+    @patch("os.readlink")
+    def test_analyze_alsa_process_info_with_kernel_procfs_subdevice(self, mock_readlink, mock_isdir, mock_listdir, mock_open):
+        """Verify that kernel /proc/asound/.../status owner_pid accurately assigns subdevice_index."""
+        mock_isdir.return_value = True
+        
+        # When checking /proc/23232/fd
+        mock_readlink.return_value = "/dev/snd/pcmC0D0p"
+
+        def fake_listdir(path):
+            if path == "/proc/23232/fd":
+                return ["5"]
+            elif "pcm0p" in path:
+                return ["sub0", "sub1", "sub2"]
+            return []
+        mock_listdir.side_effect = fake_listdir
+
+        # Simulate /proc/asound/card0/pcm0p/sub1/status having owner_pid: 23232
+        def fake_open(file_path, mode="r", *args, **kwargs):
+            from io import StringIO
+            if "sub1/status" in file_path:
+                return StringIO("state: RUNNING\nowner_pid   : 23232\n")
+            return StringIO("state: RUNNING\nowner_pid   : 99999\n")
+        mock_open.side_effect = fake_open
+
+        res = analyze_alsa_process_info(
+            cmd_str="/usr/bin/ffmpeg -i test.mp3 -f alsa hw:0,0",
+            config_json_str="{}",
+            pid=23232,
+            card_index=0
+        )
+
+        self.assertEqual(res["direction"], "playout")
+        self.assertEqual(res["pcm_index"], 0)
+        self.assertEqual(res["subdevice_index"], 1)
+        self.assertEqual(res["device_target"], "hw:0,0,1")
+
+    def test_analyze_alsa_process_info_multi_pcm_intel_hdmi(self):
+        """Multi-PCM card (like Intel HDMI hw:0,3) must set pcm_index=3 without false subdevice."""
+        cmd_hdmi = "/usr/bin/ffmpeg -i stream.mp3 -f alsa hw:0,3"
+        res = analyze_alsa_process_info(cmd_hdmi, "{}", card_index=0)
+
+        self.assertEqual(res["pcm_index"], 3)
+        self.assertIsNone(res["subdevice_index"])
+        self.assertEqual(res["device_target"], "hw:0,3")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

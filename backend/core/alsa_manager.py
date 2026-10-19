@@ -352,6 +352,15 @@ class AlsaManager:
                             grp_data["subdevice_index"] = sub
                             grp_data["description"] = f"Virtual Capture Subdevice {sub} for FFmpeg Ingest"
                             grp_data["matrix_source"] = f"PCM {sub} Playback"
+                    else:
+                        m_pcm = re.match(r"^PCM\s+(\d+)$", meta["group"], re.IGNORECASE)
+                        if m_pcm:
+                            sub_idx = int(m_pcm.group(1))
+                            grp_data["subdevice_index"] = sub_idx
+                            if meta["category"] == "virtual_playout":
+                                grp_data["pcm_device"] = f"hw:{card_idx},0,{sub_idx}"
+                            elif meta["category"] == "virtual_capture":
+                                grp_data["pcm_device"] = f"hw:{card_idx},1,{sub_idx}"
                     groups[grp_key] = grp_data
 
                 ctrl["ctrl_type"] = meta["type"]
