@@ -37,7 +37,7 @@ class HardwareHealthManager:
         self._lock = asyncio.Lock()
         self._running = False
         self._worker_task: Optional[asyncio.Task] = None
-        self._poll_interval = 3.0  # seconds
+        self._poll_interval = 15.0  # seconds (reduced hardware bus load)
 
         # Configurable thresholds (defaults)
         self.warning_threshold_c = 75.0
@@ -490,11 +490,11 @@ class HardwareHealthManager:
     def get_health_snapshot(self) -> Dict[str, Any]:
         """
         Thread-safe, sub-millisecond retrieval of the latest in-memory health snapshot.
-        If cache is empty or older than 10 seconds, triggers an immediate refresh.
+        Always returns cached data immediately without blocking caller threads or the event loop.
         """
-        if self._last_snapshot_time == 0.0 or (time.time() - self._last_snapshot_time > 10.0):
-            return self.collect_health_snapshot()
-        return self._cached_snapshot
+        if self._cached_snapshot is not None:
+            return self._cached_snapshot
+        return self._empty_snapshot()
 
     # -------------------------------------------------------------------------
     # ASYNC BACKGROUND WORKER

@@ -301,6 +301,14 @@ class TestHardwareHealthManager(unittest.TestCase):
         snap_fan = self.mgr.collect_health_snapshot()
         self.assertTrue(any("fan failure" in a["message"].lower() for a in snap_fan["alerts"]))
 
+    def test_get_health_snapshot_non_blocking(self):
+        # Ensure get_health_snapshot returns cached data without triggering collect_health_snapshot
+        self.mgr._cached_snapshot = {"status": "normal", "max_temp_c": 42.0}
+        with patch.object(self.mgr, "collect_health_snapshot") as mock_collect:
+            snap = self.mgr.get_health_snapshot()
+            self.assertEqual(snap["max_temp_c"], 42.0)
+            mock_collect.assert_not_called()
+
 
 
 if __name__ == "__main__":
