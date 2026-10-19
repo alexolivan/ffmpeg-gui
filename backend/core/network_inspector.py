@@ -335,6 +335,123 @@ def get_active_port_matrix(db_session, settings: Optional[Dict[str, Any]] = None
                 "requires_inbound_firewall": False
             })
 
+        elif svc_type == 'pipewire_hub':
+            pw_cfg = cfg.get("pipewire_config", {}) or cfg
+            aes67_net = pw_cfg.get("aes67_network", {})
+            aes67_enabled = bool(aes67_net.get("enabled", False))
+            iface_name = aes67_net.get("interface") or "0.0.0.0"
+            iface_ip = aes67_net.get("ip") or "0.0.0.0"
+            eff_bind = iface_name if iface_name != "0.0.0.0" else iface_ip
+
+            # 1. Remote Sinks (AoIP Rx: listens on UDP RTP port for incoming multicast audio)
+            for rs in pw_cfg.get("remote_sinks", []):
+                r_port = int(rs.get("rtp_port") or rs.get("port") or 5004)
+                rs_name = rs.get("name") or rs.get("id") or rs.get("stream_name") or "Remote Sink"
+                m_ip = rs.get("multicast_ip") or ""
+                matrix.append({
+                    "port": r_port,
+                    "proto": "udp",
+                    "service_id": svc.id,
+                    "service_name": svc.name,
+                    "service_type": svc_type,
+                    "category": "auxiliary",
+                    "description": f"PipeWire AoIP Rx [{rs_name}]{f' ({m_ip})' if m_ip else ''}",
+                    "bind_address": eff_bind,
+                    "status": svc_status,
+                    "is_socket_open": ('udp', r_port) in open_sockets if is_running else False,
+                    "requires_inbound_firewall": True
+                })
+
+            # 2. Virtual Sinks with AES67 Tx (outgoing multicast RTP streams)
+            for vs in pw_cfg.get("virtual_sinks", []):
+                if vs.get("aes67_enabled", False):
+                    v_port = int(vs.get("rtp_port", 5004))
+                    vs_name = vs.get("name") or vs.get("id") or "Virtual Sink"
+                    m_ip = vs.get("multicast_ip") or ""
+                    matrix.append({
+                        "port": v_port,
+                        "proto": "udp",
+                        "service_id": svc.id,
+                        "service_name": svc.name,
+                        "service_type": svc_type,
+                        "category": "auxiliary",
+                        "description": f"PipeWire AES67 Tx [{vs_name}]{f' ({m_ip})' if m_ip else ''}",
+                        "bind_address": eff_bind,
+                        "status": svc_status,
+                        "is_socket_open": ('udp', v_port) in open_sockets if is_running else False,
+                        "requires_inbound_firewall": False
+                    })
+
+            # 3. SAP Announcement/Discovery and PTPv2 Clock Sync
+            if aes67_enabled:
+                matrix.append({
+                    "port": 9875,
+                    "proto": "udp",
+                    "service_id": svc.id,
+                    "service_name": svc.name,
+                    "service_type": svc_type,
+                    "category": "auxiliary",
+                    "description": "AES67 SAP Discovery & Session Announcements (RFC 2974)",
+                    "bind_address": eff_bind,
+                    "status": svc_status,
+                    "is_socket_open": ('udp', 9875) in open_sockets if is_running else False,
+                    "requires_inbound_firewall": True
+                })
+                matrix.append({
+                    "port": 319,
+                    "proto": "udp",
+                    "service_id": svc.id,
+                    "service_name": svc.name,
+                    "service_type": svc_type,
+                    "category": "auxiliary",
+                    "description": "PTPv2 Event Messages & Clock Sync (IEEE 1588)",
+                    "bind_address": eff_bind,
+                    "status": svc_status,
+                    "is_socket_open": ('udp', 319) in open_sockets if is_running else False,
+                    "requires_inbound_firewall": True
+                })
+                matrix.append({
+                    "port": 320,
+                    "proto": "udp",
+                    "service_id": svc.id,
+                    "service_name": svc.name,
+                    "service_type": svc_type,
+                    "category": "auxiliary",
+                    "description": "PTPv2 General Messages & Announce (IEEE 1588)",
+                    "bind_address": eff_bind,
+                    "status": svc_status,
+                    "is_socket_open": ('udp', 320) in open_sockets if is_running else False,
+                    "requires_inbound_firewall": True
+                })
+
+        elif svc_type == 'ffmpeg_stream':
+            try:
+                from utils.port_validator import extract_ports_from_service
+                stream_ports = extract_ports_from_service(
+                    service_id=svc.id,
+                    service_name=svc.name,
+                    service_type=svc_type,
+                    config=svc.config,
+                    input_config=svc.input_config,
+                    output_config=svc.output_config
+                )
+                for p_num, p_label, _, _, proto in stream_ports:
+                    matrix.append({
+                        "port": p_num,
+                        "proto": proto,
+                        "service_id": svc.id,
+                        "service_name": svc.name,
+                        "service_type": svc_type,
+                        "category": "pipeline",
+                        "description": f"FFmpeg Stream ({p_label})",
+                        "bind_address": "0.0.0.0",
+                        "status": svc_status,
+                        "is_socket_open": (proto, p_num) in open_sockets if is_running else False,
+                        "requires_inbound_firewall": True
+                    })
+            except Exception as e:
+                logger.debug("Could not extract stream ports for service %s: %s", svc.id, e)
+
     # Sort matrix by category (core first), then port number
     matrix.sort(key=lambda x: (x["category"] != "core", x["port"]))
     return matrix
@@ -358,14 +475,18 @@ def generate_firewall_rules(matrix: List[Dict[str, Any]]) -> Dict[str, List[str]
         if bind_addr in ("127.0.0.1", "localhost"):
             continue
 
+        if not item.get("requires_inbound_firewall", True):
+            continue
+
         key = (port, proto)
         if key in seen:
             continue
         seen.add(key)
 
         svc_name = item.get("service_name") or "service"
-        ufw_rules.append(f"ufw allow {port}/{proto} comment '{svc_name} ({proto.upper()})'")
-        iptables_rules.append(f"iptables -A INPUT -p {proto} --dport {port} -j ACCEPT -m comment --comment '{svc_name}'")
+        desc = item.get("description") or svc_name
+        ufw_rules.append(f"ufw allow {port}/{proto} comment '{desc} ({proto.upper()})'")
+        iptables_rules.append(f"iptables -A INPUT -p {proto} --dport {port} -j ACCEPT -m comment --comment '{desc}'")
 
     return {
         "ufw": ufw_rules,

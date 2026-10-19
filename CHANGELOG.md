@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.47.0] - 2026-10-19
+
+### Added
+- **PipeWire Port Collision Detection & Task Protection (`backend/utils/port_validator.py`, `backend/tests/test_pipewire_ports.py`)**:
+  - Added full `service_type == "pipewire_hub"` port extraction into `extract_ports_from_service()`, tracking Remote Sinks (AoIP Rx RTP UDP), Virtual Sinks (AES67 Tx RTP UDP), and SAP Discovery/Announcements (9875 UDP).
+  - Enforced internal collision validation preventing duplicate `(multicast_ip, rtp_port)` configurations within the same hub while allowing standard AES67 multi-stream port sharing across distinct multicast IPs.
+  - Implemented cross-service collision protection against `ffmpeg_stream` unicast/SRT/UDP listeners, `mediamtx_hub` RTSP/SRT ports, `icecast_server`, and the GUI web panel.
+  - Allowed shared multicast SAP 9875 UDP discovery across multiple concurrent PipeWire hubs on the same host without false collision errors.
+  - Connected `ScheduledTask` validation into `validate_service_port_conflicts()`, preventing collisions between active scheduled FFmpeg pipelines and services.
+  - Guaranteed that auxiliary port auto-allocators (`get_next_available_mediamtx_ports`, `get_next_available_icecast_ports`, `get_next_available_desktop_display_and_vnc_port`) automatically bypass ports reserved by PipeWire Hubs.
+- **Firewall Rule Generator & Network Port Matrix (`backend/core/network_inspector.py`, `FirewallPortMatrixCard.tsx`, `backend/tests/test_port_matrix.py`)**:
+  - Integrated `pipewire_hub` into `get_active_port_matrix()` in `Settings -> Network`, exposing Remote Sinks (AoIP Rx), Virtual Sinks (AES67 Tx), SAP Discovery (9875 UDP), and PTPv2 Clock Sync (319/320 UDP).
+  - Integrated `ffmpeg_stream` listener ports (SRT listener, UDP/RTP input) into the active port matrix.
+  - Filtered inbound firewall rule generation via `requires_inbound_firewall`, outputting precise, reproducible UFW and iptables rules for AoIP Rx, SAP, and PTP while excluding egress-only multicast and localhost loopback bindings.
+  - Added dedicated visual badges (`PIPEWIRE / AOIP` and `STREAM PIPELINE`) and service icons in `FirewallPortMatrixCard.tsx`.
+
 ## [2.46.0] - 2026-10-19
 
 ### Added

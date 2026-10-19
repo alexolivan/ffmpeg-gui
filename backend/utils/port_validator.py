@@ -194,6 +194,42 @@ def extract_ports_from_service(
         else:
             ports.append((5999, "VNC (Desktop Default)", service_name, service_id, "tcp"))
 
+    elif s_type == "pipewire_hub":
+        pw = cfg.get("pipewire_config", cfg)
+        aes67_net = pw.get("aes67_network", {})
+        aes67_enabled = bool(aes67_net.get("enabled", False))
+
+        # Check virtual sinks with AES67 Tx enabled
+        for vs in pw.get("virtual_sinks", []):
+            if vs.get("aes67_enabled", False):
+                rtp_p = vs.get("rtp_port")
+                if rtp_p:
+                    try:
+                        p_num = int(rtp_p)
+                        sink_name = vs.get("name") or vs.get("id") or "Virtual Sink"
+                        m_ip = vs.get("multicast_ip") or ""
+                        label = f"PipeWire AES67 Tx ({sink_name}{f' - {m_ip}' if m_ip else ''})"
+                        ports.append((p_num, label, service_name, service_id, "udp"))
+                    except (ValueError, TypeError):
+                        pass
+
+        # Check remote sinks (AoIP Rx)
+        for rs in pw.get("remote_sinks", []):
+            rtp_p = rs.get("rtp_port") or rs.get("port")
+            if rtp_p:
+                try:
+                    p_num = int(rtp_p)
+                    rs_name = rs.get("name") or rs.get("id") or rs.get("stream_name") or "Remote Sink"
+                    m_ip = rs.get("multicast_ip") or ""
+                    label = f"PipeWire AoIP Rx ({rs_name}{f' - {m_ip}' if m_ip else ''})"
+                    ports.append((p_num, label, service_name, service_id, "udp"))
+                except (ValueError, TypeError):
+                    pass
+
+        # Check SAP announcement & discovery (RFC 2974 on 224.0.0.56:9875 UDP)
+        if aes67_enabled:
+            ports.append((9875, "PipeWire AES67 SAP Discovery", service_name, service_id, "udp"))
+
     return ports
 
 def validate_service_port_conflicts(
@@ -232,24 +268,52 @@ def validate_service_port_conflicts(
             )
 
     # Check internal collisions within the same service payload
-    seen_in_payload = {}
-    for port, label, _, _, proto in target_ports:
-        key = (port, proto)
-        if key in seen_in_payload:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Internal port conflict: Port {port}/{proto.upper()} is defined multiple times ({seen_in_payload[key]} and {label})."
-            )
-        seen_in_payload[key] = label
+    if service_type == "pipewire_hub":
+        pw = (config or {}).get("pipewire_config", config or {})
+        seen_multicast_streams = {}
+        # Sinks with multicast IPs can share ports (e.g. 5004 UDP) if IPs differ, but cannot duplicate (IP, port)
+        all_sinks = []
+        for vs in pw.get("virtual_sinks", []):
+            if vs.get("aes67_enabled", False):
+                all_sinks.append((vs, vs.get("name") or vs.get("id") or "Virtual Sink"))
+        for rs in pw.get("remote_sinks", []):
+            all_sinks.append((rs, rs.get("name") or rs.get("id") or rs.get("stream_name") or "Remote Sink"))
+
+        for s_cfg, s_label in all_sinks:
+            m_ip = (s_cfg.get("multicast_ip") or "").strip()
+            p = s_cfg.get("rtp_port") or s_cfg.get("port")
+            if m_ip and p:
+                try:
+                    p_int = int(p)
+                    stream_key = (m_ip, p_int)
+                    if stream_key in seen_multicast_streams:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Internal port/IP collision: Multicast stream {m_ip}:{p_int} is defined multiple times ({seen_multicast_streams[stream_key]} and {s_label})."
+                        )
+                    seen_multicast_streams[stream_key] = s_label
+                except (ValueError, TypeError):
+                    pass
+    else:
+        seen_in_payload = {}
+        for port, label, _, _, proto in target_ports:
+            key = (port, proto)
+            if key in seen_in_payload:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Internal port conflict: Port {port}/{proto.upper()} is defined multiple times ({seen_in_payload[key]} and {label})."
+                )
+            seen_in_payload[key] = label
 
     # Check against other services in database
     other_services = db.query(Service).filter(Service.id != service_id).all() if service_id else db.query(Service).all()
     
     for other in other_services:
+        other_type = getattr(other, "service_type", "ffmpeg_stream")
         other_ports = extract_ports_from_service(
             service_id=other.id,
             service_name=other.name,
-            service_type=getattr(other, "service_type", "ffmpeg_stream"),
+            service_type=other_type,
             config=other.config,
             input_config=other.input_config,
             output_config=other.output_config
@@ -257,6 +321,44 @@ def validate_service_port_conflicts(
         for other_p, other_label, other_name, other_id, other_proto in other_ports:
             for port, label, _, _, proto in target_ports:
                 if port == other_p and (proto == other_proto or proto == "any" or other_proto == "any"):
+                    # Special handling between two PipeWire hubs:
+                    if service_type == "pipewire_hub" and other_type == "pipewire_hub":
+                        # 1. SAP 9875 is shared multicast discovery, so it does not collide
+                        if port == 9875:
+                            continue
+
+                        # 2. Multicast RTP ports on different multicast IPs do not collide
+                        other_pw = (other.config or {}).get("pipewire_config", other.config or {})
+                        other_sinks = [s for s in other_pw.get("virtual_sinks", []) if s.get("aes67_enabled")] + other_pw.get("remote_sinks", [])
+                        target_pw = (config or {}).get("pipewire_config", config or {})
+                        target_sinks = [s for s in target_pw.get("virtual_sinks", []) if s.get("aes67_enabled")] + target_pw.get("remote_sinks", [])
+
+                        colliding_stream = None
+                        for ts in target_sinks:
+                            ts_ip = (ts.get("multicast_ip") or "").strip()
+                            ts_p = int(ts.get("rtp_port") or ts.get("port") or 5004)
+                            if ts_p == port:
+                                for os_sink in other_sinks:
+                                    os_ip = (os_sink.get("multicast_ip") or "").strip()
+                                    os_p = int(os_sink.get("rtp_port") or os_sink.get("port") or 5004)
+                                    if os_p == port and ts_ip and os_ip and ts_ip == os_ip:
+                                        colliding_stream = (ts_ip, port, os_sink.get("name") or os_sink.get("id"))
+                                        break
+                            if colliding_stream:
+                                break
+
+                        if colliding_stream:
+                            c_ip, c_port, c_name = colliding_stream
+                            raise HTTPException(
+                                status_code=400,
+                                detail=(
+                                    f"Port collision: Multicast stream {c_ip}:{c_port} is already in use by "
+                                    f"PipeWire Hub '{other_name}' (sink '{c_name}')."
+                                )
+                            )
+                        # If different multicast IPs, allow sharing standard port (e.g. 5004)
+                        continue
+
                     raise HTTPException(
                         status_code=400,
                         detail=(
@@ -264,6 +366,33 @@ def validate_service_port_conflicts(
                             f"service '{other_name}' (ID: {other_id}, {other_label} [{other_proto.upper()}])."
                         )
                     )
+
+    # Check against active Scheduled Tasks in database
+    try:
+        from database.models import ScheduledTask
+        active_tasks = db.query(ScheduledTask).filter(ScheduledTask.is_active == True).all()
+        for task in active_tasks:
+            task_ports = extract_ports_from_service(
+                service_id=task.id,
+                service_name=task.name,
+                service_type="ffmpeg_stream",
+                config={},
+                input_config=task.input_config,
+                output_config=task.output_config
+            )
+            for tp, tlabel, tname, tid, tproto in task_ports:
+                for port, label, _, _, proto in target_ports:
+                    if port == tp and (proto == tproto or proto == "any" or tproto == "any"):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f"Port collision: Port {port}/{proto.upper()} ({label}) is already reserved by "
+                                f"active Scheduled Task '{tname}' (ID: {tid}, {tlabel} [{tproto.upper()}])."
+                            )
+                        )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
 
     # Check display collision for desktop services
     if service_type == "desktop":

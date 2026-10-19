@@ -207,8 +207,8 @@ sudo fail2ban-client reload
 ### 🌐 18. Dynamic Interface Binding & Live Firewall Matrix
 - **Dynamic Interface Enumeration**: Detects all physical, virtual, and loopback interfaces (IP, netmask, MAC, speed, and link state).
 - **Fail-Safe Bind Resolver**: Prevents administrative lock-out if network interfaces change, drop, or migrate; automatically falls back to `0.0.0.0` with clear diagnostic warnings.
-- **Daemon Integration**: Bind FFmpeg-GUI core, MediaMTX, and Icecast2 to specific interfaces or individual IP addresses.
-- **Live Firewall Matrix & Rule Generator**: Real-time socket scanner reporting live listening ports across all daemons with 1-click copyable UFW and iptables rule sets.
+- **Daemon Integration**: Bind FFmpeg-GUI core, MediaMTX, Icecast2, and PipeWire Audio Hubs (AES67 AoIP, SAP discovery, PTPv2) to specific interfaces or individual IP addresses.
+- **Live Firewall Matrix & Rule Generator**: Real-time socket scanner reporting live listening ports across all daemons, stream pipelines, and AoIP receivers with 1-click copyable UFW and iptables rule sets.
 
 ---
 
