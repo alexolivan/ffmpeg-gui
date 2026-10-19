@@ -7969,16 +7969,21 @@ def write_alsa_control(payload: AlsaControlUpdate):
 @app.websocket("/ws/alsa/meters/{card_index}")
 async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
     await websocket.accept()
+    alsa_manager.active_mixer_ws_count += 1
+    # Check if this card is an AudioScience adapter to throttle interval and protect the DSP mailbox
+    is_asihpi = alsa_manager.is_card_asihpi(card_index)
+    sleep_interval = 0.50 if is_asihpi else 0.25  # 2 Hz for AudioScience (prevents mailbox saturation), 4 Hz otherwise
     try:
         while True:
-            meters = alsa_manager.read_meters(card_index)
-            jacks = alsa_manager.read_jack_sensors(card_index)
-            await websocket.send_json({"meters": meters, "jacks": jacks})
-            await asyncio.sleep(0.033)  # ~30Hz
+            telemetry = await asyncio.to_thread(alsa_manager.read_realtime_telemetry, card_index)
+            await websocket.send_json(telemetry)
+            await asyncio.sleep(sleep_interval)
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected from ALSA meters card {card_index}")
     except Exception as e:
         logger.error(f"WebSocket ALSA meters error: {e}")
+    finally:
+        alsa_manager.active_mixer_ws_count = max(0, alsa_manager.active_mixer_ws_count - 1)
 
 
 @app.websocket("/ws/desktop/{service_id}/vnc")

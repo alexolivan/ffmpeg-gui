@@ -85,7 +85,7 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   },
   alsa: {
     video: [],
-    audio: ['pcm_s16le', 'pcm_s24le', 'copy']
+    audio: ['pcm_s16le', 'pcm_s24le']
   },
   pipewire: {
     video: [],
@@ -1024,8 +1024,10 @@ export function isRawHardwareAudioSource(inputType?: string): boolean {
  */
 export function isPcmPassthroughViable(inputType?: string, outputType?: string): boolean {
   if (!inputType || !outputType) return false;
+  // ALSA hardware audio sinks must never use streamcopy; they require explicit PCM transcoding & sample rate control (48 kHz).
+  if (outputType === 'alsa') return false;
   const isRawInput = isRawHardwareAudioSource(inputType);
-  const isRawDest = ['alsa', 'pipewire'].includes(outputType);
+  const isRawDest = ['pipewire'].includes(outputType);
   return isRawInput && isRawDest;
 }
 
@@ -1115,15 +1117,17 @@ export function getAvailableAudioCodecs(
   }
 
   // Audio streamcopy ('copy') matrix:
-  // - Raw hardware/virtual sources (alsa, pipewire, decklink, lavfi) CAN streamcopy to raw audio destinations
-  //   (alsa, pipewire) and containers supporting PCM (file, rtsp, rtp).
+  // - ALSA destinations NEVER allow 'copy' to ensure guaranteed 48kHz PCM stability on hardware cards.
+  // - Raw hardware/virtual sources (pipewire, decklink) CAN streamcopy to PipeWire and containers supporting PCM (file, rtsp, rtp).
   // - Raw sources CANNOT streamcopy to compressed streaming destinations (icecast, rtmp, whip, hls).
   // - Compressed sources CANNOT streamcopy into raw PCM destinations (alsa, pipewire) without transcoding.
   const isRawInput = isRawHardwareAudioSource(inputType);
   const isCompressedDest = outputType ? ['icecast', 'rtmp', 'whip', 'hls'].includes(outputType) : false;
   const isRawDest = outputType ? ['alsa', 'pipewire'].includes(outputType) : false;
 
-  if (isRawInput && isCompressedDest) {
+  if (outputType === 'alsa') {
+    codecs = codecs.filter(c => c.id !== 'copy');
+  } else if (isRawInput && isCompressedDest) {
     codecs = codecs.filter(c => c.id !== 'copy');
   } else if (!isRawInput && isRawDest) {
     codecs = codecs.filter(c => c.id !== 'copy');

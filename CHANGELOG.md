@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.45.3] - 2026-10-19
+
+### Fixed
+- **AudioScience DSP & Driver Crash Shield (`backend/core/audioscience_health.py`)**:
+  - Implemented one-time capability discovery inspecting `hpicontrol.py -a <idx> controls` for `CONTROL_UNIVERSAL` status telemetry controls.
+  - Eliminated repetitive invalid `cget 9` invocations on adapters without universal status controls (e.g., ASI5640 where Control 9 is a matrix volume control and ASI5810), preventing the kernel driver error `hpicmn.c:75 Header object 0 invalid`.
+  - Permanently caches `has_telemetry: False` for non-telemetry cards, enforcing zero subsequent driver queries (0 subprocesses, 0 HPI mailbox calls).
+  - Increased telemetry cache TTL to 30s and automatically skips polling whenever the ALSA Mixer WebSocket is active.
+- **ALSA Mixer WebSocket Throttling & Mailbox Protection (`backend/core/alsa_manager.py`, `backend/main.py`)**:
+  - Combined meter levels and jack sensor queries into `read_realtime_telemetry()` under a shared `audio_hw_lock`, executing `amixer contents` only once per iteration instead of twice.
+  - Throttled WebSocket stream interval to 2 Hz (0.50s) for AudioScience (`asihpi`) adapters and 4 Hz (0.25s) for standard cards, reducing PCI mailbox transactions from 60/sec to 2/sec to eliminate `hpi6205.c` timeout lockups (`HPI error 207`).
+  - Added active WebSocket client tracking (`active_mixer_ws_count`) to coordinate with hardware health collector.
+- **ALSA Hardware Clock Protection & Sample Rate Shield (`frontend/src/components/codec/codecRegistry.ts`, `backend/core/builders/ffmpeg_builder.py`)**:
+  - Removed `copy` from `OUTPUT_COMPATIBLE_CODECS.alsa.audio` and excluded ALSA destinations from `isPcmPassthroughViable()`, preventing direct streamcopy into ALSA outputs.
+  - Enforced `pcm_s16le` transcoding and guaranteed explicit `-ar 48000` and `-ac 2` parameters on all ALSA hardware outputs, ensuring incoming streams (including 44.1 kHz streams or synthetic sine tones) cannot alter master hardware sample clocks.
+  - Added explicit `-sample_rate` and `-channels` propagation on ALSA inputs when configured.
+- **Graceful Watchdog Process Teardown (`backend/core/process_manager.py`)**:
+  - Replaced immediate `SIGKILL` invocations in Watchdog timeout/stall blocks with `_safe_terminate_process()`, which delivers `SIGTERM` and awaits up to 1.5s for clean `snd_pcm_close()` teardown by `libavdevice/alsa` before escalating to `SIGKILL`.
+
 ## [2.45.2] - 2026-10-19
 
 ### Changed

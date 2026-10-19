@@ -1129,8 +1129,8 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-c:a libmp3lame", cmd_str)
         self.assertIn("icecast://", cmd_str)
 
-    def test_pipewire_to_alsa_copy_passthrough(self):
-        """Test bit-perfect stream copy from PipeWire PCM input to ALSA output (0% CPU)."""
+    def test_pipewire_to_alsa_enforces_pcm_s16le(self):
+        """Test that PipeWire audio input targeting ALSA output enforces pcm_s16le 48kHz stereo to protect hardware clocks."""
         proc = MagicMock()
         proc.id = 45
         proc.name = "PW to ALSA"
@@ -1156,7 +1156,9 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-name ffmpeg_service_45", cmd_str)
         self.assertIn("-stream_name PW to ALSA", cmd_str)
         self.assertIn("-i mix_bus.monitor", cmd_str)
-        self.assertIn("-c:a copy", cmd_str)
+        self.assertIn("-c:a pcm_s16le", cmd_str)
+        self.assertIn("-ar 48000", cmd_str)
+        self.assertIn("-ac 2", cmd_str)
         self.assertIn("-f alsa hw:0,0", cmd_str)
 
     def test_compressed_to_pipewire_forces_pcm(self):

@@ -15,6 +15,8 @@ SND_CTL_ELEM_TYPE_ENUMERATED = 3
 SND_CTL_ELEM_TYPE_BYTES = 4
 SND_CTL_ELEM_TYPE_IEC958 = 5
 
+audio_hw_lock = threading.RLock()
+
 class AlsaManager:
     _instance = None
     _lock = threading.Lock()
@@ -31,6 +33,7 @@ class AlsaManager:
         self.asound = None
         self.available = False
         self._card_locks: Dict[int, threading.Lock] = {}
+        self.active_mixer_ws_count: int = 0
 
         lib_paths = [
             "/usr/lib/x86_64-linux-gnu/libasound.so.2",
@@ -604,20 +607,35 @@ class AlsaManager:
             logger.error(f"Error writing ALSA control numid={numid} on card {card_idx}: {e}")
             return False
 
-    def read_meters(self, card_idx: int) -> Dict[int, List[int]]:
-        """Fast-path reading for Vumeters (numids with meter type)."""
+    def is_mixer_active(self) -> bool:
+        """Returns True if any ALSA Mixer WebSocket client is actively streaming meters."""
+        return self.active_mixer_ws_count > 0
+
+    def is_card_asihpi(self, card_idx: int) -> bool:
+        """Returns True if the card uses the snd-asihpi AudioScience driver."""
+        card_info = next((c for c in self.get_cards() if str(c.get("card_index")) == str(card_idx)), None)
+        if card_info:
+            c_name = f"{card_info.get('card_id', '')} {card_info.get('name', '')} {card_info.get('driver', '')}".lower()
+            return "asihpi" in c_name or "asi" in c_name
+        return False
+
+    def read_realtime_telemetry(self, card_idx: int) -> Dict[str, Any]:
+        """
+        Combined fast-path reading for meters and jack sensors in a single pass under audio_hw_lock.
+        Avoids redundant amixer contents executions and serializes hardware mailbox access.
+        """
         card_info = next((c for c in self.get_cards() if str(c.get("card_index")) == str(card_idx)), None)
         if card_info:
             c_name = f"{card_info.get('card_id', '')} {card_info.get('name', '')} {card_info.get('driver', '')}".lower()
             if "loopback" in c_name:
-                return {}
+                return {"meters": {}, "jacks": {}}
         elif str(card_idx).lower() == "loopback":
-            return {}
+            return {"meters": {}, "jacks": {}}
 
-        topology = self.get_card_topology(card_idx)
-        meters_data = {}
+        with audio_hw_lock:
+            topology = self.get_card_topology(card_idx)
 
-        # Collect meter numids from all 4 quadrants
+        meters_data: Dict[int, List[int]] = {}
         for quad in ["virtual_playout", "hardware_outputs", "virtual_capture", "hardware_inputs"]:
             for group in topology.get(quad, []):
                 for m in group.get("meters", []):
@@ -626,18 +644,22 @@ class AlsaManager:
                     if numid is not None:
                         meters_data[numid] = vals
 
-        return meters_data
-
-    def read_jack_sensors(self, card_idx: int) -> Dict[int, bool]:
-        """Fast-path reading for Jack Sensor states (numids in jack_sensors)."""
-        topology = self.get_card_topology(card_idx)
-        jacks_data = {}
+        jacks_data: Dict[int, bool] = {}
         for group in topology.get("jack_sensors", []):
             for ctrl in group.get("controls", []):
                 numid = ctrl.get("numid")
                 vals = ctrl.get("values", [False])
                 if numid is not None:
                     jacks_data[numid] = bool(vals[0]) if vals else False
-        return jacks_data
+
+        return {"meters": meters_data, "jacks": jacks_data}
+
+    def read_meters(self, card_idx: int) -> Dict[int, List[int]]:
+        """Fast-path reading for Vumeters (numids with meter type)."""
+        return self.read_realtime_telemetry(card_idx).get("meters", {})
+
+    def read_jack_sensors(self, card_idx: int) -> Dict[int, bool]:
+        """Fast-path reading for Jack Sensor states (numids in jack_sensors)."""
+        return self.read_realtime_telemetry(card_idx).get("jacks", {})
 
 alsa_manager = AlsaManager()
