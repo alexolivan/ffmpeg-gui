@@ -454,7 +454,10 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   // Fetch AoIP stream discovery (SAP announcements) from network
   const fetchAoIpDiscovery = () => {
     setIsLoadingDiscovery(true);
-    fetch(`${API}/api/pipewire/aoip-discovery?service_id=${initialConfig?.id || ''}`)
+    const token = localStorage.getItem('token') || '';
+    fetch(`${API}/api/pipewire/aoip-discovery?service_id=${initialConfig?.id || ''}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && Array.isArray(data.discovered_streams)) {
@@ -501,7 +504,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
   const handleImportDiscoveredStream = (stream: any) => {
     if (!stream) return;
-    const cleanName = stream.sap_name || `Remote ${stream.multicast_ip}`;
+    const cleanName = stream.session_name || stream.sap_name || stream.name || `Remote ${stream.multicast_ip}`;
     const baseId = cleanName.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'remote_sink';
     let uniqueId = baseId;
     let counter = 1;
@@ -517,8 +520,8 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
       rtp_port: Number(stream.rtp_port) || 5004,
       channels: Number(stream.channels) || 2,
       format: stream.format === 'S16BE' ? 'S16BE' : 'S24BE',
-      rate: Number(stream.rate) || 48000,
-      sap_name: stream.sap_name || '',
+      rate: Number(stream.sample_rate || stream.rate) || 48000,
+      sap_name: cleanName,
       origin_ip: stream.origin_ip || '',
     };
     setRemoteSinks((prev) => [...prev, newSink]);
@@ -1324,7 +1327,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                         ) : (
                           unconfigured.map((ds: any) => (
                             <option key={`${ds.multicast_ip}:${ds.rtp_port}`} value={`${ds.multicast_ip}:${ds.rtp_port}`}>
-                              {ds.sap_name || `${ds.multicast_ip}:${ds.rtp_port}`} ({ds.channels}ch)
+                              {ds.session_name || ds.sap_name || `${ds.multicast_ip}:${ds.rtp_port}`} ({ds.channels}ch)
                             </option>
                           ))
                         )}

@@ -47,10 +47,13 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNotNone(parsed)
         self.assertEqual(parsed["sap_name"], "test1 aes_bus")
+        self.assertEqual(parsed["session_name"], "test1 aes_bus")
+        self.assertEqual(parsed["session_id"], "239.69.11.1:5004")
         self.assertEqual(parsed["multicast_ip"], "239.69.11.1")
         self.assertEqual(parsed["rtp_port"], 5004)
         self.assertEqual(parsed["channels"], 2)
         self.assertEqual(parsed["rate"], 48000)
+        self.assertEqual(parsed["sample_rate"], 48000)
         self.assertEqual(parsed["encoding"], "L24")
         self.assertEqual(parsed["format"], "S24BE")
         self.assertEqual(parsed["ptp_clock_id"], "F0-2F-74-FF-FE-32-26-60:0")
@@ -155,6 +158,39 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
         # Test stop
         await supervisor.stop()
         self.assertFalse(supervisor._running)
+
+    def test_handle_sap_packet_and_streams_count(self):
+        mock_pm = MagicMock()
+        supervisor = AoIpDiscoverySupervisor(14, mock_pm)
+        supervisor.nic_ip = "192.168.99.13"
+
+        sdp = (
+            "v=0\r\n"
+            "s=test1 aes_bus_0\r\n"
+            "c=IN IP4 239.69.11.3/1\r\n"
+            "m=audio 5008 RTP/AVP 127\r\n"
+            "a=rtpmap:127 L24/48000/2\r\n"
+        )
+        packet = build_raw_sap_packet(sdp, origin_ip="192.168.99.11")
+        supervisor.handle_sap_packet(packet, ("192.168.99.11", 57602))
+
+        status = supervisor.get_discovery_status()
+        self.assertEqual(status["streams_count"], 1)
+        self.assertEqual(len(status["discovered_streams"]), 1)
+        st = status["discovered_streams"][0]
+        self.assertEqual(st["session_name"], "test1 aes_bus_0")
+        self.assertEqual(st["session_id"], "239.69.11.3:5008")
+        self.assertEqual(st["multicast_ip"], "239.69.11.3")
+        self.assertEqual(st["rtp_port"], 5008)
+        self.assertEqual(st["sample_rate"], 48000)
+        self.assertFalse(st["is_local"])
+
+        # Deletion packet handling
+        del_packet = build_raw_sap_packet(sdp, origin_ip="192.168.99.11", is_deletion=True)
+        supervisor.handle_sap_packet(del_packet, ("192.168.99.11", 57602))
+        status2 = supervisor.get_discovery_status()
+        self.assertEqual(status2["streams_count"], 0)
+        self.assertEqual(len(status2["discovered_streams"]), 0)
 
 
 if __name__ == "__main__":

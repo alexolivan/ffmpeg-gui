@@ -8711,7 +8711,7 @@ def get_pipewire_network_audit(
 
 
 @app.get("/api/pipewire/aoip-discovery")
-def get_aoip_discovery(
+async def get_aoip_discovery(
     service_id: Optional[int] = None,
     user: str = Depends(verify_token),
     db: Session = Depends(get_db)

@@ -172,10 +172,13 @@ def parse_sap_packet(data: bytes, sender_ip: str = "") -> Optional[Dict[str, Any
 
     return {
         "sap_name": sap_name,
+        "session_name": sap_name,
+        "session_id": f"{multicast_ip}:{rtp_port}",
         "multicast_ip": multicast_ip,
         "rtp_port": rtp_port,
         "channels": max(1, channels),
         "rate": rate,
+        "sample_rate": rate,
         "encoding": encoding,
         "format": format_name,
         "ptp_clock_id": ptp_clock_id,
@@ -183,6 +186,27 @@ def parse_sap_packet(data: bytes, sender_ip: str = "") -> Optional[Dict[str, Any
         "is_deletion": is_deletion,
         "sdp_raw": sdp_text,
     }
+
+
+class _SapDatagramProtocol(asyncio.DatagramProtocol):
+    """Asyncio UDP datagram protocol callback handler for passive SAP packet reception."""
+
+    def __init__(self, supervisor: "AoIpDiscoverySupervisor"):
+        self.supervisor = supervisor
+        self.transport: Optional[asyncio.DatagramTransport] = None
+
+    def connection_made(self, transport: asyncio.DatagramTransport):
+        self.transport = transport
+
+    def datagram_received(self, data: bytes, addr: Tuple[str, int]):
+        self.supervisor.handle_sap_packet(data, addr)
+
+    def error_received(self, exc: Exception):
+        logger.warning(f"[AoIpDiscovery #{self.supervisor.hub_id}] SAP socket datagram error: {exc}")
+
+    def connection_lost(self, exc: Optional[Exception]):
+        if exc:
+            logger.warning(f"[AoIpDiscovery #{self.supervisor.hub_id}] SAP socket connection closed: {exc}")
 
 
 class AoIpDiscoverySupervisor:
@@ -197,6 +221,7 @@ class AoIpDiscoverySupervisor:
         self._running = False
         self._sap_task: Optional[asyncio.Task] = None
         self._ptp_task: Optional[asyncio.Task] = None
+        self._sap_transport: Optional[asyncio.DatagramTransport] = None
         self._sap_socket: Optional[socket.socket] = None
 
         # Interface and IP configuration
@@ -264,8 +289,37 @@ class AoIpDiscoverySupervisor:
         self._ptp_task = asyncio.create_task(self._run_ptp_monitor())
         logger.info(f"[AoIpDiscovery #{self.hub_id}] Started companion discovery supervisor on iface '{self.interface}' ({self.nic_ip}).")
 
+    def handle_sap_packet(self, data: bytes, addr: Tuple[str, int]):
+        """Callback invoked when a UDP datagram arrives on the SAP port."""
+        sender_ip = addr[0] if addr else ""
+        try:
+            parsed = parse_sap_packet(data, sender_ip=sender_ip)
+            if not parsed:
+                return
+
+            stream_key = f"{parsed['multicast_ip']}:{parsed['rtp_port']}"
+            if parsed.get("is_deletion"):
+                removed = self._streams_cache.pop(stream_key, None)
+                if removed:
+                    logger.info(f"[AoIpDiscovery #{self.hub_id}] SAP deletion received for stream '{stream_key}' ({removed.get('session_name')})")
+            else:
+                now = time.time()
+                is_local = (parsed["origin_ip"] == self.nic_ip) if self.nic_ip else (parsed["origin_ip"] in ("127.0.0.1", "0.0.0.0"))
+                parsed["is_local"] = is_local
+                parsed["last_seen"] = now
+                is_new = stream_key not in self._streams_cache
+                self._streams_cache[stream_key] = parsed
+                if is_new:
+                    logger.info(
+                        f"[AoIpDiscovery #{self.hub_id}] Discovered SAP stream '{parsed['session_name']}' "
+                        f"on {parsed['multicast_ip']}:{parsed['rtp_port']} "
+                        f"({parsed['channels']}ch, {parsed['rate']}Hz, {parsed['format']}) from {parsed['origin_ip']}"
+                    )
+        except Exception as e:
+            logger.warning(f"[AoIpDiscovery #{self.hub_id}] Error processing incoming SAP packet: {e}")
+
     async def stop(self):
-        """Stops background discovery tasks and closes sockets cleanly."""
+        """Stops background discovery tasks and closes transports/sockets cleanly."""
         if not self._running:
             return
         self._running = False
@@ -286,6 +340,13 @@ class AoIpDiscoverySupervisor:
                 pass
         self._ptp_task = None
 
+        if self._sap_transport:
+            try:
+                self._sap_transport.close()
+            except Exception:
+                pass
+            self._sap_transport = None
+
         if self._sap_socket:
             try:
                 self._sap_socket.close()
@@ -296,7 +357,7 @@ class AoIpDiscoverySupervisor:
         logger.info(f"[AoIpDiscovery #{self.hub_id}] Stopped companion discovery supervisor.")
 
     def _setup_sap_socket(self) -> Optional[socket.socket]:
-        """Create and bind non-blocking UDP multicast listener on 224.0.0.56:9875."""
+        """Create and bind non-blocking UDP multicast listener on port 9875."""
         sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -306,19 +367,48 @@ class AoIpDiscoverySupervisor:
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
                 except Exception:
                     pass
+
+            # Bind to device if specified and permissions allow (SO_BINDTODEVICE = 25)
+            if self.interface:
+                try:
+                    sock.setsockopt(socket.SOL_SOCKET, 25, self.interface.encode())
+                except Exception:
+                    pass
+
             sock.setblocking(False)
             sock.bind(("0.0.0.0", 9875))
 
-            if self.nic_ip and self.nic_ip not in ("0.0.0.0", "127.0.0.1"):
-                try:
-                    mreq = struct.pack("4s4s", socket.inet_aton("224.0.0.56"), socket.inet_aton(self.nic_ip))
-                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-                except Exception:
-                    mreq = struct.pack("4sl", socket.inet_aton("224.0.0.56"), socket.INADDR_ANY)
-                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-            else:
-                mreq = struct.pack("4sl", socket.inet_aton("224.0.0.56"), socket.INADDR_ANY)
-                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            # Multicast groups to join: AES67 (224.0.0.56) and Standard SAP (224.2.127.254)
+            groups = ["224.0.0.56", "224.2.127.254"]
+            for grp in groups:
+                joined = False
+                # 1. Prefer struct ip_mreqn with interface index
+                if self.interface:
+                    try:
+                        if_idx = socket.if_nametoindex(self.interface)
+                        local_ip = self.nic_ip or "0.0.0.0"
+                        mreqn = struct.pack("=4s4si", socket.inet_aton(grp), socket.inet_aton(local_ip), if_idx)
+                        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreqn)
+                        joined = True
+                    except Exception as e:
+                        logger.debug(f"[AoIpDiscovery #{self.hub_id}] ip_mreqn join {grp} on {self.interface} failed: {e}")
+
+                # 2. Fallback to struct ip_mreq with self.nic_ip
+                if not joined and self.nic_ip and self.nic_ip not in ("0.0.0.0", "127.0.0.1"):
+                    try:
+                        mreq = struct.pack("4s4s", socket.inet_aton(grp), socket.inet_aton(self.nic_ip))
+                        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+                        joined = True
+                    except Exception as e:
+                        logger.debug(f"[AoIpDiscovery #{self.hub_id}] ip_mreq IP join {grp} on {self.nic_ip} failed: {e}")
+
+                # 3. Fallback to INADDR_ANY (0.0.0.0)
+                if not joined:
+                    try:
+                        mreq = struct.pack("4s4s", socket.inet_aton(grp), socket.inet_aton("0.0.0.0"))
+                        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+                    except Exception as e:
+                        logger.debug(f"[AoIpDiscovery #{self.hub_id}] INADDR_ANY join {grp} failed: {e}")
 
             return sock
         except Exception as e:
@@ -327,46 +417,45 @@ class AoIpDiscoverySupervisor:
                     sock.close()
                 except Exception:
                     pass
-            logger.warning(f"[AoIpDiscovery #{self.hub_id}] Failed to bind SAP socket on 224.0.0.56:9875: {e}")
+            logger.warning(f"[AoIpDiscovery #{self.hub_id}] Failed to bind SAP socket on port 9875: {e}")
             return None
 
     async def _run_sap_listener(self):
-        """Asynchronous listener loop receiving and parsing SAP announcements."""
+        """Asynchronous listener loop receiving and parsing SAP announcements via DatagramProtocol."""
         loop = asyncio.get_running_loop()
 
         while self._running:
-            if not self._sap_socket:
-                self._sap_socket = self._setup_sap_socket()
-                if not self._sap_socket:
-                    await asyncio.sleep(5.0)
-                    continue
+            sock = self._setup_sap_socket()
+            if not sock:
+                await asyncio.sleep(5.0)
+                continue
 
             try:
-                data, addr = await loop.sock_recvfrom(self._sap_socket, 4096)
-                sender_ip = addr[0] if addr else ""
-                parsed = parse_sap_packet(data, sender_ip=sender_ip)
-                if parsed:
-                    stream_key = f"{parsed['multicast_ip']}:{parsed['rtp_port']}"
-                    if parsed.get("is_deletion"):
-                        self._streams_cache.pop(stream_key, None)
-                    else:
-                        now = time.time()
-                        is_local = (parsed["origin_ip"] == self.nic_ip) if self.nic_ip else (parsed["origin_ip"] in ("127.0.0.1", "0.0.0.0"))
-                        parsed["is_local"] = is_local
-                        parsed["last_seen"] = now
-                        self._streams_cache[stream_key] = parsed
+                transport, protocol = await loop.create_datagram_endpoint(
+                    lambda: _SapDatagramProtocol(self),
+                    sock=sock
+                )
+                self._sap_transport = transport
+                logger.info(
+                    f"[AoIpDiscovery #{self.hub_id}] SAP multicast listener active on {self.interface or 'default'} "
+                    f"({self.nic_ip or 'all'}) for 224.0.0.56 / 224.2.127.254 : 9875"
+                )
+
+                while self._running and not transport.is_closing():
+                    await asyncio.sleep(1.0)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.debug(f"[AoIpDiscovery #{self.hub_id}] SAP socket read error: {e}")
-                if self._sap_socket:
+                logger.warning(f"[AoIpDiscovery #{self.hub_id}] SAP listener loop error: {e}")
+                await asyncio.sleep(2.0)
+            finally:
+                if self._sap_transport:
                     try:
-                        self._sap_socket.close()
+                        self._sap_transport.close()
                     except Exception:
                         pass
-                    self._sap_socket = None
-                await asyncio.sleep(2.0)
+                    self._sap_transport = None
 
     async def _run_ptp_monitor(self):
         """Periodic passive PTPv2 monitor and local ptp4l role inspector."""
@@ -499,5 +588,6 @@ class AoIpDiscoverySupervisor:
             "ip": self.nic_ip,
             "ptp_status": dict(self._ptp_status),
             "discovered_streams": streams_list,
+            "streams_count": len(streams_list),
             "remote_sinks_status": remote_sinks_status,
         }

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.45.1] - 2026-10-19
+
+### Fixed
+- **AoIP SAP Multicast Listener & Cross-Platform Datagram Protocol (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Replaced Python 3.11-specific `loop.sock_recvfrom` with universal `asyncio.DatagramProtocol` via `loop.create_datagram_endpoint`, resolving silent listener stalls and exceptions on Python 3.8-3.10 systems.
+  - Upgraded multicast membership joining on designated interfaces using `struct ip_mreqn` with `imr_ifindex` (`socket.if_nametoindex`), guaranteeing physical NIC packet ingress on multi-NIC hosts regardless of system multicast routing tables.
+  - Joined both AES67 standard (`224.0.0.56:9875`) and global SAP standard (`224.2.127.254:9875`) multicast groups with `SO_REUSEADDR` and `SO_REUSEPORT`.
+  - Added explicit `INFO` logs when streams are discovered or removed, replacing suppressed `DEBUG` logs.
+- **Frontend Stream Property Parity & Authentication (`PipeWirePreviewModal.tsx`, `PipeWireConfigForm.tsx`)**:
+  - Added property aliases (`session_name`, `session_id`, `sample_rate`) matching frontend expectations in both `parse_sap_packet()` and modal rendering.
+  - Added `Authorization: Bearer <token>` headers to `fetchGraphTelemetry` and `fetchAoIpDiscovery` API calls.
+  - Hardened stream field fallback resolution and table rendering in `PipeWirePreviewModal`.
+
 ## [2.45.0] - 2026-10-19
 
 ### Added

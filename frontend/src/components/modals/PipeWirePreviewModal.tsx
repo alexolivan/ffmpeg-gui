@@ -172,7 +172,10 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
     if (!isRunning) return;
     try {
       if (isManual || !graphData) setLoading(true);
-      const res = await fetch(`${API}/api/services/${currentProcess.id}/pipewire/nodes`);
+      const token = localStorage.getItem('token') || '';
+      const res = await fetch(`${API}/api/services/${currentProcess.id}/pipewire/nodes`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (res.ok) {
         const data = await res.json();
         setGraphData(data);
@@ -238,12 +241,13 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const isAes67Enabled = Boolean(pwConfig.aes67_network?.enabled);
   const showAoIpTab = isAes67Enabled || remoteSinks.length > 0;
 
-  const handleConfigureStreamInHub = (stream: AoIpStream) => {
-    const baseId = (stream.session_name || 'remote_stream')
+  const handleConfigureStreamInHub = (stream: AoIpStream | any) => {
+    const rawName = stream.session_name || stream.sap_name || stream.name || 'Remote AoIP Stream';
+    const baseId = rawName
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, '_')
       .replace(/_+/g, '_')
-      .slice(0, 24);
+      .slice(0, 24) || 'remote_stream';
     const existingIds = new Set(remoteSinks.map((s: any) => s.id));
     let uniqueId = baseId;
     let counter = 1;
@@ -253,11 +257,14 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
     const newRemoteSink = {
       id: uniqueId,
-      name: stream.session_name || 'Remote AoIP Stream',
-      channels: stream.channels || 2,
+      name: rawName,
+      channels: Number(stream.channels) || 2,
       multicast_ip: stream.multicast_ip,
-      rtp_port: stream.rtp_port || 5004,
+      rtp_port: Number(stream.rtp_port) || 5004,
       format: stream.format === 'S16BE' ? 'S16BE' : 'S24BE',
+      rate: Number(stream.sample_rate || stream.rate) || 48000,
+      sap_name: rawName,
+      origin_ip: stream.origin_ip || '',
     };
 
     const updatedProc = JSON.parse(JSON.stringify(currentProcess));
@@ -983,7 +990,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     <div className="inline-block p-2 rounded-full bg-white/5 border border-white/10 mb-2">
                       <span className="animate-spin inline-block text-brand-lime">↻</span>
                     </div>
-                    <p>{t('services.pipewire.noLanStreamsDiscovered', 'Listening on 224.2.127.254:9875... No SAP announcements detected yet.')}</p>
+                    <p>{t('services.pipewire.noLanStreamsDiscovered', 'Listening on 224.0.0.56 / 224.2.127.254:9875... No SAP announcements detected yet.')}</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-[var(--glass-border)]">
@@ -999,25 +1006,28 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--glass-border)]">
-                        {graphData.aoip_discovery.discovered_streams.map((stream: AoIpStream) => {
+                        {graphData.aoip_discovery.discovered_streams.map((stream: any) => {
+                          const sName = stream.session_name || stream.sap_name || stream.name || 'Unnamed Stream';
+                          const sId = stream.session_id || `${stream.multicast_ip}:${stream.rtp_port}`;
+                          const sRate = stream.sample_rate || stream.rate || 48000;
                           const isConfigured = remoteSinks.some(
-                            (rs: any) => rs.multicast_ip === stream.multicast_ip && rs.rtp_port === stream.rtp_port
+                            (rs: any) => rs.multicast_ip === stream.multicast_ip && Number(rs.rtp_port) === Number(stream.rtp_port)
                           );
 
                           return (
-                            <tr key={stream.session_id} className="hover:bg-white/2 transition-colors">
+                            <tr key={sId} className="hover:bg-white/2 transition-colors">
                               <td className="py-2.5 px-3">
-                                <div className="font-bold text-[var(--text-primary)] font-sans">{stream.session_name}</div>
-                                <div className="text-[10px] text-[var(--text-secondary)]">{stream.session_id}</div>
+                                <div className="font-bold text-[var(--text-primary)] font-sans">{sName}</div>
+                                <div className="text-[10px] text-[var(--text-secondary)]">{sId}</div>
                               </td>
                               <td className="py-2.5 px-3 text-cyan-400 font-semibold">
                                 {stream.multicast_ip}:{stream.rtp_port}
                               </td>
                               <td className="py-2.5 px-3 text-[var(--text-secondary)]">
-                                {stream.channels}ch · {stream.format} · {stream.sample_rate}Hz
+                                {stream.channels}ch · {stream.format || 'S24BE'} · {sRate}Hz
                               </td>
                               <td className="py-2.5 px-3 text-[var(--text-secondary)]">
-                                {stream.origin_ip}
+                                {stream.origin_ip || '-'}
                               </td>
                               <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[120px]" title={stream.ptp_clock_id || '-'}>
                                 {stream.ptp_clock_id || '-'}
