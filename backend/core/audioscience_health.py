@@ -10,7 +10,8 @@ logger = logging.getLogger("AudioScienceHealth")
 
 _CACHED_HEALTH: Optional[List[Dict[str, Any]]] = None
 _LAST_PROBE_TIME: float = 0.0
-CACHE_TTL_SECONDS: float = 5.0
+_ADAPTER_CAPABILITIES_CACHE: Dict[int, Dict[str, Any]] = {}
+CACHE_TTL_SECONDS: float = 30.0
 
 
 def _find_hpicontrol_bin() -> Optional[str]:
@@ -85,6 +86,21 @@ def parse_status_control_references(output: str) -> List[int]:
     return control_ids
 
 
+def parse_universal_control_id(output: str) -> Optional[int]:
+    """
+    Parses output of 'hpicontrol.py -a <idx> controls' looking for CONTROL_UNIVERSAL.
+    Example line on cards with status controls (e.g. ASI5720):
+      Control 9 CONTROL_UNIVERSAL on SOURCENODE_ADAPTER 0 Universal_Info 
+    Returns the integer control ID, or None if the card has no universal/status controls (e.g. ASI5640).
+    """
+    for line in output.splitlines():
+        line_clean = line.strip()
+        m = re.match(r"^Control\s+(\d+)\s+CONTROL_UNIVERSAL", line_clean, re.IGNORECASE)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 def parse_child_control(output: str) -> Dict[str, Any]:
     """
     Parses a child control's classname and value.
@@ -122,11 +138,23 @@ def parse_child_control(output: str) -> Dict[str, Any]:
 def probe_audioscience_health(timeout: float = 2.0) -> List[Dict[str, Any]]:
     """
     Probes AudioScience adapters using hpicontrol.py CLI with safe sub-process timeout.
+    Performs one-time capability discovery to completely eliminate polling overhead
+    on cards without CONTROL_UNIVERSAL (e.g. ASI5640, ASI5810).
     Returns list of adapter health dictionaries.
     """
+    global _ADAPTER_CAPABILITIES_CACHE
     hpi_bin = _find_hpicontrol_bin()
     if not hpi_bin:
         return []
+
+    # Check if ALSA mixer WebSocket is active; if so, skip hardware query to prevent mailbox contention
+    try:
+        from core.alsa_manager import alsa_manager
+        if getattr(alsa_manager, "active_mixer_ws_count", 0) > 0:
+            logger.debug("Skipping AudioScience health probe: ALSA mixer WebSocket is currently active.")
+            return _CACHED_HEALTH or []
+    except Exception:
+        pass
 
     try:
         proc = subprocess.run(
@@ -152,37 +180,100 @@ def probe_audioscience_health(timeout: float = 2.0) -> List[Dict[str, Any]]:
         dsp_temp = None
         has_temp_sensor = False
 
-        # Query Control 9 (Status directory)
-        try:
-            status_proc = subprocess.run(
-                [hpi_bin, "-a", str(idx), "cget", "9"],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            if status_proc.returncode == 0 and status_proc.stdout:
-                child_ctrls = parse_status_control_references(status_proc.stdout)
-                for ctrl_id in child_ctrls:
-                    try:
-                        c_proc = subprocess.run(
-                            [hpi_bin, "-a", str(idx), "cget", str(ctrl_id)],
+        # One-time capability discovery for this adapter
+        if idx not in _ADAPTER_CAPABILITIES_CACHE:
+            caps: Dict[str, Any] = {
+                "has_telemetry": False,
+                "status_ctrl_id": None,
+                "cpu_ctrl_id": None,
+                "temp_ctrl_id": None,
+                "has_temp_sensor": False,
+            }
+            try:
+                ctrls_proc = subprocess.run(
+                    [hpi_bin, "-a", str(idx), "controls"],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                if ctrls_proc.returncode == 0 and ctrls_proc.stdout:
+                    status_id = parse_universal_control_id(ctrls_proc.stdout)
+                    if status_id is not None:
+                        caps["status_ctrl_id"] = status_id
+                        # Discover child controls referenced by this universal status control
+                        s_proc = subprocess.run(
+                            [hpi_bin, "-a", str(idx), "cget", str(status_id)],
                             capture_output=True,
                             text=True,
                             timeout=timeout,
                         )
-                        if c_proc.returncode == 0 and c_proc.stdout:
-                            parsed = parse_child_control(c_proc.stdout)
-                            cls_name = parsed.get("classname", "").lower()
-                            val = parsed.get("value")
-                            if "cpu utilization" in cls_name and val is not None:
-                                dsp_cpu = int(val)
-                            elif "temperature" in cls_name and val is not None:
-                                dsp_temp = float(val)
-                                has_temp_sensor = True
-                    except Exception:
-                        pass
-        except Exception as e:
-            logger.debug(f"Failed to query status controls for adapter {idx}: {e}")
+                        if s_proc.returncode == 0 and s_proc.stdout:
+                            child_ids = parse_status_control_references(s_proc.stdout)
+                            for cid in child_ids:
+                                try:
+                                    c_proc = subprocess.run(
+                                        [hpi_bin, "-a", str(idx), "cget", str(cid)],
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=timeout,
+                                    )
+                                    if c_proc.returncode == 0 and c_proc.stdout:
+                                        p_data = parse_child_control(c_proc.stdout)
+                                        c_name = p_data.get("classname", "").lower()
+                                        if "cpu utilization" in c_name:
+                                            caps["cpu_ctrl_id"] = cid
+                                            caps["has_telemetry"] = True
+                                        elif "temperature" in c_name:
+                                            caps["temp_ctrl_id"] = cid
+                                            caps["has_temp_sensor"] = True
+                                            caps["has_telemetry"] = True
+                                except Exception:
+                                    pass
+                    else:
+                        logger.info(
+                            f"AudioScience adapter {idx} ({name}) has no CONTROL_UNIVERSAL status telemetry controls. "
+                            "Zero polling registered."
+                        )
+            except Exception as e:
+                logger.debug(f"Failed to discover capabilities for adapter {idx}: {e}")
+
+            _ADAPTER_CAPABILITIES_CACHE[idx] = caps
+
+        caps = _ADAPTER_CAPABILITIES_CACHE.get(idx, {})
+        if caps.get("has_telemetry"):
+            # Poll only the discovered CPU and temperature control IDs
+            cpu_id = caps.get("cpu_ctrl_id")
+            if cpu_id is not None:
+                try:
+                    cpu_proc = subprocess.run(
+                        [hpi_bin, "-a", str(idx), "cget", str(cpu_id)],
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                    )
+                    if cpu_proc.returncode == 0 and cpu_proc.stdout:
+                        p_val = parse_child_control(cpu_proc.stdout).get("value")
+                        if p_val is not None:
+                            dsp_cpu = int(p_val)
+                except Exception:
+                    pass
+
+            temp_id = caps.get("temp_ctrl_id")
+            if temp_id is not None:
+                try:
+                    temp_proc = subprocess.run(
+                        [hpi_bin, "-a", str(idx), "cget", str(temp_id)],
+                        capture_output=True,
+                        text=True,
+                        timeout=timeout,
+                    )
+                    if temp_proc.returncode == 0 and temp_proc.stdout:
+                        p_val = parse_child_control(temp_proc.stdout).get("value")
+                        if p_val is not None:
+                            dsp_temp = float(p_val)
+                            has_temp_sensor = True
+                except Exception:
+                    pass
 
         results.append({
             "adapter_index": idx,
