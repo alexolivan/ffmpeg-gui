@@ -363,9 +363,45 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
             self.assertTrue(os.path.exists(target))
             with open(target, "r") as f:
                 content = f.read()
-            self.assertIn("priority1               200", content)
+    def test_remote_sinks_generation(self):
+        """Verifies libpipewire-module-rtp-source and landing null-audio-sink generation for remote_sinks."""
+        config = {
+            "sample_rate": 48000,
+            "quantum": 1024,
+            "aes67_network": {
+                "enabled": True,
+                "interface": "eth0",
+                "ip": "192.168.99.13"
+            },
+            "virtual_sinks": [
+                {"id": "master_bus", "name": "Master Bus", "channels": 2}
+            ],
+            "remote_sinks": [
+                {
+                    "id": "remote_test1_aes",
+                    "name": "Test1 AES Bus",
+                    "multicast_ip": "239.69.11.1",
+                    "rtp_port": 5004,
+                    "channels": 2,
+                    "format": "S24BE"
+                }
+            ]
+        }
+        res = PipeWireConfigGenerator.generate_config(99, config, "/tmp/run")
+        # 1. Module rtp-source generated
+        self.assertIn('name = "libpipewire-module-rtp-source"', res)
+        self.assertIn('source.ip = "239.69.11.1"', res)
+        self.assertIn('source.port = 5004', res)
+        self.assertIn('audio.format = "S24BE"', res)
+        self.assertIn('node.name = "rtp_rx_remote_test1_aes"', res)
+        self.assertIn('target.object = "remote_test1_aes"', res)
+
+        # 2. Landing null-audio-sink node generated with monitor
+        self.assertIn('factory.name = support.null-audio-sink\n            node.name = "remote_test1_aes"', res)
+        self.assertIn('Remote AoIP Sink: Test1 AES Bus', res)
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

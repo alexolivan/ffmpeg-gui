@@ -162,8 +162,12 @@ class PipeWireMatrixSupervisor:
                 h_cfg = hub_svc.config or {}
                 pw_cfg = h_cfg.get("pipewire_config", h_cfg)
                 sinks = pw_cfg.get("virtual_sinks", [])
+                remote_sinks = pw_cfg.get("remote_sinks", [])
                 sink_name_map: Dict[str, str] = {s.get("id"): (s.get("name") or s.get("id")) for s in sinks if s.get("id")}
-                valid_sink_ids = {s.get("id") for s in sinks if s.get("id")}
+                for rs in remote_sinks:
+                    if rs.get("id"):
+                        sink_name_map[rs.get("id")] = rs.get("name") or rs.get("id")
+                valid_sink_ids = {s.get("id") for s in sinks if s.get("id")} | {rs.get("id") for rs in remote_sinks if rs.get("id")}
                 if not valid_sink_ids:
                     valid_sink_ids.add("master_bus")
                     sink_name_map["master_bus"] = "Master Bus"
@@ -396,6 +400,40 @@ class PipeWireMatrixSupervisor:
                                 target_aliases=[tx_node, f"rtp_sender_{s_id}", "rtp-sink", s_id]
                             )
                         )
+
+                # 6. AES67 Network Receivers (rtp-source feeding remote virtual sink)
+                for rs in remote_sinks:
+                    rs_id = rs.get("id")
+                    if not rs_id:
+                        continue
+                    rs_name = sink_name_map.get(rs_id, rs_id)
+                    rx_node = f"rtp_rx_{rs_id}"
+                    m_ip = rs.get("multicast_ip", "")
+                    r_port = rs.get("rtp_port", 5004)
+                    channels = max(1, int(rs.get("channels", 2)))
+                    if channels == 1:
+                        src_ports = [f"{rx_node}:output_0"]
+                        tgt_ports = [f"{rs_id}:playback_0"]
+                    else:
+                        src_ports = [f"{rx_node}:output_FL", f"{rx_node}:output_FR"]
+                        tgt_ports = [f"{rs_id}:playback_FL", f"{rs_id}:playback_FR"]
+                    description = f"AES67 Rx ({m_ip}:{r_port}) → {rs_name}"
+                    desired.append(
+                        DesiredLink(
+                            source_id=rx_node,
+                            target_id=rs_id,
+                            source_ports=src_ports,
+                            target_ports=tgt_ports,
+                            link_type="playback",
+                            description=description,
+                            source_entity_type="aes67_source",
+                            target_entity_type="remote_sink",
+                            source_label=f"AES67 Rx ({m_ip}:{r_port})",
+                            target_label=rs_name,
+                            source_aliases=[rx_node, f"rtp_receiver_{rs_id}", "rtp-source", rs.get("sap_name") or rs_id],
+                            target_aliases=[rs_id]
+                        )
+                    )
 
         except Exception as e:
             logger.warning(f"[PipeWireSupervisor #{self.hub_id}] Error resolving desired links: {e}")

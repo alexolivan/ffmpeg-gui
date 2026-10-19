@@ -11,6 +11,8 @@ from database.models import Base, Service, FfmpegBuild
 from core.process_manager import ProcessManager
 from core.resource_lock_manager import resource_manager, resource_lock_manager
 from core.dependency_manager import dependency_manager
+from fastapi.testclient import TestClient
+from main import app, verify_token, get_db
 
 
 from sqlalchemy.pool import StaticPool
@@ -967,8 +969,23 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             await self.pm.stop_process(40)
             mock_ptp_proc.terminate.assert_called()
 
+    def test_get_aoip_discovery_endpoint(self):
+        """Verifies GET /api/pipewire/aoip-discovery returns discovery status."""
+        app.dependency_overrides[verify_token] = lambda: "admin"
+        try:
+            client = TestClient(app)
+            res = client.get("/api/pipewire/aoip-discovery")
+            self.assertEqual(res.status_code, 200)
+            data = res.json()
+            self.assertIn("discovered_streams", data)
+            self.assertIn("ptp_status", data)
+            self.assertIn("remote_sinks_status", data)
+        finally:
+            app.dependency_overrides.pop(verify_token, None)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

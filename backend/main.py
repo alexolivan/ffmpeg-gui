@@ -6034,6 +6034,17 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
             cfg["virtual_sinks"] = virtual_sinks
             if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):
                 cfg["pipewire_config"]["virtual_sinks"] = virtual_sinks
+
+            remote_sinks = pw_cfg.get("remote_sinks")
+            if not isinstance(remote_sinks, list) and "remote_sinks" in cfg and isinstance(cfg["remote_sinks"], list):
+                remote_sinks = cfg["remote_sinks"]
+            if not isinstance(remote_sinks, list):
+                remote_sinks = []
+
+            pw_cfg["remote_sinks"] = remote_sinks
+            cfg["remote_sinks"] = remote_sinks
+            if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):
+                cfg["pipewire_config"]["remote_sinks"] = remote_sinks
                     
     return profile
 
@@ -8697,6 +8708,43 @@ def get_pipewire_network_audit(
 
     audit_data["active_streams"] = active_streams
     return audit_data
+
+
+@app.get("/api/pipewire/aoip-discovery")
+def get_aoip_discovery(
+    service_id: Optional[int] = None,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+) -> dict:
+    """
+    Returns real-time discovered SAP streams and PTP status from active AoIpDiscoverySupervisor instances.
+    """
+    if service_id is not None:
+        sup = process_manager.get_or_create_aoip_discovery_supervisor(int(service_id))
+        if sup:
+            return sup.get_discovery_status()
+
+    active_sups = list(process_manager.aoip_discovery_supervisors.values())
+    if active_sups:
+        return active_sups[0].get_discovery_status()
+
+    from database.models import Service
+    pw_services = db.query(Service).filter(Service.service_type == "pipewire_hub").all()
+    for svc in pw_services:
+        if svc.id in process_manager.processes or svc.status == "running":
+            sup = process_manager.get_or_create_aoip_discovery_supervisor(svc.id)
+            if sup:
+                return sup.get_discovery_status()
+
+    return {
+        "hub_id": service_id,
+        "running": False,
+        "interface": None,
+        "ip": None,
+        "ptp_status": {"detected": False, "source_ip": None, "local_ptp4l_role": "INACTIVE"},
+        "discovered_streams": [],
+        "remote_sinks_status": []
+    }
 
 
 @app.post("/api/pipewire/validate-multicast")

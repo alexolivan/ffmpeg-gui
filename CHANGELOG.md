@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.45.0] - 2026-10-19
+
+### Added
+- **AoIP Discovery Supervisor & SAP Radar (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Implemented RFC 2974 (SAP) and RFC 4566 (SDP) multicast packet parser and background supervisor listening on `224.2.127.254:9875`.
+  - Discovers remote AES67 / Dante multicast audio sessions, parsing origin IP, multicast group, RTP port, channel count, sampling rate, audio encoding format (`L24`/`S24BE`, `L16`/`S16BE`), and PTP clock identities (`a=ts-refclk:ptp=IEEE1588-2008`).
+  - Added REST endpoint `GET /api/pipewire/aoip-discovery` returning active supervisor state and real-time discovered stream table.
+- **Persistent Remote AoIP Sinks in PipeWire Hub (`backend/core/pipewire_config.py`, `pipewire_matrix_supervisor.py`)**:
+  - Added `remote_sinks` configuration schema enabling deterministic on-boot instantiation of virtual audio sink endpoints (`support.null-audio-sink`) and network receivers (`libpipewire-module-rtp-source`).
+  - Implemented automatic hot-linking in `PipeWireMatrixSupervisor` connecting discovered or incoming RTP receiver streams (`rtp_rx_{id}`) to target landing sinks.
+- **Dual Sink Lists & Assisted Import in `PipeWireConfigForm.tsx`**:
+  - Added Section 4 dedicated to Remote AoIP Sinks (Rx) alongside Section 3 Local Virtual Sinks.
+  - Added SAP discovery assistant with dropdown selector allowing 1-click importing of active network streams into persistent hub configuration, with manual override support.
+- **Real-Time AoIP Radar & 1-Click Config Shortcut (`PipeWirePreviewModal.tsx`)**:
+  - Added dedicated "AoIP / Network" tab displaying live PTPv2 clock synchronization state (Grandmaster IP, Clock ID, ptp4l state, priority/domain), configured remote sinks status (`Online / Linked` vs `Waiting for Stream`), and real-time LAN SAP radar.
+  - Added `[ ⚙️ Configure in Hub ]` shortcut on discovered streams, seamlessly cloning and routing the stream into the Hub configuration form for review and persistence.
+- **FFmpeg AoIP Ingest Integration (`InputSourcePanel.tsx`)**:
+  - Integrated `remote_sinks` into the PipeWire audio input selector, cleanly organizing local buses (`Tx`) and remote streams (`Rx`) under descriptive `optgroups`.
+- **Internationalization (i18n)**:
+  - Added translation keys with 100% key parity across `en.json`, `es.json`, and `ca.json`.
+
 ## [2.44.2] - 2026-10-16
 
 ### Added
