@@ -80,12 +80,43 @@ interface MatrixTelemetry {
   routes: MatrixRoute[];
 }
 
+interface AoIpStream {
+  session_id: string;
+  session_name: string;
+  origin_ip: string;
+  multicast_ip: string;
+  rtp_port: number;
+  channels: number;
+  sample_rate: number;
+  format: string;
+  ptp_clock_id?: string | null;
+  last_seen?: number;
+  is_local?: boolean;
+}
+
+interface AoIpTelemetry {
+  running: boolean;
+  interface?: string | null;
+  streams_count: number;
+  ptp_status?: {
+    running: boolean;
+    grandmaster_ip?: string | null;
+    clock_identity?: string | null;
+    state?: string | null;
+    priority1?: number;
+    domain?: number;
+  };
+  discovered_streams: AoIpStream[];
+}
+
 interface GraphTelemetryData {
   active: boolean;
   nodes: TelemetryNode[];
   ports: TelemetryPort[];
   links: TelemetryLink[];
   matrix?: MatrixTelemetry | null;
+  aoip_discovery?: AoIpTelemetry | null;
+  remote_sinks?: any[];
   raw_summary: {
     nodes_count: number;
     ports_count: number;
@@ -113,7 +144,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const [graphData, setGraphData] = useState<GraphTelemetryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw'>('nodes');
+  const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw' | 'aoip'>('nodes');
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
   const [isReconciling, setIsReconciling] = useState(false);
@@ -203,6 +234,49 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
   const pwConfig = currentProcess.config?.pipewire_config || currentProcess.config || {};
   const virtualSinks = Array.isArray(pwConfig.virtual_sinks) ? pwConfig.virtual_sinks : [];
+  const remoteSinks = Array.isArray(pwConfig.remote_sinks) ? pwConfig.remote_sinks : [];
+  const isAes67Enabled = Boolean(pwConfig.aes67_network?.enabled);
+  const showAoIpTab = isAes67Enabled || remoteSinks.length > 0;
+
+  const handleConfigureStreamInHub = (stream: AoIpStream) => {
+    const baseId = (stream.session_name || 'remote_stream')
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 24);
+    const existingIds = new Set(remoteSinks.map((s: any) => s.id));
+    let uniqueId = baseId;
+    let counter = 1;
+    while (existingIds.has(uniqueId)) {
+      uniqueId = `${baseId}_${counter++}`;
+    }
+
+    const newRemoteSink = {
+      id: uniqueId,
+      name: stream.session_name || 'Remote AoIP Stream',
+      channels: stream.channels || 2,
+      multicast_ip: stream.multicast_ip,
+      rtp_port: stream.rtp_port || 5004,
+      format: stream.format === 'S16BE' ? 'S16BE' : 'S24BE',
+    };
+
+    const updatedProc = JSON.parse(JSON.stringify(currentProcess));
+    if (!updatedProc.config) updatedProc.config = {};
+    if (updatedProc.config.pipewire_config) {
+      if (!Array.isArray(updatedProc.config.pipewire_config.remote_sinks)) {
+        updatedProc.config.pipewire_config.remote_sinks = [];
+      }
+      updatedProc.config.pipewire_config.remote_sinks.push(newRemoteSink);
+    } else {
+      if (!Array.isArray(updatedProc.config.remote_sinks)) {
+        updatedProc.config.remote_sinks = [];
+      }
+      updatedProc.config.remote_sinks.push(newRemoteSink);
+    }
+
+    onClose();
+    onEditProcess(updatedProc);
+  };
 
   return (
     <div
@@ -378,6 +452,23 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
               >
                 {t('services.pipewire.rawTab', 'Raw Telemetry')}
               </button>
+              {showAoIpTab && (
+                <button
+                  onClick={() => setActiveTab('aoip')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activeTab === 'aoip'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                  }`}
+                >
+                  <span>🌐 {t('services.pipewire.aoipTab', 'AoIP / Network')}</span>
+                  {graphData?.aoip_discovery?.streams_count ? (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/40 font-mono font-bold">
+                      {graphData.aoip_discovery.streams_count}
+                    </span>
+                  ) : null}
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
@@ -733,6 +824,232 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
             <pre className="p-4 rounded-xl bg-black/50 border border-[var(--glass-border)] text-[11px] font-mono text-[var(--text-secondary)] overflow-x-auto max-h-96">
               {JSON.stringify(graphData || { active: isRunning }, null, 2)}
             </pre>
+          )}
+
+          {activeTab === 'aoip' && (
+            <div className="space-y-4">
+              {/* Card 1: PTPv2 Synchronization Clock */}
+              <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--glass-border)] space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">⏱️</span>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                      {t('services.pipewire.ptpClockStatus', 'PTPv2 Synchronization Clock')}
+                    </h4>
+                  </div>
+                  {pwConfig.aes67_network?.ptp?.enabled ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                      IEEE 1588-2008 / AES67
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono text-[var(--text-secondary)] bg-white/5 border border-white/10">
+                      PTP Master Disabled
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
+                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                      {t('services.pipewire.ptpGrandmasterIp', 'Grandmaster IP')}
+                    </span>
+                    <span className="font-mono font-semibold text-[var(--text-primary)]">
+                      {graphData?.aoip_discovery?.ptp_status?.grandmaster_ip || (pwConfig.aes67_network?.ptp?.enabled ? 'Local Node' : '-')}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
+                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                      {t('services.pipewire.ptpClockIdentity', 'Clock Identity')}
+                    </span>
+                    <span className="font-mono font-semibold text-brand-lime truncate block" title={graphData?.aoip_discovery?.ptp_status?.clock_identity || '-'}>
+                      {graphData?.aoip_discovery?.ptp_status?.clock_identity || '-'}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
+                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                      {t('services.pipewire.ptpRole', 'Local ptp4l State')}
+                    </span>
+                    <span className="font-mono font-bold text-cyan-400 uppercase">
+                      {graphData?.aoip_discovery?.ptp_status?.state || (pwConfig.aes67_network?.ptp?.enabled ? 'MASTER' : 'INACTIVE')}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
+                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                      BMCA Priority / Domain
+                    </span>
+                    <span className="font-mono text-[var(--text-secondary)]">
+                      Prio: {pwConfig.aes67_network?.ptp?.priority1 ?? 128} · Dom: {pwConfig.aes67_network?.ptp?.domain ?? 0}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Configured Remote AoIP Receivers (Rx) */}
+              <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--glass-border)] space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📡</span>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                      {t('services.pipewire.configuredRemoteSinks', 'Configured Remote AoIP Receivers (Rx)')}
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-bold">
+                    {remoteSinks.length}
+                  </span>
+                </div>
+
+                {remoteSinks.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-[var(--text-secondary)]">
+                    <p>{t('services.pipewire.noRemoteSinksConfigured', 'No remote AoIP sinks configured in this Hub.')}</p>
+                    <p className="text-[11px] opacity-75 mt-1">
+                      {t('services.pipewire.noRemoteSinks', 'Add remote network audio streams to receive multichannel audio over the LAN.')}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-[var(--glass-border)]">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                        <tr>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteSinkId', 'ID / Monitor')}</th>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteSinkName', 'Name / Description')}</th>
+                          <th className="py-2 px-3">Multicast Route</th>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteChannels', 'Channels')}</th>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteFormat', 'Format')}</th>
+                          <th className="py-2 px-3 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--glass-border)]">
+                        {remoteSinks.map((rs: any, idx: number) => {
+                          const isOnline = isRunning && Boolean(
+                            graphData?.nodes?.some((n) => n.name === `rtp_rx_${rs.id}` || n.name === rs.id)
+                          );
+                          return (
+                            <tr key={rs.id || idx} className="hover:bg-white/2 transition-colors">
+                              <td className="py-2.5 px-3 font-bold text-[var(--text-primary)]">
+                                <div>{rs.id}</div>
+                                <div className="text-[10px] text-[var(--text-secondary)] font-normal">{rs.id}.monitor</div>
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-primary)] font-sans">
+                                {rs.name || rs.id}
+                              </td>
+                              <td className="py-2.5 px-3 text-cyan-400">
+                                {rs.multicast_ip}:{rs.rtp_port}
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                                {rs.channels || 2}ch
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                                {rs.format || 'S24BE'}
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                {isOnline ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                    🟢 {t('services.pipewire.statusOnline', 'Online / Linked')}
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                    🟡 {t('services.pipewire.statusWaiting', 'Waiting for Stream')}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Card 3: Discovered LAN AoIP Streams (SAP Radar) */}
+              <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--glass-border)] space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📡</span>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                      {t('services.pipewire.discoveredLanStreams', 'Discovered LAN AoIP Streams (SAP Radar)')}
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 font-bold">
+                    {graphData?.aoip_discovery?.discovered_streams?.length || 0}
+                  </span>
+                </div>
+
+                {(!graphData?.aoip_discovery?.discovered_streams || graphData.aoip_discovery.discovered_streams.length === 0) ? (
+                  <div className="py-6 text-center text-xs text-[var(--text-secondary)]">
+                    <div className="inline-block p-2 rounded-full bg-white/5 border border-white/10 mb-2">
+                      <span className="animate-spin inline-block text-brand-lime">↻</span>
+                    </div>
+                    <p>{t('services.pipewire.noLanStreamsDiscovered', 'Listening on 224.2.127.254:9875... No SAP announcements detected yet.')}</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-[var(--glass-border)]">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                        <tr>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteSinkName', 'Session / Stream Name')}</th>
+                          <th className="py-2 px-3">Multicast Endpoint</th>
+                          <th className="py-2 px-3">Audio Profile</th>
+                          <th className="py-2 px-3">{t('services.pipewire.streamOrigin', 'Origin')}</th>
+                          <th className="py-2 px-3">{t('services.pipewire.streamClock', 'PTP Clock')}</th>
+                          <th className="py-2 px-3 text-right">Action / State</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--glass-border)]">
+                        {graphData.aoip_discovery.discovered_streams.map((stream: AoIpStream) => {
+                          const isConfigured = remoteSinks.some(
+                            (rs: any) => rs.multicast_ip === stream.multicast_ip && rs.rtp_port === stream.rtp_port
+                          );
+
+                          return (
+                            <tr key={stream.session_id} className="hover:bg-white/2 transition-colors">
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-[var(--text-primary)] font-sans">{stream.session_name}</div>
+                                <div className="text-[10px] text-[var(--text-secondary)]">{stream.session_id}</div>
+                              </td>
+                              <td className="py-2.5 px-3 text-cyan-400 font-semibold">
+                                {stream.multicast_ip}:{stream.rtp_port}
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                                {stream.channels}ch · {stream.format} · {stream.sample_rate}Hz
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                                {stream.origin_ip}
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[120px]" title={stream.ptp_clock_id || '-'}>
+                                {stream.ptp_clock_id || '-'}
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                {stream.is_local ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30">
+                                    {t('services.pipewire.localTxStream', 'Local Tx')}
+                                  </span>
+                                ) : isConfigured ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                    ✓ {t('services.pipewire.alreadyConfigured', 'Persisted')}
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleConfigureStreamInHub(stream)}
+                                    className="px-2.5 py-1 rounded-lg bg-brand-lime hover:bg-brand-lime/90 text-black text-xs font-bold transition-all shadow-sm"
+                                    title="Import this stream into PipeWire Hub configuration"
+                                  >
+                                    ⚙️ {t('services.pipewire.configureInHub', 'Configure in Hub')}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>

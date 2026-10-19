@@ -74,6 +74,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
   const sampleRate = pwConfig.sample_rate || 48000;
   const quantum = pwConfig.quantum || 1024;
   const virtualSinks = Array.isArray(pwConfig.virtual_sinks) ? pwConfig.virtual_sinks : [];
+  const remoteSinks = Array.isArray(pwConfig.remote_sinks) ? pwConfig.remote_sinks : [];
   const rtpCount = virtualSinks.filter((s: any) => s.aes67_enabled).length;
   const aes67Net = pwConfig.aes67_network || {};
   const isAes67Enabled = !!aes67Net.enabled;
@@ -203,9 +204,19 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
           <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px] font-bold flex items-center gap-1">
             <span>
               {virtualSinks.length} {virtualSinks.length === 1 ? 'Sink' : 'Sinks'}
-              {rtpCount > 0 ? ` (RTP: ${rtpCount})` : ''}
+              {rtpCount > 0 ? ` (Tx: ${rtpCount})` : ''}
             </span>
           </span>
+
+          {/* Remote AoIP Sinks Count Badge */}
+          {remoteSinks.length > 0 && (
+            <span
+              className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-bold flex items-center gap-1"
+              title={t('services.pipewire.configuredRemoteSinks', 'Configured Remote AoIP Receivers (Rx)')}
+            >
+              <span>📡 {remoteSinks.length} Rx</span>
+            </span>
+          )}
 
           <span className="opacity-20">|</span>
 
