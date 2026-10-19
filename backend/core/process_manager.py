@@ -3540,6 +3540,51 @@ class ProcessManager:
             if self.pending_restarts.get(process_id) == asyncio.current_task():
                 self.pending_restarts.pop(process_id, None)
 
+    async def _safe_terminate_process(self, proc: Optional[asyncio.subprocess.Process] = None, pid: Optional[int] = None, timeout: float = 1.5):
+        """
+        Gracefully terminates a process using SIGTERM so audio drivers (e.g. snd-asihpi/ALSA)
+        can execute snd_pcm_close() and release DSP hardware cleanly, falling back to SIGKILL
+        only if the process does not terminate within timeout.
+        """
+        import signal
+        if proc is not None:
+            try:
+                proc.terminate()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=timeout)
+                    return
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"Process {pid} did not exit after {timeout}s on SIGTERM; escalating to SIGKILL")
+                    proc.kill()
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                self.logger.error(f"Error terminating process via proc: {e}")
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        elif pid is not None:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                # Wait briefly for process to exit
+                for _ in range(int(timeout * 10)):
+                    await asyncio.sleep(0.1)
+                    try:
+                        os.kill(pid, 0)
+                    except OSError:
+                        return
+                self.logger.warning(f"PID {pid} did not exit after {timeout}s on SIGTERM; escalating to SIGKILL")
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                self.logger.error(f"Error terminating PID {pid}: {e}")
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
+
     async def _watchdog(self, process_id: int, proc: Optional[asyncio.subprocess.Process] = None, pid: Optional[int] = None):
         pid = pid or (proc.pid if proc else None)
         if not pid:
@@ -3786,17 +3831,7 @@ class ProcessManager:
                                                     session.add(log)
                                                     session.commit()
 
-                                                    if proc is not None:
-                                                        try:
-                                                            proc.kill()
-                                                        except Exception as kerr:
-                                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                                    else:
-                                                        import signal
-                                                        try:
-                                                            os.kill(pid, signal.SIGKILL)
-                                                        except Exception as kerr:
-                                                            self.logger.error(f"Failed to kill PID {pid} via os.kill: {kerr}")
+                                                    await self._safe_terminate_process(proc=proc, pid=pid)
                                         else:
                                             self.watchdog_low_speed_since[process_id] = None
 
@@ -3823,17 +3858,7 @@ class ProcessManager:
                                         session.add(log)
                                         session.commit()
 
-                                        if proc is not None:
-                                            try:
-                                                proc.kill()
-                                            except Exception as kerr:
-                                                self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                        else:
-                                            import signal
-                                            try:
-                                                os.kill(pid, signal.SIGKILL)
-                                            except Exception as kerr:
-                                                self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
+                                        await self._safe_terminate_process(proc=proc, pid=pid)
 
                                 # Compare with previous iteration when activity is present
                                 if has_had_activity:
@@ -3859,18 +3884,8 @@ class ProcessManager:
                                                     session.add(log)
                                                     session.commit()
 
-                                                    # Kill the process
-                                                    if proc is not None:
-                                                        try:
-                                                            proc.kill()
-                                                        except Exception as kerr:
-                                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                                    else:
-                                                        import signal
-                                                        try:
-                                                            os.kill(pid, signal.SIGKILL)
-                                                        except Exception as kerr:
-                                                            self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
+                                                    # Gracefully terminate the process allowing audio driver cleanup
+                                                    await self._safe_terminate_process(proc=proc, pid=pid)
 
                                                     self.watchdog_stalled_since[process_id] = None
                                         else:
