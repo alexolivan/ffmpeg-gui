@@ -6034,6 +6034,17 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
             cfg["virtual_sinks"] = virtual_sinks
             if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):
                 cfg["pipewire_config"]["virtual_sinks"] = virtual_sinks
+
+            remote_sinks = pw_cfg.get("remote_sinks")
+            if not isinstance(remote_sinks, list) and "remote_sinks" in cfg and isinstance(cfg["remote_sinks"], list):
+                remote_sinks = cfg["remote_sinks"]
+            if not isinstance(remote_sinks, list):
+                remote_sinks = []
+
+            pw_cfg["remote_sinks"] = remote_sinks
+            cfg["remote_sinks"] = remote_sinks
+            if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):
+                cfg["pipewire_config"]["remote_sinks"] = remote_sinks
                     
     return profile
 

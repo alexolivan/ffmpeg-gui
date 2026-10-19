@@ -167,8 +167,10 @@ class PipeWireConfigGenerator:
         ]
 
         # AES67 RTP and SAP modules in context.modules if enabled
+        # AES67 RTP and SAP modules in context.modules if enabled
         virtual_sinks = config.get("virtual_sinks", [])
-        has_aes67 = any(sink.get("aes67_enabled", False) for sink in virtual_sinks)
+        remote_sinks = config.get("remote_sinks", [])
+        has_aes67 = any(sink.get("aes67_enabled", False) for sink in virtual_sinks) or bool(remote_sinks)
 
         if has_aes67:
             sap_args = [
@@ -237,6 +239,49 @@ class PipeWireConfigGenerator:
                     "    },",
                 ])
 
+        # Remote AoIP Sinks (Receivers: libpipewire-module-rtp-source)
+        for rs in remote_sinks:
+            rs_id = rs.get("id", "remote_sink")
+            rs_name = rs.get("name", rs_id)
+            channels = max(1, int(rs.get("channels", 2)))
+            pos_list = cls._get_channel_positions(channels)
+            pos_formatted = cls._spa_val(pos_list)
+            m_ip = rs.get("multicast_ip")
+            r_port = int(rs.get("rtp_port", 5004))
+            audio_format = rs.get("format", "S24BE")
+            audio_rate = int(rs.get("rate") or sample_rate)
+
+            rtp_rx_args = []
+            if nic_name:
+                rtp_rx_args.append(f"            local.ifname = {cls._spa_val(nic_name)}")
+            if m_ip:
+                rtp_rx_args.append(f"            source.ip = {cls._spa_val(m_ip)}")
+            rtp_rx_args.extend([
+                f"            source.port = {r_port}",
+                "            sess.media = \"audio\"",
+                f"            audio.format = {cls._spa_val(audio_format)}",
+                f"            audio.rate = {audio_rate}",
+                f"            audio.channels = {channels}",
+                f"            audio.position = {pos_formatted}",
+                "            stream.props = {",
+                f"                node.name = {cls._spa_val(f'rtp_rx_{rs_id}')}",
+                f"                node.description = {cls._spa_val(f'AES67 Rx for {rs_name}')}",
+                f"                target.object = {cls._spa_val(rs_id)}",
+                "                media.class = \"Stream/Output/Audio\"",
+                "                stream.dont-remix = true",
+                "                node.passive = true",
+                "            }",
+            ])
+
+            lines.extend([
+                "    {",
+                "        name = \"libpipewire-module-rtp-source\",",
+                "        args = {",
+                *rtp_rx_args,
+                "        }",
+                "    },",
+            ])
+
         lines.extend([
             "]",
             "",
@@ -274,6 +319,33 @@ class PipeWireConfigGenerator:
                 "            factory.name = support.null-audio-sink",
                 f"            node.name = {cls._spa_val(sink_id)}",
                 f"            node.description = {cls._spa_val(sink_name)}",
+                "            media.class = \"Audio/Sink\"",
+                f"            audio.position = {pos_formatted}",
+                f"            audio.channels = {channels}",
+                f"            audio.rate = {sample_rate}",
+                "            adapter.auto-port-config = {",
+                "                mode = dsp",
+                "                monitor = true",
+                "                position = preserve",
+                "            }",
+                "        }",
+                "    }",
+            ])
+
+        # Remote AoIP Landing Sinks (Nodes created via adapter factory for persisted remote streams)
+        for rs in remote_sinks:
+            rs_id = rs.get("id", "remote_sink")
+            rs_name = rs.get("name", rs_id)
+            channels = max(1, int(rs.get("channels", 2)))
+            pos_list = cls._get_channel_positions(channels)
+            pos_formatted = cls._spa_val(pos_list)
+
+            lines.extend([
+                "    { factory = adapter",
+                "        args = {",
+                "            factory.name = support.null-audio-sink",
+                f"            node.name = {cls._spa_val(rs_id)}",
+                f"            node.description = {cls._spa_val(f'Remote AoIP Sink: {rs_name}')}",
                 "            media.class = \"Audio/Sink\"",
                 f"            audio.position = {pos_formatted}",
                 f"            audio.channels = {channels}",

@@ -593,4 +593,64 @@ class TestPipeWireMatrixSupervisor(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(dep)
             self.assertEqual(dep.provider_service_id, self.hub_id)
 
+    def test_resolve_desired_links_with_remote_sinks(self):
+        """Verifies that PipeWireMatrixSupervisor resolves AES67 Rx links and consumer monitor links for remote_sinks."""
+        from database.models import Service
+
+        with self.Session() as session:
+            # Clean db
+            session.query(Service).delete()
+            session.commit()
+
+            hub = Service(
+                id=self.hub_id,
+                name="PipeWire Hub with Remote Sinks",
+                service_type="pipewire_hub",
+                status="running",
+                config={
+                    "virtual_sinks": [{"id": "master_bus", "name": "Master Bus"}],
+                    "remote_sinks": [
+                        {
+                            "id": "remote_test1_aes",
+                            "name": "Test1 AES Stream",
+                            "multicast_ip": "239.69.11.1",
+                            "rtp_port": 5004,
+                            "channels": 2
+                        }
+                    ]
+                }
+            )
+            consumer_svc = Service(
+                id=30,
+                name="FFmpeg Capture Remote AES",
+                service_type="ffmpeg_stream",
+                status="running",
+                config={
+                    "input_config": {"type": "pipewire", "sink_id": "remote_test1_aes", "provider_service_id": self.hub_id},
+                    "output_config": {"type": "alsa", "device": "hw:0,0"}
+                }
+            )
+            session.add_all([hub, consumer_svc])
+            session.commit()
+
+        self.pm.processes[30] = MagicMock(returncode=None)
+
+        links = self.supervisor._resolve_desired_links()
+
+        # Link 1: AES67 Rx (rtp_rx_remote_test1_aes -> remote_test1_aes)
+        rx_links = [l for l in links if l.source_id == "rtp_rx_remote_test1_aes"]
+        self.assertEqual(len(rx_links), 1)
+        rx_link = rx_links[0]
+        self.assertEqual(rx_link.target_id, "remote_test1_aes")
+        self.assertEqual(rx_link.link_type, "playback")
+        self.assertEqual(rx_link.target_ports, ["remote_test1_aes:playback_FL", "remote_test1_aes:playback_FR"])
+
+        # Link 2: Consumer capture (remote_test1_aes.monitor -> ffmpeg_service_30)
+        capture_links = [l for l in links if l.source_id == "remote_test1_aes.monitor"]
+        self.assertEqual(len(capture_links), 1)
+        cap_link = capture_links[0]
+        self.assertEqual(cap_link.target_id, "ffmpeg_service_30")
+        self.assertEqual(cap_link.link_type, "monitor_capture")
+
+
 
