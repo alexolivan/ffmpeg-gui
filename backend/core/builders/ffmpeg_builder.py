@@ -365,7 +365,16 @@ class FFmpegCommandBuilder:
             cmd += ["-i", f"rtp://{host}:{port}"]
         elif input_type == 'alsa':
             device = input_cfg.get('device', 'hw:0,0')
-            cmd += ["-f", "alsa", "-i", device]
+            cmd += ["-f", "alsa"]
+            if input_cfg.get('sample_rate'):
+                cmd += ["-sample_rate", str(input_cfg['sample_rate'])]
+            elif input_cfg.get('ar'):
+                cmd += ["-sample_rate", str(input_cfg['ar'])]
+            if input_cfg.get('channels'):
+                cmd += ["-channels", str(input_cfg['channels'])]
+            elif input_cfg.get('ac'):
+                cmd += ["-channels", str(input_cfg['ac'])]
+            cmd += ["-i", device]
         elif input_type == 'pipewire':
             sink_id = input_cfg.get('sink_id') or input_cfg.get('device') or 'default'
             monitor_dev = sink_id if (sink_id.endswith('.monitor') or sink_id == 'default') else f"{sink_id}.monitor"
@@ -1397,7 +1406,20 @@ class FFmpegCommandBuilder:
                     
                 acodec = codec_cfg.get('acodec', 'aac')
                 is_raw_audio_input = primary_input_type in ('alsa', 'pipewire', 'decklink', 'lavfi_audio')
-                if output_type in ('alsa', 'pipewire'):
+                if output_type == 'alsa':
+                    # ALSA hardware sinks require uncompressed PCM samples with explicit sample rate and channel layout.
+                    # Streamcopy ('copy') is forbidden to prevent bypassing rate/format conversion and crashing DSP clocks.
+                    if acodec == 'copy':
+                        logger.warning(
+                            "ALSA output requires explicit PCM encoding to guarantee sample rate stability. Forcing 'pcm_s16le' instead of 'copy'."
+                        )
+                        acodec = 'pcm_s16le'
+                    elif not (acodec and acodec.startswith('pcm_')):
+                        logger.warning(
+                            f"ALSA output requires uncompressed PCM audio. Forcing 'pcm_s16le' instead of '{acodec}'."
+                        )
+                        acodec = 'pcm_s16le'
+                elif output_type == 'pipewire':
                     if acodec == 'copy':
                         if af_str:
                             logger.warning(
@@ -1416,7 +1438,13 @@ class FFmpegCommandBuilder:
                         acodec = 'pcm_s16le'
                 cmd += ["-c:a", acodec]
                 
-                audio_params = codec_cfg.get('audio_params', {})
+                audio_params = dict(codec_cfg.get('audio_params', {}))
+                if output_type == 'alsa':
+                    if 'ar' not in audio_params or not audio_params['ar']:
+                        audio_params['ar'] = '48000'
+                    if 'ac' not in audio_params or not audio_params['ac']:
+                        audio_params['ac'] = '2'
+
                 if audio_params:
                     cls._append_audio_codec_params(cmd, acodec, audio_params)
 
