@@ -297,6 +297,7 @@ class AoIpDiscoverySupervisor:
 
     def _setup_sap_socket(self) -> Optional[socket.socket]:
         """Create and bind non-blocking UDP multicast listener on 224.0.0.56:9875."""
+        sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -321,6 +322,11 @@ class AoIpDiscoverySupervisor:
 
             return sock
         except Exception as e:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
             logger.warning(f"[AoIpDiscovery #{self.hub_id}] Failed to bind SAP socket on 224.0.0.56:9875: {e}")
             return None
 

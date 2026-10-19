@@ -38,6 +38,7 @@ class ProcessManager:
         self.auxiliary_processes: Dict[int, List[asyncio.subprocess.Process]] = {}
         self.auxiliary_pids: Dict[int, List[int]] = {}
         self.pipewire_supervisors: Dict[int, Any] = {}
+        self.aoip_discovery_supervisors: Dict[int, Any] = {}
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -668,9 +669,16 @@ class ProcessManager:
                         await supervisor.start()
                         asyncio.create_task(self._restart_dependent_pipewire_consumers(process_id))
 
-                        # Managed PTP Master Clock sidecar (ptp4l)
+                        # Managed AoIP Network Discovery supervisor
                         pw_full_cfg = cfg.get("pipewire_config") or cfg
                         aes_net = pw_full_cfg.get("aes67_network", {})
+                        if aes_net.get("enabled"):
+                            from core.aoip_discovery_supervisor import AoIpDiscoverySupervisor
+                            aoip_sup = AoIpDiscoverySupervisor(process_id, self)
+                            self.aoip_discovery_supervisors[process_id] = aoip_sup
+                            await aoip_sup.start()
+
+                        # Managed PTP Master Clock sidecar (ptp4l)
                         if aes_net.get("enabled") and aes_net.get("interface"):
                             ptp_cfg = aes_net.get("ptp", {})
                             if ptp_cfg.get("enabled"):
@@ -1298,13 +1306,20 @@ class ProcessManager:
                 except Exception as pw_err:
                     self.logger.warning(f"Failed to release PipeWire lease for kiosk {process_id}: {pw_err}")
 
-            # Stop associated PipeWireMatrixSupervisor if stopping a pipewire_hub
+            # Stop associated PipeWireMatrixSupervisor and AoIpDiscoverySupervisor if stopping a pipewire_hub
             pw_sup = self.pipewire_supervisors.pop(process_id, None)
             if pw_sup:
                 try:
                     await pw_sup.stop()
                 except Exception as sup_err:
                     self.logger.warning(f"Error stopping PipeWire supervisor for hub {process_id}: {sup_err}")
+
+            aoip_sup = self.aoip_discovery_supervisors.pop(process_id, None)
+            if aoip_sup:
+                try:
+                    await aoip_sup.stop()
+                except Exception as sup_err:
+                    self.logger.warning(f"Error stopping AoIP discovery supervisor for hub {process_id}: {sup_err}")
 
             # Stop any auto-managed dependencies that are no longer needed
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
@@ -2367,6 +2382,12 @@ class ProcessManager:
                                 entity_lookup[vs.get("id").lower()] = {"label": s_label, "type": "sink", "id": None}
                                 entity_lookup[f"{vs.get('id').lower()}.monitor"] = {"label": f"{s_label} (Monitor)", "type": "sink", "id": None}
 
+                        for rs in pw_cfg.get("remote_sinks", []):
+                            if rs.get("id"):
+                                rs_label = rs.get("name") or rs.get("id")
+                                entity_lookup[rs.get("id").lower()] = {"label": f"{rs_label} [AoIP Rx]", "type": "remote_sink", "id": None}
+                                entity_lookup[f"{rs.get('id').lower()}.monitor"] = {"label": f"{rs_label} (Monitor) [AoIP Rx]", "type": "remote_sink", "id": None}
+
                     for s in session.query(Service).all():
                         s_label = s.alias or s.name or f"Service #{s.id}"
                         info_dict = {"label": s_label, "type": s.service_type, "id": s.id}
@@ -2476,6 +2497,9 @@ class ProcessManager:
             sup = self.get_or_create_pipewire_supervisor(process_id)
             matrix_data = sup.get_matrix_status() if sup else None
 
+            aoip_sup = self.get_or_create_aoip_discovery_supervisor(process_id)
+            aoip_data = aoip_sup.get_discovery_status() if aoip_sup else None
+
             return {
                 "active": True,
                 "nodes": nodes,
@@ -2483,6 +2507,7 @@ class ProcessManager:
                 "links": links,
                 "streams": nodes,
                 "matrix": matrix_data,
+                "aoip_discovery": aoip_data,
                 "raw_summary": {
                     "nodes_count": len(nodes),
                     "ports_count": len(ports),
@@ -2569,6 +2594,43 @@ class ProcessManager:
                         return sup
             except Exception as e:
                 self.logger.error(f"Failed to auto-heal supervisor for hub #{hub_key}: {e}")
+        return None
+
+    def get_or_create_aoip_discovery_supervisor(self, hub_id: int):
+        """
+        Retrieves the active AoIpDiscoverySupervisor for hub_id, or instantiates and
+        starts it on-demand if the parent PipeWire process is alive in OS (self-healing).
+        """
+        hub_key = int(hub_id)
+        sup = self.aoip_discovery_supervisors.get(hub_key)
+        if sup:
+            return sup
+
+        target_pid = self.reattached_pids.get(hub_key)
+        proc = self.processes.get(hub_key)
+        is_alive = (proc is not None and getattr(proc, "returncode", None) is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
+        if is_alive:
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service
+                    s_obj = session.get(Service, hub_key) if hasattr(session, "get") else session.query(Service).get(hub_key)
+                    if s_obj and getattr(s_obj, "service_type", None) == "pipewire_hub":
+                        h_cfg = s_obj.config or {}
+                        pw_cfg = h_cfg.get("pipewire_config", h_cfg)
+                        aes_net = pw_cfg.get("aes67_network", {})
+                        if aes_net.get("enabled"):
+                            from core.aoip_discovery_supervisor import AoIpDiscoverySupervisor
+                            sup = AoIpDiscoverySupervisor(hub_key, self)
+                            self.aoip_discovery_supervisors[hub_key] = sup
+                            try:
+                                loop = asyncio.get_running_loop()
+                                loop.create_task(sup.start())
+                            except RuntimeError:
+                                asyncio.create_task(sup.start())
+                            self.logger.info(f"Self-healed missing AoIpDiscoverySupervisor for running hub #{hub_key}")
+                            return sup
+            except Exception as e:
+                self.logger.error(f"Failed to auto-heal AoIP discovery supervisor for hub #{hub_key}: {e}")
         return None
 
     def notify_pipewire_matrix_change(self, hub_id: Optional[int] = None):
