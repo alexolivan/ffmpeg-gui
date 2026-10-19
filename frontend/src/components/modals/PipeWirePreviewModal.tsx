@@ -449,6 +449,18 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
               >
                 {t('services.pipewire.consoleTab', 'Console & Logs')} ({daemonLogs.length})
               </button>
+              {showAoIpTab && (
+                <button
+                  onClick={() => setActiveTab('aoip')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'aoip'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                  }`}
+                >
+                  {t('services.pipewire.aoipTab', 'AoIP / Network')} ({graphData?.aoip_discovery?.discovered_streams?.length ?? graphData?.aoip_discovery?.streams_count ?? 0})
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('raw')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -459,23 +471,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
               >
                 {t('services.pipewire.rawTab', 'Raw Telemetry')}
               </button>
-              {showAoIpTab && (
-                <button
-                  onClick={() => setActiveTab('aoip')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    activeTab === 'aoip'
-                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
-                  }`}
-                >
-                  <span>🌐 {t('services.pipewire.aoipTab', 'AoIP / Network')}</span>
-                  {graphData?.aoip_discovery?.streams_count ? (
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/40 font-mono font-bold">
-                      {graphData.aoip_discovery.streams_count}
-                    </span>
-                  ) : null}
-                </button>
-              )}
             </div>
 
             <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
@@ -827,12 +822,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
             </div>
           )}
 
-          {activeTab === 'raw' && (
-            <pre className="p-4 rounded-xl bg-black/50 border border-[var(--glass-border)] text-[11px] font-mono text-[var(--text-secondary)] overflow-x-auto max-h-96">
-              {JSON.stringify(graphData || { active: isRunning }, null, 2)}
-            </pre>
-          )}
-
           {activeTab === 'aoip' && (
             <div className="space-y-4">
               {/* Card 1: PTPv2 Synchronization Clock */}
@@ -1060,6 +1049,12 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 )}
               </div>
             </div>
+          )}
+
+          {activeTab === 'raw' && (
+            <pre className="p-4 rounded-xl bg-black/50 border border-[var(--glass-border)] text-[11px] font-mono text-[var(--text-secondary)] overflow-x-auto max-h-96">
+              {JSON.stringify(graphData || { active: isRunning }, null, 2)}
+            </pre>
           )}
         </div>
       </div>

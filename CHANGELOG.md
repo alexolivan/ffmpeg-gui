@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.45.2] - 2026-10-19
+
+### Changed
+- **PipeWire Preview Modal Tab Structure (`PipeWirePreviewModal.tsx`)**:
+  - Reordered modal tabs to place the `AoIP / Network` tab penultimate and `Raw Telemetry` last, reflecting operational utility.
+  - Homogenized tab button styling: removed emoji prefix and badge pill, aligning with standard `({count})` notation used across all tabs.
+- **PTP Grandmaster Hierarchy & Non-Alarmist Feedback (`PipeWireConfigForm.tsx`, locales)**:
+  - Differentiated local node master broadcast from remote external clocks using network inspection `is_local` metadata and IP address matching.
+  - Eliminated false warning alerts on the Grandmaster node itself when running with priority 128.
+  - Refactored PTP status banners into calm, non-alarmist states:
+    - Displaying healthy BMCA secondary/backup topology in calm blue (`BMCA Backup`) when priority >= 200 and auto-inhibit is enabled, without displaying warning indicators or action buttons.
+    - Providing clear informative guidance and optional "Set Backup Priority (200)" adjustment only when a contention scenario occurs (remote master detected and local priority <= 128).
+    - Preventing redundant auto-seeding of priority 200 on the master node itself.
+  - Added full translation key parity across English, Spanish, and Catalan.
+
 ## [2.45.1] - 2026-10-19
 
 ### Fixed
