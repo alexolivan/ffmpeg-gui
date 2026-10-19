@@ -319,5 +319,37 @@ numid=59,iface=PCM,name='PCM Slave Active',device=1
         # Loopback read_meters must return empty dictionary (no hardware meters, 0 polling overhead)
         self.assertEqual(self.mgr.read_meters(card_idx=3), {})
 
+    def test_realtime_telemetry_and_asihpi_detection(self):
+        # Test is_card_asihpi
+        with patch.object(self.mgr, "get_cards") as mock_cards:
+            mock_cards.return_value = [
+                {"card_index": 0, "card_id": "ASI5640", "name": "AudioScience ASI5640", "driver": "asihpi"},
+                {"card_index": 1, "card_id": "PCH", "name": "Intel HDA", "driver": "snd_hda_intel"},
+            ]
+            self.assertTrue(self.mgr.is_card_asihpi(0))
+            self.assertFalse(self.mgr.is_card_asihpi(1))
+
+        # Test active_mixer_ws_count and is_mixer_active
+        self.mgr.active_mixer_ws_count = 0
+        self.assertFalse(self.mgr.is_mixer_active())
+        self.mgr.active_mixer_ws_count = 1
+        self.assertTrue(self.mgr.is_mixer_active())
+        self.mgr.active_mixer_ws_count = 0
+
+        # Test read_realtime_telemetry parses both meters and jacks in single pass
+        with patch.object(self.mgr, "get_cards", return_value=[]), \
+             patch.object(self.mgr, "get_card_topology") as mock_topo:
+            mock_topo.return_value = {
+                "virtual_playout": [{"meters": [{"numid": 32, "values": [100, 200]}]}],
+                "hardware_outputs": [],
+                "virtual_capture": [],
+                "hardware_inputs": [],
+                "jack_sensors": [{"controls": [{"numid": 45, "values": [True]}]}]
+            }
+            res = self.mgr.read_realtime_telemetry(0)
+            self.assertEqual(res["meters"], {32: [100, 200]})
+            self.assertEqual(res["jacks"], {45: True})
+            mock_topo.assert_called_once_with(0)
+
 if __name__ == "__main__":
     unittest.main()
