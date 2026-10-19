@@ -12,6 +12,18 @@ export interface VirtualSinkConfig {
   sap_name?: string;
 }
 
+export interface RemoteSinkConfig {
+  id: string;
+  name: string;
+  multicast_ip: string;
+  rtp_port: number;
+  channels: number;
+  format: 'S24BE' | 'S16BE';
+  rate?: number;
+  sap_name?: string;
+  origin_ip?: string;
+}
+
 export interface NetworkAuditInterface {
   name: string;
   ip: string | null;
@@ -161,6 +173,27 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     }
     return defaultInitialSinks;
   });
+
+  const [remoteSinks, setRemoteSinks] = useState<RemoteSinkConfig[]>(() => {
+    const list = pwCfg.remote_sinks || initialConfig?.config?.remote_sinks || initialConfig?.remote_sinks;
+    if (Array.isArray(list) && list.length > 0) {
+      return list.map((s: any) => ({
+        id: String(s.id || 'remote_sink'),
+        name: String(s.name || s.id || 'Remote AoIP Sink'),
+        multicast_ip: s.multicast_ip || '239.69.11.1',
+        rtp_port: Number(s.rtp_port) || 5004,
+        channels: Number(s.channels) || 2,
+        format: s.format === 'S16BE' ? 'S16BE' : 'S24BE',
+        rate: Number(s.rate) || 48000,
+        sap_name: s.sap_name || '',
+        origin_ip: s.origin_ip || '',
+      }));
+    }
+    return [];
+  });
+
+  const [discoveredStreams, setDiscoveredStreams] = useState<any[]>([]);
+  const [isLoadingDiscovery, setIsLoadingDiscovery] = useState<boolean>(false);
 
   // 3. AES67 / Dante Broadcast (Tx) Network Module
   const aesNetCfg = pwCfg.aes67_network || {};
@@ -418,6 +451,79 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     }
   }, [isExternalMasterDetected, isEditing, initialConfig?.id]);
 
+  // Fetch AoIP stream discovery (SAP announcements) from network
+  const fetchAoIpDiscovery = () => {
+    setIsLoadingDiscovery(true);
+    fetch(`${API}/api/pipewire/aoip-discovery?service_id=${initialConfig?.id || ''}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.discovered_streams)) {
+          setDiscoveredStreams(data.discovered_streams);
+        }
+      })
+      .catch((err) => console.debug('Could not fetch AoIP discovery:', err))
+      .finally(() => setIsLoadingDiscovery(false));
+  };
+
+  useEffect(() => {
+    if (aes67Enabled) {
+      fetchAoIpDiscovery();
+    }
+  }, [aes67Enabled]);
+
+  const handleAddRemoteSink = () => {
+    const nextIdx = remoteSinks.length + 1;
+    setRemoteSinks((prev) => [
+      ...prev,
+      {
+        id: `remote_sink_${nextIdx}`,
+        name: `Remote Audio Stream ${nextIdx}`,
+        multicast_ip: '239.69.1.1',
+        rtp_port: 5004,
+        channels: 2,
+        format: 'S24BE',
+        rate: Number(sampleRate) || 48000,
+      },
+    ]);
+  };
+
+  const handleRemoteSinkChange = (index: number, field: keyof RemoteSinkConfig, value: any) => {
+    setRemoteSinks((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleRemoveRemoteSink = (index: number) => {
+    setRemoteSinks((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleImportDiscoveredStream = (stream: any) => {
+    if (!stream) return;
+    const cleanName = stream.sap_name || `Remote ${stream.multicast_ip}`;
+    const baseId = cleanName.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'remote_sink';
+    let uniqueId = baseId;
+    let counter = 1;
+    while (remoteSinks.some((rs) => rs.id === uniqueId) || virtualSinks.some((vs) => vs.id === uniqueId)) {
+      uniqueId = `${baseId}_${counter}`;
+      counter++;
+    }
+
+    const newSink: RemoteSinkConfig = {
+      id: uniqueId,
+      name: cleanName,
+      multicast_ip: stream.multicast_ip,
+      rtp_port: Number(stream.rtp_port) || 5004,
+      channels: Number(stream.channels) || 2,
+      format: stream.format === 'S16BE' ? 'S16BE' : 'S24BE',
+      rate: Number(stream.rate) || 48000,
+      sap_name: stream.sap_name || '',
+      origin_ip: stream.origin_ip || '',
+    };
+    setRemoteSinks((prev) => [...prev, newSink]);
+  };
+
   // Form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -442,12 +548,25 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
       };
     });
 
+    const cleanRemoteSinks = remoteSinks.map((rs) => ({
+      id: rs.id.trim(),
+      name: rs.name.trim(),
+      multicast_ip: rs.multicast_ip.trim(),
+      rtp_port: Number(rs.rtp_port) || 5004,
+      channels: Number(rs.channels) || 2,
+      format: rs.format || 'S24BE',
+      rate: Number(rs.rate) || Number(sampleRate) || 48000,
+      sap_name: rs.sap_name?.trim() || undefined,
+      origin_ip: rs.origin_ip?.trim() || undefined,
+    }));
+
     const configPayload = {
       sample_rate: Number(sampleRate),
       quantum: Number(quantum),
       min_quantum: 128,
       max_quantum: 2048,
       virtual_sinks: cleanSinks,
+      remote_sinks: cleanRemoteSinks,
       aes67_network: {
         enabled: aes67Enabled,
         interface: aes67Enabled ? selectedInterface : null,
@@ -1160,12 +1279,228 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
           )}
         </div>
 
-        {/* ── Section 4: Dedicated Log Storage Volume ── */}
+        {/* ── Section 4: Remote AoIP Sinks (Network Audio Rx) ── */}
+        {aes67Enabled && (
+          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-4">
+            <div className="border-b border-[var(--glass-border)] pb-2 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                  <span>📡</span>
+                  {t('services.pipewire.remoteSinksSection', '4. Remote AoIP Sinks (Network Audio Rx)')}
+                </h4>
+                <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
+                  {t('services.pipewire.remoteSinksHelp', 'Persistent remote RTP/AES67 streams ingested into this Hub from other network nodes.')}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* SAP Network Discovery Selector */}
+                {(() => {
+                  const unconfigured = discoveredStreams.filter(
+                    (ds: any) => !ds.is_local && !remoteSinks.some((rs) => rs.multicast_ip === ds.multicast_ip && rs.rtp_port === ds.rtp_port)
+                  );
+                  return (
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) return;
+                          const found = unconfigured.find((s) => `${s.multicast_ip}:${s.rtp_port}` === val);
+                          if (found) {
+                            handleImportDiscoveredStream(found);
+                          }
+                          e.target.value = '';
+                        }}
+                        defaultValue=""
+                        className="bg-[var(--input-bg)] border border-[var(--glass-border)] hover:border-purple-400 text-xs font-mono text-[var(--text-primary)] rounded-lg px-2 py-1.5 transition-colors cursor-pointer outline-none max-w-[210px] truncate"
+                      >
+                        <option value="" disabled>
+                          📡 {t('services.pipewire.importSapStream', 'Import from Network (SAP)')} ({unconfigured.length})
+                        </option>
+                        {unconfigured.length === 0 ? (
+                          <option value="" disabled>
+                            {t('services.pipewire.noDiscoveredStreams', 'No new SAP streams detected on LAN')}
+                          </option>
+                        ) : (
+                          unconfigured.map((ds: any) => (
+                            <option key={`${ds.multicast_ip}:${ds.rtp_port}`} value={`${ds.multicast_ip}:${ds.rtp_port}`}>
+                              {ds.sap_name || `${ds.multicast_ip}:${ds.rtp_port}`} ({ds.channels}ch)
+                            </option>
+                          ))
+                        )}
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={fetchAoIpDiscovery}
+                        disabled={isLoadingDiscovery}
+                        title={t('services.pipewire.refreshDiscovery', 'Refresh network discovery')}
+                        className="p-1.5 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] hover:border-purple-400 text-[var(--text-secondary)] hover:text-purple-400 transition-colors cursor-pointer"
+                      >
+                        <span className={isLoadingDiscovery ? 'animate-spin inline-block' : ''}>↻</span>
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                <button
+                  type="button"
+                  onClick={handleAddRemoteSink}
+                  className="px-2.5 py-1.5 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <PlusIcon size={13} />
+                  {t('services.pipewire.addRemoteSink', 'Add Remote Sink (Manual)')}
+                </button>
+              </div>
+            </div>
+
+            {remoteSinks.length === 0 ? (
+              <div className="p-4 rounded-xl bg-[var(--input-bg)]/40 border border-dashed border-[var(--glass-border)] text-center text-xs text-[var(--text-secondary)]">
+                <span className="text-xl block mb-1">📻</span>
+                <p className="font-semibold text-[var(--text-primary)]">
+                  {t('services.pipewire.noRemoteSinksTitle', 'No Remote AoIP Sinks Configured')}
+                </p>
+                <p className="text-[11px] mt-0.5 max-w-md mx-auto">
+                  {t('services.pipewire.noRemoteSinks', 'Add a remote RTP/AES67 stream manually or import one from network SAP announcements to persist audio ingestion on boot.')}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {remoteSinks.map((rs, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-[var(--input-bg)]/60 border border-[var(--glass-border)] rounded-xl p-3.5 space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-purple-500/10 text-purple-400 text-[10px] font-mono font-bold flex items-center justify-center border border-purple-500/30">
+                          #{idx + 1}
+                        </span>
+                        <span className="text-xs font-bold text-[var(--text-primary)]">
+                          {rs.name || rs.id || `Remote Sink ${idx + 1}`}
+                        </span>
+                        {rs.sap_name && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-purple-500/10 text-purple-300 border border-purple-500/30">
+                            SAP: {rs.sap_name}
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRemoteSink(idx)}
+                        className="text-[var(--text-secondary)] hover:text-red-400 p-1 rounded-md transition-colors cursor-pointer"
+                        title={t('services.pipewire.remoteRemove', 'Remove remote sink')}
+                      >
+                        <TrashIcon size={14} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                      <div className="sm:col-span-4">
+                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.pipewire.remoteSinkId', 'Node Identifier (ID)')} <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          pattern="^[a-zA-Z0-9_\-]+$"
+                          value={rs.id}
+                          onChange={(e) => handleRemoteSinkChange(idx, 'id', e.target.value.replace(/[^a-zA-Z0-9_\-]/g, ''))}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                          placeholder="remote_test1_aes"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-5">
+                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.pipewire.remoteSinkName', 'Description / Stream Name')} <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={rs.name}
+                          onChange={(e) => handleRemoteSinkChange(idx, 'name', e.target.value)}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                          placeholder="Test1 AES67 Stream"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.pipewire.remoteChannels', 'Channels')}
+                        </label>
+                        <select
+                          value={rs.channels}
+                          onChange={(e) => handleRemoteSinkChange(idx, 'channels', Number(e.target.value))}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime cursor-pointer"
+                        >
+                          <option value={1}>1 (Mono)</option>
+                          <option value={2}>2 (Stereo)</option>
+                          <option value={4}>4 (Quad)</option>
+                          <option value={6}>6 (5.1 Surround)</option>
+                          <option value={8}>8 (Octa / MultiTrack)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
+                      <div className="sm:col-span-5">
+                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.pipewire.remoteMulticastIp', 'Multicast IP (Rx)')} <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={rs.multicast_ip}
+                          onChange={(e) => handleRemoteSinkChange(idx, 'multicast_ip', e.target.value.trim())}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                          placeholder="239.69.11.1"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.pipewire.remoteRtpPort', 'RTP Port')} <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min={1024}
+                          max={65535}
+                          value={rs.rtp_port}
+                          onChange={(e) => handleRemoteSinkChange(idx, 'rtp_port', Number(e.target.value))}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-4">
+                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.pipewire.remoteFormat', 'Audio Format')}
+                        </label>
+                        <select
+                          value={rs.format}
+                          onChange={(e) => handleRemoteSinkChange(idx, 'format', e.target.value as any)}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime cursor-pointer"
+                        >
+                          <option value="S24BE">S24BE (AES67 standard L24)</option>
+                          <option value="S16BE">S16BE (Standard L16)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Section 5: Dedicated Log Storage Volume ── */}
         <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-3">
           <div className="border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-orange-400" />
             <h4 className="text-xs font-black uppercase tracking-wider text-orange-400">
-              4. {t('services.pipewire.logStorageTitle', 'Log Storage Volume')}
+              5. {t('services.pipewire.logStorageTitle', 'Log Storage Volume')}
             </h4>
           </div>
 
@@ -1191,12 +1526,12 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
           </div>
         </div>
 
-        {/* ── Section 5: Lifecycle, Boot Order & Watchdog ── */}
+        {/* ── Section 6: Lifecycle, Boot Order & Watchdog ── */}
         <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-4 shadow-sm space-y-3">
           <div className="border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             <h4 className="text-xs font-black uppercase tracking-wider text-emerald-400">
-              5. {t('services.pipewire.lifecycleTitle', 'Lifecycle, Boot Order & Watchdog')}
+              6. {t('services.pipewire.lifecycleTitle', 'Lifecycle, Boot Order & Watchdog')}
             </h4>
           </div>
 

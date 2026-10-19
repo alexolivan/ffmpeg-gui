@@ -652,8 +652,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             } : {}),
             ...(newType === 'pipewire' ? {
               provider_service_id: pipewireHubs[0]?.id || null,
-              sink_id: (pipewireHubs[0]?.config?.virtual_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.virtual_sinks?.[0]?.id) || 'mix_bus',
-              device: `${(pipewireHubs[0]?.config?.virtual_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.virtual_sinks?.[0]?.id) || 'mix_bus'}.monitor`
+              sink_id: (pipewireHubs[0]?.config?.virtual_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.virtual_sinks?.[0]?.id) || (pipewireHubs[0]?.config?.remote_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.remote_sinks?.[0]?.id) || 'mix_bus',
+              device: `${(pipewireHubs[0]?.config?.virtual_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.virtual_sinks?.[0]?.id) || (pipewireHubs[0]?.config?.remote_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.remote_sinks?.[0]?.id) || 'mix_bus'}.monitor`
             } : {}),
             ...(!isHwSupported ? {
               hwaccel: 'none',
@@ -3681,6 +3681,7 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       {config.type === 'pipewire' && (() => {
         const selectedHub = pipewireHubs.find(h => h.id === config.provider_service_id);
         const virtualSinks: any[] = selectedHub?.config?.virtual_sinks || selectedHub?.config?.pipewire_config?.virtual_sinks || [];
+        const remoteSinks: any[] = selectedHub?.config?.remote_sinks || selectedHub?.config?.pipewire_config?.remote_sinks || [];
         const currentSinkId = config.sink_id || (config.device ? config.device.replace(/\.monitor$/, '') : 'mix_bus');
 
         return (
@@ -3734,7 +3735,8 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       const nextHubId = Number(e.target.value);
                       const nextHub = pipewireHubs.find(h => h.id === nextHubId);
                       const nextSinks = nextHub?.config?.virtual_sinks || nextHub?.config?.pipewire_config?.virtual_sinks || [];
-                      const defaultSink = nextSinks[0]?.id || 'mix_bus';
+                      const nextRemoteSinks = nextHub?.config?.remote_sinks || nextHub?.config?.pipewire_config?.remote_sinks || [];
+                      const defaultSink = nextSinks[0]?.id || nextRemoteSinks[0]?.id || 'mix_bus';
                       update({
                         provider_service_id: nextHubId,
                         sink_id: defaultSink,
@@ -3769,11 +3771,24 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     }}
                   >
                     <option value="default">🌟 {t('sources.pipewire.defaultMonitor', 'System Default (default.monitor)')}</option>
-                    {virtualSinks.map((s: any) => (
-                      <option key={s.id} value={s.id}>
-                        🎛️ {s.name || s.id} ({s.channels || 2}ch) [{s.id}.monitor]{s.aes67_enabled ? ' [AES67 Tx]' : ''}
-                      </option>
-                    ))}
+                    {virtualSinks.length > 0 && (
+                      <optgroup label={t('sources.pipewire.localSinksGroup', 'Local Virtual Buses (Tx)')}>
+                        {virtualSinks.map((s: any) => (
+                          <option key={s.id} value={s.id}>
+                            🎛️ {s.name || s.id} ({s.channels || 2}ch) [{s.id}.monitor]{s.aes67_enabled ? ' [AES67 Tx]' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {remoteSinks.length > 0 && (
+                      <optgroup label={t('sources.pipewire.remoteSinksGroup', 'Remote AoIP Sinks (Rx)')}>
+                        {remoteSinks.map((rs: any) => (
+                          <option key={rs.id} value={rs.id}>
+                            📡 {rs.name || rs.id} ({rs.channels || 2}ch) [{rs.id}.monitor] [{rs.multicast_ip}:{rs.rtp_port}]
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                   <p className="text-[10px] text-[var(--text-secondary)] mt-1">
                     {t('sources.pipewire.sinkHelp', 'FFmpeg captures uncompressed audio directly from this PipeWire virtual bus monitor (.monitor).')}
