@@ -137,8 +137,8 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Status & Monitoring**: Real-time display of certificate validity, domain bindings, and automated expiration warnings.
 
 ### 💾 12. Granular Backup & Restore
-- **Selective Section Toggles**: Export and import specific configuration parts (e.g., backing up media services, virtual desktops, web kiosks, scheduled tasks, storage volumes, software engines, and peer federation credentials while leaving SMTP credentials or network port configs unchanged).
-- **Format Verification & SSOT Synchronization**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions (`SystemSettings`) and configuration file updates. Dynamic desktop-name re-resolution ensures web kiosks bind correctly to restored parent virtual desktops.
+- **Selective Section Toggles**: Export and import specific configuration parts (e.g., backing up media services, PipeWire Audio Hubs & AES67 AoIP profiles, virtual desktops, web kiosks, scheduled tasks, storage volumes, software engines, and peer federation credentials while leaving SMTP credentials or network port configs unchanged).
+- **Format Verification & SSOT Synchronization**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions (`SystemSettings`) and configuration file updates. Dynamic name re-resolution ensures web kiosks bind correctly to restored parent virtual desktops and virtual desktops re-link to designated PipeWire audio hubs.
 
 ### 🗄️ 13. Storage, HTTP HLS Routes, Log Retention & Branding
 - **Storage Management & HTTP HLS Delivery**: Configure local or mounted storage volumes, monitor disk space usage in real time, and map custom HTTP route paths (`/route_path -> HLS Storage`) with CORS and video caching headers to serve live and archived HLS manifests (`.m3u8`) and segments (`.ts`) directly through the web engine.

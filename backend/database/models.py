@@ -337,6 +337,30 @@ class Service(Base):
         self._set_config_key('icecast_config', val)
 
     @property
+    def pipewire_config(self):
+        return self.config.get('pipewire_config', {}) if self.config else {}
+
+    @pipewire_config.setter
+    def pipewire_config(self, val):
+        self._set_config_key('pipewire_config', val)
+
+    @property
+    def desktop_config(self):
+        return self.config.get('desktop_config', {}) if self.config else {}
+
+    @desktop_config.setter
+    def desktop_config(self, val):
+        self._set_config_key('desktop_config', val)
+
+    @property
+    def kiosk_config(self):
+        return self.config.get('kiosk_config', {}) if self.config else {}
+
+    @kiosk_config.setter
+    def kiosk_config(self, val):
+        self._set_config_key('kiosk_config', val)
+
+    @property
     def software_type(self):
         return self.config.get('software_type') if self.config else None
 

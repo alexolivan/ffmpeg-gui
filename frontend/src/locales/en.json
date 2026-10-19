@@ -768,6 +768,8 @@
       "sectionDesktopsDesc": "X11 display servers, VNC & audio sinks",
       "sectionKiosksTitle": "Web Kiosks",
       "sectionKiosksDesc": "Chromium/Cog browser instances & target bindings",
+      "sectionPipeWireTitle": "PipeWire Audio Hubs",
+      "sectionPipeWireDesc": "Audio daemons, virtual sinks & AES67 AoIP networks",
       "exporting": "GENERATING BACKUP...",
       "exportBtn": "EXPORT BACKUP (.JSON)",
       "importTitle": "Restore System Backup",

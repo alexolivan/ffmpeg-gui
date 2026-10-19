@@ -768,6 +768,8 @@
       "sectionDesktopsDesc": "Servidors de display X11, VNC i sortides d'àudio",
       "sectionKiosksTitle": "Quioscos Web",
       "sectionKiosksDesc": "Instàncies de navegador Chromium/Cog i enllaços",
+      "sectionPipeWireTitle": "Servidors d'Àudio PipeWire",
+      "sectionPipeWireDesc": "Serveis d'àudio, busos virtuals i xarxes AoIP AES67",
       "exporting": "GENERANT CÒPIA...",
       "exportBtn": "EXPORTAR CÒPIA DE SEGURETAT (.JSON)",
       "importTitle": "Restaurar Còpia de Seguretat",

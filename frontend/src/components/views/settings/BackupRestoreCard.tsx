@@ -23,6 +23,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
   const [exportSoftwareEngines, setExportSoftwareEngines] = useState(true);
   const [exportNotifications, setExportNotifications] = useState(true);
   const [exportPeerFederation, setExportPeerFederation] = useState(true);
+  const [exportPipeWireHubs, setExportPipeWireHubs] = useState(true);
 
   const [isExporting, setIsExporting] = useState(false);
 
@@ -41,6 +42,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
     setExportLoggingRetention(val);
     setExportWatchdogGrace(val);
     setExportServices(val);
+    setExportPipeWireHubs(val);
     setExportVirtualDesktops(val);
     setExportWebKiosks(val);
     setExportTasks(val);
@@ -60,6 +62,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
         logging_retention: exportLoggingRetention,
         watchdog_grace: exportWatchdogGrace,
         services: exportServices,
+        pipewire_hubs: exportPipeWireHubs,
         virtual_desktops: exportVirtualDesktops,
         web_kiosks: exportWebKiosks,
         tasks: exportTasks,
@@ -144,9 +147,10 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
 
       const counts = result.imported || {};
       const fedCounts = counts.peer_federation ? ((counts.peer_federation.inbound_keys || 0) + (counts.peer_federation.remote_nodes || 0)) : 0;
+      const pwCount = counts.pipewire_hubs || 0;
       const deskCount = counts.virtual_desktops || 0;
       const kioskCount = counts.web_kiosks || 0;
-      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('nav.services', 'Services')}: ${counts.services || 0}${deskCount > 0 ? `, ${t('settings.backup.sectionDesktopsTitle', 'Desktops')}: ${deskCount}` : ''}${kioskCount > 0 ? `, ${t('settings.backup.sectionKiosksTitle', 'Kiosks')}: ${kioskCount}` : ''}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0}${counts.software_engines !== undefined ? `, ${t('settings.tabs.engines', 'Engines')}: ${counts.software_engines}` : ''}${fedCounts > 0 ? `, ${t('settings.tabs.network', 'Peers')}: ${fedCounts}` : ''})`;
+      const summaryMsg = `${t('settings.backup.importSuccess', 'Backup restored successfully!')} (${t('nav.services', 'Services')}: ${counts.services || 0}${pwCount > 0 ? `, ${t('settings.backup.sectionPipeWireTitle', 'PipeWire Hubs')}: ${pwCount}` : ''}${deskCount > 0 ? `, ${t('settings.backup.sectionDesktopsTitle', 'Desktops')}: ${deskCount}` : ''}${kioskCount > 0 ? `, ${t('settings.backup.sectionKiosksTitle', 'Kiosks')}: ${kioskCount}` : ''}, ${t('nav.tasks', 'Tasks')}: ${counts.tasks || 0}, ${t('settings.tabs.storage', 'Storage')}: ${counts.storage_volumes || 0}${counts.software_engines !== undefined ? `, ${t('settings.tabs.engines', 'Engines')}: ${counts.software_engines}` : ''}${fedCounts > 0 ? `, ${t('settings.tabs.network', 'Peers')}: ${fedCounts}` : ''})`;
       setImportSuccess(summaryMsg);
       setImportFile(null);
       setImportData(null);
@@ -157,7 +161,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
     }
   };
 
-  const anyExportSelected = exportGuiGeneral || exportGuiNetworkSsl || exportLcdDisplay || exportLoggingRetention || exportWatchdogGrace || exportServices || exportVirtualDesktops || exportWebKiosks || exportTasks || exportStorageVolumes || exportSoftwareEngines || exportNotifications || exportPeerFederation;
+  const anyExportSelected = exportGuiGeneral || exportGuiNetworkSsl || exportLcdDisplay || exportLoggingRetention || exportWatchdogGrace || exportServices || exportPipeWireHubs || exportVirtualDesktops || exportWebKiosks || exportTasks || exportStorageVolumes || exportSoftwareEngines || exportNotifications || exportPeerFederation;
 
   return (
     <div className="space-y-6">
@@ -350,6 +354,19 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
               <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
                 <input
                   type="checkbox"
+                  checked={exportPipeWireHubs}
+                  onChange={(e) => setExportPipeWireHubs(e.target.checked)}
+                  className="accent-brand-lime w-4 h-4 rounded"
+                />
+                <div className="text-xs min-w-0">
+                  <span className="font-bold text-[var(--text-primary)] block truncate">{t('settings.backup.sectionPipeWireTitle', 'PipeWire Audio Hubs')}</span>
+                  <span className="text-[10px] text-text-secondary truncate block">{t('settings.backup.sectionPipeWireDesc', 'Audio daemons, virtual sinks & AES67 AoIP network profiles')}</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] cursor-pointer hover:border-brand-lime/30 transition-all">
+                <input
+                  type="checkbox"
                   checked={exportTasks}
                   onChange={(e) => setExportTasks(e.target.checked)}
                   className="accent-brand-lime w-4 h-4 rounded"
@@ -452,7 +469,7 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2 text-xs font-mono">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2 text-xs font-mono">
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">General & Theme</span>
                   <strong className="text-[var(--text-primary)]">{importData.sections?.gui_general || importData.sections?.system_settings ? '✓ Present' : 'None'}</strong>
@@ -464,6 +481,10 @@ export const BackupRestoreCard: React.FC<BackupRestoreCardProps> = ({ API }) => 
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">Services</span>
                   <strong className="text-[var(--text-primary)]">{importData.sections?.services?.length || 0} entries</strong>
+                </div>
+                <div className="p-2 rounded bg-white/5 border border-white/5">
+                  <span className="text-[10px] text-text-secondary block">PipeWire Hubs</span>
+                  <strong className="text-[var(--text-primary)]">{importData.sections?.pipewire_hubs?.length || 0} entries</strong>
                 </div>
                 <div className="p-2 rounded bg-white/5 border border-white/5">
                   <span className="text-[10px] text-text-secondary block">Desktops</span>

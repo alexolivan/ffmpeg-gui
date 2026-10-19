@@ -92,6 +92,30 @@ class TestBackupRestoreAPI(unittest.TestCase):
             status="online"
         )
 
+        pw_proc = MediaProcess(
+            name="Backup Test PipeWire Hub",
+            service_type="pipewire_hub",
+            status="stopped",
+            config={
+                "pipewire_config": {
+                    "sample_rate": 48000,
+                    "quantum": 1024,
+                    "virtual_sinks": [{"id": "mix_bus", "name": "Main Mix", "channels": 2}],
+                    "remote_sinks": [{
+                        "stream_name": "Test Stream",
+                        "multicast_ip": "239.69.1.50",
+                        "port": 5004,
+                        "channels": 2,
+                        "sample_rate": 48000,
+                        "latency_ms": 10
+                    }]
+                }
+            }
+        )
+        self.db.add(pw_proc)
+        self.db.commit()
+        self.db.refresh(pw_proc)
+
         desk_proc = MediaProcess(
             name="Backup Test Desktop",
             service_type="desktop",
@@ -103,7 +127,10 @@ class TestBackupRestoreAPI(unittest.TestCase):
                     "color_depth": 24,
                     "audio_server": "pulseaudio",
                     "window_manager": "openbox",
-                    "vnc_port": 5999
+                    "vnc_port": 5999,
+                    "audio_backend": "pipewire_hub",
+                    "pipewire_service_id": pw_proc.id,
+                    "pipewire_sink_id": "mix_bus"
                 }
             }
         )
@@ -158,6 +185,7 @@ class TestBackupRestoreAPI(unittest.TestCase):
             "logging_retention": True,
             "watchdog_grace": True,
             "services": True,
+            "pipewire_hubs": True,
             "virtual_desktops": True,
             "web_kiosks": True,
             "tasks": True,
@@ -174,19 +202,28 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertIn("gui_general", data["sections"])
         self.assertIn("lcd_display", data["sections"])
         self.assertIn("services", data["sections"])
+        self.assertIn("pipewire_hubs", data["sections"])
         self.assertIn("virtual_desktops", data["sections"])
         self.assertIn("web_kiosks", data["sections"])
         self.assertIn("tasks", data["sections"])
         self.assertIn("software_engines", data["sections"])
         self.assertIn("peer_federation", data["sections"])
 
-        # Check that desktops and kiosks are not mixed in services
+        # Check that desktops, kiosks and pipewire hubs are not mixed in services
         service_names = [s["name"] for s in data["sections"]["services"]]
         self.assertNotIn("Backup Test Desktop", service_names)
         self.assertNotIn("Backup Test Kiosk", service_names)
+        self.assertNotIn("Backup Test PipeWire Hub", service_names)
         self.assertEqual(len(data["sections"]["virtual_desktops"]), 1)
         self.assertEqual(len(data["sections"]["web_kiosks"]), 1)
+        self.assertEqual(len(data["sections"]["pipewire_hubs"]), 1)
         self.assertEqual(data["sections"]["web_kiosks"][0]["desktop_name"], "Backup Test Desktop")
+        self.assertEqual(data["sections"]["virtual_desktops"][0]["pipewire_hub_name"], "Backup Test PipeWire Hub")
+
+        pw_export = data["sections"]["pipewire_hubs"][0]
+        self.assertEqual(pw_export["name"], "Backup Test PipeWire Hub")
+        self.assertEqual(pw_export["pipewire_config"]["sample_rate"], 48000)
+        self.assertEqual(len(pw_export["pipewire_config"]["remote_sinks"]), 1)
 
         # Check LCD & General export from SystemSettings
         lcd_export = data["sections"]["lcd_display"]
@@ -235,6 +272,7 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.db.query(MediaProcess).filter_by(name="Backup Test Service").delete()
         self.db.query(MediaProcess).filter_by(name="Backup Test MediaMTX").delete()
         self.db.query(MediaProcess).filter_by(name="Backup Test Icecast").delete()
+        self.db.query(MediaProcess).filter_by(name="Backup Test PipeWire Hub").delete()
         self.db.query(MediaProcess).filter_by(name="Backup Test Desktop").delete()
         self.db.query(MediaProcess).filter_by(name="Backup Test Kiosk").delete()
         self.db.query(ScheduledTask).filter_by(name="Backup Test Task").delete()
@@ -266,6 +304,7 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertEqual(import_data["status"], "success")
         self.assertEqual(import_data["imported"]["peer_federation"]["inbound_keys"], 1)
         self.assertEqual(import_data["imported"]["peer_federation"]["remote_nodes"], 1)
+        self.assertEqual(import_data["imported"]["pipewire_hubs"], 1)
         self.assertEqual(import_data["imported"]["virtual_desktops"], 1)
         self.assertEqual(import_data["imported"]["web_kiosks"], 1)
 
@@ -291,10 +330,18 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertTrue(restored_ice.icecast_config.get("ssl_enabled"))
         self.assertEqual(restored_ice.icecast_config.get("mounts")[0].get("mount_name"), "/stream.mp3")
 
+        restored_pw = self.db.query(MediaProcess).filter_by(name="Backup Test PipeWire Hub").first()
+        self.assertIsNotNone(restored_pw)
+        self.assertEqual(restored_pw.service_type, "pipewire_hub")
+        self.assertEqual(restored_pw.pipewire_config.get("sample_rate"), 48000)
+        self.assertEqual(len(restored_pw.pipewire_config.get("remote_sinks", [])), 1)
+
         restored_desk = self.db.query(MediaProcess).filter_by(name="Backup Test Desktop").first()
         self.assertIsNotNone(restored_desk)
         self.assertEqual(restored_desk.service_type, "desktop")
         self.assertEqual(restored_desk.config["desktop_config"]["display_num"], 99)
+        self.assertEqual(restored_desk.config["desktop_config"].get("pipewire_service_id"), restored_pw.id)
+        self.assertEqual(restored_desk.config["desktop_config"].get("pipewire_sink_id"), "mix_bus")
 
         restored_kiosk = self.db.query(MediaProcess).filter_by(name="Backup Test Kiosk").first()
         self.assertIsNotNone(restored_kiosk)
@@ -352,6 +399,11 @@ class TestBackupRestoreAPI(unittest.TestCase):
                         "name": "Backup Test Legacy Kiosk",
                         "service_type": "kiosk_browser",
                         "config": {"kiosk_config": {"url": "https://legacy.lan"}}
+                    },
+                    {
+                        "name": "Backup Test Legacy PipeWire Hub",
+                        "service_type": "pipewire_hub",
+                        "config": {"pipewire_config": {"sample_rate": 48000}}
                     }
                 ]
             }
@@ -361,6 +413,7 @@ class TestBackupRestoreAPI(unittest.TestCase):
         res_data = res.json()
         self.assertEqual(res_data["imported"]["virtual_desktops"], 1)
         self.assertEqual(res_data["imported"]["web_kiosks"], 1)
+        self.assertEqual(res_data["imported"]["pipewire_hubs"], 1)
 
         d = self.db.query(MediaProcess).filter_by(name="Backup Test Legacy Desktop").first()
         self.assertIsNotNone(d)
@@ -369,4 +422,9 @@ class TestBackupRestoreAPI(unittest.TestCase):
         k = self.db.query(MediaProcess).filter_by(name="Backup Test Legacy Kiosk").first()
         self.assertIsNotNone(k)
         self.assertEqual(k.service_type, "kiosk_browser")
+
+        pw = self.db.query(MediaProcess).filter_by(name="Backup Test Legacy PipeWire Hub").first()
+        self.assertIsNotNone(pw)
+        self.assertEqual(pw.service_type, "pipewire_hub")
+        self.assertEqual(pw.pipewire_config.get("sample_rate"), 48000)
 

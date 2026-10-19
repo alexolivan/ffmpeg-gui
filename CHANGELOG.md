@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.45.4] - 2026-10-19
+## [2.46.0] - 2026-10-19
+
+### Added
+- **PipeWire Audio Hubs in System Backup & Restore (`backend/main.py`, `backend/database/models.py`, `BackupRestoreCard.tsx`, `test_backup_restore_api.py`)**:
+  - Added granular `pipewire_hubs` selection toggle in system backup export request (`BackupExportRequest`) and Settings UI.
+  - Added dedicated `sections["pipewire_hubs"]` in backup JSON export containing PipeWire Hub daemons, virtual sinks, remote network sinks (AES67 AoIP Rx), watchdog settings, and software build metadata, cleanly segregated from standard media streaming pipelines.
+  - Added robust import restoration handler calling `migrate_and_validate_profile` to sanitize PTP clock domains and multicast prefixes on foreign host imports, while maintaining backwards compatibility for legacy backups containing `pipewire_hub` inside `services`.
+  - Implemented name-based relational re-linking (`pipewire_hub_name`) in Virtual Desktops (`desktop_config.pipewire_service_id`) upon import, ensuring restored desktops seamlessly connect to the correct local PipeWire Audio Hub ID across systems.
+  - Added PipeWire Hubs to export options, import preview metadata grid, and restore summary alerts in `BackupRestoreCard.tsx`.
+  - Added getter/setter properties for `pipewire_config`, `desktop_config`, and `kiosk_config` on `Service` model in `backend/database/models.py`.
+  - Added comprehensive automated unit tests covering PipeWire Hub backup export, restoration, legacy payload migration, and desktop re-linking in `backend/tests/test_backup_restore_api.py`.
+- **Internationalization (`frontend/src/locales/en.json`, `es.json`, `ca.json`)**:
+  - Registered translation keys `settings.backup.sectionPipeWireTitle` and `settings.backup.sectionPipeWireDesc` across English (SSOT), Spanish, and Catalan with 100% key parity.
+
 
 ### Fixed
 - **ALSA Process Subdevice Binding Regression (`backend/main.py`, `backend/core/alsa_manager.py`, `AlsaAudioSettingsCard.tsx`)**:

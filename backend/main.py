@@ -503,6 +503,7 @@ class BackupExportRequest(BaseModel):
     peer_federation: bool = True
     virtual_desktops: bool = True
     web_kiosks: bool = True
+    pipewire_hubs: bool = True
 
 class BackupImportPayload(BaseModel):
     app: str
@@ -1706,7 +1707,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     # 7. Services (Universal: FFmpeg, MediaMTX Hubs, Icecast)
     if req.services:
         from database.models import Service
-        procs = db.query(Service).filter(Service.service_type.notin_(["desktop", "kiosk_browser"])).all()
+        procs = db.query(Service).filter(Service.service_type.notin_(["desktop", "kiosk_browser", "pipewire_hub"])).all()
         sections["services"] = [
             {
                 "name": p.name,
@@ -1718,6 +1719,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "filter_config": p.filter_config,
                 "mediamtx_config": p.mediamtx_config,
                 "icecast_config": p.icecast_config,
+                "pipewire_config": p.pipewire_config,
                 "auto_start": p.auto_start,
                 "startup_order": p.startup_order,
                 "startup_delay": p.startup_delay,
@@ -1742,16 +1744,54 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for p in procs
         ]
 
-    # 7b. Virtual Desktops
+    # 7b. PipeWire Audio Hubs
+    if getattr(req, "pipewire_hubs", True):
+        from database.models import Service
+        pw_hubs = db.query(Service).filter(Service.service_type == "pipewire_hub").all()
+        sections["pipewire_hubs"] = [
+            {
+                "name": h.name,
+                "service_type": "pipewire_hub",
+                "config": h.config or {},
+                "pipewire_config": (h.config or {}).get("pipewire_config", {}),
+                "auto_start": h.auto_start,
+                "startup_order": h.startup_order,
+                "startup_delay": h.startup_delay,
+                "watchdog_enabled": h.watchdog_enabled,
+                "watchdog_retries": h.watchdog_retries,
+                "alias": h.alias,
+                "software_type": getattr(h, "software_type", "pipewire"),
+                "software_version": getattr(h, "software_version", None),
+                "software_build_id": getattr(h, "software_build_id", None),
+                "is_shared_with_peers": getattr(h, "is_shared_with_peers", False),
+                "allow_peer_lease": getattr(h, "allow_peer_lease", False),
+                "log_storage_id": getattr(h, "log_storage_id", None),
+            }
+            for h in pw_hubs
+        ]
+
+    # 7c. Virtual Desktops
     if getattr(req, "virtual_desktops", True):
         from database.models import Service
         desktops = db.query(Service).filter(Service.service_type == "desktop").all()
-        sections["virtual_desktops"] = [
-            {
+        desktop_list = []
+        for d in desktops:
+            d_cfg = (d.config or {}).get("desktop_config", {})
+            pw_svc_id = d_cfg.get("pipewire_service_id")
+            pw_hub_name = None
+            if pw_svc_id:
+                try:
+                    pw_svc = db.get(Service, int(pw_svc_id)) if hasattr(db, "get") else db.query(Service).get(int(pw_svc_id))
+                    if pw_svc:
+                        pw_hub_name = pw_svc.name
+                except Exception:
+                    pass
+            desktop_list.append({
                 "name": d.name,
                 "service_type": "desktop",
                 "config": d.config or {},
-                "desktop_config": (d.config or {}).get("desktop_config", {}),
+                "desktop_config": d_cfg,
+                "pipewire_hub_name": pw_hub_name,
                 "auto_start": d.auto_start,
                 "startup_order": d.startup_order,
                 "startup_delay": d.startup_delay,
@@ -1760,9 +1800,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "alias": d.alias,
                 "is_shared_with_peers": getattr(d, "is_shared_with_peers", False),
                 "allow_peer_lease": getattr(d, "allow_peer_lease", False),
-            }
-            for d in desktops
-        ]
+            })
+        sections["virtual_desktops"] = desktop_list
 
     # 7c. Web Kiosks
     if getattr(req, "web_kiosks", True):
@@ -1904,6 +1943,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         "logging_retention": False,
         "watchdog_grace": False,
         "services": 0,
+        "pipewire_hubs": 0,
         "virtual_desktops": 0,
         "web_kiosks": 0,
         "tasks": 0,
@@ -2112,13 +2152,57 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     proc.mediamtx_config = p_data["mediamtx_config"]
                 if "icecast_config" in p_data and p_data["icecast_config"]:
                     proc.icecast_config = p_data["icecast_config"]
+                if "pipewire_config" in p_data and p_data["pipewire_config"]:
+                    proc.pipewire_config = p_data["pipewire_config"]
                 db.add(proc)
                 if p_data.get("service_type") == "desktop":
                     imported_summary["virtual_desktops"] += 1
                 elif p_data.get("service_type") == "kiosk_browser":
                     imported_summary["web_kiosks"] += 1
+                elif p_data.get("service_type") == "pipewire_hub":
+                    imported_summary["pipewire_hubs"] += 1
                 else:
                     imported_summary["services"] += 1
+
+    # Restore PipeWire Audio Hubs
+    if "pipewire_hubs" in sections and isinstance(sections["pipewire_hubs"], list):
+        from database.models import Service
+        for pw_data in sections["pipewire_hubs"]:
+            existing = db.query(Service).filter(Service.name == pw_data.get("name")).first()
+            if not existing:
+                cfg = dict(pw_data.get("config") or {})
+                if "pipewire_config" in pw_data and pw_data["pipewire_config"]:
+                    cfg["pipewire_config"] = pw_data["pipewire_config"]
+
+                # Run migration to sanitize PTP and canonical multicast IPs on destination host
+                temp_profile = {"service_type": "pipewire_hub", "config": cfg}
+                try:
+                    temp_profile = migrate_and_validate_profile(temp_profile, db)
+                    cfg = temp_profile.get("config", cfg)
+                except Exception:
+                    pass
+
+                hub = Service(
+                    name=pw_data.get("name"),
+                    service_type="pipewire_hub",
+                    status="stopped",
+                    config=cfg,
+                    auto_start=pw_data.get("auto_start", False),
+                    startup_order=pw_data.get("startup_order", 1),
+                    startup_delay=pw_data.get("startup_delay", 0),
+                    watchdog_enabled=pw_data.get("watchdog_enabled", False),
+                    watchdog_retries=pw_data.get("watchdog_retries", 3),
+                    alias=pw_data.get("alias"),
+                    software_type=pw_data.get("software_type", "pipewire"),
+                    software_version=pw_data.get("software_version"),
+                    software_build_id=pw_data.get("software_build_id"),
+                    is_shared_with_peers=bool(pw_data.get("is_shared_with_peers", False)),
+                    allow_peer_lease=bool(pw_data.get("allow_peer_lease", False)),
+                    log_storage_id=pw_data.get("log_storage_id"),
+                )
+                db.add(hub)
+                imported_summary["pipewire_hubs"] += 1
+        db.flush()
 
     # Restore Virtual Desktops
     if "virtual_desktops" in sections and isinstance(sections["virtual_desktops"], list):
@@ -2127,8 +2211,16 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
             existing = db.query(Service).filter(Service.name == d_data.get("name")).first()
             if not existing:
                 cfg = dict(d_data.get("config") or {})
-                if "desktop_config" in d_data and d_data["desktop_config"]:
-                    cfg["desktop_config"] = d_data["desktop_config"]
+                d_cfg = dict(d_data.get("desktop_config") or cfg.get("desktop_config") or {})
+
+                # Re-link PipeWire Hub dependency by name if present
+                pw_hub_name = d_data.get("pipewire_hub_name")
+                if pw_hub_name:
+                    pw_svc = db.query(Service).filter(Service.name == pw_hub_name, Service.service_type == "pipewire_hub").first()
+                    if pw_svc:
+                        d_cfg["pipewire_service_id"] = pw_svc.id
+
+                cfg["desktop_config"] = d_cfg
                 desk = Service(
                     name=d_data.get("name"),
                     service_type="desktop",
