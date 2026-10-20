@@ -534,6 +534,7 @@
       "iommuHazardTitle": "Intel VT-d (IOMMU) DMA Conflict Hazard",
       "iommuHazardDesc": "Intel VT-d is operating in strict page-translation mode with an AudioScience DSP adapter. The IOMMU can block 32-bit DMA reads ('PTE Read access is not set'), causing DSP timeouts (HPI error 207 / 105).",
       "iommuFixAction": "Recommended Fix: Add to /etc/default/grub (GRUB_CMDLINE_LINUX_DEFAULT):",
+      "iommuBiosAlternative": "Alternative: If this system does not run virtual machines and the BIOS permits, another option is to disable Intel VT-d directly in the BIOS.",
       "slotsAdvisorTitle": "Sound Card Slot Order Persistence",
       "slotsAdvisorDesc": "Multiple audio cards detected without explicit slot pinning. Card indices (hw:0, hw:1) may shuffle asynchronously across reboots.",
       "copySnippet": "Copy /etc/modprobe.d/alsa-base.conf",

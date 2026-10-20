@@ -534,6 +534,7 @@
       "iommuHazardTitle": "Riesgo de Conflicto DMA Intel VT-d (IOMMU)",
       "iommuHazardDesc": "Intel VT-d opera en modo estricto de traducción con una tarjeta AudioScience. El IOMMU puede bloquear lecturas DMA ('PTE Read access is not set') provocando cuelgues del DSP (HPI error 207 / 105).",
       "iommuFixAction": "Solución recomendada: Añade a /etc/default/grub (GRUB_CMDLINE_LINUX_DEFAULT):",
+      "iommuBiosAlternative": "Alternativa: Si este equipo no ejecuta máquinas virtuales y la BIOS lo permite, otra opción es deshabilitar Intel VT-d directamente en la BIOS.",
       "slotsAdvisorTitle": "Persistencia del Orden de Tarjetas de Sonido",
       "slotsAdvisorDesc": "Se han detectado varias tarjetas de sonido sin orden fijo en modprobe. Los índices (hw:0, hw:1) pueden alternarse en cada reinicio.",
       "copySnippet": "Copiar /etc/modprobe.d/alsa-base.conf",

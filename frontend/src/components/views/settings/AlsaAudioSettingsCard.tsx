@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 interface AlsaControl {
   numid: number;
@@ -1155,7 +1156,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
 
           {/* IOMMU / VT-d Conflict Hazard (AudioScience Only) */}
           {hasIommuHazard && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2.5 space-y-1.5 text-text-primary">
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2.5 space-y-2 text-text-primary">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
                   <span>⚠️</span>
@@ -1168,33 +1169,41 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
                 {t('settings.alsa.iommuHazardDesc', 'Intel VT-d is operating in strict page-translation mode with an AudioScience DSP adapter. The IOMMU can block 32-bit DMA reads (\'PTE Read access is not set\'), causing DSP timeouts (HPI error 207 / 105).')}
               </p>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
-                <span className="text-[11px] text-[var(--text-secondary)]">
+              
+              {/* Recommended Fix with parameter placed right after label */}
+              <div className="pt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="text-[var(--text-secondary)]">
                   {t('settings.alsa.iommuFixAction', 'Recommended Fix: Add to /etc/default/grub (GRUB_CMDLINE_LINUX_DEFAULT):')}
                 </span>
-                <div className="flex items-center gap-2">
-                  <code className="bg-black/30 dark:bg-black/50 px-2 py-1 rounded text-[11px] font-mono text-amber-300 border border-amber-500/20">
-                    intel_iommu=pt iommu=pt
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText('intel_iommu=pt iommu=pt');
+                <code className="bg-black/30 dark:bg-black/50 px-2 py-0.5 rounded text-[11px] font-mono text-amber-300 border border-amber-500/20 select-all">
+                  intel_iommu=pt iommu=pt
+                </code>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const ok = await copyToClipboard('intel_iommu=pt iommu=pt');
+                    if (ok) {
                       setCopiedIommu(true);
                       setTimeout(() => setCopiedIommu(false), 2000);
-                    }}
-                    className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors shrink-0"
-                  >
-                    {copiedIommu ? `✓ ${t('settings.alsa.copied', 'Copied!')}` : t('common.copy', 'Copy')}
-                  </button>
-                </div>
+                    }
+                  }}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors shrink-0 flex items-center gap-1"
+                >
+                  <span>{copiedIommu ? '✓' : '📋'}</span>
+                  <span>{copiedIommu ? t('settings.alsa.copied', 'Copied!') : t('common.copy', 'Copy')}</span>
+                </button>
               </div>
+
+              {/* Alternative: Disable VT-d in BIOS */}
+              <p className="text-[11px] text-[var(--text-secondary)] italic leading-relaxed pt-1 border-t border-amber-500/20">
+                💡 {t('settings.alsa.iommuBiosAlternative', 'Alternative: If this system does not run virtual machines and the BIOS permits, another option is to disable Intel VT-d directly in the BIOS.')}
+              </p>
             </div>
           )}
 
           {/* Sound Card Slots Persistence Advisor */}
           {hasSlotsIssue && (
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2.5 space-y-1.5 text-text-primary">
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2.5 space-y-2 text-text-primary">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-blue-400 flex items-center gap-1.5 text-xs">
                   <span>ℹ️</span>
@@ -1208,23 +1217,33 @@ export const AlsaAudioSettingsCard: React.FC = () => {
                 {t('settings.alsa.slotsAdvisorDesc', 'Multiple audio cards detected without explicit slot pinning. Card indices (hw:0, hw:1) may shuffle asynchronously across reboots.')}
               </p>
               {diagnostics?.slots_advisor?.recommended_snippet && (
-                <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span className="text-[10px] font-mono text-[var(--text-secondary)]">
-                    /etc/modprobe.d/alsa-base.conf
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (diagnostics.slots_advisor?.recommended_snippet) {
-                        navigator.clipboard.writeText(diagnostics.slots_advisor.recommended_snippet);
-                        setCopiedSlots(true);
-                        setTimeout(() => setCopiedSlots(false), 2000);
-                      }
-                    }}
-                    className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 transition-colors shrink-0 self-start sm:self-auto"
-                  >
-                    {copiedSlots ? `✓ ${t('settings.alsa.copied', 'Copied!')}` : t('settings.alsa.copySnippet', 'Copy /etc/modprobe.d/alsa-base.conf')}
-                  </button>
+                <div className="pt-1 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-bold text-[var(--text-secondary)] flex items-center gap-1.5">
+                      <span>📁</span>
+                      <span>/etc/modprobe.d/alsa-base.conf</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const snippet = diagnostics?.slots_advisor?.recommended_snippet;
+                        if (snippet) {
+                          const ok = await copyToClipboard(snippet);
+                          if (ok) {
+                            setCopiedSlots(true);
+                            setTimeout(() => setCopiedSlots(false), 2000);
+                          }
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 transition-colors shrink-0 flex items-center gap-1"
+                    >
+                      <span>{copiedSlots ? '✓' : '📋'}</span>
+                      <span>{copiedSlots ? t('settings.alsa.copied', 'Copied!') : t('common.copy', 'Copy')}</span>
+                    </button>
+                  </div>
+                  <pre className="p-2.5 bg-black/30 dark:bg-black/50 border border-blue-500/20 rounded-md text-[11px] font-mono text-blue-200 overflow-x-auto whitespace-pre leading-relaxed select-all">
+                    {diagnostics.slots_advisor.recommended_snippet}
+                  </pre>
                 </div>
               )}
             </div>
