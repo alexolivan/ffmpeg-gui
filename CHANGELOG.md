@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.47.1] - 2026-10-20
+
+### Fixed
+- **PipeWire AES67 RTP/SAP Stream Clocking & Listener Isolation (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Replaced `node.passive = true` with `node.always-process = true` on `libpipewire-module-rtp-sink` (Tx) and `libpipewire-module-rtp-source` (Rx), resolving infinite buffer repetition loops, frozen vumeters, and parallel harmonic comb-filter lines in spectral analysis.
+  - Added `node.always-process = true` to `support.null-audio-sink` adapters for all virtual and remote sinks, ensuring `Dummy-Driver` continuously advances the audio graph at the designated sample rate.
+  - Restricted `libpipewire-module-rtp-sap` rules strictly to `announce-stream` (`matches = [ { sess.sap.announce = true } ]`), completely suppressing the default `create-stream` behavior that auto-spawned duplicate unmanaged RTP receivers whenever SAP announcements were received on the network.
+  - Suppressed generation of `libpipewire-module-rtp-sap` when hubs only declare reception endpoints (`remote_sinks`), preventing unnecessary multicast SAP broadcast sockets.
+  - Aligned AES67 RTP packet framing with `sess.min-ptime = 1`, `sess.max-ptime = 1`, `sess.latency.msec = 3`, `net.ttl = 32`, and `net.loop = false` matching the official AES67 specification.
+
 ## [2.47.0] - 2026-10-19
 
 ### Added

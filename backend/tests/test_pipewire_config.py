@@ -114,26 +114,35 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         }
         res = PipeWireConfigGenerator.generate_config(7, config, "/tmp/pipewire-7")
 
-        # 1. SAP Announcement module loaded
+        # 1. SAP Announcement module loaded with restricted announce-stream rule (suppresses duplicate create-stream)
         self.assertIn('name = "libpipewire-module-rtp-sap"', res)
         self.assertIn('sap.ip = "224.0.0.56"', res)
         self.assertIn('sap.port = 9875', res)
         self.assertIn('local.ifname = "eth0"', res)
+        self.assertIn('net.loop = false', res)
+        self.assertIn('announce-stream = { }', res)
+        self.assertIn('sess.sap.announce = true', res)
 
-        # 2. RTP Sink module loaded for aes67_pgm
+        # 2. RTP Sink module loaded for aes67_pgm with active clocking and AES67 timing
         self.assertIn('name = "libpipewire-module-rtp-sink"', res)
         self.assertIn('source.ip = "192.168.1.50"', res)
         self.assertIn('destination.ip = "239.69.10.1"', res)
         self.assertIn('destination.port = 5004', res)
         self.assertIn('PGM Stream"', res)
+        self.assertIn('sess.min-ptime = 1', res)
+        self.assertIn('sess.max-ptime = 1', res)
+        self.assertIn('sess.latency.msec = 3', res)
         self.assertIn('node.name = "rtp_tx_aes67_pgm"', res)
         self.assertIn('target.object = "aes67_pgm"', res)
         self.assertIn('sess.sap.announce = true', res)
+        self.assertIn('node.always-process = true', res)
+        self.assertNotIn('node.passive = true', res)
 
-        # 3. Both local_bus and aes67_pgm are in context.objects as null-audio-sink to provide monitor ports
+        # 3. Both local_bus and aes67_pgm are in context.objects as null-audio-sink with always-process
         self.assertIn('node.name = "local_bus"', res)
         self.assertIn('node.name = "aes67_pgm"', res)
         self.assertIn('factory.name = support.null-audio-sink\n            node.name = "aes67_pgm"', res)
+        self.assertIn('node.always-process = true', res)
 
     def test_write_config_file_atomic(self):
         """Creates temp file and verifies atomic write and content."""
@@ -388,15 +397,21 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
             ]
         }
         res = PipeWireConfigGenerator.generate_config(99, config, "/tmp/run")
-        # 1. Module rtp-source generated
+        # 1. Module rtp-source generated with always-process and latency buffer
         self.assertIn('name = "libpipewire-module-rtp-source"', res)
         self.assertIn('source.ip = "239.69.11.1"', res)
         self.assertIn('source.port = 5004', res)
         self.assertIn('audio.format = "S24BE"', res)
+        self.assertIn('sess.latency.msec = 3', res)
         self.assertIn('node.name = "rtp_rx_remote_test1_aes"', res)
         self.assertIn('target.object = "remote_test1_aes"', res)
+        self.assertIn('node.always-process = true', res)
+        self.assertNotIn('node.passive = true', res)
 
-        # 2. Landing null-audio-sink node generated with monitor
+        # 2. SAP announcement module is NOT spawned when only receiving remote_sinks
+        self.assertNotIn('libpipewire-module-rtp-sap', res)
+
+        # 3. Landing null-audio-sink node generated with monitor and always-process
         self.assertIn('factory.name = support.null-audio-sink\n            node.name = "remote_test1_aes"', res)
         self.assertIn('Remote AoIP Sink: Test1 AES Bus', res)
 

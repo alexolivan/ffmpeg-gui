@@ -167,20 +167,39 @@ class PipeWireConfigGenerator:
         ]
 
         # AES67 RTP and SAP modules in context.modules if enabled
-        # AES67 RTP and SAP modules in context.modules if enabled
         virtual_sinks = config.get("virtual_sinks", [])
         remote_sinks = config.get("remote_sinks", [])
-        has_aes67 = any(sink.get("aes67_enabled", False) for sink in virtual_sinks) or bool(remote_sinks)
+        has_aes67_tx = any(sink.get("aes67_enabled", False) for sink in virtual_sinks)
 
-        if has_aes67:
+        if has_aes67_tx:
             sap_args = [
                 "            sap.ip = \"224.0.0.56\"",
                 "            sap.port = 9875",
+                "            net.ttl = 32",
+                "            net.loop = false",
             ]
             if nic_name:
                 sap_args.append(f"            local.ifname = {cls._spa_val(nic_name)}")
             if nic_ip and nic_ip != "0.0.0.0":
                 sap_args.append(f"            source.ip = {cls._spa_val(nic_ip)}")
+
+            # Restrict stream.rules strictly to announce-stream.
+            # CRITICAL: If create-stream is not explicitly suppressed, libpipewire-module-rtp-sap
+            # matches all incoming SAP announcements and auto-spawns duplicate unmanaged rtp-source modules!
+            sap_args.extend([
+                "            stream.rules = [",
+                "                {",
+                "                    matches = [",
+                "                        {",
+                "                            sess.sap.announce = true",
+                "                        }",
+                "                    ]",
+                "                    actions = {",
+                "                        announce-stream = { }",
+                "                    }",
+                "                }",
+                "            ]",
+            ])
 
             lines.extend([
                 "    {",
@@ -220,13 +239,18 @@ class PipeWireConfigGenerator:
                     f"            audio.rate = {sample_rate}",
                     f"            audio.channels = {channels}",
                     f"            audio.position = {pos_formatted}",
+                    "            sess.min-ptime = 1",
+                    "            sess.max-ptime = 1",
+                    "            sess.latency.msec = 3",
+                    "            net.ttl = 32",
+                    "            net.loop = false",
                     "            stream.props = {",
                     f"                node.name = {cls._spa_val(f'rtp_tx_{sink_id}')}",
                     f"                node.description = {cls._spa_val(f'AES67 Tx for {sink_name}')}",
                     f"                target.object = {cls._spa_val(sink_id)}",
                     "                sess.sap.announce = true",
                     "                stream.dont-remix = true",
-                    "                node.passive = true",
+                    "                node.always-process = true",
                     "            }",
                 ])
 
@@ -263,13 +287,14 @@ class PipeWireConfigGenerator:
                 f"            audio.rate = {audio_rate}",
                 f"            audio.channels = {channels}",
                 f"            audio.position = {pos_formatted}",
+                "            sess.latency.msec = 3",
                 "            stream.props = {",
                 f"                node.name = {cls._spa_val(f'rtp_rx_{rs_id}')}",
                 f"                node.description = {cls._spa_val(f'AES67 Rx for {rs_name}')}",
                 f"                target.object = {cls._spa_val(rs_id)}",
                 "                media.class = \"Stream/Output/Audio\"",
                 "                stream.dont-remix = true",
-                "                node.passive = true",
+                "                node.always-process = true",
                 "            }",
             ])
 
@@ -328,6 +353,7 @@ class PipeWireConfigGenerator:
                 "                monitor = true",
                 "                position = preserve",
                 "            }",
+                "            node.always-process = true",
                 "        }",
                 "    }",
             ])
@@ -355,6 +381,7 @@ class PipeWireConfigGenerator:
                 "                monitor = true",
                 "                position = preserve",
                 "            }",
+                "            node.always-process = true",
                 "        }",
                 "    }",
             ])
