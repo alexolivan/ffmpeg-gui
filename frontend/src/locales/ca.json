@@ -534,6 +534,7 @@
       "iommuHazardTitle": "Risc de Conflicte DMA Intel VT-d (IOMMU)",
       "iommuHazardDesc": "Intel VT-d opera en mode estricte de traducció amb una targeta AudioScience. L'IOMMU pot bloquejar lectures DMA ('PTE Read access is not set') provocant bloquejos del DSP (HPI error 207 / 105).",
       "iommuFixAction": "Solució recomanada: Afegiu a /etc/default/grub (GRUB_CMDLINE_LINUX_DEFAULT):",
+      "iommuBiosAlternative": "Alternativa: Si aquest equip no executa màquines virtuals i la BIOS ho permet, una altra opció és desactivar Intel VT-d directament a la BIOS.",
       "slotsAdvisorTitle": "Persistència de l'Ordre de Targetes de So",
       "slotsAdvisorDesc": "S'han detectat diverses targetes de so sense ordre fix a modprobe. Els índexs (hw:0, hw:1) poden alternar-se a cada reinici.",
       "copySnippet": "Copiar /etc/modprobe.d/alsa-base.conf",

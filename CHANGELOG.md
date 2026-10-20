@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.1] - 2026-10-20
+
+### Fixed
+- **ALSA Kernel Advisor UI/UX & Universal Clipboard (`AlsaAudioSettingsCard.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - **Universal Clipboard Integration**: Replaced direct `navigator.clipboard` calls with `copyToClipboard` from `frontend/src/utils/clipboard.ts`. This ensures copy actions succeed on LAN test nodes accessed via unencrypted HTTP where `navigator.clipboard` is restricted by browser security policies.
+  - **IOMMU Remediation Layout**: Relocated `intel_iommu=pt iommu=pt` and its Copy button immediately adjacent to `(GRUB_CMDLINE_LINUX_DEFAULT):`, eliminating wide whitespace gaps on desktop displays.
+  - **BIOS VT-d Alternative Note**: Added an advisory note suggesting disabling Intel VT-d directly in the BIOS as a simpler alternative when the system is not hosting virtual machines with PCIe passthrough.
+  - **Visible Modprobe Snippet**: Rendered the full `/etc/modprobe.d/alsa-base.conf` snippet in a preformatted monospace block with `select-all` styling and dedicated 1-click copy action, making the generated configuration visible and easily selectable.
+
 ## [2.49.0] - 2026-10-20
 
 ### Added
