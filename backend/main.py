@@ -75,6 +75,7 @@ from database.version import __schema_version__ as schema_version
 SUPPORTED_LANGUAGES = ['en', 'es', 'ca']
 
 import time
+SERVICE_START_TIME = time.time()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -2990,7 +2991,12 @@ def get_system_capabilities():
             "decoders": nvenc_caps["decoders"]
         },
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
-        "alsa": {"available": len(alsa_cards) > 0, "details": f"Detected {len(alsa_cards)} ALSA sound card(s)" if alsa_cards else "No physical or virtual ALSA sound cards detected", "cards": alsa_cards},
+        "alsa": {
+            "available": len(alsa_cards) > 0,
+            "details": f"Detected {len(alsa_cards)} ALSA sound card(s)" if alsa_cards else "No physical or virtual ALSA sound cards detected",
+            "cards": alsa_cards,
+            "advisor": alsa_manager.get_alsa_advisor_diagnostics().get("summary", {})
+        },
         "decklink": {"available": decklink_available, "details": decklink_details, "cards": decklink_cards},
         "magewell": {
             "available": magewell_available,
@@ -3662,7 +3668,10 @@ async def telemetry_broadcast_loop():
                 "lcd": {
                     "connected": lcd_manager is not None and lcd_manager._running,
                     "port": lcd_manager.port if lcd_manager else None
-                }
+                },
+                "system_uptime_seconds": int(time.time() - psutil.boot_time()),
+                "service_uptime_seconds": int(time.time() - SERVICE_START_TIME),
+                "alsa_advisor": alsa_manager.get_alsa_advisor_diagnostics().get("summary", {})
             }
 
             from core.resource_lock_manager import resource_lock_manager
@@ -4257,7 +4266,9 @@ def read_root() -> dict:
         "lcd": {
             "connected": lcd_manager is not None and lcd_manager._running,
             "port": lcd_manager.port if lcd_manager else None
-        }
+        },
+        "system_uptime_seconds": int(time.time() - psutil.boot_time()),
+        "service_uptime_seconds": int(time.time() - SERVICE_START_TIME)
     }
 
 @app.post("/api/system/check-updates")
@@ -8087,6 +8098,12 @@ def write_alsa_control(payload: AlsaControlUpdate):
     if not success:
         raise HTTPException(status_code=400, detail="Failed to write ALSA control value")
     return {"status": "ok", "message": f"Control numid={payload.numid} updated successfully"}
+
+
+@app.get("/api/settings/alsa/diagnostics")
+def get_alsa_diagnostics():
+    """Returns kernel IOMMU/VT-d hazards, slot persistence, and recommended modprobe configuration."""
+    return alsa_manager.get_alsa_advisor_diagnostics()
 
 
 @app.websocket("/ws/alsa/meters/{card_index}")

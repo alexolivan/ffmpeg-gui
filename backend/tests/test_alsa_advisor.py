@@ -101,6 +101,38 @@ class TestAlsaAdvisor(unittest.TestCase):
             self.assertTrue(res["is_pinned"])
             self.assertFalse(res["conflict_detected"])
 
+    def test_get_alsa_diagnostics_endpoint(self):
+        from starlette.testclient import TestClient
+        from main import app
+        client = TestClient(app)
+
+        with patch.object(self.mgr, "get_alsa_advisor_diagnostics") as mock_diag:
+            mock_diag.return_value = {
+                "iommu_hazard": {"hazard_detected": True, "has_audioscience": True},
+                "slots_advisor": {"is_pinned": False, "has_multiple_cards": True},
+                "summary": {"has_audioscience": True, "iommu_hazard": True, "slots_unpinned": True}
+            }
+            resp = client.get("/api/settings/alsa/diagnostics")
+            self.assertEqual(resp.status_code, 200)
+            data = resp.json()
+            self.assertTrue(data["summary"]["iommu_hazard"])
+            self.assertTrue(data["summary"]["slots_unpinned"])
+
+    def test_status_endpoint_returns_system_and_service_uptimes(self):
+        from starlette.testclient import TestClient
+        from main import app
+        client = TestClient(app)
+
+        resp = client.get("/api/status")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("system_uptime_seconds", data)
+        self.assertIn("service_uptime_seconds", data)
+        self.assertIsInstance(data["system_uptime_seconds"], int)
+        self.assertIsInstance(data["service_uptime_seconds"], int)
+        self.assertGreaterEqual(data["system_uptime_seconds"], 0)
+        self.assertGreaterEqual(data["service_uptime_seconds"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -136,8 +136,13 @@ configure_alsa_loopback() {
         fi
 
         # Asignar index=-2 para evitar conflictos con tarjetas físicas primarias y fijar 8 subdispositivos
+        # Preservar configuración existente si el sysadmin ya definió snd-aloop en /etc/modprobe.d/ (ej: alsa-base.conf)
         if [ -d /etc/modprobe.d ]; then
-            echo "options snd-aloop index=-2 enable=1 pcm_substreams=8" > /etc/modprobe.d/snd-aloop.conf
+            if grep -rqE "options\s+snd[_-]aloop" /etc/modprobe.d/ 2>/dev/null && [ ! -f /etc/modprobe.d/snd-aloop.conf ]; then
+                echo "    Note: snd-aloop already configured in /etc/modprobe.d/, preserving existing custom settings."
+            else
+                echo "options snd-aloop index=-2 enable=1 pcm_substreams=8" > /etc/modprobe.d/snd-aloop.conf
+            fi
         fi
     fi
 }
