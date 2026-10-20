@@ -380,10 +380,10 @@ class PipeWireMatrixSupervisor:
                         channels = max(1, int(s.get("channels", 2)))
                         if channels == 1:
                             src_ports = [f"{s_id}:monitor_0"]
-                            tgt_ports = [f"{tx_node}:input_0"]
+                            tgt_ports = [f"{tx_node}:send_0"]
                         else:
                             src_ports = [f"{s_id}:monitor_FL", f"{s_id}:monitor_FR"]
-                            tgt_ports = [f"{tx_node}:input_FL", f"{tx_node}:input_FR"]
+                            tgt_ports = [f"{tx_node}:send_FL", f"{tx_node}:send_FR"]
                         description = f"{s_name}.monitor → AES67 Tx ({m_ip}:{r_port})"
                         desired.append(
                             DesiredLink(
@@ -397,7 +397,7 @@ class PipeWireMatrixSupervisor:
                                 target_entity_type="aes67_sink",
                                 source_label=f"{s_name}.monitor",
                                 target_label=f"AES67 Tx ({m_ip}:{r_port})",
-                                target_aliases=[tx_node, f"rtp_sender_{s_id}", "rtp-sink", s_id]
+                                target_aliases=[tx_node, f"rtp_sender_{s_id}", "rtp-sink"]
                             )
                         )
 
@@ -412,12 +412,16 @@ class PipeWireMatrixSupervisor:
                     r_port = rs.get("rtp_port", 5004)
                     channels = max(1, int(rs.get("channels", 2)))
                     if channels == 1:
-                        src_ports = [f"{rx_node}:output_0"]
+                        src_ports = [f"{rx_node}:receive_0"]
                         tgt_ports = [f"{rs_id}:playback_0"]
                     else:
-                        src_ports = [f"{rx_node}:output_FL", f"{rx_node}:output_FR"]
+                        src_ports = [f"{rx_node}:receive_FL", f"{rx_node}:receive_FR"]
                         tgt_ports = [f"{rs_id}:playback_FL", f"{rs_id}:playback_FR"]
                     description = f"AES67 Rx ({m_ip}:{r_port}) → {rs_name}"
+                    rx_aliases = [rx_node, f"rtp_receiver_{rs_id}", "rtp-source"]
+                    raw_sap = rs.get("sap_name")
+                    if raw_sap and raw_sap != rs_id and raw_sap not in rx_aliases:
+                        rx_aliases.append(raw_sap)
                     desired.append(
                         DesiredLink(
                             source_id=rx_node,
@@ -430,7 +434,7 @@ class PipeWireMatrixSupervisor:
                             target_entity_type="remote_sink",
                             source_label=f"AES67 Rx ({m_ip}:{r_port})",
                             target_label=rs_name,
-                            source_aliases=[rx_node, f"rtp_receiver_{rs_id}", "rtp-source", rs.get("sap_name") or rs_id],
+                            source_aliases=rx_aliases,
                             target_aliases=[rs_id]
                         )
                     )
@@ -517,6 +521,26 @@ class PipeWireMatrixSupervisor:
                 current_target = raw.strip()
                 if current_target:
                     available_ports.add(current_target)
+
+        # 1.1 Tear down any illegal self-feedback loops (e.g. monitor_X -> playback_X on the exact same virtual sink)
+        for s_port, d_port in list(active_links):
+            s_node = s_port.split(":", 1)[0] if ":" in s_port else ""
+            d_node = d_port.split(":", 1)[0] if ":" in d_port else ""
+            if s_node and s_node == d_node and "monitor" in s_port.lower() and "playback" in d_port.lower():
+                logger.warning(
+                    f"[PipeWireSupervisor #{self.hub_id}] Destroying illegal self-feedback loop on '{s_node}': {s_port} -> {d_port}"
+                )
+                try:
+                    p_del = await asyncio.create_subprocess_exec(
+                        pw_link_bin, "-d", s_port, d_port,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=sub_env
+                    )
+                    await asyncio.wait_for(p_del.communicate(), timeout=2.0)
+                    active_links.discard((s_port, d_port))
+                except Exception as del_err:
+                    logger.debug(f"[PipeWireSupervisor #{self.hub_id}] Error tearing down self-feedback link: {del_err}")
 
         # 2. Query -o (outputs) and -i (inputs)
         available_output_ports: Set[str] = set()
@@ -756,8 +780,16 @@ class PipeWireMatrixSupervisor:
             return [matched_node_ports[0]]
 
         # If stereo (2 ports expected: FL / FR)
-        ch0_tokens = ("_fl", "_l", "output_0", "input_0", "playback_fl", "monitor_fl", ":output_0", ":output_fl", ":input_fl")
-        ch1_tokens = ("_fr", "_r", "output_1", "input_1", "output_2", "input_2", "playback_fr", "monitor_fr", ":output_1", ":output_fr", ":input_fr")
+        ch0_tokens = (
+            "_fl", "_l", "output_0", "input_0", "playback_fl", "monitor_fl",
+            "send_fl", "receive_fl", ":output_0", ":output_fl", ":input_fl",
+            ":send_fl", ":receive_fl", ":send_0", ":receive_0"
+        )
+        ch1_tokens = (
+            "_fr", "_r", "output_1", "input_1", "output_2", "input_2", "playback_fr", "monitor_fr",
+            "send_fr", "receive_fr", ":output_1", ":output_fr", ":input_fr",
+            ":send_fr", ":receive_fr", ":send_1", ":receive_1"
+        )
 
         ch0_candidates = [
             p for p in matched_node_ports
@@ -769,13 +801,23 @@ class PipeWireMatrixSupervisor:
         ]
 
         if ch0_candidates and ch1_candidates:
-            p0 = ch0_candidates[0]
-            # Avoid picking identical port for both channels
-            p1_opts = [p for p in ch1_candidates if p != p0]
-            if p1_opts:
-                return [p0, p1_opts[0]]
+            # Enforce same-node affinity: stereo pair (p0, p1) MUST belong to the exact same node!
+            for p0 in ch0_candidates:
+                p0_node = p0.split(":", 1)[0] if ":" in p0 else ""
+                same_node_p1 = [
+                    p for p in ch1_candidates
+                    if p != p0 and (p.split(":", 1)[0] if ":" in p else "") == p0_node
+                ]
+                if same_node_p1:
+                    return [p0, same_node_p1[0]]
 
         if len(matched_node_ports) >= len(desired_ports):
-            return matched_node_ports[:len(desired_ports)]
+            first_node = matched_node_ports[0].split(":", 1)[0] if ":" in matched_node_ports[0] else ""
+            same_node_slice = [
+                p for p in matched_node_ports
+                if (p.split(":", 1)[0] if ":" in p else "") == first_node
+            ]
+            if len(same_node_slice) >= len(desired_ports):
+                return same_node_slice[:len(desired_ports)]
 
         return []

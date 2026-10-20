@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.48.1] - 2026-10-20
+
+### Fixed
+- **PipeWire AES67 Transmitter Channel Routing & Node Affinity (`backend/core/pipewire_matrix_supervisor.py`, `backend/tests/test_pipewire_matrix_supervisor.py`)**:
+  - Aligned transmitter target ports with native `libpipewire-module-rtp-sink` port names (`send_FL` / `send_FR`, `send_0`) and receiver source ports with `libpipewire-module-rtp-source` (`receive_FL` / `receive_FR`, `receive_0`).
+  - Removed source sink ID (`s_id`) from transmitter `target_aliases`, preventing the patchbay supervisor from selecting the null-sink's own playback ports as target ports.
+  - Enforced strict same-node affinity in `PipeWireMatrixSupervisor._match_ports()`, guaranteeing that stereo channel pairs (`p0` and `p1`) always belong to the exact same audio node and never mix across disparate nodes.
+  - Added proactive detection and teardown of illegal self-loopback links (`monitor_* -> playback_*` on the same sink node) during reconciliation via `pw-link -d`, permanently eliminating feedback loop harmonic buzzing and comb filter oscillations.
+
 ## [2.48.0] - 2026-10-20
 
 ### Added

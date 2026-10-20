@@ -217,7 +217,7 @@ class TestPipeWireMatrixSupervisor(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tx_link.source_id, "aes_bus.monitor")
         self.assertEqual(tx_link.target_id, "rtp_tx_aes_bus")
         self.assertEqual(tx_link.source_ports, ["aes_bus:monitor_FL", "aes_bus:monitor_FR"])
-        self.assertEqual(tx_link.target_ports, ["rtp_tx_aes_bus:input_FL", "rtp_tx_aes_bus:input_FR"])
+        self.assertEqual(tx_link.target_ports, ["rtp_tx_aes_bus:send_FL", "rtp_tx_aes_bus:send_FR"])
         self.assertEqual(tx_link.link_type, "monitor_capture")
         self.assertEqual(tx_link.target_entity_type, "aes67_sink")
         self.assertIn("AES Bus.monitor → AES67 Tx (239.69.1.13:5010)", tx_link.description)
@@ -643,6 +643,7 @@ class TestPipeWireMatrixSupervisor(unittest.IsolatedAsyncioTestCase):
         rx_link = rx_links[0]
         self.assertEqual(rx_link.target_id, "remote_test1_aes")
         self.assertEqual(rx_link.link_type, "playback")
+        self.assertEqual(rx_link.source_ports, ["rtp_rx_remote_test1_aes:receive_FL", "rtp_rx_remote_test1_aes:receive_FR"])
         self.assertEqual(rx_link.target_ports, ["remote_test1_aes:playback_FL", "remote_test1_aes:playback_FR"])
 
         # Link 2: Consumer capture (remote_test1_aes.monitor -> ffmpeg_service_30)
@@ -651,6 +652,76 @@ class TestPipeWireMatrixSupervisor(unittest.IsolatedAsyncioTestCase):
         cap_link = capture_links[0]
         self.assertEqual(cap_link.target_id, "ffmpeg_service_30")
         self.assertEqual(cap_link.link_type, "monitor_capture")
+
+    def test_match_ports_enforces_same_node_affinity(self):
+        """Verifies that _match_ports never pairs channels across different nodes."""
+        from core.pipewire_matrix_supervisor import PipeWireMatrixSupervisor
+
+        available_ports = {
+            "aes_bus0:playback_FL",
+            "aes_bus0:playback_FR",
+            "rtp_tx_aes_bus0:send_FL",
+            "rtp_tx_aes_bus0:send_FR",
+        }
+
+        # Candidate is rtp_tx_aes_bus0 with aliases
+        matched = PipeWireMatrixSupervisor._match_ports(
+            candidate_node="rtp_tx_aes_bus0",
+            desired_ports=["rtp_tx_aes_bus0:send_FL", "rtp_tx_aes_bus0:send_FR"],
+            aliases=["rtp_tx_aes_bus0", "rtp_sender_aes_bus0", "rtp-sink"],
+            available_ports=available_ports
+        )
+        self.assertEqual(matched, ["rtp_tx_aes_bus0:send_FL", "rtp_tx_aes_bus0:send_FR"])
+
+        # Even with dirty available_ports order and fuzzy fallback, same-node affinity is preserved
+        matched_fuzzy = PipeWireMatrixSupervisor._match_ports(
+            candidate_node="rtp_tx_aes_bus0",
+            desired_ports=["rtp_tx_aes_bus0:unknown_0", "rtp_tx_aes_bus0:unknown_1"],
+            aliases=["rtp_tx_aes_bus0", "rtp-sink"],
+            available_ports={
+                "aes_bus0:playback_FR",
+                "rtp_tx_aes_bus0:send_FL",
+                "rtp_tx_aes_bus0:send_FR"
+            }
+        )
+        self.assertEqual(matched_fuzzy, ["rtp_tx_aes_bus0:send_FL", "rtp_tx_aes_bus0:send_FR"])
+
+    @patch("asyncio.create_subprocess_exec")
+    async def test_reconcile_destroys_illegal_self_feedback_loop(self, mock_exec):
+        """Verifies that reconcile actively tears down monitor -> playback links on the same sink."""
+        # Mock pw-link -l returning a feedback loop link
+        pw_link_l_out = b"aes_bus0:monitor_FR\n  |-> aes_bus0:playback_FR\n"
+        
+        proc_mock = MagicMock()
+        proc_mock.returncode = 0
+        proc_mock.communicate = AsyncMock(return_value=(pw_link_l_out, b""))
+
+        proc_o = MagicMock()
+        proc_o.returncode = 0
+        proc_o.communicate = AsyncMock(return_value=(b"aes_bus0:monitor_FR\n", b""))
+
+        proc_i = MagicMock()
+        proc_i.returncode = 0
+        proc_i.communicate = AsyncMock(return_value=(b"aes_bus0:playback_FR\n", b""))
+
+        proc_d = MagicMock()
+        proc_d.returncode = 0
+        proc_d.communicate = AsyncMock(return_value=(b"", b""))
+
+        mock_exec.side_effect = [proc_mock, proc_d, proc_o, proc_i]
+
+        with patch("os.path.exists", return_value=True):
+            await self.supervisor.reconcile()
+
+        # Verify pw-link -d was called for the feedback loop
+        d_calls = [
+            call for call in mock_exec.call_args_list
+            if "-d" in call.args
+        ]
+        self.assertGreaterEqual(len(d_calls), 1)
+        self.assertIn("aes_bus0:monitor_FR", d_calls[0].args)
+        self.assertIn("aes_bus0:playback_FR", d_calls[0].args)
+
 
 
 
