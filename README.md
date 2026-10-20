@@ -94,6 +94,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
 - **Magewell Capture Cards**: Hardware telemetry and routing for Pro Capture / Eco Capture / USB Capture devices (`mwcap-info` / `mwcap-control`), live FPGA temperature monitoring, connector switching, and V4L2/ALSA stream integration.
 - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping, crosspoint volume matrix routing, and real-time DSP core load (%) and hardware temperature (°C) telemetry via `hpicontrol.py`.
+- **ALSA & Kernel Hardware Advisor**: Real-time sysadmin diagnostics detecting Intel VT-d (IOMMU) DMA hazards on AudioScience DSP hardware with copyable kernel cmdline remediation (`intel_iommu=pt iommu=pt`), and slot order analyzer preventing asynchronous soundcard index shuffling across reboots via generated `/etc/modprobe.d/alsa-base.conf` configurations.
 - **ALSA Loopback (`snd-aloop`) Routing**: Clean 8-subdevice virtual topology in the ALSA mixer with browser audio sandboxing (`asound.conf`), 1-click secondary audio pairing for virtual desktops, and fixed routing indicators (`◄ PCM X Playback`) between playout (`hw:Loopback,0,X`) and broadcast ingest (`hw:Loopback,1,X`).
 - **Graphical Overlay Studio**: Fully graphical editor to place, scale, and preview graphic overlays on top of video streams.
 - **Audio Dynamics & Filters**: Dynamic range compressors, multi-band graphic equalizers, and ALSA loopback routing.
@@ -168,6 +169,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ### 🌡️ 16. Industrial Hardware Telemetry & Thermal Shielding
 - **Kernel-Level Health Extraction**: Direct `/sys/class/hwmon` and `/sys/devices/system/cpu` reading with package/core temperatures, cooling fan RPM tachometers, and CPU throttling detection (`throttle_active`, `package_throttled`, `core_throttled`).
+- **Host System & Service Uptimes**: Live side-by-side telemetry comparison of host OS uptime versus `ffmpeg-gui` systemd unit runtime directly in the Dashboard.
 - **Specialized Card Telemetry**: AudioScience DSP load and temperature tracking via `hpicontrol.py`, Magewell Pro Capture FPGA core temperatures, and Blackmagic DeckLink PCIe link generation/bus width.
 - **Debounced Multi-Tier Thermal Alerting**: SMTP email alerts with 15-minute hysteresis cooldowns, Crystalfontz CFA635 USB LCD red LED `THERM` alerts, and dashboard alarms.
 - **Active Thermal Protection Shielding**: Optional toggle (`thermal_active_protection`) that automatically blocks starting new scheduled tasks or FFmpeg Forge compilation jobs when critical temperature limits are reached, protecting broadcast transcoders from thermal damage.
