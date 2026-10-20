@@ -626,6 +626,8 @@ class ProcessManager:
                             sub_env["PULSE_RUNTIME_PATH"] = pw_runtime_dir
                         if pw_config_path:
                             sub_env["PIPEWIRE_CONFIG_NAME"] = pw_config_path
+                        pw_debug_enabled = bool(debug_mode)
+                        sub_env["PIPEWIRE_DEBUG"] = "2" if pw_debug_enabled else "1"
                         if pw_root and os.path.isdir(pw_root):
                             lib_dirs = [
                                 os.path.join(pw_root, "lib"),
@@ -3390,9 +3392,34 @@ class ProcessManager:
         
         self.logger.debug(f"[{process_id}] {msg}")
 
-    async def _file_log_tailer(self, process_id: int, log_path: str, proc: Optional[asyncio.subprocess.Process] = None, pid: Optional[int] = None):
-        """Tails the physical log file on disk for daemon services to feed the in-memory log buffer."""
+    def _get_max_log_file_bytes(self) -> int:
+        """Read max log file size in bytes from ffmpeg-gui.conf (default 10 MB = 10485760)."""
+        config_path = os.environ.get("CONFIG_FILE_PATH", "/etc/ffmpeg-gui/ffmpeg-gui.conf")
+        if not os.path.exists(config_path):
+            config_path = "ffmpeg-gui.conf"
+        if os.path.exists(config_path):
+            try:
+                import configparser
+                cfg = configparser.ConfigParser()
+                cfg.read(config_path)
+                val = cfg.getint("logging", "rotation_max_bytes", fallback=10485760)
+                return max(1048576, val)  # Minimum 1 MB safety floor
+            except Exception:
+                pass
+        return 10485760
+
+    async def _file_log_tailer(
+        self,
+        process_id: int,
+        log_path: str,
+        proc: Optional[asyncio.subprocess.Process] = None,
+        pid: Optional[int] = None,
+        max_log_bytes: Optional[int] = None
+    ):
+        """Tails the physical log file on disk for daemon services and enforces a real-time size circuit breaker."""
         effective_pid = pid or (proc.pid if proc else None)
+        limit_bytes = max_log_bytes if (max_log_bytes and max_log_bytes > 0) else self._get_max_log_file_bytes()
+        check_counter = 0
         try:
             await asyncio.sleep(0.2)
             if not os.path.exists(log_path):
@@ -3411,6 +3438,22 @@ class ProcessManager:
 
                     if process_id not in self.processes and process_id not in self.reattached_pids:
                         break
+
+                    check_counter += 1
+                    if check_counter >= 20:
+                        check_counter = 0
+                        try:
+                            if os.path.exists(log_path) and os.path.getsize(log_path) > limit_bytes:
+                                os.truncate(log_path, 0)
+                                f.seek(0, os.SEEK_SET)
+                                warn_msg = (
+                                    f"[SYSTEM] Log file exceeded maximum size limit ({limit_bytes} bytes) "
+                                    "and was truncated in-place to protect RAM/storage."
+                                )
+                                self._handle_log_msg(process_id, warn_msg, status_re=None)
+                                continue
+                        except Exception as trunc_err:
+                            self.logger.debug(f"Could not truncate flooded log {log_path}: {trunc_err}")
 
                     line = f.readline()
                     if line:

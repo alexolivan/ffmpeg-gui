@@ -7,10 +7,11 @@ and AES67 RTP/SAP streams without probing physical ALSA devices.
 """
 
 import json
+import math
 import os
 import re
 import socket
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class PipeWireConfigGenerator:
@@ -99,6 +100,51 @@ class PipeWireConfigGenerator:
         return clean
 
     @classmethod
+    def resolve_rtp_ptime_limits(cls, ptime_mode: Optional[str] = None) -> Tuple[int, int]:
+        """
+        Resolve (sess.min-ptime, sess.max-ptime) in milliseconds from user profile:
+        - 'auto' (default): (2, 20) -> ~4.29ms (206 frames @ MTU 1280), ~230 pkt/s, low CPU/timer overhead.
+        - '4ms': (4, 4) -> 250 pkt/s, standard broadcast / Ravenna.
+        - '1ms': (1, 1) -> 1000 pkt/s, strict hardware AES67 / Dante compatibility.
+        """
+        mode = str(ptime_mode or "auto").strip().lower()
+        if mode == "1ms":
+            return (1, 1)
+        if mode == "4ms":
+            return (4, 4)
+        return (2, 20)
+
+    @classmethod
+    def resolve_safe_jitter_latency_ms(
+        cls,
+        requested_latency_ms: Any,
+        quantum: int,
+        sample_rate: int
+    ) -> int:
+        """
+        Compute safe sess.latency.msec enforcing the mathematical guardrail:
+        effective_latency_ms >= ceil(3.0 * (quantum / sample_rate) * 1000.0).
+        If requested_latency_ms is 0, None, or 'auto', defaults to max(60, ceil(4.0 * quantum_ms)).
+        """
+        safe_rate = max(8000, int(sample_rate or 48000))
+        safe_quantum = max(32, int(quantum or 1024))
+        quantum_ms = (safe_quantum / float(safe_rate)) * 1000.0
+        min_safe_ms = max(10, int(math.ceil(quantum_ms * 3.0)))
+
+        req_val = 0
+        if requested_latency_ms not in (None, "", "auto", 0, "0"):
+            try:
+                req_val = int(float(requested_latency_ms))
+            except (ValueError, TypeError):
+                req_val = 0
+
+        if req_val <= 0:
+            auto_ms = max(60, int(math.ceil(quantum_ms * 4.0)))
+            return max(auto_ms, min_safe_ms)
+
+        return max(req_val, min_safe_ms)
+
+    @classmethod
     def generate_config(
         cls,
         service_id: int,
@@ -120,10 +166,17 @@ class PipeWireConfigGenerator:
         quantum = int(config.get("quantum", 1024))
         min_quantum = int(config.get("min_quantum", 128))
         max_quantum = int(config.get("max_quantum", 2048))
+        debug_mode = bool(config.get("debug_mode", False))
+        log_level = int(config.get("log_level", 2 if debug_mode else 1))
         aes67_net = config.get("aes67_network", {})
         nic_ip = aes67_net.get("ip", "0.0.0.0")
         nic_name = aes67_net.get("interface")
         base_prefix = aes67_net.get("base_multicast_prefix") or cls.get_canonical_base_multicast_prefix(nic_ip)
+
+        ptime_mode = aes67_net.get("rtp_ptime_mode") or config.get("rtp_ptime_mode") or "auto"
+        min_ptime, max_ptime = cls.resolve_rtp_ptime_limits(ptime_mode)
+        raw_jitter_ms = aes67_net.get("jitter_buffer_ms", config.get("jitter_buffer_ms", "auto"))
+        effective_latency_ms = cls.resolve_safe_jitter_latency_ms(raw_jitter_ms, quantum, sample_rate)
 
         pulse_socket = os.path.join(runtime_dir, "pulse.sock")
 
@@ -138,6 +191,7 @@ class PipeWireConfigGenerator:
             f"    default.clock.quantum = {quantum}",
             f"    default.clock.min-quantum = {min_quantum}",
             f"    default.clock.max-quantum = {max_quantum}",
+            f"    log.level = {log_level}",
             "    mem.warn-mlock = false",
             "}",
             "",
@@ -239,9 +293,9 @@ class PipeWireConfigGenerator:
                     f"            audio.rate = {sample_rate}",
                     f"            audio.channels = {channels}",
                     f"            audio.position = {pos_formatted}",
-                    "            sess.min-ptime = 1",
-                    "            sess.max-ptime = 1",
-                    "            sess.latency.msec = 3",
+                    f"            sess.min-ptime = {min_ptime}",
+                    f"            sess.max-ptime = {max_ptime}",
+                    f"            sess.latency.msec = {effective_latency_ms}",
                     "            net.ttl = 32",
                     "            net.loop = false",
                     "            stream.props = {",
@@ -274,6 +328,8 @@ class PipeWireConfigGenerator:
             r_port = int(rs.get("rtp_port", 5004))
             audio_format = rs.get("format", "S24BE")
             audio_rate = int(rs.get("rate") or sample_rate)
+            rs_jitter = rs.get("jitter_buffer_ms", raw_jitter_ms)
+            rs_latency_ms = cls.resolve_safe_jitter_latency_ms(rs_jitter, quantum, audio_rate)
 
             rtp_rx_args = []
             if nic_name:
@@ -283,11 +339,12 @@ class PipeWireConfigGenerator:
             rtp_rx_args.extend([
                 f"            source.port = {r_port}",
                 "            sess.media = \"audio\"",
+                "            sess.ignore-ssrc = true",
                 f"            audio.format = {cls._spa_val(audio_format)}",
                 f"            audio.rate = {audio_rate}",
                 f"            audio.channels = {channels}",
                 f"            audio.position = {pos_formatted}",
-                "            sess.latency.msec = 3",
+                f"            sess.latency.msec = {rs_latency_ms}",
                 "            stream.props = {",
                 f"                node.name = {cls._spa_val(f'rtp_rx_{rs_id}')}",
                 f"                node.description = {cls._spa_val(f'AES67 Rx for {rs_name}')}",

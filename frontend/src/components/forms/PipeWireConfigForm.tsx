@@ -226,6 +226,27 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     initialPtp.profile || 'aes67'
   );
 
+  // AoIP Packet Cadence (ptime) & Receiver Jitter Buffer Profile
+  const [rtpPtimeMode, setRtpPtimeMode] = useState<'auto' | '4ms' | '1ms'>(
+    aesNetCfg.rtp_ptime_mode === '1ms' || aesNetCfg.rtp_ptime_mode === '4ms'
+      ? aesNetCfg.rtp_ptime_mode
+      : 'auto'
+  );
+  const [jitterBufferMs, setJitterBufferMs] = useState<'auto' | number>(() => {
+    const raw = aesNetCfg.jitter_buffer_ms;
+    if (raw === undefined || raw === null || raw === 'auto' || Number(raw) <= 0) {
+      return 'auto';
+    }
+    return Number(raw);
+  });
+
+  // Mathematical Guardrail: minimum safe jitter buffer >= ceil(3 * quantum_ms)
+  const quantumMs = (Number(quantum) / Math.max(8000, Number(sampleRate))) * 1000;
+  const minSafeJitterMs = Math.max(10, Math.ceil(quantumMs * 3));
+  const autoJitterMs = Math.max(60, Math.ceil(quantumMs * 4), minSafeJitterMs);
+  const effectiveJitterMs =
+    jitterBufferMs === 'auto' ? autoJitterMs : Math.max(Number(jitterBufferMs), minSafeJitterMs);
+
   const cleanSapSuffix = (rawSap: string | undefined, host: string, fallbackId: string): string => {
     if (!rawSap) return fallbackId;
     const trimmed = rawSap.trim();
@@ -580,6 +601,8 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
         interface: aes67Enabled ? selectedInterface : null,
         ip: aes67Enabled ? selectedIp : '0.0.0.0',
         base_multicast_prefix: aes67Enabled ? cleanPrefix : null,
+        rtp_ptime_mode: rtpPtimeMode,
+        jitter_buffer_ms: jitterBufferMs === 'auto' ? 'auto' : effectiveJitterMs,
         ptp: aes67Enabled ? {
           enabled: Boolean(ptpEnabled && canEnableMasterClock),
           auto_inhibit: Boolean(ptpAutoInhibit),
@@ -874,6 +897,102 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                   <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
                     {t('services.pipewire.hostnameHelp', 'Locked hostname prefix automatically prepended to SAP announcements.')}
                   </span>
+                </div>
+              </div>
+
+              {/* AoIP Timing & Network Jitter Profile */}
+              <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--glass-border)] space-y-3">
+                <div>
+                  <h5 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-2">
+                    <span>🎛️</span>
+                    <span>{t('services.pipewire.aoipTimingSection', 'AoIP Packet Timing & Jitter Resilience')}</span>
+                  </h5>
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
+                    {t(
+                      'services.pipewire.aoipTimingHelp',
+                      'Balance network packet cadence and reception buffer depth according to your LAN switch and host CPU capabilities.'
+                    )}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                  {/* Packet Time (ptime) Cadence */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
+                      {t('services.pipewire.rtpPtimeLabel', 'RTP Packet Cadence (Tx ptime)')}
+                    </label>
+                    <select
+                      value={rtpPtimeMode}
+                      onChange={(e) => setRtpPtimeMode(e.target.value as 'auto' | '4ms' | '1ms')}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime cursor-pointer"
+                    >
+                      <option value="auto">
+                        {t('services.pipewire.rtpPtimeAuto', 'Relaxed Auto (2–20ms · ~230 pkt/s · Recommended)')}
+                      </option>
+                      <option value="4ms">
+                        {t('services.pipewire.rtpPtime4ms', 'Balanced Broadcast (4ms · 250 pkt/s)')}
+                      </option>
+                      <option value="1ms">
+                        {t('services.pipewire.rtpPtime1ms', 'Strict AES67 / Dante (1ms · 1000 pkt/s · High CPU)')}
+                      </option>
+                    </select>
+                    <span className="text-[9px] text-[var(--text-secondary)] mt-1 block leading-tight">
+                      {rtpPtimeMode === '1ms'
+                        ? t(
+                            'services.pipewire.rtpPtime1msWarn',
+                            '⚠️ 1ms fires 1,000 timers/sec. On non-RT kernels or modest NICs this can trigger timer jitter.'
+                          )
+                        : t(
+                            'services.pipewire.rtpPtimeHint',
+                            'Relaxed framing packs more audio frames per UDP datagram, reducing interrupt load by 4x between PipeWire Hubs.'
+                          )}
+                    </span>
+                  </div>
+
+                  {/* Receiver Jitter Buffer (sess.latency.msec) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)]">
+                        {t('services.pipewire.jitterBufferLabel', 'Network Jitter Buffer (sess.latency)')}
+                      </label>
+                      <span className="text-[9px] font-mono text-brand-lime font-bold">
+                        {t('services.pipewire.minSafeJitterBadge', 'Min Safe: {{ms}}ms (3×Quantum)', { ms: minSafeJitterMs })}
+                      </span>
+                    </div>
+                    <select
+                      value={jitterBufferMs === 'auto' ? 'auto' : String(effectiveJitterMs)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setJitterBufferMs(val === 'auto' ? 'auto' : Number(val));
+                      }}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime cursor-pointer"
+                    >
+                      <option value="auto">
+                        {t('services.pipewire.jitterBufferAuto', 'Auto Safe ({{ms}}ms · 4×Quantum · Recommended)', {
+                          ms: autoJitterMs,
+                        })}
+                      </option>
+                      <option value="20" disabled={20 < minSafeJitterMs}>
+                        {t('services.pipewire.jitterBuffer20ms', '20ms (Low Latency — requires Quantum ≤ 256)')}
+                      </option>
+                      <option value="50" disabled={50 < minSafeJitterMs}>
+                        {t('services.pipewire.jitterBuffer50ms', '50ms (Medium — requires Quantum ≤ 512)')}
+                      </option>
+                      <option value="100" disabled={100 < minSafeJitterMs}>
+                        {t('services.pipewire.jitterBuffer100ms', '100ms (High Stability — Standard LAN)')}
+                      </option>
+                      <option value="200">
+                        {t('services.pipewire.jitterBuffer200ms', '200ms (Ultra Resilient — Congested LAN)')}
+                      </option>
+                    </select>
+                    <span className="text-[9px] text-[var(--text-secondary)] mt-1 block leading-tight">
+                      {t(
+                        'services.pipewire.jitterBufferHint',
+                        'Guardrail active: buffer is automatically kept ≥ 3×Quantum ({{ms}}ms) to prevent ringbuffer truncation.',
+                        { ms: minSafeJitterMs }
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
 
