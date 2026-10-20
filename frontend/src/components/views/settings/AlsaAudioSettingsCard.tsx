@@ -64,6 +64,31 @@ interface AlsaCard {
   driver: string;
 }
 
+interface AlsaDiagnostics {
+  iommu_hazard?: {
+    has_audioscience: boolean;
+    iommu_active: boolean;
+    iommu_mode: string;
+    hazard_detected: boolean;
+    cmdline: string;
+    recommended_cmdline: string;
+  };
+  slots_advisor?: {
+    cards_detected: any[];
+    has_multiple_cards: boolean;
+    is_pinned: boolean;
+    conflict_detected: boolean;
+    configured_slots: string[];
+    recommended_snippet: string;
+  };
+  summary?: {
+    has_audioscience: boolean;
+    iommu_hazard: boolean;
+    slots_unpinned: boolean;
+    slots_conflict: boolean;
+  };
+}
+
 const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadge[]) => {
   if (!activeProcesses || activeProcesses.length === 0) return [];
 
@@ -752,6 +777,9 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [linkedChannels, setLinkedChannels] = useState<Record<number, boolean>>({});
   const [selectedMatrixGroupId, setSelectedMatrixGroupId] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<AlsaDiagnostics | null>(null);
+  const [copiedIommu, setCopiedIommu] = useState<boolean>(false);
+  const [copiedSlots, setCopiedSlots] = useState<boolean>(false);
 
   const selectedDriver = useMemo(() => {
     return cards.find(c => c.card_index === selectedCardIdx)?.driver;
@@ -803,10 +831,33 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
 
-  // Fetch available ALSA cards
+  // Fetch available ALSA cards and system diagnostics
   useEffect(() => {
     fetchCards();
+    fetchDiagnostics();
   }, []);
+
+  const fetchDiagnostics = async () => {
+    try {
+      const res = await fetch('/api/settings/alsa/diagnostics');
+      if (res.ok) {
+        const data = await res.json();
+        setDiagnostics(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch ALSA diagnostics:', err);
+    }
+  };
+
+  const hasIommuHazard = useMemo(() => {
+    return Boolean(diagnostics?.summary?.has_audioscience && diagnostics?.summary?.iommu_hazard);
+  }, [diagnostics]);
+
+  const hasSlotsIssue = useMemo(() => {
+    return Boolean(diagnostics?.summary?.slots_unpinned || diagnostics?.summary?.slots_conflict);
+  }, [diagnostics]);
+
+  const showAdvisor = hasIommuHazard || hasSlotsIssue;
 
   const fetchCards = async () => {
     try {
@@ -1091,6 +1142,95 @@ export const AlsaAudioSettingsCard: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {/* ALSA Kernel & Hardware Diagnostics Advisor Banner */}
+      {showAdvisor && (
+        <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-3 space-y-2.5 shadow-sm text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-[11px] uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+              <span>🛡️</span>
+              <span>{t('settings.alsa.advisorTitle', 'Kernel & Hardware Diagnostics')}</span>
+            </span>
+          </div>
+
+          {/* IOMMU / VT-d Conflict Hazard (AudioScience Only) */}
+          {hasIommuHazard && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2.5 space-y-1.5 text-text-primary">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
+                  <span>⚠️</span>
+                  <span>{t('settings.alsa.iommuHazardTitle', 'Intel VT-d (IOMMU) DMA Conflict Hazard')}</span>
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase">
+                  mode: {diagnostics?.iommu_hazard?.iommu_mode || 'strict'}
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                {t('settings.alsa.iommuHazardDesc', 'Intel VT-d is operating in strict page-translation mode with an AudioScience DSP adapter. The IOMMU can block 32-bit DMA reads (\'PTE Read access is not set\'), causing DSP timeouts (HPI error 207 / 105).')}
+              </p>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {t('settings.alsa.iommuFixAction', 'Recommended Fix: Add to /etc/default/grub (GRUB_CMDLINE_LINUX_DEFAULT):')}
+                </span>
+                <div className="flex items-center gap-2">
+                  <code className="bg-black/30 dark:bg-black/50 px-2 py-1 rounded text-[11px] font-mono text-amber-300 border border-amber-500/20">
+                    intel_iommu=pt iommu=pt
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText('intel_iommu=pt iommu=pt');
+                      setCopiedIommu(true);
+                      setTimeout(() => setCopiedIommu(false), 2000);
+                    }}
+                    className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors shrink-0"
+                  >
+                    {copiedIommu ? `✓ ${t('settings.alsa.copied', 'Copied!')}` : t('common.copy', 'Copy')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sound Card Slots Persistence Advisor */}
+          {hasSlotsIssue && (
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2.5 space-y-1.5 text-text-primary">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-blue-400 flex items-center gap-1.5 text-xs">
+                  <span>ℹ️</span>
+                  <span>{t('settings.alsa.slotsAdvisorTitle', 'Sound Card Slot Order Persistence')}</span>
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 uppercase">
+                  {diagnostics?.summary?.slots_conflict ? 'conflict' : 'unpinned'}
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                {t('settings.alsa.slotsAdvisorDesc', 'Multiple audio cards detected without explicit slot pinning. Card indices (hw:0, hw:1) may shuffle asynchronously across reboots.')}
+              </p>
+              {diagnostics?.slots_advisor?.recommended_snippet && (
+                <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="text-[10px] font-mono text-[var(--text-secondary)]">
+                    /etc/modprobe.d/alsa-base.conf
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (diagnostics.slots_advisor?.recommended_snippet) {
+                        navigator.clipboard.writeText(diagnostics.slots_advisor.recommended_snippet);
+                        setCopiedSlots(true);
+                        setTimeout(() => setCopiedSlots(false), 2000);
+                      }
+                    }}
+                    className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 transition-colors shrink-0 self-start sm:self-auto"
+                  >
+                    {copiedSlots ? `✓ ${t('settings.alsa.copied', 'Copied!')}` : t('settings.alsa.copySnippet', 'Copy /etc/modprobe.d/alsa-base.conf')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Active Process Badges Banner */}
       {topology?.active_processes && topology.active_processes.length > 0 && (
