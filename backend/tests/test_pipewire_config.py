@@ -30,6 +30,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("default.clock.quantum = 1024", res)
         self.assertIn("default.clock.min-quantum = 128", res)
         self.assertIn("default.clock.max-quantum = 2048", res)
+        self.assertIn("log.level = 1", res)
         self.assertIn("mem.warn-mlock = false", res)
 
         # Context modules
@@ -129,9 +130,9 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('destination.ip = "239.69.10.1"', res)
         self.assertIn('destination.port = 5004', res)
         self.assertIn('PGM Stream"', res)
-        self.assertIn('sess.min-ptime = 1', res)
-        self.assertIn('sess.max-ptime = 1', res)
-        self.assertIn('sess.latency.msec = 3', res)
+        self.assertIn('sess.min-ptime = 2', res)
+        self.assertIn('sess.max-ptime = 20', res)
+        self.assertIn('sess.latency.msec = 86', res)
         self.assertIn('node.name = "rtp_tx_aes67_pgm"', res)
         self.assertIn('target.object = "aes67_pgm"', res)
         self.assertIn('sess.sap.announce = true', res)
@@ -402,7 +403,8 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('source.ip = "239.69.11.1"', res)
         self.assertIn('source.port = 5004', res)
         self.assertIn('audio.format = "S24BE"', res)
-        self.assertIn('sess.latency.msec = 3', res)
+        self.assertIn('sess.ignore-ssrc = true', res)
+        self.assertIn('sess.latency.msec = 86', res)
         self.assertIn('node.name = "rtp_rx_remote_test1_aes"', res)
         self.assertIn('target.object = "remote_test1_aes"', res)
         self.assertIn('node.always-process = true', res)
@@ -414,6 +416,52 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         # 3. Landing null-audio-sink node generated with monitor and always-process
         self.assertIn('factory.name = support.null-audio-sink\n            node.name = "remote_test1_aes"', res)
         self.assertIn('Remote AoIP Sink: Test1 AES Bus', res)
+
+    def test_rtp_ptime_modes(self):
+        """Verifies resolve_rtp_ptime_limits for 'auto', '4ms', and '1ms'."""
+        self.assertEqual(PipeWireConfigGenerator.resolve_rtp_ptime_limits("auto"), (2, 20))
+        self.assertEqual(PipeWireConfigGenerator.resolve_rtp_ptime_limits(None), (2, 20))
+        self.assertEqual(PipeWireConfigGenerator.resolve_rtp_ptime_limits("4ms"), (4, 4))
+        self.assertEqual(PipeWireConfigGenerator.resolve_rtp_ptime_limits("1ms"), (1, 1))
+
+        # Check generation with explicit 1ms mode
+        cfg = {
+            "sample_rate": 48000,
+            "quantum": 1024,
+            "aes67_network": {"rtp_ptime_mode": "1ms"},
+            "virtual_sinks": [{"id": "aes_tx", "channels": 2, "aes67_enabled": True}]
+        }
+        res = PipeWireConfigGenerator.generate_config(101, cfg, "/tmp/run")
+        self.assertIn("sess.min-ptime = 1", res)
+        self.assertIn("sess.max-ptime = 1", res)
+
+    def test_jitter_buffer_mathematical_guardrail(self):
+        """Verifies mathematical guardrail effective_latency_ms >= ceil(3 * quantum_ms)."""
+        # Quantum 1024 @ 48000Hz = 21.33ms -> 3 * 21.33 = 64ms minimum safe
+        # Requesting 20ms should be clamped to 64ms
+        clamped = PipeWireConfigGenerator.resolve_safe_jitter_latency_ms(20, quantum=1024, sample_rate=48000)
+        self.assertEqual(clamped, 64)
+
+        # Requesting 100ms with quantum 1024 is above 64ms, so honored
+        honored = PipeWireConfigGenerator.resolve_safe_jitter_latency_ms(100, quantum=1024, sample_rate=48000)
+        self.assertEqual(honored, 100)
+
+        # Quantum 256 @ 48000Hz = 5.33ms -> 3 * 5.33 = 16ms min safe
+        # Requesting 20ms is valid
+        low_quantum = PipeWireConfigGenerator.resolve_safe_jitter_latency_ms(20, quantum=256, sample_rate=48000)
+        self.assertEqual(low_quantum, 20)
+
+        # Auto with quantum 1024 -> max(60, ceil(4 * 21.33)) = 86ms
+        auto_val = PipeWireConfigGenerator.resolve_safe_jitter_latency_ms("auto", quantum=1024, sample_rate=48000)
+        self.assertEqual(auto_val, 86)
+
+    def test_debug_mode_sets_log_level_2(self):
+        """Verifies debug_mode: True generates log.level = 2, otherwise log.level = 1."""
+        res_normal = PipeWireConfigGenerator.generate_config(1, {}, "/tmp/run")
+        self.assertIn("log.level = 1", res_normal)
+
+        res_debug = PipeWireConfigGenerator.generate_config(2, {"debug_mode": True}, "/tmp/run")
+        self.assertIn("log.level = 2", res_debug)
 
 
 if __name__ == "__main__":
