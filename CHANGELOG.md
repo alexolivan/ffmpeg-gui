@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.2] - 2026-10-20
+
+### Fixed
+- **ALSA Modprobe Slot Generator & Conflict Resolution (`backend/core/alsa_manager.py`, `install.sh`, `AlsaAudioSettingsCard.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - **Exact Kernel Module Introspection**: Enhanced `AlsaManager.get_cards()` to query `/proc/asound/modules` (and `/sys/class/sound/cardX/device/driver`), resolving exact kernel module names (`snd_hda_intel`, `snd_asihpi`, `snd_aloop`, etc.) rather than attempting to guess module names from verbose hardware address/IRQ lines in `/proc/asound/cards`.
+  - **Multi-Instance Module Pinning**: Fixed slot configuration generator for systems where multiple soundcards share the exact same kernel module (e.g. NVidia GPU HDMI + motherboard HD-Audio Generic). Emits clean array options (`options snd_hda_intel index=0,1 id=NVidia,Generic` and `options snd slots=snd_hda_intel,snd_hda_intel,snd_aloop`), eliminating card index gaps and invalid duplicate option directives.
+  - **Conflict Auto-Remediation in Installer**: Updated `install.sh` (`configure_alsa_loopback`) to check if any `/etc/modprobe.d/*.conf` file already configures `slots=` or `snd-aloop`. When pinned slots are detected, automatically removes obsolete fallback `/etc/modprobe.d/snd-aloop.conf` (`index=-2`) to prevent modprobe index collisions.
+  - **Live Diagnostics Re-Check Button**: Added a dedicated `🔄 Re-check` action in the ALSA Advisor banner allowing sysadmins to re-evaluate kernel cmdline and `/etc/modprobe.d/` changes on the fly without refreshing the browser or restarting services.
+  - **Explicit Conflict Remediation Notice**: Added clear warning badge with copyable `sudo rm -f /etc/modprobe.d/snd-aloop.conf` command whenever negative index fallback conflicts are detected alongside pinned slots.
+  - **Reboot Notice**: Added informational footer explaining that kernel command-line and modprobe driver slot bindings take effect upon system reboot.
+
 ## [2.49.1] - 2026-10-20
 
 ### Fixed

@@ -136,10 +136,24 @@ configure_alsa_loopback() {
         fi
 
         # Asignar index=-2 para evitar conflictos con tarjetas físicas primarias y fijar 8 subdispositivos
-        # Preservar configuración existente si el sysadmin ya definió snd-aloop en /etc/modprobe.d/ (ej: alsa-base.conf)
+        # Si el sysadmin ya definió slots o snd-aloop en /etc/modprobe.d/ (ej: alsa-base.conf), preservar y eliminar conflicto index=-2
         if [ -d /etc/modprobe.d ]; then
-            if grep -rqE "options\s+snd[_-]aloop" /etc/modprobe.d/ 2>/dev/null && [ ! -f /etc/modprobe.d/snd-aloop.conf ]; then
-                echo "    Note: snd-aloop already configured in /etc/modprobe.d/, preserving existing custom settings."
+            ALREADY_CONFIGURED=false
+            for f in /etc/modprobe.d/*.conf; do
+                [ -e "$f" ] || continue
+                [ "$f" = "/etc/modprobe.d/snd-aloop.conf" ] && continue
+                if grep -qE "options\s+snd\s+slots=|options\s+snd[_-]aloop" "$f" 2>/dev/null; then
+                    ALREADY_CONFIGURED=true
+                    break
+                fi
+            done
+
+            if [ "$ALREADY_CONFIGURED" = true ]; then
+                echo "    Note: ALSA slots or snd-aloop already pinned in /etc/modprobe.d/ (preserving custom settings)."
+                if [ -f /etc/modprobe.d/snd-aloop.conf ] && grep -qE "index\s*=\s*-\d+" /etc/modprobe.d/snd-aloop.conf 2>/dev/null; then
+                    echo "    Removing obsolete fallback /etc/modprobe.d/snd-aloop.conf to prevent modprobe conflict..."
+                    rm -f /etc/modprobe.d/snd-aloop.conf
+                fi
             else
                 echo "options snd-aloop index=-2 enable=1 pcm_substreams=8" > /etc/modprobe.d/snd-aloop.conf
             fi

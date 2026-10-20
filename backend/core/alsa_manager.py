@@ -112,6 +112,17 @@ class AlsaManager:
             # Example format:
             # 0 [PCH            ]: HDA-Intel - HDA Intel PCH
             # 1 [ASI58100       ]: ASI5810-0 - ASI5810-0
+            modules_map = {}
+            if os.path.exists("/proc/asound/modules"):
+                try:
+                    with open("/proc/asound/modules", "r") as mf:
+                        for mline in mf:
+                            m_match = re.match(r"^\s*(\d+)\s+([a-zA-Z0-9_\-]+)", mline)
+                            if m_match:
+                                modules_map[int(m_match.group(1))] = m_match.group(2).strip()
+                except Exception as me:
+                    logger.debug(f"Could not read /proc/asound/modules: {me}")
+
             lines = content.strip().split("\n")
             for i in range(0, len(lines), 2):
                 line = lines[i]
@@ -125,11 +136,21 @@ class AlsaManager:
                     if len(lines) > i + 1:
                         driver = lines[i + 1].strip()
 
+                    module = modules_map.get(card_idx)
+                    if not module:
+                        sys_driver_link = f"/sys/class/sound/card{card_idx}/device/driver"
+                        if os.path.islink(sys_driver_link):
+                            try:
+                                module = os.path.basename(os.readlink(sys_driver_link))
+                            except Exception:
+                                pass
+
                     cards.append({
                         "card_index": card_idx,
                         "card_id": card_id,
                         "name": card_desc,
-                        "driver": driver
+                        "driver": driver,
+                        "module": module or self._normalize_driver(driver, card_desc)
                     })
         except Exception as e:
             logger.error(f"Error parsing /proc/asound/cards: {e}")
@@ -877,6 +898,21 @@ class AlsaManager:
             "recommended_cmdline": "intel_iommu=pt iommu=pt"
         }
 
+    @staticmethod
+    def _normalize_driver(drv: str, name: str) -> str:
+        d = (drv or "").lower().strip()
+        n = (name or "").lower().strip()
+        if "asihpi" in d or "asi" in d:
+            return "snd_asihpi"
+        if "hda-intel" in d or "hda intel" in d or "hd-audio" in d or "intel" in d or "hda" in d or "alc" in n or "nvidia" in d or "nvidia" in n:
+            return "snd_hda_intel"
+        if "aloop" in d or "loopback" in d or "loopback" in n:
+            return "snd_aloop"
+        if "usb" in d:
+            return "snd_usb_audio"
+        clean_word = re.split(r"[\s\t,;]+", d)[0].replace("-", "_")
+        return clean_word if clean_word.startswith("snd_") else f"snd_{clean_word}"
+
     def get_alsa_slots_status(self) -> Dict[str, Any]:
         """
         Inspects detected ALSA sound cards and /etc/modprobe.d/ configuration to evaluate
@@ -889,6 +925,7 @@ class AlsaManager:
         configured_slots: List[str] = []
         is_pinned = False
         conflict_detected = False
+        conflict_file = None
         has_aloop_negative_index = False
 
         if os.path.exists(modprobe_dir):
@@ -908,6 +945,7 @@ class AlsaManager:
                             # Check for negative index on snd-aloop
                             if re.search(r"options\s+snd[_-]aloop[^\n]*index\s*=\s*-\d+", content):
                                 has_aloop_negative_index = True
+                                conflict_file = fname
                     except Exception:
                         continue
             except Exception as e:
@@ -916,42 +954,40 @@ class AlsaManager:
         if is_pinned and has_aloop_negative_index:
             conflict_detected = True
 
-        # Generate recommended configuration snippet
-        def _normalize_driver(drv: str, name: str) -> str:
-            d = (drv or "").lower().strip()
-            n = (name or "").lower().strip()
-            if "asihpi" in d or "asi" in d:
-                return "snd_asihpi"
-            if "hda-intel" in d or "hda intel" in d or "intel" in d or "hda" in d or "alc" in n:
-                return "snd_hda_intel"
-            if "aloop" in d or "loopback" in d or "loopback" in n:
-                return "snd_aloop"
-            if "usb" in d:
-                return "snd_usb_audio"
-            mod = d.replace("-", "_")
-            return mod if mod.startswith("snd_") else f"snd_{mod}"
-
         # Order cards prioritizing physical non-loopback first, loopback last
         physical_cards = [c for c in cards if "loopback" not in str(c.get("card_id", "")).lower() and "loopback" not in str(c.get("name", "")).lower()]
         loopback_cards = [c for c in cards if "loopback" in str(c.get("card_id", "")).lower() or "loopback" in str(c.get("name", "")).lower()]
 
         ordered_cards = physical_cards + loopback_cards
-        ordered_modules: List[str] = []
-        options_lines: List[str] = []
+        slot_modules: List[str] = []
+        modules_to_cards: Dict[str, List[Dict[str, Any]]] = {}
 
-        seen_modules = set()
-        for idx, c in enumerate(ordered_cards):
-            mod_name = _normalize_driver(c.get("driver", ""), c.get("name", ""))
-            slot_mod = mod_name
-            seen_modules.add(slot_mod)
-            ordered_modules.append(slot_mod)
+        for slot_idx, c in enumerate(ordered_cards):
+            mod_name = c.get("module") or self._normalize_driver(c.get("driver", ""), c.get("name", ""))
+            slot_modules.append(mod_name)
+            c_copy = dict(c)
+            c_copy["target_slot"] = slot_idx
+            if mod_name not in modules_to_cards:
+                modules_to_cards[mod_name] = []
+            modules_to_cards[mod_name].append(c_copy)
+
+        options_lines: List[str] = []
+        for mod_name, card_group in modules_to_cards.items():
+            slot_indices = [str(cg["target_slot"]) for cg in card_group]
+            card_ids = [str(cg.get("card_id", "")).strip() for cg in card_group if cg.get("card_id")]
 
             if mod_name == "snd_aloop":
-                options_lines.append(f"options snd_aloop index={idx} enable=1 pcm_substreams=8")
+                options_lines.append(f"options snd_aloop index={slot_indices[0]} enable=1 pcm_substreams=8")
+            elif len(slot_indices) > 1:
+                # Multiple cards driven by the same kernel module (e.g. NVidia HDMI + Generic HDA)
+                if len(card_ids) == len(slot_indices):
+                    options_lines.append(f"options {mod_name} index={','.join(slot_indices)} id={','.join(card_ids)}")
+                else:
+                    options_lines.append(f"options {mod_name} index={','.join(slot_indices)}")
             else:
-                options_lines.append(f"options {mod_name} index={idx}")
+                options_lines.append(f"options {mod_name} index={slot_indices[0]}")
 
-        slots_line = f"options snd slots={','.join(ordered_modules)}"
+        slots_line = f"options snd slots={','.join(slot_modules)}"
 
         snippet = (
             "# Forzar orden permanente de tarjetas de sonido\n"
@@ -966,6 +1002,7 @@ class AlsaManager:
             "has_multiple_cards": has_multiple_cards,
             "is_pinned": is_pinned,
             "conflict_detected": conflict_detected,
+            "conflict_file": conflict_file if conflict_detected else None,
             "configured_slots": configured_slots,
             "recommended_snippet": snippet
         }
@@ -982,7 +1019,8 @@ class AlsaManager:
                 "has_audioscience": iommu_status["has_audioscience"],
                 "iommu_hazard": iommu_status["hazard_detected"],
                 "slots_unpinned": slots_status["has_multiple_cards"] and not slots_status["is_pinned"],
-                "slots_conflict": slots_status["conflict_detected"]
+                "slots_conflict": slots_status["conflict_detected"],
+                "conflict_file": slots_status.get("conflict_file")
             }
         }
 

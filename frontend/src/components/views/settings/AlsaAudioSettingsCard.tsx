@@ -781,6 +781,8 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const [diagnostics, setDiagnostics] = useState<AlsaDiagnostics | null>(null);
   const [copiedIommu, setCopiedIommu] = useState<boolean>(false);
   const [copiedSlots, setCopiedSlots] = useState<boolean>(false);
+  const [copiedConflictCmd, setCopiedConflictCmd] = useState<boolean>(false);
+  const [isRechecking, setIsRechecking] = useState<boolean>(false);
 
   const selectedDriver = useMemo(() => {
     return cards.find(c => c.card_index === selectedCardIdx)?.driver;
@@ -1152,6 +1154,23 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <span>🛡️</span>
               <span>{t('settings.alsa.advisorTitle', 'Kernel & Hardware Diagnostics')}</span>
             </span>
+            <button
+              type="button"
+              disabled={isRechecking}
+              onClick={async () => {
+                setIsRechecking(true);
+                try {
+                  await Promise.all([fetchDiagnostics(), fetchCards()]);
+                } finally {
+                  setTimeout(() => setIsRechecking(false), 500);
+                }
+              }}
+              className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-[var(--track-bg)] hover:bg-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--glass-border)] transition-colors flex items-center gap-1 cursor-pointer"
+              title={t('settings.alsa.recheckAdvisor', 'Re-check kernel and modprobe configuration')}
+            >
+              <span className={isRechecking ? 'animate-spin' : ''}>🔄</span>
+              <span>{isRechecking ? t('settings.alsa.rechecking', 'Checking...') : t('settings.alsa.recheck', 'Re-check')}</span>
+            </button>
           </div>
 
           {/* IOMMU / VT-d Conflict Hazard (AudioScience Only) */}
@@ -1216,6 +1235,39 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
                 {t('settings.alsa.slotsAdvisorDesc', 'Multiple audio cards detected without explicit slot pinning. Card indices (hw:0, hw:1) may shuffle asynchronously across reboots.')}
               </p>
+
+              {/* Conflicting negative index notice (e.g. legacy snd-aloop.conf) */}
+              {diagnostics?.summary?.slots_conflict && (
+                <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/30 text-text-primary text-[11px] space-y-1.5">
+                  <span className="font-bold text-amber-400 flex items-center gap-1">
+                    <span>⚠️</span>
+                    <span>{t('settings.alsa.slotsConflictTitle', 'Conflicting Modprobe Directive Detected')}</span>
+                  </span>
+                  <p className="text-[var(--text-secondary)] leading-relaxed">
+                    {t('settings.alsa.slotsConflictDesc', 'A legacy fallback file (/etc/modprobe.d/snd-aloop.conf) specifies index=-2 alongside explicit slots. Remove it to resolve the conflict:')}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <code className="bg-black/30 dark:bg-black/50 px-2 py-0.5 rounded font-mono text-[11px] text-amber-200 border border-amber-500/20 select-all">
+                      sudo rm -f /etc/modprobe.d/snd-aloop.conf
+                    </code>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await copyToClipboard('sudo rm -f /etc/modprobe.d/snd-aloop.conf');
+                        if (ok) {
+                          setCopiedConflictCmd(true);
+                          setTimeout(() => setCopiedConflictCmd(false), 2000);
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors flex items-center gap-1"
+                    >
+                      <span>{copiedConflictCmd ? '✓' : '📋'}</span>
+                      <span>{copiedConflictCmd ? t('settings.alsa.copied', 'Copied!') : t('common.copy', 'Copy')}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {diagnostics?.slots_advisor?.recommended_snippet && (
                 <div className="pt-1 space-y-1.5">
                   <div className="flex items-center justify-between">
@@ -1248,6 +1300,12 @@ export const AlsaAudioSettingsCard: React.FC = () => {
               )}
             </div>
           )}
+
+          {/* Reboot notice footer */}
+          <div className="text-[10px] text-[var(--text-secondary)] flex items-center gap-1 pt-1 border-t border-[var(--glass-border)]">
+            <span>ℹ️</span>
+            <span>{t('settings.alsa.rebootNotice', 'Note: Kernel boot parameters (GRUB) and modprobe slot assignments take effect after rebooting the machine.')}</span>
+          </div>
         </div>
       )}
 
