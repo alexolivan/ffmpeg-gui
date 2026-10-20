@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.48.0] - 2026-10-20
+
+### Added
+- **Configurable AoIP Timing & Network Jitter Profiles (`backend/core/pipewire_config.py`, `PipeWireConfigForm.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - Added user-configurable AoIP packet cadence (`rtp_ptime_mode`: Relaxed Auto `2–20ms`, Balanced `4ms`, Strict `1ms`) in `PipeWireConfigForm.tsx` and `PipeWireConfigGenerator`, optimizing timerfd cadence and interrupt load for non-RT kernels and standard hardware.
+  - Added configurable network jitter buffer depth (`jitter_buffer_ms`: Auto safe `4×Quantum`, `20ms`, `50ms`, `100ms`, `200ms`) with mathematical guardrails enforcing `effective_latency_ms >= ceil(3 * quantum_ms)`.
+  - Displayed dynamic minimum safe latency badge in UI and disabled choices below `3×Quantum` to prevent audio underruns and buffer truncation.
+- **Real-Time RAM & Storage Protection Circuit Breaker (`backend/core/process_manager.py`, `backend/tests/test_log_flood_shield.py`)**:
+  - Implemented an in-place truncation circuit breaker in `ProcessManager._file_log_tailer()` that truncates flooded daemon logs in-place (`os.truncate(log_path, 0)`) when exceeding `rotation_max_bytes` (default 10 MB), protecting RAM partitions (`tmpfs` / SATADOM protection) from exhaustion.
+
+### Fixed
+- **PipeWire AES67 SSRC Resynchronization & Error-Only Logging (`backend/core/pipewire_config.py`, `backend/core/process_manager.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Added `sess.ignore-ssrc = true` on `libpipewire-module-rtp-source` (Remote AoIP Sinks), allowing receivers to automatically resynchronize when remote transmitter hubs restart with a new random RTP SSRC instead of dropping 100% of packets with `unexpected SSRC`.
+  - Defaulted daemon log level to `ERROR` (`log.level = 1` / `PIPEWIRE_DEBUG = 1`) unless `debug_mode` is enabled, preventing high-frequency real-time `[W]` warnings from flooding disk and RAM storage.
+
 ## [2.47.1] - 2026-10-20
 
 ### Fixed
