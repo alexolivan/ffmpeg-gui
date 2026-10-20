@@ -101,6 +101,26 @@ class TestAlsaAdvisor(unittest.TestCase):
             self.assertTrue(res["is_pinned"])
             self.assertFalse(res["conflict_detected"])
 
+    def test_slots_advisor_multi_card_same_module(self):
+        """Simulates test1 with NVidia GPU HDMI + Motherboard HD-Audio Generic + Loopback."""
+        with patch.object(self.mgr, "get_cards") as mock_cards, \
+             patch("os.path.exists", return_value=True), \
+             patch("os.listdir", return_value=[]):
+
+            mock_cards.return_value = [
+                {"card_index": 0, "card_id": "NVidia", "name": "HDA-Intel - HDA NVidia", "driver": "HDA-Intel", "module": "snd_hda_intel"},
+                {"card_index": 2, "card_id": "Generic", "name": "HDA-Intel - HD-Audio Generic", "driver": "HDA-Intel", "module": "snd_hda_intel"},
+                {"card_index": 3, "card_id": "Loopback", "name": "Loopback - Loopback", "driver": "Loopback", "module": "snd_aloop"}
+            ]
+
+            res = self.mgr.get_alsa_slots_status()
+            self.assertTrue(res["has_multiple_cards"])
+            self.assertFalse(res["is_pinned"])
+            # Should group multiple snd_hda_intel into a single options line with comma-separated index and id
+            self.assertIn("options snd_hda_intel index=0,1 id=NVidia,Generic", res["recommended_snippet"])
+            self.assertIn("options snd_aloop index=2 enable=1 pcm_substreams=8", res["recommended_snippet"])
+            self.assertIn("options snd slots=snd_hda_intel,snd_hda_intel,snd_aloop", res["recommended_snippet"])
+
     def test_get_alsa_diagnostics_endpoint(self):
         from starlette.testclient import TestClient
         from main import app

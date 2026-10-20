@@ -538,7 +538,13 @@
       "slotsAdvisorTitle": "Sound Card Slot Order Persistence",
       "slotsAdvisorDesc": "Multiple audio cards detected without explicit slot pinning. Card indices (hw:0, hw:1) may shuffle asynchronously across reboots.",
       "copySnippet": "Copy /etc/modprobe.d/alsa-base.conf",
-      "copied": "Copied!"
+      "copied": "Copied!",
+      "recheck": "Re-check",
+      "rechecking": "Checking...",
+      "recheckAdvisor": "Re-check kernel and modprobe configuration",
+      "slotsConflictTitle": "Conflicting Modprobe Directive Detected",
+      "slotsConflictDesc": "A legacy fallback file (/etc/modprobe.d/snd-aloop.conf) specifies index=-2 alongside explicit slots. Remove it to resolve the conflict:",
+      "rebootNotice": "Note: Kernel boot parameters (GRUB) and modprobe slot assignments take effect after rebooting the machine."
     },
     "watchdog": {
       "title": "WATCHDOG & STARTUP TIMING",

@@ -538,7 +538,13 @@
       "slotsAdvisorTitle": "Persistencia del Orden de Tarjetas de Sonido",
       "slotsAdvisorDesc": "Se han detectado varias tarjetas de sonido sin orden fijo en modprobe. Los índices (hw:0, hw:1) pueden alternarse en cada reinicio.",
       "copySnippet": "Copiar /etc/modprobe.d/alsa-base.conf",
-      "copied": "¡Copiado!"
+      "copied": "¡Copiado!",
+      "recheck": "Volver a comprobar",
+      "rechecking": "Comprobando...",
+      "recheckAdvisor": "Volver a comprobar la configuración de kernel y modprobe",
+      "slotsConflictTitle": "Directiva de modprobe en conflicto detectada",
+      "slotsConflictDesc": "Un archivo heredado (/etc/modprobe.d/snd-aloop.conf) define index=-2 junto con slots explícitos. Elimínalo para resolver el conflicto:",
+      "rebootNotice": "Nota: Los parámetros de arranque del kernel (GRUB) y la asignación de slots en modprobe surten efecto tras reiniciar el equipo."
     },
     "watchdog": {
       "title": "WATCHDOG Y TIEMPOS DE ARRANQUE",

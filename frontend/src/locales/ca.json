@@ -538,7 +538,13 @@
       "slotsAdvisorTitle": "Persistència de l'Ordre de Targetes de So",
       "slotsAdvisorDesc": "S'han detectat diverses targetes de so sense ordre fix a modprobe. Els índexs (hw:0, hw:1) poden alternar-se a cada reinici.",
       "copySnippet": "Copiar /etc/modprobe.d/alsa-base.conf",
-      "copied": "Copiat!"
+      "copied": "Copiat!",
+      "recheck": "Tornar a comprovar",
+      "rechecking": "Comprovant...",
+      "recheckAdvisor": "Tornar a comprovar la configuració de kernel i modprobe",
+      "slotsConflictTitle": "Directiva de modprobe en conflicte detectada",
+      "slotsConflictDesc": "Un fitxer heretat (/etc/modprobe.d/snd-aloop.conf) defineix index=-2 juntament amb slots explícits. Elimineu-lo per resoldre el conflicte:",
+      "rebootNotice": "Nota: Els paràmetres d'arrencada del kernel (GRUB) i l'assignació de slots a modprobe tenen efecte després de reiniciar l'equip."
     },
     "watchdog": {
       "title": "WATCHDOG I TEMPS D'ARRANQUED",
