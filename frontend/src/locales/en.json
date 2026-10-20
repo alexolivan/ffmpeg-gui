@@ -529,7 +529,15 @@
       "cascadedFrom": "Cascaded from",
       "masterMixerNode": "MIXER NODE",
       "slaveEndpoint": "SLAVE ENDPOINT",
-      "noMatrixControls": "No matrix routing controls available for this node"
+      "noMatrixControls": "No matrix routing controls available for this node",
+      "advisorTitle": "Kernel & Hardware Diagnostics",
+      "iommuHazardTitle": "Intel VT-d (IOMMU) DMA Conflict Hazard",
+      "iommuHazardDesc": "Intel VT-d is operating in strict page-translation mode with an AudioScience DSP adapter. The IOMMU can block 32-bit DMA reads ('PTE Read access is not set'), causing DSP timeouts (HPI error 207 / 105).",
+      "iommuFixAction": "Recommended Fix: Add to /etc/default/grub (GRUB_CMDLINE_LINUX_DEFAULT):",
+      "slotsAdvisorTitle": "Sound Card Slot Order Persistence",
+      "slotsAdvisorDesc": "Multiple audio cards detected without explicit slot pinning. Card indices (hw:0, hw:1) may shuffle asynchronously across reboots.",
+      "copySnippet": "Copy /etc/modprobe.d/alsa-base.conf",
+      "copied": "Copied!"
     },
     "watchdog": {
       "title": "WATCHDOG & STARTUP TIMING",
@@ -1087,7 +1095,13 @@
     "fpgaTemp": "FPGA Temp",
     "pcieBus": "PCIe Bus",
     "criticalThermalAlert": "CRITICAL THERMAL ALERT: Hardware temperature reached {{temp}}°C. Immediate cooling or workload reduction recommended.",
-    "activeProtectionEngaged": "Active thermal protection engaged: new scheduled tasks and compilation builds are paused."
+    "activeProtectionEngaged": "Active thermal protection engaged: new scheduled tasks and compilation builds are paused.",
+    "systemUptime": "System Uptime",
+    "serviceUptime": "Service Uptime",
+    "iommuHazardBadge": "VT-d / IOMMU DMA Hazard",
+    "iommuHazardTooltip": "Intel VT-d is active in strict mode with AudioScience hardware. Risk of DMA timeout and DSP crash.",
+    "slotsUnpinnedBadge": "ALSA Slots Unpinned",
+    "slotsUnpinnedTooltip": "Multiple soundcards detected without permanent modprobe slot assignment."
   },
   "forge": {
     "title": "FFMPEG FORGE",
