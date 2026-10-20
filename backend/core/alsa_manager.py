@@ -833,4 +833,157 @@ class AlsaManager:
         """Fast-path reading for Jack Sensor states (numids in jack_sensors)."""
         return self.read_realtime_telemetry(card_idx).get("jacks", {})
 
+    def get_kernel_iommu_status(self) -> Dict[str, Any]:
+        """
+        Inspects host kernel cmdline and sysfs to detect Intel VT-d (IOMMU) state
+        and evaluate DMA collision risk with legacy AudioScience adapters.
+        """
+        has_audioscience = any(self.is_card_asihpi(c.get("card_index")) for c in self.get_cards())
+
+        cmdline = ""
+        if os.path.exists("/proc/cmdline"):
+            try:
+                with open("/proc/cmdline", "r") as f:
+                    cmdline = f.read().strip()
+            except Exception as e:
+                logger.debug(f"Could not read /proc/cmdline: {e}")
+
+        # Check sysfs iommu devices
+        iommu_sysfs = os.path.exists("/sys/class/iommu") and bool(os.listdir("/sys/class/iommu")) if os.path.exists("/sys/class/iommu") else False
+
+        # Determine IOMMU operational mode
+        cmd_lower = cmdline.lower()
+        if "intel_iommu=off" in cmd_lower or "iommu=off" in cmd_lower:
+            iommu_mode = "disabled"
+            iommu_active = False
+        elif "intel_iommu=pt" in cmd_lower or "iommu=pt" in cmd_lower:
+            iommu_mode = "passthrough"
+            iommu_active = True
+        elif iommu_sysfs or "intel_iommu=on" in cmd_lower or "iommu=on" in cmd_lower:
+            iommu_mode = "strict"
+            iommu_active = True
+        else:
+            iommu_mode = "disabled"
+            iommu_active = False
+
+        # Hazard exists ONLY if AudioScience card is present and IOMMU is running in strict translation mode
+        hazard_detected = bool(has_audioscience and iommu_active and iommu_mode == "strict")
+
+        return {
+            "has_audioscience": has_audioscience,
+            "iommu_active": iommu_active,
+            "iommu_mode": iommu_mode,
+            "hazard_detected": hazard_detected,
+            "recommended_cmdline": "intel_iommu=pt iommu=pt"
+        }
+
+    def get_alsa_slots_status(self) -> Dict[str, Any]:
+        """
+        Inspects detected ALSA sound cards and /etc/modprobe.d/ configuration to evaluate
+        card slot pinning and generate recommended configuration snippet.
+        """
+        cards = self.get_cards()
+        has_multiple_cards = len(cards) > 1
+
+        modprobe_dir = "/etc/modprobe.d"
+        configured_slots: List[str] = []
+        is_pinned = False
+        conflict_detected = False
+        has_aloop_negative_index = False
+
+        if os.path.exists(modprobe_dir):
+            try:
+                for fname in sorted(os.listdir(modprobe_dir)):
+                    if not fname.endswith(".conf"):
+                        continue
+                    fpath = os.path.join(modprobe_dir, fname)
+                    try:
+                        with open(fpath, "r") as f:
+                            content = f.read()
+                            # Check for 'options snd slots=...'
+                            m_slots = re.search(r"^\s*options\s+snd\s+slots=([^\n#]+)", content, re.MULTILINE)
+                            if m_slots:
+                                is_pinned = True
+                                configured_slots = [s.strip() for s in m_slots.group(1).split(",") if s.strip()]
+                            # Check for negative index on snd-aloop
+                            if re.search(r"options\s+snd[_-]aloop[^\n]*index\s*=\s*-\d+", content):
+                                has_aloop_negative_index = True
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.debug(f"Could not read modprobe directory {modprobe_dir}: {e}")
+
+        if is_pinned and has_aloop_negative_index:
+            conflict_detected = True
+
+        # Generate recommended configuration snippet
+        def _normalize_driver(drv: str, name: str) -> str:
+            d = (drv or "").lower().strip()
+            n = (name or "").lower().strip()
+            if "asihpi" in d or "asi" in d:
+                return "snd_asihpi"
+            if "hda-intel" in d or "hda intel" in d or "intel" in d or "hda" in d or "alc" in n:
+                return "snd_hda_intel"
+            if "aloop" in d or "loopback" in d or "loopback" in n:
+                return "snd_aloop"
+            if "usb" in d:
+                return "snd_usb_audio"
+            mod = d.replace("-", "_")
+            return mod if mod.startswith("snd_") else f"snd_{mod}"
+
+        # Order cards prioritizing physical non-loopback first, loopback last
+        physical_cards = [c for c in cards if "loopback" not in str(c.get("card_id", "")).lower() and "loopback" not in str(c.get("name", "")).lower()]
+        loopback_cards = [c for c in cards if "loopback" in str(c.get("card_id", "")).lower() or "loopback" in str(c.get("name", "")).lower()]
+
+        ordered_cards = physical_cards + loopback_cards
+        ordered_modules: List[str] = []
+        options_lines: List[str] = []
+
+        seen_modules = set()
+        for idx, c in enumerate(ordered_cards):
+            mod_name = _normalize_driver(c.get("driver", ""), c.get("name", ""))
+            slot_mod = mod_name
+            seen_modules.add(slot_mod)
+            ordered_modules.append(slot_mod)
+
+            if mod_name == "snd_aloop":
+                options_lines.append(f"options snd_aloop index={idx} enable=1 pcm_substreams=8")
+            else:
+                options_lines.append(f"options {mod_name} index={idx}")
+
+        slots_line = f"options snd slots={','.join(ordered_modules)}"
+
+        snippet = (
+            "# Forzar orden permanente de tarjetas de sonido\n"
+            + "\n".join(options_lines)
+            + "\n\n# Asegurar la asignación estricta de slots\n"
+            + slots_line
+            + "\n"
+        )
+
+        return {
+            "cards_detected": cards,
+            "has_multiple_cards": has_multiple_cards,
+            "is_pinned": is_pinned,
+            "conflict_detected": conflict_detected,
+            "configured_slots": configured_slots,
+            "recommended_snippet": snippet
+        }
+
+    def get_alsa_advisor_diagnostics(self) -> Dict[str, Any]:
+        """Aggregates all kernel, IOMMU, and ALSA slot pinning diagnostics."""
+        iommu_status = self.get_kernel_iommu_status()
+        slots_status = self.get_alsa_slots_status()
+
+        return {
+            "iommu_hazard": iommu_status,
+            "slots_advisor": slots_status,
+            "summary": {
+                "has_audioscience": iommu_status["has_audioscience"],
+                "iommu_hazard": iommu_status["hazard_detected"],
+                "slots_unpinned": slots_status["has_multiple_cards"] and not slots_status["is_pinned"],
+                "slots_conflict": slots_status["conflict_detected"]
+            }
+        }
+
 alsa_manager = AlsaManager()

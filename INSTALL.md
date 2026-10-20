@@ -104,6 +104,12 @@ If running in user-space or configuring manually:
 > [!TIP]
 > If your system requires running more than 8 concurrent Virtual Desktops with isolated audio, increase `pcm_substreams=16` or `32` in `/etc/modprobe.d/snd-aloop.conf`.
 
+### Sound Card Slot Ordering & Intel VT-d (IOMMU) Advisor
+
+When multiple sound cards are present or when using AudioScience DSP adapters (`snd-asihpi`):
+1. **Sound Card Index Pinning**: ALSA loads sound drivers asynchronously by default, which can cause card numbers (`hw:0`, `hw:1`) to alternate across boots. The panel includes an integrated **ALSA Advisor** in *Settings > ALSA Audio* that automatically generates the recommended `/etc/modprobe.d/alsa-base.conf` configuration snippet specifying `options snd slots=...` to ensure deterministic card ordering.
+2. **Intel VT-d DMA Conflict Hazard**: On systems with Intel VT-d enabled in strict translation mode, the Linux IOMMU may block 32-bit DMA transfers to AudioScience DSP adapters (`DMAR: [DMA Read NO_PASID] ... PTE Read access is not set`), causing HPI timeouts (`HPI error 207 / 105`). If flagged by the panel advisor, add `intel_iommu=pt iommu=pt` to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub` and run `sudo update-grub`.
+
 ---
 
 ## 4. Custom FFmpeg SDK Setup (NDI & DeckLink)

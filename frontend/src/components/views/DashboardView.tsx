@@ -14,6 +14,19 @@ interface DashboardViewProps {
   settings: any;
 }
 
+const formatUptime = (seconds?: number): string => {
+  if (seconds === undefined || seconds === null || seconds < 0) return '—';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) {
+    return `${d}d ${h}h ${m}m`;
+  }
+  if (h > 0) {
+    return `${h}h ${m}m`;
+  }
+  return `${m}m`;
+};
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   telemetry,
@@ -297,6 +310,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
 
+            {/* System & Service Uptimes */}
+            <div className="pt-2 border-t border-[var(--glass-border)] grid grid-cols-2 gap-2 text-xs">
+              <div className="flex flex-col p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
+                <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider">
+                  {t('dashboard.systemUptime', 'System Uptime')}
+                </span>
+                <span className="font-mono font-bold text-[var(--text-primary)] text-xs mt-0.5">
+                  {formatUptime(systemTelemetry.system_uptime_seconds)}
+                </span>
+              </div>
+              <div className="flex flex-col p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
+                <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider">
+                  {t('dashboard.serviceUptime', 'Service Uptime')}
+                </span>
+                <span className="font-mono font-bold text-brand-lime text-xs mt-0.5">
+                  {formatUptime(systemTelemetry.service_uptime_seconds)}
+                </span>
+              </div>
+            </div>
+
             {/* Thermal & Industrial Health */}
             <div className="pt-2.5 border-t border-[var(--glass-border)]">
               <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-2 flex items-center justify-between">
@@ -571,8 +604,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                 )}
                 {key === 'alsa' && value.available && value.cards && value.cards.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1.5 text-[9px] text-text-secondary font-mono leading-normal">
                     <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                    {(() => {
+                      const alsaAdvisor = systemTelemetry.alsa_advisor || value.advisor;
+                      const hasIommuHazard = alsaAdvisor?.has_audioscience && alsaAdvisor?.iommu_hazard;
+                      const hasUnpinnedSlots = alsaAdvisor?.slots_unpinned;
+                      if (!hasIommuHazard && !hasUnpinnedSlots) return null;
+                      return (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {hasIommuHazard && (
+                            <span 
+                              title={t('dashboard.iommuHazardTooltip', 'Intel VT-d is active in strict mode with AudioScience hardware. Risk of DMA timeout and DSP crash.')}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                            >
+                              ⚠️ {t('dashboard.iommuHazardBadge', 'VT-d / IOMMU DMA Hazard')}
+                            </span>
+                          )}
+                          {hasUnpinnedSlots && (
+                            <span 
+                              title={t('dashboard.slotsUnpinnedTooltip', 'Multiple soundcards detected without permanent modprobe slot assignment.')}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                            >
+                              ℹ️ {t('dashboard.slotsUnpinnedBadge', 'ALSA Slots Unpinned')}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 {key === 'decklink' && value.available && (

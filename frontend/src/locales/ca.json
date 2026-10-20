@@ -529,7 +529,15 @@
       "cascadedFrom": "En cascada des de",
       "masterMixerNode": "NODE MESCLADOR",
       "slaveEndpoint": "SORTIDA ESCLAVA",
-      "noMatrixControls": "Sense controls de matriu disponibles per a aquest node"
+      "noMatrixControls": "Sense controls de matriu disponibles per a aquest node",
+      "advisorTitle": "Diagnòstic de Maquinari i Kernel",
+      "iommuHazardTitle": "Risc de Conflicte DMA Intel VT-d (IOMMU)",
+      "iommuHazardDesc": "Intel VT-d opera en mode estricte de traducció amb una targeta AudioScience. L'IOMMU pot bloquejar lectures DMA ('PTE Read access is not set') provocant bloquejos del DSP (HPI error 207 / 105).",
+      "iommuFixAction": "Solució recomanada: Afegiu a /etc/default/grub (GRUB_CMDLINE_LINUX_DEFAULT):",
+      "slotsAdvisorTitle": "Persistència de l'Ordre de Targetes de So",
+      "slotsAdvisorDesc": "S'han detectat diverses targetes de so sense ordre fix a modprobe. Els índexs (hw:0, hw:1) poden alternar-se a cada reinici.",
+      "copySnippet": "Copiar /etc/modprobe.d/alsa-base.conf",
+      "copied": "Copiat!"
     },
     "watchdog": {
       "title": "WATCHDOG I TEMPS D'ARRANQUED",
@@ -1087,7 +1095,13 @@
     "fpgaTemp": "Temp FPGA",
     "pcieBus": "Bus PCIe",
     "criticalThermalAlert": "ALERTA TÈRMICA CRÍTICA: Temperatura de maquinari ha assolit {{temp}}°C. Es recomana refrigeració o reducció de càrrega immediata.",
-    "activeProtectionEngaged": "Protecció tèrmica activa activada: noves tasques programades i compilacions pausades."
+    "activeProtectionEngaged": "Protecció tèrmica activa activada: noves tasques programades i compilacions pausades.",
+    "systemUptime": "Temps Actiu (Sistema)",
+    "serviceUptime": "Temps Actiu (ffmpeg-gui)",
+    "iommuHazardBadge": "Risc DMA VT-d / IOMMU",
+    "iommuHazardTooltip": "Intel VT-d està actiu en mode estricte amb maquinari AudioScience. Risc d'error DMA i bloqueig del DSP.",
+    "slotsUnpinnedBadge": "Slots ALSA sense fixar",
+    "slotsUnpinnedTooltip": "Múltiples targetes de so detectades sense assignació fixa a modprobe."
   },
   "forge": {
     "title": "FFMPEG FORGE",

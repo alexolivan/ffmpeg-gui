@@ -529,7 +529,15 @@
       "cascadedFrom": "En cascada desde",
       "masterMixerNode": "NODO MEZCLADOR",
       "slaveEndpoint": "SALIDA ESCLAVA",
-      "noMatrixControls": "Sin controles de matriz disponibles para este nodo"
+      "noMatrixControls": "Sin controles de matriz disponibles para este nodo",
+      "advisorTitle": "Diagnóstico de Hardware y Kernel",
+      "iommuHazardTitle": "Riesgo de Conflicto DMA Intel VT-d (IOMMU)",
+      "iommuHazardDesc": "Intel VT-d opera en modo estricto de traducción con una tarjeta AudioScience. El IOMMU puede bloquear lecturas DMA ('PTE Read access is not set') provocando cuelgues del DSP (HPI error 207 / 105).",
+      "iommuFixAction": "Solución recomendada: Añade a /etc/default/grub (GRUB_CMDLINE_LINUX_DEFAULT):",
+      "slotsAdvisorTitle": "Persistencia del Orden de Tarjetas de Sonido",
+      "slotsAdvisorDesc": "Se han detectado varias tarjetas de sonido sin orden fijo en modprobe. Los índices (hw:0, hw:1) pueden alternarse en cada reinicio.",
+      "copySnippet": "Copiar /etc/modprobe.d/alsa-base.conf",
+      "copied": "¡Copiado!"
     },
     "watchdog": {
       "title": "WATCHDOG Y TIEMPOS DE ARRANQUE",
@@ -1087,7 +1095,13 @@
     "fpgaTemp": "Temp FPGA",
     "pcieBus": "Bus PCIe",
     "criticalThermalAlert": "ALERTA TÉRMICA CRÍTICA: Temperatura de hardware alcanzó {{temp}}°C. Se recomienda refrigeración o reducción de carga inmediata.",
-    "activeProtectionEngaged": "Protección térmica activa activada: nuevas tareas programadas y compilaciones pausadas."
+    "activeProtectionEngaged": "Protección térmica activa activada: nuevas tareas programadas y compilaciones pausadas.",
+    "systemUptime": "Tiempo Activo (Sistema)",
+    "serviceUptime": "Tiempo Activo (ffmpeg-gui)",
+    "iommuHazardBadge": "Riesgo DMA VT-d / IOMMU",
+    "iommuHazardTooltip": "Intel VT-d está activo en modo estricto con hardware AudioScience. Riesgo de fallo DMA y bloqueo del DSP.",
+    "slotsUnpinnedBadge": "Slots ALSA sin fijar",
+    "slotsUnpinnedTooltip": "Múltiples tarjetas de sonido detectadas sin asignación fija en modprobe."
   },
   "forge": {
     "title": "FFMPEG FORGE",

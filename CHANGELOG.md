@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.0] - 2026-10-20
+
+### Added
+- **ALSA & Kernel Hardware Advisor (`backend/core/alsa_manager.py`, `backend/main.py`, `backend/tests/test_alsa_advisor.py`, `AlsaAudioSettingsCard.tsx`)**:
+  - **Intel VT-d (IOMMU) DMA Hazard Detection**: Proactively inspects kernel command line (`/proc/cmdline`) and IOMMU sysfs status (`/sys/class/iommu`) when AudioScience cards are detected. Warns sysadmins of strict page-translation modes that cause 32-bit DMA timeouts (`DMAR: [DMA Read NO_PASID] ... PTE Read access is not set`, HPI error 207 / 105) and offers 1-click copyable GRUB remediation (`intel_iommu=pt iommu=pt`).
+  - **ALSA Soundcard Modprobe Slot Persistence**: Analyzes installed soundcards against `/etc/modprobe.d/` configurations to prevent asynchronous driver loading and device index shuffling (`hw:0` vs `hw:1`) across reboots. Automatically generates a clean, non-conflicting `/etc/modprobe.d/alsa-base.conf` snippet with explicit slots and 8 loopback substreams.
+  - **Diagnostics API Endpoint**: Exposes `GET /api/settings/alsa/diagnostics` and feeds summary diagnostic flags to system telemetry.
+  - **Compact Settings Advisor Banner**: Displays a responsive, non-intrusive diagnostic card directly beneath the soundcard selector in *Settings > ALSA Audio*, remaining completely hidden when no hazards or unpinned slots are detected.
+  - **Installer Configuration Guard**: Hardened `install.sh` (`configure_alsa_loopback`) to inspect existing `/etc/modprobe.d/` files and preserve custom configurations, preventing accidental overrides or conflicting `index=-2` directives when `snd-aloop` is already pinned.
+- **Host System & Service Uptime Telemetry (`backend/main.py`, `DashboardView.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - **Dual Uptime Tracking**: Added `system_uptime_seconds` (via `psutil.boot_time()`) and `service_uptime_seconds` (tracking `ffmpeg-gui` systemd process uptime since module initialization) to WebSocket telemetry and status APIs.
+  - **Dashboard SYSTEM STATUS Display**: Rendered side-by-side uptime indicators directly below CPU/RAM/GPU load bars in `DashboardView.tsx` with formatted `Xd Xh Xm` durations.
+  - **Dashboard Semantic Badges**: Added contextual warning pills in the ALSA section under *HARDWARE & PERIPHERALS* alerting sysadmins to VT-d DMA hazards on AudioScience hardware and unpinned slot orders.
+
 ## [2.48.2] - 2026-10-20
 
 ### Fixed
