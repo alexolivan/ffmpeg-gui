@@ -70,9 +70,16 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
                     proc_desc = name if name else "process"
                     logger.warning(f"Terminating rogue {proc_desc} process {pid} because: {reason}")
                     try:
-                        proc.send_signal(signal.SIGKILL)
+                        proc.send_signal(signal.SIGTERM)
+                        try:
+                            proc.wait(timeout=1.5)
+                        except (psutil.TimeoutExpired, TimeoutError):
+                            logger.warning(f"Process {pid} did not terminate after SIGTERM (1.5s timeout); escalating to SIGKILL")
+                            proc.send_signal(signal.SIGKILL)
+                    except (psutil.NoSuchProcess, ProcessLookupError):
+                        pass
                     except Exception as e:
-                        logger.error(f"Failed to SIGKILL rogue process {pid}: {e}")
+                        logger.error(f"Failed to terminate rogue process {pid}: {e}")
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
 

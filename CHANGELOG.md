@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.48.2] - 2026-10-20
+
+### Fixed
+- **AudioScience DSP Stability Shield & Staggered ALSA Teardown (`backend/core/alsa_manager.py`, `backend/core/process_manager.py`, `backend/utils/process_utils.py`, `backend/main.py`)**:
+  - **Zero-Interference Busy Guard**: Implemented `AlsaManager.hardware_busy_guard()` (supporting both sync and async contexts) and `detect_alsa_card_index()`. During service start, stop, or reload transitions, real-time hardware telemetry queries (`amixer contents`) are bypassed and cached metrics are returned, eliminating PCI mailbox contention and DMA lockup on DSP chips (e.g. `snd-asihpi` C6205).
+  - **WebSocket Polling Cadence Throttling**: Throttled `/ws/alsa/meters/{card_index}` polling interval for AudioScience cards (`is_asihpi`) from 100ms (10 Hz) to 300ms (~3.3 Hz), decreasing HPI mailbox commands by over 70% while frontend CSS transition smoothing maintains fluid VU meter animation.
+  - **Graceful Process Termination**: Replaced abrupt raw `SIGKILL` in `cleanup_rogue_processes` with a graceful `SIGTERM` followed by a 1.5-second timeout before escalating to `SIGKILL`, allowing ALSA drivers to cleanly execute `snd_pcm_close()` and release hardware DMA buffers.
+  - **Staggered Multi-Stream Shutdown**: In `ProcessManager.stop_all_processes`, processes sharing the exact same physical ALSA sound card (`hw:<card_idx>`) are now stopped sequentially with a 300ms delay between each process (~3 procs/sec), preventing concurrent `snd_pcm_close()` DMA collisions on the DSP during updates and service restarts while non-ALSA services continue stopping concurrently.
+
+
 ## [2.48.1] - 2026-10-20
 
 ### Fixed

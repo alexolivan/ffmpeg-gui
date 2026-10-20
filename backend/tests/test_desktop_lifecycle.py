@@ -319,8 +319,8 @@ class TestDesktopLifecycle(unittest.IsolatedAsyncioTestCase):
         proc_xvfb.send_signal.assert_not_called()
         proc_vnc.send_signal.assert_not_called()
 
-        # The stale one should be killed
-        proc_stale.send_signal.assert_called_once_with(signal.SIGKILL)
+        # The stale one should be gracefully terminated with SIGTERM
+        proc_stale.send_signal.assert_called_once_with(signal.SIGTERM)
 
     @patch("psutil.pid_exists")
     async def test_watchdog_respawns_dead_auxiliary_vnc(self, mock_pid_exists):

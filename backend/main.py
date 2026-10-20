@@ -8095,7 +8095,7 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
     alsa_manager.active_mixer_ws_count += 1
     # Check if this card is an AudioScience adapter to throttle interval and protect the DSP mailbox
     is_asihpi = alsa_manager.is_card_asihpi(card_index)
-    sleep_interval = 0.10 if is_asihpi else 0.05  # 10 Hz for AudioScience (compromise: fluid vumeters without mailbox saturation), 20 Hz otherwise
+    sleep_interval = 0.30 if is_asihpi else 0.05  # ~3.3 Hz for AudioScience (protects DSP mailbox), 20 Hz otherwise
     try:
         while True:
             telemetry = await asyncio.to_thread(alsa_manager.read_realtime_telemetry, card_index)

@@ -17,6 +17,40 @@ SND_CTL_ELEM_TYPE_IEC958 = 5
 
 audio_hw_lock = threading.RLock()
 
+class HardwareBusyGuard:
+    """
+    Context manager supporting both synchronous ('with') and asynchronous ('async with')
+    syntax to guard against hardware telemetry polling during sensitive ALSA lifecycle events.
+    """
+    def __init__(self, manager: "AlsaManager", card_idx: Optional[int] = None):
+        self.manager = manager
+        self.card_idx = card_idx
+
+    def __enter__(self):
+        with self.manager._busy_lock:
+            if self.card_idx is not None:
+                self.manager._busy_card_counts[self.card_idx] = self.manager._busy_card_counts.get(self.card_idx, 0) + 1
+            else:
+                self.manager._global_busy_count += 1
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        with self.manager._busy_lock:
+            if self.card_idx is not None:
+                cnt = self.manager._busy_card_counts.get(self.card_idx, 1) - 1
+                if cnt <= 0:
+                    self.manager._busy_card_counts.pop(self.card_idx, None)
+                else:
+                    self.manager._busy_card_counts[self.card_idx] = cnt
+            else:
+                self.manager._global_busy_count = max(0, self.manager._global_busy_count - 1)
+
+    async def __aenter__(self):
+        return self.__enter__()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return self.__exit__(exc_type, exc_val, exc_tb)
+
 class AlsaManager:
     _instance = None
     _lock = threading.Lock()
@@ -34,6 +68,11 @@ class AlsaManager:
         self.available = False
         self._card_locks: Dict[int, threading.Lock] = {}
         self.active_mixer_ws_count: int = 0
+        self._busy_lock = threading.Lock()
+        self._global_busy_count: int = 0
+        self._busy_card_counts: Dict[int, int] = {}
+        self._last_cached_meters: Dict[int, Dict[int, List[int]]] = {}
+        self._last_cached_jacks: Dict[int, Dict[int, bool]] = {}
 
         lib_paths = [
             "/usr/lib/x86_64-linux-gnu/libasound.so.2",
@@ -616,6 +655,35 @@ class AlsaManager:
             logger.error(f"Error writing ALSA control numid={numid} on card {card_idx}: {e}")
             return False
 
+    @property
+    def is_hardware_busy(self) -> bool:
+        """Returns True if hardware operations (start/stop/reload) are active globally."""
+        with self._busy_lock:
+            return self._global_busy_count > 0
+
+    @is_hardware_busy.setter
+    def is_hardware_busy(self, val: bool):
+        with self._busy_lock:
+            self._global_busy_count = 1 if val else 0
+
+    def is_card_busy(self, card_idx: int) -> bool:
+        """Returns True if a specific soundcard or the system is globally busy."""
+        with self._busy_lock:
+            if self._global_busy_count > 0:
+                return True
+            try:
+                c_idx_int = int(card_idx)
+                return self._busy_card_counts.get(c_idx_int, 0) > 0
+            except (ValueError, TypeError):
+                return False
+
+    def hardware_busy_guard(self, card_idx: Optional[int] = None) -> HardwareBusyGuard:
+        """
+        Suppresses real-time hardware telemetry polling (amixer contents)
+        during sensitive hardware operations (process startup, teardown, reload).
+        """
+        return HardwareBusyGuard(self, card_idx)
+
     def is_mixer_active(self) -> bool:
         """Returns True if any ALSA Mixer WebSocket client is actively streaming meters."""
         return self.active_mixer_ws_count > 0
@@ -628,11 +696,102 @@ class AlsaManager:
             return "asihpi" in c_name or "asi" in c_name
         return False
 
+    def detect_alsa_card_index(self, config: Optional[Dict[str, Any]] = None, cmd_str: Optional[str] = None, pid: Optional[int] = None) -> Optional[int]:
+        """
+        Detects which physical ALSA soundcard index (0, 1, 2...) a process or service is bound to.
+        Returns None if the process does not use an ALSA soundcard.
+        """
+        # 1. Inspect kernel /proc/{pid}/fd if process PID is active
+        if pid is not None:
+            try:
+                fd_dir = f"/proc/{pid}/fd"
+                if os.path.isdir(fd_dir):
+                    for fd in os.listdir(fd_dir):
+                        try:
+                            target = os.readlink(os.path.join(fd_dir, fd))
+                            if "/dev/snd/" in target:
+                                base = os.path.basename(target)
+                                m_pcm = re.match(r"pcmC(\d+)D", base)
+                                if m_pcm:
+                                    return int(m_pcm.group(1))
+                                m_ctl = re.match(r"controlC(\d+)", base)
+                                if m_ctl:
+                                    return int(m_ctl.group(1))
+                        except (OSError, FileNotFoundError):
+                            continue
+            except Exception:
+                pass
+
+        # 2. Inspect command string
+        if cmd_str:
+            alsa_matches = re.finditer(
+                r'(?:hw|plughw|dsnoop|dmix|default|sysdefault):\s*(?:card=)?([a-zA-Z0-9_\-]+)',
+                cmd_str,
+                re.IGNORECASE
+            )
+            for m in alsa_matches:
+                target = m.group(1)
+                if target.isdigit():
+                    return int(target)
+                target_lower = target.lower()
+                for c in self.get_cards():
+                    if str(c.get("card_id", "")).lower() == target_lower or str(c.get("name", "")).lower() == target_lower:
+                        return c["card_index"]
+
+        # 3. Inspect configuration dictionary
+        if config:
+            d_cfg = config.get("desktop_config", config)
+            if isinstance(d_cfg, dict) and d_cfg.get("audio_backend") == "alsa_loopback":
+                for c in self.get_cards():
+                    c_id = str(c.get("card_id", "")).lower()
+                    c_name = str(c.get("name", "")).lower()
+                    if "loopback" in c_id or "loopback" in c_name:
+                        return c["card_index"]
+
+            for sec_name in ["input", "output", "params", "last_started_config"]:
+                sec = config.get(sec_name)
+                if not isinstance(sec, dict):
+                    continue
+                dev = str(sec.get("device") or sec.get("audio_device") or "")
+                if dev:
+                    m = re.search(r'(?:hw|plughw|dsnoop|dmix):\s*(?:card=)?([a-zA-Z0-9_\-]+)', dev, re.IGNORECASE)
+                    if m:
+                        target = m.group(1)
+                        if target.isdigit():
+                            return int(target)
+                        target_lower = target.lower()
+                        for c in self.get_cards():
+                            if str(c.get("card_id", "")).lower() == target_lower or str(c.get("name", "")).lower() == target_lower:
+                                return c["card_index"]
+                is_alsa = (
+                    sec.get("type") == "alsa" or
+                    sec.get("audio_driver") == "alsa" or
+                    sec.get("output_type") == "alsa"
+                )
+                if is_alsa:
+                    sc = sec.get("soundcard")
+                    if sc is not None and str(sc).strip().isdigit():
+                        return int(sc)
+                    ci = sec.get("card_index")
+                    if ci is not None and str(ci).strip().isdigit():
+                        return int(ci)
+
+        return None
+
     def read_realtime_telemetry(self, card_idx: int) -> Dict[str, Any]:
         """
         Combined fast-path reading for meters and jack sensors in a single pass under audio_hw_lock.
         Avoids redundant amixer contents executions and serializes hardware mailbox access.
+        If the hardware is busy (e.g. during process startup, shutdown, or reload), returns cached telemetry
+        to shield the DSP and driver from PCI mailbox collision.
         """
+        # If hardware is guarded/busy, immediately return cached state without touching amixer or DSP
+        if self.is_card_busy(card_idx):
+            return {
+                "meters": self._last_cached_meters.get(card_idx, {}),
+                "jacks": self._last_cached_jacks.get(card_idx, {})
+            }
+
         card_info = next((c for c in self.get_cards() if str(c.get("card_index")) == str(card_idx)), None)
         if card_info:
             c_name = f"{card_info.get('card_id', '')} {card_info.get('name', '')} {card_info.get('driver', '')}".lower()
@@ -660,6 +819,9 @@ class AlsaManager:
                 vals = ctrl.get("values", [False])
                 if numid is not None:
                     jacks_data[numid] = bool(vals[0]) if vals else False
+
+        self._last_cached_meters[card_idx] = meters_data
+        self._last_cached_jacks[card_idx] = jacks_data
 
         return {"meters": meters_data, "jacks": jacks_data}
 

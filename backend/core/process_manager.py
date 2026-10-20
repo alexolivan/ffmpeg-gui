@@ -13,6 +13,7 @@ import collections
 import random
 import uuid
 from utils.process_utils import cleanup_rogue_processes, prepare_process_file_permissions
+from core.alsa_manager import alsa_manager
 
 class ProcessManager:
     def __init__(self, db_session_factory):
@@ -1366,8 +1367,55 @@ class ProcessManager:
             self.logger.error(f"Error querying active services for stop_all_processes: {e}")
 
         if active_ids:
-            tasks = [self.stop_process(pid, graceful=graceful, is_restart=False) for pid in active_ids]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # Shield ALSA hardware mailbox from telemetry during mass shutdown
+            async with alsa_manager.hardware_busy_guard():
+                # Group processes by ALSA card index
+                alsa_card_groups: Dict[int, List[int]] = {}
+                non_alsa_ids: List[int] = []
+
+                # Query configs if available
+                service_configs = {}
+                try:
+                    with self.db_session_factory() as session:
+                        from database.models import Service
+                        svcs = session.query(Service).filter(Service.id.in_(active_ids)).all()
+                        for s in svcs:
+                            service_configs[s.id] = s.config or {}
+                except Exception as e:
+                    self.logger.debug(f"Could not load service configs for ALSA grouping: {e}")
+
+                for pid in active_ids:
+                    cfg = service_configs.get(pid)
+                    proc_entry = self.processes.get(pid)
+                    real_pid = getattr(proc_entry, "pid", None) or self.reattached_pids.get(pid)
+                    card_idx = alsa_manager.detect_alsa_card_index(config=cfg, pid=real_pid)
+                    if card_idx is not None:
+                        alsa_card_groups.setdefault(card_idx, []).append(pid)
+                    else:
+                        non_alsa_ids.append(pid)
+
+                stop_tasks = []
+
+                # Non-ALSA processes can be stopped concurrently without hardware contention
+                if non_alsa_ids:
+                    stop_tasks.append(
+                        asyncio.gather(*[self.stop_process(pid, graceful=graceful, is_restart=False) for pid in non_alsa_ids], return_exceptions=True)
+                    )
+
+                # For each physical ALSA card, stagger process teardown sequentially (250-330ms delay) to avoid DSP PCI collision
+                for card_idx, card_pids in alsa_card_groups.items():
+                    async def _staggered_card_stop(pids: List[int], c_idx: int):
+                        for i, pid in enumerate(pids):
+                            try:
+                                await self.stop_process(pid, graceful=graceful, is_restart=False)
+                            except Exception as stop_err:
+                                self.logger.warning(f"Error stopping process {pid} on ALSA card {c_idx}: {stop_err}")
+                            if i < len(pids) - 1:
+                                await asyncio.sleep(0.30)  # ~3 processes/sec stagger delay
+
+                    stop_tasks.append(_staggered_card_stop(card_pids, card_idx))
+
+                await asyncio.gather(*stop_tasks, return_exceptions=True)
 
         # Final sweep to guarantee no rogue child processes remain in OS
         try:
@@ -1379,9 +1427,10 @@ class ProcessManager:
 
     async def restart_process(self, process_id: int):
         """Restarts a process cleanly preserving its pinned state and logs."""
-        await self.stop_process(process_id, is_restart=True)
-        await asyncio.sleep(0.5)
-        await self.start_process(process_id, is_restart=True)
+        async with alsa_manager.hardware_busy_guard():
+            await self.stop_process(process_id, is_restart=True)
+            await asyncio.sleep(0.5)
+            await self.start_process(process_id, is_restart=True)
 
     async def _restart_dependent_pipewire_consumers(self, hub_id: int):
         """
