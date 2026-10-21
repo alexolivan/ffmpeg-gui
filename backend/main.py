@@ -2411,6 +2411,11 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
         })
     try:
         for s in db.query(Storage).all():
+            if not os.path.exists(s.path):
+                try:
+                    os.makedirs(s.path, exist_ok=True)
+                except Exception:
+                    pass
             if os.path.exists(s.path):
                 if not os.access(s.path, os.W_OK):
                     storage_warnings.append({
@@ -3659,6 +3664,11 @@ async def telemetry_broadcast_loop():
                     is_writable = False
                     write_error = None
                     try:
+                        if not os.path.exists(s.path):
+                            try:
+                                os.makedirs(s.path, exist_ok=True)
+                            except Exception:
+                                pass
                         usage = shutil.disk_usage(s.path)
                         total = usage.total
                         used = usage.used
@@ -7577,6 +7587,11 @@ def get_storages(db: Session = Depends(get_db)):
     storages = db.query(Storage).all()
     results = []
     for s in storages:
+        if not os.path.exists(s.path):
+            try:
+                os.makedirs(s.path, exist_ok=True)
+            except Exception:
+                pass
         stats = get_disk_stats(s.path)
         is_writable = os.path.exists(s.path) and os.access(s.path, os.W_OK)
         results.append({

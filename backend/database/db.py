@@ -372,6 +372,15 @@ def init_db():
                 except Exception:
                     pass
 
+            # Ensure all configured storage directories exist on disk/RAM
+            # (critical on reboots for volatile RAM mounts like /dev/shm/ffmpeg-gui-cache)
+            for st in db.query(Storage).all():
+                if st.path:
+                    try:
+                        os.makedirs(st.path, exist_ok=True)
+                    except Exception:
+                        pass
+
             # Seed system log rotation task if missing
             from database.models import ScheduledTask
             from utils.cron_helper import CronHelper

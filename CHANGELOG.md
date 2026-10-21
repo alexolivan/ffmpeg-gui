@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.5] - 2026-10-21
+
+### Fixed
+- **Volatile Storage Directory Auto-Creation (`backend/database/db.py`, `backend/main.py`, `backend/tests/test_storage_cache.py`)**:
+  - **Reboot Resilience for RAM Mounts**: Fixed an issue where volatile RAM-backed storages (such as `Default Cache Storage` on `/dev/shm/ffmpeg-gui-cache`) disappeared across system reboots because `/dev/shm` is in `tmpfs`.
+  - **Startup Re-Creation in `init_db()`**: Updated `init_db()` in `backend/database/db.py` to iterate through all registered storages and ensure their target directories exist on disk/RAM on every service startup.
+  - **On-Demand Auto-Creation**: Enhanced `telemetry_broadcast_loop`, `get_storages`, and `get_auth_status` in `backend/main.py` to automatically attempt `os.makedirs(s.path, exist_ok=True)` if a registered storage directory does not exist, immediately restoring volatile RAM storages to healthy/writable status without requiring manual operator intervention.
+
 ## [2.49.4] - 2026-10-21
 
 ### Fixed
