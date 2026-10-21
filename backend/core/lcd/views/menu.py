@@ -4,7 +4,14 @@ from .base import LCDView
 class MainMenuView(LCDView):
     def __init__(self, manager):
         super().__init__(manager)
-        self.options = ["1. Dashboard", "2. Services", "3. Tasks", "4. Restart Panel", "5. System Info"]
+        self.options = [
+            "1. Dashboard",
+            "2. Services",
+            "3. Tasks",
+            "4. Restart Panel",
+            "5. Net Info",
+            "6. Versions"
+        ]
         self.selected_index = 0
 
     def render(self) -> List[str]:
@@ -40,8 +47,11 @@ class MainMenuView(LCDView):
                 from .submenu import RestartConfirmView
                 self.manager.switch_to_view(RestartConfirmView(self.manager))
             elif self.selected_index == 4:
-                from .info import SystemInfoView
-                self.manager.switch_to_view(SystemInfoView(self.manager))
+                from .info import NetInfoView
+                self.manager.switch_to_view(NetInfoView(self.manager))
+            elif self.selected_index == 5:
+                from .info import VersionInfoView
+                self.manager.switch_to_view(VersionInfoView(self.manager))
 
 class ServicesMenuView(LCDView):
     def __init__(self, manager):

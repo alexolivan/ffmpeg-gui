@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.50.0] - 2026-10-21
+
+### Added
+- **Dedicated NetInfoView & VersionInfoView LCD Screens (`core/lcd/views/info.py`, `core/lcd/views/menu.py`, `test_lcd_views.py`)**:
+  - **`NetInfoView` ('5. Net Info')**: Displays full, untruncated IPv4 addresses on dedicated lines across 4-line and 2-line LCDs (preventing octet truncations). Accurately aligns and displays active HTTP and HTTPS (`-----` when disabled) listener ports. Implemented resilient network interface discovery via `psutil.net_if_addrs()` to guarantee accurate LAN IP reporting even in isolated broadcast environments without external internet connectivity.
+  - **`VersionInfoView` ('6. Versions')**: Displays live, synchronized component versions dynamically fetched from their respective Single Sources of Truth (`backend.version`, `frontend/package.json`, and `database.version.schema_version`), replacing legacy hardcoded v1.x strings.
+  - **Main Menu Navigation**: Added `5. Net Info` and `6. Versions` options to `MainMenuView` with smooth `X` key return navigation.
+  - **Backward Compatibility**: Preserved `SystemInfoView = NetInfoView` alias for legacy integrations.
+
 ## [2.49.9] - 2026-10-21
 
 ### Fixed
