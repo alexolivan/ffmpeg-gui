@@ -3044,13 +3044,26 @@ class ProcessManager:
             if gpu_accel == "enabled":
                 user_js_lines.append('user_pref("layers.acceleration.force-enabled", true);')
 
+            # Unattended Kiosk Display Shield: suppress browser notification bars, infobars and banners
+            user_js_lines.append('user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);')
+            chrome_dir = os.path.join(profile_dir, "chrome")
+            os.makedirs(chrome_dir, exist_ok=True)
+            css_path = os.path.join(chrome_dir, "userChrome.css")
+            css_rules = [
+                "/* Unattended Kiosk Display: suppress browser notification bars, infobars and banners */",
+                "notificationbox,",
+                "notification-message-bar,",
+                ".notificationbox-stack,",
+                "#global-notificationbox,",
+                "#tab-notification-deck {",
+                "    display: none !important;",
+                "}"
+            ]
             if hide_scrollbars:
-                user_js_lines.append('user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);')
-                chrome_dir = os.path.join(profile_dir, "chrome")
-                os.makedirs(chrome_dir, exist_ok=True)
-                css_path = os.path.join(chrome_dir, "userChrome.css")
-                with open(css_path, "w", encoding="utf-8") as f:
-                    f.write("/* Hide scrollbars for unattended kiosk display */\n* { scrollbar-width: none !important; }\n")
+                css_rules.append("/* Hide scrollbars */")
+                css_rules.append("* { scrollbar-width: none !important; }")
+            with open(css_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(css_rules) + "\n")
 
             user_js_path = os.path.join(profile_dir, "user.js")
             with open(user_js_path, "w", encoding="utf-8") as f:

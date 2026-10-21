@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.9] - 2026-10-21
+
+### Fixed
+- **Firefox Kiosk Notificationbox & Banner Shield (`process_manager.py`, `test_kiosk_browser.py`)**:
+  - Automatically enabled `toolkit.legacyUserProfileCustomizations.stylesheets` and generated `chrome/userChrome.css` for all Firefox Kiosk profiles.
+  - Suppressed all browser-level notification bars, infobars, warning decks, and prompt stacks (`notificationbox`, `notification-message-bar`, `.notificationbox-stack`, `#global-notificationbox`, `#tab-notification-deck`) via CSS `display: none !important;`.
+  - Guarantees clean, uninterrupted broadcast output across unattended kiosk displays (OBS, NDI, VNC) regardless of any unexpected internal browser state alerts.
+
 ## [2.49.8] - 2026-10-21
 
 ### Fixed

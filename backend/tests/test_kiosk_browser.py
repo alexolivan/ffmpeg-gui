@@ -195,11 +195,14 @@ class TestKioskBrowser(unittest.TestCase):
             self.assertIn('layers.acceleration.force-enabled", true', content)
             self.assertIn('browser.window.width", 1920', content)
 
-        # Verify userChrome.css scrollbar collapse
+        # Verify userChrome.css notificationbox shield and scrollbar collapse
         css_path = os.path.join(profile_dir, "chrome", "userChrome.css")
         self.assertTrue(os.path.exists(css_path))
         with open(css_path, "r", encoding="utf-8") as f:
-            self.assertIn('scrollbar-width: none', f.read())
+            css_content = f.read()
+            self.assertIn('notificationbox', css_content)
+            self.assertIn('display: none !important', css_content)
+            self.assertIn('scrollbar-width: none', css_content)
 
     @patch("core.process_manager.ProcessManager._is_sound_server_available")
     @patch("shutil.which")
@@ -222,6 +225,7 @@ class TestKioskBrowser(unittest.TestCase):
                     "engine_id": "firefox",
                     "desktop_service_id": self.desktop.id,
                     "target_source": "https://example.com/audio",
+                    "hide_scrollbars": False
                 }
             }
         )
@@ -253,6 +257,7 @@ class TestKioskBrowser(unittest.TestCase):
                     "engine_id": "firefox",
                     "desktop_service_id": self.desktop.id,
                     "target_source": "https://example.com/audio",
+                    "hide_scrollbars": False
                 }
             }
         )
@@ -262,6 +267,14 @@ class TestKioskBrowser(unittest.TestCase):
         cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
         self.assertEqual(cmd[0], real_sh)
         self.assertIn("--kiosk", cmd)
+
+        # Verify notificationbox shield is present even when hide_scrollbars is False (default)
+        css_path = os.path.join(profile_dir, "chrome", "userChrome.css")
+        self.assertTrue(os.path.exists(css_path))
+        with open(css_path, "r", encoding="utf-8") as f:
+            css_content = f.read()
+            self.assertIn('notificationbox', css_content)
+            self.assertNotIn('scrollbar-width: none', css_content)
 
     def test_missing_desktop_validation(self):
         kiosk = Service(
@@ -497,6 +510,7 @@ class TestKioskBrowser(unittest.TestCase):
                     "engine_id": "firefox",
                     "desktop_service_id": self.desktop.id,
                     "target_source": "https://example.com/audio",
+                    "hide_scrollbars": False
                 }
             }
         )
