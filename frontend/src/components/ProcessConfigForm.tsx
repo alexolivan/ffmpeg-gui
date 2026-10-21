@@ -16,6 +16,7 @@ import LifecycleFormSection from './form/LifecycleFormSection';
 import AdvancedFlagsFormSection from './form/AdvancedFlagsFormSection';
 import PreviewCmdModal from './modals/PreviewCmdModal';
 import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
+import { AliasField } from './common/AliasField';
 
 const VIDEO_ALLOWED_TYPES = ['file', 'desktop', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
 const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls', 'pipewire'];
@@ -249,6 +250,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     // 1b. LCD Alias is required (max 12 chars)
     if (!config.alias || !config.alias.trim()) {
       errors.alias = t('forge.aliasRequired', 'El alias para LCD es obligatorio (máx. 12 caracteres)');
+    } else if (config.alias.trim().length > 12) {
+      errors.alias = t('common.aliasTooLong', 'Alias cannot exceed 12 characters');
+    } else if (!/^[a-zA-Z0-9\s-_]+$/.test(config.alias.trim())) {
+      errors.alias = t('common.aliasInvalidChars', 'Only letters, numbers, spaces, hyphens (-), and underscores (_) allowed');
     }
 
     // 2. Output validations based on type
@@ -1279,24 +1284,16 @@ const hasNDICodecIncompatibility = isNDIOutput && (
               }}
             />
           </div>
-          <div className="w-[140px] flex-shrink-0">
-            <input
-              type="text"
+          <div className="w-[160px] flex-shrink-0">
+            <AliasField
+              compact
+              required
               id="process-alias"
               name="alias"
-              maxLength={12}
-              className={`w-full bg-white/5 border rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium text-brand-lime placeholder-white/20 ${
-                validationErrors.alias
-                  ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                  : 'border-white/10'
-              }`}
               placeholder="LCD Alias *"
-              title={t('forge.lcdAliasTitle', 'LCD Display Alias (Required, max 12 alphanumeric characters, spaces, hyphens, underscores)')}
               value={config.alias}
-              onChange={e => {
-                const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
-                setConfig({ ...config, alias: val });
-              }}
+              onChange={val => setConfig({ ...config, alias: val })}
+              error={validationErrors.alias}
             />
           </div>
         </div>

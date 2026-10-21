@@ -61,7 +61,12 @@
     },
     "retryNow": "Reintentar ahora (Forzar arranque)",
     "deactivate": "Desactivar servicio (Cancelar reintentos)",
-    "deactivateDesc": "Cancela los reintentos automáticos y mueve el servicio a la lista de inactivos"
+    "deactivateDesc": "Cancela los reintentos automáticos y mueve el servicio a la lista de inactivos",
+    "alias": "Alias / Nombre LCD",
+    "aliasOptional": "Alias Personalizado (Opcional)",
+    "aliasTooLong": "El alias no puede superar los 12 caracteres",
+    "aliasInvalidChars": "Solo se permiten letras, números, espacios, guiones (-) y guiones bajos (_)",
+    "aliasRequired": "El alias es obligatorio (máx. 12 caracteres)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -123,6 +128,7 @@
     "logsHistory": "Histórico de Logs y Eventos",
     "viewLogs": "Ver Registros de Eventos",
     "mediamtx": {
+      "aliasHelp": "Identificador corto para panel LCD y tarjetas compactas (máx. 12 caracteres)",
       "generalConfig": "1. General y Binario de Ejecución",
       "selectBinary": "Versión / Binario de MediaMTX",
       "noBuildsWarning": "No se encontró ningún binario de MediaMTX. Ve a Ajustes -> Software para descargar una versión oficial o registrar el binario del sistema.",
@@ -258,6 +264,7 @@
       "adminPassword": "Contraseña Administrador Web",
       "adminUser": "Usuario Administrador Web",
       "alias": "Alias / Indicativo",
+      "aliasHelp": "Identificador corto para panel LCD y tarjetas compactas (máx. 12 caracteres)",
       "burstCol": "Burst (Búfer)",
       "burstSize": "Búfer de Arranque (Bytes)",
       "burstSizeShort": "Burst Búfer",
@@ -331,6 +338,7 @@
       "service_description": "Servidor de audio profesional con buses virtuales y difusión AES67/Dante por red.",
       "identityTitle": "Identidad del Hub y Motor Binario",
       "alias": "Alias / Indicativo",
+      "aliasHelp": "Identificador corto para panel LCD y tarjetas compactas (máx. 12 caracteres)",
       "engineBuild": "Motor Software PipeWire",
       "systemDefault": "Binario del Sistema Host ($PATH / pipewire)",
       "engineHint": "Si no seleccionas un build compilado de la Forja, el panel utilizará el binario del sistema PipeWire.",
@@ -1942,6 +1950,7 @@
     "general_settings": "Configuración de Escritorio Virtual",
     "name_label": "Nombre del Servicio",
     "alias_label": "Alias Personalizado (Opcional)",
+    "alias_help": "Identificador corto para panel LCD y tarjetas compactas (máx. 12 caracteres)",
     "display_parameters": "Ajustes de Pantalla X11 y VNC Remoto",
     "auto_assign": "Auto-asignar Puertos Libres",
     "display_num_label": "Número de Display X11 (:N)",
@@ -1980,6 +1989,7 @@
     "general_settings": "Configuración del Visualizador Kiosk Web",
     "name_label": "Nombre del Servicio",
     "alias_label": "Alias Personalizado (Opcional)",
+    "alias_help": "Identificador corto para panel LCD y tarjetas compactas (máx. 12 caracteres)",
     "target_desktop_label": "Escritorio Virtual Destino",
     "target_desktop_help": "Selecciona el servidor de Escritorio Virtual X11 donde se mostrará el navegador a pantalla completa.",
     "no_desktop_warning": "No se encontró ningún Escritorio Virtual. Crea primero un servicio de Escritorio Virtual X11.",

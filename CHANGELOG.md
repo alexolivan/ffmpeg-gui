@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.6] - 2026-10-21
+
+### Fixed
+- **Unified Alias Validation & Real-time Visual Feedback (`AliasField.tsx`, `ProcessConfigForm.tsx`, `DesktopConfigForm.tsx`, `KioskConfigForm.tsx`, `IcecastConfigForm.tsx`, `MediaMtxConfigForm.tsx`, `PipeWireConfigForm.tsx`, `SettingsView.tsx`)**:
+  - **Reusable Atomic `AliasField` Component**: Extracted a dedicated, multi-theme compliant component (`frontend/src/components/common/AliasField.tsx`) enforcing `maxLength={12}` and strict character whitelist matching backend Pydantic validation (`^[a-zA-Z0-9\s-_]+$`).
+  - **Live Dynamic Character Counter**: Added a real-time `{charCount}/12` counter that shifts to brand accent color when reaching the 12-character limit.
+  - **Inline Real-time Validation Errors**: Added instant, accessible inline error text for required field violations, length overflows, and invalid characters, replacing silent input stripping or unexpected 422 HTTP alerts upon save.
+  - **Normalized Realistic Placeholders**: Replaced legacy placeholders that exceeded 12 characters (e.g., `"e.g. Main Studio Screen"` or `"e.g. Studio TV Main Feed"`) with valid compact examples (`"e.g. STUDIO-DESK"`, `"e.g. KIOSK-MAIN"`, `"e.g. RADIO-LIVE"`, `"e.g. PW-HUB"`).
+  - **Form Guardrails**: Synchronized `validateConfig` and form submit handlers across all service forms and scheduled tasks to disallow submission when alias validation criteria are violated.
+  - **Full i18n Key Parity**: Registered new translation keys in `en.json`, `es.json`, and `ca.json` with 100% key parity.
+
 ## [2.49.5] - 2026-10-21
 
 ### Fixed

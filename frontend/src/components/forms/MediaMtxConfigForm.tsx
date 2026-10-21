@@ -8,6 +8,7 @@ import {
   CheckIcon 
 } from '../Icons';
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
+import { AliasField } from '../common/AliasField';
 
 interface MediaMtxConfigFormProps {
   initialConfig?: any;
@@ -441,6 +442,17 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
       return;
     }
 
+    if (alias && alias.trim()) {
+      if (alias.trim().length > 12) {
+        setError(t('common.aliasTooLong', 'Alias cannot exceed 12 characters'));
+        return;
+      }
+      if (!/^[a-zA-Z0-9\s-_]+$/.test(alias.trim())) {
+        setError(t('common.aliasInvalidChars', 'Only letters, numbers, spaces, hyphens (-), and underscores (_) allowed'));
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -559,19 +571,13 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block text-[11px] font-bold text-[var(--text-secondary)] uppercase mb-1">
-              {t('services.lcdAlias', 'LCD / Short Alias')} (Max 12 chars)
-            </label>
-            <input
-              type="text"
-              maxLength={12}
-              value={alias}
-              onChange={(e) => setAlias(e.target.value)}
-              placeholder="e.g. MTX-HUB"
-              className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 focus:border-brand-lime outline-none text-xs font-mono"
-            />
-          </div>
+          <AliasField
+            value={alias}
+            onChange={setAlias}
+            label={t('services.lcdAlias', 'LCD / Short Alias')}
+            placeholder="e.g. MTX-HUB"
+            helperText={t('services.mediamtx.aliasHelp', 'Short identifier for LCD panel and compact badges (max 12 chars)')}
+          />
 
           <div className="sm:col-span-2">
             <label className="block text-[11px] font-bold text-[var(--text-secondary)] uppercase mb-1">
@@ -1650,7 +1656,11 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isSubmitting || hasAnyConflict}
+          disabled={
+            isSubmitting ||
+            hasAnyConflict ||
+            Boolean(alias && alias.trim() && (alias.trim().length > 12 || !/^[a-zA-Z0-9\s-_]+$/.test(alias.trim())))
+          }
           className="px-6 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-brand-lime text-black shadow-lg shadow-brand-lime/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
         >
           {isSubmitting ? t('common.saving', 'Saving...') : initialConfig ? t('services.saveChanges', 'Save Changes') : t('services.createService', 'Create Service')}

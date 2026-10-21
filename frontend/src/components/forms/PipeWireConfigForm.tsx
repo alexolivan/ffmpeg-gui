@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlusIcon, TrashIcon } from '../Icons';
+import { AliasField } from '../common/AliasField';
 
 export interface VirtualSinkConfig {
   id: string;
@@ -558,6 +559,17 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     e.preventDefault();
     if (isNicConflict || internalCollisions.length > 0) return;
 
+    if (alias && alias.trim()) {
+      if (alias.trim().length > 12) {
+        alert(t('common.aliasTooLong', 'Alias cannot exceed 12 characters'));
+        return;
+      }
+      if (!/^[a-zA-Z0-9\s-_]+$/.test(alias.trim())) {
+        alert(t('common.aliasInvalidChars', 'Only letters, numbers, spaces, hyphens (-), and underscores (_) allowed'));
+        return;
+      }
+    }
+
     // Find selected interface IP for aes67_network payload
     const activeIface = networkAudit?.interfaces?.find((i) => i.name === selectedInterface);
     const selectedIp = activeIface?.ip || aesNetCfg.ip || '0.0.0.0';
@@ -669,18 +681,13 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
               />
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                {t('services.pipewire.alias', 'Alias / Call-sign')}
-              </label>
-              <input
-                type="text"
-                value={alias}
-                onChange={(e) => setAlias(e.target.value)}
-                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors"
-                placeholder="p. ej. Hub-Principal"
-              />
-            </div>
+            <AliasField
+              value={alias}
+              onChange={setAlias}
+              label={t('services.pipewire.alias', 'Alias / Call-sign')}
+              placeholder="e.g. PW-HUB"
+              helperText={t('services.pipewire.aliasHelp', 'Short identifier for LCD panel and compact badges (max 12 chars)')}
+            />
           </div>
 
           <div>
@@ -1761,7 +1768,11 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isNicConflict || internalCollisions.length > 0}
+          disabled={
+            isNicConflict ||
+            internalCollisions.length > 0 ||
+            Boolean(alias && alias.trim() && (alias.trim().length > 12 || !/^[a-zA-Z0-9\s-_]+$/.test(alias.trim())))
+          }
           className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-brand-lime text-black hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {isEditing

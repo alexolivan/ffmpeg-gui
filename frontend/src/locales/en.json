@@ -61,7 +61,12 @@
     },
     "retryNow": "Retry Now (Force Start)",
     "deactivate": "Deactivate Service (Cancel Retries)",
-    "deactivateDesc": "Cancel automatic retries and move service to inactive list"
+    "deactivateDesc": "Cancel automatic retries and move service to inactive list",
+    "alias": "LCD / Display Alias",
+    "aliasOptional": "Custom Alias (Optional)",
+    "aliasTooLong": "Alias cannot exceed 12 characters",
+    "aliasInvalidChars": "Only letters, numbers, spaces, hyphens (-), and underscores (_) allowed",
+    "aliasRequired": "Alias is required (max 12 characters)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -123,6 +128,7 @@
     "logsHistory": "Logs & Event History",
     "viewLogs": "View Event Logs",
     "mediamtx": {
+      "aliasHelp": "Short identifier for LCD panel and compact badges (max 12 chars)",
       "generalConfig": "1. General & Binary Build",
       "selectBinary": "MediaMTX Binary Release",
       "noBuildsWarning": "No MediaMTX release found. Please go to Settings -> Software to download an official release or register your system binary.",
@@ -258,6 +264,7 @@
       "adminPassword": "Web Admin Password",
       "adminUser": "Web Admin User",
       "alias": "Alias / Call Sign",
+      "aliasHelp": "Short identifier for LCD panel and compact badges (max 12 chars)",
       "burstCol": "Burst (Buffer)",
       "burstSize": "Start Buffer (Bytes)",
       "burstSizeShort": "Burst Buffer",
@@ -331,6 +338,7 @@
       "service_description": "Professional audio server with virtual mixing buses and AES67 / Dante network multicast streaming.",
       "identityTitle": "PipeWire Hub Identity & Binary Engine",
       "alias": "Alias / Call-sign",
+      "aliasHelp": "Short identifier for LCD panel and compact badges (max 12 chars)",
       "engineBuild": "PipeWire Software Engine",
       "systemDefault": "Host System Binary ($PATH / pipewire)",
       "engineHint": "If you do not select a compiled build from Forge, the panel will use the system PipeWire binary.",
@@ -1942,6 +1950,7 @@
     "general_settings": "Virtual Desktop Configuration",
     "name_label": "Service Name",
     "alias_label": "Custom Alias (Optional)",
+    "alias_help": "Short identifier for LCD panel and compact badges (max 12 chars)",
     "display_parameters": "X11 Display & Remote VNC Settings",
     "auto_assign": "Auto-Assign Free Ports",
     "display_num_label": "X11 Display Number (:N)",
@@ -1980,6 +1989,7 @@
     "general_settings": "Web Kiosk Display Configuration",
     "name_label": "Service Name",
     "alias_label": "Custom Alias (Optional)",
+    "alias_help": "Short identifier for LCD panel and compact badges (max 12 chars)",
     "target_desktop_label": "Target Virtual Desktop",
     "target_desktop_help": "Select the X11 Virtual Desktop server where this browser will display full-screen.",
     "no_desktop_warning": "No active Virtual Desktop found. Please create a Virtual Desktop Server service first.",

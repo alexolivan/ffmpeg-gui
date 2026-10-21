@@ -61,7 +61,12 @@
     },
     "retryNow": "Reintentar ara (Forçar arrencada)",
     "deactivate": "Desactivar servei (Cancel·lar reintents)",
-    "deactivateDesc": "Cancel·la els reintents automàtics i mou el servei a la llista d'inactius"
+    "deactivateDesc": "Cancel·la els reintents automàtics i mou el servei a la llista d'inactius",
+    "alias": "Àlies / Nom LCD",
+    "aliasOptional": "Àlies Personalitzat (Opcional)",
+    "aliasTooLong": "L'àlies no pot superar els 12 caràcters",
+    "aliasInvalidChars": "Només es permeten lletres, xifres, espais, guions (-) i guions baixos (_)",
+    "aliasRequired": "L'àlies és obligatori (màx. 12 caràcters)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -123,6 +128,7 @@
     "logsHistory": "Històric de Logs i Esdeveniments",
     "viewLogs": "Veure Registres d'Esdeveniments",
     "mediamtx": {
+      "aliasHelp": "Identificador curt per al panell LCD i targetes compactes (màx. 12 caràcters)",
       "generalConfig": "1. General i Binari d'Execució",
       "selectBinary": "Versió / Binari de MediaMTX",
       "noBuildsWarning": "No s'ha trobat cap binari de MediaMTX. Vés a Paràmetres -> Programari per descarregar una versió oficial o registrar el binari del sistema.",
@@ -258,6 +264,7 @@
       "adminPassword": "Contrasenya Administrador Web",
       "adminUser": "Usuari Administrador Web",
       "alias": "Àlies / Indicatiu",
+      "aliasHelp": "Identificador curt per al panell LCD i targetes compactes (màx. 12 caràcters)",
       "burstCol": "Burst (Búfer)",
       "burstSize": "Búfer d'Arrencada (Bytes)",
       "burstSizeShort": "Búfer Burst",
@@ -331,6 +338,7 @@
       "service_description": "Servidor d'àudio professional amb busos virtuals i difusió AES67/Dante per xarxa.",
       "identityTitle": "Identitat del Hub i Motor Binari",
       "alias": "Àlies / Indicatiu",
+      "aliasHelp": "Identificador curt per al panell LCD i targetes compactes (màx. 12 caràcters)",
       "engineBuild": "Motor de Programari PipeWire",
       "systemDefault": "Binari del Sistema Amfitrió ($PATH / pipewire)",
       "engineHint": "Si no seleccioneu una compilació de la Forja, el panell utilitzarà el binari del sistema PipeWire.",
@@ -1942,6 +1950,7 @@
     "general_settings": "Configuració d'Escriptori Virtual",
     "name_label": "Nom del Servei",
     "alias_label": "Àlies Personalitzat (Opcional)",
+    "alias_help": "Identificador curt per al panell LCD i targetes compactes (màx. 12 caràcters)",
     "display_parameters": "Ajustos de Pantalla X11 i VNC Remot",
     "auto_assign": "Autoassignar Ports Lliures",
     "display_num_label": "Número de Display X11 (:N)",
@@ -1980,6 +1989,7 @@
     "general_settings": "Configuració del Visualitzador Kiosk Web",
     "name_label": "Nom del Servei",
     "alias_label": "Àlies Personalitzat (Opcional)",
+    "alias_help": "Identificador curt per al panell LCD i targetes compactes (màx. 12 caràcters)",
     "target_desktop_label": "Escriptori Virtual Destinació",
     "target_desktop_help": "Selecciona el servidor d'Escriptori Virtual X11 on es mostrarà el navegador a pantalla completa.",
     "no_desktop_warning": "No s'ha trobat cap Escriptori Virtual. Crea primer un servei d'Escriptori Virtual X11.",

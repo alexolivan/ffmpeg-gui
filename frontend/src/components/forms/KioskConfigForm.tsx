@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ShieldIcon } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
+import { AliasField } from '../common/AliasField';
 
 interface KioskConfigFormProps {
   initialConfig?: any;
@@ -193,6 +194,19 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
 
     setIsSubmitting(true);
     try {
+      if (alias && alias.trim()) {
+        if (alias.trim().length > 12) {
+          alert(t('common.aliasTooLong', 'Alias cannot exceed 12 characters'));
+          setIsSubmitting(false);
+          return;
+        }
+        if (!/^[a-zA-Z0-9\s-_]+$/.test(alias.trim())) {
+          alert(t('common.aliasInvalidChars', 'Only letters, numbers, spaces, hyphens (-), and underscores (_) allowed'));
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const parsedBuildId = buildId === 'system' || !buildId ? null : Number(buildId);
       const payload = {
         name: name.trim() || 'Web Kiosk Display',
@@ -259,18 +273,13 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-                {t('kiosk.alias_label', 'Custom Alias (Optional)')}
-              </label>
-              <input
-                type="text"
-                value={alias}
-                onChange={(e) => setAlias(e.target.value)}
-                placeholder="e.g. Studio TV Main Feed"
-                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none"
-              />
-            </div>
+            <AliasField
+              value={alias}
+              onChange={setAlias}
+              label={t('kiosk.alias_label', 'Custom Alias (Optional)')}
+              placeholder="e.g. KIOSK-MAIN"
+              helperText={t('kiosk.alias_help', 'Short identifier for LCD panel and compact badges (max 12 chars)')}
+            />
           </div>
         </div>
 
@@ -727,7 +736,13 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isSubmitting || !desktopServiceId || !buildId || (!hasSystemBinary && availableBuilds.length === 0)}
+          disabled={
+            isSubmitting ||
+            !desktopServiceId ||
+            !buildId ||
+            (!hasSystemBinary && availableBuilds.length === 0) ||
+            Boolean(alias && alias.trim() && (alias.trim().length > 12 || !/^[a-zA-Z0-9\s-_]+$/.test(alias.trim())))
+          }
           className="px-5 py-2 rounded-xl text-xs font-bold bg-brand-lime text-black hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-50"
         >
           {isSubmitting

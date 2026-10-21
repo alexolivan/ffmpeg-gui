@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RefreshIcon, ShieldIcon } from '../Icons';
+import { AliasField } from '../common/AliasField';
 
 interface DesktopConfigFormProps {
   initialConfig?: any;
@@ -208,6 +209,19 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
     }
     setIsSubmitting(true);
     try {
+      if (alias && alias.trim()) {
+        if (alias.trim().length > 12) {
+          alert(t('common.aliasTooLong', 'Alias cannot exceed 12 characters'));
+          setIsSubmitting(false);
+          return;
+        }
+        if (!/^[a-zA-Z0-9\s-_]+$/.test(alias.trim())) {
+          alert(t('common.aliasInvalidChars', 'Only letters, numbers, spaces, hyphens (-), and underscores (_) allowed'));
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
       const payload = {
         name: name.trim() || 'Virtual Desktop',
         alias: alias.trim() || null,
@@ -271,18 +285,13 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-                {t('desktop.alias_label', 'Custom Alias (Optional)')}
-              </label>
-              <input
-                type="text"
-                value={alias}
-                onChange={(e) => setAlias(e.target.value)}
-                placeholder="e.g. Main Studio Screen"
-                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none"
-              />
-            </div>
+            <AliasField
+              value={alias}
+              onChange={setAlias}
+              label={t('desktop.alias_label', 'Custom Alias (Optional)')}
+              placeholder="e.g. STUDIO-DESK"
+              helperText={t('desktop.alias_help', 'Short identifier for LCD panel and compact badges (max 12 chars)')}
+            />
           </div>
         </div>
 
@@ -705,7 +714,12 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
         </button>
         <button
           type="submit"
-          disabled={isSubmitting || isAllocating || (audioBackend === 'pipewire_hub' && (!pipewireServiceId || !pipewireSinkId))}
+          disabled={
+            isSubmitting ||
+            isAllocating ||
+            Boolean(alias && alias.trim() && (alias.trim().length > 12 || !/^[a-zA-Z0-9\s-_]+$/.test(alias.trim()))) ||
+            (audioBackend === 'pipewire_hub' && (!pipewireServiceId || !pipewireSinkId))
+          }
           className="px-5 py-2 rounded-xl text-xs font-bold bg-brand-lime text-black hover:opacity-90 transition-all shadow-md cursor-pointer disabled:opacity-50"
         >
           {isSubmitting

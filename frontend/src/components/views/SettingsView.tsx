@@ -12,6 +12,7 @@ import { RemotePeersCard } from './settings/RemotePeersCard';
 import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
 import { FirewallPortMatrixCard } from './settings/FirewallPortMatrixCard';
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
+import { AliasField } from '../common/AliasField';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'] as const;
 
@@ -1393,20 +1394,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       placeholder="e.g. FFG"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.branding.nodeAlias', 'LCD / Node Alias')}</label>
-                    <input 
-                      type="text" 
-                      maxLength={12}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono"
-                      value={lcdAlias}
-                      onChange={e => {
-                        const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
-                        setLcdAlias(val);
-                      }}
-                      placeholder="e.g. NODE-01"
-                    />
-                  </div>
+                  <AliasField
+                    value={lcdAlias}
+                    onChange={setLcdAlias}
+                    label={t('settings.branding.nodeAlias', 'LCD / Node Alias')}
+                    placeholder="e.g. NODE-01"
+                  />
                 </div>
 
                 <div className="flex flex-col items-center justify-center border-2 border-dashed border-[var(--glass-border)] rounded-xl p-4 hover:border-brand-lime transition-all relative group cursor-pointer h-full min-h-[140px] bg-[var(--input-bg)]">
