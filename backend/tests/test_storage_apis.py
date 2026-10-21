@@ -89,9 +89,25 @@ class TestStorageAPIs(unittest.TestCase):
             self.assertIn("free", storage)
             self.assertIn("percent", storage)
             self.assertIn("stats", storage)
+            self.assertIn("is_writable", storage)
             # Stats should have same values
             self.assertEqual(storage["total"], storage["stats"]["total"])
             self.assertTrue(os.path.isabs(storage["path"]))
+
+    def test_storage_writability_introspection_and_auth_status_warning(self):
+        # 1. Verify get_storages returns is_writable boolean
+        res = self.client.get("/settings/storages")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        for item in data:
+            self.assertIn("is_writable", item)
+
+        # 2. Verify get_auth_status includes storage_warnings array
+        res_auth = self.client.get("/api/auth/status")
+        self.assertEqual(res_auth.status_code, 200)
+        auth_data = res_auth.json()
+        self.assertIn("storage_warnings", auth_data)
+        self.assertIsInstance(auth_data["storage_warnings"], list)
 
     def test_create_storage_success(self):
         test_path = os.path.join(self.temp_dir, "custom_media")

@@ -28,6 +28,8 @@
     "setDefault": "ESTABLECER PREDETERMINADO",
     "cancelUpload": "✕ Cancelar subida",
     "loading": "Cargando...",
+    "readyToReload": "Listo para Recargar",
+    "fallback": "Fallback Journalctl",
     "waiting": "Esperando señal de entrada...",
     "clonedSuccess": "¡Clonado con éxito!",
     "refresh": "Actualizar",
@@ -75,7 +77,9 @@
     "unlockNode": "Desbloquear Nodo",
     "lockNode": "Bloquear Nodo",
     "logout": "Cerrar Sesión",
-    "checkingAuth": "Verificando credenciales de seguridad..."
+    "checkingAuth": "Verificando credenciales de seguridad...",
+    "permissionsRestored": "Permisos Restaurados",
+    "storageWarning": "Aviso de Permisos de Almacenamiento"
   },
   "services": {
     "title": "Servicios",
@@ -649,7 +653,11 @@
       "retentionDays": "Días de Retención",
       "timestampTz": "Formato de Hora en Logs",
       "timestampTzUtc": "UTC (Tiempo Universal Coordinado - Estándar)",
-      "timestampTzLocal": "Zona Horaria Local del Equipo (Offset)"
+      "timestampTzLocal": "Zona Horaria Local del Equipo (Offset)",
+      "permissionsRecovered": "¡Permisos de Almacenamiento de Logs Restaurados!",
+      "fallbackActive": "Almacenamiento de Logs en Solo Lectura (Operando en Fallback Journalctl)",
+      "permissionsRecoveredHelp": "Se ha restaurado el acceso de escritura en {{path}}. Reinicia o recarga el servicio para reanudar el guardado de logs en fichero.",
+      "fallbackActiveHelp": "No se puede escribir en {{path}}. Los logs del sistema se redirigen temporalmente a la consola de journalctl."
     },
     "lcd": {
       "title": "Pantalla LCD y Driver Serie",
@@ -699,7 +707,10 @@
       "deleteStorage": "Eliminar Almacenamiento",
       "utilization": "Uso de Espacio",
       "routePath": "Ruta HTTP del Stream (Opcional)",
-      "routePathHelp": "Permite servir manifiestos y segmentos HLS por HTTP (/ruta_stream/nombre_stream.m3u8)."
+      "routePathHelp": "Permite servir manifiestos y segmentos HLS por HTTP (/ruta_stream/nombre_stream.m3u8).",
+      "readOnly": "SOLO LECTURA (PERMISO DENEGADO)",
+      "readOnlyHelp": "El servicio no tiene permisos de escritura en este directorio",
+      "writable": "ESCRIBIBLE"
     },
     "security": {
       "title": "Seguridad y Acceso",
@@ -1034,6 +1045,11 @@
     "notDetected": "No Detectado",
     "storageCapacities": "CAPACIDAD DE ALMACENAMIENTO",
     "freeGb": "GB libres",
+    "storageReadOnly": "Solo Lectura / Permiso Denegado",
+    "storageReadOnlyShort": "SOLO LECTURA",
+    "storagePermissionDenied": "Permiso Denegado",
+    "loggingPermissionsRecovered": "¡Permisos de almacenamiento de logs restaurados! Reinicia o recarga el servicio para reanudar el log a fichero.",
+    "loggingFallbackActive": "Ruta de logs en solo lectura. Los logs se redirigen de forma segura a systemd journal.",
     "hardwarePeripherals": "HARDWARE Y PERIFÉRICOS",
     "hardwareIntrospection": "Introspección en tiempo real de aceleración de medios, servidores de sonido y dispositivos de captura del host.",
     "lcdPanel": "PANEL LCD",

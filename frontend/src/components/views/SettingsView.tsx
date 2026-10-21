@@ -1449,10 +1449,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* Card 3: Logging Configuration */}
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
-              <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.logging.title', 'LOGGING CONFIGURATION')}</h4>
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.logging.title', 'LOGGING CONFIGURATION')}</h4>
+                </div>
+                {systemTelemetry?.logging_status?.fallback_active && (
+                  <span
+                    className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border flex items-center gap-1 ${
+                      systemTelemetry.logging_status.permissions_recovered
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                        : 'bg-red-500/15 text-red-400 border-red-500/30 animate-pulse'
+                    }`}
+                  >
+                    {systemTelemetry.logging_status.permissions_recovered ? '✅ ' + t('common.readyToReload', 'PERMS RESTORED') : '⚠️ ' + t('common.fallback', 'JOURNAL FALLBACK')}
+                  </span>
+                )}
               </div>
+
+              {systemTelemetry?.logging_status?.fallback_active && (
+                <div className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+                  systemTelemetry.logging_status.permissions_recovered
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-red-500/10 border-red-500/30 text-red-400'
+                }`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base shrink-0">{systemTelemetry.logging_status.permissions_recovered ? '✅' : '⚠️'}</span>
+                    <div className="min-w-0">
+                      <p className="font-bold">
+                        {systemTelemetry.logging_status.permissions_recovered
+                          ? t('settings.logging.permissionsRecovered', 'Log Storage Permissions Restored!')
+                          : t('settings.logging.fallbackActive', 'Log Storage Read-Only (Operating in Journalctl Fallback)')}
+                      </p>
+                      <p className="text-[11px] opacity-90 mt-0.5 break-all">
+                        {systemTelemetry.logging_status.permissions_recovered
+                          ? t('settings.logging.permissionsRecoveredHelp', 'Write access to {{path}} has been restored. Restart or reload the system service to resume writing logs to file.', { path: systemTelemetry.logging_status.target_file })
+                          : t('settings.logging.fallbackActiveHelp', 'Cannot write to {{path}}. System logs are temporarily redirected to journalctl console.', { path: systemTelemetry.logging_status.target_file })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
@@ -2016,7 +2053,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             {typeStorages.map((s, idx) => {
                               const isEditing = editingId === s.id;
                               const usedPercent = s.percent !== undefined ? s.percent : 0;
-                              const barColorClass = getProgressBarColorClass(usedPercent);
+                              const isWritable = s.is_writable !== false;
+                              const barColorClass = !isWritable ? 'bg-red-500 animate-pulse' : getProgressBarColorClass(usedPercent);
 
                               return (
                                 <div key={s.id} className={`pt-3 ${idx === 0 ? '!pt-0' : ''}`}>
@@ -2109,6 +2147,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             {s.route_path && (
                                               <span className="text-[9px] font-mono font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded flex items-center gap-1">
                                                 🌐 {s.route_path}
+                                              </span>
+                                            )}
+                                            {!isWritable && (
+                                              <span
+                                                className="text-[9px] font-black uppercase bg-red-500/20 text-red-500 border border-red-500/40 px-2 py-0.5 rounded tracking-wider flex items-center gap-1 animate-pulse"
+                                                title={t('settings.storage.readOnlyHelp', 'Daemon lacks write permissions to this directory')}
+                                              >
+                                                ⚠️ {t('settings.storage.readOnly', 'READ-ONLY (PERMISSION DENIED)')}
+                                              </span>
+                                            )}
+                                            {isWritable && (
+                                              <span className="text-[9px] font-black uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded tracking-wider flex items-center gap-1">
+                                                ✓ {t('settings.storage.writable', 'WRITABLE')}
                                               </span>
                                             )}
                                           </div>

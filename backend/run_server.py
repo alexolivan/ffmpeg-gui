@@ -176,6 +176,9 @@ def main():
             # Pre-flight check: ensure log file can be opened/created for appending
             with open(os.path.abspath(log_file), "a") as f:
                 pass
+            os.environ["LOGGING_FALLBACK_ACTIVE"] = "false"
+            os.environ["LOGGING_TARGET_FILE"] = os.path.abspath(log_file)
+            os.environ.pop("LOGGING_FALLBACK_ERROR", None)
         except (PermissionError, OSError) as e:
             print(
                 f"[FFMPEG-GUI WARNING] Cannot write to log file '{log_file}' ({e}). "
@@ -184,6 +187,9 @@ def main():
             )
             use_file = False
             use_console = True
+            os.environ["LOGGING_FALLBACK_ACTIVE"] = "true"
+            os.environ["LOGGING_TARGET_FILE"] = os.path.abspath(log_file)
+            os.environ["LOGGING_FALLBACK_ERROR"] = str(e)
 
     general_handlers = []
     if use_console:

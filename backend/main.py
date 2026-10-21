@@ -2388,9 +2388,51 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
 @app.get("/api/auth/status")
 @app.get("/auth/status")
 def get_auth_status(request: Request, db: Session = Depends(get_db)):
-    from database.models import SystemSettings
+    from database.models import SystemSettings, Storage
     from version import __version__ as ver
     settings = db.query(SystemSettings).first()
+
+    # Dynamic storage & logging health check for pre-login alert
+    storage_warnings = []
+    if os.environ.get("LOGGING_FALLBACK_ACTIVE") == "true":
+        target = os.environ.get("LOGGING_TARGET_FILE", "/var/log/ffmpeg-gui/ffmpeg-gui.log")
+        is_rec = False
+        try:
+            tdir = os.path.dirname(target)
+            if os.path.exists(tdir) and os.access(tdir, os.W_OK):
+                is_rec = True
+        except Exception:
+            pass
+        storage_warnings.append({
+            "type": "logging_fallback",
+            "path": target,
+            "recovered": is_rec,
+            "message": f"Log target '{target}' is not writable. Running in journalctl fallback mode." if not is_rec else f"Permissions restored on '{target}'. Restart/reload service to resume file logging."
+        })
+    try:
+        for s in db.query(Storage).all():
+            if os.path.exists(s.path):
+                if not os.access(s.path, os.W_OK):
+                    storage_warnings.append({
+                        "type": "storage_permission",
+                        "storage_id": s.id,
+                        "storage_name": s.name,
+                        "path": s.path,
+                        "recovered": False,
+                        "message": f"Storage '{s.name}' ({s.path}) is not writable (permission denied)."
+                    })
+            else:
+                storage_warnings.append({
+                    "type": "storage_missing",
+                    "storage_id": s.id,
+                    "storage_name": s.name,
+                    "path": s.path,
+                    "recovered": False,
+                    "message": f"Storage '{s.name}' ({s.path}) directory does not exist."
+                })
+    except Exception as e:
+        logger.warning(f"Error checking storage health in get_auth_status: {e}")
+
     if not settings:
         return {
             "password_required": False,
@@ -2399,7 +2441,8 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
             "logo_path": None,
             "logo_text": "FF",
             "accent_color": "#FF6B00",
-            "version": ver
+            "version": ver,
+            "storage_warnings": storage_warnings
         }
     password_required = bool(settings.gui_password)
     is_authenticated = True
@@ -2420,7 +2463,8 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
         "logo_path": settings.logo_path,
         "logo_text": settings.logo_text or "FF",
         "accent_color": settings.accent_color or "#FF6B00",
-        "version": ver
+        "version": ver,
+        "storage_warnings": storage_warnings
     }
 
 
@@ -3612,17 +3656,27 @@ async def telemetry_broadcast_loop():
                 # Query all configured storages
                 storages = db.query(Storage).all()
                 for s in storages:
+                    is_writable = False
+                    write_error = None
                     try:
                         usage = shutil.disk_usage(s.path)
                         total = usage.total
                         used = usage.used
                         free = usage.free
                         percent = round((used / total) * 100, 2) if total > 0 else 0.0
-                    except (FileNotFoundError, PermissionError):
+                        if os.path.exists(s.path):
+                            is_writable = os.access(s.path, os.W_OK)
+                            if not is_writable:
+                                write_error = "Permission denied"
+                        else:
+                            write_error = "Path does not exist"
+                    except (FileNotFoundError, PermissionError, OSError) as s_err:
                         total = 0
                         used = 0
                         free = 0
                         percent = 0.0
+                        is_writable = False
+                        write_error = str(s_err)
                     
                     if percent > 90.0:
                         if s.id not in alerted_storages:
@@ -3640,7 +3694,9 @@ async def telemetry_broadcast_loop():
                         "total_gb": round(total / (1024 ** 3), 2),
                         "used_gb": round(used / (1024 ** 3), 2),
                         "free_gb": round(free / (1024 ** 3), 2),
-                        "percent": percent
+                        "percent": percent,
+                        "is_writable": is_writable,
+                        "write_error": write_error
                     })
             
             # Gather global host system metrics (outside database session block)
@@ -3651,6 +3707,18 @@ async def telemetry_broadcast_loop():
             global lcd_manager
             git_meta = get_git_metadata()
             updates = check_latest_release(backend_version)
+
+            logging_fallback_active = os.environ.get("LOGGING_FALLBACK_ACTIVE") == "true"
+            logging_target_file = os.environ.get("LOGGING_TARGET_FILE")
+            logging_recovered = False
+            if logging_fallback_active and logging_target_file:
+                try:
+                    tdir = os.path.dirname(logging_target_file)
+                    if os.path.exists(tdir) and os.access(tdir, os.W_OK):
+                        logging_recovered = True
+                except Exception:
+                    logging_recovered = False
+
             system_data = {
                 "cpu": sys_cpu,
                 "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
@@ -3671,7 +3739,13 @@ async def telemetry_broadcast_loop():
                 },
                 "system_uptime_seconds": int(time.time() - psutil.boot_time()),
                 "service_uptime_seconds": int(time.time() - SERVICE_START_TIME),
-                "alsa_advisor": alsa_manager.get_alsa_advisor_diagnostics().get("summary", {})
+                "alsa_advisor": alsa_manager.get_alsa_advisor_diagnostics().get("summary", {}),
+                "logging_status": {
+                    "fallback_active": logging_fallback_active,
+                    "target_file": logging_target_file,
+                    "fallback_error": os.environ.get("LOGGING_FALLBACK_ERROR"),
+                    "permissions_recovered": logging_recovered
+                }
             }
 
             from core.resource_lock_manager import resource_lock_manager
@@ -7504,6 +7578,7 @@ def get_storages(db: Session = Depends(get_db)):
     results = []
     for s in storages:
         stats = get_disk_stats(s.path)
+        is_writable = os.path.exists(s.path) and os.access(s.path, os.W_OK)
         results.append({
             "id": s.id,
             "name": s.name,
@@ -7516,7 +7591,8 @@ def get_storages(db: Session = Depends(get_db)):
             "used": stats["used"],
             "free": stats["free"],
             "percent": stats["percent"],
-            "stats": stats
+            "stats": stats,
+            "is_writable": is_writable
         })
     return results
 

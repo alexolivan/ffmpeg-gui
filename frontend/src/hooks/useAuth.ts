@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react';
 
 const API = '';
 
+export interface StorageWarning {
+  type: string;
+  storage_id?: number;
+  storage_name?: string;
+  path: string;
+  recovered?: boolean;
+  message: string;
+}
+
 export interface AuthStatus {
   password_required: boolean;
   authenticated: boolean;
@@ -10,6 +19,7 @@ export interface AuthStatus {
   logo_text: string | null;
   accent_color: string;
   version: string;
+  storage_warnings?: StorageWarning[];
 }
 
 export function useAuth() {
@@ -142,7 +152,11 @@ export function useAuth() {
 
   useEffect(() => {
     fetchAuthStatus();
-  }, []);
+    if (!isAuthenticated) {
+      const interval = setInterval(fetchAuthStatus, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated) {

@@ -436,13 +436,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             {systemTelemetry.storages && systemTelemetry.storages.length > 0 && (
               <div className="mt-3 pt-3 border-t border-[var(--glass-border)]">
-                <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-2">
-                  {t('dashboard.storageCapacities')}
-                </h4>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider">
+                    {t('dashboard.storageCapacities')}
+                  </h4>
+                  {systemTelemetry.logging_status?.fallback_active && (
+                    <span
+                      className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border flex items-center gap-1 ${
+                        systemTelemetry.logging_status.permissions_recovered
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                          : 'bg-red-500/15 text-red-400 border-red-500/30 animate-pulse'
+                      }`}
+                      title={systemTelemetry.logging_status.permissions_recovered
+                        ? t('dashboard.loggingPermissionsRecovered', 'Log permissions restored on host! Reload or restart service to resume file logging.')
+                        : t('dashboard.loggingFallbackActive', 'Log path read-only. Daemon operating in journalctl fallback mode.')}
+                    >
+                      {systemTelemetry.logging_status.permissions_recovered ? '✅ ' + t('common.readyToReload', 'PERMS RESTORED') : '⚠️ ' + t('common.fallback', 'JOURNAL FALLBACK')}
+                    </span>
+                  )}
+                </div>
+
+                {systemTelemetry.logging_status?.fallback_active && (
+                  <div className={`mb-2.5 p-2 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                    systemTelemetry.logging_status.permissions_recovered
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                      : 'bg-red-500/10 border-red-500/30 text-red-400'
+                  }`}>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="shrink-0">{systemTelemetry.logging_status.permissions_recovered ? '✅' : '⚠️'}</span>
+                      <span className="text-[11px] truncate">
+                        {systemTelemetry.logging_status.permissions_recovered
+                          ? t('dashboard.loggingPermissionsRecovered', 'Log storage permissions restored! Restart or reload service to resume file logging.')
+                          : t('dashboard.loggingFallbackActive', 'Log path is read-only. Logs are safely redirected to systemd journal.')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   {systemTelemetry.storages.map((storage: any) => {
                     const percent = storage.percent !== undefined ? storage.percent : 0;
                     const freeGb = storage.free_gb !== undefined ? storage.free_gb : 0;
+                    const isWritable = storage.is_writable !== false;
                     return (
                       <div key={storage.id || storage.name} className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
@@ -453,21 +488,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             <span className="text-[8px] font-black uppercase bg-brand-orange/20 text-brand-orange px-1.5 py-0.2 rounded tracking-wider shrink-0">
                               {storage.type}
                             </span>
+                            {!isWritable && (
+                              <span
+                                className="text-[8px] font-black uppercase bg-red-500/20 text-red-500 border border-red-500/40 px-1.5 py-0.2 rounded tracking-wider shrink-0 flex items-center gap-0.5 animate-pulse"
+                                title={storage.write_error || t('dashboard.storageReadOnly', 'Read-Only / Permission Denied')}
+                              >
+                                ⚠️ {t('dashboard.storageReadOnlyShort', 'READ-ONLY')}
+                              </span>
+                            )}
                           </div>
-                          <span className="text-text-secondary font-mono text-[10px] shrink-0">
-                            {percent}% ({freeGb} {t('dashboard.freeGb')})
+                          <span className={`font-mono text-[10px] shrink-0 ${isWritable ? 'text-text-secondary' : 'text-red-400 font-bold'}`}>
+                            {isWritable ? `${percent}% (${freeGb} ${t('dashboard.freeGb')})` : t('dashboard.storagePermissionDenied', 'Permission Denied')}
                           </span>
                         </div>
-                        <div className="h-1.5 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
+                        <div className={`h-1.5 bg-[var(--track-bg)] border ${isWritable ? 'border-[var(--glass-border)]' : 'border-red-500/50'} rounded-full overflow-hidden`}>
                           <div
                             className={`h-full transition-all duration-500 ${
-                              percent < 75
+                              !isWritable
+                                ? 'bg-red-500 animate-pulse'
+                                : percent < 75
                                 ? 'bg-brand-lime'
                                 : percent <= 90
                                 ? 'bg-brand-orange'
                                 : 'bg-red-500 animate-pulse'
                             }`}
-                            style={{ width: `${Math.min(100, percent)}%` }}
+                            style={{ width: `${Math.min(100, isWritable ? percent : 100)}%` }}
                           ></div>
                         </div>
                       </div>

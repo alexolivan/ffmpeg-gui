@@ -28,6 +28,8 @@
     "setDefault": "SET DEFAULT",
     "cancelUpload": "✕ Cancel upload",
     "loading": "Loading...",
+    "readyToReload": "Ready to Reload",
+    "fallback": "Journalctl Fallback",
     "waiting": "Waiting for input signal...",
     "clonedSuccess": "Cloned successfully!",
     "refresh": "Refresh",
@@ -75,7 +77,9 @@
     "unlockNode": "Unlock Node",
     "lockNode": "Lock Node",
     "logout": "Logout",
-    "checkingAuth": "Verifying security credentials..."
+    "checkingAuth": "Verifying security credentials...",
+    "permissionsRestored": "Permissions Restored",
+    "storageWarning": "Storage Permission Warning"
   },
   "services": {
     "title": "Services",
@@ -649,7 +653,11 @@
       "retentionDays": "Retention Days",
       "timestampTz": "Log Timestamp Format",
       "timestampTzUtc": "UTC (Universal Coordinated Time - Standard)",
-      "timestampTzLocal": "Local Machine Timezone (Offset)"
+      "timestampTzLocal": "Local Machine Timezone (Offset)",
+      "permissionsRecovered": "Log Storage Permissions Restored!",
+      "fallbackActive": "Log Storage Read-Only (Operating in Journalctl Fallback)",
+      "permissionsRecoveredHelp": "Write access to {{path}} has been restored. Restart or reload the system service to resume writing logs to file.",
+      "fallbackActiveHelp": "Cannot write to {{path}}. System logs are temporarily redirected to journalctl console."
     },
     "lcd": {
       "title": "LCD display & Serial Driver",
@@ -699,7 +707,10 @@
       "deleteStorage": "Delete Storage",
       "utilization": "Space Utilization",
       "routePath": "HTTP Route Path (Optional)",
-      "routePathHelp": "Allows serving HLS manifests and segments via HTTP (/route_path/stream_name.m3u8)."
+      "routePathHelp": "Allows serving HLS manifests and segments via HTTP (/route_path/stream_name.m3u8).",
+      "readOnly": "READ-ONLY (PERMISSION DENIED)",
+      "readOnlyHelp": "Daemon lacks write permissions to this directory",
+      "writable": "WRITABLE"
     },
     "security": {
       "title": "Authentication & Password Management",
@@ -1034,6 +1045,11 @@
     "notDetected": "Not Detected",
     "storageCapacities": "STORAGE CAPACITIES",
     "freeGb": "GB free",
+    "storageReadOnly": "Read-Only / Permission Denied",
+    "storageReadOnlyShort": "READ-ONLY",
+    "storagePermissionDenied": "Permission Denied",
+    "loggingPermissionsRecovered": "Log storage permissions restored! Restart or reload service to resume file logging.",
+    "loggingFallbackActive": "Log path is read-only. Logs are safely redirected to systemd journal.",
     "hardwarePeripherals": "HARDWARE & PERIPHERALS",
     "hardwareIntrospection": "Real-time introspection of host media acceleration capabilities, sound servers, and capture hardware devices.",
     "lcdPanel": "LCD PANEL",

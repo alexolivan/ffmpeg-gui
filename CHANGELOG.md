@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.4] - 2026-10-21
+
+### Fixed
+- **Storage Permission Health Introspection & Live UI Feedback (`backend/main.py`, `backend/run_server.py`, `DashboardView.tsx`, `SettingsView.tsx`, `App.tsx`, `useAuth.ts`, `en.json`, `es.json`, `ca.json`)**:
+  - **Reverted Systemd Unit Directives**: Removed hardcoded `LogsDirectory`, `StateDirectory`, and `RuntimeDirectory` from `install.sh` and `update.sh` to preserve user-defined storages, custom `fstab` mount options, and non-root user-space deployments.
+  - **Dynamic Storage Writability Evaluation**: Extended `telemetry_broadcast_loop` and `GET /settings/storages` to inspect `os.access(path, os.W_OK)` on every tick, adding `is_writable` and `write_error` fields to all storage objects.
+  - **Live Permission Recovery Feedback**: The system detects when write permissions to the configured log path or storages are restored on the host (e.g. via `chown` or `chmod` in SSH). The UI transitions immediately in real time, notifying the operator that permissions are restored and prompting for a service reload/restart to resume file logging.
+  - **Pre-Login Storage Warning Banner**: Updated `GET /api/auth/status` and `App.tsx` (Login page) with dynamic polling, rendering a clear alert banner if any storage is read-only or if logging is operating in fallback mode.
+  - **Dashboard & Settings Visual Indicators**: In `DashboardView.tsx`, non-writable storages are highlighted with a prominent `⚠️ READ-ONLY (PERMISSION DENIED)` badge and pulsing red progress bar. In `SettingsView.tsx`, storages display `✓ WRITABLE` or `⚠️ READ-ONLY` badges, and a dedicated status banner appears under Logging Configuration.
+
 ## [2.49.3] - 2026-10-21
 
 ### Fixed

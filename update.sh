@@ -145,22 +145,6 @@ if [ -f "$SYSTEM_SERVICE" ]; then
             sudo systemctl daemon-reload
         fi
     fi
-
-    # Ensure systemd directory directives (LogsDirectory, StateDirectory, RuntimeDirectory)
-    # Guarantees correct ffmpeg-gui:ffmpeg-gui ownership on tmpfs/SATADOM boots
-    for dir_directive in "RuntimeDirectory=ffmpeg-gui" "LogsDirectory=ffmpeg-gui" "StateDirectory=ffmpeg-gui"; do
-        d_key="${dir_directive%%=*}"
-        if ! grep -q "^${d_key}=" "$SYSTEM_SERVICE"; then
-            echo "--> Ensuring ${dir_directive} in system-wide service..."
-            if [ "$EUID" -eq 0 ]; then
-                sed -i "/\\[Service\\]/a ${dir_directive}" "$SYSTEM_SERVICE"
-                systemctl daemon-reload
-            else
-                sudo sed -i "/\\[Service\\]/a ${dir_directive}" "$SYSTEM_SERVICE"
-                sudo systemctl daemon-reload
-            fi
-        fi
-    done
     
     # Ensure system capabilities (network ports & Intel GPU telemetry)
     echo "--> Verifying and applying system capabilities..."

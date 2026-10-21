@@ -109,7 +109,33 @@ function App() {
             )}
           </div>
           <h1 className="text-2xl font-bold text-center mb-2 uppercase tracking-tighter">{nodeName}</h1>
-          <p className="text-text-secondary text-center text-sm mb-10">{t('auth.accessRestricted')}</p>
+          <p className="text-text-secondary text-center text-sm mb-6">{t('auth.accessRestricted')}</p>
+
+          {authStatus?.storage_warnings && authStatus.storage_warnings.length > 0 && (
+            <div className="mb-6 space-y-2 text-left">
+              {authStatus.storage_warnings.map((warn: any, idx: number) => {
+                const isRecovered = warn.recovered === true;
+                return (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-xl border text-xs leading-relaxed flex items-start gap-2.5 transition-all duration-300 ${
+                      isRecovered
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                        : 'bg-red-500/10 border-red-500/30 text-red-400'
+                    }`}
+                  >
+                    <span className="text-base shrink-0 mt-0.5">{isRecovered ? '✅' : '⚠️'}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-[11px] uppercase tracking-wider">
+                        {isRecovered ? t('auth.permissionsRestored', 'Permissions Restored') : t('auth.storageWarning', 'Storage Permission Warning')}
+                      </p>
+                      <p className="text-[11px] opacity-90 mt-0.5 break-all">{warn.message}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           
           <div className="space-y-6">
             <input 

@@ -221,6 +221,8 @@ class TestLoggingHandler(unittest.TestCase):
             self.assertEqual(log_config["loggers"]["FFMPEG-GUI"]["handlers"], ["default"])
             self.assertNotIn("file", log_config["handlers"])
             self.assertNotIn("ACCESS_LOG_PATH", os.environ)
+            self.assertEqual(os.environ.get("LOGGING_FALLBACK_ACTIVE"), "true")
+            self.assertEqual(os.environ.get("LOGGING_TARGET_FILE"), "/var/log/ffmpeg-gui/ffmpeg-gui.log")
 
     def test_access_log_middleware_noise_filtering(self):
         import asyncio

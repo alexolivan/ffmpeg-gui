@@ -28,6 +28,8 @@
     "setDefault": "ESTABILIR PER DEFECTE",
     "cancelUpload": "✕ Cancel·lar pujada",
     "loading": "Carregant...",
+    "readyToReload": "Llest per Recarregar",
+    "fallback": "Fallback Journalctl",
     "waiting": "Esperant senyal d'entrada...",
     "clonedSuccess": "Clonat amb èxit!",
     "refresh": "Actualitzar",
@@ -75,7 +77,9 @@
     "unlockNode": "Desbloquejar Node",
     "lockNode": "Bloquejar Node",
     "logout": "Tancar Sessió",
-    "checkingAuth": "Verificant credencials de seguretat..."
+    "checkingAuth": "Verificant credencials de seguretat...",
+    "permissionsRestored": "Permisos Restaurats",
+    "storageWarning": "Avís de Permisos d'Emmagatzematge"
   },
   "services": {
     "title": "Serveis",
@@ -649,7 +653,11 @@
       "retentionDays": "Dies de Retenció",
       "timestampTz": "Format d'Hora als Logs",
       "timestampTzUtc": "UTC (Temps Universal Coordinat - Estàndard)",
-      "timestampTzLocal": "Zona Horària Local de l'Equip (Offset)"
+      "timestampTzLocal": "Zona Horària Local de l'Equip (Offset)",
+      "permissionsRecovered": "Permisos d'Emmagatzematge de Logs Restaurats!",
+      "fallbackActive": "Emmagatzematge de Logs en Només Lectura (Operant en Fallback Journalctl)",
+      "permissionsRecoveredHelp": "S'ha restaurat l'accés d'escriptura a {{path}}. Reinicieu o recarregueu el servei per reprendre el desat de logs a fitxer.",
+      "fallbackActiveHelp": "No es pot escriure a {{path}}. Els logs del sistema es redirigeixen temporalment a la consola de journalctl."
     },
     "lcd": {
       "title": "Pantalla LCD i Controladora Sèrie",
@@ -699,7 +707,10 @@
       "deleteStorage": "Eliminar Emmagatzematge",
       "utilization": "Ús d'Espai",
       "routePath": "Ruta HTTP del Stream (Opcional)",
-      "routePathHelp": "Permet servir manifests i segments HLS per HTTP (/ruta_stream/nom_stream.m3u8)."
+      "routePathHelp": "Permet servir manifests i segments HLS per HTTP (/ruta_stream/nom_stream.m3u8).",
+      "readOnly": "NOMÉS LECTURA (PERMÍS DENEGAT)",
+      "readOnlyHelp": "El servei no té permisos d'escriptura en aquest directori",
+      "writable": "ESCRIPTIBLE"
     },
     "security": {
       "title": "Seguretat i Accés",
@@ -1034,6 +1045,11 @@
     "notDetected": "No Detectat",
     "storageCapacities": "CAPACITAT D'EMMAGATZEMATGE",
     "freeGb": "GB lliures",
+    "storageReadOnly": "Només Lectura / Permís Denegat",
+    "storageReadOnlyShort": "NOMÉS LECTURA",
+    "storagePermissionDenied": "Permís Denegat",
+    "loggingPermissionsRecovered": "Permisos d'emmagatzematge de logs restaurats! Reinicieu o recarregueu el servei per reprendre el log a fitxer.",
+    "loggingFallbackActive": "Ruta de logs en només lectura. Els logs es redirigeixen de forma segura a systemd journal.",
     "hardwarePeripherals": "HARDWARE I PERIFÈRICS",
     "hardwareIntrospection": "Introspecció en temps real d'acceleració de mitjans, servidors de so i dispositius de captura del host.",
     "lcdPanel": "PANEL LCD",
