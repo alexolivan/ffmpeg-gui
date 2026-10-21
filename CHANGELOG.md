@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.3] - 2026-10-21
+
+### Fixed
+- **Systemd Service LogsDirectory & tmpfs Mount Resilience (`install.sh`, `update.sh`, `backend/run_server.py`, `backend/tests/test_logging_handler.py`)**:
+  - **Native Systemd Directory Directives**: Added `LogsDirectory=ffmpeg-gui`, `StateDirectory=ffmpeg-gui`, and `RuntimeDirectory=ffmpeg-gui` to `/etc/systemd/system/ffmpeg-gui.service` in both `install.sh` and `update.sh`. On boot, systemd automatically creates these directories and guarantees correct `ffmpeg-gui:ffmpeg-gui` ownership (0755), eliminating permission denied failures on systems configured with `tmpfs` mounts on `/var/log/ffmpeg-gui` (e.g. industrial SATADOM flash storage setups).
+  - **Graceful Logging Fallback Shield**: Hardened server startup in `backend/run_server.py` with pre-flight write probes for both main server log and access log. If log directory permissions or a read-only filesystem prevent writing to file handlers (`PermissionError` / `OSError`), the daemon prints a diagnostic warning to `stderr` (captured by `journalctl`) and automatically falls back to console/journalctl logging without crashing Python or aborting daemon startup.
+  - **Automated Service Reconciliation in Update**: Updated `update.sh` to automatically detect missing `LogsDirectory=`, `StateDirectory=`, and `RuntimeDirectory=` directives in existing systemd units and append them on upgrade, avoiding manual `systemctl edit` or `ExecStartPre` workarounds.
+
 ## [2.49.2] - 2026-10-20
 
 ### Fixed

@@ -171,6 +171,57 @@ class TestLoggingHandler(unittest.TestCase):
             self.assertTrue(os.environ["ACCESS_LOG_PATH"].endswith("access.log"))
             self.assertEqual(os.environ.get("ACCESS_LOG_IGNORE_MEDIA"), "true")
 
+    def test_log_configuration_fallback_on_permission_error(self):
+        import run_server
+        from unittest.mock import patch, MagicMock
+
+        # Config requests file logging
+        mock_config = {
+            "logging": {
+                "mode": "file",
+                "file_path": "/var/log/ffmpeg-gui/ffmpeg-gui.log",
+                "rotation_enabled": "true",
+            }
+        }
+
+        real_open = open
+        def mock_open_fn(file, *args, **kwargs):
+            if "/var/log/ffmpeg-gui" in str(file):
+                raise PermissionError(13, "Permission denied")
+            return real_open(file, *args, **kwargs)
+
+        with patch("configparser.ConfigParser") as mock_parser, \
+             patch("os.path.exists", return_value=True), \
+             patch("builtins.open", side_effect=mock_open_fn), \
+             patch("uvicorn.Config") as mock_cfg, \
+             patch("uvicorn.Server") as mock_srv, \
+             patch("uvicorn.run") as mock_run:
+
+            parser_inst = mock_parser.return_value
+            parser_inst.read = MagicMock()
+            parser_inst.__contains__ = MagicMock(side_effect=lambda k: k in mock_config)
+            parser_inst.__getitem__ = MagicMock(side_effect=lambda k: MagicMock(
+                get=MagicMock(side_effect=lambda key, default=None: mock_config[k].get(key, default)),
+                getboolean=MagicMock(side_effect=lambda key, default=False: mock_config[k].get(key, default) == "true"),
+                getint=MagicMock(side_effect=lambda key, default=0: int(mock_config[k].get(key, default)))
+            ))
+
+            with patch("sys.argv", ["run_server.py", "--config", "dummy.conf"]):
+                # Should not raise PermissionError, should fall back to journalctl/console
+                run_server.main()
+
+            if mock_cfg.called:
+                called_args, called_kwargs = mock_cfg.call_args
+            else:
+                called_args, called_kwargs = mock_run.call_args
+            log_config = called_kwargs["log_config"]
+
+            # Must fall back to default console/journalctl handler and exclude file handler
+            self.assertEqual(log_config["root"]["handlers"], ["default"])
+            self.assertEqual(log_config["loggers"]["FFMPEG-GUI"]["handlers"], ["default"])
+            self.assertNotIn("file", log_config["handlers"])
+            self.assertNotIn("ACCESS_LOG_PATH", os.environ)
+
     def test_access_log_middleware_noise_filtering(self):
         import asyncio
         from main import NginxAccessLogMiddleware
