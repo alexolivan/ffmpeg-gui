@@ -3014,7 +3014,6 @@ class ProcessManager:
                 'user_pref("media.autoplay.blocking_policy", 0);',
                 'user_pref("media.cubeb.backend", "pulse");',
                 'user_pref("media.cubeb.sandbox", false);',
-                'user_pref("security.sandbox.content.level", 0);',
                 'user_pref("security.sandbox.content.write_path_whitelist", "/dev/snd/");',
                 'user_pref("security.sandbox.content.read_path_whitelist", "/dev/snd/,/sys/devices/");',
                 'user_pref("toolkit.telemetry.enabled", false);',

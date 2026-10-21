@@ -189,7 +189,7 @@ class TestKioskBrowser(unittest.TestCase):
             self.assertIn('media.autoplay.default', content)
             self.assertIn('media.cubeb.backend", "pulse"', content)
             self.assertIn('media.cubeb.sandbox", false', content)
-            self.assertIn('security.sandbox.content.level", 0', content)
+            self.assertNotIn('security.sandbox.content.level", 0', content)
             self.assertIn('security.sandbox.content.write_path_whitelist", "/dev/snd/"', content)
             self.assertIn('browser.cache.disk.enable", false', content)
             self.assertIn('layers.acceleration.force-enabled", true', content)

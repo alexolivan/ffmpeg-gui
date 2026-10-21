@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.8] - 2026-10-21
+
+### Fixed
+- **Firefox Kiosk Unsupported Sandbox Warning Banner (`process_manager.py`, `test_kiosk_browser.py`)**:
+  - Removed `user_pref("security.sandbox.content.level", 0);` from the auto-generated Firefox kiosk `user.js` profile configuration.
+  - Allowing content process sandboxing to run at its standard default level eliminates the non-dismissible `"The security sandbox is disabled. Your configuration is unsupported and less secure"` warning banner while preserving `media.cubeb.sandbox: false` and `/dev/snd/` permissions for audio playback via ALSA loopback and PipeWire.
+
 ## [2.49.7] - 2026-10-21
 
 ### Changed
