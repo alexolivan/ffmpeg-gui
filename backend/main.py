@@ -7068,9 +7068,11 @@ def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
     if output_cfg:
         sanitize_output_config_data(output_cfg)
 
+    is_active_val = True if payload.schedule_type == 'manual' else (payload.is_active if payload.is_active is not None else True)
+
     db_task = ScheduledTask(
         name=payload.name,
-        is_active=payload.is_active,
+        is_active=is_active_val,
         input_config=payload.input_config,
         output_config=output_cfg,
         codec_config=payload.codec_config,
@@ -7401,7 +7403,10 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depend
         setattr(task, k, v)
         
     if sched_changed:
-        if not task.is_active:
+        if task.schedule_type == 'manual':
+            task.is_active = True
+            task.next_run = None
+        elif not task.is_active:
             task.next_run = None
         else:
             if task.schedule_type == 'recurring':

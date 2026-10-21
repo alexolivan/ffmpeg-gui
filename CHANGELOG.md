@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.49.7] - 2026-10-21
+
+### Changed
+- **Manual Tasks On-Demand Workflow Alignment (`ScheduledTasks.tsx`, `main.py`, `en.json`, `es.json`, `ca.json`)**:
+  - **Eliminated Ambiguous Active/Disabled Toggle for Manual Tasks**: Manual tasks (`schedule_type == 'manual'`) are on-demand workflows with no cron schedule or future execution timestamps. Replaced the confusing active/disabled toggle button on manual task rows with a dedicated `[⚡ On-Demand]` semantic badge.
+  - **Reclassified Tasks Lists**:
+    - **Active & On-Demand Tasks**: Houses active scheduled tasks along with on-demand manual workflows ready for manual execution.
+    - **Paused Scheduled Tasks (Standby)**: Exclusively reserves the secondary list for scheduled tasks whose automated cron/one-shot timer has been paused.
+  - **Cloning & Save Resilience**: Cloning or editing a manual task guarantees `is_active: true`, keeping the cloned preset immediately available in the on-demand stack while preserving safety locks (`is_active: false`) when cloning scheduled tasks.
+  - **Backend Synchronization**: Updated `create_task` and `update_task` in `backend/main.py` to ensure manual tasks always default to `is_active: true` with `next_run: None`.
+
 ## [2.49.6] - 2026-10-21
 
 ### Fixed
