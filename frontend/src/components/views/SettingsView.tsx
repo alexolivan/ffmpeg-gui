@@ -1138,9 +1138,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {[
-                    { code: 'en', label: 'English (US)', badge: 'EN 🇺🇸' },
-                    { code: 'es', label: 'Español (ES)', badge: 'ES 🇪🇸' },
-                    { code: 'ca', label: 'Català (CA)', badge: 'CA 🏴' },
+                    { code: 'en', label: 'English (US)', badge: 'EN' },
+                    { code: 'es', label: 'Español (ES)', badge: 'ES' },
+                    { code: 'ca', label: 'Català (CA)', badge: 'CA' },
                   ].map((item) => (
                     <button
                       key={item.code}
