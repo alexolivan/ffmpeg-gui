@@ -596,6 +596,7 @@ class SettingsResponse(BaseModel):
     thermal_warning_threshold: Optional[int] = 75
     thermal_critical_threshold: Optional[int] = 85
     thermal_active_protection: Optional[bool] = False
+    discovery_beacon_enabled: Optional[bool] = True
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -642,6 +643,7 @@ class SettingsUpdate(BaseModel):
     thermal_warning_threshold: Optional[int] = None
     thermal_critical_threshold: Optional[int] = None
     thermal_active_protection: Optional[bool] = None
+    discovery_beacon_enabled: Optional[bool] = None
 
 
     @validator('brute_force_whitelist')
@@ -1058,6 +1060,20 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["notifications"] = notifications_data
     res["watchdog"] = watchdog_data
     
+    discovery_beacon_enabled = getattr(settings, "discovery_beacon_enabled", True)
+    if discovery_beacon_enabled is None:
+        discovery_beacon_enabled = True
+    if config_path and os.path.exists(config_path):
+        try:
+            import configparser
+            cp = configparser.ConfigParser()
+            cp.read(config_path)
+            if "network" in cp and "discovery_beacon_enabled" in cp["network"]:
+                discovery_beacon_enabled = cp["network"].getboolean("discovery_beacon_enabled", fallback=discovery_beacon_enabled)
+        except Exception:
+            pass
+    res["discovery_beacon_enabled"] = discovery_beacon_enabled
+    
     return SettingsResponse(**res).model_dump()
 
 
@@ -1404,7 +1420,7 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     network_ssl_fields = [
         "bind_address", "http_port", "https_port", "ssl_enabled",
         "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email",
-        "ssl_challenge_type", "ssl_auto_renew"
+        "ssl_challenge_type", "ssl_auto_renew", "discovery_beacon_enabled"
     ]
     has_net_ssl_updates = any(getattr(settings_in, field) is not None for field in network_ssl_fields)
 
@@ -1446,6 +1462,8 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config["network"]["ssl_enabled"] = str(settings_in.ssl_enabled).lower()
         if settings_in.force_https_redirect is not None:
             config["network"]["force_https_redirect"] = str(settings_in.force_https_redirect).lower()
+        if settings_in.discovery_beacon_enabled is not None:
+            config["network"]["discovery_beacon_enabled"] = str(settings_in.discovery_beacon_enabled).lower()
 
         if settings_in.ssl_mode is not None:
             config["ssl"]["mode"] = settings_in.ssl_mode
@@ -1528,10 +1546,26 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.thermal_warning_threshold is not None: settings.thermal_warning_threshold = settings_in.thermal_warning_threshold
     if settings_in.thermal_critical_threshold is not None: settings.thermal_critical_threshold = settings_in.thermal_critical_threshold
     if settings_in.thermal_active_protection is not None: settings.thermal_active_protection = settings_in.thermal_active_protection
+    if settings_in.discovery_beacon_enabled is not None: settings.discovery_beacon_enabled = settings_in.discovery_beacon_enabled
 
     db.commit()
     db.refresh(settings)
     invalidate_gui_password_cache()
+
+    global discovery_beacon_service
+    if settings.discovery_beacon_enabled:
+        if discovery_beacon_service is None:
+            try:
+                from core.discovery_beacon import DiscoveryBeaconService
+                discovery_beacon_service = DiscoveryBeaconService(db_session_factory=SessionLocal)
+                discovery_beacon_service.start()
+            except Exception as e:
+                logger.warning(f"Failed to start discovery beacon: {e}")
+        elif not discovery_beacon_service.is_running():
+            discovery_beacon_service.start()
+    else:
+        if discovery_beacon_service and discovery_beacon_service.is_running():
+            discovery_beacon_service.stop()
 
     from core.hardware_health import hardware_health_manager
     hardware_health_manager.configure(
@@ -3873,6 +3907,9 @@ async def auto_start_services():
 # Global LCD Manager instance
 lcd_manager = None
 
+# Global Discovery Beacon instance
+discovery_beacon_service = None
+
 def sanitize_process_config_data(input_config: dict, filter_config: dict) -> bool:
     """
     Sanitize input_config and filter_config for non-decodable inputs.
@@ -4187,6 +4224,34 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start hardware health manager on startup: {e}")
 
+    global discovery_beacon_service
+    try:
+        from core.discovery_beacon import DiscoveryBeaconService
+        beacon_enabled = True
+        beacon_port = 59990
+        config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+        if not os.path.exists(config_path) and os.path.exists("/etc/ffmpeg-gui/ffmpeg-gui.conf"):
+            config_path = "/etc/ffmpeg-gui/ffmpeg-gui.conf"
+        if os.path.exists(config_path):
+            import configparser
+            cp = configparser.ConfigParser()
+            cp.read(config_path)
+            if "network" in cp:
+                beacon_enabled = cp["network"].getboolean("discovery_beacon_enabled", fallback=True)
+                beacon_port = cp["network"].getint("discovery_beacon_port", fallback=59990)
+        
+        with SessionLocal() as db_start:
+            from database.models import SystemSettings
+            sys_set = db_start.query(SystemSettings).first()
+            if sys_set and sys_set.discovery_beacon_enabled is not None:
+                beacon_enabled = bool(sys_set.discovery_beacon_enabled)
+                
+        if beacon_enabled:
+            discovery_beacon_service = DiscoveryBeaconService(db_session_factory=SessionLocal, port=beacon_port)
+            discovery_beacon_service.start()
+    except Exception as e:
+        logger.warning(f"Failed to start discovery beacon on startup: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     global _shutdown_initialized
@@ -4215,6 +4280,15 @@ async def shutdown_event():
     if lcd_manager:
         logger.info("Shutdown: Stopping LCD manager...")
         lcd_manager.stop()
+
+    global discovery_beacon_service
+    if discovery_beacon_service:
+        logger.info("Shutdown: Stopping discovery beacon...")
+        try:
+            discovery_beacon_service.stop()
+        except Exception:
+            pass
+        discovery_beacon_service = None
 
     if is_reload_mode:
         logger.info("Shutdown: Warm Reload mode active. Preserving child stream processes for re-attach on reload.")

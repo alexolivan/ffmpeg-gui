@@ -624,6 +624,8 @@
       "httpsPort": "Puerto de Escucha HTTPS",
       "enableHttps": "Habilitar Cifrado HTTPS",
       "forceHttpsRedirect": "Redirigir Automáticamente HTTP -> HTTPS",
+      "enableDiscoveryBeacon": "Habilitar Baliza de Descubrimiento LAN (Broadcast UDP)",
+      "discoveryBeaconHelp": "Emite la identidad del nodo en la red local (puerto 59990/UDP) para que los escáneres complementarios ubiquen y conecten a este equipo automáticamente.",
       "httpsDisabledCertTooltip": "No se puede habilitar HTTPS hasta que haya un certificado SSL y clave privada válidos cargados.",
       "cardTitle": "Configuración de Interfaces de Red y Ancho de Banda",
       "firewall": {

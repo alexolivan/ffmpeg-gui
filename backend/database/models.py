@@ -498,6 +498,9 @@ class SystemSettings(Base):
     thermal_critical_threshold = Column(Integer, default=85)
     thermal_active_protection = Column(Boolean, default=False)
 
+    # LAN Discovery Beacon Settings
+    discovery_beacon_enabled = Column(Boolean, default=True)
+
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 

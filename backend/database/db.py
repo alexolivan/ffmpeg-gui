@@ -250,6 +250,8 @@ def init_db():
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN thermal_critical_threshold INTEGER DEFAULT 85"))
             if "thermal_active_protection" not in settings_columns:
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN thermal_active_protection BOOLEAN DEFAULT 0"))
+            if "discovery_beacon_enabled" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN discovery_beacon_enabled BOOLEAN DEFAULT 1"))
 
             # Storages table migrations
 
