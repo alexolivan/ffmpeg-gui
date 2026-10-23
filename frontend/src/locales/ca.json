@@ -624,6 +624,8 @@
       "httpsPort": "Port d'Escolta HTTPS",
       "enableHttps": "Habilitar Xifratge HTTPS",
       "forceHttpsRedirect": "Redirigir Automàticament HTTP -> HTTPS",
+      "enableDiscoveryBeacon": "Habilitar Balisa de Descoberta LAN (Broadcast UDP)",
+      "discoveryBeaconHelp": "Emet la identitat del node a la xarxa local (port 59990/UDP) per tal que els escàners complementaris localitzin i connectin a aquest equip automàticament.",
       "httpsDisabledCertTooltip": "No es pot habilitar HTTPS fins que hi hagi un certificat SSL i clau privada vàlids carregats.",
       "cardTitle": "Configuració d'Interfícies de Xarxa i Ample de Banda",
       "firewall": {

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **LAN Discovery Beacon & Kill-Switch (`discovery_beacon.py`, `SettingsView.tsx`, `network_inspector.py`)**:
+  - Implemented background UDP broadcast beacon service on port `59990/udp` broadcasting JSON node identity every 4 seconds.
+  - Implemented immediate reactive response to `{"cmd": "DISCOVER_QUERY"}` sent by desktop companion scanners.
+  - Generates immutable `node_id` derived from `/etc/machine-id` (falling back to persistent `data/node_id` UUID) ensuring robust node identification across DHCP IP changes and shared hostnames.
+  - Added user-configurable `discovery_beacon_enabled` setting in `SystemSettings` (default: `true`), allowing sysadmins to completely disable network beacons via Web GUI Settings (`Network & SSL` card) or REST API (`PATCH /api/settings`).
+  - Integrated port `59990/udp` into `NetworkInspector` live port matrix and automated 1-click UFW/iptables firewall rule generators.
+  - Added full multilingual translations in English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
+  - Added comprehensive test suite `test_discovery_beacon.py`.
+
 ## [2.50.0] - 2026-10-21
 
 ### Added

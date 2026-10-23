@@ -624,6 +624,8 @@
       "httpsPort": "HTTPS Listen Port",
       "enableHttps": "Enable HTTPS Encryption",
       "forceHttpsRedirect": "Automatically Redirect HTTP -> HTTPS",
+      "enableDiscoveryBeacon": "Enable LAN Discovery Beacon (UDP Broadcast)",
+      "discoveryBeaconHelp": "Broadcasts node identity across the LAN (port 59990/UDP) so companion scanners can locate and connect to this appliance automatically.",
       "httpsDisabledCertTooltip": "HTTPS cannot be enabled until a valid SSL certificate and keypair are loaded.",
       "cardTitle": "Network Interfaces & Bandwidth Settings",
       "firewall": {

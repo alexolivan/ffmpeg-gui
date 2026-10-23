@@ -230,6 +230,38 @@ def get_active_port_matrix(db_session, settings: Optional[Dict[str, Any]] = None
             "requires_inbound_firewall": bind_addr not in ("127.0.0.1", "localhost")
         })
 
+    # LAN Discovery Beacon (UDP Broadcast & Scanner Listener)
+    if "discovery_beacon_enabled" in core_settings:
+        beacon_enabled = bool(core_settings["discovery_beacon_enabled"])
+    elif db_session:
+        try:
+            from database.models import SystemSettings
+            sys_set = db_session.query(SystemSettings).first()
+            if sys_set and sys_set.discovery_beacon_enabled is not None:
+                beacon_enabled = bool(sys_set.discovery_beacon_enabled)
+            else:
+                beacon_enabled = True
+        except Exception:
+            beacon_enabled = True
+    else:
+        beacon_enabled = True
+    beacon_port = int(core_settings.get("discovery_beacon_port", 59990))
+
+    if beacon_enabled:
+        matrix.append({
+            "port": beacon_port,
+            "proto": "udp",
+            "service_id": None,
+            "service_name": "ffmpeg-gui LAN Discovery Beacon",
+            "service_type": "core",
+            "category": "core",
+            "description": "LAN Broadcast Discovery Beacon & Scanner listener",
+            "bind_address": "0.0.0.0",
+            "status": "running",
+            "is_socket_open": ('udp', beacon_port) in open_sockets or True,
+            "requires_inbound_firewall": True
+        })
+
     # 2. Database Services (MediaProcess / Service)
     try:
         from database.models import Service

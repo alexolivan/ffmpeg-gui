@@ -190,6 +190,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [sslEmail, setSslEmail] = useState(settings?.ssl_email || '');
   const [sslChallengeType, setSslChallengeType] = useState(settings?.ssl_challenge_type || 'http-01');
   const [autoReloadSslServices, setAutoReloadSslServices] = useState(settings?.auto_reload_ssl_services !== undefined ? !!settings?.auto_reload_ssl_services : true);
+  const [discoveryBeaconEnabled, setDiscoveryBeaconEnabled] = useState(settings?.discovery_beacon_enabled !== undefined ? !!settings?.discovery_beacon_enabled : true);
 
   const [sslStatus, setSslStatus] = useState<any>(null);
   const [isUploadingSsl, setIsUploadingSsl] = useState(false);
@@ -251,6 +252,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSslEmail(settings?.ssl_email || '');
     setSslChallengeType(settings?.ssl_challenge_type || 'http-01');
     setAutoReloadSslServices(settings?.auto_reload_ssl_services !== undefined ? !!settings?.auto_reload_ssl_services : true);
+    setDiscoveryBeaconEnabled(settings?.discovery_beacon_enabled !== undefined ? !!settings?.discovery_beacon_enabled : true);
     setBruteForceEnabled(settings?.brute_force_enabled !== undefined ? !!settings?.brute_force_enabled : true);
     setBruteForceMaxAttempts(settings?.brute_force_max_attempts ?? 5);
     setBruteForceWindowSeconds(settings?.brute_force_window_seconds ?? 300);
@@ -309,6 +311,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings?.thermal_warning_threshold,
     settings?.thermal_critical_threshold,
     settings?.thermal_active_protection,
+    settings?.discovery_beacon_enabled,
   ]);
 
   const fetchSslStatus = async () => {
@@ -771,6 +774,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(bruteForceWindowSeconds) !== Number(settings?.brute_force_window_seconds ?? 300) ||
     Number(bruteForceLockoutSeconds) !== Number(settings?.brute_force_lockout_seconds ?? 900) ||
     bruteForceWhitelist !== (settings?.brute_force_whitelist || '') ||
+    discoveryBeaconEnabled !== (settings.discovery_beacon_enabled !== undefined ? !!settings.discovery_beacon_enabled : true) ||
     newPassword !== '' ||
     confirmPassword !== '';
 
@@ -807,6 +811,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ssl_email: sslEmail,
         ssl_challenge_type: sslChallengeType,
         auto_reload_ssl_services: autoReloadSslServices,
+        discovery_beacon_enabled: discoveryBeaconEnabled,
         lcd_enabled: lcdEnabled,
         lcd_port: lcdPort,
         lcd_model: lcdModel,
@@ -2302,6 +2307,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <label htmlFor="force_https_redirect_checkbox" className={`text-xs font-bold ${(!sslEnabled || !sslStatus?.valid) ? 'opacity-40 cursor-not-allowed text-text-secondary' : 'text-[var(--text-primary)] cursor-pointer'}`}>
                     {t('settings.network.forceHttpsRedirect', 'Automatically Redirect HTTP -> HTTPS')}
                   </label>
+                </div>
+
+                <div className="pt-2 border-t border-[var(--glass-border)] space-y-1">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="discovery_beacon_enabled_checkbox"
+                      checked={discoveryBeaconEnabled}
+                      onChange={e => setDiscoveryBeaconEnabled(e.target.checked)}
+                      className="w-4 h-4 rounded accent-brand-lime cursor-pointer"
+                    />
+                    <label htmlFor="discovery_beacon_enabled_checkbox" className="text-xs font-bold text-[var(--text-primary)] cursor-pointer">
+                      📡 {t('settings.network.enableDiscoveryBeacon', 'Enable LAN Discovery Beacon (UDP Broadcast)')}
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-text-secondary pl-7">
+                    {t('settings.network.discoveryBeaconHelp', 'Broadcasts node identity across the LAN (port 59990/UDP) so companion scanners can locate and connect to this appliance automatically.')}
+                  </p>
                 </div>
               </div>
             </div>
