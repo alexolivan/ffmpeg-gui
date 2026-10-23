@@ -1060,19 +1060,20 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["notifications"] = notifications_data
     res["watchdog"] = watchdog_data
     
-    discovery_beacon_enabled = getattr(settings, "discovery_beacon_enabled", True)
+    discovery_beacon_enabled = getattr(settings, "discovery_beacon_enabled", None)
+    if discovery_beacon_enabled is None:
+        if config_path and os.path.exists(config_path):
+            try:
+                import configparser
+                cp = configparser.ConfigParser()
+                cp.read(config_path)
+                if "network" in cp and "discovery_beacon_enabled" in cp["network"]:
+                    discovery_beacon_enabled = cp["network"].getboolean("discovery_beacon_enabled", fallback=True)
+            except Exception:
+                pass
     if discovery_beacon_enabled is None:
         discovery_beacon_enabled = True
-    if config_path and os.path.exists(config_path):
-        try:
-            import configparser
-            cp = configparser.ConfigParser()
-            cp.read(config_path)
-            if "network" in cp and "discovery_beacon_enabled" in cp["network"]:
-                discovery_beacon_enabled = cp["network"].getboolean("discovery_beacon_enabled", fallback=discovery_beacon_enabled)
-        except Exception:
-            pass
-    res["discovery_beacon_enabled"] = discovery_beacon_enabled
+    res["discovery_beacon_enabled"] = bool(discovery_beacon_enabled)
     
     return SettingsResponse(**res).model_dump()
 
@@ -1554,18 +1555,20 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
 
     global discovery_beacon_service
     if settings.discovery_beacon_enabled:
-        if discovery_beacon_service is None:
+        if discovery_beacon_service is None or not discovery_beacon_service.is_running():
             try:
                 from core.discovery_beacon import DiscoveryBeaconService
                 discovery_beacon_service = DiscoveryBeaconService(db_session_factory=SessionLocal)
                 discovery_beacon_service.start()
             except Exception as e:
                 logger.warning(f"Failed to start discovery beacon: {e}")
-        elif not discovery_beacon_service.is_running():
-            discovery_beacon_service.start()
     else:
-        if discovery_beacon_service and discovery_beacon_service.is_running():
-            discovery_beacon_service.stop()
+        if discovery_beacon_service:
+            try:
+                discovery_beacon_service.stop()
+            except Exception:
+                pass
+            discovery_beacon_service = None
 
     from core.hardware_health import hardware_health_manager
     hardware_health_manager.configure(

@@ -110,6 +110,25 @@ class TestDiscoveryBeacon(unittest.TestCase):
 
             mock_send.assert_called_once_with(target_addr=("192.168.1.100", 54321))
 
+    def test_is_enabled_guard_prevents_broadcast(self):
+        mock_db_session = MagicMock()
+        mock_factory = MagicMock(return_value=mock_db_session)
+        mock_db_session.__enter__.return_value = mock_db_session
+
+        mock_settings = MagicMock()
+        mock_settings.discovery_beacon_enabled = False
+        mock_db_session.query.return_value.first.return_value = mock_settings
+
+        service = DiscoveryBeaconService(db_session_factory=mock_factory, port=59993)
+        service._running = True
+        service._sock = MagicMock()
+
+        self.assertFalse(service.is_enabled())
+
+        # Attempt to send beacon while disabled
+        service.send_beacon()
+        service._sock.sendto.assert_not_called()
+
     def test_network_inspector_includes_discovery_beacon(self):
         mock_db = MagicMock()
         mock_db.query.return_value.all.return_value = []

@@ -155,6 +155,26 @@ class DiscoveryBeaconService:
     def is_running(self) -> bool:
         return self._running
 
+    def is_enabled(self) -> bool:
+        """
+        Verify whether discovery beacon broadcasting is enabled in database settings.
+        Guarantees that a stopped or disabled beacon will never broadcast packets or answer queries.
+        """
+        if not self._running or self._stop_event.is_set():
+            return False
+
+        if self.db_session_factory:
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import SystemSettings
+                    settings = session.query(SystemSettings).first()
+                    if settings and settings.discovery_beacon_enabled is not None:
+                        return bool(settings.discovery_beacon_enabled)
+            except Exception:
+                pass
+
+        return True
+
     def build_payload(self) -> Dict[str, Any]:
         """Construct the canonical discovery beacon JSON payload."""
         ip = get_primary_ip()
@@ -285,7 +305,7 @@ class DiscoveryBeaconService:
 
     def send_beacon(self, target_addr: Optional[tuple] = None) -> None:
         """Send a beacon packet. If target_addr is None, broadcasts to 255.255.255.255."""
-        if not self._sock:
+        if not self._sock or not self.is_enabled():
             return
         try:
             payload = self.build_payload()
@@ -298,6 +318,8 @@ class DiscoveryBeaconService:
     def _broadcast_loop(self) -> None:
         """Periodic passive broadcast heartbeat."""
         while not self._stop_event.is_set():
+            if not self.is_enabled():
+                break
             self.send_beacon()
             # Sleep in short increments for responsive shutdown
             elapsed = 0.0
@@ -308,7 +330,7 @@ class DiscoveryBeaconService:
     def _listener_loop(self) -> None:
         """Listen for DISCOVER_QUERY from scanners and respond immediately."""
         while not self._stop_event.is_set():
-            if not self._sock:
+            if not self._sock or not self.is_enabled():
                 break
             try:
                 data, addr = self._sock.recvfrom(4096)
@@ -317,8 +339,9 @@ class DiscoveryBeaconService:
                 try:
                     msg = json.loads(data.decode("utf-8", errors="ignore"))
                     if isinstance(msg, dict) and msg.get("cmd") == "DISCOVER_QUERY":
-                        logger.debug(f"Received DISCOVER_QUERY from {addr}, replying...")
-                        self.send_beacon(target_addr=addr)
+                        if self.is_enabled():
+                            logger.debug(f"Received DISCOVER_QUERY from {addr}, replying...")
+                            self.send_beacon(target_addr=addr)
                 except Exception:
                     pass
             except socket.timeout:
