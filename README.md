@@ -110,6 +110,10 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ![Graphic EQ & Dynamics Compressor](docs/assets/screenshot7.png)
 
 ### 🎚️ 8. PipeWire Audio Hub & Universal Audio Matrix
+![PipeWire Audio Hub Service Configuration & Virtual Sinks](docs/assets/screenshot24.png)
+
+![PipeWire Real-Time Audio Graph & Nodes Telemetry Inspector](docs/assets/screenshot25.png)
+
 - **Isolated Daemon Orchestration**: Deploy dedicated PipeWire server daemons running entirely in ephemeral RAM directories (`/tmp/ffmpeg-gui/pipewire-{id}`) with custom quantum and sample rate (48000 Hz) isolation.
 - **Virtual Audio Sinks & AES67 Multicast Broadcast**: Configure custom multi-channel virtual audio sinks (`mix_bus`, `kiosk_audio`, etc.) with optional AES67 / Dante multicast broadcast output over physical network interfaces with PTP clock domain support.
 - **Desktop & Web Kiosk Native Audio Routing**: Route Virtual Desktop and Kiosk audio directly to PipeWire sinks via native PulseAudio emulation sockets (`PULSE_SERVER`), completely bypassing legacy `apulse` or `snd-aloop` constraints.
