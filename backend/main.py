@@ -1689,8 +1689,12 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for k in ["bind_address", "gui_port", "http_port", "https_port", "ssl_enabled", "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email", "ssl_challenge_type", "auto_reload_ssl_services"]:
                 if k in config["general"]:
                     net_dict[k] = config["general"][k]
+        if "network" in config and "discovery_beacon_enabled" in config["network"]:
+            net_dict["discovery_beacon_enabled"] = config["network"]["discovery_beacon_enabled"]
         if sys_settings and sys_settings.auto_reload_ssl_services is not None:
             net_dict["auto_reload_ssl_services"] = str(sys_settings.auto_reload_ssl_services).lower()
+        if sys_settings and sys_settings.discovery_beacon_enabled is not None:
+            net_dict["discovery_beacon_enabled"] = str(sys_settings.discovery_beacon_enabled).lower()
         sections["gui_network_ssl"] = net_dict
 
     # 3. LCD Display
@@ -2044,11 +2048,36 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
 
     if "gui_network_ssl" in sections and isinstance(sections["gui_network_ssl"], dict):
         for k, v in sections["gui_network_ssl"].items():
-            config.set("general", k, str(v))
+            if k == "discovery_beacon_enabled":
+                if "network" not in config:
+                    config["network"] = {}
+                config.set("network", k, str(v).lower())
+            else:
+                config.set("general", k, str(v))
         net_sec = sections["gui_network_ssl"]
         if "auto_reload_ssl_services" in net_sec and net_sec["auto_reload_ssl_services"] is not None:
             val = net_sec["auto_reload_ssl_services"]
             sys_settings.auto_reload_ssl_services = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
+        if "discovery_beacon_enabled" in net_sec and net_sec["discovery_beacon_enabled"] is not None:
+            val = net_sec["discovery_beacon_enabled"]
+            beacon_enabled = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
+            sys_settings.discovery_beacon_enabled = beacon_enabled
+            global discovery_beacon_service
+            if beacon_enabled:
+                if discovery_beacon_service is None or not discovery_beacon_service.is_running():
+                    try:
+                        from core.discovery_beacon import DiscoveryBeaconService
+                        discovery_beacon_service = DiscoveryBeaconService(db_session_factory=SessionLocal)
+                        discovery_beacon_service.start()
+                    except Exception as e:
+                        logger.warning(f"Failed to start discovery beacon on backup import: {e}")
+            else:
+                if discovery_beacon_service:
+                    try:
+                        discovery_beacon_service.stop()
+                    except Exception:
+                        pass
+                    discovery_beacon_service = None
         imported_summary["gui_network_ssl"] = True
 
     if "lcd_display" in sections and isinstance(sections["lcd_display"], dict):

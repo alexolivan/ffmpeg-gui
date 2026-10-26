@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added user-configurable `discovery_beacon_enabled` setting in `SystemSettings` (default: `true`), allowing sysadmins to completely disable network beacons via Web GUI Settings (`Network & SSL` card) or REST API (`PATCH /api/settings`).
   - Integrated port `59990/udp` into `NetworkInspector` live port matrix and automated 1-click UFW/iptables firewall rule generators.
   - Added full multilingual translations in English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
+  - Integrated discovery beacon configuration into system backup export and import routines with reactive runtime listener synchronization.
   - Added comprehensive test suite `test_discovery_beacon.py`.
 - **Dedicated NetInfoView & VersionInfoView LCD Screens (`core/lcd/views/info.py`, `core/lcd/views/menu.py`, `test_lcd_views.py`)**:
   - **`NetInfoView` ('5. Net Info')**: Displays full, untruncated IPv4 addresses on dedicated lines across 4-line and 2-line LCDs (preventing octet truncations). Accurately aligns and displays active HTTP and HTTPS (`-----` when disabled) listener ports. Implemented resilient network interface discovery via `psutil.net_if_addrs()` to guarantee accurate LAN IP reporting even in isolated broadcast environments without external internet connectivity.

@@ -168,6 +168,7 @@ class TestBackupRestoreAPI(unittest.TestCase):
             self.db.add(sys_settings)
         sys_settings.node_name = "Backup Test Node"
         sys_settings.accent_color = "#123456"
+        sys_settings.discovery_beacon_enabled = False
         sys_settings.lcd_enabled = True
         sys_settings.lcd_port = "/dev/ttyTest"
         sys_settings.lcd_brightness = 85
@@ -233,6 +234,8 @@ class TestBackupRestoreAPI(unittest.TestCase):
         gen_export = data["sections"]["gui_general"]
         self.assertEqual(gen_export["node_name"], "Backup Test Node")
         self.assertEqual(gen_export["accent_color"], "#123456")
+        net_export = data["sections"]["gui_network_ssl"]
+        self.assertEqual(net_export.get("discovery_beacon_enabled"), "false")
 
         # Check peer federation in exported data
         fed_data = data["sections"]["peer_federation"]
@@ -286,6 +289,7 @@ class TestBackupRestoreAPI(unittest.TestCase):
         if sys_settings:
             sys_settings.node_name = "Default Node"
             sys_settings.accent_color = "#FF6B00"
+            sys_settings.discovery_beacon_enabled = True
             sys_settings.lcd_enabled = False
             sys_settings.lcd_port = "/dev/ttyACM0"
             sys_settings.lcd_brightness = 100
@@ -376,6 +380,7 @@ class TestBackupRestoreAPI(unittest.TestCase):
         self.assertIsNotNone(restored_settings)
         self.assertEqual(restored_settings.node_name, "Backup Test Node")
         self.assertEqual(restored_settings.accent_color, "#123456")
+        self.assertFalse(restored_settings.discovery_beacon_enabled)
         self.assertTrue(restored_settings.lcd_enabled)
         self.assertEqual(restored_settings.lcd_port, "/dev/ttyTest")
         self.assertEqual(restored_settings.lcd_brightness, 85)
