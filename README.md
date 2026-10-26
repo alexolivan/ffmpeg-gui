@@ -206,11 +206,16 @@ sudo fail2ban-client reload
 ./bin/ffmpeg-gui-admin reset-admin
 ```
 
-### 🌐 18. Dynamic Interface Binding & Live Firewall Matrix
+### 🌐 19. Dynamic Interface Binding & Live Firewall Matrix
 - **Dynamic Interface Enumeration**: Detects all physical, virtual, and loopback interfaces (IP, netmask, MAC, speed, and link state).
 - **Fail-Safe Bind Resolver**: Prevents administrative lock-out if network interfaces change, drop, or migrate; automatically falls back to `0.0.0.0` with clear diagnostic warnings.
 - **Daemon Integration**: Bind FFmpeg-GUI core, MediaMTX, Icecast2, and PipeWire Audio Hubs (AES67 AoIP, SAP discovery, PTPv2) to specific interfaces or individual IP addresses.
 - **Live Firewall Matrix & Rule Generator**: Real-time socket scanner reporting live listening ports across all daemons, stream pipelines, and AoIP receivers with 1-click copyable UFW and iptables rule sets.
+
+### 📡 20. LAN Discovery Beacon & Desktop Companion
+- **UDP Broadcast Beacon**: Background presence service broadcasting JSON appliance heartbeats on port `59990/udp` with an immutable hardware-backed node identity.
+- **Web GUI Kill-Switch**: Fully configurable and toggleable from Web GUI Settings (`Network & SSL`) or REST API.
+- **Desktop Companion App**: Pair with [ffmpeg-gui-scanner](https://github.com/alexolivan/ffmpeg-gui-scanner) on Windows, macOS, or Linux for zero-configuration LAN discovery, live vitality tracking, and 1-click dashboard access.
 
 ---
 

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.50.0] - 2026-10-26
 
 ### Added
 - **LAN Discovery Beacon & Kill-Switch (`discovery_beacon.py`, `SettingsView.tsx`, `network_inspector.py`)**:
@@ -16,10 +16,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integrated port `59990/udp` into `NetworkInspector` live port matrix and automated 1-click UFW/iptables firewall rule generators.
   - Added full multilingual translations in English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
   - Added comprehensive test suite `test_discovery_beacon.py`.
-
-## [2.50.0] - 2026-10-21
-
-### Added
 - **Dedicated NetInfoView & VersionInfoView LCD Screens (`core/lcd/views/info.py`, `core/lcd/views/menu.py`, `test_lcd_views.py`)**:
   - **`NetInfoView` ('5. Net Info')**: Displays full, untruncated IPv4 addresses on dedicated lines across 4-line and 2-line LCDs (preventing octet truncations). Accurately aligns and displays active HTTP and HTTPS (`-----` when disabled) listener ports. Implemented resilient network interface discovery via `psutil.net_if_addrs()` to guarantee accurate LAN IP reporting even in isolated broadcast environments without external internet connectivity.
   - **`VersionInfoView` ('6. Versions')**: Displays live, synchronized component versions dynamically fetched from their respective Single Sources of Truth (`backend.version`, `frontend/package.json`, and `database.version.schema_version`), replacing legacy hardcoded v1.x strings.
